@@ -114,7 +114,8 @@ the paywall needs payments on). With payments on, the access step always
 follows the subscription step, because connecting a service needs a plan and a
 new account has none until then. For example, without the paywall:
 
-- `[]` (or no flag): access, team, autopilot, role, painPoints, hire, ...
+- `[]` (or no flag): access, team, autopilot, role, painPoints, then
+  subscription, which shows the plan on its own, ...
 - `["team", "autopilot", "role", "access"]`: the access step after the role.
 
 The order is fixed when the wizard loads, so changing the flag never

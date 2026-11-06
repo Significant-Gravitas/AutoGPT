@@ -168,25 +168,13 @@ describe("useOnboardingWizardStore", () => {
     });
   });
 
-  describe("markHired", () => {
-    it("records each hired template once", () => {
-      useOnboardingWizardStore.getState().markHired("tpl-maria");
-      useOnboardingWizardStore.getState().markHired("tpl-maria");
-      useOnboardingWizardStore.getState().markHired("tpl-max");
-      expect(useOnboardingWizardStore.getState().hiredTemplateIds).toEqual([
-        "tpl-maria",
-        "tpl-max",
-      ]);
-    });
-  });
-
   describe("reset", () => {
     it("resets all fields to defaults", () => {
       useOnboardingWizardStore.getState().setRole("Engineer");
       useOnboardingWizardStore.getState().setOtherRole("Other");
       useOnboardingWizardStore.getState().togglePainPoint("slow builds");
       useOnboardingWizardStore.getState().setOtherPainPoint("flaky CI");
-      useOnboardingWizardStore.getState().markHired("tpl-maria");
+      useOnboardingWizardStore.setState({ hiredTemplateIds: ["tpl-maria"] });
       useOnboardingWizardStore.getState().goToStep(3);
 
       useOnboardingWizardStore.getState().reset();
@@ -203,31 +191,71 @@ describe("useOnboardingWizardStore", () => {
 });
 
 describe("buildStepLayout", () => {
-  it("places the paywall after personalization and hiring", () => {
+  it("puts the plan + trial step straight after the brain dump", () => {
     expect(buildStepLayout({ hasPaywall: true })).toEqual({
       team: 1,
       autopilot: 2,
       role: 3,
       painPoints: 4,
-      hire: 5,
-      subscription: 6,
-      preparing: 7,
+      subscription: 5,
+      preparing: 6,
     });
   });
 
-  it("closes with the connection on self-host, never beside a paywall", () => {
-    expect(buildStepLayout({ hasConnect: true })).toEqual({
+  it("never lays out the retired hire step", () => {
+    for (const layout of [
+      buildStepLayout({ hasPaywall: true }),
+      buildStepLayout({ hasPlan: true }),
+      buildStepLayout({ hasPlan: true, hasConnect: true }),
+      buildStepLayout({}),
+      buildStepLayout({ order: resolveStepOrder(["hire", "role"]) }),
+      buildStepLayout({ order: ["hire", "team", "preparing"] }),
+    ]) {
+      expect(layout.hire).toBeUndefined();
+    }
+  });
+
+  it("shows the plan alone, under the same key, without a paywall", () => {
+    expect(buildStepLayout({ hasPlan: true })).toEqual({
       team: 1,
       autopilot: 2,
       role: 3,
       painPoints: 4,
-      hire: 5,
+      subscription: 5,
+      preparing: 6,
+    });
+  });
+
+  it("skips the plan once it is paid for", () => {
+    expect(buildStepLayout({})).toEqual({
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      painPoints: 4,
+      preparing: 5,
+    });
+  });
+
+  it("closes with the connection on self-host, never beside a paywall", () => {
+    expect(buildStepLayout({ hasPlan: true, hasConnect: true })).toEqual({
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      painPoints: 4,
+      subscription: 5,
       connect: 6,
       preparing: 7,
     });
     expect(
       buildStepLayout({ hasPaywall: true, hasConnect: true }).connect,
     ).toBeUndefined();
+  });
+
+  it("fits every layout under MAX_STEP", () => {
+    expect(
+      buildStepLayout({ hasPlan: true, hasConnect: true, hasAccess: true })
+        .preparing,
+    ).toBe(MAX_STEP);
   });
 });
 
@@ -249,7 +277,6 @@ describe("step order", () => {
       "team",
       "autopilot",
       "painPoints",
-      "hire",
       "subscription",
       "connect",
       "preparing",
@@ -267,6 +294,6 @@ describe("step order", () => {
   });
 
   it("always finishes with preparing", () => {
-    expect(resolveStepOrder(["preparing", "hire"]).at(-1)).toBe("preparing");
+    expect(resolveStepOrder(["preparing", "role"]).at(-1)).toBe("preparing");
   });
 });
