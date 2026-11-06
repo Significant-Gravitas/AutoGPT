@@ -243,6 +243,25 @@ async def test_overload_is_not_retried_and_environment_cannot_redirect_credentia
     assert str(sent[0].url) == "https://api.typesafe.ai/v1/systemone"
 
 
+async def test_operator_config_sets_the_endpoint(monkeypatch: pytest.MonkeyPatch):
+    sent: list[httpx2.Request] = []
+
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request)
+        return httpx2.Response(
+            200, content=RESPONSE, headers={"x-typesafe-request-id": "local"}
+        )
+
+    mock_transport(monkeypatch, handler)
+    monkeypatch.setattr(
+        _client.settings.config, "typesafe_api_base_url", "http://127.0.0.1:8766"
+    )
+    result = await _client.call_jev("test", "state", {"q": Noul(instructions="Yes?")})
+    assert result.error == ""
+    assert len(sent) == 1
+    assert str(sent[0].url) == "http://127.0.0.1:8766/v1/systemone"
+
+
 @pytest.mark.parametrize("response", ["{invalid-json", '{"model":"jev-latest"}'])
 async def test_invalid_response_remains_visible(
     monkeypatch: pytest.MonkeyPatch,
