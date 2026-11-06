@@ -318,8 +318,16 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
     # against the same state dict the worker was registered in, even if the
     # worker is cancelled from another task.
     state = _get_loop_state()
+    worker = asyncio.current_task()
     try:
         while True:
+            # On Python 3.11, asyncio.wait_for drops a cancel that lands as
+            # its inner task finishes, and redis-py sends every command
+            # through one, so a cancel during the write lock can be swallowed.
+            # It is still pending: stop now, not after idling out
+            # _WORKER_IDLE_TIMEOUT.
+            if worker is not None and worker.cancelling():
+                raise asyncio.CancelledError
             try:
                 payload = await asyncio.wait_for(
                     queue.get(), timeout=_WORKER_IDLE_TIMEOUT
