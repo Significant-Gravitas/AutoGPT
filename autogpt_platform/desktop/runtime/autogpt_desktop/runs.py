@@ -505,11 +505,17 @@ def _named(body: bytes, name: str, values: set[str]) -> str | None:
 
 
 def reconcile(
-    connect: Callable, stopped_runs: Path, queue: Queue | None = None
+    connect: Callable,
+    stopped_runs: Path,
+    queue: Queue | None = None,
+    *,
+    cache: Cache | None = None,
 ) -> bool:
     """Settle unfinished runs before the executor sees their messages. It
     skips a message whose run has already ended."""
-    stopped = read_stopped(stopped_runs)
+    stopped = _recover_turn_ids(read_stopped(stopped_runs), stopped_runs, cache)
+    if stopped is None:
+        return False
     try:
         with closing(connect()) as connection:
             cursor = connection.cursor()
@@ -564,6 +570,9 @@ def end_stopped(
     stopped = read_stopped(stopped_runs).merged(chosen or Activity())
     if not stopped:
         return
+    stopped = _recover_turn_ids(stopped, stopped_runs, cache)
+    if stopped is None:
+        return
     try:
         with closing(connect()) as connection:
             _end(
@@ -587,6 +596,38 @@ def end_stopped(
         return
     cache.release(stopped)
     _forget(stopped_runs)
+
+
+def _recover_turn_ids(
+    stopped: Activity, path: Path, cache: Cache | None
+) -> Activity | None:
+    """Pin missing identities while executors are stopped, before dropping messages.
+
+    Persist recovered identities before cleanup so a retry cannot bind an old
+    stop to a later turn. Identity-free legacy metadata remains manual recovery.
+    """
+    identities = dict(stopped.copilot_turn_ids)
+    missing = set(stopped.copilot_turns) - identities.keys()
+    if cache is None or not missing:
+        return stopped
+    try:
+        metadata = cache.turn_metadata()
+    except Exception:
+        logger.exception("could not recover stopped turn identities")
+        return None
+    recovered = {
+        session: turn
+        for session in sorted(missing)
+        if isinstance(turn := metadata.get(session, {}).get("turn_id"), str) and turn
+    }
+    if not recovered:
+        return stopped
+    result = Activity(
+        stopped.graph_runs,
+        stopped.copilot_turns,
+        tuple((identities | recovered).items()),
+    )
+    return result if record_stopped(path, result) else None
 
 
 def _end_turns(
@@ -839,7 +880,7 @@ class OrphanSweep:
             self.trying.join(timeout)
 
 
-def record_stopped(path: Path, activity: Activity) -> None:
+def record_stopped(path: Path, activity: Activity) -> bool:
     """Persist stop intent before cancellation; a write failure is logged.
     The live supervisor also retains the choice for shutdown cleanup."""
     stopped = read_stopped(path).merged(activity)
@@ -849,7 +890,7 @@ def record_stopped(path: Path, activity: Activity) -> None:
     }
     if stopped.copilot_turn_ids:
         record["copilot_turn_ids"] = dict(stopped.copilot_turn_ids)
-    _write(path, record)
+    return _write(path, record)
 
 
 def read_stopped(path: Path) -> Activity:

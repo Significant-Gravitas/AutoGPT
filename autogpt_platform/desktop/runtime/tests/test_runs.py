@@ -332,6 +332,128 @@ class Locks:
     def release(self, activity: runs.Activity) -> None:
         self.released.append(activity)
 
+    def turn_metadata(self) -> dict[str, dict[str, str]]:
+        return {}
+
+
+@pytest.mark.parametrize("at_boot", [False, True])
+def test_missing_stop_identity_is_saved_before_queue_cleanup_and_closes_only_its_turn(
+    tmp_path: Path, monkeypatch, at_boot
+):
+    from types import SimpleNamespace
+
+    from autogpt_desktop import servicehost
+
+    stopped = tmp_path / runs.STOPPED_RUNS_FILE
+    chosen = runs.Activity((), ("recover", "known"), (("known", "old"),))
+    runs.record_stopped(stopped, chosen)
+    cache = Locks()
+    monkeypatch.setattr(
+        cache,
+        "turn_metadata",
+        lambda: {"recover": {"turn_id": "original"}, "known": {"turn_id": "newer"}},
+    )
+    snapshots = []
+    broker = Broker()
+
+    def drop(sessions, turn_ids=None):
+        snapshots.append(
+            (dict(turn_ids or {}), dict(runs.read_stopped(stopped).copilot_turn_ids))
+        )
+        return set(sessions)
+
+    monkeypatch.setattr(broker, "drop_turns", drop)
+    if at_boot:
+        assert runs.reconcile(lambda: Connection([]), stopped, broker, cache=cache)
+    else:
+        runs.end_stopped(lambda: Connection([]), stopped, cache, broker)
+
+    expected = {"known": "old", "recover": "original"}
+    assert snapshots == [(expected, expected)]
+    listed = stopped.with_name(runs.ENDED_TURNS_FILE)
+    records = json.loads(listed.read_text())
+    assert {record["session_id"]: record["turn_id"] for record in records} == expected
+    current = {"recover": "original", "known": "newer"}
+
+    async def close(session_id, *, turn_id, **kwargs):
+        if current[session_id] != turn_id:
+            return False
+        current[session_id] = "completed"
+        return True
+
+    registry = SimpleNamespace(
+        mark_session_completed=close, CANCELLED_MESSAGE="cancelled"
+    )
+    import_module = servicehost.importlib.import_module
+    monkeypatch.setattr(
+        servicehost.importlib,
+        "import_module",
+        lambda name: (
+            registry
+            if name == "backend.copilot.stream_registry"
+            else import_module(name)
+        ),
+    )
+    host = SimpleNamespace(
+        say=lambda message: None, stop=SimpleNamespace(wait=lambda seconds: False)
+    )
+    servicehost.Host.close_ended_turns(host, str(listed))
+    assert current == {"recover": "completed", "known": "newer"}
+    assert not listed.exists()
+
+
+@pytest.mark.parametrize("at_boot", [False, True])
+@pytest.mark.parametrize("failure", ["cache", "record"])
+def test_identity_recovery_failure_keeps_stop_intent_before_dropping_messages(
+    tmp_path: Path, monkeypatch, at_boot, failure
+):
+    stopped = tmp_path / runs.STOPPED_RUNS_FILE
+    chosen = runs.Activity((), ("chat",))
+    runs.record_stopped(stopped, chosen)
+    cache, broker = Locks(), Broker()
+
+    def metadata():
+        if failure == "cache":
+            raise ConnectionError("cache unavailable")
+        return {"chat": {"turn_id": "original"}}
+
+    monkeypatch.setattr(cache, "turn_metadata", metadata)
+    if failure == "record":
+        monkeypatch.setattr(runs, "_write", lambda *args: False)
+    if at_boot:
+        assert not runs.reconcile(lambda: Connection([]), stopped, broker, cache=cache)
+    else:
+        runs.end_stopped(lambda: Connection([]), stopped, cache, broker)
+
+    assert runs.read_stopped(stopped) == chosen
+    assert broker.dropped == []
+    assert cache.released == []
+    assert not stopped.with_name(runs.ENDED_TURNS_FILE).exists()
+
+
+def test_recovered_stop_identity_is_not_rebound_after_a_broker_failure(
+    tmp_path: Path, monkeypatch
+):
+    stopped = tmp_path / runs.STOPPED_RUNS_FILE
+    runs.record_stopped(stopped, runs.Activity((), ("chat",)))
+    cache = Locks()
+    reads = []
+
+    def metadata():
+        reads.append(True)
+        return {"chat": {"turn_id": "original" if len(reads) == 1 else "newer"}}
+
+    monkeypatch.setattr(cache, "turn_metadata", metadata)
+    assert not runs.reconcile(
+        lambda: Connection([]), stopped, Broker(None), cache=cache
+    )
+    assert dict(runs.read_stopped(stopped).copilot_turn_ids) == {"chat": "original"}
+    assert runs.reconcile(lambda: Connection([]), stopped, Broker(), cache=cache)
+    assert reads == [True]
+    assert json.loads(stopped.with_name(runs.ENDED_TURNS_FILE).read_text()) == [
+        {"session_id": "chat", "turn_id": "original"}
+    ]
+
 
 def test_the_next_start_applies_a_choice_the_last_one_did_not_get_to(tmp_path: Path):
     stopped = tmp_path / runs.STOPPED_RUNS_FILE

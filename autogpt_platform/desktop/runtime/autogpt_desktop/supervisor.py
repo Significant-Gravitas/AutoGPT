@@ -295,7 +295,9 @@ class Stack:
             secret["RABBITMQ_DEFAULT_USER"],
             secret["RABBITMQ_DEFAULT_PASS"],
         )
-        if not runs.reconcile(self.connect, self.stopped_runs, self.queue):
+        if not runs.reconcile(
+            self.connect, self.stopped_runs, self.queue, cache=self.cache
+        ):
             raise RuntimeError(
                 "Could not settle stopped runs safely; restart AutoGPT to retry."
             )
