@@ -67,6 +67,12 @@ vi.mock("@/providers/onboarding/onboarding-provider", () => ({
   }),
 }));
 
+// Covered in Wallet.balance-refresh.test.tsx; its listeners would take the
+// mocked socket's last slot that `emit` below reads.
+vi.mock("../useRefreshBalanceOnSpend", () => ({
+  useRefreshBalanceOnSpend: () => {},
+}));
+
 // The identity has to be stable: the real context hands out one client, and
 // the websocket effect is keyed on it.
 const backendAPI = vi.hoisted(() => ({}) as Record<string, unknown>);
