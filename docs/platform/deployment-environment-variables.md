@@ -81,8 +81,8 @@ The examples use `https://autogpt.example.com` for the frontend and
 `https://api.autogpt.example.com` for the backend, behind a reverse proxy (see
 [step 3](#3-put-it-behind-https)). Without one, use the server's address and the
 published ports instead: `http://<server>:3000` for the frontend,
-`http://<server>:8006` for the backend and `ws://<server>:8001/ws` for the
-WebSocket.
+`http://<server>:8006` for the backend (`http://<server>:8006/api` in
+`NEXT_PUBLIC_AGPT_SERVER_URL`) and `ws://<server>:8001/ws` for the WebSocket.
 
 | File | Setting | Example | What it is for |
 |------|---------|---------|----------------|
