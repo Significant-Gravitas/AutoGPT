@@ -85,11 +85,13 @@ class FinalizeResponse(BaseModel):
     status: BrainDumpStatus
     input_mode: BrainDumpInputMode
     transcript_preview: str | None = None
+    """The transcript's start, on success and on an ``insufficient_content``
+    reject; never on ``no_usable_speech``."""
     error_code: str | None = None
     error_reason: str | None = None
     """What decided a quality-gate rejection (``quality.QualityRejection``)."""
     transcript_words: int | None = None
-    """A rejected transcript's length as the gate counts words; the text is not sent."""
+    """A rejected transcript's length as the gate counts words."""
 
 
 class DumpStatusResponse(BaseModel):

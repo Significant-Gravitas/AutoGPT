@@ -233,6 +233,7 @@ const STEP_STORAGE_KEY = "autogpt:onboarding-highest-step";
 const INTRO_PATH_KEY = "autogpt:onboarding-intro-path";
 const PILLBOX_HEADING = "What's eating your time?";
 const DUMP_HEADLINE = "Talk to me about your work";
+const OFF_YOUR_PLATE = "What do you want off your plate?";
 const TYPING_HEADLINE = "Write to me about your work";
 const REST_GUIDANCE =
   "Tell me what you do and what eats up your week. Otto uses it to pick your experts and plan your first week. A minute is plenty, and you can type instead.";
@@ -371,6 +372,7 @@ function recordBrainDumpTraffic() {
 function finalizeReturns(response: {
   status: "completed" | "failed";
   error_code?: string;
+  transcript_preview?: string;
 }) {
   const bodies: unknown[] = [];
   server.use(
@@ -1159,18 +1161,31 @@ describe("onboarding brain dump — insufficient content", () => {
     );
   }
 
-  it("shows the recovery choices without advancing or losing the take", async () => {
-    finalizeReturns({ status: "failed", error_code: "insufficient_content" });
+  it("shows what Otto heard and his question without advancing or losing the take", async () => {
+    finalizeReturns({
+      status: "failed",
+      error_code: "insufficient_content",
+      transcript_preview: "Um, okay. Hi. Is this working?",
+    });
 
     await recordAndSend();
 
     expect(
-      await screen.findByText("We didn't catch enough of that."),
+      await screen.findByRole("heading", { name: OFF_YOUR_PLATE }),
     ).toBeDefined();
-    // Its own copy, not the transcription-failure screen's.
+    expect(screen.getByText("Um, okay. Hi. Is this working?")).toBeDefined();
+    expect(screen.getByText("Loud and clear! So tell me,")).toBeDefined();
+    // The progress fixture's role.
+    expect(
+      screen.getByText(
+        `“${BRAIN_DUMP_PROMPT_SETS.Engineering.offYourPlateExample}”`,
+      ),
+    ).toBeDefined();
+    // Its own screen, not the transcription-failure one.
     expect(screen.queryByText("That didn't go through.")).toBeNull();
-    expect(screen.getByRole("button", { name: "Record again" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Type instead" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Write" })).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Continue without it" }),
     ).toBeDefined();
@@ -1191,7 +1206,7 @@ describe("onboarding brain dump — insufficient content", () => {
 
     expect(await screen.findByText("That didn't go through.")).toBeDefined();
     expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
-    expect(screen.queryByText("We didn't catch enough of that.")).toBeNull();
+    expect(screen.queryByText(OFF_YOUR_PLATE)).toBeNull();
     expect(recordingStoreState.parts).toHaveLength(1);
   });
 
@@ -1199,7 +1214,7 @@ describe("onboarding brain dump — insufficient content", () => {
     const skip = holdSkipRecord();
 
     await recordAndSend();
-    await screen.findByText("We didn't catch enough of that.");
+    await screen.findByRole("heading", { name: OFF_YOUR_PLATE });
     await userEvent.click(
       screen.getByRole("button", { name: "Continue without it" }),
     );
@@ -1256,19 +1271,104 @@ describe("onboarding brain dump — insufficient content", () => {
     );
   });
 
-  it("opens the typed composer from the recovery screen", async () => {
+  it("writes after the screen with Otto's question as the headline", async () => {
     finalizeReturns({ status: "failed", error_code: "no_usable_speech" });
 
     await recordAndSend();
-    await screen.findByText("We didn't catch enough of that.");
+    expect(await screen.findByText("No words came through")).toBeDefined();
+    expect(
+      screen.getByText(
+        "I couldn't hear any words. Check that your mic is on, then tell me,",
+      ),
+    ).toBeDefined();
 
-    await userEvent.click(screen.getByRole("button", { name: "Type instead" }));
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
 
     expect(
       await screen.findByPlaceholderText(
-        "What repeats every week? What would you hand off first?",
+        `Like: ${BRAIN_DUMP_PROMPT_SETS.Engineering.offYourPlateExample}`,
       ),
     ).toBeDefined();
+    expect(screen.getByRole("heading", { name: OFF_YOUR_PLATE })).toBeDefined();
+    expect(screen.getByText("A few sentences is plenty.")).toBeDefined();
+  });
+
+  it("keeps Otto's question in view while talking after the screen", async () => {
+    finalizeReturns({
+      status: "failed",
+      error_code: "insufficient_content",
+      transcript_preview: "Hello?",
+    });
+
+    await recordAndSend();
+    await screen.findByRole("heading", { name: OFF_YOUR_PLATE });
+    expect(screen.queryByTestId("otto-question-card")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Talk" }));
+
+    const card = await screen.findByTestId("otto-question-card");
+    expect(within(card).getByText(OFF_YOUR_PLATE)).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Send recording" }),
+    ).toBeDefined();
+  });
+
+  it("tabs through Back, Skip for now, Talk, Write and Continue without it", async () => {
+    finalizeReturns({
+      status: "failed",
+      error_code: "insufficient_content",
+      transcript_preview: "Hello?",
+    });
+
+    await recordAndSend();
+    await screen.findByRole("heading", { name: OFF_YOUR_PLATE });
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    const order: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      await userEvent.tab();
+      order.push(document.activeElement?.textContent?.trim() ?? "");
+    }
+
+    expect(order).toEqual([
+      "Back",
+      "Skip for now",
+      "Talk",
+      "Write",
+      "Continue without it",
+    ]);
+  });
+
+  it("sends what the screen shows and what the person does next", async () => {
+    vi.mocked(posthog.capture).mockClear();
+    finalizeReturns({
+      status: "failed",
+      error_code: "insufficient_content",
+      transcript_preview: "Hello?",
+    });
+
+    await recordAndSend();
+    await screen.findByRole("heading", { name: OFF_YOUR_PLATE });
+    await userEvent.click(screen.getByRole("button", { name: "Write" }));
+    await screen.findByText("A few sentences is plenty.");
+
+    expect(vi.mocked(posthog.capture)).toHaveBeenCalledWith(
+      "brain_dump_insufficient_shown",
+      {
+        mode: "voice",
+        error_code: "insufficient_content",
+        heard: true,
+        prompt_set: "Engineering",
+      },
+    );
+    expect(vi.mocked(posthog.capture)).toHaveBeenCalledWith(
+      "brain_dump_typed_fallback",
+      {
+        reason: "chose_to_type",
+        prompt_set: "Engineering",
+        from: "insufficient",
+      },
+    );
   });
 });
 
