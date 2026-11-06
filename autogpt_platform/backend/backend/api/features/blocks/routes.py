@@ -17,6 +17,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from starlette.status import (
     HTTP_402_PAYMENT_REQUIRED,
+    HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_429_TOO_MANY_REQUESTS,
     HTTP_503_SERVICE_UNAVAILABLE,
     HTTP_504_GATEWAY_TIMEOUT,
@@ -138,6 +139,12 @@ async def execute_graph_block(
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
     if obj.disabled:
         raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
+    if needed := execution_utils.credentials_direct_execution_cannot_supply(obj):
+        raise HTTPException(
+            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Block #{block_id} needs credentials ({', '.join(needed)}), "
+            "so it can only run inside a workflow.",
+        )
 
     user = await get_user_by_id(user_id)
     if not user:

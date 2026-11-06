@@ -13,6 +13,7 @@ import backend.api.external.v1.routes as routes_mod
 import backend.blocks
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
+from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.auth.base import APIAuthorizationInfo
@@ -305,6 +306,29 @@ def test_registry_blocks_needing_a_workflow_are_refused(
     )
     charge_mock.assert_not_awaited()
     assert not ran
+
+
+def test_a_block_that_needs_credentials_is_refused_before_it_is_charged(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Only the graph executor resolves stored credentials, so this route answers
+    422 rather than charging for a run that dies on the missing argument."""
+    block = ExecuteCodeBlock()
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    monkeypatch.setattr(
+        "backend.executor.utils.block_usage_cost", lambda *_a, **_k: (5, {})
+    )
+    spend_mock = AsyncMock(return_value=95)
+    monkeypatch.setattr(
+        "backend.executor.utils.get_user_credit_model",
+        AsyncMock(return_value=MagicMock(spend_credits=spend_mock)),
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json=block.test_input)
+
+    assert response.status_code == 422, response.text
+    assert "inside a workflow" in response.json()["detail"]
+    spend_mock.assert_not_awaited()
 
 
 def test_execute_block_context_carries_key_org_and_team(

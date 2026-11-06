@@ -8,8 +8,11 @@ from pytest_mock import MockerFixture
 from backend.blocks import get_blocks
 from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.anysearch.search import AnySearchBlock
+from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.blocks.google._drive import GoogleDriveFile
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
+from backend.blocks.llm import AITextGeneratorBlock
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
 from backend.data.execution import (
@@ -28,6 +31,7 @@ from backend.executor.utils import (
     CRED_ERR_UNKNOWN_PREFIX,
     _is_optional_picker,
     add_graph_execution,
+    credentials_direct_execution_cannot_supply,
     is_credential_validation_error_message,
     validate_exec,
 )
@@ -4167,3 +4171,19 @@ def test_only_reviewed_blocks_override_the_input_check():
         ("MCPToolBlock", "get_mismatch_error"),
         ("PerplexityBlock", "validate_data"),
     }
+
+
+@pytest.mark.parametrize(
+    "block_cls, needed",
+    [
+        (ExecuteCodeBlock, ["credentials"]),
+        # Gets its credentials from a file picker's auto-credentials, not a field.
+        (GoogleSheetsReadBlock, ["credentials"]),
+        (AITextGeneratorBlock, []),
+        (AnySearchBlock, []),
+    ],
+)
+def test_direct_execution_refuses_only_blocks_whose_run_needs_credentials(
+    block_cls: type, needed: list[str]
+):
+    assert credentials_direct_execution_cannot_supply(block_cls()) == needed
