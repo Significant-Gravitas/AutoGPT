@@ -10,7 +10,7 @@ Layered on purpose so the common cases stay free:
 
 1. Deterministic reject — unmistakably unusable text (empty, no letters,
    a looping/repeated transcript, or for voice a stock phrase speech-to-text
-   invents from silence) never reaches a model.
+   invents from silence, see ``stt_artifacts``) never reaches a model.
 2. Deterministic pass — clearly substantial text (a real rambling dump)
    never pays for a model call either.
 3. Everything in between gets one cheap LLM judgement: "is there enough
@@ -27,7 +27,6 @@ failure in this pipeline.
 
 import logging
 import os
-import re
 import zlib
 from collections import Counter
 from typing import Literal
@@ -36,6 +35,7 @@ from prisma.enums import BrainDumpInputMode
 from pydantic import BaseModel
 
 from backend.api.features.onboarding_dump.structured import request_json
+from backend.api.features.onboarding_dump.stt_artifacts import is_stt_artifact
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
@@ -85,31 +85,6 @@ MAX_COMPRESSION_RATIO = 2.4
 # about 18,000 characters compressed like a loop. A loop that starts inside
 # the opening still counts against it.
 REPETITION_WINDOW_CHARS = 1000
-
-# What speech-to-text models write when they hear silence or room noise: the
-# outros and captions of the videos they were trained on. A voice take that
-# is exactly one of these is ``NO_USABLE_SPEECH``, never "insufficient", so
-# the not-enough screen never shows the person words they did not say. Only
-# well-known artifacts belong here, stored as ``normalise_for_artifact_match``
-# writes them. Typed text never matches: a keyboard cannot mishear.
-STT_ARTIFACT_PHRASES = frozenset(
-    {
-        "thank you",
-        "thank you so much",
-        "thanks for watching",
-        "thank you for watching",
-        "thank you so much for watching",
-        "please subscribe",
-        "like and subscribe",
-        "bye",
-        "bye bye",
-        "you",
-        "music",
-        "applause",
-        "subtitles by the amara org community",
-    }
-)
-_NON_WORD = re.compile(r"[\W_]+")
 
 _VOICE_PROMPT = """A new user of an automation platform was asked to describe \
 their work and what they'd like automated. Below is the raw transcript \
@@ -186,16 +161,6 @@ def count_words(transcript: str) -> int:
     return len(_words(transcript))
 
 
-def normalise_for_artifact_match(text: str) -> str:
-    """``text`` lowercased, with punctuation and symbols turned into spaces
-    and runs of whitespace collapsed, for ``STT_ARTIFACT_PHRASES``.
-
-    "[Music]", "♪ Music ♪" and "Bye-bye!" become "music", "music" and
-    "bye bye".
-    """
-    return " ".join(_NON_WORD.sub(" ", text.lower()).split())
-
-
 def _deterministic_verdict(
     text: str, input_mode: BrainDumpInputMode
 ) -> Literal["pass", "reject", "ambiguous"]:
@@ -207,10 +172,7 @@ def _deterministic_verdict(
         return "reject"
     if _is_looping(text[:REPETITION_WINDOW_CHARS]):
         return "reject"
-    if (
-        input_mode == BrainDumpInputMode.voice
-        and normalise_for_artifact_match(text) in STT_ARTIFACT_PHRASES
-    ):
+    if input_mode == BrainDumpInputMode.voice and is_stt_artifact(text):
         return "reject"
 
     alnum_chars = sum(1 for ch in text if ch.isalnum())

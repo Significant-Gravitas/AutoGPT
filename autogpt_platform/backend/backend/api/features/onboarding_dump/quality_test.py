@@ -15,7 +15,7 @@ import pytest
 from prisma.enums import BrainDumpInputMode
 from pytest_mock import MockerFixture
 
-from backend.api.features.onboarding_dump import quality
+from backend.api.features.onboarding_dump import quality, stt_artifacts
 
 SUBSTANTIAL_DUMP = (
     "So I run a small bakery in Lisbon with my sister. Every Friday we get "
@@ -266,7 +266,7 @@ async def test_hallucinated_outro_variant_still_rejects_via_llm(llm):
 def _spellings(phrase: str) -> list[str]:
     """The same artifact as a transcript might carry it."""
     title = phrase.title()
-    return [
+    spellings = [
         phrase,
         f"{phrase.capitalize()}.",
         f"  {phrase.upper()}!!!  ",
@@ -276,11 +276,13 @@ def _spellings(phrase: str) -> list[str]:
         f"{phrase.replace(' ', ',  ')}?",
         phrase.replace(" ", "-"),
     ]
+    # A one-word phrase spells the same with and without its spaces replaced.
+    return list(dict.fromkeys(spellings))
 
 
 _ARTIFACT_SPELLINGS = [
     spelling
-    for phrase in sorted(quality.STT_ARTIFACT_PHRASES)
+    for phrase in sorted(stt_artifacts.STT_ARTIFACT_PHRASES)
     for spelling in _spellings(phrase)
 ]
 
@@ -288,9 +290,9 @@ _ARTIFACT_SPELLINGS = [
 def test_every_artifact_phrase_is_stored_normalised():
     # The set is matched after normalising, so an entry with capitals or
     # punctuation in it could never match anything.
-    assert quality.STT_ARTIFACT_PHRASES
-    for phrase in quality.STT_ARTIFACT_PHRASES:
-        assert phrase == quality.normalise_for_artifact_match(phrase)
+    assert stt_artifacts.STT_ARTIFACT_PHRASES
+    for phrase in stt_artifacts.STT_ARTIFACT_PHRASES:
+        assert phrase == stt_artifacts.normalise_for_artifact_match(phrase)
 
 
 @pytest.mark.asyncio
@@ -311,7 +313,8 @@ async def test_a_speech_to_text_artifact_is_no_usable_speech_for_voice(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "transcript", [f"{phrase.capitalize()}." for phrase in quality.STT_ARTIFACT_PHRASES]
+    "transcript",
+    [f"{phrase.capitalize()}." for phrase in stt_artifacts.STT_ARTIFACT_PHRASES],
 )
 async def test_typed_text_that_matches_an_artifact_still_goes_to_the_judge(
     llm, transcript: str
