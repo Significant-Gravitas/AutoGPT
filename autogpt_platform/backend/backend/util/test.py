@@ -3,6 +3,7 @@ import inspect
 import logging
 import time
 import uuid
+from contextlib import ExitStack
 from typing import Sequence, cast
 
 from autogpt_libs.auth import get_user_id
@@ -22,6 +23,7 @@ from backend.data.model import _BaseCredentials
 from backend.data.user import create_default_user
 from backend.executor import ExecutionManager, Scheduler
 from backend.notifications.notifications import NotificationManager
+from backend.util.process import AppProcess
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +32,8 @@ class SpinTestServer:
     def __init__(self):
         self.db_api = DatabaseManager()
         self.exec_manager = ExecutionManager()
+        # Only for its test_* helpers: tests call the REST API in process, so
+        # its server process is never started.
         self.agent_server = AgentServer()
         self.scheduler = Scheduler(
             register_system_tasks=False, throwaway_jobstores=True
@@ -42,40 +46,109 @@ class SpinTestServer:
 
     async def __aenter__(self):
         self.setup_dependency_overrides()
-        self.db_api.__enter__()
-        self.agent_server.__enter__()
-        self.exec_manager.__enter__()
-        self.scheduler.__enter__()
-        self.notif_manager.__enter__()
+        try:
+            self.db_api.__enter__()
+            self.exec_manager.__enter__()
+            self.scheduler.__enter__()
+            self.notif_manager.__enter__()
 
-        await db.connect()
-        await initialize_blocks()
-        await create_default_user()
+            await db.connect()
+            await initialize_blocks()
+            await create_default_user()
+            self._require_running_services()
+        except BaseException as e:
+            # A failed __aenter__ gets no __aexit__, and a service left running
+            # would hang the session at exit, which joins every child process.
+            # __aexit__ keeps the start-up error the one raised.
+            await self.__aexit__(type(e), e, e.__traceback__)
+            raise
 
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        died: list[str] = []
         try:
-            await redis_client.disconnect_async()
-        finally:
-            await db.disconnect()
+            try:
+                try:
+                    await redis_client.disconnect_async()
+                finally:
+                    await db.disconnect()
+            finally:
+                # Read just before stopping them, which is what makes them
+                # exit. Without a preload (CI) a service can still be starting
+                # when start-up finishes and die after it; this names it
+                # instead of passing the run.
+                if exc_type is None:
+                    died = self._exited_services()
+                self._stop_services()
+                # Give services time to fully shut down
+                #  This prevents event loop issues where services haven't fully
+                # cleaned up before the next test starts
+                await asyncio.sleep(0.5)
+        except Exception as cleanup_error:
+            if exc_type is not None:
+                # The error the start-up or the session raised stays the one
+                # raised; the cleanup error is only logged.
+                log.exception("Cleanup after an error also failed")
+                return
+            # A failing cleanup must not hide a service that died: report it,
+            # with the cleanup error as its cause.
+            if died:
+                raise _services_died(died) from cleanup_error
+            raise
 
-        self.scheduler.__exit__(exc_type, exc_val, exc_tb)
-        self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
-        self.agent_server.__exit__(exc_type, exc_val, exc_tb)
-        self.db_api.__exit__(exc_type, exc_val, exc_tb)
-        self.notif_manager.__exit__(exc_type, exc_val, exc_tb)
+        if died:
+            raise _services_died(died)
 
-        # Give services time to fully shut down
-        #  This prevents event loop issues where services haven't fully cleaned up
-        # before the next test starts
-        await asyncio.sleep(0.5)
+    def _require_running_services(self) -> None:
+        """Fail on a service process that has already exited. One that dies at
+        start-up only logs why, and the tests that need it then fail with
+        errors that don't name it, or hang retrying its calls."""
+        exited = self._exited_services()
+        if exited:
+            raise RuntimeError(
+                "Test service processes exited during start-up: "
+                f"{', '.join(exited)}. Their own log lines say why."
+            )
+
+    def _stop_services(self) -> None:
+        """Stop every service, even when stopping one fails: one left running
+        would hang the session at exit. Stopped in this order, as before."""
+        with ExitStack() as stack:
+            for service in (
+                self.notif_manager,
+                self.db_api,
+                self.exec_manager,
+                self.scheduler,
+            ):
+                # Callbacks run last-registered first.
+                stack.callback(service.stop)
+
+    def _exited_services(self) -> list[str]:
+        services: list[AppProcess] = [
+            self.db_api,
+            self.exec_manager,
+            self.scheduler,
+            self.notif_manager,
+        ]
+        return [
+            f"{service.service_name} (exit code {process.exitcode})"
+            for service in services
+            if (process := service.process) is not None and not process.is_alive()
+        ]
 
     def setup_dependency_overrides(self):
         # Override get_user_id for testing
         self.agent_server.set_test_dependency_overrides(
             {get_user_id: self.test_get_user_id}
         )
+
+
+def _services_died(died: list[str]) -> RuntimeError:
+    return RuntimeError(
+        "Test service processes exited during the session: "
+        f"{', '.join(died)}. Their own log lines say why."
+    )
 
 
 async def wait_execution(
