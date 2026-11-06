@@ -985,7 +985,7 @@ class TestOAuthHandlerResolutionForDeviceProviders:
             ),
             pytest.raises(fastapi.HTTPException) as exc,
         ):
-            _get_provider_oauth_handler(MagicMock(), self.DEVICE_ONLY_PROVIDER)
+            _get_provider_oauth_handler(self.DEVICE_ONLY_PROVIDER)
 
         assert exc.value.status_code == 400
         assert "device code" in exc.value.detail
@@ -1010,7 +1010,7 @@ class TestOAuthHandlerResolutionForDeviceProviders:
             ),
             pytest.raises(fastapi.HTTPException) as exc,
         ):
-            _get_provider_oauth_handler(MagicMock(), self.UNREGISTERED_PROVIDER)
+            _get_provider_oauth_handler(self.UNREGISTERED_PROVIDER)
 
         assert exc.value.status_code == 404
         assert "does not support OAuth" in exc.value.detail

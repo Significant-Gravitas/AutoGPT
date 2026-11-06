@@ -1337,7 +1337,9 @@ def test_execute_graph_refuses_an_input_nested_too_deep(
     mocker.patch(
         "backend.executor.utils.is_user_paywalled", AsyncMock(return_value=False)
     )
-    mocker.patch("backend.executor.utils.is_user_banned", AsyncMock(return_value=False))
+    mocker.patch(
+        "backend.executor.utils.is_user_refused", AsyncMock(return_value=False)
+    )
     created = mocker.patch(
         "backend.executor.utils.execution_db.create_graph_execution", AsyncMock()
     )
