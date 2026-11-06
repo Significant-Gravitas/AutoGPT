@@ -526,7 +526,9 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
     return cleaned or "unknown"
 
 
-_SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
+_SAFE_CWD_PREFIX = os.path.realpath(
+    os.environ.get("COPILOT_WORKSPACE_PREFIX") or "/tmp/copilot-"
+)
 
 
 def projects_base() -> str:
@@ -551,8 +553,8 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
     When *encoded_cwd* is provided the sweep is scoped to that single
     directory, making the operation safe in multi-tenant environments where
     multiple copilot sessions share the same host.  Without it the function
-    falls back to sweeping all directories matching the copilot naming pattern
-    (``-tmp-copilot-``), which is only safe for single-tenant deployments.
+    falls back to sweeping directories matching the configured workspace prefix,
+    which is only safe for single-tenant deployments.
 
     Returns the number of directories removed.
     """
@@ -562,17 +564,17 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
 
     now = time.time()
     removed = 0
+    encoded_prefix = re.sub(r"[^a-zA-Z0-9]", "-", _SAFE_CWD_PREFIX)
 
     # Scoped mode: only clean up the one directory for the current session.
     if encoded_cwd:
+        if not re.fullmatch(
+            r"[a-zA-Z0-9-]+", encoded_cwd
+        ) or not encoded_cwd.startswith(encoded_prefix):
+            logger.warning("[Transcript] Refusing to sweep non-copilot dir")
+            return 0
         target = Path(_pbase) / encoded_cwd
         if not target.is_dir():
-            return 0
-        # Guard: only sweep copilot-generated dirs.
-        if "-tmp-copilot-" not in target.name:
-            logger.warning(
-                "[Transcript] Refusing to sweep non-copilot dir: %s", target.name
-            )
             return 0
         try:
             # st_mtime is used as a proxy for session activity. Claude CLI writes
@@ -611,9 +613,7 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
     for entry in entries:
         if removed >= _MAX_PROJECT_DIRS_TO_SWEEP:
             break
-        # Only sweep copilot-generated dirs (pattern: -tmp-copilot- or
-        # -private-tmp-copilot-).
-        if "-tmp-copilot-" not in entry.name:
+        if not entry.name.startswith(encoded_prefix):
             continue
         if not entry.is_dir():
             continue
