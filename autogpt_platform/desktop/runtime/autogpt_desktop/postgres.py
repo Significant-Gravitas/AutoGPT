@@ -422,10 +422,15 @@ def is_ready(port: int, password: str) -> bool:
     try:
         connection = psycopg2.connect(
             host="127.0.0.1",
+            hostaddr="127.0.0.1",
             port=port,
             user="postgres",
             password=password,
             dbname="postgres",
+            sslmode="disable",
+            gssencmode="disable",
+            channel_binding="disable",
+            options="",
             connect_timeout=3,
         )
     except psycopg2.Error:

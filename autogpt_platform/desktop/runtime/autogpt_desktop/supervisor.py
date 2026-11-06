@@ -839,10 +839,15 @@ class Stack:
         def connect():
             return psycopg2.connect(
                 host="127.0.0.1",
+                hostaddr="127.0.0.1",
                 port=port,
                 user="postgres",
                 password=password,
                 dbname="postgres",
+                sslmode="disable",
+                gssencmode="disable",
+                channel_binding="disable",
+                options="",
                 connect_timeout=10,
             )
 
