@@ -8,6 +8,8 @@ Existing security descriptors are only read, never repaired.
 Ancestor ACLs must exclude outsider mutation even while handles are pinned:
 write-attributes access can change reparse data despite denying write sharing.
 The leaf must have a protected DACL to prevent future inherited grants.
+Lifetime handles permit child-file renames after the complete chain is checked.
+They deny directory deletion and replace the original pins without an open gap.
 """
 
 import ctypes as c
@@ -120,7 +122,12 @@ def ensure_private_directory(path: str, *, lifetime: ExitStack | None = None) ->
         wh.inspect(handle, path, directory=True)
         verify_acl(handle, user, private=True)
         if lifetime is not None:
-            lifetime.enter_context(held.pop_all())
+            with ExitStack() as retained:
+                for index, original in enumerate([*ancestors, handle]):
+                    replacement = wh.retain_directory(original, path)
+                    retained.callback(wh.close, replacement)
+                    verify_acl(replacement, user, private=index == len(ancestors))
+                lifetime.enter_context(retained.pop_all())
     return path
 
 

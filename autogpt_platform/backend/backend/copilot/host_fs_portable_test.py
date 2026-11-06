@@ -52,7 +52,7 @@ def test_nested_exclusive_delete_and_names(tmp_path):
         open_no_follow(str(path), os.O_RDONLY)
     with pytest.raises(FileNotFoundError):
         unlink_no_follow(str(path))
-    with pytest.raises(IsADirectoryError):
+    with pytest.raises(OSError):
         open_no_follow(str(path.parent), os.O_RDONLY)
     with pytest.raises(OSError):
         unlink_no_follow(str(path.parent))

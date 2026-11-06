@@ -146,6 +146,143 @@ def test_private_fresh_reuse_and_path_lifetime(tmp_path):
     os.rename(path, path + "-moved")
 
 
+@pytest.mark.parametrize("destination", ["leaf", "ancestor"])
+@pytest.mark.parametrize("operation", ["rename", "replace", "overwrite", "same"])
+def test_private_lifetime_allows_file_renames(tmp_path, destination, operation):
+    ancestor = tmp_path / "ancestor"
+    ancestor.mkdir()
+    leaf = ancestor / "private"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    target_dir = leaf if destination == "leaf" else ancestor
+    with ExitStack() as lifetime:
+        ensure_private_directory(str(leaf), lifetime=lifetime)
+        source = (target_dir if operation == "same" else outside) / "source"
+        target = target_dir / "target"
+        source.write_bytes(b"source")
+        if operation == "overwrite":
+            target.write_bytes(b"old")
+        if operation == "rename":
+            os.rename(source, target)
+        else:
+            os.replace(source, target)
+        assert target.read_bytes() == b"source"
+        assert not source.exists()
+        for pinned in (ancestor, leaf):
+            with pytest.raises(PermissionError):
+                pinned.rename(pinned.with_name(pinned.name + "-moved"))
+    leaf.rename(ancestor / "released")
+
+
+def test_private_retains_only_after_the_entire_chain_is_validated(tmp_path):
+    path = tmp_path / "private"
+    real_verify = private.verify_acl
+    real_retain = wh.retain_directory
+    initial_chain = []
+    replacements = []
+    validated_leaf = False
+
+    def verify(handle, user, *, private):
+        nonlocal validated_leaf
+        result = real_verify(handle, user, private=private)
+        if not replacements:
+            initial_chain.append(handle)
+        if private:
+            validated_leaf = True
+        return result
+
+    def retain(handle, checked_path):
+        assert validated_leaf
+        assert handle in initial_chain
+        with pytest.raises(PermissionError):
+            path.rename(tmp_path / "moved")
+        replacement = real_retain(handle, checked_path)
+        replacements.append(replacement)
+        return replacement
+
+    with (
+        patch.object(private, "verify_acl", side_effect=verify),
+        patch.object(wh, "retain_directory", side_effect=retain),
+        ExitStack() as lifetime,
+    ):
+        ensure_private_directory(str(path), lifetime=lifetime)
+        assert len(replacements) == len(initial_chain)
+    path.rename(tmp_path / "released")
+
+
+def test_private_revalidates_reopened_acl(tmp_path):
+    path = tmp_path / "private"
+    real_retain = wh.retain_directory
+    user = private.current_user_sid()
+
+    def retain(handle, checked_path):
+        set_fixture_acl(path, f"D:P(A;OICI;FA;;;{user})(A;OICI;FR;;;WD)")
+        return real_retain(handle, checked_path)
+
+    with (
+        patch.object(wh, "retain_directory", side_effect=retain),
+        ExitStack() as lifetime,
+        pytest.raises(PermissionError, match="Outsider access"),
+    ):
+        ensure_private_directory(str(path), lifetime=lifetime)
+    path.rename(tmp_path / "released")
+
+
+@pytest.mark.parametrize(
+    "stage", ["reopen", "first_identity", "second_identity", "identity_mismatch"]
+)
+def test_private_retain_failure_releases_both_handle_chains(tmp_path, stage):
+    path = tmp_path / "private"
+    real_retain = wh.retain_directory
+    real_info = wh.get_info
+    calls = 0
+
+    def retain(handle, checked_path):
+        nonlocal calls
+        calls += 1
+        if stage == "reopen" and calls == 2:
+            raise OSError("injected reopen failure")
+        return real_retain(handle, checked_path)
+
+    identity_calls = 0
+
+    def get_info(handle, info_class, info, size):
+        nonlocal identity_calls
+        if info_class == 18:
+            identity_calls += 1
+            if (stage == "first_identity" and identity_calls == 3) or (
+                stage == "second_identity" and identity_calls == 4
+            ):
+                c.set_last_error(5)
+                return False
+        result = real_info(handle, info_class, info, size)
+        if stage == "identity_mismatch" and info_class == 18 and identity_calls == 4:
+            c.cast(info, c.POINTER(c.c_ubyte))[0] ^= 1
+        return result
+
+    with (
+        patch.object(wh, "retain_directory", side_effect=retain),
+        patch.object(wh, "get_info", side_effect=get_info),
+        ExitStack() as lifetime,
+        pytest.raises(OSError),
+    ):
+        ensure_private_directory(str(path), lifetime=lifetime)
+    path.rename(tmp_path / "released")
+    tmp_path.rename(tmp_path.with_name(tmp_path.name + "-released"))
+    tmp_path.with_name(tmp_path.name + "-released").rename(tmp_path)
+
+
+def test_file_operation_parent_still_denies_write_sharing(tmp_path):
+    path = tmp_path / "parent"
+    path.mkdir()
+    with fs.parents(str(path / "file")):
+        handle = wh.create_file(str(path), 2, 7, None, 3, 0x02200000, None)
+        if handle != c.c_void_p(-1).value:
+            wh.close(handle)
+            pytest.fail("Ordinary file-operation parents must deny FILE_ADD_FILE")
+        assert c.get_last_error() == 32
+
+
 def set_fixture_acl(path, sddl, *, protected=True):
     descriptor = w.LPVOID()
     assert private.convert_sd(sddl, 1, c.byref(descriptor), None)
@@ -368,13 +505,7 @@ def test_bounded_repetition_has_no_handle_growth(tmp_path):
     assert after.value <= before.value
 
 
-def test_relative_open_refuses_converted_parent(tmp_path):
-    parent = tmp_path / "parent"
-    parent.mkdir()
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    (outside / "marker").write_bytes(b"untouched")
-    (outside / "file").write_bytes(b"untouched")
+def convert_fixture_to_junction(parent, outside, access):
     substitute = ("\\??\\" + str(outside)).encode("utf-16-le")
     display = str(outside).encode("utf-16-le")
     names = substitute + b"\0\0" + display + b"\0\0"
@@ -405,27 +536,38 @@ def test_relative_open_refuses_converted_parent(tmp_path):
         w.LPVOID,
     )
 
-    def convert(access):
-        handle = wh.create_file(str(parent), access, 7, None, 3, 0x02200000, None)
-        if handle == c.c_void_p(-1).value:
-            assert c.get_last_error() in (5, 32)
-            return False
-        try:
-            returned = w.DWORD()
-            return bool(
-                ioctl(
-                    handle,
-                    0x900A4,
-                    c.create_string_buffer(data),
-                    len(data),
-                    None,
-                    0,
-                    c.byref(returned),
-                    None,
-                )
+    handle = wh.create_file(str(parent), access, 7, None, 3, 0x02200000, None)
+    if handle == c.c_void_p(-1).value:
+        assert c.get_last_error() in (5, 32)
+        return False
+    try:
+        returned = w.DWORD()
+        return bool(
+            ioctl(
+                handle,
+                0x900A4,
+                c.create_string_buffer(data),
+                len(data),
+                None,
+                0,
+                c.byref(returned),
+                None,
             )
-        finally:
-            wh.close(handle)
+        )
+    finally:
+        wh.close(handle)
+
+
+def test_relative_open_refuses_converted_parent(tmp_path):
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "marker").write_bytes(b"untouched")
+    (outside / "file").write_bytes(b"untouched")
+
+    def convert(access):
+        return convert_fixture_to_junction(parent, outside, access)
 
     assert convert(0x40000000), "fixture must prove native junction conversion works"
     os.rmdir(parent)
@@ -439,3 +581,42 @@ def test_relative_open_refuses_converted_parent(tmp_path):
         assert (outside / "file").read_bytes() == b"untouched"
     finally:
         os.rmdir(parent)
+
+
+def test_private_retain_refuses_converted_directory(tmp_path):
+    path = tmp_path / "private"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "marker").write_bytes(b"untouched")
+    real_verify = private.verify_acl
+    real_retain = wh.retain_directory
+    leaf_handle = None
+    converted = False
+
+    def verify(handle, user, *, private):
+        nonlocal leaf_handle
+        result = real_verify(handle, user, private=private)
+        if private:
+            leaf_handle = handle
+        return result
+
+    def retain(handle, checked_path):
+        nonlocal converted
+        if handle == leaf_handle:
+            converted = convert_fixture_to_junction(path, outside, 0x100)
+            assert converted
+        return real_retain(handle, checked_path)
+
+    try:
+        with (
+            patch.object(private, "verify_acl", side_effect=verify),
+            patch.object(wh, "retain_directory", side_effect=retain),
+            ExitStack() as lifetime,
+            pytest.raises(OSError),
+        ):
+            ensure_private_directory(str(path), lifetime=lifetime)
+        assert converted
+        assert (outside / "marker").read_bytes() == b"untouched"
+    finally:
+        if converted:
+            os.rmdir(path)

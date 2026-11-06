@@ -1,6 +1,7 @@
 """Typed Windows ABI boundary. Imported only on Windows.
 
-NtCreateFile receives one component relative to an already opened directory.
+NtCreateFile receives one component relative to an already opened directory;
+retention uses an empty name to reopen that same directory object.
 No OBJ_INHERIT, no reparsing, no destructive create disposition. Callers own
 every returned handle until they explicitly transfer it to the CRT.
 """
@@ -161,7 +162,8 @@ def relative(
     *,
     directory: bool = False,
     allow_link: bool = False,
-    descriptor=None
+    descriptor=None,
+    share_write: bool = False,
 ) -> int:
     buffer = c.create_unicode_buffer(name)
     length = len(name.encode("utf-16-le"))
@@ -185,7 +187,7 @@ def relative(
         c.byref(status),
         None,
         0,
-        1 if directory else 7,
+        (3 if share_write else 1) if directory else 7,
         disposition,
         options,
         None,
@@ -197,3 +199,29 @@ def relative(
     if value is None:
         raise OSError(errno.EIO, "Native open returned a null handle")
     return value
+
+
+def retain_directory(handle: int, path: str) -> int:
+    """Reopen a validated directory object without releasing its identity pin."""
+    identity = c.create_string_buffer(24)
+    if not get_info(handle, 18, identity, len(identity)):
+        raise win_error(c.get_last_error(), path)
+    retained = relative(
+        handle,
+        "",
+        DIRECTORY_ACCESS | READ_CONTROL,
+        FILE_OPEN,
+        directory=True,
+        share_write=True,
+    )
+    try:
+        inspect(retained, path, directory=True)
+        current = c.create_string_buffer(24)
+        if not get_info(retained, 18, current, len(current)):
+            raise win_error(c.get_last_error(), path)
+        if current.raw != identity.raw:
+            raise PermissionError("Private directory identity changed")
+        return retained
+    except BaseException:
+        close(retained)
+        raise
