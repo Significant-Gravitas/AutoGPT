@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
@@ -116,14 +117,22 @@ async def create_api_key(
     return APIKeyInfo.from_db(saved_key_obj), generated_key.key
 
 
-async def get_active_api_keys_by_head(head: str) -> list[APIKeyInfoWithHash]:
-    results = await PrismaAPIKey.prisma().find_many(
-        where={"head": head, "status": APIKeyStatus.ACTIVE}
-    )
+async def get_active_api_keys_by_head(
+    head: str,
+    tail: str | None = None,
+) -> list[APIKeyInfoWithHash]:
+    where: APIKeyWhereInput = {"head": head, "status": APIKeyStatus.ACTIVE}
+    if tail is not None:
+        where["tail"] = tail
+    results = await PrismaAPIKey.prisma().find_many(where=where)
     return [APIKeyInfoWithHash.from_db(key) for key in results]
 
 
-async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
+async def validate_api_key(
+    plaintext_key: str,
+    *,
+    before_verify: Callable[[], Awaitable[None]] | None = None,
+) -> APIKeyInfo | None:
     """
     Validate an API key and return the API key object if valid and active.
     """
@@ -134,8 +143,26 @@ async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
             return None
 
         head = plaintext_key[: APIKeySmith.HEAD_LENGTH]
-        potential_matches = await get_active_api_keys_by_head(head)
+        # Generated and legacy keys store the final TAIL_LENGTH characters as tail.
+        # All head+tail matches, including legacy keys, remain eligible so a
+        # collision cannot make an otherwise valid key unauthenticatable.
+        tail = plaintext_key[-APIKeySmith.TAIL_LENGTH :]
+        potential_matches = await get_active_api_keys_by_head(head, tail=tail)
+    except Exception as e:
+        logger.error(f"Error while looking up API key: {e}")
+        raise RuntimeError("Failed to validate API key") from e
 
+    if not potential_matches:
+        return None
+    if before_verify is not None:
+        await before_verify()
+    return await _verify_api_key_candidates(plaintext_key, potential_matches)
+
+
+async def _verify_api_key_candidates(
+    plaintext_key: str, potential_matches: list[APIKeyInfoWithHash]
+) -> APIKeyInfo | None:
+    try:
         # Scrypt costs tens of milliseconds of CPU, which on the event loop
         # stalls every other request the worker is serving.
         matched_api_key = None

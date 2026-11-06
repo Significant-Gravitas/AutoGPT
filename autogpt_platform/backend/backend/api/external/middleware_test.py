@@ -65,6 +65,47 @@ def test_a_credential_answers_by_its_owners_ban_state(
         assert response.json() == {"user_id": user_id}
 
 
+@pytest.mark.parametrize(
+    "api_key, bearer",
+    [
+        ("agpt_header_key", "agpt_bearer_key"),
+        ("agpt_header_key", "agpt_xt_token"),
+        ("agpt_xt_header_key", "agpt_xt_token"),
+    ],
+)
+@pytest.mark.parametrize("valid", [True, False])
+def test_explicit_key_wins_for_admission_and_validation(mocker, api_key, bearer, valid):
+    admit = mocker.patch.object(
+        middleware, "enforce_api_key_validate_rate_limit", return_value=None
+    )
+
+    async def validate(value, *, before_verify):
+        await before_verify()
+        return _principal() if valid else None
+
+    validate_key = mocker.patch.object(
+        middleware, "validate_api_key", side_effect=validate
+    )
+    validate_token = mocker.patch.object(middleware, "validate_access_token")
+    mocker.patch.object(middleware, "is_user_banned", return_value=False)
+    refund = mocker.patch.object(middleware, "refund_api_key_validate_rate_limit")
+
+    with _client() as client:
+        response = client.get(
+            "/auth", headers={"X-API-Key": api_key, "Authorization": f"Bearer {bearer}"}
+        )
+
+    assert response.status_code == (200 if valid else 401)
+    assert admit.await_args.args[1] == api_key
+    validate_key.assert_awaited_once()
+    assert validate_key.await_args.args == (api_key,)
+    validate_token.assert_not_awaited()
+    if valid:
+        refund.assert_awaited_once_with(None)
+    else:
+        refund.assert_not_awaited()
+
+
 def _bearer(token: str) -> HTTPAuthorizationCredentials:
     return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
