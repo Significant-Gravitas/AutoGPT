@@ -42,6 +42,21 @@ REQUESTS: web.AppKey[list[str]] = web.AppKey("requests")
         ),
         ("//provider.example/api/callback", "//provider.example/api/callback"),
         ("http://[invalid/api/callback", "http://[invalid/api/callback"),
+        ("https://127.0.0.1:4000/api/callback", "https://127.0.0.1:4000/api/callback"),
+        (
+            "http://127.0.0.1.example:4000/api/callback",
+            "http://127.0.0.1.example:4000/api/callback",
+        ),
+        (
+            "http://user@127.0.0.1:4000/api/callback",
+            "http://user@127.0.0.1:4000/api/callback",
+        ),
+        ("http://127.0.0.1:4000/login", "http://127.0.0.1:4000/login"),
+        (
+            "http://127.0.0.1:4000/_agpt/api/callback",
+            "http://127.0.0.1:4000/_agpt/api/callback",
+        ),
+        ("http://127.0.0.1:bad/api/callback", "http://127.0.0.1:bad/api/callback"),
         ("/apiculture", "/apiculture"),
         ("relative/api/callback", "relative/api/callback"),
     ],
@@ -49,6 +64,30 @@ REQUESTS: web.AppKey[list[str]] = web.AppKey("requests")
 def test_api_redirects_preserve_external_origins(location, expected):
     upstreams = Upstreams("http://127.0.0.1:4000", "http://127.0.0.1:4001", "", "")
     assert _rewrite_location(location, upstreams, api=True) == expected
+
+
+@pytest.mark.parametrize("prefix", ["api", "external-api"])
+@pytest.mark.parametrize(
+    "public, origin",
+    [
+        ("http://127.0.0.1:4000", "http://127.0.0.1:4000"),
+        ("http://127.0.0.1:80", "http://127.0.0.1"),
+        ("https://127.0.0.1", "https://127.0.0.1:443"),
+        ("http://[::1]:4000", "http://[::1]:4000"),
+    ],
+)
+def test_api_redirects_from_public_origin_keep_prefix(public, origin, prefix):
+    upstreams = Upstreams(public, "http://127.0.0.1:4001", "", "")
+    path = f"/{prefix}/callback/?next=%2Fhome#done"
+    assert _rewrite_location(f"{origin}{path}", upstreams, api=True) == (
+        f"{public}/_agpt{path}"
+    )
+
+
+def test_api_redirect_does_not_treat_explicit_zero_port_as_default():
+    upstreams = Upstreams("http://127.0.0.1", "http://127.0.0.1:4001", "", "")
+    location = "http://127.0.0.1:0/api/callback"
+    assert _rewrite_location(location, upstreams, api=True) == location
 
 
 def free_port() -> int:
@@ -82,6 +121,11 @@ def rest_app() -> web.Application:
     async def redirect(request: web.Request) -> web.Response:
         raise web.HTTPFound("/api/integrations/callback?x=1")
 
+    async def slash_redirect(request: web.Request) -> web.Response:
+        raise web.HTTPTemporaryRedirect(
+            str(request.url.with_path(request.path + "/", keep_query=True))
+        )
+
     async def stream(request: web.Request) -> web.StreamResponse:
         response = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
         await response.prepare(request)
@@ -100,6 +144,8 @@ def rest_app() -> web.Application:
     app[RELEASE] = asyncio.Event()
     app[REQUESTS] = []
     app.router.add_get("/api/redirect", redirect)
+    app.router.add_get("/api/normalize", slash_redirect)
+    app.router.add_get("/external-api/normalize", slash_redirect)
     app.router.add_get("/api/stream", stream)
     app.router.add_get("/api/cookies", cookies)
     app.router.add_route("*", "/{tail:.*}", echo)
@@ -278,6 +324,20 @@ async def test_api_redirects_are_rewritten_to_the_public_origin(stack):
             response.headers["Location"]
             == f"{base}/_agpt/api/integrations/callback?x=1"
         )
+
+
+@pytest.mark.parametrize("prefix", ["api", "external-api"])
+async def test_public_host_slash_redirect_returns_to_rest(stack, prefix):
+    client, base, rest = stack
+    async with client.get(f"{base}/_agpt/{prefix}/normalize?x=1") as response:
+        assert response.status == 200
+        assert len(response.history) == 1
+        assert response.history[0].status == 307
+        assert response.history[0].headers["Location"] == (
+            f"{base}/_agpt/{prefix}/normalize/?x=1"
+        )
+        assert (await response.json())["path"] == f"/{prefix}/normalize/?x=1"
+    assert rest[REQUESTS] == [f"/{prefix}/normalize/?x=1"]
 
 
 async def test_every_set_cookie_header_survives(stack):

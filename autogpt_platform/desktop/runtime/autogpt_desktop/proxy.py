@@ -23,7 +23,7 @@ import logging
 import re
 import threading
 from dataclasses import dataclass
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 import aiohttp
 from aiohttp import web
@@ -209,18 +209,25 @@ def _own_cookies(request: web.Request) -> str | None:
     return cookies.to_platform("; ".join(sent), request.app[COOKIE_MARK])
 
 
+def _origin(url: SplitResult) -> tuple[str, str | None, int | None]:
+    port = url.port
+    if port is None:
+        port = {"http": 80, "https": 443}.get(url.scheme)
+    return url.scheme, url.hostname, port
+
+
 def _rewrite_location(value: str, upstreams: Upstreams, api: bool) -> str:
     if api:
         try:
             location = urlsplit(value)
-            rest = urlsplit(upstreams.rest)
             if (location.scheme or location.netloc) and (
-                location.scheme != rest.scheme
-                or location.hostname != rest.hostname
-                or (location.port or (443 if location.scheme == "https" else 80))
-                != (rest.port or (443 if rest.scheme == "https" else 80))
-                or location.username is not None
+                location.username is not None
                 or location.password is not None
+                or _origin(location)
+                not in {
+                    _origin(urlsplit(upstreams.rest)),
+                    _origin(urlsplit(upstreams.public_url)),
+                }
             ):
                 return value
         except ValueError:
