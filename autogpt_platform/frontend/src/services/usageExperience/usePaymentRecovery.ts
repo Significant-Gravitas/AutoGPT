@@ -37,8 +37,9 @@ export function usePaymentRecovery(tier: string | null | undefined) {
   const experience = getUsageExperience(null, trial.data, tier);
   const trialPaymentFailed =
     experience.inactiveTrialStatus === "payment_failed";
+  // A running trial grants access, so a bill read beside it is stale.
   const renewalBill =
-    !trialPaymentFailed && tier === "NO_TIER"
+    !trialPaymentFailed && tier === "NO_TIER" && trial.data?.active !== true
       ? (subscription?.payment_due ?? null)
       : null;
   const paymentFailed = trialPaymentFailed || renewalBill !== null;
