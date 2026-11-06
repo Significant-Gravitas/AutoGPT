@@ -34,11 +34,11 @@ class BaselineTurns:
         base_url: str,
         model: str,
     ) -> None:
-        client = AsyncOpenAI(api_key="sk-billing-e2e", base_url=base_url)
+        self.client = AsyncOpenAI(api_key="sk-billing-e2e", base_url=base_url)
         save = AsyncMock(side_effect=lambda session, *_, **__: session)
         stubs: dict[str, Any] = {
             "config": config,
-            "_get_main_client": lambda: client,
+            "_get_main_client": lambda: self.client,
             "resolve_model_route": AsyncMock(
                 return_value=ResolvedModel(model=model, source="env")
             ),
@@ -67,6 +67,9 @@ class BaselineTurns:
         for name, value in stubs.items():
             monkeypatch.setattr(baseline, name, value)
         monkeypatch.setattr(pending_message_helpers, "upsert_chat_session", save)
+
+    async def aclose(self) -> None:
+        await self.client.close()
 
     async def __call__(
         self, session: ChatSession, prompt: str, *, new_pod: bool

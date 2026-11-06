@@ -16,6 +16,7 @@ none (the Windows wheel ships without one); CI runs them on Linux.
 """
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -60,13 +61,17 @@ async def test_each_turn_is_charged_what_its_provider_billed(
     session = _session(scenario)
     usage_by_turn: list[list[Usage]] = []
 
-    for turn, prompt in enumerate(PROMPTS):
-        provider.turn = ledger.turn = turn
-        session.messages.append(ChatMessage(role="user", content=prompt))
-        usage_before = len(session.usage)
-        await run_turn(session, prompt, new_pod=turn == NEW_POD_TURN)
-        await ledger.settle()
-        usage_by_turn.append(session.usage[usage_before:])
+    try:
+        for turn, prompt in enumerate(PROMPTS):
+            provider.turn = ledger.turn = turn
+            session.messages.append(ChatMessage(role="user", content=prompt))
+            usage_before = len(session.usage)
+            await run_turn(session, prompt, new_pod=turn == NEW_POD_TURN)
+            await ledger.settle()
+            usage_by_turn.append(session.usage[usage_before:])
+    finally:
+        if scenario.engine == "baseline":
+            await cast(BaselineTurns, run_turn).aclose()
 
     cli_resumed = (
         [(turn, launch == session.session_id) for turn, launch in run_turn.resumed]
