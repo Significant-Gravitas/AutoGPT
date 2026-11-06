@@ -259,7 +259,7 @@ describe("auth config", () => {
     });
   });
 
-  it("registers the supabase bridge and keeps nextCookies last in the plugin chain", async () => {
+  it("registers session handoffs and keeps nextCookies last in the plugin chain", async () => {
     const options = await loadAuthOptions();
     const pluginIds = options.plugins.map((plugin) => plugin.id);
 
@@ -267,6 +267,7 @@ describe("auth config", () => {
       "admin",
       "jwt",
       "supabase-bridge",
+      "mobile-auth",
       "next-cookies",
     ]);
   });
