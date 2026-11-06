@@ -47,7 +47,9 @@ def bills_only_the_plan(invoice: dict) -> bool:
     """
     lines = invoice.get("lines") or {}
     data = lines.get("data") or []
-    return bool(data) and not lines.get("has_more") and all(map(_is_recurring_line, data))
+    return (
+        bool(data) and not lines.get("has_more") and all(map(_is_recurring_line, data))
+    )
 
 
 async def credit_covers_new_period(

@@ -103,9 +103,7 @@ async def _blocked() -> list[dict]:
     import stripe
 
     from backend.data.stripe_client import stripe_call, stripe_list_items
-    from backend.data.subscription_billing_restart_invoice import (
-        current_period_start,
-    )
+    from backend.data.subscription_billing_restart_invoice import current_period_start
 
     rows = []
     for status in ("past_due", "unpaid"):
