@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import Callable, Sequence
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
@@ -64,6 +64,7 @@ from backend.api.features.experts.models import (
     ExpertWorkflowRef,
     HireResult,
     HireSurface,
+    HireVia,
     RaiseAttachment,
     RaiseResult,
     decode_day_one,
@@ -324,7 +325,7 @@ async def set_expert_learning_paused(
             "isTemplate": False,
             "isArchived": False,
         },
-        data={"learningPausedAt": datetime.now(timezone.utc) if paused else None},
+        data={"learningPausedAt": datetime.now(UTC) if paused else None},
     )
     if updated == 0:
         return None
@@ -335,7 +336,7 @@ def _setup_status(row: prisma.models.Expert) -> ExpertSetupStatus:
     # A job whose lease ran out died with its process; show it as retryable.
     if row.setupStatus == prisma.enums.ExpertSetupStatus.INSTALLING and (
         row.setupStartedAt is None
-        or row.setupStartedAt < datetime.now(timezone.utc) - SETUP_LEASE
+        or row.setupStartedAt < datetime.now(UTC) - SETUP_LEASE
     ):
         return "failed"
     return cast(ExpertSetupStatus, row.setupStatus.lower())
@@ -997,6 +998,7 @@ async def hire_expert(
     template_id: str,
     name: str | None,
     surface: HireSurface | None = None,
+    via: HireVia | None = None,
 ) -> HireResult:
     """Hire *template_id* and return as soon as the expert's row exists.
 
@@ -1005,7 +1007,7 @@ async def hire_expert(
     whose setup failed or was abandoned starts that setup again.
     """
     try:
-        return await _hire_expert_impl(user_id, template_id, name, surface)
+        return await _hire_expert_impl(user_id, template_id, name, surface, via)
     except Exception:
         emit_funnel_event(
             user_id,
@@ -1016,7 +1018,11 @@ async def hire_expert(
 
 
 async def _hire_expert_impl(
-    user_id: str, template_id: str, name: str | None, surface: HireSurface | None
+    user_id: str,
+    template_id: str,
+    name: str | None,
+    surface: HireSurface | None,
+    via: HireVia | None = None,
 ) -> HireResult:
     template = await prisma.models.Expert.prisma().find_first(
         where={"id": template_id, "isTemplate": True, "isArchived": False},
@@ -1053,7 +1059,7 @@ async def _hire_expert_impl(
     if template.toolProfile is not None:
         create_data["toolProfile"] = template.toolProfile
     create_data["setupStatus"] = prisma.enums.ExpertSetupStatus.INSTALLING
-    create_data["setupStartedAt"] = datetime.now(timezone.utc)
+    create_data["setupStartedAt"] = datetime.now(UTC)
 
     try:
         expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
@@ -1085,14 +1091,15 @@ async def _hire_expert_impl(
                 template.id,
                 count_hire=state != "existing",
                 surface=surface,
+                via=via,
             ),
             name=f"hire-setup-{expert.id}",
         )
         if state != "created":
             expert = await _reload_expert(expert)
     elif state == "revived":
-        _emit_expert_hired(user_id, expert, template.id, 0, surface)
-    return HireResult(expert=_to_model(expert))
+        _emit_expert_hired(user_id, expert, template.id, 0, surface, via)
+    return HireResult.of(_to_model(expert), joined=state != "existing")
 
 
 def _schedule_expert_memory(user_id: str, expert_id: str) -> None:
@@ -1115,6 +1122,7 @@ def _emit_expert_hired(
     template_id: str,
     failed_preloads_count: int,
     surface: HireSurface | None,
+    via: HireVia | None = None,
 ) -> None:
     hired: dict[str, str | int] = {
         "expert_id": expert.id,
@@ -1124,6 +1132,8 @@ def _emit_expert_hired(
     }
     if surface is not None:
         hired["surface"] = surface
+    if via is not None:
+        hired["via"] = via
     emit_funnel_event(user_id, PostHogEvent.EXPERT_HIRED, hired)
 
 
@@ -1139,7 +1149,7 @@ async def _claim_setup(expert_id: str) -> bool:
 
     One conditional update, so two concurrent re-hires start one job.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     claimed = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,
@@ -1166,6 +1176,7 @@ async def _run_hire_setup(
     *,
     count_hire: bool = False,
     surface: HireSurface | None = None,
+    via: HireVia | None = None,
 ) -> None:
     """Install a hire's workflows, skills and routines, retrying what failed.
 
@@ -1206,7 +1217,9 @@ async def _run_hire_setup(
         },
     )
     if count_hire and settled is not None:
-        _emit_expert_hired(user_id, settled, template_id, len(failed_preloads), surface)
+        _emit_expert_hired(
+            user_id, settled, template_id, len(failed_preloads), surface, via
+        )
 
 
 async def _uninstalled_preloads(expert_id: str, template_id: str) -> list[str]:
