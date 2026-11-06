@@ -29,6 +29,18 @@ function fixture(t, alias = false) {
   return { temporary: parent, data, ...maintenancePaths(data) };
 }
 
+function maintenanceForPlatform(platform) {
+  const module = { exports: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../src/maintenance.js"), "utf8"), {
+    module, process: { ...process, platform }, performance,
+    require(name) {
+      if (name === "./paths") return require("../src/paths");
+      return require(name);
+    },
+  });
+  return module.exports;
+}
+
 test("a launch publishes its live lease before the data directory exists", (t) => {
   const f = fixture(t);
   const lease = claimLaunch(f.data);
@@ -146,7 +158,7 @@ test("process birth distinguishes a reused operation PID", (t) => {
   const f = fixture(t);
   fs.writeFileSync(f.operation, JSON.stringify({ pid: process.pid, started: 100 }));
   assert.equal(operationActive(f.operation, () => 100), true);
-  assert.equal(operationActive(f.operation, () => 101), false);
+  assert.equal(operationActive(f.operation, () => 102), false);
   assert.equal(operationActive(f.operation, () => null), false);
   assert.equal(operationActive(f.operation, () => { throw new Error("denied"); }), true);
 });
@@ -154,11 +166,56 @@ test("process birth distinguishes a reused operation PID", (t) => {
 test("launch records native birth and prunes reused shell identities", (t) => {
   const f = fixture(t);
   const stale = path.join(f.temporary, `.autogpt-shell-${f.key}-old.json`);
-  fs.writeFileSync(stale, JSON.stringify({ pid: process.pid, started: 99 }));
+  fs.writeFileSync(stale, JSON.stringify({ pid: process.pid, started: 98 }));
   const lease = claimLaunch(f.data, { processStarted: () => 100 });
   assert.deepEqual(JSON.parse(fs.readFileSync(lease, "utf8")), { pid: process.pid, started: 100 });
   assert.equal(fs.existsSync(stale), false);
 });
+
+for (const platform of ["linux", "win32", "darwin"]) test(`${platform} lease birth comparison respects its drift boundary`, (t) => {
+  const f = fixture(t);
+  const maintenance = maintenanceForPlatform(platform);
+  fs.writeFileSync(f.operation, JSON.stringify({ pid: process.pid, started: 100 }));
+  for (const [current, linuxActive, exactActive] of [
+    [98.999, false, false],
+    [99, true, false],
+    [99.75, true, false],
+    [100, true, true],
+    [100.25, true, false],
+    [101, true, false],
+    [101.001, false, false],
+  ]) {
+    assert.equal(maintenance.operationActive(f.operation, () => current), platform === "linux" ? linuxActive : exactActive, String(current));
+  }
+});
+
+for (const started of [99, 101]) {
+  test(`Linux launch preserves a live shell lease with birth ${started}`, (t) => {
+    const f = fixture(t);
+    const maintenance = maintenanceForPlatform("linux");
+    const locations = maintenance.maintenancePaths(f.data);
+    const live = path.join(f.temporary, `.autogpt-shell-${locations.key}-live.json`);
+    const stale = path.join(f.temporary, `.autogpt-shell-${locations.key}-stale.json`);
+    const content = JSON.stringify({ pid: process.pid, started });
+    fs.writeFileSync(live, content);
+    fs.writeFileSync(stale, JSON.stringify({ pid: process.pid, started: 98 }));
+    const lease = maintenance.claimLaunch(f.data, { processStarted: () => 100 });
+    assert.equal(fs.existsSync(live), true);
+    assert.equal(fs.readFileSync(live, "utf8"), content);
+    assert.equal(fs.existsSync(stale), false);
+    assert.equal(fs.existsSync(lease), true);
+  });
+
+  test(`Linux maintenance with birth ${started} blocks launch despite drift`, (t) => {
+    const f = fixture(t);
+    const maintenance = maintenanceForPlatform("linux");
+    const locations = maintenance.maintenancePaths(f.data);
+    fs.writeFileSync(locations.operation, JSON.stringify({ pid: process.pid, started }));
+    assert.throws(() => maintenance.claimLaunch(f.data, { processStarted: () => 100 }), /backup or restore/);
+    assert.equal(fs.existsSync(f.data), false);
+    assert.equal(fs.readdirSync(f.temporary).filter((name) => name.startsWith(".autogpt-shell-")).length, 0);
+  });
+}
 
 test("unknown current identity refuses launch before publishing its lease", (t) => {
   const f = fixture(t);

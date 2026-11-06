@@ -110,7 +110,8 @@ function operationActive(file, processStarted) {
     const started = processStarted(owner.pid);
     if (started === null) return false;
     if (!Number.isFinite(started) || started <= 0) return true;
-    return started === owner.started;
+    const tolerance = process.platform === "linux" ? 1 : 0;
+    return Math.abs(started - owner.started) <= tolerance;
   } catch {
     return true;
   }
