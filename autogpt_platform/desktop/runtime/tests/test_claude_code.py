@@ -680,6 +680,11 @@ def test_fallback_launcher_keeps_subscription_auth_on_the_checked_version(
     inherited = ModuleType("backend.copilot.sdk.launch_env")
     inherited.inherited_env = dict
     monkeypatch.setitem(sys.modules, inherited.__name__, inherited)
+    cli_version = ModuleType("backend.copilot.sdk.cli_version")
+    cli_version._cli_the_sdk_finds = lambda: pytest.fail(
+        "the configured CLI must bypass SDK discovery"
+    )
+    monkeypatch.setitem(sys.modules, cli_version.__name__, cli_version)
     spec = importlib.util.spec_from_file_location(
         "desktop_subscription_contract", BACKEND / "copilot" / "sdk" / "subscription.py"
     )
@@ -691,11 +696,6 @@ def test_fallback_launcher_keeps_subscription_auth_on_the_checked_version(
     monkeypatch.delenv("CLAUDE_AGENT_CLI_PATH", raising=False)
     monkeypatch.setattr(subscription, "provision_credentials_file", lambda: None)
     monkeypatch.setattr(subscription, "host_login_env", dict)
-    monkeypatch.setattr(
-        subscription,
-        "_cli_the_sdk_finds",
-        lambda: pytest.fail("the configured CLI must bypass SDK discovery"),
-    )
     checked = []
 
     def run_subscription(argv, **kwargs):
