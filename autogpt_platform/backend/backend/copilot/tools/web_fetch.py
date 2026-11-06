@@ -16,6 +16,7 @@ from backend.util.request import Requests
 
 from .base import BaseTool
 from .models import ErrorResponse, ToolResponseBase, WebFetchResponse
+from .refused_pages import refused_page_notice
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +271,16 @@ class WebFetchTool(BaseTool):
         if len(text) > _MAX_TEXT_CHARS:
             text = text[:_MAX_TEXT_CHARS]
             text_truncated = True
+
+        notice = refused_page_notice(
+            response.url,
+            bot_check=response.headers.get("cf-mitigated", "").lower() == "challenge",
+            content_withheld=is_html and extract_text and not text.strip(),
+        )
+        if notice:
+            return ErrorResponse(
+                message=notice, error="page_refused", session_id=session_id
+            ).from_outside(response.url)
 
         truncated = raw_truncated or text_truncated
         page = text
