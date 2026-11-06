@@ -330,6 +330,7 @@ class TestBuildExpertIdentitySuffix:
         )
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("in_turn", [False, True], ids=["read", "in_turn"])
     @pytest.mark.parametrize(
         "gated, told, not_told",
         [
@@ -338,10 +339,11 @@ class TestBuildExpertIdentitySuffix:
         ],
     )
     async def test_latest_soul_fields_and_protected_rules_are_rendered(
-        self, gated: bool, told: str, not_told: str
+        self, gated: bool, told: str, not_told: str, in_turn: bool
     ):
         """A gated session asking in chat as well would ask the owner twice; an
-        ungated one keeps the ask for outward steps nobody asked for."""
+        ungated one keeps the ask for outward steps nobody asked for. A turn
+        builds it from the expert it checked, so both routes are covered."""
         expert = _expert().model_copy(
             update={
                 "identity": "I help teams find the clearest strategy.",
@@ -354,7 +356,20 @@ class TestBuildExpertIdentitySuffix:
         mock_db.resolve_private_expert_tenancy = AsyncMock(
             return_value=("personal-org", "personal-team")
         )
-        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            sharing_expert_checks(),
+        ):
+            if in_turn:
+                remember_expert_check(
+                    "user-1",
+                    "exp-1",
+                    CheckedExpert(
+                        expert=expert,
+                        organization_id="personal-org",
+                        team_id="personal-team",
+                    ),
+                )
             result = await build_expert_identity_suffix(
                 "user-1",
                 "exp-1",
@@ -363,6 +378,7 @@ class TestBuildExpertIdentitySuffix:
                 gated=gated,
             )
 
+        assert mock_db.get_expert.await_count == (0 if in_turn else 1)
         assert "I help teams find the clearest strategy." in result
         assert "Warm, concise, and direct." in result
         assert "Never invent customer evidence." in result
