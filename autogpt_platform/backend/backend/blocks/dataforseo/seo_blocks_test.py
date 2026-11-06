@@ -151,6 +151,17 @@ class TestAiMentions:
         )
         assert task["target"] == [{"domain": "example.com"}, {"keyword": "soy candles"}]
 
+    async def test_unusable_domain_is_refused_even_with_a_keyword(self):
+        block = DataForSeoAiMentionsBlock()
+        with pytest.raises(ValueError, match="Not a domain"):
+            async for _ in block.run(
+                DataForSeoAiMentionsBlock.Input(
+                    credentials=CREDS_INPUT, domain="https://", keyword="candles"
+                ),
+                credentials=CREDS,
+            ):
+                pass
+
     def test_pasted_url_becomes_a_domain(self):
         task = build_mentions_task(
             DataForSeoAiMentionsBlock.Input(
@@ -196,6 +207,7 @@ class TestBilling:
         (" https://www.example.com/shop ", "example.com"),
         ("www.example.com", "example.com"),
         ("shop.example.com", "shop.example.com"),
+        ("example.com/shop?next=https://other.com", "example.com"),
         ("", ""),
     ],
 )
@@ -211,6 +223,10 @@ def test_normalise_domain(raw, domain):
         ("http://example.com", "example.com"),
         ("example.com/shop", "https://example.com/shop"),
         ("https://www.example.com/shop?x=1", "https://www.example.com/shop?x=1"),
+        (
+            "example.com/shop?next=https://other.com",
+            "https://example.com/shop?next=https://other.com",
+        ),
     ],
 )
 def test_normalise_target_keeps_pages_and_tidies_domains(raw, target):

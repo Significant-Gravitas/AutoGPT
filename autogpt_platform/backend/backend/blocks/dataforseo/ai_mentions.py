@@ -142,6 +142,12 @@ class DataForSeoAiMentionsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: UserPasswordCredentials, **kwargs
     ) -> BlockOutput:
+        if input_data.domain.strip() and not normalise_domain(input_data.domain):
+            raise BlockInputError(
+                message=f"Not a domain: {input_data.domain.strip()!r}",
+                block_name=self.name,
+                block_id=self.id,
+            )
         if not normalise_domain(input_data.domain) and not input_data.keyword.strip():
             raise BlockInputError(
                 message="Give a domain, a keyword, or both",
