@@ -38,6 +38,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
 import stripe
+from prisma import Prisma
 from prisma.enums import SubscriptionTier
 from prisma.models import SubscriptionBillingRestart, User
 from pydantic import BaseModel
@@ -114,10 +115,10 @@ async def restart_period_after_late_payment(invoice_id: str) -> RestartOutcome:
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             f"billing-restart:{sub_id}",
         )
-        return await _restart_locked(invoice, sub_id)
+        return await _restart_locked(invoice, sub_id, tx)
 
 
-async def _restart_locked(invoice: dict, sub_id: str) -> RestartOutcome:
+async def _restart_locked(invoice: dict, sub_id: str, tx: Prisma) -> RestartOutcome:
     invoice_id: str = invoice["id"]
     subscription = dict(await stripe_call(stripe.Subscription.retrieve_async, sub_id))
     if subscription.get("status") != "active":
@@ -130,7 +131,7 @@ async def _restart_locked(invoice: dict, sub_id: str) -> RestartOutcome:
     if late is None:
         return RestartOutcome.NOT_LATE
     customer_id = stripe_id(subscription.get("customer"))
-    user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
+    user = await User.prisma(tx).find_first(where={"stripeCustomerId": customer_id})
     if user is None or user.subscriptionTier == SubscriptionTier.ENTERPRISE:
         return RestartOutcome.NOT_APPLICABLE
     if await replaced_by_newer_plan(customer_id, subscription):
@@ -143,16 +144,16 @@ async def _restart_locked(invoice: dict, sub_id: str) -> RestartOutcome:
             " restarted automatically; restart it by hand"
         )
         return RestartOutcome.NEEDS_MANUAL_FIX
-    progress = await _record_progress(invoice_id, user.id, sub_id, late)
+    progress = await _record_progress(invoice_id, user.id, sub_id, late, tx)
     if progress.restartedAt is not None:
         return RestartOutcome.NOT_APPLICABLE
     if not await _credit_covers_new_period(sub_id, invoice):
         return RestartOutcome.NEEDS_MANUAL_FIX
-    if not await _credit_late_invoice(invoice, late, progress):
+    if not await _credit_late_invoice(invoice, late, progress, tx):
         return RestartOutcome.NEEDS_MANUAL_FIX
     if not await _reset_anchor(sub_id, invoice_id):
         return RestartOutcome.NEEDS_MANUAL_FIX
-    await SubscriptionBillingRestart.prisma().update(
+    await SubscriptionBillingRestart.prisma(tx).update(
         where={"stripeInvoiceId": invoice_id},
         data={"restartedAt": datetime.now(UTC)},
     )
@@ -192,9 +193,9 @@ async def _credit_covers_new_period(sub_id: str, invoice: dict) -> bool:
 
 
 async def _record_progress(
-    invoice_id: str, user_id: str, sub_id: str, late: LatePayment
+    invoice_id: str, user_id: str, sub_id: str, late: LatePayment, tx: Prisma
 ) -> SubscriptionBillingRestart:
-    return await SubscriptionBillingRestart.prisma().upsert(
+    return await SubscriptionBillingRestart.prisma(tx).upsert(
         where={"stripeInvoiceId": invoice_id},
         data={
             "create": {
@@ -210,7 +211,10 @@ async def _record_progress(
 
 
 async def _credit_late_invoice(
-    invoice: dict, late: LatePayment, progress: SubscriptionBillingRestart
+    invoice: dict,
+    late: LatePayment,
+    progress: SubscriptionBillingRestart,
+    tx: Prisma,
 ) -> bool:
     """Credit the late invoice to the customer's balance, once."""
     invoice_id: str = invoice["id"]
@@ -221,7 +225,7 @@ async def _credit_late_invoice(
     )
     async for note in stripe_list_items(notes):
         if (note.get("metadata") or {}).get(RESTARTED_FROM_INVOICE_KEY) == invoice_id:
-            await _save_credit_note(invoice_id, note["id"])
+            await _save_credit_note(invoice_id, note["id"], tx)
             return True
         if note.get("status") != "void":
             logger.error(
@@ -246,12 +250,14 @@ async def _credit_late_invoice(
         metadata={RESTARTED_FROM_INVOICE_KEY: invoice_id},
         idempotency_key=f"billing-restart-credit:{invoice_id}",
     )
-    await _save_credit_note(invoice_id, note["id"])
+    await _save_credit_note(invoice_id, note["id"], tx)
     return True
 
 
-async def _save_credit_note(invoice_id: str, credit_note_id: str) -> None:
-    await SubscriptionBillingRestart.prisma().update(
+async def _save_credit_note(
+    invoice_id: str, credit_note_id: str, tx: Prisma
+) -> None:
+    await SubscriptionBillingRestart.prisma(tx).update(
         where={"stripeInvoiceId": invoice_id},
         data={"stripeCreditNoteId": credit_note_id},
     )
