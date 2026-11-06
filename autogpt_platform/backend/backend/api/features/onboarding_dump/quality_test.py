@@ -251,12 +251,100 @@ async def test_short_filler_rejects_via_llm(llm):
 
 
 @pytest.mark.asyncio
-async def test_hallucinated_outro_rejects_via_llm(llm):
+async def test_hallucinated_outro_variant_still_rejects_via_llm(llm):
+    # Not on the artifact list word for word, so the judge still decides.
     llm(_llm_client('{"usable": false}'))
     assert (
-        await quality.check_transcript_quality("Thank you for watching.")
+        await quality.check_transcript_quality("Thanks so much for watching, guys.")
         == JUDGED_UNUSABLE
     )
+
+
+# --- speech-to-text artifacts: what a silent mic comes back as -------------
+
+
+def _spellings(phrase: str) -> list[str]:
+    """The same artifact as a transcript might carry it."""
+    title = phrase.title()
+    return [
+        phrase,
+        f"{phrase.capitalize()}.",
+        f"  {phrase.upper()}!!!  ",
+        f"{title}...",
+        f"[{title}]",
+        f"♪ {title} ♪",
+        f"{phrase.replace(' ', ',  ')}?",
+        phrase.replace(" ", "-"),
+    ]
+
+
+_ARTIFACT_SPELLINGS = [
+    spelling
+    for phrase in sorted(quality.STT_ARTIFACT_PHRASES)
+    for spelling in _spellings(phrase)
+]
+
+
+def test_every_artifact_phrase_is_stored_normalised():
+    # The set is matched after normalising, so an entry with capitals or
+    # punctuation in it could never match anything.
+    assert quality.STT_ARTIFACT_PHRASES
+    for phrase in quality.STT_ARTIFACT_PHRASES:
+        assert phrase == quality.normalise_for_artifact_match(phrase)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transcript", _ARTIFACT_SPELLINGS)
+async def test_a_speech_to_text_artifact_is_no_usable_speech_for_voice(
+    llm, transcript: str
+):
+    client_factory = llm(_llm_client('{"usable": true}'))
+    assert (
+        await quality.check_transcript_quality(
+            transcript, input_mode=BrainDumpInputMode.voice
+        )
+        == DETERMINISTIC
+    )
+    assert await quality.check_transcript_quality(transcript) == DETERMINISTIC
+    client_factory.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "transcript", [f"{phrase.capitalize()}." for phrase in quality.STT_ARTIFACT_PHRASES]
+)
+async def test_typed_text_that_matches_an_artifact_still_goes_to_the_judge(
+    llm, transcript: str
+):
+    # A keyboard cannot mishear, so typed text keeps the judge's call.
+    client = _llm_client('{"usable": false}')
+    llm(client)
+    assert (
+        await quality.check_transcript_quality(
+            transcript, input_mode=BrainDumpInputMode.typed
+        )
+        == JUDGED_UNUSABLE
+    )
+    client.chat.completions.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "transcript",
+    [
+        "Um, okay. Hi. Is this working?",
+        "Thank you for taking this off my plate.",
+        "Bye bye invoices, that's what I want.",
+        "You know, I run a bakery.",
+    ],
+)
+async def test_a_take_that_only_contains_an_artifact_phrase_goes_to_the_judge(
+    llm, transcript: str
+):
+    client = _llm_client('{"usable": false}')
+    llm(client)
+    assert await quality.check_transcript_quality(transcript) == JUDGED_UNUSABLE
+    client.chat.completions.create.assert_awaited_once()
 
 
 @pytest.mark.asyncio

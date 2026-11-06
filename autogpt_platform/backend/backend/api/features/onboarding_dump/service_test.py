@@ -1186,6 +1186,91 @@ async def test_quality_rejected_typed_dump_records_the_error(
     extraction["upsert_business_understanding"].assert_not_awaited()
 
 
+async def _rejected_with(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    transcribe: AsyncMock,
+    rejection: quality.QualityRejection,
+    input_mode: BrainDumpInputMode,
+    text: str,
+):
+    """Finalize one take of ``text`` that the gate rejects with ``rejection``."""
+    quality_gate.return_value = rejection
+    if input_mode == BrainDumpInputMode.typed:
+        return await service.finalize_typed_dump(
+            USER_ID, RECORDING_ID, text, BackgroundTasks()
+        )
+    transcribe.return_value = transcription.TranscriptionResult(
+        text=text, language="en", model="gpt-4o-transcribe"
+    )
+    await start_voice_take(dumps)
+    return await finalize_voice()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input_mode", [BrainDumpInputMode.voice, BrainDumpInputMode.typed]
+)
+async def test_an_insufficient_take_sends_back_what_was_heard(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    transcribe: AsyncMock,
+    input_mode: BrainDumpInputMode,
+):
+    # The not-enough screen shows the person what Otto heard.
+    response = await _rejected_with(
+        dumps,
+        quality_gate,
+        transcribe,
+        JUDGED_UNUSABLE,
+        input_mode,
+        "  Um, okay. Hi. Is this working?\n",
+    )
+
+    assert response.error_code == "insufficient_content"
+    assert response.transcript_preview == "Um, okay. Hi. Is this working?"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input_mode", [BrainDumpInputMode.voice, BrainDumpInputMode.typed]
+)
+async def test_an_insufficient_take_preview_is_cut_to_the_preview_length(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    transcribe: AsyncMock,
+    input_mode: BrainDumpInputMode,
+):
+    long_text = "  " + "hello there " * 60
+
+    response = await _rejected_with(
+        dumps, quality_gate, transcribe, JUDGED_UNUSABLE, input_mode, long_text
+    )
+
+    assert response.transcript_preview is not None
+    assert len(response.transcript_preview) == service.TRANSCRIPT_PREVIEW_CHARS == 280
+    assert response.transcript_preview == long_text.strip()[:280]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input_mode", [BrainDumpInputMode.voice, BrainDumpInputMode.typed]
+)
+async def test_no_usable_speech_sends_back_no_text(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    transcribe: AsyncMock,
+    input_mode: BrainDumpInputMode,
+):
+    # Empty, symbol-only, looping or invented text: never shown back.
+    response = await _rejected_with(
+        dumps, quality_gate, transcribe, DETERMINISTIC, input_mode, "Thank you."
+    )
+
+    assert response.error_code == "no_usable_speech"
+    assert response.transcript_preview is None
+
+
 @pytest.mark.asyncio
 async def test_repeating_finalize_after_quality_rejection_does_not_rerun_the_gate(
     dumps: DumpStore, quality_gate: AsyncMock, storage_mocks: dict[str, AsyncMock]
