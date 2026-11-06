@@ -1,4 +1,6 @@
-import type { Event, init } from "@sentry/nextjs";
+import type { Event, EventHint, init } from "@sentry/nextjs";
+
+import { isAbortError, isNetworkError } from "@/lib/transient-errors";
 
 // Next.js logs exactly this when a client-side navigation cannot fetch the RSC
 // payload (flaky network, tab backgrounded, deploy in progress). It then does a
@@ -42,6 +44,19 @@ export function isInjectedIframeProbe(event: Event) {
   return (
     typeof message === "string" && INJECTED_IFRAME_PROBE_MESSAGE.test(message)
   );
+}
+
+/**
+ * True for a fetch our code caught after the network dropped or the request
+ * was cancelled ("Failed to fetch", "Load failed", "network error",
+ * AbortError). The catch already handles it, and minified frames open a new
+ * issue for each browser and build. An uncaught one is still sent, because
+ * it shows a missing catch.
+ */
+export function isHandledTransientFailure(event: Event, hint: EventHint) {
+  const error = hint.originalException;
+  if (!isNetworkError(error) && !isAbortError(error)) return false;
+  return event.exception?.values?.[0]?.mechanism?.handled !== false;
 }
 
 // webpack ("Loading chunk 34006 failed.", "Loading CSS chunk 123 failed.")
