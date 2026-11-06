@@ -30,6 +30,7 @@ from backend.api.features.experts import (
     scheduling,
     seed,
 )
+from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.models import (
     EXPERT_DAY_ONE_MAX_ITEMS,
     ExpertBundledSkill,
@@ -2845,6 +2846,37 @@ async def test_remove_workflow_detaches_it_from_the_expert(
         where={"id": library_agent_id}
     )
     assert library_agent is not None and not library_agent.isDeleted
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_workflow_whose_library_agent_was_deleted_is_not_offered(
+    server: SpinTestServer, test_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, test_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+    # A cadence with no schedule is the "needs setup" state, which links too.
+    await prisma.models.ExpertWorkflow.prisma().update(
+        where={"id": installed.id}, data={"scheduleCron": "0 9 * * 1"}
+    )
+    assert await _setup_links(test_user.id, hired.expert.id) == {library_agent_id}
+
+    await library_db.delete_library_agent(library_agent_id, test_user.id)
+
+    with pytest.raises(NotFoundError):
+        await library_db.get_library_agent(library_agent_id, test_user.id)
+    expert = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert expert is not None
+    assert [w.library_agent_id for w in expert.workflows] == []
+    assert await _setup_links(test_user.id, hired.expert.id) == set()
+
+
+async def _setup_links(user_id: str, expert_id: str) -> set[str | None]:
+    items = await expert_setup.list_setup_items(user_id)
+    return {item.library_agent_id for item in items if item.expert_id == expert_id}
 
 
 @pytest.mark.asyncio(loop_scope="session")
