@@ -54,7 +54,7 @@ function PaywallPlanStep() {
           price={paywall.price}
           cadence={paywall.cadence}
           isProcessing={paywall.isProcessingCheckout}
-          isBlocked={paywall.isUpdatingTier}
+          isBlocked={paywall.isCheckoutBlocked}
           onContinue={paywall.continueToCheckout}
           notice={
             <TrialCardContent

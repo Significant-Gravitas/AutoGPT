@@ -45,6 +45,9 @@ interface Args {
   selectRecipient: (id: string | null) => void;
   /** The page can start a task now (not resolving a recipient, not locked). */
   canSend: boolean;
+  /** The roster is still being read for the composer's recipient: a task
+   *  waiting on it does not give up yet. */
+  isRecipientResolving: boolean;
 }
 
 const UNDO_TOAST_MS = 5000;
@@ -60,9 +63,15 @@ export function useSuggestedTasks({
   recipientID,
   selectRecipient,
   canSend,
+  isRecipientResolving,
 }: Args) {
   const [sendingId, setSendingId] = useState<string | null>(null);
-  const recipient = useTaskRecipient({ recipientID, selectRecipient, canSend });
+  const recipient = useTaskRecipient({
+    recipientID,
+    selectRecipient,
+    canSend,
+    isResolving: isRecipientResolving,
+  });
 
   const { list, tasks, mutate, updateCache } = useSuggestedTaskList({
     enabled,

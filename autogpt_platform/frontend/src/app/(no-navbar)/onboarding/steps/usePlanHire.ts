@@ -1,13 +1,10 @@
 import {
   getBrainDumpPlan,
   getGetBrainDumpSuggestedTasksQueryKey,
-  type hireBrainDumpPlanResponse,
+  hireBrainDumpPlan,
   useGetBrainDumpPlan,
-  useHireBrainDumpPlan,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
-import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
@@ -15,22 +12,22 @@ import { useEffect, useRef, useState } from "react";
 import { useOnboardingWizardStore } from "../store";
 import { whenSkipSettled } from "./BrainDumpStep/useBrainDumpStep";
 import {
+  hireTimeLeft,
+  hireUntilAnswered,
+  sendMarked,
+  toastHireFailed,
+} from "./plan-hire-helpers";
+import {
   joinNames,
-  pause,
   PLAN_POLL_MS,
   planAnsweredSince,
   readShownPlan,
 } from "./SubscriptionStep/components/PlanPanel/helpers";
 
-// The preparing screen holds its bar this long for the hire, then moves on
-// whatever happened: a hire that never answers must not keep anyone from Home.
-export const HIRE_MAX_WAIT_MS = 15_000;
 // With no plan shown, how long the hire waits for the pipeline's: the hire
 // settles the plan, so an early one loses the brain dump's. Short of
 // HIRE_MAX_WAIT_MS, so the hire still goes out while the bar holds.
 const PLAN_WAIT_MS = 10_000;
-const HIRE_RETRY_MS = 2_000;
-const HIRE_STARTED_KEY = "autogpt:onboarding-plan-hire:";
 
 // Hires the plan's team once the trial (or the plan, without a paywall) is
 // confirmed. Never before: a user who leaves Stripe hires nobody.
@@ -43,14 +40,13 @@ export function usePlanHire({ enabled }: { enabled: boolean }) {
   const [resumedFor] = useState(() => hireTimeLeft(userID));
   const [settled, setSettled] = useState(false);
   const sent = useRef(false);
-  const { mutateAsync: hirePlan } = useHireBrainDumpPlan();
   const plan = usePlanToHire({ enabled, since: mountedAt });
   const names = plan.team.map((expert) => expert.name);
 
   const hire = useStableCallback(async () => {
     try {
       const response = await hireUntilAnswered(
-        () => sendMarked(userID, () => hirePlan()),
+        (signal) => sendMarked(userID, () => hireBrainDumpPlan({ signal })),
         // A re-ask goes out with the bar's time nearly spent, and may be the
         // only try that does the hire: it keeps trying from when it starts.
         resumedFor === null ? mountedAt : Date.now(),
@@ -138,82 +134,4 @@ function usePlanToHire({
   }, [isWaiting]);
 
   return { team: ready?.team ?? [], isKnown: Boolean(ready) || isWaitOver };
-}
-
-// The hire is idempotent, so one the server could not answer (a 5xx, no answer
-// at all, or a plan still changing) is sent again while the preparing bar
-// still waits for it.
-async function hireUntilAnswered(
-  hirePlan: () => Promise<hireBrainDumpPlanResponse>,
-  since: number,
-) {
-  for (;;) {
-    try {
-      const response = await hirePlan();
-      if (response.status !== 200) throw new Error("Plan hire failed");
-      return response;
-    } catch (error) {
-      const isRefused =
-        error instanceof ApiError && error.status < 500 && error.status !== 409;
-      const isOutOfTime =
-        Date.now() - since + HIRE_RETRY_MS >= HIRE_MAX_WAIT_MS;
-      if (isRefused || isOutOfTime) throw error;
-      await pause(HIRE_RETRY_MS);
-    }
-  }
-}
-
-// Marked only while a try is on the wire: a refresh then waits for it
-// instead of sending a second, and between tries sends the hire again.
-async function sendMarked(
-  userID: string | null,
-  hirePlan: () => Promise<hireBrainDumpPlanResponse>,
-) {
-  markHireStarted(userID);
-  try {
-    return await hirePlan();
-  } finally {
-    clearHireStarted(userID);
-  }
-}
-
-function toastHireFailed(names: string[]) {
-  toast({
-    title:
-      names.length > 0
-        ? `Couldn't hire ${joinNames(names)}`
-        : "Couldn't hire your team",
-    description:
-      "Otto takes on their tasks for now. You can hire experts any time.",
-    variant: "destructive",
-    // Until closed: the screen moves on to Home, and this should be there.
-    duration: Infinity,
-  });
-}
-
-function hireTimeLeft(userID: string | null) {
-  try {
-    const at = Number(sessionStorage.getItem(`${HIRE_STARTED_KEY}${userID}`));
-    const ago = Date.now() - at;
-    return at > 0 && ago < HIRE_MAX_WAIT_MS ? HIRE_MAX_WAIT_MS - ago : null;
-  } catch {
-    return null;
-  }
-}
-
-function markHireStarted(userID: string | null) {
-  try {
-    sessionStorage.setItem(`${HIRE_STARTED_KEY}${userID}`, String(Date.now()));
-  } catch {
-    // Without sessionStorage a refresh may send the hire again; it is
-    // idempotent, so that costs a request, not a duplicate expert.
-  }
-}
-
-function clearHireStarted(userID: string | null) {
-  try {
-    sessionStorage.removeItem(`${HIRE_STARTED_KEY}${userID}`);
-  } catch {
-    // See markHireStarted.
-  }
 }

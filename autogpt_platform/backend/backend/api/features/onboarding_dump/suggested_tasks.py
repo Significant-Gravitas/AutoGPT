@@ -7,7 +7,9 @@ under it are worked through, so each keeps its own state on the row's
 A task may have an owner (``expert_template_id``); every list this module
 hands out says which of the user's hired experts that is (``expert_id``),
 read fresh each time, so a fired expert's open tasks go back to Otto. A
-started task names the expert its chat is with, fired since or not.
+started task names the expert its chat is with, fired since or not. A
+roster that cannot be read fails Home's list rather than handing owned
+tasks to Otto, so the client keeps its last list and asks again.
 """
 
 import logging
@@ -110,7 +112,7 @@ async def store_if_empty(
 
 
 async def with_expert_ids(
-    user_id: str, tasks: list[SuggestedTask]
+    user_id: str, tasks: list[SuggestedTask], *, roster_required: bool = True
 ) -> list[SuggestedTask]:
     """``tasks`` with the expert each one is with, or none for Otto.
 
@@ -118,15 +120,18 @@ async def with_expert_ids(
     or is archived, reads as Otto's. A started task is with whoever its
     chat is with, so firing that expert, or hiring the owner after Otto
     took it, does not relabel a chat that went to someone else.
+
+    A roster that cannot be read raises when ``roster_required``: an owner
+    it cannot read is unknown, not gone. Otherwise its owners read as
+    unhired, for a caller that names them some other way.
     """
     chats = await _chat_experts(user_id, tasks)
     owned = [task for task in tasks if task.session_id not in chats]
     if not chats and not any(task.expert_template_id for task in owned):
         return tasks
+    read = _read_roster if roster_required else roster_by_template
     hired = (
-        await roster_by_template(user_id)
-        if any(task.expert_template_id for task in owned)
-        else {}
+        await read(user_id) if any(task.expert_template_id for task in owned) else {}
     )
     return [
         task.model_copy(
@@ -146,13 +151,18 @@ async def roster_by_template(user_id: str) -> dict[str, Expert]:
     """The user's active hires by the template each was hired from.
 
     A roster that cannot be read reads as empty, so every owner reads as
-    unhired rather than failing the list.
+    unhired: the plan hire then asks for each teammate, and ``hire_expert``
+    answers for one already on the team.
     """
     try:
-        experts = await experts_db.list_experts(user_id, with_metrics=False)
+        return await _read_roster(user_id)
     except Exception as e:
         logger.warning(f"Suggested tasks: roster read failed: {e}")
         return {}
+
+
+async def _read_roster(user_id: str) -> dict[str, Expert]:
+    experts = await experts_db.list_experts(user_id, with_metrics=False)
     return {
         expert.source_template_id: expert
         for expert in experts

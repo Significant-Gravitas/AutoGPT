@@ -60,7 +60,8 @@ export function usePaywallStep() {
     ),
     cadence: subscription.isYearly ? ("year" as const) : ("month" as const),
     isProcessingCheckout: subscription.selectedPlan === PLAN_KEYS.PRO,
-    isUpdatingTier: subscription.isUpdatingTier,
+    // Each checkout locks the other: a second one expires the first's session.
+    isCheckoutBlocked: subscription.isUpdatingTier || isStarting,
     continueToCheckout: () => subscription.handlePlanSelect(PLAN_KEYS.PRO),
     trialController: { ...trial, startTrial, isStarting, isBlocked, error },
   };

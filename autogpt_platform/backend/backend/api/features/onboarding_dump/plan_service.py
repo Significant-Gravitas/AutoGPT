@@ -187,7 +187,11 @@ async def _response(
         skipped_dump=skipped_dump,
         heard=heard,
         team=capped,
-        tasks=await suggested_tasks.with_expert_ids(user_id, tasks),
+        # Onboarding names owners from ``team``: a roster blip must not fail
+        # the plan, or the hire that settles it.
+        tasks=await suggested_tasks.with_expert_ids(
+            user_id, tasks, roster_required=False
+        ),
     )
 
 

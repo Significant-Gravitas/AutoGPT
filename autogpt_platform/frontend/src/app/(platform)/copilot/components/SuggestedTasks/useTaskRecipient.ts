@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 
 // How long a switch of the composer's recipient may take before the task
-// gives up instead of going to whoever is selected.
+// gives up instead of going to whoever is selected. A roster read still
+// running does not count against it.
 const RECIPIENT_SWITCH_MS = 3000;
 
 interface Args {
@@ -10,6 +11,8 @@ interface Args {
   /** The page can start a task now: false while it is still resolving the
    *  new recipient, or the composer is locked. */
   canSend: boolean;
+  /** The page is still reading the roster for the composer's recipient. */
+  isResolving: boolean;
 }
 
 interface Pending {
@@ -28,16 +31,19 @@ export function useTaskRecipient({
   recipientID,
   selectRecipient,
   canSend,
+  isResolving,
 }: Args) {
   const pending = useRef<Pending | null>(null);
   const previous = useRef<string | null>(null);
   const target = useRef<string | null>(null);
   // `restore` runs from a promise or a timer with an older render's closure.
   const live = useRef(recipientID);
+  const resolving = useRef(isResolving);
 
   useEffect(() => {
     live.current = recipientID;
-  }, [recipientID]);
+    resolving.current = isResolving;
+  }, [recipientID, isResolving]);
 
   useEffect(() => {
     const next = pending.current;
@@ -61,13 +67,22 @@ export function useTaskRecipient({
       return;
     }
     if (pending.current) clearTimeout(pending.current.timer);
+    pending.current = { id, send, timer: armGiveUp(onGiveUp) };
+    if (id !== recipientID) selectRecipient(id);
+  }
+
+  function armGiveUp(onGiveUp: () => void) {
     const timer = setTimeout(() => {
-      if (pending.current?.timer !== timer) return;
+      const next = pending.current;
+      if (next?.timer !== timer) return;
+      if (resolving.current) {
+        next.timer = armGiveUp(onGiveUp);
+        return;
+      }
       pending.current = null;
       onGiveUp();
     }, RECIPIENT_SWITCH_MS);
-    pending.current = { id, send, timer };
-    if (id !== recipientID) selectRecipient(id);
+    return timer;
   }
 
   function restore() {

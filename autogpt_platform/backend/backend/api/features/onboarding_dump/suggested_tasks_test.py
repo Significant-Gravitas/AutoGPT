@@ -355,10 +355,40 @@ def test_a_change_answers_with_owners_but_never_stores_the_expert_id(
     assert rows.row.suggestedPrompts[0]["expert_template_id"] == "tpl-max"
 
 
-def test_an_unreadable_roster_leaves_every_task_with_otto(
+async def test_an_unreadable_roster_fails_the_read_rather_than_hand_owned_tasks_to_otto(
     rows: RowStore, wizard: dict[str, AsyncMock]
 ):
+    # An owner it cannot read is unknown, not gone: a list naming nobody
+    # would send the task to Otto. The client keeps its last list instead.
     rows.put(OWNED)
+    wizard["list_experts"].side_effect = RuntimeError("database down")
+
+    with pytest.raises(RuntimeError):
+        await suggested_tasks.get_suggested_tasks("test-user-id")
+
+
+async def test_a_change_stores_then_fails_its_answer_when_the_roster_cannot_be_read(
+    rows: RowStore, wizard: dict[str, AsyncMock]
+):
+    # The write sets a state, so the client's retry finds it made and only
+    # asks for the list again.
+    rows.put(OWNED)
+    wizard["list_experts"].side_effect = RuntimeError("database down")
+
+    with pytest.raises(RuntimeError):
+        await suggested_tasks.update_suggested_tasks(
+            "test-user-id", SuggestedTasksUpdate(task_ids=["2"], state="dismissed")
+        )
+
+    assert rows.writes == 1
+    assert rows.row is not None
+    assert rows.row.suggestedPrompts[2]["state"] == "dismissed"
+
+
+def test_an_unreadable_roster_still_lists_tasks_nobody_owns(
+    rows: RowStore, wizard: dict[str, AsyncMock]
+):
+    rows.put(STORED)
     wizard["list_experts"].side_effect = RuntimeError("database down")
 
     response = client.get(URL)

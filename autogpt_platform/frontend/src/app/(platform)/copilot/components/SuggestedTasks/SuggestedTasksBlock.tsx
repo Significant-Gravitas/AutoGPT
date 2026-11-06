@@ -65,7 +65,8 @@ export function SuggestedTasksBlock({
           <Icon icon={isOpen ? ArrowUp01Icon : ArrowDown01Icon} size={14} />
         </Button>
       </div>
-      <div id={listID}>
+      {/* Inert while folded: the rows stay on screen for the exit animation. */}
+      <div id={listID} inert={!isOpen || undefined}>
         <AnimatePresence initial={false}>
           {isOpen ? (
             <motion.div

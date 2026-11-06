@@ -109,6 +109,7 @@ export function EmptySession({
     // A task starts its own chat only through onStartTask, which the page
     // withholds while it resolves the recipient or the turn is locked.
     canSend: Boolean(onStartTask) && !isComposerDisabled,
+    isRecipientResolving: isLoadingRecipient,
   });
   const collapse = useCollapsedSuggestions();
   const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);

@@ -247,6 +247,26 @@ describe("SuggestedTasksBlock — Hide and Show", () => {
     expect(controlledRegion(folded)).not.toBeNull();
   });
 
+  it("puts the folding rows out of reach as soon as Hide is pressed, and back on Show", async () => {
+    render(<Harness />);
+
+    const open = screen.getByRole("button", { name: "Hide" });
+    const region = controlledRegion(open);
+    expect(region?.hasAttribute("inert")).toBe(false);
+
+    await userEvent.click(open);
+
+    // Still fading out, but no longer focusable or clickable.
+    expect(region?.hasAttribute("inert")).toBe(true);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "4 tasks · Show" }),
+    );
+
+    await screen.findByRole("button", { name: "Hide" });
+    expect(region?.hasAttribute("inert")).toBe(false);
+  });
+
   it("says one task when only one is left to show", () => {
     render(
       <Harness

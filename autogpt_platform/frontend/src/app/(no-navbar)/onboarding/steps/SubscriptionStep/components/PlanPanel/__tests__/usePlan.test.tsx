@@ -147,7 +147,7 @@ function serveFlakySettle(failures: number, answer: PlanResponse) {
   return requests;
 }
 
-function renderPlan(client = makeClient()) {
+function renderPlan(client = makeClient(), reactStrictMode = false) {
   const seen: (PlanResponse | null)[] = [];
   const view = renderHook(
     () => {
@@ -156,6 +156,7 @@ function renderPlan(client = makeClient()) {
       return result;
     },
     {
+      reactStrictMode,
       wrapper: function Wrapper({ children }: { children: ReactNode }) {
         return (
           <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -308,6 +309,31 @@ describe("usePlan giving up", () => {
     expect(settles.count).toBe(3);
     expect(result.current.plan).toEqual(WRITING);
     expect(sessionStorage.getItem(SHOWN_PLAN_KEY)).toBeNull();
+  });
+
+  test("settles nothing more once the user has left the step", async () => {
+    servePlans(WRITING);
+    const settles = serveFlakySettle(Infinity, SETTLED);
+    const { unmount } = renderPlan();
+
+    await advance(MAX_WAIT_MS + FIRST_ANSWER_MS);
+    expect(settles.count).toBe(1);
+    // Back to the brain dump: a later settle would store the new take's plan.
+    unmount();
+    await advance(ALL_SETTLES_FAIL_MS);
+
+    expect(settles.count).toBe(1);
+  });
+
+  test("still settles after StrictMode mounts the step twice", async () => {
+    servePlans(WRITING);
+    const settles = serveSettle(SETTLED);
+    const { result } = renderPlan(makeClient(), true);
+
+    await advance(MAX_WAIT_MS + FIRST_ANSWER_MS);
+
+    expect(settles.count).toBe(1);
+    expect(result.current.plan).toEqual(SETTLED);
   });
 
   test("stops waiting on a settle that never answers", async () => {

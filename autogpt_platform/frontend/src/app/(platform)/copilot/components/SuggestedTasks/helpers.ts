@@ -119,11 +119,12 @@ function findRowFocus(taskID: string | null) {
   );
 }
 
-// Not on a touch screen, where focus opens the keyboard.
+// Its text box, or on a touch screen, where focusing that opens the
+// keyboard, its first button.
 function findComposer() {
-  if (isTouchDevice()) return null;
+  const control = isTouchDevice() ? "button" : "textarea";
   return document.querySelector<HTMLElement>(
-    `[${TOUR_TARGET_ATTRIBUTE}="composer"] textarea:not(:disabled)`,
+    `[${TOUR_TARGET_ATTRIBUTE}="composer"] ${control}:not(:disabled)`,
   );
 }
 

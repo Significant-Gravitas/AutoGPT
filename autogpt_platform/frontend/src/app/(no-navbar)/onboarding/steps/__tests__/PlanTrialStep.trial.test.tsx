@@ -585,6 +585,45 @@ test("also flushes the draft from the standalone fallback trial card", async () 
   expect(checkoutLocation.assign).not.toHaveBeenCalled();
 });
 
+test("locks Pro checkout while the fallback trial starts, and frees it if that fails", async () => {
+  mockStatus(eligible({ ...trialOffer, tier: "BASIC" }));
+  let finishTrial = () => {};
+  const trialPending = new Promise<void>((resolve) => {
+    finishTrial = resolve;
+  });
+  const paid = vi.fn();
+  server.use(
+    http.post("*/api/credits/subscription", () => {
+      paid();
+      return HttpResponse.json({ url: "https://checkout.stripe.com/paid" });
+    }),
+    http.post("*/api/credits/trial", async () => {
+      await trialPending;
+      return HttpResponse.json({ detail: "Please try again" }, { status: 503 });
+    }),
+  );
+  render(<PlanTrialStep hasPaywall />);
+  const fallback = within(
+    await screen.findByRole("region", { name: "AutoGPT trial" }),
+  );
+  const start = await fallback.findByRole("button", {
+    name: "Start 7-day trial",
+  });
+  const pro = screen.getByRole("button", { name: "Continue to checkout" });
+
+  try {
+    fireEvent.click(start);
+    await waitFor(() => expect(pro.hasAttribute("disabled")).toBe(true));
+    expect(pro.querySelector(".animate-spin")).toBeNull();
+    fireEvent.click(pro);
+  } finally {
+    finishTrial();
+  }
+
+  await waitFor(() => expect(pro.hasAttribute("disabled")).toBe(false));
+  expect(paid).not.toHaveBeenCalled();
+});
+
 test.each(["failed", "left with Back"])(
   "a %s paid checkout is cleared and then locked while the fallback trial redirects",
   async (outcome) => {

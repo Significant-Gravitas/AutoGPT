@@ -15,7 +15,7 @@ import { http, HttpResponse } from "msw";
 import posthog from "posthog-js";
 import { setIntroPath } from "@/services/onboarding/brain-dump-handoff";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useOnboardingWizardStore } from "../../store";
@@ -286,6 +286,8 @@ const HIRE_MAX_WAIT_MS = 15_000;
 const PLAN_WAIT_MS = 10_000;
 const PLAN_POLL_MS = 1_000;
 const HIRE_RETRY_MS = 2_000;
+const HIRE_TRY_MS = 7_000;
+const HIRE_STARTED_KEY = "autogpt:onboarding-plan-hire:u1";
 
 function teamPlan(names: string[]): PlanResponse {
   return {
@@ -302,6 +304,31 @@ function teamPlan(names: string[]): PlanResponse {
   };
 }
 
+// Hire requests a test holds open, all answered once it ends.
+const heldHires: Array<(response: Response) => void> = [];
+let openHires = 0;
+
+function holdHire() {
+  return new Promise<Response>((resolve) => heldHires.push(resolve));
+}
+
+function answerHeldHires(
+  answer: () => Response = () =>
+    HttpResponse.json({ hired: [], failed: [] } satisfies PlanHireResponse),
+) {
+  heldHires.splice(0).forEach((resolve) => resolve(answer()));
+}
+
+// A reload while the first hire is on its way: the screen that sent it is
+// gone, and only its mark is left.
+function reloadMidHire() {
+  useOnboardingWizardStore.setState({ userID: "u1" });
+  window.sessionStorage.setItem(
+    HIRE_STARTED_KEY,
+    String(Date.now() - START_DELAY_MS),
+  );
+}
+
 // Counts every hire request; `respond` decides each answer.
 function mockHire(
   respond: () => Promise<Response> | Response = () =>
@@ -312,9 +339,14 @@ function mockHire(
 ) {
   const calls = { count: 0 };
   server.use(
-    http.post(HIRE_URL, () => {
+    http.post(HIRE_URL, async () => {
       calls.count += 1;
-      return respond();
+      openHires += 1;
+      try {
+        return await respond();
+      } finally {
+        openHires -= 1;
+      }
     }),
   );
   return calls;
@@ -322,9 +354,19 @@ function mockHire(
 
 describe("usePreparingStep — hiring the plan's team", () => {
   beforeEach(() => {
+    openHires = 0;
     server.use(
       getGetBrainDumpPlanMockHandler200(teamPlan(["Maria", "Max", "Mina"])),
     );
+  });
+
+  // Unmounted first, so an answer settles no mounted hook outside act; on
+  // real timers, so waiting runs none of the hook's own.
+  afterEach(async () => {
+    cleanup();
+    vi.useRealTimers();
+    answerHeldHires();
+    await vi.waitFor(() => expect(openHires).toBe(0));
   });
 
   it("hires once the trial is confirmed, naming the team in the checklist", async () => {
@@ -387,13 +429,7 @@ describe("usePreparingStep — hiring the plan's team", () => {
   });
 
   it("holds the bar and the hire item until the hire answers", async () => {
-    let answer: (() => void) | undefined;
-    mockHire(
-      () =>
-        new Promise<Response>((resolve) => {
-          answer = () => resolve(HttpResponse.json({ hired: [], failed: [] }));
-        }),
-    );
+    mockHire(holdHire);
     const onComplete = vi.fn();
     const { result } = renderPreparing({ onComplete, canHire: true });
 
@@ -404,13 +440,13 @@ describe("usePreparingStep — hiring the plan's team", () => {
     expect(result.current.completedItems).toBe(1);
     expect(result.current.progress).toBeLessThanOrEqual(95);
 
-    await act(async () => answer?.());
+    await act(async () => answerHeldHires());
     await advance(200);
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
   it("moves on after the ceiling when the hire never answers", async () => {
-    mockHire(() => new Promise<Response>(() => {}));
+    mockHire(holdHire);
     const onComplete = vi.fn();
     renderPreparing({ onComplete, canHire: true });
 
@@ -429,7 +465,8 @@ describe("usePreparingStep — hiring the plan's team", () => {
     const onComplete = vi.fn();
     renderPreparing({ onComplete, canHire: true });
 
-    await advance(START_DELAY_MS + HIRE_MAX_WAIT_MS + 500);
+    await advance(START_DELAY_MS);
+    await advance(HIRE_MAX_WAIT_MS + 500);
 
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(hires.count).toBeGreaterThan(1);
@@ -465,6 +502,31 @@ describe("usePreparingStep — hiring the plan's team", () => {
     await advance(START_DELAY_MS + HIRE_RETRY_MS + 200);
 
     expect(hires.count).toBe(2);
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("sends the hire again when a try gets no answer", async () => {
+    let calls = 0;
+    const hires = mockHire(() => {
+      calls += 1;
+      return calls === 1
+        ? holdHire()
+        : HttpResponse.json({
+            hired: [
+              { template_id: "tpl-maria", expert_id: "e-1", name: "Maria" },
+            ],
+            failed: [],
+          });
+    });
+    const onComplete = vi.fn();
+    renderPreparing({ onComplete, canHire: true });
+
+    await advance(START_DELAY_MS);
+    await advance(HIRE_TRY_MS + HIRE_RETRY_MS + 200);
+    expect(hires.count).toBe(2);
+
+    await advance(200);
+    expect(onComplete).toHaveBeenCalledTimes(1);
     expect(toast).not.toHaveBeenCalled();
   });
 
@@ -576,21 +638,7 @@ describe("usePreparingStep — hiring the plan's team", () => {
         ],
       })),
     );
-    let answer: (() => void) | undefined;
-    mockHire(
-      () =>
-        new Promise<Response>((resolve) => {
-          answer = () =>
-            resolve(
-              HttpResponse.json({
-                hired: [
-                  { template_id: "tpl-maria", expert_id: "e-1", name: "Maria" },
-                ],
-                failed: [],
-              }),
-            );
-        }),
-    );
+    mockHire(holdHire);
     const preparing = renderHook(
       () => usePreparingStep({ onComplete: vi.fn(), canHire: true }),
       { wrapper: makeWrapper(client) },
@@ -604,14 +652,25 @@ describe("usePreparingStep — hiring the plan's team", () => {
     await advance(100);
     expect(firstOwner(home.result.current.data)).toBeNull();
 
+    await advance(HIRE_MAX_WAIT_MS);
     expertID = "e-1";
-    await act(async () => answer?.());
+    await act(async () =>
+      answerHeldHires(() =>
+        HttpResponse.json({
+          hired: [
+            { template_id: "tpl-maria", expert_id: "e-1", name: "Maria" },
+          ],
+          failed: [],
+        }),
+      ),
+    );
     await advance(100);
     expect(firstOwner(home.result.current.data)).toBe("e-1");
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it("does not send a second hire when the screen is refreshed mid-hire", async () => {
-    const hires = mockHire(() => new Promise<Response>(() => {}));
+    const hires = mockHire(holdHire);
     const first = renderPreparing({ canHire: true });
     await advance(START_DELAY_MS);
     first.unmount();
@@ -623,19 +682,13 @@ describe("usePreparingStep — hiring the plan's team", () => {
   });
 
   it("asks how the first hire went once its time is up, and refreshes Home", async () => {
-    let calls = 0;
-    const hires = mockHire(() => {
-      calls += 1;
-      return calls === 1
-        ? new Promise<Response>(() => {})
-        : HttpResponse.json({
-            hired: [],
-            failed: [{ template_id: "tpl-max", name: "Max" }],
-          });
-    });
-    const first = renderPreparing({ canHire: true });
-    await advance(START_DELAY_MS);
-    first.unmount();
+    const hires = mockHire(() =>
+      HttpResponse.json({
+        hired: [],
+        failed: [{ template_id: "tpl-max", name: "Max" }],
+      }),
+    );
+    reloadMidHire();
 
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -646,11 +699,11 @@ describe("usePreparingStep — hiring the plan's team", () => {
         createElement(QueryClientProvider, { client }, children),
     });
     await advance(1_000);
-    expect(hires.count).toBe(1);
+    expect(hires.count).toBe(0);
 
     await advance(HIRE_MAX_WAIT_MS);
 
-    expect(hires.count).toBe(2);
+    expect(hires.count).toBe(1);
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Couldn't hire Max" }),
     );
@@ -680,16 +733,10 @@ describe("usePreparingStep — hiring the plan's team", () => {
   });
 
   it("stays quiet when asking after a refresh fails, and still refreshes Home", async () => {
-    let calls = 0;
-    const hires = mockHire(() => {
-      calls += 1;
-      return calls === 1
-        ? new Promise<Response>(() => {})
-        : HttpResponse.json({ detail: "busy" }, { status: 503 });
-    });
-    const first = renderPreparing({ canHire: true });
-    await advance(START_DELAY_MS);
-    first.unmount();
+    const hires = mockHire(() =>
+      HttpResponse.json({ detail: "busy" }, { status: 503 }),
+    );
+    reloadMidHire();
 
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -706,7 +753,7 @@ describe("usePreparingStep — hiring the plan's team", () => {
 
     await advance(HIRE_MAX_WAIT_MS);
 
-    expect(hires.count).toBeGreaterThan(2);
+    expect(hires.count).toBeGreaterThan(1);
     expect(toast).not.toHaveBeenCalled();
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: getGetBrainDumpSuggestedTasksQueryKey(),
@@ -717,23 +764,20 @@ describe("usePreparingStep — hiring the plan's team", () => {
     let calls = 0;
     const hires = mockHire(() => {
       calls += 1;
-      if (calls === 1) return new Promise<Response>(() => {});
-      return calls === 2
+      return calls === 1
         ? HttpResponse.json({ detail: "busy" }, { status: 503 })
         : HttpResponse.json({
             hired: [],
             failed: [{ template_id: "tpl-max", name: "Max" }],
           });
     });
-    const first = renderPreparing({ canHire: true });
-    await advance(START_DELAY_MS);
-    first.unmount();
+    reloadMidHire();
 
     renderPreparing({ canHire: true });
     await advance(HIRE_MAX_WAIT_MS);
     await advance(HIRE_RETRY_MS + 100);
 
-    expect(hires.count).toBe(3);
+    expect(hires.count).toBe(2);
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Couldn't hire Max" }),
     );
@@ -776,7 +820,7 @@ describe("usePreparingStep — hiring the plan's team", () => {
       calls += 1;
       return calls === 1
         ? HttpResponse.json({ detail: "busy" }, { status: 503 })
-        : new Promise<Response>(() => {});
+        : holdHire();
     });
     const first = renderPreparing({ canHire: true });
     await advance(START_DELAY_MS);

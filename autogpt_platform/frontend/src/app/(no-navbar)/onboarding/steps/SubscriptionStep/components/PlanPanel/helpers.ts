@@ -178,3 +178,17 @@ export function planAnsweredSince(answer: PlanAnswer, since: number) {
 export function pause(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
+
+// Aborts the request `send` makes when it has not answered within `ms`.
+export async function withDeadline<T>(
+  send: (signal: AbortSignal) => Promise<T>,
+  ms: number,
+) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await send(controller.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}

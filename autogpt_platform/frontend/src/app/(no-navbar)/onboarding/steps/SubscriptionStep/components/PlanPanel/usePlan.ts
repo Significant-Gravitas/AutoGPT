@@ -20,6 +20,7 @@ import {
   planAnsweredSince,
   readShownPlan,
   rememberShownPlan,
+  withDeadline,
 } from "./helpers";
 
 const SETTLE_ATTEMPTS = 3;
@@ -43,6 +44,7 @@ export function usePlan() {
   const [mountedAt] = useState(() => Date.now());
   const reported = useRef(false);
   const waitRanOut = useRef(false);
+  const left = useRef(false);
 
   const query = useGetBrainDumpPlan({
     query: {
@@ -78,7 +80,7 @@ export function usePlan() {
     // Until a skip lands, the server holds the take the user went Back from,
     // which a settle would store; the polls then carry on behind a fallback.
     const settled = (await skipLandsWithin(SKIP_WAIT_MS))
-      ? await settlePlan(() => Boolean(latest.current?.ready))
+      ? await settlePlan(() => left.current || Boolean(latest.current?.ready))
       : null;
     // The plan landed while the settle was on its way, and is already shown.
     if (latest.current?.ready) return;
@@ -90,6 +92,14 @@ export function usePlan() {
     const timer = setTimeout(() => void giveUp(), PLAN_MAX_WAIT_MS);
     return () => clearTimeout(timer);
   }, [isPending, giveUp]);
+
+  // Cleared on mount too: dev StrictMode unmounts and mounts once more.
+  useEffect(() => {
+    left.current = false;
+    return () => {
+      left.current = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (plan && !restored) rememberShownPlan(userID, plan);
@@ -113,11 +123,13 @@ export function usePlan() {
 
 // The trial hires what the settle stores, so a failed one is tried again,
 // and each is bounded: one that never answers must not keep the step waiting.
-async function settlePlan(isPlanShown: () => boolean) {
+// None goes out once the user has left the step: after Back and a new take,
+// it would settle that take.
+async function settlePlan(shouldStop: () => boolean) {
   let settled: PlanResponse | null = null;
   for (let attempt = 0; attempt < SETTLE_ATTEMPTS; attempt++) {
     if (attempt > 0) await pause(PLAN_POLL_MS);
-    if (isPlanShown()) return null;
+    if (shouldStop()) return null;
     settled = (await settleOnce()) ?? settled;
     if (settled?.ready) return settled;
   }
@@ -132,14 +144,13 @@ function skipLandsWithin(ms: number) {
 }
 
 async function settleOnce() {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SETTLE_TIMEOUT_MS);
   try {
-    const response = await settleBrainDumpPlan({ signal: controller.signal });
+    const response = await withDeadline(
+      (signal) => settleBrainDumpPlan({ signal }),
+      SETTLE_TIMEOUT_MS,
+    );
     return response.status === 200 ? response.data : null;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }

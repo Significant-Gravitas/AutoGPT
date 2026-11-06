@@ -1,7 +1,8 @@
 import { useGetBrainDumpRecommendedProviders } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { peekIntroPath } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useRef, useState } from "react";
-import { HIRE_MAX_WAIT_MS, usePlanHire } from "./usePlanHire";
+import { HIRE_MAX_WAIT_MS } from "./plan-hire-helpers";
+import { usePlanHire } from "./usePlanHire";
 
 // The second item is the plan's team being hired (HIRE_ITEM), named once
 // the plan is known.

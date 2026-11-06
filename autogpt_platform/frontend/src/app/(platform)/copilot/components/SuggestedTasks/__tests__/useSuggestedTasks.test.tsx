@@ -127,6 +127,7 @@ async function renderTasks(args: Partial<HookArgs> = {}) {
     recipientID: null,
     selectRecipient: vi.fn(),
     canSend: true,
+    isRecipientResolving: false,
     ...args,
   };
   const view = renderHook((props: HookArgs) => useSuggestedTasks(props), {
@@ -377,9 +378,75 @@ describe("useSuggestedTasks — who takes a task", () => {
 
     act(() => result.current.sendTask(shownTask(result.current.tasks, "t1")));
     expect(selectRecipient.mock.calls).toEqual([[MARIA.id]]);
-    // The switch lands, but the page is still resolving Maria.
+    // The switch lands, but the page still can't send to Maria.
     rerender({ ...props, recipientID: MARIA.id, canSend: false });
 
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(await screen.findByText(FAILURE_TITLE)).toBeDefined();
+    expect(selectRecipient.mock.calls).toEqual([[MARIA.id], [null]]);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(result.current.sendingId).toBeNull();
+  });
+
+  it("waits out a slow read of the team for the new recipient, then sends", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onSend = vi.fn<OnSend>(async () => "session-1");
+    const { result, rerender, props } = await renderTasks({ onSend });
+
+    act(() => result.current.sendTask(shownTask(result.current.tasks, "t1")));
+    rerender({
+      ...props,
+      recipientID: MARIA.id,
+      canSend: false,
+      isRecipientResolving: true,
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(screen.queryByText(FAILURE_TITLE)).toBeNull();
+    expect(result.current.sendingId).toBe("t1");
+    expect(onSend).not.toHaveBeenCalled();
+
+    rerender({ ...props, recipientID: MARIA.id, canSend: true });
+
+    await waitFor(() =>
+      expect(onSend).toHaveBeenCalledExactlyOnceWith(TASKS[1].prompt),
+    );
+    await waitFor(() =>
+      expect(writes).toEqual([
+        { task_ids: ["t1"], state: "sent", session_id: "session-1" },
+      ]),
+    );
+  });
+
+  it("gives up once the team has been read if the page still cannot send", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onSend = vi.fn<OnSend>(async () => "session-1");
+    const selectRecipient = vi.fn();
+    const { result, rerender, props } = await renderTasks({
+      onSend,
+      selectRecipient,
+    });
+
+    act(() => result.current.sendTask(shownTask(result.current.tasks, "t1")));
+    rerender({
+      ...props,
+      recipientID: MARIA.id,
+      canSend: false,
+      isRecipientResolving: true,
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(screen.queryByText(FAILURE_TITLE)).toBeNull();
+
+    rerender({ ...props, recipientID: MARIA.id, canSend: false });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3000);
     });

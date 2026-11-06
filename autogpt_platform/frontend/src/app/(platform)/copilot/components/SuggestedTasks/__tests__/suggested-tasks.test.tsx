@@ -8,6 +8,7 @@ import type { ExpertIdentity } from "@/app/api/__generated__/models/expertIdenti
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
 import type { SuggestedTasksUpdate } from "@/app/api/__generated__/models/suggestedTasksUpdate";
 import { Toaster } from "@/components/molecules/Toast/toaster";
+import { COARSE_POINTER_QUERY } from "@/lib/platform";
 import {
   TOUR_STARTING_POINT_ATTRIBUTE,
   TOUR_TARGET_ATTRIBUTE,
@@ -1297,6 +1298,41 @@ describe("Suggested first tasks — keyboard and screen readers", () => {
     expect(
       document.activeElement?.closest(`[${TOUR_TARGET_ATTRIBUTE}="composer"]`),
     ).not.toBeNull();
+  });
+
+  it("moves focus to a composer button, not its text box, when the last task is removed on a touch screen", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query: string) =>
+        ({
+          matches: query === COARSE_POINTER_QUERY,
+          media: query,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+        }) as unknown as MediaQueryList,
+    );
+    try {
+      stored[0] = { ...stored[0], state: "dismissed" };
+      stored[2] = { ...stored[2], state: "dismissed" };
+      renderHome();
+
+      await userEvent.click(
+        await screen.findByRole("button", { name: removeName(TASKS[1]) }),
+      );
+
+      // Focusing the text box would open the touch keyboard.
+      await waitFor(() =>
+        expect(document.activeElement?.tagName).toBe("BUTTON"),
+      );
+      expect(
+        document.activeElement?.closest(
+          `[${TOUR_TARGET_ATTRIBUTE}="composer"]`,
+        ),
+      ).not.toBeNull();
+    } finally {
+      matchMedia.mockRestore();
+    }
   });
 
   it("keeps the more tasks open through an Undo and through Hide and Show", async () => {
