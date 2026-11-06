@@ -2,7 +2,9 @@
 
 import ctypes
 import importlib.util
+import io
 import json
+import os
 import struct
 from pathlib import Path
 from types import SimpleNamespace
@@ -75,6 +77,70 @@ def test_caller_inventory_uses_explicit_checkout_file():
     inventory.pytest_collection_modifyitems([SimpleNamespace(path=path)])
     assert inventory.collected[gate.CALLER_TEST] == 1
     assert all(inventory.collected[name] == 0 for name in gate.TESTS)
+
+
+def test_caller_worker_configures_relocated_ffmpeg_before_collection(
+    tmp_path, monkeypatch
+):
+    from autogpt_desktop.layout import Bundle
+
+    bundle = Bundle((tmp_path / "runtime").resolve())
+    bundle.tools_bin.mkdir(parents=True)
+    bundle.ffmpeg.write_bytes(b"synthetic tool; not executed")
+    monkeypatch.setattr(gate.sys, "executable", str(bundle.root / "python/python.exe"))
+    monkeypatch.setattr(gate.sys, "stdin", io.StringIO("run\n"))
+    monkeypatch.setattr(gate, "require_native", lambda: None)
+    monkeypatch.setattr(gate.sys, "path", list(gate.sys.path))
+    monkeypatch.setenv("PATH", "original-tools")
+    monkeypatch.setenv("IMAGEIO_FFMPEG_EXE", "stale-host-ffmpeg")
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    monkeypatch.setenv("PYTHON_DOTENV_DISABLED", "1")
+
+    def collect(args, plugins):
+        assert os.environ["IMAGEIO_FFMPEG_EXE"] == str(bundle.ffmpeg)
+        assert os.environ["PATH"] == os.pathsep.join(
+            [str(bundle.tools_bin), "original-tools"]
+        )
+        assert "pytest_asyncio.plugin" in args
+        assert str(gate.BUILD / "backend_host_fs_windows_callers.py") in args
+        return 0
+
+    monkeypatch.setattr(pytest, "main", collect)
+    assert gate.worker(tmp_path, callers=True) == 0
+
+
+def test_caller_worker_rejects_missing_bundled_ffmpeg(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        gate.sys, "executable", str(tmp_path / "runtime/python/python.exe")
+    )
+    monkeypatch.setattr(gate.sys, "stdin", io.StringIO("run\n"))
+    monkeypatch.setattr(gate, "require_native", lambda: None)
+    monkeypatch.setattr(gate.sys, "path", list(gate.sys.path))
+    monkeypatch.setenv("IMAGEIO_FFMPEG_EXE", "host-tool-must-not-cover-missing-bundle")
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    monkeypatch.setenv("PYTHON_DOTENV_DISABLED", "1")
+    collect = Mock(return_value=0)
+    monkeypatch.setattr(pytest, "main", collect)
+    with pytest.raises(RuntimeError, match="bundled_ffmpeg_missing"):
+        gate.worker(tmp_path, callers=True)
+    collect.assert_not_called()
+
+
+def test_component_worker_does_not_require_or_replace_bundled_tools(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(gate.sys, "executable", str(tmp_path / "python.exe"))
+    monkeypatch.setattr(gate.sys, "stdin", io.StringIO("run\n"))
+    monkeypatch.setattr(gate, "require_native", lambda: None)
+    monkeypatch.setattr(gate.sys, "path", list(gate.sys.path))
+    monkeypatch.setenv("IMAGEIO_FFMPEG_EXE", "untouched")
+    monkeypatch.setenv("PATH", "original-tools")
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    monkeypatch.setenv("PYTHON_DOTENV_DISABLED", "1")
+    monkeypatch.setattr(pytest, "main", Mock(return_value=0))
+    assert gate.worker(tmp_path) == 0
+    assert os.environ["IMAGEIO_FFMPEG_EXE"] == "untouched"
+    assert os.environ["PATH"] == "original-tools"
 
 
 class FakeProcess:

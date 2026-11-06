@@ -374,6 +374,13 @@ def worker(root: Path, *, callers=False) -> int:
     require(sys.stdin.readline() == "run\n", "worker_not_adopted")
     require_native()
     os.environ.update(PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", PYTHON_DOTENV_DISABLED="1")
+    if callers:
+        from autogpt_desktop.layout import Bundle
+        from autogpt_desktop.settings import _bundled_tools
+
+        bundle = Bundle(Path(sys.executable).resolve().parent.parent)
+        require(bundle.ffmpeg.is_file(), "bundled_ffmpeg_missing")
+        os.environ.update(_bundled_tools(bundle))
     sys.path.insert(0, str(BACKEND))
     import pytest
 
