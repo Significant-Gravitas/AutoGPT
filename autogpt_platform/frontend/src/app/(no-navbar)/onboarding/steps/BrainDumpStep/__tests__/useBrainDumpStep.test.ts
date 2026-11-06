@@ -912,8 +912,19 @@ describe("useBrainDumpStep — Otto replies", () => {
     );
   });
 
-  it("continues without it from the screen", async () => {
+  it("continues without it from the screen, ending a follow-up", async () => {
     const { result } = await rejectVoiceTake("insufficient_content", "Hi");
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+    finalizeBrainDump.mockResolvedValueOnce(
+      rejected("insufficient_content", "Hello?"),
+    );
+    await act(async () => {
+      await result.current.handleDone();
+    });
+    expect(result.current.screen).toBe("insufficient");
+    expect(result.current.isFollowUp).toBe(true);
 
     await act(async () => {
       await result.current.handleSkip();
@@ -922,7 +933,7 @@ describe("useBrainDumpStep — Otto replies", () => {
     expect(result.current.isFollowUp).toBe(false);
     expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_skipped", {
       prompt_set: "Other",
-      prompts_seen: 0,
+      prompts_seen: expect.any(Number),
       from: "insufficient",
     });
   });

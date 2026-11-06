@@ -1181,9 +1181,9 @@ describe("onboarding brain dump — insufficient content", () => {
         `“${BRAIN_DUMP_PROMPT_SETS.Engineering.offYourPlateExample}”`,
       ),
     ).toBeDefined();
-    // Its own screen, not an error and not the transcription-failure one.
-    expect(screen.queryByText("We didn't catch enough of that.")).toBeNull();
+    // Its own screen, not the transcription-failure one.
     expect(screen.queryByText("That didn't go through.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
     expect(screen.getByRole("button", { name: "Talk" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Write" })).toBeDefined();
     expect(

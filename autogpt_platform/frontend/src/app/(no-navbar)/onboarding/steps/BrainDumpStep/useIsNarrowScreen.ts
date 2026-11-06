@@ -14,6 +14,6 @@ function isNarrowScreen() {
   return Boolean(window.matchMedia?.(NARROW_SCREEN_QUERY).matches);
 }
 
-export function useIsNarrowScreen(): boolean {
+export function useIsNarrowScreen() {
   return useSyncExternalStore(subscribe, isNarrowScreen, () => false);
 }
