@@ -57,6 +57,22 @@ describe("TextWidget", () => {
       expect(onChange).toHaveBeenLastCalledWith(123);
     });
 
+    it("keeps integers above 2^53 as the typed string", () => {
+      const onChange = vi.fn();
+      const props = makeProps({
+        schema: { type: "integer" },
+        onChange,
+      });
+
+      render(<TextWidget {...props} />);
+
+      fireEvent.change(screen.getByRole("spinbutton"), {
+        target: { value: "9007199254740993" },
+      });
+
+      expect(onChange).toHaveBeenLastCalledWith("9007199254740993");
+    });
+
     it("returns undefined for empty string", () => {
       const onChange = vi.fn();
       const props = makeProps({

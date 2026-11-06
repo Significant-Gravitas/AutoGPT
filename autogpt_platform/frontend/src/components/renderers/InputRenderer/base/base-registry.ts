@@ -15,7 +15,12 @@ import {
   OptionalDataControlsTemplate,
   WrapIfAdditionalTemplate,
 } from "./object";
-import { DescriptionField, FieldTemplate, TitleField } from "./standard";
+import {
+  DescriptionField,
+  FieldTemplate,
+  NumberField,
+  TitleField,
+} from "./standard";
 import { AddButton, CopyButton, RemoveButton } from "./standard/buttons";
 import {
   CheckboxWidget,
@@ -35,6 +40,7 @@ export function generateBaseFields(): RegistryFieldsType {
     AnyOfField,
     OneOfField,
     ArraySchemaField,
+    NumberField,
   };
 }
 

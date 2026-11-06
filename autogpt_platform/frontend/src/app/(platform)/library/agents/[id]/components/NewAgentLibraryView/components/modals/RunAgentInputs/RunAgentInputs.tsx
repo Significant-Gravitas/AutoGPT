@@ -26,6 +26,8 @@ import { useRunAgentInputs } from "./useRunAgentInputs";
 import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
+const INTEGER_LITERAL = /^[+-]?\d+$/;
+
 /**
  * A generic prop structure for the TypeBasedInput.
  *
@@ -86,7 +88,14 @@ export function RunAgentInputs({
               onChange(undefined);
             } else {
               const numValue = Number(v);
-              onChange(isNaN(numValue) ? undefined : numValue);
+              onChange(
+                isNaN(numValue)
+                  ? undefined
+                  : INTEGER_LITERAL.test(v.trim()) &&
+                      !Number.isSafeInteger(numValue)
+                    ? v.trim()
+                    : numValue,
+              );
             }
           }}
           {...props}
