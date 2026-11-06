@@ -404,6 +404,23 @@ model SubscriptionTrial {
   @@index([stripeCustomerId, id])
 }
 
+// A subscription invoice paid late, whose billing period is restarted from the
+// payment (SECRT-2873). Kept after Stripe's 24-hour idempotency window so a
+// repeated or delayed event never restarts the period twice.
+model SubscriptionBillingRestart {
+  stripeInvoiceId      String    @id
+  userId               String
+  stripeSubscriptionId String
+  paidAt               DateTime
+  periodStart          DateTime
+  stripeCreditNoteId   String?
+  restartedAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([userId])
+}
+
 // No account/trial foreign key: deleting an account must not reset intro eligibility.
 model SubscriptionTrialClaim {
   key       String   @id

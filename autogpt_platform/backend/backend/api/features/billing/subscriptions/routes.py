@@ -30,6 +30,7 @@ from backend.data.credit import (
     BillingCycle,
     PendingChangeUnknown,
     UserCredit,
+    alert_tier_reconciliation_discrepancy,
     cancel_stripe_subscription,
     create_subscription_checkout,
     get_active_subscription_period_end,
@@ -52,7 +53,16 @@ from backend.data.redis_client import get_redis_async
 from backend.data.stripe_authentication import requires_authentication
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_activation_events import recover_claimed_billing_event
+from backend.data.subscription_billing_restart import (
+    RestartOutcome,
+    restart_period_after_late_payment,
+)
 from backend.data.subscription_checkout import AnotherPlanLive
+from backend.data.subscription_payment_due import (
+    UNPAID_BILL_BLOCKS_CHECKOUT,
+    SubscriptionPaymentDue,
+    get_subscription_payment_due,
+)
 from backend.data.subscription_payment_failure import (
     PaymentFailureOutcome,
     handle_subscription_payment_failure,
@@ -164,6 +174,14 @@ class SubscriptionStatusResponse(BaseModel):
         description=(
             "Active workflow schedules that won't run until the user has a plan."
             " Counted only for NO_TIER; 0 for every other tier."
+        ),
+    )
+    payment_due: SubscriptionPaymentDue | None = Field(
+        default=None,
+        description=(
+            "The open bill of a renewal whose charge failed. Paying it at"
+            " ``payment_url`` restores the plan, renewing from the payment."
+            " Set only for NO_TIER."
         ),
     )
     pending_tier: Optional[Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]] = None
@@ -350,6 +368,7 @@ async def get_subscription_status(
         current_period_end=current_period_end,
         paused_workflow_schedules=paused_workflow_schedules,
     )
+    response.payment_due = await _renewal_payment_due(user_id, tier)
     if pending is not None:
         pending_tier_enum, pending_effective_at, pending_cycle = pending
         if pending_tier_enum in (
@@ -363,6 +382,21 @@ async def get_subscription_status(
             response.pending_tier_effective_at = pending_effective_at
             response.pending_billing_cycle = pending_cycle
     return response
+
+
+async def _renewal_payment_due(
+    user_id: str, tier: SubscriptionTier
+) -> SubscriptionPaymentDue | None:
+    if tier != SubscriptionTier.NO_TIER:
+        return None
+    try:
+        user = await get_user_by_id(user_id)
+        return await get_subscription_payment_due(user.stripe_customer_id)
+    except stripe.StripeError:
+        logger.warning(
+            f"Could not read the open renewal bill of user {user_id}", exc_info=True
+        )
+        return None
 
 
 async def _count_paused_workflow_schedules(user_id: str, tier: SubscriptionTier) -> int:
@@ -749,6 +783,9 @@ async def update_subscription_tier(
             detail="success_url and cancel_url must match the platform frontend origin",
         )
     try:
+        user = await get_user_by_id(user_id)
+        if await get_subscription_payment_due(user.stripe_customer_id, fresh=True):
+            raise HTTPException(status_code=409, detail=UNPAID_BILL_BLOCKS_CHECKOUT)
         url = await create_subscription_checkout(
             user_id=user_id,
             tier=tier,
@@ -812,6 +849,47 @@ async def _convert_trial(
             f" not {tier.value}"
         )
     return status
+
+
+async def _restart_period_if_paid_late(invoice_id: str | None) -> None:
+    """Last, once access and any trial conversion are recorded against the
+    paid invoice: the restart makes a newer invoice the subscription's latest."""
+    if not invoice_id:
+        return
+    outcome = await restart_period_after_late_payment(invoice_id)
+    if outcome == RestartOutcome.NEEDS_MANUAL_FIX and await _claim_restart_alert(
+        invoice_id
+    ):
+        await alert_tier_reconciliation_discrepancy(
+            f"Invoice {invoice_id} was paid late but its subscription's billing"
+            " period could not be restarted from the payment; see the logs"
+        )
+
+
+async def _claim_restart_alert(invoice_id: str) -> bool:
+    """Whether to send the manual-fix alert: once per invoice, though each
+    payment arrives as three events and Stripe redelivers them for days, and
+    each delivery runs the restart again. On Redis failure, alert anyway."""
+    try:
+        redis_client = await get_redis_async()
+        claimed = await redis_client.set(
+            f"billing_restart_alert:{invoice_id}", "1", nx=True, ex=7 * 86400
+        )
+        return bool(claimed)
+    except Exception:
+        logger.warning(
+            f"Could not dedupe the billing restart alert for invoice {invoice_id}",
+            exc_info=True,
+        )
+        return True
+
+
+def _paid_invoice_id(event_type: str, data_object: dict) -> str | None:
+    if event_type in ("invoice.paid", "invoice.payment_succeeded"):
+        return data_object.get("id")
+    if event_type == "invoice_payment.paid":
+        return data_object.get("invoice")
+    return None
 
 
 def _stripe_event_dedup_key(event_id: str) -> str:
@@ -966,6 +1044,9 @@ async def stripe_webhook(request: Request):
     # not every downstream handler is independently idempotent.
     if not await _claim_stripe_event(event_id):
         await recover_claimed_billing_event(event_type, data_object)
+        # A delivery that died part way through a restart holds the claim;
+        # the restart resumes from its own record.
+        await _restart_period_if_paid_late(_paid_invoice_id(event_type, data_object))
         logger.info(
             "stripe_webhook: event %s (%s) already processed; skipping",
             event_id,
@@ -1032,6 +1113,7 @@ async def stripe_webhook(request: Request):
             await reconcile_wallet_payment_on_paid_invoice(data_object)
             await handle_subscription_payment_success(data_object)
             await on_trial_invoice(data_object, paid=True)
+            await _restart_period_if_paid_late(data_object.get("id"))
 
         if event_type == "customer.subscription.trial_will_end":
             await sync_subscription_from_stripe(data_object)
@@ -1061,6 +1143,7 @@ async def stripe_webhook(request: Request):
                     await reconcile_wallet_payment_on_paid_invoice(invoice_payload)
                     await handle_subscription_payment_success(invoice_payload)
                     await on_trial_invoice(invoice_payload, paid=True)
+                    await _restart_period_if_paid_late(invoice_id)
                 else:
                     outcome = await handle_subscription_payment_failure(invoice_payload)
                     if outcome == PaymentFailureOutcome.NEEDS_ACTION:

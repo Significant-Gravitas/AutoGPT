@@ -3,14 +3,17 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { getGetV2GetCopilotUsageQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
-import { getGetSubscriptionStatusQueryKey } from "@/app/api/__generated__/endpoints/credits/credits";
+import {
+  getGetSubscriptionStatusQueryKey,
+  useGetSubscriptionStatus,
+} from "@/app/api/__generated__/endpoints/credits/credits";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 import { getUsageExperience } from "./helpers";
-import { formatPaymentDue } from "./payment";
+import { formatPaymentDue, formatRenewalPaymentDue } from "./payment";
 
 // The open invoice is paid in another tab, so keep checking until the
-// conversion lands; the trial query already pauses while this tab is hidden.
+// payment lands; both queries pause while this tab is hidden.
 const PAYMENT_CHECK_MS = 15_000;
 
 export function usePaymentRecovery(tier: string | null | undefined) {
@@ -19,8 +22,27 @@ export function usePaymentRecovery(tier: string | null | undefined) {
     refetchInterval: (current) =>
       isAwaitingPayment(current) ? PAYMENT_CHECK_MS : false,
   });
+  const { data: subscription } = useGetSubscriptionStatus({
+    query: {
+      select: (res) => (res.status === 200 ? res.data : null),
+      enabled: tier === "NO_TIER",
+      refetchInterval: (query) => {
+        const response = query.state.data;
+        return response?.status === 200 && response.data.payment_due
+          ? PAYMENT_CHECK_MS
+          : false;
+      },
+    },
+  });
   const experience = getUsageExperience(null, trial.data, tier);
-  const paymentFailed = experience.inactiveTrialStatus === "payment_failed";
+  const trialPaymentFailed =
+    experience.inactiveTrialStatus === "payment_failed";
+  // A running trial grants access, so a bill read beside it is stale.
+  const renewalBill =
+    !trialPaymentFailed && tier === "NO_TIER" && trial.data?.active !== true
+      ? (subscription?.payment_due ?? null)
+      : null;
+  const paymentFailed = trialPaymentFailed || renewalBill !== null;
   const wasFailed = useRef(paymentFailed);
   useEffect(() => {
     if (wasFailed.current && !paymentFailed) {
@@ -35,7 +57,9 @@ export function usePaymentRecovery(tier: string | null | undefined) {
   }, [paymentFailed, queryClient]);
   return {
     paymentFailed,
-    payment: paymentFailed ? formatPaymentDue(experience.payment) : null,
+    payment: trialPaymentFailed
+      ? formatPaymentDue(experience.payment)
+      : formatRenewalPaymentDue(renewalBill),
   };
 }
 

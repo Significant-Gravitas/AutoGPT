@@ -492,10 +492,10 @@ async def test_a_redis_outage_never_slows_or_blocks_billing(
             WAIT,
         )
         # Only invalidations, which never skip Redis, try it:
-        # invalidate_billing_lookups drops both caches at once, after the tier
-        # sync and again after saving the conversion, so the purchase pays at
-        # most two deadlines in a row.
-        assert outage.attempts - before == 4
+        # invalidate_billing_lookups drops its three caches at once, after the
+        # tier sync and again after saving the conversion, so the purchase
+        # pays at most two deadlines in a row.
+        assert outage.attempts - before == 6
         assert outage.serial_waits - waits_before == (2 if hangs else 0)
         assert time.monotonic() - started < backstop
         save_tier.assert_awaited_once()
