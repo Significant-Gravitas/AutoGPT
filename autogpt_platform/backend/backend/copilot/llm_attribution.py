@@ -52,7 +52,7 @@ settings = Settings()
 # are UUIDs, so the shorter cap never cuts one.
 _MAX_ID_CHARS = 128
 
-GenerationName = Literal["copilot-title", "copilot-sdk", "copilot-baseline"]
+GenerationName = Literal["copilot-title", "copilot-sdk"]
 
 # The running turn's trace, sent as the trace id of every call it makes. The
 # executor sets it for every turn, so a value never carries over; a call made

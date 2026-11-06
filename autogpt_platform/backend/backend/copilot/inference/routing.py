@@ -24,11 +24,17 @@ from .context import (
     RouteDecision,
 )
 
+NO_PLATFORM_API = (
+    "The platform route has no API for background calls: a Claude "
+    "subscription (CHAT_PLATFORM_ROUTE=subscription) or a disabled route. "
+    "Choose an API route (openrouter, direct_anthropic or local) to run them."
+)
+
 # The ChatConfig field each tier reads, named in the route's ``reason``.
 _TIER_FIELDS: dict[InferenceTier, str] = {
-    "standard": "fast_standard_model",
-    "advanced": "fast_advanced_model",
-    "aux": "title_model",
+    "standard": "standard_model",
+    "advanced": "advanced_model",
+    "aux": "aux_model",
 }
 
 
@@ -50,7 +56,7 @@ def resolve_route(
     before anything about its models.
     """
     transport = routing_kwargs_for_chat_transport()
-    _require_platform_key(transport)
+    provider = _require_platform_key(transport)
     if job.pinned_model:
         model, source = job.pinned_model, "the job's pinned model"
     else:
@@ -59,8 +65,8 @@ def resolve_route(
     return RouteDecision(
         engine="provider_sync",
         auth_provider="platform",
-        provider=transport.provider,
-        model=_dispatch_model(transport.provider, model),
+        provider=provider,
+        model=_dispatch_model(provider, model),
         payer="local" if transport.provider == "ollama" else "platform_allowance",
         execution_path="sync_baseline",
         cost_log_provider=transport.cost_log_provider,
@@ -100,21 +106,24 @@ def platform_credentials(route: RouteDecision) -> ProviderRoutingKwargs:
     return transport
 
 
-def _require_platform_key(transport: ProviderRoutingKwargs) -> None:
+def _require_platform_key(transport: ProviderRoutingKwargs) -> ProviderLiteral:
     """Refuse a transport the platform has no key for; a local backend takes
     none."""
+    if transport.provider is None:
+        raise InferenceError(NO_PLATFORM_API)
     if not transport.api_key and transport.provider != "ollama":
         raise InferenceError(_missing_api_key_message(transport.provider))
+    return transport.provider
 
 
 def _tier_model(config: ChatConfig, tier: InferenceTier) -> str:
     match tier:
         case "standard":
-            return config.fast_standard_model
+            return config.job_tier_model("standard")
         case "advanced":
-            return config.fast_advanced_model
+            return config.job_tier_model("advanced")
         case "aux":
-            return config.title_model
+            return config.aux_model or ""
 
 
 def _dispatch_model(provider: ProviderLiteral, model: str) -> str:
@@ -135,13 +144,7 @@ def _missing_api_key_message(provider: ProviderLiteral) -> str:
     why the OAuth token is not enough. The calling job reports this error.
     """
     if provider == "anthropic":
-        return (
-            "Anthropic API key not configured — set ANTHROPIC_API_KEY to "
-            "enable background inference under subscription / direct-Anthropic "
-            "mode. The Claude Code OAuth token cannot be used for direct "
-            "Messages API calls (see "
-            "docs/platform/copilot-local-llm.md#subscription-mode-caveat)."
-        )
+        return "The direct_anthropic route's key is not set: CHAT_ANTHROPIC_API_KEY."
     if provider == "open_router":
-        return "OpenRouter API key not configured — set OPEN_ROUTER_API_KEY."
+        return "The openrouter route's key is not set: CHAT_OPENROUTER_API_KEY."
     return f"No API key configured for background inference provider={provider!r}."

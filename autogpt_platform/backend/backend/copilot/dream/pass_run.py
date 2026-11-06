@@ -34,6 +34,7 @@ DreamSkipReason = Literal[
     "insufficient_credits",
     "no_input",
     "no_new_activity",
+    "no_platform_api",
 ]
 
 

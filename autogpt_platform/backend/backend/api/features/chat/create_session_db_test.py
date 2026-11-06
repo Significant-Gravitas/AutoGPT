@@ -20,6 +20,7 @@ from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import CreateSessionRequest, create_session
 from backend.api.features.orgs.db import get_user_default_team
 from backend.copilot import transports
+from backend.copilot.config import ChatConfig
 from backend.copilot.transports_test import _codex_credentials
 from backend.data.user import get_or_create_user, set_user_default_chat_route
 from backend.util import entitlements
@@ -32,6 +33,9 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 @pytest.fixture(autouse=True)
 def hosted(mocker: MockerFixture) -> None:
     """The hosted platform: ChatGPT takes a Max plan, read from the user's row."""
+    config = ChatConfig(platform_route="openrouter", openrouter_api_key="fixture")
+    mocker.patch.object(chat_routes, "ChatConfig", return_value=config)
+    mocker.patch.object(transports, "config", config)
     for settings in (chat_routes.settings, transports.settings, entitlements.settings):
         mocker.patch.object(settings.config, "behave_as", BehaveAs.CLOUD)
 

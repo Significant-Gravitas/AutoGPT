@@ -337,25 +337,43 @@ def _enter_call_message() -> ChatMessage:
     )
 
 
-def test_pending_switch_tells_model_to_end_turn(mocker):
-    """Baseline turn on an SDK-capable deployment: the enter call registers
-    an engine switch; further build tools must wait for the continuation."""
-    mocker.patch(
-        "backend.copilot.tools.helpers.chat_config",
-        mocker.MagicMock(transport=mocker.MagicMock(supports_sdk=True)),
-    )
-    session = _session_with_messages([_enter_call_message()])
-    result = require_guide_read(session, "create_agent")
-    assert isinstance(result, ErrorResponse)
-    assert "engine switch is pending" in result.message
-
-
-def test_enter_call_satisfies_gate_on_sdk_less_deployment(mocker):
-    """Without SDK support the enter tool served the guide inline — the
-    gate must pass instead of stranding the model."""
-    mocker.patch(
-        "backend.copilot.tools.helpers.chat_config",
-        mocker.MagicMock(transport=mocker.MagicMock(supports_sdk=False)),
-    )
+def test_enter_call_satisfies_gate_off_the_sdk():
+    """The local route's turns run without the SDK, where the enter tool
+    served the guide inline — the gate must pass instead of stranding
+    the model."""
     session = _session_with_messages([_enter_call_message()])
     assert require_guide_read(session, "create_agent") is None
+
+
+def test_enter_call_this_turn_satisfies_gate_off_the_sdk():
+    """Same turn: a build tool called after the inline guide passes."""
+    session = _session_with_messages([])
+    session.announce_inflight_tool_call("enter_agent_building_mode", {})
+    assert require_guide_read(session, "create_agent") is None
+
+
+def test_enter_call_on_sdk_turn_waits_for_the_guide():
+    """On an SDK turn the enter call restarts the attempt with the guide in
+    the system prompt once the step's tool calls finish, so a build tool
+    in the same step waits for it."""
+    session = _session_with_messages([])
+    session.sdk_turn_active = True
+    session.announce_inflight_tool_call("enter_agent_building_mode", {})
+    session.building_mode_requested = True
+    result = require_guide_read(session, "create_agent")
+    assert isinstance(result, ErrorResponse)
+    assert "<building_guide>" in result.message
+    assert "tool:create_agent" in result.message
+    assert "do not call enter_agent_building_mode again" in result.message
+
+
+def test_enter_call_without_the_guide_on_sdk_turn_points_at_inline_guide():
+    """The restart ran but could not load the guide: the gate points at the
+    inline guide, not back at the enter tool."""
+    session = _session_with_messages([_enter_call_message()])
+    session.sdk_turn_active = True
+    result = require_guide_read(session, "create_agent")
+    assert isinstance(result, ErrorResponse)
+    assert "tool:get_agent_building_guide" in result.message
+    assert "tool:create_agent" in result.message
+    assert "enter_agent_building_mode" not in result.message

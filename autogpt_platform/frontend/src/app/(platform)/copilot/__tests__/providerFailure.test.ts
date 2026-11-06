@@ -47,8 +47,8 @@ describe("parseProviderFailurePart", () => {
   it("ignores other data parts", () => {
     expect(
       parseProviderFailurePart({
-        type: "data-mode-changed",
-        data: { mode: "fast" },
+        type: "data-status",
+        data: { message: "working" },
       }),
     ).toBeNull();
   });

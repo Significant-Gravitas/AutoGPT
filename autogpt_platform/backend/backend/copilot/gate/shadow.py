@@ -137,7 +137,7 @@ def _record(
         {
             **event,
             **finding.model_dump(),
-            "llm_model": config.gate_content_model if judged else None,
+            "llm_model": config.aux_model if judged else None,
             "jev_model": config.gate_jev_model if finding.judge == "jev" else None,
             "rubric_version": RUBRIC_VERSION if judged else None,
             "latency_ms": latency_ms,

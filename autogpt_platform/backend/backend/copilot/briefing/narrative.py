@@ -99,11 +99,12 @@ async def compose_narrative(user_id: str, content: BriefingContent) -> str | Non
     ``None`` is a normal outcome, not an error: the caller persists the
     briefing either way and the renderer simply omits the lede.
     """
+    if not config.has_platform_api:
+        return None
     messages = [
         {"role": "system", "content": _system_prompt()},
         {"role": "user", "content": _facts_block(content)},
     ]
-    # Both attempts at one briefing share a correlation id.
     correlation_id = str(uuid.uuid4())
     loop = asyncio.get_running_loop()
     deadline = loop.time() + _TOTAL_BUDGET_SECONDS

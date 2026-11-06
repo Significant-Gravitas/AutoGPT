@@ -12,28 +12,34 @@ reading them one after another once setup has finished.
 import asyncio
 import logging
 from collections.abc import Coroutine
-from typing import Any
+from typing import Any, Generic, TypeVar, cast
+
+Skills = TypeVar("Skills")
+Expert = TypeVar("Expert")
 
 logger = logging.getLogger(__name__)
 
 
-class FirstTurnContext:
+class FirstTurnContext(Generic[Skills, Expert]):
     """The three reads, started; ``results`` awaits them, ``close`` stops
     whatever a turn that ends early never awaited."""
 
     def __init__(
         self,
         session_ctx: Coroutine[Any, Any, str] | None,
-        skills_ctx: Coroutine[Any, Any, str],
-        expert_ctx: Coroutine[Any, Any, str],
+        skills_ctx: Coroutine[Any, Any, Skills],
+        expert_ctx: Coroutine[Any, Any, Expert],
+        *,
+        skills_fallback: Skills = cast(Skills, ""),
     ) -> None:
+        self._skills_fallback = skills_fallback
         self._session_ctx = (
             asyncio.create_task(session_ctx) if session_ctx is not None else None
         )
         self._skills_ctx = asyncio.create_task(skills_ctx)
         self._expert_ctx = asyncio.create_task(expert_ctx)
 
-    async def results(self) -> tuple[str, str, str]:
+    async def results(self) -> tuple[str, Skills, Expert]:
         """Await the blocks in their original order. Skills failures leave an
         empty index; the session and expert builders handle their own fallbacks."""
         session_ctx = await self._session_ctx if self._session_ctx is not None else ""
@@ -43,7 +49,7 @@ class FirstTurnContext:
             logger.exception(
                 "[skills] failed to build skills_ctx — proceeding without it"
             )
-            skills_ctx = ""
+            skills_ctx = self._skills_fallback
         return session_ctx, skills_ctx, await self._expert_ctx
 
     def close(self) -> None:

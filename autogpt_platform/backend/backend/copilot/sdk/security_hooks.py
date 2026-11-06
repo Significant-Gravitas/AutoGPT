@@ -5,7 +5,7 @@ ensuring multi-user isolation and preventing unauthorized operations.
 """
 
 import logging
-from collections.abc import Callable, Collection, Iterable
+from collections.abc import Awaitable, Callable, Collection, Iterable
 from typing import Any, cast
 
 from claude_agent_sdk.types import HookEvent, HookMatcher
@@ -14,10 +14,13 @@ from backend.copilot.ai_spans import ToolSpanTimer
 from backend.copilot.context import get_execution_context, is_allowed_local_path
 from backend.copilot.pending_messages import drain_and_format_for_injection
 
+from .after_compaction import AFTER_COMPACTION_MAX_PARTS
+from .after_compaction_handout import AfterCompactionHandout
 from .governor import TurnGovernor
 from .tool_adapter import (
     BLOCKED_TOOLS,
     MCP_TOOL_PREFIX,
+    SDK_SUBAGENT_TOOLS,
     WORKSPACE_SCOPED_TOOLS,
     stash_pending_tool_output,
 )
@@ -25,9 +28,18 @@ from .tool_display import SDKToolDisplayBridge
 
 logger = logging.getLogger(__name__)
 
-# The SDK CLI uses "Task" in older versions and "Agent" in v2.x+.
-# Shared across all sessions — used by security hooks for sub-agent detection.
-_SUBAGENT_TOOLS: frozenset[str] = frozenset({"Task", "Agent"})
+# ``SessionStart`` is missing from the Python SDK's ``HookEvent`` literal, but
+# the CLI runs SDK callback hooks for it: with matcher ``compact`` it fires
+# right after the CLI compacts the conversation, and its
+# ``additionalContext`` is saved into the session (an ``attachment`` line that
+# ``strip_for_upload`` keeps), so later ``--resume`` turns still carry it.
+# Measured with a stub API against claude-agent-sdk 0.2.161 / CLI 2.1.284 and
+# 0.2.156 / 2.1.276: at a turn boundary and inside a tool loop, and across a
+# ``--resume`` in a new CLI process.
+_SESSION_START_EVENT = cast(HookEvent, "SessionStart")
+# The CLI waits on this hook before it carries on after the summary, so it is
+# bounded; a timeout only costs the re-sent context, never the turn.
+_AFTER_COMPACTION_HOOK_TIMEOUT_S = 30.0
 
 # Unicode ranges stripped by _sanitize():
 #   - BiDi overrides (U+202A-U+202E, U+2066-U+2069) can trick reviewers
@@ -87,7 +99,9 @@ def _landing_refusal(governor: TurnGovernor | None) -> str | None:
 def _validate_workspace_path(
     tool_name: str, tool_input: dict[str, Any], sdk_cwd: str | None
 ) -> dict[str, Any]:
-    """Restrict Glob/Grep to the workspace and session's SDK artifact paths."""
+    """Validate that a workspace-scoped tool (``Glob`` / ``Grep``) only
+    accesses the workspace (sdk_cwd) and the SDK's artifact paths.
+    """
     path = tool_input.get("file_path") or tool_input.get("path") or ""
     if not path:
         # Glob/Grep without a path default to cwd which is already sandboxed
@@ -183,6 +197,7 @@ def create_security_hooks(
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
     tool_display_bridge: SDKToolDisplayBridge | None = None,
+    context_after_compaction: Callable[[], Awaitable[list[str]]] | None = None,
     governor: TurnGovernor | None = None,
     builtin_tool_spans: bool = True,
     *,
@@ -195,6 +210,7 @@ def create_security_hooks(
     - PostToolUse: Log successful tool executions
     - PostToolUseFailure: Log and handle failed tool executions
     - PreCompact: Log context compaction events (SDK handles compaction automatically)
+    - SessionStart (``compact``): Re-send context the compaction summary dropped
     - SubagentStart: Log sub-agent lifecycle start
     - SubagentStop: Log sub-agent lifecycle end
 
@@ -204,6 +220,11 @@ def create_security_hooks(
         max_subtasks: Maximum concurrent sub-agent spawns allowed per session
         on_compact: Callback invoked when SDK starts compacting context.
             Receives the transcript_path from the hook input.
+        context_after_compaction: Returns what to hand the model right after
+            the CLI compacts the conversation — the first-turn blocks the
+            summary does not carry — as at most
+            ``AFTER_COMPACTION_MAX_PARTS`` parts, each within the CLI's
+            per-callback cap.  ``[]`` sends nothing.
         governor: The turn's spend and step governor. Once it is landing the
             turn, every tool call -- the main agent's and its sub-agents' --
             is refused with a reason that asks for a checkpoint.
@@ -222,7 +243,7 @@ def create_security_hooks(
 
         # Per-session tracking for sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.
-        # Sub-agents run in the foreground (build_sdk_env sets
+        # Sub-agents run in the foreground (route_launch_env sets
         # CLAUDE_CODE_DISABLE_BACKGROUND_TASKS), so the Agent/Task call lasts
         # as long as the sub-agent and PostToolUse releases the slot when it
         # finishes.
@@ -268,7 +289,7 @@ def create_security_hooks(
 
             # Rate-limit sub-agent spawns per session.
             # The SDK CLI renamed "Task" → "Agent" in v2.x; handle both.
-            if tool_name in _SUBAGENT_TOOLS:
+            if tool_name in SDK_SUBAGENT_TOOLS:
                 if len(subagent_tool_use_ids) >= max_subtasks:
                     logger.warning(
                         f"[SDK] Sub-agent limit reached ({max_subtasks}), "
@@ -287,8 +308,8 @@ def create_security_hooks(
             is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
             clean_name = tool_name.removeprefix(MCP_TOOL_PREFIX)
 
-            # Our MCP tools sandbox themselves, so they skip the path checks —
-            # but not the allowed set.
+            # Our MCP tools sandbox themselves, so they skip the path and
+            # pattern checks — but not the allowed set.
             if not is_copilot_tool:
                 result = _validate_tool_access(
                     clean_name, tool_input, sdk_cwd, allowed_tools=allowed
@@ -304,7 +325,7 @@ def create_security_hooks(
                 return cast(SyncHookJSONOutput, result)
 
             # Reserve the sub-agent slot only after all validations pass
-            if tool_name in _SUBAGENT_TOOLS and tool_use_id is not None:
+            if tool_name in SDK_SUBAGENT_TOOLS and tool_use_id is not None:
                 subagent_tool_use_ids.add(tool_use_id)
             if not is_copilot_tool and tool_use_id is not None:
                 builtin_spans.start(tool_use_id, tool_name)
@@ -328,7 +349,7 @@ def create_security_hooks(
 
         def _release_subagent_slot(tool_name: str, tool_use_id: str | None) -> None:
             """Release a sub-agent concurrency slot if one was reserved."""
-            if tool_name in _SUBAGENT_TOOLS and tool_use_id in subagent_tool_use_ids:
+            if tool_name in SDK_SUBAGENT_TOOLS and tool_use_id in subagent_tool_use_ids:
                 subagent_tool_use_ids.discard(tool_use_id)
                 logger.info(
                     "[SDK] Sub-agent slot released, active=%d/%d, user=%s",
@@ -466,6 +487,55 @@ def create_security_hooks(
                 on_compact(transcript_path)
             return cast(SyncHookJSONOutput, {})
 
+        async def _rebuild_after_compaction() -> list[str]:
+            if context_after_compaction is None:
+                return []
+            try:
+                return await context_after_compaction()
+            except Exception:
+                logger.exception(
+                    "[SDK] Could not rebuild the context to re-send after"
+                    " compaction (user=%s)",
+                    user_id,
+                )
+                return []
+
+        after_compaction = AfterCompactionHandout(_rebuild_after_compaction)
+
+        def session_start_hook(part: int):
+            async def hook(
+                input_data: HookInput,
+                tool_use_id: str | None,
+                context: HookContext,
+            ) -> SyncHookJSONOutput:
+                """Hand the model back part of what the compaction dropped.
+
+                The first-turn blocks (skills index, workflows, follow-ups,
+                working dir, user context) live in the session's first user
+                message, which compaction replaces with a summary.  The CLI
+                starts these callbacks together and puts their
+                ``additionalContext`` right after the summary in the order
+                they answer; ``after_compaction`` rebuilds the context once
+                per compaction and lets the parts answer in order.
+                """
+                _ = context, tool_use_id
+                if input_data.get("source") != "compact":
+                    return cast(SyncHookJSONOutput, {})
+                text = await after_compaction.part(part)
+                if not text:
+                    return cast(SyncHookJSONOutput, {})
+                return cast(
+                    SyncHookJSONOutput,
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "SessionStart",
+                            "additionalContext": text,
+                        }
+                    },
+                )
+
+            return hook
+
         async def subagent_start_hook(
             input_data: HookInput,
             tool_use_id: str | None,
@@ -504,7 +574,7 @@ def create_security_hooks(
             )
             return cast(SyncHookJSONOutput, {})
 
-        return {
+        hooks: dict[HookEvent, list[HookMatcher]] = {
             "PreToolUse": [HookMatcher(matcher="*", hooks=[pre_tool_use_hook])],
             "PostToolUse": [HookMatcher(matcher="*", hooks=[post_tool_use_hook])],
             "PostToolUseFailure": [
@@ -514,6 +584,20 @@ def create_security_hooks(
             "SubagentStart": [HookMatcher(matcher="*", hooks=[subagent_start_hook])],
             "SubagentStop": [HookMatcher(matcher="*", hooks=[subagent_stop_hook])],
         }
+        if context_after_compaction is not None:
+            # One callback per part: the CLI caps each callback's context on
+            # its own (``after_compaction.py``).
+            hooks[_SESSION_START_EVENT] = [
+                HookMatcher(
+                    matcher="compact",
+                    hooks=[
+                        session_start_hook(part)
+                        for part in range(AFTER_COMPACTION_MAX_PARTS)
+                    ],
+                    timeout=_AFTER_COMPACTION_HOOK_TIMEOUT_S,
+                )
+            ]
+        return hooks
     except ImportError:
         # Fallback for when SDK isn't available - return empty hooks
         logger.warning("claude-agent-sdk not available, security hooks disabled")

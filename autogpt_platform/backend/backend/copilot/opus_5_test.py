@@ -21,27 +21,26 @@ def isolated_catalog_and_config(monkeypatch):
     registry.load_catalog()
 
 
-@pytest.mark.parametrize("use_openrouter", [True, False])
-async def test_thinking_advanced_routes_opus_5_5_without_catalog_refusal(
-    use_openrouter, caplog, mocker
+@pytest.mark.parametrize(
+    "platform_route, expected",
+    [
+        ("openrouter", "anthropic/claude-opus-5-5"),
+        ("direct_anthropic", "claude-opus-5-5"),
+    ],
+)
+async def test_advanced_tier_routes_opus_5_5_without_catalog_refusal(
+    platform_route, expected, caplog, mocker
 ):
-    cfg = ChatConfig(
-        use_local=False,
-        use_openrouter=use_openrouter,
-        use_claude_code_subscription=False,
-        api_key="test-key",
-        aux_api_key="test-key",
-    )
+    cfg = ChatConfig(platform_route=platform_route)
     mocker.patch.object(router, "get_feature_flag_value", return_value=None)
     route = await router.resolve_model_route("thinking", "advanced", "user", config=cfg)
 
     assert route.model == "anthropic/claude-opus-5-5"
     assert route.source == "env"
     assert "refused" not in caplog.text
-    expected = "anthropic/claude-opus-5-5" if use_openrouter else "claude-opus-5-5"
     assert normalize_model_for_transport(route.model, cfg) == expected
-    assert cfg.fast_advanced_model == "anthropic/claude-opus-5-5"
-    assert cfg.thinking_standard_model == "anthropic/claude-sonnet-5-5"
+    assert cfg.tier_model("advanced") == "anthropic/claude-opus-5-5"
+    assert cfg.tier_model("standard") == "anthropic/claude-sonnet-5-5"
 
 
 def test_opus_5_has_public_metadata_and_provider_prices():

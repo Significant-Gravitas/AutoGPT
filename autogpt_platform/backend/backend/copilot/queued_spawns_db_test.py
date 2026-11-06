@@ -328,7 +328,6 @@ class _User:
                     tool_call_id=f"sub:{spawner.session_id}",
                     tool_name="run_sub_session",
                     spawn=SpawnRequest(may_spawn=True, shares_memory=True),
-                    allow_queue=False,
                 )
                 spawned.append((outcome, sub.session_id))
             return spawned

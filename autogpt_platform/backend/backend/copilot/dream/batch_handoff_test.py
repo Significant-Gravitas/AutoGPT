@@ -38,7 +38,7 @@ def gather(mocker) -> AsyncMock:
         orchestrator_mod, "resolve_dream_execution_path", return_value="anthropic_batch"
     )
     config = MagicMock()
-    config.direct_anthropic_api_key = "key"
+    config.batch_anthropic_api_key = "key"
     mocker.patch.object(orchestrator_mod, "ChatConfig", return_value=config)
     mocker.patch.object(
         orchestrator_mod, "is_feature_enabled", AsyncMock(return_value=False)

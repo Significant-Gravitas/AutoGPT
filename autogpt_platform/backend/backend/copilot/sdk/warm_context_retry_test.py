@@ -10,6 +10,7 @@ from backend.copilot.sdk import service
 from backend.copilot.transcript import cli_session_path
 
 from .retry_scenarios_test import TestFollowUpWarmContextCallSite as _Turn
+from .retry_scenarios_test import _write_test_cli_session
 
 _SVC = "backend.copilot.sdk.service"
 _OLD = "<temporal_context>forgotten before retry</temporal_context>"
@@ -84,7 +85,6 @@ async def test_retry_scrubs_the_file_before_the_next_cli_resumes(
                         new=AsyncMock(
                             return_value=service._RestoreResult(
                                 transcript_content=prior.decode(),
-                                transcript_covers_prefix=True,
                                 use_resume=True,
                                 resume_file="test-session-id",
                                 transcript_msg_count=2,
@@ -99,7 +99,12 @@ async def test_retry_scrubs_the_file_before_the_next_cli_resumes(
                 *(
                     [(f"{_SVC}._write_cli_session_to_disk", dict(return_value=False))]
                     if scrub_write_fails
-                    else []
+                    else [
+                        (
+                            f"{_SVC}._write_cli_session_to_disk",
+                            dict(side_effect=_write_test_cli_session),
+                        )
+                    ]
                 ),
             ],
         )

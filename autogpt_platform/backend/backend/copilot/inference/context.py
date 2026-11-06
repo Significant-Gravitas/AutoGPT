@@ -22,8 +22,7 @@ InferenceKind = Literal[
     "dream", "briefing_narrative", "consult", "eval_judge", "skill_learning"
 ]
 LatencyClass = Literal["deferred", "bounded"]
-# The deployment's fast standard or fast advanced model, or ``aux``: the cheap
-# auxiliary model (``title_model``) the one-shot jobs have always used.
+# The platform route's standard, advanced or auxiliary model tier.
 InferenceTier = Literal["standard", "advanced", "aux"]
 # ``provider_batch`` is the dream's Anthropic batch path, which the
 # orchestrator still picks itself; its rows are recorded through here too.

@@ -9,6 +9,7 @@ import concurrent.futures
 import functools
 import logging
 import os
+import subprocess
 import threading
 import time
 import uuid
@@ -27,17 +28,16 @@ from backend.copilot.background_execution import (
     finish_background_execution,
 )
 from backend.copilot.background_task import BACKGROUND_TIMEOUT_MESSAGE
-from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.budget_gate import record_refusal, refusal_for
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import set_current_turn_id, set_turn_unattended
+from backend.copilot.continuation import KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE
 from backend.copilot.credential_selection import set_turn_credential_pins
 from backend.copilot.credit_billing import (
     CreditBilledTurn,
     bill_to_credits,
     credit_billing,
 )
-from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_check import (
     checked_expert,
     forget_expert_checks,
@@ -67,11 +67,13 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
+from backend.copilot.sdk.launch_env import inherited_env
+from backend.copilot.session_kind import SessionKind
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
 from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
-from backend.copilot.turn_pause import TurnPause
+from backend.copilot.turn_pause import TurnPause, continues_tainted
 from backend.copilot.turn_tracing import (
     MODEL_OUTPUT_CHUNKS,
     TurnTrace,
@@ -207,7 +209,7 @@ def sync_fail_close_session(
 
 
 def taint_for_source_platform(
-    envelope: "TurnEnvelope | None", session: "ChatSession"
+    envelope: "TurnEnvelope | None", kind: SessionKind
 ) -> "TurnEnvelope | None":
     """Mark a turn tainted when its prompt came from a chat platform.
 
@@ -216,7 +218,37 @@ def taint_for_source_platform(
     only ever rises, and a turn with no envelope stays that way rather than
     having one invented for it.
     """
-    if envelope is None or not session.metadata.source_platform or envelope.tainted:
+    if envelope is None or not kind.from_chat_platform or envelope.tainted:
+        return envelope
+    return envelope.model_copy(update={"tainted": True})
+
+
+def picks_up_tainted_turn(entry: CoPilotExecutionEntry, session: "ChatSession") -> bool:
+    """Whether the turn is a Keep going, or a resume at the budget reset, of a
+    paused turn that ran tainted, as the chat's latest pause records.
+
+    The route and the scheduler put that taint on the envelope when they
+    dispatch one; it is read again here, so a turn queued by an API or a
+    scheduler from before they did still carries it. A send at the reset is
+    the user's own words, not a note, so it never matches.
+    """
+    return entry.message in (
+        KEEP_GOING_NOTE,
+        RESUMED_AT_RESET_NOTE,
+    ) and continues_tainted(session.messages)
+
+
+def taint_for_pickup(
+    envelope: "TurnEnvelope | None",
+    entry: CoPilotExecutionEntry,
+    session: "ChatSession",
+) -> "TurnEnvelope | None":
+    """*envelope*, tainted when the turn picks up a paused turn that ran
+    tainted (see :func:`picks_up_tainted_turn`). Taint only ever rises, and a
+    turn with no envelope keeps none."""
+    if envelope is None or envelope.tainted:
+        return envelope
+    if not picks_up_tainted_turn(entry, session):
         return envelope
     return envelope.model_copy(update={"tainted": True})
 
@@ -228,24 +260,6 @@ def taint_for_source_platform(
 
 # Thread-local storage for processor instances
 _tls = threading.local()
-
-
-async def _building_mode_forces_sdk(session_id: str) -> bool:
-    """True when the session's history shows it entered agent-building mode.
-
-    Building-mode sessions are pinned to the SDK engine (guide-in-prompt +
-    in-turn restart live there) regardless of the requested mode — derived
-    from message history, so it survives stale frontend mode pickers.
-    ``get_chat_session`` is Redis-cached: one cache hit, not a DB round-trip.
-    """
-    # Lazy imports: pulling these at module level drags the full tools/model
-    # chain into processor import, which reconfigures logging at import time
-    # and breaks caplog in tests.
-    from backend.copilot.model import get_chat_session
-    from backend.copilot.tools.helpers import session_entered_building_mode
-
-    session = await get_chat_session(session_id)
-    return session is not None and session_entered_building_mode(session)
 
 
 async def _normalize_private_expert_session_tenancy(
@@ -364,15 +378,20 @@ async def _refuse_turn(
     """End a turn the allowance can't cover without running it.
 
     The chat keeps the turn's message, as a turn that ran would, followed by
-    a not-started marker; the live stream carries the same pause part the
-    engines end a landed turn with. A scheduled turn's watch sees it too, so
-    its streak counts the run as not run rather than as one that tried
-    nothing.
+    a not-started marker with the taint the turn would have run with (the
+    resume at the budget reset picks it up); the live stream carries the same
+    pause part the engines end a landed turn with.
     """
     maybe_append_user_message(
-        session, entry.message or None, entry.is_user_message, entry.message_metadata
+        session, entry.message or None, entry.is_user_message, entry.row_metadata()
     )
-    await record_refusal(session, pause)
+    kind = SessionKind.for_turn(session, from_chat_platform=entry.from_chat_platform)
+    tainted = (
+        kind.from_chat_platform
+        or (entry.envelope is not None and entry.envelope.tainted)
+        or picks_up_tainted_turn(entry, session)
+    )
+    await record_refusal(session, pause, tainted=tainted)
     for chunk in (
         StreamStart(messageId=str(uuid.uuid4()), sessionId=entry.session_id),
         StreamTurnPaused(pause=pause.as_part()),
@@ -491,6 +510,46 @@ class CoPilotProcessor:
         # first turn, so work here delays that turn.
 
         logger.info(f"Worker {self.tid} started")
+
+    def _prewarm_cli(self, cli_path: str | None = None) -> None:
+        """Run the Claude Code CLI binary once to warm OS page caches.
+
+        Accepts an explicit ``cli_path`` so the caller can pass the value
+        already resolved at startup rather than constructing a full
+        ``ChatConfig()`` here (which reads env vars, runs validators, and
+        can raise — aborting the worker prewarm silently).  Falls back to
+        the ``CLAUDE_AGENT_CLI_PATH`` / ``CHAT_CLAUDE_AGENT_CLI_PATH`` env
+        vars (same precedence as ``ChatConfig``), and then to the SDK's
+        bundled binary when neither is set.
+        """
+        try:
+            if not cli_path:
+                from claude_agent_sdk._internal.transport.subprocess_cli import (
+                    SubprocessCLITransport,
+                )
+
+                # _find_bundled_cli is an instance method that never touches
+                # self (pure __file__-based lookup) — safe to call unbound.
+                finder = cast(
+                    Callable[[object], str | None],
+                    SubprocessCLITransport._find_bundled_cli,
+                )
+                cli_path = finder(None)
+            if cli_path:
+                result = subprocess.run(
+                    [cli_path, "-v"],
+                    capture_output=True,
+                    timeout=10,
+                    env=inherited_env(),
+                )
+                if result.returncode == 0:
+                    logger.info(f"CLI pre-warm done: {cli_path}")
+                else:
+                    logger.warning(
+                        f"CLI pre-warm failed (rc={result.returncode}): {cli_path}"
+                    )
+        except Exception as e:
+            logger.debug(f"CLI pre-warm skipped: {e}")
 
     def cleanup(self):
         """Clean up event-loop-bound resources before the loop is destroyed.
@@ -664,8 +723,9 @@ class CoPilotProcessor:
         """Async execution logic for a CoPilot turn, run as one Sentry
         ``copilot.turn`` transaction.
 
-        Calls the chat completion service (SDK or baseline) and publishes
-        results to the stream registry.
+        Calls the chat completion service (the SDK engine, or Microsoft 365
+        for a connected Microsoft account) and publishes results to the
+        stream registry.
 
         Args:
             entry: The turn payload
@@ -910,8 +970,8 @@ class CoPilotProcessor:
             else:
                 if entry.llm_credential_id is not None:
                     raise RuntimeError("codex_session_route_mismatch")
-                # Choose service based on PostHog flag.
-                # Claude Code subscription forces SDK mode (CLI subprocess auth).
+                # Every platform route runs on the SDK engine; the local
+                # route reaches its server through the shared model gateway.
                 if config.test_mode:
                     stream_fn = stream_chat_completion_dummy
                     engine = "dummy"
@@ -937,36 +997,9 @@ class CoPilotProcessor:
                         "Using SDK service on the scripted model: load-test account"
                     )
                 else:
-                    use_sdk = await resolve_use_sdk(
-                        entry.user_id,
-                        use_claude_code_subscription=(
-                            config.use_claude_code_subscription
-                        ),
-                        config_default=config.use_claude_agent_sdk,
-                        thinking_available=config.thinking_available,
-                    )
-                    # Building-mode sessions are pinned to the SDK engine
-                    # (guide-in-prompt + in-turn restart live there). Derived
-                    # from message history. get_chat_session is Redis-cached,
-                    # so this is one cache hit, not a DB round-trip.
-                    if not use_sdk and config.thinking_available:
-                        if await _building_mode_forces_sdk(entry.session_id):
-                            use_sdk = True
-                            log.info(
-                                "Forcing SDK engine: session is in agent building mode"
-                            )
-                    if credit_turn is not None and not use_sdk:
-                        # Only the SDK engine caps a turn's spend, and a turn
-                        # on the credit balance mustn't overdraw it.
-                        use_sdk = True
-                        log.info("Forcing SDK engine: turn is billed to credits")
-                    stream_fn = (
-                        sdk_service.stream_chat_completion_sdk
-                        if use_sdk
-                        else stream_chat_completion_baseline
-                    )
-                    engine = "sdk" if use_sdk else "baseline"
-                    log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
+                    stream_fn = sdk_service.stream_chat_completion_sdk
+                    engine = "sdk"
+                    log.info("Using SDK service")
 
             await cost_context_stack.enter_async_context(
                 trial_cost_context(entry.user_id, entry.cost_context)
@@ -977,8 +1010,18 @@ class CoPilotProcessor:
             # publishing so subscribers on the session Redis stream
             # (e.g. wait_for_session_result, SSE clients) receive the
             # same events as they are produced.
-            envelope = taint_for_source_platform(entry.envelope, session)
-            set_turn_unattended(session, scheduled=entry.unattended)
+            # The turn's kind, read once: the session's stored facts with the
+            # dispatch's own, for every reader from here on.
+            kind = SessionKind.for_turn(
+                session,
+                scheduled=entry.unattended,
+                voice=entry.voice,
+                from_chat_platform=entry.from_chat_platform,
+            )
+            envelope = taint_for_pickup(
+                taint_for_source_platform(entry.envelope, kind), entry, session
+            )
+            set_turn_unattended(kind.unattended)
             set_turn_impersonated(entry.impersonated)
             set_current_turn_id(entry.turn_id)
             # A subtask's calls join the trace of the reply it works for.
@@ -994,10 +1037,11 @@ class CoPilotProcessor:
                 user_id=entry.user_id,
                 context=entry.context,
                 file_ids=entry.file_ids,
-                message_metadata=entry.message_metadata,
+                message_metadata=entry.row_metadata(),
                 model=entry.model,
                 permissions=entry.permissions,
                 envelope=envelope,
+                session_kind=kind,
                 request_arrival_at=entry.request_arrival_at,
                 organization_id=(
                     session.organization_id

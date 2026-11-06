@@ -13,6 +13,7 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.context import is_unattended_turn, set_turn_unattended
+from backend.copilot.context_blocks import ContextBlock
 from backend.copilot.gate import (
     LINKED_CHAT_PLATFORMS,
     RUN_FILES_KEY,
@@ -41,6 +42,7 @@ from backend.copilot.model import (
 )
 from backend.copilot.prompting import approval_mode_supplement
 from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
+from backend.copilot.session_kind import SessionKind
 from backend.copilot.trial_cost_context import TrialCostContext
 
 _GATE = "backend.copilot.gate"
@@ -612,7 +614,11 @@ async def test_a_rule_set_on_a_bare_tool_card_decides_its_next_call(
 async def test_the_judge_reads_the_users_words_not_the_first_turn_prefix(
     gate_on, clean_session_state
 ):
-    from backend.copilot.service import inject_user_context
+    from backend.copilot.service import (
+        SKILLS_CONTEXT_TAG,
+        inject_context_blocks,
+        injected_context_blocks,
+    )
     from backend.data.understanding import BusinessUnderstanding
 
     words = "Hey Otto, I need a programmer to work on the AutoGPT platform"
@@ -626,14 +632,19 @@ async def test_the_judge_reads_the_users_words_not_the_first_turn_prefix(
         business_name="AutoGPT",
         pain_points=["Shipping features fast"],
     )
-    await inject_user_context(
-        understanding,
+    await inject_context_blocks(
+        await injected_context_blocks(
+            understanding,
+            env_ctx="/home/user",
+            session_ctx="session_id: session-1",
+            skills=ContextBlock(
+                tag=SKILLS_CONTEXT_TAG, head="- skill: " + "summarise a document. " * 60
+            ),
+            kickoff_turn=False,
+        ),
         words,
         "session-1",
         session.messages,
-        env_ctx="/home/user",
-        session_ctx="session_id: session-1",
-        skills_ctx="- skill: " + "summarise a document. " * 60,
     )
     assert session.messages[-1].content.startswith("<available_skills>")
 
@@ -686,7 +697,7 @@ async def test_an_unattended_turn_is_told_to_act_not_wait(gate_on, mode):
     """A scheduled or routine turn has no gate, and nobody can answer a chat
     question, so its approval section tells it to carry the work out."""
     session = _session(mode, origin="automation")
-    set_turn_unattended(session, scheduled=False)
+    set_turn_unattended(SessionKind.for_turn(session).unattended)
     supplement = approval_mode_supplement(
         await active_mode("u", session), interactive=not is_unattended_turn()
     )
@@ -718,8 +729,10 @@ def test_who_is_watching_follows_the_turn_not_only_the_origin(
 ):
     """A scheduled turn into the user's own chat is unattended, and a legacy
     chat with no origin is watched, so the approval section follows the turn."""
-    set_turn_unattended(_session(origin=origin), scheduled=scheduled)
+    set_turn_unattended(
+        SessionKind.for_turn(_session(origin=origin), scheduled=scheduled).unattended
+    )
     section = approval_mode_supplement(None, interactive=not is_unattended_turn())
-    set_turn_unattended(_session(), scheduled=False)
+    set_turn_unattended(False)
     assert ("## Unattended run" in section) is unattended
     assert ("## Approvals" in section) is not unattended

@@ -1,7 +1,7 @@
 """SSE events emitted when a dream pass produces operations.
 
 Lives in its own module so ``response_model.py`` stays under the 300-line
-target. The event mirrors the ``data-status`` / ``data-cursor`` shape
+target. The event mirrors the ``data-status`` shape
 already in use by the AI SDK v5 wire protocol — a ``data-<name>`` part
 with an opaque ``data`` payload — so the frontend just needs to recognise
 a new ``part.type`` rather than learn a whole new envelope.
@@ -88,7 +88,7 @@ async def emit_dream_operations_event(
     """Push a :class:`StreamDreamOperations` event onto the active stream.
 
     The orchestrator / daydream path passes its own ``emit`` closure (the
-    same one baseline / sdk use for ``StreamStatus``) so the event lands
+    same one the SDK engine uses for ``StreamStatus``) so the event lands
     on the user's open SSE subscription and gets persisted via the Redis
     snapshot pipeline alongside every other turn event.
     """

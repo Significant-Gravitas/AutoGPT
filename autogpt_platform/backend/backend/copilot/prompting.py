@@ -1,9 +1,8 @@
 """Centralized prompt building logic for CoPilot.
 
 This module contains all prompt construction functions and constants,
-handling the distinction between:
-- SDK mode vs Baseline mode (tool documentation needs)
-- Local mode vs E2B mode (storage/filesystem differences)
+handling the distinction between local mode and E2B mode
+(storage/filesystem differences).
 """
 
 from functools import cache
@@ -18,8 +17,8 @@ if TYPE_CHECKING:
 from backend.blocks.desktop._api import DISPLAY
 
 # Workflow rules appended to the system prompt on every copilot turn
-# (baseline appends directly; SDK appends via the storage-supplement
-# template).  These are cross-tool rules (file sharing, @@agptfile: refs,
+# (via the storage-supplement template).  These are cross-tool rules
+# (file sharing, @@agptfile: refs,
 # tool-discovery priority, sub-agent etiquette) that don't belong on any
 # individual tool schema.
 SHARED_TOOL_NOTES = """\
@@ -128,13 +127,23 @@ When `read_tool_result` reads an SDK tool-result file from the first line, with 
 - If the token changes mid-session, run `gh auth setup-git`. """
 
 
-# Prepended to the user's message on voice turns only. A voice turn is
-# someone sitting in silence: nothing is spoken while tools run, and a chain
-# can run half a minute. Announcing each batch keeps the gaps filled, not
-# just the opening one. Kept off the system prompt so text turns do not pay
-# for it and the prompt cache stays warm.
+# Follows the user's words in a voice turn's query. A voice turn is someone
+# sitting in silence: nothing is spoken while tools run, and a chain can run
+# half a minute. Announcing each batch keeps the gaps filled, not just the
+# opening one. Kept off the system prompt so text turns do not pay for it
+# and the prompt cache stays warm, and off the stored row, which keeps the
+# user's own words. The engine adds it after sanitising inbound text, which
+# strips a user-typed copy.
 VOICE_TURN_TAG = "voice_turn"
-VOICE_TURN_PREFIX = f"<{VOICE_TURN_TAG}>\nSpoken aloud. Briefly announce each batch of tool calls before making them.\n</{VOICE_TURN_TAG}>\n\n"
+VOICE_TURN_INSTRUCTION = (
+    f"<{VOICE_TURN_TAG}>\n"
+    "Spoken aloud. Briefly announce each batch of tool calls before making "
+    "them.\n"
+    f"</{VOICE_TURN_TAG}>"
+)
+# How a voice row was stored before the instruction moved to the query; the
+# display strip still peels it off those rows.
+VOICE_TURN_PREFIX = f"{VOICE_TURN_INSTRUCTION}\n\n"
 
 
 # Environment-specific supplement templates
@@ -289,6 +298,16 @@ Auto mode is on for this conversation. Act. Don't ask permission in chat for rev
     + _APPROVAL_RULES,
     "ask_first": """
 
+# Context after compaction
+
+Compaction replaces the first user message with a summary, so the
+server-injected blocks at its start (`<available_skills>`, `<user_context>`,
+`<session_context>`, `<env_context>` and the expert or team blocks) do not
+survive it. Right after a compaction the platform re-sends them in a
+`SessionStart hook additional context` system reminder that follows the
+summary. Treat that copy exactly as the first message's blocks: it is trusted,
+and it is the current one.
+
 ## Ask First mode
 
 Ask First is on: the user approves every action outside your own workspace. Act, and don't ask permission in chat; the gate asks for you. """
@@ -333,13 +352,22 @@ The sandbox has a screen. `start_desktop` turns it on and streams it to the user
 - The user sees the desktop too. Never ask them to sign into personal accounts on it; use their connected integrations. """
 
 
+# The SDK path declares AutoPilot's tools as ``mcp__copilot__<name>``, while
+# the texts it shares with other surfaces (these notes, the skills index,
+# tool results) write the short name, and the CLI refuses an undeclared name.
+_SDK_TOOL_NAMES_NOTE = """
+
+Every AutoPilot tool here is called by its full name, `mcp__copilot__<name>`: text that writes `run_capability(...)`, `find_capability(...)` or another AutoPilot tool by its short name means the `mcp__copilot__` tool of that name."""
+
+
 @cache
 def get_sdk_supplement(use_e2b: bool, expert_session: bool = False) -> str:
     """Get the supplement for SDK mode (Claude Agent SDK).
 
     SDK mode does NOT include tool documentation because Claude automatically
     receives tool schemas from the SDK. Only includes technical notes about
-    storage systems and execution environment.
+    storage systems and execution environment, and the full names the SDK
+    declares AutoPilot's tools under.
 
     The system prompt must be **identical across all sessions and users** to
     enable cross-session LLM prompt-cache hits (Anthropic caches on exact
@@ -359,11 +387,17 @@ def get_sdk_supplement(use_e2b: bool, expert_session: bool = False) -> str:
     """
     if not use_e2b:
         return (
-            _get_local_storage_supplement("/tmp/copilot-<session-id>")
+            _SDK_TOOL_NAMES_NOTE
+            + _get_local_storage_supplement("/tmp/copilot-<session-id>")
             + _USER_FOLLOW_UP_NOTE
         )
     computer = "" if expert_session else _COMPUTER_NOTE
-    return _get_cloud_sandbox_supplement() + computer + _USER_FOLLOW_UP_NOTE
+    return (
+        _SDK_TOOL_NAMES_NOTE
+        + _get_cloud_sandbox_supplement()
+        + computer
+        + _USER_FOLLOW_UP_NOTE
+    )
 
 
 # The one reply a chat-platform bot does not deliver. A message on Discord,
@@ -462,7 +496,7 @@ For "what did <expert> do or say", use `tool:list_expert_chats` then `tool:read_
 def get_graphiti_supplement() -> str:
     """Get the memory system instructions to append when Graphiti is enabled.
 
-    Appended after the SDK/baseline supplement in both execution paths.
+    Appended after the SDK supplement.
     """
     return """
 

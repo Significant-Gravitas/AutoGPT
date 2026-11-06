@@ -20,11 +20,13 @@ from backend.copilot.expert_context import (
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
 
+from . import service
 from .service import (
     _apply_building_mode_restart,
     _graphiti_ingest_allowed,
     _ready_for_building_mode_restart,
 )
+from .system_prompt import SystemPromptParts, assemble_system_prompt
 
 
 def _session(*, requested: bool = True, guide_loaded: bool = False) -> ChatSession:
@@ -32,6 +34,31 @@ def _session(*, requested: bool = True, guide_loaded: bool = False) -> ChatSessi
     session.building_mode_requested = requested
     session.guide_in_system_prompt = guide_loaded
     return session
+
+
+def _parts(**overrides) -> SystemPromptParts:
+    fields = {
+        "base": "BASE",
+        "use_e2b": False,
+        "expert_session": False,
+        "delegation": "<delegation>RULES</delegation>",
+        "oversight": "<oversight>RULES</oversight>",
+        "team_building": "",
+        "chat_platform": "",
+        "graphiti": "",
+        "auto_mode": "\n\n<auto_mode>RULES</auto_mode>",
+        "expert_identity": "",
+    }
+    return SystemPromptParts(**(fields | overrides))
+
+
+def _prompt_text(prompt: str | dict) -> str:
+    if isinstance(prompt, str):
+        return prompt
+    return prompt["prompt"] if prompt["type"] == "custom" else prompt["append"]
+
+
+_LAUNCHED_IDENTITY = "<expert_identity>LAUNCHED</expert_identity>"
 
 
 def _adapter(*, unresolved: bool) -> MagicMock:
@@ -88,11 +115,7 @@ class TestApplyBuildingModeRestart:
         suffix: str = "\n\n<building_guide>GUIDE</building_guide>",
         prior_emitted: bool = False,
         thinking_reprompted: bool = False,
-        delegation_supplement: str = "",
-        oversight_supplement: str = "",
-        team_building_supplement: str = "",
-        auto_mode_supplement: str = "",
-        use_e2b: bool = False,
+        prompt_parts: SystemPromptParts | None = None,
         expert_id: str | None = None,
         sdk_options: ClaudeAgentOptions | MagicMock | None = None,
     ):
@@ -105,6 +128,7 @@ class TestApplyBuildingModeRestart:
             "backend.copilot.sdk.service.build_builder_system_prompt_suffix",
             new=mocker.AsyncMock(return_value=suffix),
         )
+        prompt_parts = prompt_parts or _parts()
         session = _session(requested=True, guide_loaded=False)
         session.expert_id = expert_id
         state = self._state(
@@ -113,14 +137,8 @@ class TestApplyBuildingModeRestart:
         status = await _apply_building_mode_restart(
             session=session,
             state=state,
-            sdk_options=sdk_options or MagicMock(),
-            base_system_prompt="BASE",
-            delegation_supplement=delegation_supplement,
-            oversight_supplement=oversight_supplement,
-            team_building_supplement=team_building_supplement,
-            graphiti_supplement="",
-            auto_mode_supplement=auto_mode_supplement,
-            use_e2b=use_e2b,
+            sdk_options=sdk_options or ClaudeAgentOptions(),
+            prompt_parts=prompt_parts,
             session_id="sess-1",
             message_id="msg-1",
             log_prefix="[test]",
@@ -136,7 +154,6 @@ class TestApplyBuildingModeRestart:
         assert state.options.resume == "sess-1"
         assert state.options.session_id is None
         assert state.use_resume is True
-        assert state.resume_file == "sess-1"
         assert state.query_message == continuation
         assert "building mode" in status.message.lower()
 
@@ -150,56 +167,63 @@ class TestApplyBuildingModeRestart:
         assert state.warm_context_base is None
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("supplement", ["delegation", "oversight"])
-    async def test_supplements_survive_the_restart(self, mocker, supplement):
-        """The restart rebuilds the system prompt from its own parts.
+    async def test_restart_prompt_is_the_launch_prompt_plus_the_guide(self, mocker):
+        """The restart resumes the turn's session with the guide added and
+        nothing else changed: the delegation, oversight and auto-mode rules
+        stay, because their tools and gates stay active for the rest of the
+        turn."""
+        guide = "\n\n<building_guide>GUIDE</building_guide>"
+        parts = _parts()
+        launch = assemble_system_prompt(parts, building_suffix="")
 
-        Tool registration happened once, before it, so both tool groups stay
-        callable for the rest of the turn — dropping their disclosure rules
-        here is exactly the silent-delegation hole these supplements close.
-        """
-        marker = f"<{supplement}>RULES</{supplement}>"
-        _, state, _, _ = await self._run(mocker, **{f"{supplement}_supplement": marker})
+        _, state, _, _ = await self._run(mocker, suffix=guide, prompt_parts=parts)
 
-        prompt = state.options.system_prompt
-        text = prompt if isinstance(prompt, str) else prompt["append"]
-        assert marker in text
+        assert _prompt_text(state.options.system_prompt) == launch + guide
 
     @pytest.mark.asyncio
-    async def test_auto_mode_supplement_survives_the_restart(self, mocker):
-        """Same hole as the delegation case, one supplement over.
-
-        The gate stays active across a restart, so a prompt rebuilt without
-        its rules leaves the model asking in prose and retrying refusals for
-        the rest of the turn.
-        """
-        _, state, _, _ = await self._run(
-            mocker, auto_mode_supplement="\n\n<auto_mode>RULES</auto_mode>"
-        )
-
-        prompt = state.options.system_prompt
-        text = prompt if isinstance(prompt, str) else prompt["append"]
-        assert "<auto_mode>RULES</auto_mode>" in text
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "use_e2b, expert_id, expected",
-        [(True, None, 1), (True, "expert-1", 0), (False, None, 0)],
-    )
-    async def test_computer_note_only_for_a_plain_e2b_session(
-        self, mocker, use_e2b, expert_id, expected
-    ):
-        """An expert session's computer block rides its first user message, so
-        the system prompt must not add a second one."""
-        mocker.patch(
+    async def test_expert_identity_is_the_turns_own(self, mocker):
+        """The restart re-validates the expert but keeps the identity the
+        turn launched with, so its prompt is still the launch prompt plus the
+        guide."""
+        identity = mocker.patch(
             "backend.copilot.sdk.service.build_expert_identity_suffix",
-            new=mocker.AsyncMock(return_value=""),
+            new=mocker.AsyncMock(
+                return_value="<expert_identity>RENAMED</expert_identity>"
+            ),
         )
-        _, state, _, _ = await self._run(mocker, use_e2b=use_e2b, expert_id=expert_id)
+        parts = _parts(
+            expert_session=True,
+            expert_identity="<expert_identity>LAUNCHED</expert_identity>",
+        )
 
-        prompt = state.options.system_prompt
-        text = prompt if isinstance(prompt, str) else prompt["append"]
-        assert text.count("### Your computer") == expected
+        _, state, _, _ = await self._run(
+            mocker, suffix="<guide/>", prompt_parts=parts, expert_id="expert-1"
+        )
+
+        identity.assert_awaited_once()
+        assert _prompt_text(state.options.system_prompt) == assemble_system_prompt(
+            parts, building_suffix="<guide/>"
+        )
+
+    @pytest.mark.asyncio
+    async def test_restart_prompt_is_live(self, mocker):
+        """The restart resumes the session the interrupted run was writing,
+        so with the CLI's prompt snapshot on, the prompt that session recorded
+        on its first request, without the guide, would be sent instead."""
+        mocker.patch.object(service.config, "claude_agent_live_system_prompt", True)
+
+        _, state, _, _ = await self._run(mocker)
+
+        assert state.options.system_prompt["snapshot"] is False
+
+    @pytest.mark.asyncio
+    async def test_live_prompt_switch_off_restores_the_raw_prompt(self, mocker):
+        mocker.patch.object(service.config, "claude_agent_live_system_prompt", False)
+
+        _, state, _, _ = await self._run(mocker)
+
+        assert isinstance(state.options.system_prompt, str)
+        assert "<building_guide>GUIDE</building_guide>" in state.options.system_prompt
 
     @pytest.mark.asyncio
     async def test_empty_suffix_relaunches_without_the_confirmation(self, mocker):
@@ -245,20 +269,13 @@ class TestApplyBuildingModeRestart:
             session=session,
             state=state,
             sdk_options=MagicMock(),
-            base_system_prompt="BASE",
-            delegation_supplement="",
-            oversight_supplement="",
-            team_building_supplement="",
-            graphiti_supplement="",
-            auto_mode_supplement="",
-            use_e2b=False,
+            prompt_parts=_parts(),
             session_id="sess-1",
             message_id="msg-1",
             log_prefix="[test]",
         )
 
-        prompt = state.options.system_prompt
-        text = prompt if isinstance(prompt, str) else prompt["append"]
+        text = _prompt_text(state.options.system_prompt)
         assert "<building_guide>" in text
         assert "# Guide body" in text
         assert session.guide_in_system_prompt is True
@@ -316,13 +333,7 @@ class TestApplyBuildingModeRestart:
                 session=session,
                 state=state,
                 sdk_options=MagicMock(),
-                base_system_prompt="BASE",
-                delegation_supplement="",
-                oversight_supplement="",
-                team_building_supplement="",
-                graphiti_supplement="",
-                auto_mode_supplement="",
-                use_e2b=False,
+                prompt_parts=_parts(),
                 session_id="sess-1",
                 message_id="msg-1",
                 log_prefix="[test]",
@@ -359,14 +370,8 @@ class TestApplyBuildingModeRestart:
             await _apply_building_mode_restart(
                 session=session,
                 state=state,
-                sdk_options=MagicMock(),
-                base_system_prompt="BASE",
-                delegation_supplement="",
-                oversight_supplement="",
-                team_building_supplement="",
-                graphiti_supplement="",
-                auto_mode_supplement="",
-                use_e2b=False,
+                sdk_options=ClaudeAgentOptions(),
+                prompt_parts=_parts(expert_identity=_LAUNCHED_IDENTITY),
                 session_id="sess-1",
                 message_id="msg-1",
                 log_prefix="[test]",
@@ -397,7 +402,9 @@ class TestApplyBuildingModeRestart:
         )
 
     @pytest.mark.asyncio
-    async def test_a_relaunch_builds_its_identity_from_a_fresh_read(self, mocker):
+    async def test_a_relaunch_checks_its_expert_with_a_fresh_read(self, mocker):
+        """The relaunch reads the expert again although the turn checked it,
+        and keeps the identity the turn launched with in its prompt."""
         store = MagicMock()
         store.get_expert = mocker.AsyncMock(
             return_value=CHECK.expert.model_copy(update={"name": "Maria Lopez"})
@@ -408,9 +415,12 @@ class TestApplyBuildingModeRestart:
 
         state = await self._relaunch_in_a_turn_that_checked_its_expert(mocker, store)
 
-        prompt = state.options.system_prompt
-        text = prompt if isinstance(prompt, str) else prompt["append"]
-        assert "For this session you are Maria Lopez" in text
+        store.get_expert.assert_awaited_once_with(
+            "user-1", "expert-1", include_workflows=False
+        )
         store.resolve_private_expert_tenancy.assert_awaited_once_with(
             "user-1", "expert-1"
         )
+        text = _prompt_text(state.options.system_prompt)
+        assert _LAUNCHED_IDENTITY in text
+        assert "Maria Lopez" not in text

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
+import json
 import os
 import subprocess
 import sys
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ASSET_DIR = Path(__file__).resolve().parents[1]
@@ -17,6 +21,7 @@ DOCKERFILE_PATH = ASSET_DIR / "Dockerfile"
 SUPERVISOR_PATH = ASSET_DIR / "supervisor" / "supervisord.conf"
 NGINX_CONF_PATH = ASSET_DIR / "nginx" / "nginx.conf"
 BACKEND_SERVICE_PATH = ASSET_DIR.parent / "backend" / "backend" / "util" / "service.py"
+CHAT_ENV_PATH = ASSET_DIR.parent / "backend" / "backend" / "copilot" / "chat_env.py"
 
 
 class InternalServiceTopologyTest(unittest.TestCase):
@@ -190,6 +195,53 @@ class EnvironmentPolicyTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.splitlines()[-1], "2500000 -1")
 
+    def test_runs_connection_only_without_chat_settings(self) -> None:
+        self.assertEqual(self._backend_route(), "disabled")
+
+    def test_an_upgraded_install_keeps_its_chat_route(self) -> None:
+        # A released image's .env.example chat lines, with the operator's
+        # OpenRouter key filled in. The backend's migration keeps the route
+        # these settings ran, so the entrypoint must not pick one.
+        route = self._backend_route(
+            OPEN_ROUTER_API_KEY="synthetic-openrouter-key",
+            CHAT_USE_OPENROUTER="true",
+            CHAT_USE_LOCAL="false",
+            CHAT_BASE_URL="",
+            CHAT_API_KEY="",
+        )
+
+        self.assertEqual(route, "openrouter")
+
+    def test_preserves_the_operators_chat_route(self) -> None:
+        result = self._configure(
+            output="$CHAT_PLATFORM_ROUTE", CHAT_PLATFORM_ROUTE="openrouter"
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[-1], "openrouter")
+
+    def test_checks_the_chat_settings_before_any_service_starts(self) -> None:
+        text = ENTRYPOINT_PATH.read_text(encoding="utf-8")
+        start = text.index("main() {")
+        main = text[start : text.index("\n}\n", start)]
+
+        self.assertLess(
+            main.index("configure_environment"), main.index("check-chat-env")
+        )
+        self.assertLess(main.index("check-chat-env"), main.index('exec "$@"'))
+
+    def _backend_route(self, **settings: str) -> str:
+        """The chat route the backend runs on the environment this entrypoint
+        hands its services, read by the backend's own migration."""
+        result = self._configure(output=_ENVIRONMENT_JSON, **settings)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        environment = json.loads(result.stdout.splitlines()[-1])
+        chat_env = _backend_chat_env()
+        supplied, _ = chat_env.migrate_chat_settings(
+            chat_env.read_chat_settings(environment)
+        )
+        return {**environment, **supplied}["CHAT_PLATFORM_ROUTE"]
+
     def _configure(
         self, *, output: str = "$BEHAVE_AS", **overrides: str
     ) -> subprocess.CompletedProcess[str]:
@@ -233,6 +285,25 @@ class EnvironmentPolicyTest(unittest.TestCase):
 _COPILOT_SPEND_CAPS = (
     "$CHAT_DAILY_COST_LIMIT_MICRODOLLARS $CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS"
 )
+
+# The environment configure_environment leaves for the services, one JSON line.
+_ENVIRONMENT_JSON = (
+    '$("$AUTOGPT_PYTHON" -c "import json, os; print(json.dumps(dict(os.environ)))")'
+)
+
+
+def _backend_chat_env() -> types.ModuleType:
+    """The backend's chat_env, loaded from source as check-chat-env loads it.
+    This suite runs on a bare python3; python-dotenv is read only for dotenv
+    files, and these tests pass none."""
+    spec = importlib.util.spec_from_file_location("entrypoint_chat_env", CHAT_ENV_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    missing = importlib.util.find_spec("dotenv") is None
+    stand_in = {"dotenv": types.SimpleNamespace(dotenv_values=None)} if missing else {}
+    with mock.patch.dict(sys.modules, stand_in):
+        spec.loader.exec_module(module)
+    return module
 
 
 class PublicOriginConfigurationTest(unittest.TestCase):

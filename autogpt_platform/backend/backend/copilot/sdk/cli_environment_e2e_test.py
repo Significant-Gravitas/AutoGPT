@@ -69,8 +69,9 @@ async def test_a_copilot_turns_cli_holds_only_its_routes_credential(
 ):
     _require_cli()
     monkeypatch.setenv(_SECRET_NAME, _SECRET)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", _PLATFORM_KEY)
     async with _CliEnvironments() as provider:
-        turns = SdkTurns(tmp_path, monkeypatch, provider, _config())
+        turns = SdkTurns(tmp_path, monkeypatch, provider, _config(provider.url))
         session = _session()
         session.messages.append(ChatMessage(role="user", content="hello"))
         await turns(session, "hello", new_pod=False)
@@ -80,7 +81,8 @@ async def test_a_copilot_turns_cli_holds_only_its_routes_credential(
     for env in provider.seen:
         assert not _holds(env, _SECRET)
         # The direct-Anthropic route's own key, which it carries over.
-        assert env["ANTHROPIC_API_KEY"] == "sk-ant-billing-e2e"
+        assert env["ANTHROPIC_API_KEY"] == "sk-ant-cli-environment-e2e"
+        assert not _holds(env, _PLATFORM_KEY)
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -89,10 +91,11 @@ async def test_the_cli_a_copilot_turn_starts_ahead_of_its_query_holds_only_its_r
 ):
     _require_cli()
     monkeypatch.setenv(_SECRET_NAME, _SECRET)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", _PLATFORM_KEY)
     monkeypatch.setattr(sdk_service, "CLIPrelaunch", _HarnessPrelaunch)
     _HarnessPrelaunch.claimed = []
     async with _CliEnvironments() as provider:
-        turns = SdkTurns(tmp_path, monkeypatch, provider, _config())
+        turns = SdkTurns(tmp_path, monkeypatch, provider, _config(provider.url))
         session = _session()
         session.messages.append(ChatMessage(role="user", content="hello"))
         await turns(session, "hello", new_pod=False)
@@ -102,7 +105,8 @@ async def test_the_cli_a_copilot_turn_starts_ahead_of_its_query_holds_only_its_r
     assert provider.seen, "the CLI made no model request"
     for env in provider.seen:
         assert not _holds(env, _SECRET)
-        assert env["ANTHROPIC_API_KEY"] == "sk-ant-billing-e2e"
+        assert env["ANTHROPIC_API_KEY"] == "sk-ant-cli-environment-e2e"
+        assert not _holds(env, _PLATFORM_KEY)
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -206,19 +210,17 @@ def _require_cli() -> Path:
     pytest.skip("No Claude Code CLI binary: this platform's SDK wheel has none")
 
 
-def _config() -> ChatConfig:
+def _config(provider_url: str) -> ChatConfig:
     """A direct-Anthropic deployment, pinned so the deployment's own settings
     cannot change the path a turn takes, on the CLI ``_require_cli`` found."""
     cli = _resolve_cli_path()
     return sdk_service.config.model_copy(
         update={
-            "use_local": False,
-            "use_claude_code_subscription": False,
             "use_e2b_sandbox": False,
-            "use_openrouter": False,
-            "api_key": "sk-ant-cli-environment-e2e",
-            "claude_agent_model": SONNET,
-            "claude_agent_fallback_model": None,
+            "platform_route": "direct_anthropic",
+            "anthropic_base_url": f"{provider_url}/anthropic",
+            "anthropic_api_key": "sk-ant-cli-environment-e2e",
+            "standard_model": SONNET,
             "claude_agent_cli_path": str(cli) if cli else None,
         }
     )

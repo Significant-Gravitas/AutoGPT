@@ -10,7 +10,6 @@ from backend.copilot.permissions import (
     PLATFORM_TOOL_NAMES,
     CopilotPermissions,
     denied_tool_names,
-    validate_tool_names,
 )
 from backend.copilot.tools import TOOL_REGISTRY
 
@@ -54,13 +53,6 @@ def test_legacy_blacklist_denies_the_gate():
     allowed = perms.effective_allowed_tools(ALL_TOOL_NAMES)
     assert BLOCK_GATE not in allowed and "run_capability" in allowed
     assert denied_tool_names(perms) == frozenset({BLOCK_GATE})
-
-
-def test_legacy_names_validate():
-    assert (
-        validate_tool_names(["find_block", "get_mcp_guide", "continue_run_block"]) == []
-    )
-    assert validate_tool_names(["not_a_tool"]) == ["not_a_tool"]
 
 
 def test_denied_tool_names_empty_without_filter():

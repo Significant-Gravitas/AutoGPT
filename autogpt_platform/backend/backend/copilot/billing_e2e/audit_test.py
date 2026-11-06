@@ -87,12 +87,12 @@ def test_charging_a_turn_the_failure_ended_is_reported():
 
 
 _CREDIT_BILLED = next(s for s in SCENARIOS if s.id == "sdk-anthropic-credits")
-# 42,127 microdollars: 4 whole credits and part of a fifth.
+# 33,677 microdollars: 3 whole credits and part of a fourth.
 _TOOL_ROUND = [_call(1, request=1), _call(2, request=2)]
 
 
 def test_a_turn_debited_its_whole_credits_then_the_part_credit_passes():
-    ledger, usage = _credit_billed_turn(debits=[4, 1])
+    ledger, usage = _credit_billed_turn(debits=[3, 1])
 
     assert _audit_turn(_CREDIT_BILLED, 1, _TOOL_ROUND, ledger, usage) == []
 
@@ -100,18 +100,18 @@ def test_a_turn_debited_its_whole_credits_then_the_part_credit_passes():
 def test_a_turn_debited_its_whole_cost_at_once_is_reported():
     """What a charge that rounds up as the cost lands takes, and one that
     took the cost after the turn had ended."""
-    ledger, usage = _credit_billed_turn(debits=[5])
+    ledger, usage = _credit_billed_turn(debits=[4])
 
     findings = _audit_turn(_CREDIT_BILLED, 1, _TOOL_ROUND, ledger, usage)
 
     assert [finding.check for finding in findings] == ["charge"]
-    assert "owes [4, 1]" in findings[0].message
+    assert "owes [3, 1]" in findings[0].message
 
 
 def test_a_turn_billed_to_credits_charging_the_spend_windows_is_reported():
-    ledger, usage = _credit_billed_turn(debits=[4, 1])
+    ledger, usage = _credit_billed_turn(debits=[3, 1])
     ledger.spend.append(
-        SpendCharge(turn=1, user_id="user", microdollars=42_127, skip_daily=False)
+        SpendCharge(turn=1, user_id="user", microdollars=33_677, skip_daily=False)
     )
 
     findings = _audit_turn(_CREDIT_BILLED, 1, _TOOL_ROUND, ledger, usage)

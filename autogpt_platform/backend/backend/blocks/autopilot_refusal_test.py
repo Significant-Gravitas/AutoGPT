@@ -1,10 +1,9 @@
 """AutoPilotBlock must treat a refused turn as terminal.
 
-``allow_queue=False`` (autopilot.py) made ``refused`` reachable for this block:
-``run_copilot_turn_via_queue`` returns it when the target session already has a
-turn in flight, and when the tree ledger refuses the spawn. Without a branch for
-it the block falls through and renders an empty ``SessionResult`` as a
-successful turn, dropping the refusal.
+``run_copilot_turn_via_queue`` returns ``refused`` when the target session
+already has a turn in flight, and when the tree ledger refuses the spawn.
+Without a branch for it the block falls through and renders an empty
+``SessionResult`` as a successful turn, dropping the refusal.
 
 The executor can refuse a turn too, when the account is out of AutoPilot
 budget as it picks the turn up and its credit balance can't pay for the turn
@@ -12,6 +11,7 @@ either. The waiter reports that as ``refused`` with the not-started pause,
 which the block turns into an out-of-budget error that skips recovery.
 """
 
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -158,7 +158,8 @@ async def test_where_credits_cant_pay_the_refusal_doesnt_send_the_user_to_top_up
 
 @pytest.mark.asyncio
 async def test_a_recovery_run_is_still_the_blocks_turn():
-    """So it may run on the credit balance as the first run could."""
+    """So it may run on the credit balance as the first run could. It goes
+    through the one dispatch, which carries the block's name to the queue."""
     session = MagicMock()
     session.metadata.llm_auth_provider = "platform"
     session.metadata.llm_credential_id = None
@@ -166,12 +167,7 @@ async def test_a_recovery_run_is_still_the_blocks_turn():
     session.team_id = "team-1"
     enqueue = AsyncMock()
 
-    with (
-        patch(
-            "backend.copilot.model.get_chat_session", AsyncMock(return_value=session)
-        ),
-        patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueue),
-    ):
+    with _recovery_dispatch(session, enqueue):
         await _enqueue_for_recovery("sess-1", "user-1", "do the thing", dry_run=False)
 
     enqueue.assert_awaited_once()
@@ -179,6 +175,46 @@ async def test_a_recovery_run_is_still_the_blocks_turn():
     # Billed to the same wallet: the organization's in an organization's run.
     kwargs = enqueue.await_args.kwargs
     assert (kwargs["organization_id"], kwargs["team_id"]) == ("org-1", "team-1")
+
+
+@pytest.mark.asyncio
+async def test_a_recovery_never_starts_a_second_turn_on_a_busy_chat():
+    """A turn that still holds the chat keeps it. The recovery is refused,
+    as any other new turn would be, and is logged rather than raised."""
+    enqueue = AsyncMock()
+
+    with _recovery_dispatch(MagicMock(), enqueue, admitted=False):
+        await _enqueue_for_recovery("sess-1", "user-1", "do the thing", dry_run=False)
+
+    enqueue.assert_not_awaited()
+
+
+@contextmanager
+def _recovery_dispatch(session: MagicMock, enqueue: AsyncMock, *, admitted=True):
+    """The dispatch a recovery goes through, with the chat's slot admitted to
+    this turn or still held by another."""
+
+    @asynccontextmanager
+    async def slot(*_args, **_kwargs):
+        yield MagicMock(admitted=admitted)
+
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session", AsyncMock(return_value=session)
+        ),
+        patch("backend.copilot.executor.utils.check_inflight_cap", AsyncMock()),
+        patch("backend.copilot.executor.utils.acquire_turn_slot", slot),
+        patch("backend.copilot.executor.utils.admit_turn", AsyncMock()),
+        patch(
+            "backend.copilot.executor.utils.chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
+        ),
+        patch("backend.copilot.stream_registry.create_session", AsyncMock()),
+        patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueue),
+    ):
+        yield
 
 
 @pytest.mark.asyncio

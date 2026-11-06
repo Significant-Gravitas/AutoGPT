@@ -430,6 +430,19 @@ class TestMathGuidance:
         assert "`$…$` inline, `$$…$$` for display" in result
 
 
+@pytest.mark.parametrize("use_e2b", [False, True])
+def test_delegation_points_at_run_sub_session_not_cli_sub_agents(use_e2b: bool):
+    # The CLI's Agent/Task tool is not declared on the SDK path, so the
+    # prompt must not send the model looking for it.
+    result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+
+    assert "sub-agent" not in result.lower()
+    for name in ("`Agent`", "`Task`", "subagent_type"):
+        assert name not in result, name
+    assert "run_sub_session" in result
+    assert "self-contained subtasks" in result
+
+
 class TestConnectedAccountNotes:
     """What the model is told about connected accounts: that they are
     placeholders behind the swap proxy, and which a restricted run may use."""

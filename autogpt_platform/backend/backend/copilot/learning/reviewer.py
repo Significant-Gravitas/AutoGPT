@@ -41,7 +41,9 @@ __all__ = ["DreamLLMError", "review_evidence", "record_review_cost", "reviewer_m
 
 
 def reviewer_model(config: ChatConfig) -> str:
-    return config.learning_reviewer_model.strip() or config.fast_standard_model
+    """The pinned reviewer, else the route's standard tier, as the dream
+    pass's phases use."""
+    return config.learning_reviewer_model.strip() or config.job_tier_model("standard")
 
 
 async def review_evidence(

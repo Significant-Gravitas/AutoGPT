@@ -10,17 +10,21 @@ and local test stacks. Self-hosted and hosted deployments never start it.
 
 ## How the platform reaches it
 
-`docker-compose.journeys.yml` points the chat, memory LLM and memory embedder
-base URLs at `http://scripted_model:4010/api/v1`, so both engines and their
-side calls come here:
+`docker-compose.journeys.yml` puts the backend on the OpenRouter route
+(`CHAT_PLATFORM_ROUTE=openrouter`) with
+`CHAT_OPENROUTER_BASE_URL=http://scripted_model:4010/api`, so the chat and
+every side call come here:
 
 | Caller | Request | Dialect |
 | --- | --- | --- |
-| SDK engine (the Claude Agent SDK's CLI, the default) | `POST /api/v1/messages` | Anthropic Messages, streamed |
-| Baseline engine (`FORCE_FLAG_COPILOT_SDK=false`) | `POST /api/v1/chat/completions` | OpenAI chat completions, streamed |
+| SDK engine (the Claude Agent SDK's CLI) | `POST /api/v1/messages` | Anthropic Messages, streamed |
 | Side calls (session title) | `POST /api/v1/chat/completions` | non-streamed, no tools |
 | Memory extraction | `POST /api/v1/responses` | OpenAI Responses, structured output |
 | Memory search | `POST /api/v1/embeddings` | OpenAI Embeddings |
+
+The route decides the engine, and the OpenRouter route runs the SDK engine.
+The server still answers the baseline engine's streamed
+`POST /api/v1/chat/completions`, which only the local route runs.
 
 The CLI also sends `HEAD /api/api/hello` to check it can reach the server,
 and may ask `POST /api/v1/messages/count_tokens`; both are answered.

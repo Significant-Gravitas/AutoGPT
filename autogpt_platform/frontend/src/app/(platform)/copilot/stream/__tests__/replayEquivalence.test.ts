@@ -95,9 +95,9 @@ describe.each(names)("replay equivalence: %s", (name) => {
   });
 });
 
-it("the recorded turns cover both engines", () => {
+it("a tool turn is recorded", () => {
   expect(names).toEqual(
-    expect.arrayContaining(["baseline-tool-turn", "sdk-late-tool-result"]),
+    expect.arrayContaining(["sdk-tool-turn", "sdk-late-tool-result"]),
   );
 });
 

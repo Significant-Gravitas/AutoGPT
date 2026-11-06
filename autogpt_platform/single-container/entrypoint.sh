@@ -22,6 +22,10 @@ main() {
   chmod 0600 "${AUTOGPT_RUNTIME_ENV}"
   load_runtime_config
   configure_environment
+  # The chat settings, checked once before any service starts: a retired
+  # setting or a route missing what it needs is named here, values never.
+  "${AUTOGPT_PYTHON}" "${AUTOGPT_ASSET_DIR}/runtime_config.py" check-chat-env \
+    --backend-env "${AUTOGPT_BACKEND_DIR}/.env"
   write_valkey_configs
   initialize_postgres
   write_rabbitmq_config

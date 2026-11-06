@@ -354,8 +354,8 @@ def test_phase_models_take_the_native_anthropic_spelling():
     """The batch path submits to Anthropic directly even when chat runs on
     OpenRouter, so the OpenRouter spellings in config are converted."""
     config = ChatConfig.model_construct(
-        fast_standard_model="anthropic/claude-sonnet-5",
-        fast_advanced_model="anthropic/claude-opus-5.5",
+        standard_model="anthropic/claude-sonnet-5",
+        advanced_model="anthropic/claude-opus-5.5",
     )
     assert phase_models_for_config(config) == {
         "consolidate": "claude-sonnet-5",
@@ -370,12 +370,12 @@ def test_phase_models_take_the_native_anthropic_spelling():
         (
             "openai/gpt-4.1-mini",
             "anthropic/claude-opus-5.5",
-            "CHAT_FAST_STANDARD_MODEL='openai/gpt-4.1-mini'",
+            "CHAT_STANDARD_MODEL='openai/gpt-4.1-mini'",
         ),
         (
             "anthropic/claude-sonnet-5",
             "llama3.1:8b",
-            "CHAT_FAST_ADVANCED_MODEL='llama3.1:8b'",
+            "CHAT_ADVANCED_MODEL='llama3.1:8b'",
         ),
     ],
 )
@@ -386,7 +386,7 @@ def test_phase_models_refuse_a_non_anthropic_model(
     later, with the remedies this path has: it always submits to Anthropic
     directly, so enabling OpenRouter is not one of them."""
     config = ChatConfig.model_construct(
-        fast_standard_model=standard, fast_advanced_model=advanced
+        standard_model=standard, advanced_model=advanced
     )
     with pytest.raises(ValueError) as exc_info:
         phase_models_for_config(config)

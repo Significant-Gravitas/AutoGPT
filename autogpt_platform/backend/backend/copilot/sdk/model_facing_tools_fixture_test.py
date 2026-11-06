@@ -31,7 +31,7 @@ def model_facing_tool_names() -> list[str]:
     sdk_names = {
         name.removeprefix(MCP_TOOL_PREFIX)
         for use_e2b in (False, True)
-        for name in get_copilot_tool_names(use_e2b=use_e2b)
+        for name in get_copilot_tool_names(use_e2b=use_e2b, extra_builtins=["Agent"])
     }
     return sorted(set(TOOL_REGISTRY) | sdk_names)
 

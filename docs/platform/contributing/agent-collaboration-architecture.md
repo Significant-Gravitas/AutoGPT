@@ -250,9 +250,10 @@ Three rules keep that shape honest:
   progress and a handed-off expert reading its own task.
 - **A spawn never queues into a turn already in flight.** That path appends
   the message to the running turn's buffer, which would execute a child's
-  prompt inside another session's turn under *that* turn's permissions. All
-  three spawn tools pass `allow_queue=False`, as does `AutoPilotBlock`; a busy
-  target is refused and the caller is told to wait or start fresh.
+  prompt inside another session's turn under *that* turn's permissions. So
+  `run_copilot_turn_via_queue`, which all three spawn tools and
+  `AutoPilotBlock` use, refuses a busy target and tells the caller to wait or
+  start fresh.
 - **A question goes to the parent, not to the human.** Only a root has a
   human attached, so escalation travels the same edges as reports, in the
   same direction, and lands once.

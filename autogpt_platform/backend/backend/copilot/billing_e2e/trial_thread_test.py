@@ -18,7 +18,6 @@ from typing import Any
 import pytest
 
 from backend.copilot import rate_limit
-from backend.copilot.baseline import service as baseline_service
 from backend.copilot.gate import policy as gate_policy
 from backend.copilot.gate.policy import Effect
 from backend.copilot.model import ChatMessage, ChatSession, Usage
@@ -27,7 +26,6 @@ from backend.copilot.sdk.cli_openrouter_compat_test import _resolve_cli_path
 from backend.copilot.sdk.governor import TurnGovernor
 from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
-from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import NoResultsResponse, ToolResponseBase
 from backend.copilot.turn_budget import resolve_turn_budget
@@ -35,7 +33,7 @@ from backend.data.platform_cost import usd_to_microdollars
 from backend.data.subscription_trial import TrialState
 
 from .audit import audit_thread
-from .executor_turns import BaselineTurnsViaExecutor, Executor, SdkTurnsViaExecutor
+from .executor_turns import Executor, SdkTurnsViaExecutor
 from .ledger import PlatformLedger
 from .provider import FakeProvider
 from .scenarios import SCENARIOS, Scenario, expected_charge_usd
@@ -43,9 +41,7 @@ from .thread_billing_test import PROMPTS, _config, _session
 from .trial_account import TOTAL_LIMIT, TRIAL_ID, TrialAccount
 from .wire import TOOL_NAME
 
-TRIAL_SCENARIOS = [
-    s for s in SCENARIOS if s.id in ("sdk-openrouter", "baseline-openrouter")
-]
+TRIAL_SCENARIOS = [s for s in SCENARIOS if s.id in ("sdk-openrouter",)]
 CONVERTED_TURN = 2
 # Spent on earlier days, so the trial's total is what limits the turns.
 SPENT_BEFORE = 700_000
@@ -143,13 +139,6 @@ async def test_a_trial_users_turns_are_spent_from_the_trial(
                 # Sized by the plan the user now pays for, not the trial.
                 assert budget == pytest.approx(paid_budget_at_start[turn])
                 assert budget > remaining_at_start[0]
-    else:
-        # The baseline tells the model its budget once, on the chat's first
-        # turn (``should_inject_user_context``).
-        [first_turn] = run_turn.user_context.await_args_list
-        assert first_turn.kwargs["budget_ctx"].startswith(
-            f"Approximate remaining USD budget for this user: ${remaining_at_start[0]:.2f}."
-        )
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -314,7 +303,7 @@ def _turn_runner(
     monkeypatch: pytest.MonkeyPatch,
     *,
     tool: BaseTool | None = None,
-) -> tuple[SdkTurnsViaExecutor | BaselineTurnsViaExecutor, Executor]:
+) -> tuple[SdkTurnsViaExecutor | Executor]:
     """The scenario's engine behind the executor; with ``tool``, the model's
     tool calls run it through that engine's own tool path."""
     if tool is not None:
@@ -322,20 +311,6 @@ def _turn_runner(
         # platform edit it may hold or judge. This tool only reads, like the
         # copilot's own lookups, so the gate runs it in every mode.
         monkeypatch.setitem(gate_policy._EFFECTS, TOOL_NAME, Effect.READ)
-    if scenario.engine == "baseline":
-        config = _config(baseline_service.config, scenario, provider)
-        executor = Executor(monkeypatch, config, session, use_sdk=False)
-        runner = BaselineTurnsViaExecutor(
-            monkeypatch,
-            config,
-            executor,
-            base_url=f"{provider.url}{scenario.client_path}",
-            model=scenario.model,
-        )
-        if tool is not None:
-            monkeypatch.setitem(TOOL_REGISTRY, TOOL_NAME, tool)
-            runner.run_registry_tools(monkeypatch)
-        return runner, executor
     config = _config(sdk_service.config, scenario, provider)
     executor = Executor(monkeypatch, config, session, use_sdk=True)
     served_tools = None

@@ -164,9 +164,9 @@ SANITIZE_MAX_TOKENS = 16384
 # test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope —
 # bumping any value here fails that test until the budget is re-balanced.
 #
-# Recombine (fast_advanced_model, Opus-class — the slowest decoder) gets
+# Recombine (the advanced tier, Opus-class — the slowest decoder) gets
 # the largest share: 600s covers 16384 tokens at ~27 tok/s. Sanitize runs
-# on the faster fast_standard_model: 480s covers 16384 at ~34 tok/s.
+# on the standard tier model: 480s covers 16384 at ~34 tok/s.
 # Consolidate's 240s covers its whole 16384 at ~68 tok/s, and a thinking
 # answer the size measured above (5,912 tokens) at ~25 tok/s.
 CONSOLIDATE_TIMEOUT_SECONDS = 240
@@ -432,6 +432,10 @@ async def _execute_dream_pass_async(
     force: bool = False,
 ) -> DreamPassResult:
     config = config or ChatConfig()
+    if not config.has_platform_api:
+        return DreamPassRun.begin(user_id, "sync_baseline", force=force).skipped(
+            "no_platform_api"
+        )
     run = DreamPassRun.begin(user_id, await _route_for(user_id, config), force=force)
     try:
         scope = MemoryScope.build(user_id, expert_id)
@@ -475,9 +479,9 @@ async def _route_for(user_id: str, config: ChatConfig) -> ExecutionPath:
     """
     batch_enabled = await is_feature_enabled(Flag.DREAM_PASS_BATCH_ENABLED, user_id)
     return resolve_dream_execution_path(
-        has_anthropic_key=bool(config.direct_anthropic_api_key),
+        has_anthropic_key=bool(config.batch_anthropic_api_key),
         batch_processing_enabled=batch_enabled,
-        transport_name=config.transport.name,
+        transport_name=config.platform_route,
     )
 
 

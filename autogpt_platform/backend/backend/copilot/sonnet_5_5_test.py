@@ -30,24 +30,23 @@ def isolated_catalog_and_config(monkeypatch):
 
 
 @pytest.mark.parametrize("path", ["thinking", "fast"])
-@pytest.mark.parametrize("use_openrouter", [True, False])
+@pytest.mark.parametrize(
+    "platform_route, expected",
+    [
+        ("openrouter", "anthropic/claude-sonnet-5-5"),
+        ("direct_anthropic", "claude-sonnet-5-5"),
+    ],
+)
 async def test_standard_tier_routes_sonnet_5_5_without_catalog_refusal(
-    path, use_openrouter, caplog, mocker
+    path, platform_route, expected, caplog, mocker
 ):
-    cfg = ChatConfig(
-        use_local=False,
-        use_openrouter=use_openrouter,
-        use_claude_code_subscription=False,
-        api_key="test-key",
-        aux_api_key="test-key",
-    )
+    cfg = ChatConfig(platform_route=platform_route)
     mocker.patch.object(router, "get_feature_flag_value", return_value=None)
     route = await router.resolve_model_route(path, "standard", "user", config=cfg)
 
     assert route.model == "anthropic/claude-sonnet-5-5"
     assert route.source == "env"
     assert "refused" not in caplog.text
-    expected = "anthropic/claude-sonnet-5-5" if use_openrouter else "claude-sonnet-5-5"
     assert normalize_model_for_transport(route.model, cfg) == expected
 
 

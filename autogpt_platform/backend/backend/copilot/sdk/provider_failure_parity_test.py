@@ -8,7 +8,7 @@ engine-level codes that knows nothing about expired logins or spent quotas.
 
 from datetime import UTC, datetime
 
-from backend.copilot.markers import provider_failure_of
+from backend.copilot.markers import PROVIDER_FAILURE_KEY
 from backend.copilot.model import ChatSession
 from backend.copilot.provider_failure import ProviderFailureKind, classify
 from backend.copilot.sdk.service import (
@@ -25,8 +25,9 @@ class _Gateway:
 
 
 class _Ctx:
-    def __init__(self, gateway=None):
-        self.codex_gateway = gateway
+    def __init__(self, gateway=None, credential_id=None):
+        self.route_gateway = gateway
+        self.credential_id = credential_id
 
 
 def _session() -> ChatSession:
@@ -45,6 +46,11 @@ class TestReadingTheGateway:
     def test_a_named_codex_failure_is_found(self) -> None:
         failure = classify(CodexCredentialIntegrityError("bad"), auth_provider="codex")
         assert _provider_failure_for(_Ctx(_Gateway(failure))) is failure
+
+    def test_the_failure_names_the_connected_account(self) -> None:
+        failure = classify(CodexCredentialIntegrityError("bad"), auth_provider="codex")
+        named = _provider_failure_for(_Ctx(_Gateway(failure), "cred-7"))
+        assert named is not None and named.credential_id == "cred-7"
 
     def test_the_platform_route_has_no_gateway_to_ask(self) -> None:
         assert _provider_failure_for(_Ctx(None)) is None
@@ -66,8 +72,9 @@ class TestTheMarkerMatchesTheBaseline:
             failure=failure.as_part(),
         )
 
-        recorded = provider_failure_of(session.messages[-1])
-        assert recorded is not None
+        metadata = session.messages[-1].metadata
+        assert metadata is not None
+        recorded = metadata[PROVIDER_FAILURE_KEY]
         assert recorded["kind"] == ProviderFailureKind.INVALID_CREDENTIAL.value
         assert recorded["reconnectFixesIt"] is True
 
@@ -76,7 +83,7 @@ class TestTheMarkerMatchesTheBaseline:
         _append_error_marker(session, "the assistant stopped", retryable=True)
 
         assert session.messages, "an unclassified failure must still be recorded"
-        assert provider_failure_of(session.messages[-1]) is None
+        assert session.messages[-1].metadata is None
 
     def test_retry_finalizer_keeps_the_provider_envelope(self) -> None:
         session = _session()
@@ -90,7 +97,8 @@ class TestTheMarkerMatchesTheBaseline:
             failure=failure.as_part(),
         )
 
-        recorded = provider_failure_of(session.messages[-1])
-        assert recorded is not None
+        metadata = session.messages[-1].metadata
+        assert metadata is not None
+        recorded = metadata[PROVIDER_FAILURE_KEY]
         assert recorded["kind"] == ProviderFailureKind.INVALID_CREDENTIAL.value
         assert recorded["reconnectFixesIt"] is True

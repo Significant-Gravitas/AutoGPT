@@ -823,6 +823,8 @@ class TestPlaceholders:
             "PATH": "/usr/local/bin:/usr/bin:/bin",
             "HOME": str(tmp_path),
             "GIT_TERMINAL_PROMPT": "0",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": str(tmp_path / "isolated.gitconfig"),
             "GH_TOKEN": "hsurr:github:cred-1",
             **git_credential_helper_env(),
         }
@@ -843,6 +845,8 @@ class TestPlaceholders:
             "PATH": "/usr/local/bin:/usr/bin:/bin",
             "HOME": str(tmp_path),
             "GIT_TERMINAL_PROMPT": "0",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": str(tmp_path / "isolated.gitconfig"),
             "GH_TOKEN": "hsurr:github:cred-1",
             **git_credential_helper_env(),
         }

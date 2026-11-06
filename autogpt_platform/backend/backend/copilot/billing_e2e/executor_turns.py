@@ -22,8 +22,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 from backend.copilot import budget_gate
 from backend.copilot import model as chat_model
-from backend.copilot import rate_limit, stream_registry, tools
-from backend.copilot.baseline import service as baseline
+from backend.copilot import stream_registry
 from backend.copilot.config import ChatConfig
 from backend.copilot.executor import processor
 from backend.copilot.executor.processor import CoPilotProcessor
@@ -35,7 +34,6 @@ from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tree import root_envelope
 
-from .baseline_turns import BaselineTurns
 from .provider import FakeProvider
 from .sdk_turns import SdkTurns
 
@@ -62,12 +60,6 @@ class Executor:
             budget_gate, "upsert_chat_session", AsyncMock(return_value=session)
         )
         monkeypatch.setattr(processor, "ChatConfig", MagicMock(return_value=config))
-        monkeypatch.setattr(
-            processor, "resolve_use_sdk", AsyncMock(return_value=use_sdk)
-        )
-        monkeypatch.setattr(
-            processor, "_building_mode_forces_sdk", AsyncMock(return_value=False)
-        )
         monkeypatch.setattr(
             stream_registry, "stream_and_publish", lambda **kwargs: kwargs["stream"]
         )
@@ -150,33 +142,3 @@ class SdkTurnsViaExecutor(SdkTurns):
         options.allowed_tools = [f"{MCP_TOOL_PREFIX}{name}" for name in self._tools]
         options.disallowed_tools = []
         return ClaudeSDKClient(*args, options=options, **kwargs)
-
-
-class BaselineTurnsViaExecutor(BaselineTurns):
-    """Baseline turns from the executor, with the trial sizing the budget the
-    model is told about."""
-
-    def __init__(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        config: ChatConfig,
-        executor: Executor,
-        *,
-        base_url: str,
-        model: str,
-    ) -> None:
-        super().__init__(monkeypatch, config, base_url=base_url, model=model)
-        self._executor = executor
-        self.user_context = AsyncMock(return_value=None)
-        # BaselineTurns stubs it; the trial is what sizes this budget.
-        monkeypatch.setattr(baseline, "build_budget_ctx", rate_limit.build_budget_ctx)
-        monkeypatch.setattr(baseline, "inject_user_context", self.user_context)
-
-    async def __call__(
-        self, session: ChatSession, prompt: str, *, new_pod: bool = False
-    ) -> None:
-        await self._executor.run(session, prompt)
-
-    def run_registry_tools(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Run the model's tool calls through the copilot's tool registry."""
-        monkeypatch.setattr(baseline, "execute_tool", tools.execute_tool)

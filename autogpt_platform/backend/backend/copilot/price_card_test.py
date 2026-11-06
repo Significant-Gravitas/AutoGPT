@@ -13,7 +13,6 @@ import logging
 import pytest
 
 from backend.copilot import price_card
-from backend.copilot.config import ChatConfig
 from backend.copilot.dream.routing import batch_discount
 from backend.copilot.graphiti.config import GraphitiConfig
 from backend.copilot.price_card import PriceCard, compute_cost_usd, price_for
@@ -22,18 +21,19 @@ from backend.data.llm_registry.catalog_model import CatalogModel, CatalogModelCo
 
 # ChatConfig ``*_model`` fields are picked up by these role words in their
 # names, so a new tier or gate model is guarded without editing this file.
-_PRICED_ROLES = ("standard", "advanced", "title", "gate")
+_PRICED_ROLES = ("standard", "advanced", "aux")
 # Role-named fields that are not LLMs from the catalog.
 _NOT_CATALOG_LLMS = {"gate_jev_model": "Typesafe's Jev classifier"}
 
 
 def _copilot_default_models() -> dict[str, str]:
+    from backend.copilot.route_table import ROUTES
+
     return {
-        name: field.default
-        for name, field in ChatConfig.model_fields.items()
-        if name.endswith("_model")
-        and set(name.split("_")) & set(_PRICED_ROLES)
-        and name not in _NOT_CATALOG_LLMS
+        f"{name}.{role}_model": getattr(row, f"{role}_model")
+        for name, row in ROUTES.items()
+        for role in ("standard", "advanced", "aux")
+        if row.payer == "platform" and getattr(row, f"{role}_model") is not None
     }
 
 
@@ -56,7 +56,7 @@ def fresh_unpriced_reports(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_every_role_has_a_default_model():
     found = _copilot_default_models()
     for role in _PRICED_ROLES:
-        assert any(role in name.split("_") for name in found), role
+        assert any(role in name.split(".")[-1].split("_") for name in found), role
     assert all(isinstance(slug, str) and slug for slug in found.values()), found
 
 

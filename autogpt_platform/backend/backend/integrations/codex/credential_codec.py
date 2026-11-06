@@ -1,15 +1,12 @@
-from pathlib import Path
-
 from pydantic import SecretStr
 
-from backend.data.model import CREDENTIALS_ADAPTER, OAuth2Credentials
+from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.auth_bundle import (
     CodexAuthBundleError,
     CodexAuthBundleV1,
     decode_jwt_claims,
     decode_provider_state,
     encode_provider_state,
-    read_auth_bundle,
 )
 
 
@@ -52,15 +49,6 @@ def bundle_from_credentials(credentials: OAuth2Credentials) -> CodexAuthBundleV1
     return decode_provider_state(credentials.provider_state)
 
 
-def checkpoint_credentials(
-    credentials: OAuth2Credentials,
-    auth_path: Path,
-    runtime_version: str,
-) -> OAuth2Credentials:
-    bundle = read_auth_bundle(auth_path, runtime_version)
-    return checkpoint_credentials_from_bundle(credentials, bundle)
-
-
 def checkpoint_credentials_from_bundle(
     credentials: OAuth2Credentials,
     bundle: CodexAuthBundleV1,
@@ -70,10 +58,3 @@ def checkpoint_credentials_from_bundle(
     return OAuth2Credentials.model_validate(
         credentials.model_copy(update=payload).model_dump()
     )
-
-
-def restore_credentials(payload: dict[str, object]) -> OAuth2Credentials:
-    restored = CREDENTIALS_ADAPTER.validate_python(payload)
-    if not isinstance(restored, OAuth2Credentials):
-        raise CodexAuthBundleError("Codex credential type changed")
-    return restored

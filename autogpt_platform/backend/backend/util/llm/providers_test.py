@@ -947,7 +947,8 @@ class TestAIMLAPI:
 
 @pytest.fixture(autouse=True)
 def _reset_chat_base_url_cache():
-    """The ChatConfig.base_url read is memoized module-wide; clear it so
+    """The local route's URL read (``ChatConfig.local_openai_base_url``) is
+    memoized module-wide; clear it so
     each test's patched ``backend.copilot.config.ChatConfig`` is the one
     actually constructed."""
     from backend.util.llm.providers import _read_chat_config_base_url
@@ -1003,7 +1004,7 @@ def _patched_ollama_dispatch(
         patch("backend.util.llm.providers.validate_url_host", new=validate_mock),
         patch(
             "backend.copilot.config.ChatConfig",
-            return_value=SimpleNamespace(base_url=chat_base_url),
+            return_value=SimpleNamespace(local_openai_base_url=chat_base_url),
         ),
         patch("backend.util.llm.providers.ollama.AsyncClient", new=client_ctor),
     ):
@@ -1241,7 +1242,7 @@ class TestOllamaTrustedHosts:
     """SSRF trust list for the Ollama dispatch. The host can be
     user-supplied (block input field) so it must be validated — but the
     allowlist has to include BOTH operator-set endpoints: the block
-    layer's ``Config.ollama_host`` AND the copilot ``CHAT_BASE_URL``
+    layer's ``Config.ollama_host`` AND the copilot ``CHAT_LOCAL_BASE_URL``
     the dream pass routes through on the local transport. Trusting only
     the former made every local dream phase fail with a misleading
     'blocked IP' error whenever the two were configured differently."""
@@ -1308,14 +1309,14 @@ class TestOllamaTrustedHosts:
             settings.config.ollama_host
         ]
         assert any(
-            "Could not read ChatConfig.base_url" in rec.message
+            "Could not read the local route's URL" in rec.message
             for rec in caplog.records
         )
 
     @pytest.mark.asyncio
     async def test_lan_host_matching_chat_base_url_passes_real_ssrf_check(self):
         """Regression for the local dream-pass failure: operator points
-        ``CHAT_BASE_URL`` at a LAN GPU box (private IP) while the block
+        ``CHAT_LOCAL_BASE_URL`` at a LAN GPU box (private IP) while the block
         layer's ``ollama_host`` stays at its localhost default. The real
         ``validate_url_host`` must accept the host via the trust match
         instead of rejecting the private IP."""
@@ -1324,7 +1325,9 @@ class TestOllamaTrustedHosts:
         with (
             patch(
                 "backend.copilot.config.ChatConfig",
-                return_value=SimpleNamespace(base_url="http://192.168.1.50:11434/v1"),
+                return_value=SimpleNamespace(
+                    local_openai_base_url="http://192.168.1.50:11434/v1"
+                ),
             ),
             patch("backend.util.llm.providers.ollama.AsyncClient", new=client_ctor),
         ):
@@ -1344,13 +1347,13 @@ class TestOllamaTrustedHosts:
         """``ChatConfig`` is a pydantic-settings class with
         ``env_file=".env"`` — constructing it per dispatch meant dotenv
         disk I/O and repeated validator warnings on every Ollama call.
-        The base_url read must be memoized after the first success while
+        The URL read must be memoized after the first success while
         every dispatch still gets the cached value in its trust list."""
         captured: dict = {}
         validate_mock = AsyncMock(side_effect=_checked_as_trusted)
         chat_config_ctor = MagicMock(
             return_value=SimpleNamespace(
-                base_url="http://host.docker.internal:11434/v1"
+                local_openai_base_url="http://host.docker.internal:11434/v1"
             )
         )
         with (
@@ -1382,7 +1385,7 @@ class TestOllamaTrustedHosts:
         """A transient ``ChatConfig`` construction failure degrades that
         one dispatch to the block-layer trust list, but must not be
         memoized — once the config is fixed, the next dispatch picks up
-        ``CHAT_BASE_URL`` again."""
+        ``CHAT_LOCAL_BASE_URL`` again."""
         from backend.util.llm.providers import settings
 
         captured: dict = {}
@@ -1390,7 +1393,7 @@ class TestOllamaTrustedHosts:
         chat_config_ctor = MagicMock(
             side_effect=[
                 ValueError("transient misconfiguration"),
-                SimpleNamespace(base_url="http://192.168.1.50:11434/v1"),
+                SimpleNamespace(local_openai_base_url="http://192.168.1.50:11434/v1"),
             ]
         )
         with (
@@ -1425,7 +1428,7 @@ class TestOllamaTrustedHosts:
         with (
             patch(
                 "backend.copilot.config.ChatConfig",
-                return_value=SimpleNamespace(base_url=None),
+                return_value=SimpleNamespace(local_openai_base_url=None),
             ),
             patch("backend.util.llm.providers.ollama.AsyncClient", new=client_ctor),
         ):
@@ -1518,7 +1521,7 @@ async def _ollama_chat(
 ) -> ProviderResponse:
     with patch(
         "backend.copilot.config.ChatConfig",
-        return_value=SimpleNamespace(base_url=chat_base_url),
+        return_value=SimpleNamespace(local_openai_base_url=chat_base_url),
     ):
         result = await call_provider(
             provider="ollama",
@@ -3132,6 +3135,35 @@ class TestClaude5TemperatureRejection:
         assert not _is_temperature_deprecation_error(self._err(message))
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["openai", "groq", "ollama", "llama_api"])
+async def test_a_base_url_is_refused_where_the_provider_takes_none(provider):
+    with pytest.raises(ValueError, match="base_url is not supported"):
+        await call_provider(
+            provider=provider,
+            model="m",
+            api_key="k",
+            messages=[_msg("user", "hi")],
+            max_tokens=10,
+            base_url="https://proxy.example/v1",
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_batch_submission_takes_no_base_url():
+    with pytest.raises(ValueError, match="base_url is not supported"):
+        await call_provider(
+            provider="anthropic",
+            model="claude-sonnet-5-5",
+            api_key="k",
+            messages=[_msg("user", "hi")],
+            max_tokens=10,
+            execution_mode="batch",
+            custom_id="c",
+            base_url="https://proxy.example",
+        )
+
+
 class TestForcedToolChoiceCapability:
     """Opus 5.5 and the Fable 5.1 / Mythos 5.1 line answer a forced
     ``tool_choice`` with a 400. Exact slugs, not family prefixes: Sonnet 5
@@ -3209,3 +3241,49 @@ class TestForcedToolChoiceCapability:
         )
         assert not is_forced_tool_choice_rejection(server_error)
         assert not is_forced_tool_choice_rejection(RuntimeError(text))
+
+
+@pytest.mark.asyncio
+async def test_native_block_calls_use_the_deployment_anthropic_endpoint(monkeypatch):
+    seen = []
+
+    async def handle(request):
+        seen.append(
+            {
+                "key": request.headers.get("x-api-key"),
+                "authorization": request.headers.get("authorization"),
+                "body": await request.json(),
+            }
+        )
+        return web.json_response(
+            {
+                "id": "msg-block-route",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-sonnet-5-5",
+                "content": [{"type": "text", "text": "hello"}],
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 19, "output_tokens": 3},
+            }
+        )
+
+    app = web.Application()
+    app.router.add_post("/proxy/v1/messages", handle)
+    async with TestServer(app) as server:
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", str(server.make_url("/proxy")))
+        monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "FAKE-parent-login")
+        result = await call_provider(
+            provider="anthropic",
+            api_key="FAKE-block-key",
+            model="claude-sonnet-5-5",
+            messages=[{"role": "user", "content": "greet"}],
+            max_tokens=100,
+        )
+    assert isinstance(result, ProviderResponse)
+    assert result.content == "hello"
+    assert (result.prompt_tokens, result.completion_tokens) == (19, 3)
+    assert len(seen) == 1
+    assert seen[0]["key"] == "FAKE-block-key"
+    assert seen[0]["authorization"] is None
+    assert seen[0]["body"]["messages"] == [{"role": "user", "content": "greet"}]

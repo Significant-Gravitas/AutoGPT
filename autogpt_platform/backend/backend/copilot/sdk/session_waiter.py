@@ -28,6 +28,11 @@ from typing import TYPE_CHECKING, Any, Literal
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import ConcurrentTurnLimitError, SessionNotIdle
 from backend.copilot.config import CopilotLlmAuthProvider
+from backend.copilot.context import (
+    get_current_envelope,
+    get_current_permissions,
+    get_execution_context,
+)
 from backend.copilot.executor.utils import (
     TurnPublishUnconfirmed,
     queue_spawned_turn,
@@ -36,6 +41,7 @@ from backend.copilot.executor.utils import (
 from backend.copilot.llm_attribution import is_turn_impersonated
 from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
+    ChatSession,
     _get_session_lock,
     get_chat_session,
 )
@@ -61,9 +67,9 @@ SessionOutcome = Literal[
     "completed",
     "failed",
     "running",
-    "queued",
     # Waiting for one of the user's task slots; it starts on its own.
     "queued_for_slot",
+    "queued",
     "rejected_concurrent_turn_cap",
     "refused",
 ]
@@ -95,11 +101,9 @@ class SessionResult:
     """Aggregated result from a copilot session turn observed via
     ``stream_registry``.
 
-    When ``queued`` is set, :func:`run_copilot_turn_via_queue` detected an
-    in-flight turn on the target session and pushed the message onto the
-    pending buffer instead of starting a new turn.  ``response_text`` is
-    empty and the aggregate counts are zero in that case; the executor
-    running the earlier turn drains the buffer on its next round.
+    ``queued`` is set while the turn waits for one of the user's task
+    slots (``queued_for_slot``); ``response_text`` is empty and the
+    aggregate counts are zero in that case.
     """
 
     response_text: str = ""
@@ -212,22 +216,19 @@ async def run_copilot_turn_via_queue(
     tool_call_id: str,
     tool_name: str,
     spawn: SpawnRequest | None = None,
-    allow_queue: bool = True,
     message_metadata: dict[str, Any] | None = None,
+    allow_queue: bool = True,
 ) -> tuple[SessionOutcome, SessionResult]:
     """Dispatch a copilot turn onto the queue and wait for its result.
 
     ``spawn`` is what the caller asks for the child's tree envelope; the
-    chokepoint clamps it. ``allow_queue=False`` refuses the in-flight
-    fallback below: a spawn tool must never append its prompt into a turn
-    that is already running under a different envelope.
-
-    That is a deliberate behaviour change, not just a new flag. Continuing a
-    delegation to a teammate who is still working (``delegate_to_expert`` with
-    ``delegated_session_id``) used to queue into their running turn; it now
-    returns ``refused`` with a message telling the caller to wait or start
-    fresh. ``AutoPilotBlock`` passes no ``spawn``, but it does pass
-    ``allow_queue=False`` for the same reason, and raises on ``refused``.
+    chokepoint clamps it. With ``allow_queue=False``, a target session with
+    a turn in flight or a task waiting for a slot is ``refused``. The default
+    queue fallback also refuses a prompt whose authority cannot be preserved
+    by the target turn. Continuing a
+    delegation to a teammate who is still working (``delegate_to_expert``
+    with ``delegated_session_id``) gets a message telling the caller to wait
+    or start fresh, and ``AutoPilotBlock`` raises on ``refused``.
 
     The canonical invocation path shared by ``run_sub_session`` (the
     copilot tool), ``AutoPilotBlock`` (the graph block), and any future
@@ -243,24 +244,6 @@ async def run_copilot_turn_via_queue(
     ``tool_call_id`` / ``tool_name`` disambiguate who originated the
     turn in observability / replay (e.g. ``"sub:<parent>"`` for a
     sub-session, ``"autopilot_block"`` for an AutoPilotBlock run).
-
-    Self-defensive queue-fallback: if the target session already has a
-    turn running (another ``run_sub_session`` / Otto block / UI
-    chat), don't race it on the cluster lock.  Push the message onto the
-    pending buffer so the existing turn drains it at its next round
-    boundary, then:
-
-    * ``timeout == 0`` — return immediately with
-      ``("queued", SessionResult(queued=True, ...))``.  Callers that
-      explicitly opted into fire-and-forget (``run_sub_session`` with
-      ``wait_for_result=0``) use this to bail without waiting.
-    * ``timeout > 0`` — **subscribe to the in-flight turn's stream and
-      return its aggregated result** (exactly the same shape as a
-      normally-dispatched turn, but with ``result.queued=True`` so
-      callers can tell we rode on someone else's turn).  Semantically
-      identical to "I asked the session to do something and here is
-      what happened next"; no separate deferred-state branch needed in
-      ``run_sub_session`` / ``AutoPilotBlock``.
     """
     try:
         session = await get_chat_session(session_id, user_id)
@@ -308,6 +291,10 @@ async def run_copilot_turn_via_queue(
                     "cannot be handed to it right now. Wait for it to finish, "
                     "or start a fresh one."
                 )
+            )
+        if _queue_would_change_authority(user_id, session, permissions, spawn):
+            return "refused", SessionResult(
+                refusal="This task must start in its own turn to keep its permissions and scope. Wait for the current turn to finish."
             )
         logger.info(
             "[queue] session=%s has a turn in flight; queueing message "
@@ -383,6 +370,40 @@ async def run_copilot_turn_via_queue(
         session_id=session_id,
         user_id=user_id,
         timeout=timeout,
+    )
+
+
+def _queue_would_change_authority(
+    user_id: str,
+    target: ChatSession,
+    permissions: "CopilotPermissions | None",
+    spawn: SpawnRequest | None,
+) -> bool:
+    parent_permissions = get_current_permissions()
+    envelope = get_current_envelope()
+    if any(
+        p is not None and not p.is_empty() for p in (permissions, parent_permissions)
+    ):
+        return True
+    if spawn is not None or envelope is not None:
+        return True
+    source_user, source = get_execution_context()
+    if source_user is not None and source_user != user_id:
+        return True
+    if source is None:
+        return False
+    return (
+        source.expert_id,
+        source.organization_id,
+        source.team_id,
+        source.metadata.llm_auth_provider,
+        source.metadata.llm_credential_id,
+    ) != (
+        target.expert_id,
+        target.organization_id,
+        target.team_id,
+        target.metadata.llm_auth_provider,
+        target.metadata.llm_credential_id,
     )
 
 

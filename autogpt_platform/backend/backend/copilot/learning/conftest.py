@@ -6,12 +6,13 @@ not spin the full backend. The DB-backed integration tests for the learning
 data layer live under ``backend/data`` and use the real server fixture.
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
 
 from backend.copilot import usage_activation_fixtures
+from backend.copilot.config import ChatConfig
 
 # A learning run captures the account's usage attribution before its first
 # review (#15208's ``attributed_usage``); every test here gets the ready,
@@ -29,6 +30,13 @@ async def server():  # type: ignore[override]
 async def graph_cleanup():  # type: ignore[override]
     """No-op graph cleanup stub."""
     yield
+
+
+@pytest.fixture(autouse=True)
+def platform_api():
+    """Run on a route with a platform API; the dev default is ``disabled``."""
+    with patch.object(ChatConfig, "has_platform_api", True):
+        yield
 
 
 @pytest.fixture

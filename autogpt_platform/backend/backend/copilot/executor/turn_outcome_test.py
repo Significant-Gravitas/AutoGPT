@@ -14,14 +14,12 @@ from prometheus_client import REGISTRY, generate_latest
 
 from backend.copilot import ai_spans
 from backend.copilot.background_task import BACKGROUND_TIMEOUT_MESSAGE
-from backend.copilot.baseline.service import _build_natural_finish_empty_fallback_events
 from backend.copilot.executor.processor import CoPilotProcessor
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
-    StreamStart,
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
@@ -117,9 +115,7 @@ async def _run(
     with (
         patch(f"{_PROCESSOR}.ChatConfig", return_value=config),
         patch(f"{_PROCESSOR}.load_test_engine", AsyncMock(return_value=load_test)),
-        patch(f"{_PROCESSOR}.resolve_use_sdk", AsyncMock(return_value=engine == "sdk")),
         patch(f"{_PROCESSOR}.stream_chat_completion_dummy", side_effect=stream),
-        patch(f"{_PROCESSOR}.stream_chat_completion_baseline", side_effect=stream),
         patch(
             f"{_PROCESSOR}.sdk_service.stream_chat_completion_sdk", side_effect=stream
         ),
@@ -164,26 +160,6 @@ async def test_a_turn_whose_stream_ends_on_an_error_frame_failed_with_its_code(
     assert properties["$ai_is_error"] is True
     assert properties["$ai_error"] == "idle_timeout"
     assert counted() == {("failed", "dummy", "chat", ""): 1.0}
-
-
-@pytest.mark.asyncio
-async def test_a_baseline_turn_ending_on_its_empty_completion_notice_failed(
-    sentry_transactions: list[dict], posthog: MagicMock, counted: Counted
-) -> None:
-    """The baseline engine streams this notice where the SDK engine streams an
-    ``empty_completion`` error frame: either way the user got no reply."""
-    notice, _ = _build_natural_finish_empty_fallback_events("")
-
-    await _run([StreamStart(messageId="m-1"), *notice], engine="baseline")
-
-    [turn] = sentry_transactions
-    assert turn["tags"]["copilot.turn.outcome"] == "failed"
-    assert turn["contexts"]["trace"]["status"] == "internal_error"
-    assert "copilot.turn.ttft_ms" not in turn["contexts"]["trace"]["data"]
-    properties = posthog.call_args.args[2]
-    assert properties["$ai_is_error"] is True
-    assert properties["$ai_error"] == "empty_completion"
-    assert counted() == {("failed", "baseline", "chat", ""): 1.0}
 
 
 @pytest.mark.asyncio

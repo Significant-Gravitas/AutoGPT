@@ -231,16 +231,12 @@ def get_current_hidden_tools() -> frozenset[str]:
     return _current_hidden_tools.get()
 
 
-def set_turn_unattended(session: ChatSession, *, scheduled: bool) -> None:
-    """Record whether anyone is watching the running turn. The executor sets
-    it for every turn, so a value never carries over to the next one.
-
-    Nobody is when the scheduler fired the turn, even into the user's own
-    chat, or when an automation opened the chat: a scheduled run's own chat, a
-    sub-session, a graph's AutoPilot block. A legacy chat without an origin
-    counts as watched, the way ``pauses_irreversible_actions`` reads it.
+def set_turn_unattended(unattended: bool) -> None:
+    """Record whether anyone is watching the running turn
+    (``SessionKind.unattended``). The executor sets it for every turn, so a
+    value never carries over to the next one.
     """
-    _current_turn_unattended.set(scheduled or session.metadata.origin == "automation")
+    _current_turn_unattended.set(unattended)
 
 
 def is_unattended_turn() -> bool:
@@ -251,18 +247,6 @@ def is_unattended_turn() -> bool:
 def get_current_sandbox() -> "AsyncSandbox | None":
     """Return the E2B sandbox for the current session, or None if not active."""
     return _current_sandbox.get()
-
-
-@contextmanager
-def turn_sandbox(sandbox: "AsyncSandbox | None") -> Iterator[None]:
-    """Use *sandbox* as the turn's sandbox inside the block, for work that
-    writes to the model's working directory before the turn sets its
-    execution context."""
-    token = _current_sandbox.set(sandbox)
-    try:
-        yield
-    finally:
-        _current_sandbox.reset(token)
 
 
 def get_sdk_cwd() -> str:

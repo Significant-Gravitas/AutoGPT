@@ -670,3 +670,9 @@ def stub_dream_session_route(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "backend.copilot.dream.apply.resolve_default_chat_route", _platform_route
     )
+
+
+@pytest.fixture(autouse=True)
+def platform_api_for_dream_unit_tests(monkeypatch):
+    monkeypatch.setenv("CHAT_PLATFORM_ROUTE", "openrouter")
+    monkeypatch.setenv("CHAT_OPENROUTER_API_KEY", "dream-unit-test-key")

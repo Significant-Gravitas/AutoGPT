@@ -54,11 +54,13 @@ This keeps it deterministic, free, and CI-runnable without secrets.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import os
 import re
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -300,6 +302,37 @@ def _resolve_cli_path() -> Path | None:
         return None
 
 
+_CLI_USER_AGENT_RE = re.compile(r"claude-cli/(\d+\.\d+\.\d+)")
+_CLI_VERSION_RE = re.compile(r"\d+\.\d+\.\d+")
+
+
+@functools.lru_cache(maxsize=None)
+def cli_version(cli_path: Path) -> str:
+    """The version the binary at *cli_path* reports for itself."""
+    out = subprocess.run(
+        [str(cli_path), "--version"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    ).stdout
+    match = _CLI_VERSION_RE.search(out)
+    assert match is not None, f"no version in {out!r}"
+    return match.group(0)
+
+
+def assert_pinned_cli(user_agents: Iterable[str], cli_path: Path) -> None:
+    """The upstream saw the pinned binary and only it: every request's
+    ``claude-cli/X.Y.Z`` user agent is that binary's ``--version``. A run told
+    to use one CLI was once seen sending another's version."""
+    seen = {m.group(1) for ua in user_agents if (m := _CLI_USER_AGENT_RE.search(ua))}
+    expected = cli_version(cli_path)
+    assert seen == {expected}, (
+        f"the upstream saw CLI version(s) {sorted(seen)}; the pinned binary "
+        f"{cli_path.name} is {expected}"
+    )
+
+
 async def _run_cli_against_fake_server(
     cli_path: Path,
     fake_server_port: int,
@@ -448,7 +481,7 @@ def _assert_no_forbidden_patterns(
         "https://github.com/anthropics/claude-agent-sdk-python/issues/789. "
         "If you bumped `claude-agent-sdk`, verify the new bundled CLI works "
         "with `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` set (injected by "
-        "``build_sdk_env()`` in ``env.py``), then add the CLI version to "
+        "``route_launch_env()`` in ``env.py``), then add the CLI version to "
         "`_KNOWN_GOOD_BUNDLED_CLI_VERSIONS` in `sdk_compat_test.py`. "
         "Alternatively, pin a known-good binary via `claude_agent_cli_path` "
         "(env: `CLAUDE_AGENT_CLI_PATH` or `CHAT_CLAUDE_AGENT_CLI_PATH`)."
@@ -486,13 +519,17 @@ async def test_disable_experimental_betas_env_var_strips_headers():
     OpenRouter).
 
     This is the main regression guard: the env var is injected by
-    ``build_sdk_env()`` in ``env.py`` into every CLI subprocess so newer
-    SDK / CLI versions work with OpenRouter without any proxy.
+    ``route_launch_env()`` in ``env.py`` into every CLI subprocess so newer
+    SDK / CLI versions work with OpenRouter without any proxy. The
+    requests are also the pinned binary's own.
     """
     returncode, _stdout, stderr, captured = await _run_reproduction(
         extra_env={"CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"},
     )
     _assert_no_forbidden_patterns(captured, returncode, stderr)
+    cli_path = _resolve_cli_path()
+    assert cli_path is not None
+    assert_pinned_cli([r.headers.get("User-Agent", "") for r in captured], cli_path)
 
 
 def test_subprocess_module_available():

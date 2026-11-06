@@ -74,16 +74,11 @@ async def test_without_a_key_nothing_is_sent(mocker, caplog):
     assert "No Anthropic key" in caplog.text
 
 
-def test_the_key_is_the_copilot_configs_before_the_shared_one(mocker):
+def test_the_batch_key_comes_from_the_route_policy(mocker):
     config = mocker.patch.object(provider_batch, "ChatConfig")
-    config.return_value.direct_anthropic_api_key = "sk-config"
-    settings = mocker.patch.object(provider_batch, "Settings")
-    settings.return_value.secrets.anthropic_api_key = "sk-shared"
-
+    config.return_value.batch_anthropic_api_key = "sk-config"
     assert anthropic_api_key() == "sk-config"
-    config.return_value.direct_anthropic_api_key = None
-    assert anthropic_api_key() == "sk-shared"
-    settings.return_value.secrets.anthropic_api_key = ""
+    config.return_value.batch_anthropic_api_key = None
     assert anthropic_api_key() is None
 
 

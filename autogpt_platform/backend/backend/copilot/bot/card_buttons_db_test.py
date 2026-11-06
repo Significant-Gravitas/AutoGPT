@@ -124,12 +124,6 @@ class _Executor:
         self.live = live
         self.running: tuple[str, str] | None = None
 
-    async def dispatch_bot_turn(self, slot: Any, **turn: Any) -> None:
-        await stream_registry.create_session(
-            turn["session_id"], turn["user_id"], "chat_stream", "chat", turn["turn_id"]
-        )
-        await self._finish(turn["session_id"], turn["turn_id"])
-
     async def dispatch(self, slot: Any, **turn: Any) -> None:
         await stream_registry.create_session(
             turn["session_id"], turn["user_id"], "chat_stream", "chat", turn["turn_id"]
@@ -852,7 +846,6 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
         return queue
 
     with (
-        patch.object(bot_chat, "dispatch_turn", executor.dispatch_bot_turn),
         patch("backend.copilot.gate.supervise", supervise),
         patch.object(stream_registry, "subscribe_to_turn", subscribe_and_tell),
     ):
@@ -872,6 +865,11 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
             "pause_schedule", {"schedule_id": "weekly"}, test_user_id, woken
         )
 
+    # The click started no turn of the bot's own: every one dispatched is
+    # the wake.
+    assert {c.kwargs["message"] for c in dispatched.await_args_list} == {
+        held.WAKE_MESSAGE
+    }
     assert supervise.await_args.kwargs["user_messages"][-1] == request
     said = [c.args[:2] for c in bot.adapter.send_message.await_args_list]
     assert said == [(thread, executor.reply)]

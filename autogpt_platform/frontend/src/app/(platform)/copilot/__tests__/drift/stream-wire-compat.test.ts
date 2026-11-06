@@ -14,12 +14,11 @@ import { loadRecordedTurn } from "./backend-sim";
 describe("the recorded turns through the AI SDK's own parser", () => {
   it.each([
     "dummy-text-turn",
-    "baseline-tool-turn",
+    "sdk-tool-turn",
     "sdk-late-tool-result",
-    "baseline-drain-turn",
+    "sdk-drain-turn",
     "sdk-reasoning-turn",
     "sdk-auto-continue-turn",
-    "baseline-consecutive-tools-turn",
     "sdk-consecutive-tools-turn",
   ])("%s: entry ids and the checkpoint change nothing", async (name) => {
     const { frames } = loadRecordedTurn(name);

@@ -3,6 +3,8 @@ from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 
+from backend.copilot.chat_env import ChatEnvironmentError, apply_chat_environment
+
 load_dotenv()
 
 if TYPE_CHECKING:
@@ -15,7 +17,14 @@ def run_processes(*processes: "AppProcess", **kwargs):
     """
     Execute all processes in the app. The last process is run in the foreground.
     Includes enhanced error handling and process lifecycle management.
+
+    Migrate chat settings before starting services; children inherit the new
+    names. Invalid explicit settings and cloud subscriptions stop startup.
     """
+    try:
+        apply_chat_environment()
+    except ChatEnvironmentError as exc:
+        raise SystemExit(str(exc)) from None
     try:
         # Run all processes except the last one in the background.
         for process in processes[:-1]:

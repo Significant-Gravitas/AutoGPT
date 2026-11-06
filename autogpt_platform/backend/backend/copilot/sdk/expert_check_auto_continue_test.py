@@ -66,10 +66,10 @@ async def _turn_that_auto_continues(
             stack.enter_context(patch(target, **kwargs))
         stack.enter_context(patch(f"{_SVC}.build_expert_identity_suffix", new=identity))
         for name, value in (
-            ("inject_user_context", None),
+            ("inject_context_blocks", None),
             ("build_session_context", ""),
             # A first turn's expert and team block reads other services.
-            ("first_message_expert_context", ""),
+            ("_first_turn_context_blocks", []),
             ("build_matched_skills_notice", ""),
             # The continuation's rows are stored before it runs.
             ("persist_pending_as_user_rows", True),

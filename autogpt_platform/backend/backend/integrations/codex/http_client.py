@@ -70,6 +70,11 @@ def _inference_headers(credentials: OAuth2Credentials) -> dict[str, str]:
     return headers
 
 
+def inference_headers(credentials: OAuth2Credentials) -> dict[str, str]:
+    """Current inference headers for callers using a direct HTTP transport."""
+    return _inference_headers(credentials)
+
+
 def account_id_for(credentials: OAuth2Credentials) -> str | None:
     try:
         bundle = bundle_from_credentials(credentials)
@@ -161,7 +166,18 @@ def _parse_model(entry: Any) -> CodexModelInfo | None:
         input_modalities=(
             [str(m) for m in modalities] if isinstance(modalities, list) else []
         ),
+        context_window=_advertised_tokens(entry.get("context_window")),
+        auto_compact_token_limit=_advertised_tokens(
+            entry.get("auto_compact_token_limit")
+        ),
     )
+
+
+def _advertised_tokens(raw: Any) -> int | None:
+    """An advertised token count, or None for anything that is not one."""
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0:
+        return None
+    return raw
 
 
 def _supported_efforts(raw: Any) -> list[CodexReasoningEffort]:

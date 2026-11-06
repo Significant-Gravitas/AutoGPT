@@ -41,9 +41,9 @@ from backend.copilot.transcript import (
 from .cli_version import require_verbatim_prompts_cli
 from .env import (
     DISABLE_SLASH_COMMANDS_FLAG,
-    build_sdk_env,
     cli_prompt_text,
     cli_user_message,
+    route_launch_env,
 )
 from .launch_env import launch_options
 from .service import process_cli_restore
@@ -232,8 +232,11 @@ def _options(
     **overrides: Any,
 ) -> ClaudeAgentOptions:
     """The copilot's CLI options, pointed at the stub server."""
-    env = build_sdk_env(
-        sdk_cwd=str(sdk_cwd), codex_gateway_url=base_url, codex_gateway_token="stub"
+    from backend.copilot.route_profile import user_key_profile
+
+    env = route_launch_env(
+        user_key_profile("anthropic", "stub", _MODEL, base_url=base_url),
+        sdk_cwd=str(sdk_cwd),
     )
     env["CLAUDE_CONFIG_DIR"] = str(tmp_path / "config")
     env["HOME"] = str(tmp_path)

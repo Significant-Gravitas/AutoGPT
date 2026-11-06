@@ -1,29 +1,21 @@
 """A dispatched tool call takes the path a direct tool call takes.
 
 Deferred tools are reached as ``run_capability(id="tool:<name>")`` (#14569).
-Each engine resolves that back into a call to the tool itself, so the tests
-below drive a real dispatch through each engine's executor and assert that
+The engine resolves that back into a call to the tool itself, so the tests
+below drive a real dispatch through its executor and assert that
 what it records — the announce, the emitted events, the persisted row, the
 failure count — names the tool that ran, never the dispatcher.
 """
 
-import json
 from unittest.mock import patch
 
 import pytest
 
-from backend.copilot.baseline.service import (
-    _baseline_tool_executor,
-    _BaselineStreamState,
-)
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.capabilities.models import SKILL_TOOL
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
-from backend.copilot.response_model import (
-    StreamToolInputAvailable,
-    StreamToolOutputAvailable,
-)
+from backend.copilot.response_model import StreamToolInputAvailable
 from backend.copilot.sdk.tool_adapter import (
     _check_circuit_breaker,
     _make_truncating_wrapper,
@@ -36,7 +28,6 @@ from backend.copilot.sdk.tool_adapter import (
 from backend.copilot.tools import execute_tool
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ErrorResponse
-from backend.util.tool_call_loop import LLMToolCall
 
 # A real deferred tool, so ``resolve_entry`` finds a real registry entry; its
 # implementation is stubbed because only the bookkeeping around it is on trial.
@@ -147,78 +138,11 @@ def test_resolver_runs_on_defaults_when_input_is_empty_or_absent(args):
     assert call is not None and call.name == INNER and call.args == {}
 
 
-# ------------------------------------------------------- the baseline engine
+# -------------------------------------------------------- the tool executor
 
 
 @pytest.mark.asyncio
-async def test_baseline_dispatch_is_recorded_as_the_inner_call():
-    session = ChatSession.new(USER, dry_run=False)
-    state = _BaselineStreamState()
-    tool = _StubTool(INNER)
-
-    with _dispatch_of(tool):
-        await _baseline_tool_executor(
-            LLMToolCall(
-                id="call-1",
-                name="run_capability",
-                arguments=json.dumps({"id": f"tool:{INNER}", "input": ARGS}),
-            ),
-            tools=[],
-            state=state,
-            user_id=USER,
-            session=session,
-            disabled_groups=[],
-            disabled_tools=frozenset(),
-        )
-
-    assert tool.seen == ARGS
-    # The announce a same-turn gate reads.
-    assert session.has_tool_been_called(INNER) is True
-    assert session.get_inflight_tool_call_args(INNER) == [ARGS]
-    # The row that lands in history, and the result event the frontend keys on.
-    recorded = list(state.tool_persistence.results.values())
-    assert [r.tool_name for r in recorded] == [INNER]
-    events = state.emitted_events
-    inputs = [e for e in events if isinstance(e, StreamToolInputAvailable)]
-    assert [(e.toolName, e.input) for e in inputs] == [(INNER, ARGS)]
-    outputs = [e for e in events if isinstance(e, StreamToolOutputAvailable)]
-    assert [e.toolName for e in outputs] == [INNER]
-
-
-@pytest.mark.asyncio
-async def test_baseline_answers_a_malformed_input_without_running_anything():
-    """What the model sees for a malformed ``input``: the dispatcher's own
-    validation error, under the dispatcher's name, and the target untouched."""
-    session = ChatSession.new(USER, dry_run=False)
-    state = _BaselineStreamState()
-    tool = _StubTool(INNER)
-
-    with _dispatch_of(tool):
-        await _baseline_tool_executor(
-            LLMToolCall(
-                id="call-3",
-                name="run_capability",
-                arguments=json.dumps({"id": f"tool:{INNER}", "input": "a string"}),
-            ),
-            tools=[],
-            state=state,
-            user_id=USER,
-            session=session,
-            disabled_groups=[],
-            disabled_tools=frozenset(),
-        )
-
-    assert tool.seen is None
-    assert session.has_tool_been_called(INNER) is False
-    outputs = [
-        e for e in state.emitted_events if isinstance(e, StreamToolOutputAvailable)
-    ]
-    assert [e.toolName for e in outputs] == ["run_capability"]
-    assert "input must be an object" in str(outputs[0].output)
-
-
-@pytest.mark.asyncio
-async def test_baseline_still_refuses_a_deferred_tool_named_directly():
+async def test_a_deferred_tool_named_directly_is_still_refused():
     """The dispatch resolves after that refusal, so naming a deferred tool
     outright stays refused — it is the one way to reach one unguarded."""
     result = await execute_tool(

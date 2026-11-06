@@ -1,21 +1,16 @@
 """Chat-turn orchestration for the platform bot bridge."""
 
 import logging
-from uuid import uuid4
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.active_turns import (
     ConcurrentTurnLimitError,
-    TurnSlot,
-    acquire_turn_slot,
     get_inflight_turn_limit,
 )
-from backend.copilot.config import ChatConfig, CopilotLLMModel
-from backend.copilot.executor.utils import dispatch_turn
+from backend.copilot.config import ChatConfig
+from backend.copilot.executor.utils import check_inflight_cap, schedule_chat_turn
 from backend.copilot.model import (
-    ChatMessage,
     ChatSession,
-    append_and_save_message,
     create_chat_session,
     get_chat_session,
     get_user_sessions,
@@ -28,7 +23,6 @@ from backend.copilot.rate_limit import (
     is_user_paywalled,
 )
 from backend.copilot.transports import resolve_default_chat_route
-from backend.copilot.tree import root_envelope
 from backend.copilot.turn_queue import count_inflight_turns
 from backend.data.db_accessors import orgs_db, platform_linking_db, workspace_db
 from backend.data.user import is_user_banned
@@ -408,51 +402,43 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
     session_id = session.session_id
     model, notice = await resolve_turn_model(owner_user_id, request.model, session)
 
+    # Through the dispatch every turn takes: the owner's concurrency slot,
+    # the message saved inside it (so a refused turn leaves no row behind),
+    # the stream registry and the tree ledger, where it roots a tree. The
+    # in-flight cap rather than the soft running one: a bot has no queue to
+    # fall back on. Marked as a chat-platform prompt, written by someone who
+    # need not be the account owner, so the turn and whatever it spawns are
+    # tainted.
+    org_id, team_id = await _turn_tenancy(owner_user_id, session)
     try:
-        async with acquire_turn_slot(
-            owner_user_id, session_id, capacity=inflight_cap
-        ) as slot:
-            turn_id = await _persist_and_dispatch(
-                request, slot, session, owner_user_id, model
-            )
-    except ConcurrentTurnLimitError:
-        return _busy_handle(owner_user_id, inflight_cap)
-
-    logger.info(
-        f"Bot chat turn started: {request.platform.value} "
-        f"(server {request.platform_server_id or 'DM'}, session {session_id}, "
-        f"turn {turn_id}, owner ...{owner_user_id[-8:]})"
-    )
-
-    return ChatTurnHandle(
-        session_id=session_id,
-        turn_id=turn_id,
-        user_id=owner_user_id,
-        notice=notice,
-    )
-
-
-async def _persist_and_dispatch(
-    request: BotChatRequest,
-    slot: TurnSlot,
-    session: ChatSession,
-    owner_user_id: str,
-    model: CopilotLLMModel | None,
-) -> str:
-    """Save the message and dispatch its turn inside the held slot; returns the
-    turn id."""
-    session_id = session.session_id
-    # Persist the user message before enqueueing, mirroring the REST chat
-    # endpoint — otherwise the executor runs against empty history.
-    is_duplicate = (
-        await append_and_save_message(
-            session_id, ChatMessage(role="user", content=request.message)
+        await check_inflight_cap(owner_user_id)
+        turn_id = await schedule_chat_turn(
+            session_id=session_id,
+            user_id=owner_user_id,
+            message=request.message,
+            session_origin=session.metadata.origin,
+            session_source_platform=session.metadata.source_platform,
+            file_ids=request.file_ids or None,
+            organization_id=org_id,
+            team_id=team_id,
+            llm_auth_provider=session.metadata.llm_auth_provider,
+            llm_credential_id=session.metadata.llm_credential_id,
+            from_chat_platform=True,
+            capacity=inflight_cap,
+            model=model,
         )
-    ) is None
-    if is_duplicate:
-        # Matches REST chat behaviour: skip create_session + enqueue so we
-        # don't create an orphan stream with no producer. Caller subscribes
-        # to the in-flight turn via its own retry logic, or drops.
+    except ConcurrentTurnLimitError as exc:
+        logger.info("Bot chat turn denied (busy) for user ...%s", owner_user_id[-8:])
+        return ChatTurnHandle(
+            session_id="",
+            turn_id="",
+            user_id=owner_user_id,
+            denial=TurnDenial(reason="busy", message=str(exc)),
+        )
+    if turn_id is None:
+        # Matches REST chat behaviour: no orphan stream with no producer.
+        # Caller subscribes to the in-flight turn via its own retry logic,
+        # or drops.
         logger.info(
             "Duplicate bot message for session %s (platform %s, user ...%s)",
             session_id,
@@ -461,29 +447,18 @@ async def _persist_and_dispatch(
         )
         raise DuplicateChatMessageError("Message already in flight.")
 
-    turn_id = str(uuid4())
-    org_id, team_id = await _turn_tenancy(owner_user_id, session)
-    await dispatch_turn(
-        slot,
-        session_id=session_id,
-        user_id=owner_user_id,
-        turn_id=turn_id,
-        message=request.message,
-        tool_call_id=CHAT_TOOL_CALL_ID,
-        tool_name=CHAT_TOOL_NAME,
-        is_user_message=True,
-        organization_id=org_id,
-        team_id=team_id,
-        file_ids=request.file_ids or None,
-        model=model,
-        llm_auth_provider=session.metadata.llm_auth_provider,
-        llm_credential_id=session.metadata.llm_credential_id,
-        # Roots its own tree, and born tainted: the message was written on a
-        # chat platform by someone who need not be the account owner, so
-        # anything this turn spawns inherits the bit.
-        envelope=root_envelope(turn_id, tainted=True, session_id=session_id),
+    logger.info(
+        "Bot chat turn started: %s (server %s, session %s, turn %s, owner ...%s)",
+        request.platform.value,
+        request.platform_server_id or "DM",
+        session_id,
+        turn_id,
+        owner_user_id[-8:],
     )
-    return turn_id
+
+    return ChatTurnHandle(
+        session_id=session_id, turn_id=turn_id, user_id=owner_user_id, notice=notice
+    )
 
 
 def _busy_handle(owner_user_id: str, inflight_cap: int) -> ChatTurnHandle:

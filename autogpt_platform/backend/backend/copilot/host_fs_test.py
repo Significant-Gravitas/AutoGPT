@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from PIL import Image
 
-from backend.copilot.baseline.service import _prepare_baseline_attachments
 from backend.copilot.host_fs import open_no_follow, save_new_file, unlink_no_follow
 from backend.copilot.sdk.e2b_file_tools import (
     _handle_edit_file,
@@ -307,7 +306,6 @@ async def test_set_executable_acts_on_the_checked_entry(cwd, outside, monkeypatc
     "prepare, manager_at",
     [
         (_prepare_file_attachments, "backend.copilot.sdk.service"),
-        (_prepare_baseline_attachments, "backend.copilot.baseline.service"),
     ],
 )
 async def test_attachment_copy(cwd, tmp_path, prepare, manager_at):

@@ -1,60 +1,31 @@
-"""Model-slug normalization for the configured transport.
+"""Model names as the platform route sends them.
 
-Shared between the SDK (extended-thinking) path and the baseline (fast)
-path so a single rule decides whether to keep the OpenRouter
-``vendor/model`` slug or strip it for direct-Anthropic / subscription
-transports.
-
-Lives in its own module to avoid a circular import — both paths need
-this and importing from one into the other would knot up the dependency
-graph.
+Shared by the SDK and the fast engine, and by the side calls that run on the
+platform route; the rule itself is the route's row (``route_profile.py``).
 """
 
 from __future__ import annotations
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.route_profile import normalize_model
 
 
 def normalize_model_for_transport(raw_model: str, cfg: ChatConfig | None = None) -> str:
-    """Normalize a model name for the **actual** SDK CLI / OpenAI-compat
-    transport.
+    """*raw_model* as the platform route sends it.
 
-    Four transports (see ``ChatConfig.effective_transport``):
-
-    1. **OpenRouter** — return the prefixed ``vendor/model`` slug
-       unchanged (``anthropic/claude-opus-4-6``,
-       ``moonshotai/kimi-k2-6``, ...).  Stripping the prefix would break
-       routing for non-Anthropic vendors.
-    2. **Local** (Ollama, vLLM, LM Studio, ...) — return the operator's
-       slug unchanged (``llama3.1:8b-instruct-q4_K_M``,
-       ``qwen3:0.6b``, ...).  Self-hosted backends use their own
-       naming and the Anthropic-prefix rewrite would 404 every call.
-    3. **Subscription / Direct Anthropic** — strip the OpenRouter
-       ``anthropic/`` prefix and convert dots to hyphens
-       (``claude-opus-4.6`` → ``claude-opus-4-6``).  The CLI subprocess
-       (subscription mode) and the Anthropic Messages / OpenAI-compat
-       APIs reject the prefix and dot-separated versions.  Raises
-       ``ValueError`` when a non-Anthropic vendor slug is paired with
-       these transports — silently stripping ``moonshotai/`` would send
-       ``kimi-k2-6`` to the Anthropic API and produce an opaque
-       ``model_not_found`` error far from the misconfiguration source.
+    OpenRouter and a local server keep the name as configured; the Anthropic
+    routes take native Claude ids and refuse other vendors (``ValueError``).
+    With the platform route disabled the name passes through unchanged.
 
     *cfg* is optional so call sites that already hold a per-module
-    ``ChatConfig`` reference (e.g. ``copilot.sdk.service.config``) can
-    pass it through and keep monkeypatch-based test fixtures working
-    against that exact reference.  When omitted, a fresh ``ChatConfig``
-    is read from the current environment per call — no module-level
-    cache that goes stale when tests mutate env vars.
+    ``ChatConfig`` reference can pass it through and keep monkeypatch-based
+    test fixtures working against that exact reference.
     """
     config = cfg if cfg is not None else ChatConfig()
-    # OpenRouter accepts ``vendor/model`` for any vendor; the local
-    # transport (Ollama, vLLM, …) speaks raw operator-chosen slugs and
-    # must never have them rewritten — both pass through unchanged.
-    if config.effective_transport in ("openrouter", "local"):
+    row = config.route_row
+    if row is None:
         return raw_model
-    return normalize_model_for_anthropic(
-        raw_model, caller=f"{config.effective_transport!r} transport"
-    )
+    return normalize_model(row, raw_model)
 
 
 def normalize_model_for_anthropic(
@@ -76,10 +47,9 @@ def normalize_model_for_anthropic(
         if vendor != "anthropic":
             raise ValueError(
                 f"{caller} requires an Anthropic model, got vendor={vendor!r} "
-                f"from model={raw_model!r}. Set CHAT_THINKING_STANDARD_MODEL/"
-                f"CHAT_THINKING_ADVANCED_MODEL/CHAT_FAST_STANDARD_MODEL/"
-                f"CHAT_FAST_ADVANCED_MODEL to an anthropic/* slug, or "
-                f"enable OpenRouter."
+                f"from model={raw_model!r}. Set CHAT_STANDARD_MODEL/"
+                f"CHAT_ADVANCED_MODEL to an anthropic/* slug, or "
+                f"choose the OpenRouter route."
             )
     elif model and not model.startswith("claude-"):
         # Bare slug missing the ``vendor/`` prefix — only ``claude-*``
@@ -91,6 +61,6 @@ def normalize_model_for_anthropic(
         raise ValueError(
             f"{caller} requires an Anthropic model slug, got "
             f"model={raw_model!r}. Use an ``anthropic/*`` or ``claude-*`` "
-            f"slug, or enable OpenRouter."
+            f"slug, or choose the OpenRouter route."
         )
     return model.replace(".", "-")

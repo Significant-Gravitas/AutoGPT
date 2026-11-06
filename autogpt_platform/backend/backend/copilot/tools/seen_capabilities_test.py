@@ -3,7 +3,6 @@ persisted tool-call history (SECRT-2791)."""
 
 import json
 
-from backend.copilot.baseline.service import _prepend_skills_notice_to_current_message
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.service import _maybe_prepend_seen_capabilities
 from backend.copilot.service import SEEN_CAPABILITIES_TAG, strip_server_injected_tags
@@ -77,9 +76,9 @@ def test_described_and_run_ids_and_loaded_skills_are_collected_once():
 
 
 def test_a_skill_run_through_the_dispatcher_counts_as_loaded():
-    # The baseline engine persists the call as the model made it:
+    # Rows the old fast-path engine wrote name the call as the model made it,
     # ``run_capability(id="skill:<name>")``, not the ``read_skill`` the
-    # dispatcher resolves it to.
+    # dispatcher resolves it to; stored chats still hold them.
     session = _session()
     session.messages.extend(
         [
@@ -235,27 +234,3 @@ def test_sdk_prepend_is_a_noop_for_a_first_turn_and_for_tool_turns():
         ]
     )
     assert _maybe_prepend_seen_capabilities(session, False, "raw") == "raw"
-
-
-def test_baseline_prepend_puts_the_notice_on_the_current_user_message():
-    session = _session()
-    session.messages.extend(
-        [
-            _assistant(_call("read_skill", {"name": "default-developer"}, "c1")),
-            _result("c1", {"type": "skill"}),
-        ]
-    )
-    openai_messages = [
-        {"role": "user", "content": "first"},
-        {"role": "assistant", "content": "ack"},
-        {"role": "user", "content": "second"},
-    ]
-
-    _prepend_skills_notice_to_current_message(
-        openai_messages, build_seen_capabilities_notice(session)
-    )
-
-    assert openai_messages[0]["content"] == "first"
-    assert openai_messages[2]["content"].startswith(f"<{SEEN_CAPABILITIES_TAG}>")
-    assert openai_messages[2]["content"].endswith("second")
-    assert "default-developer" in openai_messages[2]["content"]

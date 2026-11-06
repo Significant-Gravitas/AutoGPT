@@ -36,6 +36,7 @@ import binascii
 import functools
 import json as json_module
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
@@ -280,8 +281,15 @@ async def call_provider(
     ollama_host: str = "localhost:11434",
     custom_id: str | None = None,
     timeout_seconds: float | None = None,
+    base_url: str | None = None,
 ) -> ProviderResponse | BatchSubmissionRef:
     """Dispatch a single LLM call to the correct provider SDK.
+
+    ``base_url`` sends a sync call somewhere other than the provider's
+    public endpoint: the Messages API's root for ``anthropic``, the
+    OpenAI-compatible base (with ``/v1``) for ``open_router``. Other
+    providers and batch submissions take none (``ValueError``); Ollama
+    takes ``ollama_host``.
 
     Sync mode (``execution_mode="sync"``) returns a ``ProviderResponse``
     with content + token counts + optional cost. Batch mode (Step 4)
@@ -298,6 +306,13 @@ async def call_provider(
     """
     if timeout_seconds is None:
         timeout_seconds = DEFAULT_REQUEST_TIMEOUT_SECONDS
+    if base_url is not None and (
+        execution_mode == "batch" or provider not in _BASE_URL_PROVIDERS
+    ):
+        raise ValueError(
+            f"base_url is not supported for provider={provider} "
+            f"execution_mode={execution_mode}"
+        )
     if execution_mode == "batch":
         if not custom_id:
             raise ValueError(
@@ -352,6 +367,7 @@ async def call_provider(
                 ollama_host=ollama_host,
                 timeout_seconds=timeout_seconds,
                 service_tier=service_tier,
+                base_url=base_url,
             ),
             timeout=timeout_seconds,
         )
@@ -362,6 +378,25 @@ async def call_provider(
 # ---------------------------------------------------------------------------
 # Sync dispatch
 # ---------------------------------------------------------------------------
+
+# The providers whose sync calls take a ``base_url``.
+_BASE_URL_PROVIDERS = frozenset({"anthropic", "open_router"})
+_ANTHROPIC_API_ROOT = "https://api.anthropic.com"
+
+
+def _anthropic_client(api_key: str, base_url: str | None = None) -> Any:
+    """An Anthropic client on *api_key* alone. An explicit route URL wins;
+    block calls without one retain the deployment's Anthropic endpoint."""
+    endpoint = (
+        base_url
+        if base_url is not None
+        else os.environ.get("ANTHROPIC_BASE_URL", _ANTHROPIC_API_ROOT)
+    )
+    client = anthropic.AsyncAnthropic(
+        api_key=api_key, base_url=endpoint or _ANTHROPIC_API_ROOT
+    )
+    client.auth_token = None
+    return client
 
 
 async def _dispatch_sync(
@@ -379,6 +414,7 @@ async def _dispatch_sync(
     ollama_host: str,
     timeout_seconds: float,
     service_tier: str | None = None,
+    base_url: str | None = None,
 ) -> ProviderResponse:
     if provider == "openai":
         return await _call_openai_responses(
@@ -403,6 +439,7 @@ async def _dispatch_sync(
             tools=tools,
             tool_choice=tool_choice,
             timeout_seconds=timeout_seconds,
+            base_url=base_url,
         )
     if provider == "groq":
         return await _call_groq(
@@ -428,7 +465,7 @@ async def _dispatch_sync(
         )
     if provider == "open_router":
         return await _call_openai_compat(
-            base_url=OPENROUTER_BASE_URL,
+            base_url=base_url or OPENROUTER_BASE_URL,
             model=model,
             api_key=api_key,
             messages=messages,
@@ -601,6 +638,7 @@ async def _call_anthropic_messages(
     tools: list[dict] | None,
     tool_choice: dict | None,
     timeout_seconds: float,
+    base_url: str | None = None,
 ) -> ProviderResponse:
     an_tools = convert_openai_tool_fmt_to_anthropic(tools)
     # Cache tool definitions alongside the system prompt — placing
@@ -629,7 +667,7 @@ async def _call_anthropic_messages(
                 anth_messages.append({"role": p["role"], "content": p["content"]})
                 last_role = p["role"]
 
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    client = _anthropic_client(api_key, base_url)
     create_kwargs: dict[str, Any] = dict(
         model=model,
         messages=anth_messages,
@@ -947,14 +985,14 @@ def _trusted_ollama_hostnames() -> list[str]:
     both are equally trusted:
 
       * ``Config.ollama_host`` — the block layer's Ollama setting.
-      * ``ChatConfig.base_url`` (``CHAT_BASE_URL``) — the copilot chat
+      * the local route's URL (``CHAT_LOCAL_BASE_URL``) — the copilot chat
         endpoint, which the dream pass normalizes into ``ollama_host``
         on the local transport.
 
     Deriving the allowlist from only the former made every local dream
     phase fail the SSRF check whenever the two were configured
     differently (e.g. backend in Docker with
-    ``CHAT_BASE_URL=http://host.docker.internal:11434/v1`` while
+    ``CHAT_LOCAL_BASE_URL=http://host.docker.internal:11434/v1`` while
     ``Config.ollama_host`` sat at its ``localhost:11434`` default).
     """
     trusted = [settings.config.ollama_host]
@@ -976,7 +1014,7 @@ def _chat_config_base_url() -> str | None:
         return _read_chat_config_base_url()
     except Exception:
         logger.warning(
-            "Could not read ChatConfig.base_url for the Ollama trusted-host "
+            "Could not read the local route's URL for the Ollama trusted-host "
             "list; falling back to Config.ollama_host only.",
             exc_info=True,
         )
@@ -985,7 +1023,7 @@ def _chat_config_base_url() -> str | None:
 
 @functools.lru_cache(maxsize=1)
 def _read_chat_config_base_url() -> str | None:
-    """Construct ``ChatConfig`` once and memoize its ``base_url``.
+    """Construct ``ChatConfig`` once and memoize the local route's URL.
 
     ``ChatConfig`` is a pydantic-settings class with ``env_file=".env"``,
     so each construction does synchronous dotenv disk I/O plus the full
@@ -998,7 +1036,7 @@ def _read_chat_config_base_url() -> str | None:
     """
     from backend.copilot.config import ChatConfig
 
-    return ChatConfig().base_url
+    return ChatConfig().local_openai_base_url
 
 
 # ---------------------------------------------------------------------------
@@ -1242,9 +1280,9 @@ async def call_provider_openai_compat_sync(
     SDK-specific extraction logic should prefer ``call_provider``
     which normalizes into ``ProviderResponse``.
 
-    Either pass a pre-built ``client`` OR ``base_url`` + ``api_key``
-    + (optionally) ``client_factory``. See ``call_provider_stream``
-    for rationale.
+    Either pass a pre-built ``client`` (the chat layer's cached,
+    Langfuse-wrapped one, so TCP connections stay pooled; tests pass a
+    mock) OR ``base_url`` + ``api_key`` + (optionally) ``client_factory``.
     """
     if timeout_seconds is None:
         timeout_seconds = DEFAULT_REQUEST_TIMEOUT_SECONDS
@@ -1423,7 +1461,7 @@ async def _submit_anthropic_batch(
             }
         ]
 
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    client = _anthropic_client(api_key)
     # Anthropic's typed Request union is too strict for our dynamic
     # params shape (we conditionally include ``system`` / ``tools`` /
     # ``tool_choice``). The runtime contract accepts any dict matching
@@ -1454,7 +1492,7 @@ async def cancel_batch(
     """
     try:
         if provider == "anthropic":
-            client = anthropic.AsyncAnthropic(api_key=api_key)
+            client = _anthropic_client(api_key)
             await client.messages.batches.cancel(provider_batch_id)
             return True
         logger.warning(
@@ -1533,7 +1571,7 @@ async def poll_batch(
             f"poll_batch only supports provider='anthropic' today; "
             f"got {provider!r}."
         )
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    client = _anthropic_client(api_key)
     batch = await client.messages.batches.retrieve(provider_batch_id)
     status = getattr(batch, "processing_status", None)
     if status == "ended":
@@ -1571,7 +1609,7 @@ async def download_batch_results(
             f"download_batch_results only supports provider='anthropic' "
             f"today; got {provider!r}."
         )
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    client = _anthropic_client(api_key)
     rows: list[BatchResultRow] = []
     async for entry in await client.messages.batches.results(provider_batch_id):
         custom_id = getattr(entry, "custom_id", "") or ""

@@ -22,6 +22,7 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 from openai.types.completion_usage import CompletionUsage
 
+from backend.copilot.config import ChatConfig
 from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.service import (
     _TITLE_TIMEOUT_SECONDS,
@@ -30,9 +31,8 @@ from backend.copilot.service import (
     _record_title_generation_cost,
     _title_usage_from_response,
     _update_title_async,
+    settings,
 )
-from backend.copilot.service import config as service_config
-from backend.copilot.service import settings
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.settings import Config
 
@@ -215,10 +215,7 @@ class TestRecordTitleGenerationCost:
             ),
             patch(
                 "backend.copilot.service.config",
-                MagicMock(
-                    aux_provider_label="open_router",
-                    title_model="anthropic/claude-haiku",
-                ),
+                ChatConfig(platform_route="openrouter", openrouter_api_key="k"),
             ),
         ):
             await _record_title_generation_cost(
@@ -227,7 +224,7 @@ class TestRecordTitleGenerationCost:
         persist.assert_awaited_once()
         kwargs = persist.await_args.kwargs
         assert kwargs["provider"] == "open_router"
-        assert kwargs["model"] == "anthropic/claude-haiku"
+        assert kwargs["model"] == "anthropic/claude-haiku-5.5"
         assert kwargs["prompt_tokens"] == 12
         assert kwargs["completion_tokens"] == 3
         assert kwargs["cost_usd"] == pytest.approx(0.0002)
@@ -247,7 +244,7 @@ class TestRecordTitleGenerationCost:
                 "backend.copilot.service.config",
                 MagicMock(
                     aux_provider_label="openai",
-                    title_model="gpt-4o-mini",
+                    aux_model="gpt-4o-mini",
                 ),
             ),
         ):
@@ -268,7 +265,7 @@ class TestRecordTitleGenerationCost:
             ),
             patch(
                 "backend.copilot.service.config",
-                MagicMock(aux_provider_label="openai", title_model="gpt-4o-mini"),
+                MagicMock(aux_provider_label="openai", aux_model="gpt-4o-mini"),
             ),
         ):
             await _record_title_generation_cost(
@@ -293,7 +290,7 @@ class TestRecordTitleGenerationCost:
                 "backend.copilot.service.config",
                 MagicMock(
                     base_url="https://openrouter.ai/api/v1",
-                    title_model="x",
+                    aux_model="x",
                 ),
             ),
         ):
@@ -317,7 +314,7 @@ class TestRecordTitleGenerationCost:
                 "backend.copilot.service.config",
                 MagicMock(
                     base_url="https://openrouter.ai/api/v1",
-                    title_model="x",
+                    aux_model="x",
                 ),
             ),
         ):
@@ -341,7 +338,7 @@ class TestRecordTitleGenerationCost:
             ),
             patch(
                 "backend.copilot.service.config",
-                MagicMock(base_url=None, title_model="m"),
+                MagicMock(aux_model="m"),
             ),
         ):
             await _record_title_generation_cost(
@@ -520,6 +517,18 @@ class TestUpdateTitleAsync:
 
 
 class TestGenerateSessionTitle:
+    @pytest.fixture(autouse=True)
+    def title_route(self, monkeypatch):
+        from backend.copilot import service
+
+        monkeypatch.setattr(
+            service,
+            "config",
+            ChatConfig(
+                platform_route="openrouter", openrouter_api_key="title-unit-test-key"
+            ),
+        )
+
     """``_generate_session_title`` returns ``(title, response)`` — the
     caller owns both the persist and the cost-record decisions."""
 
@@ -534,6 +543,28 @@ class TestGenerateSessionTitle:
             return_value=MagicMock(name="aux_client_stub"),
         ):
             yield
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("route", ["disabled", "subscription"])
+    async def test_without_a_platform_api_the_title_is_the_first_message(
+        self, route: str
+    ):
+        """A disabled route and a Claude login have no model API of the
+        platform's own, so no title call goes out."""
+        helper = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.service.call_provider_openai_compat_sync",
+                new=helper,
+            ),
+            patch(
+                "backend.copilot.service.config",
+                ChatConfig(platform_route=route),
+            ),
+        ):
+            title, response = await _generate_session_title("plan a trip")
+        assert (title, response) == ("plan a trip", None)
+        helper.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_valid_response_returns_cleaned_title_and_response(self):
@@ -570,10 +601,7 @@ class TestGenerateSessionTitle:
             chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
             base_url=httpx.URL(OPENROUTER_BASE_URL),
         )
-        with (
-            patch("backend.copilot.service._get_aux_client", return_value=aux),
-            patch.object(service_config, "title_model", "anthropic/claude-haiku-5.5"),
-        ):
+        with (patch("backend.copilot.service._get_aux_client", return_value=aux),):
             title, _ = await _generate_session_title("Pull last week's payouts")
 
         assert title == "Payout Report"
@@ -676,10 +704,7 @@ class TestGenerateSessionTitle:
             ),
             patch(
                 "backend.copilot.service.config",
-                MagicMock(
-                    aux_uses_openrouter=True,
-                    title_model="anthropic/claude-haiku",
-                ),
+                ChatConfig(platform_route="openrouter", openrouter_api_key="k"),
             ),
         ):
             await _generate_session_title(
@@ -711,7 +736,7 @@ class TestGenerateSessionTitle:
                 "backend.copilot.service.config",
                 MagicMock(
                     aux_uses_openrouter=True,
-                    title_model="anthropic/claude-haiku",
+                    aux_model="anthropic/claude-haiku",
                 ),
             ),
         ):
@@ -741,7 +766,7 @@ class TestGenerateSessionTitle:
                 MagicMock(
                     aux_uses_openrouter=False,
                     aux_provider_label="anthropic",
-                    title_model="anthropic/claude-haiku-4.5",
+                    aux_model="anthropic/claude-haiku-4.5",
                 ),
             ),
         ):
@@ -765,17 +790,13 @@ class TestGenerateSessionTitle:
             ),
             patch(
                 "backend.copilot.service.config",
-                MagicMock(
-                    aux_uses_openrouter=False,
-                    aux_provider_label="anthropic",
-                    title_model="anthropic/claude-haiku-4.5",
-                ),
+                ChatConfig(platform_route="direct_anthropic", anthropic_api_key="k"),
             ),
         ):
             await _generate_session_title("hello", user_id=None, session_id=None)
         helper.assert_awaited_once()
         kwargs = helper.await_args.kwargs
-        assert kwargs["model"] == "claude-haiku-4-5"
+        assert kwargs["model"] == "claude-haiku-5-5"
 
     @pytest.mark.asyncio
     async def test_title_model_unchanged_when_aux_is_openrouter(self):
@@ -790,17 +811,13 @@ class TestGenerateSessionTitle:
             ),
             patch(
                 "backend.copilot.service.config",
-                MagicMock(
-                    aux_uses_openrouter=True,
-                    aux_provider_label="open_router",
-                    title_model="anthropic/claude-haiku-4.5",
-                ),
+                ChatConfig(platform_route="openrouter", openrouter_api_key="k"),
             ),
         ):
             await _generate_session_title("hello", user_id=None, session_id=None)
         helper.assert_awaited_once()
         kwargs = helper.await_args.kwargs
-        assert kwargs["model"] == "anthropic/claude-haiku-4.5"
+        assert kwargs["model"] == "anthropic/claude-haiku-5.5"
 
     @pytest.mark.asyncio
     async def test_create_omits_extra_body_when_aux_not_openrouter(self):
@@ -820,7 +837,7 @@ class TestGenerateSessionTitle:
                 "backend.copilot.service.config",
                 MagicMock(
                     aux_uses_openrouter=False,
-                    title_model="anthropic/claude-haiku",
+                    aux_model="anthropic/claude-haiku",
                 ),
             ),
         ):
