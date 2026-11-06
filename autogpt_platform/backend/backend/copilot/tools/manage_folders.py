@@ -599,10 +599,14 @@ class MoveAgentsToFolderTool(BaseTool):
 
         moved_ids = [a.id for a in moved]
         agent_names = [a.name for a in moved]
+        if not moved_ids:
+            return ErrorResponse(
+                message="No workflows were moved. Check that the IDs belong to workflows in your library.",
+                error="no_agents_moved",
+                session_id=session_id,
+            )
         dest = "the folder" if folder_id else "root level"
-        names_str = (
-            ", ".join(agent_names) if agent_names else f"{len(agent_ids)} workflow(s)"
-        )
+        names_str = ", ".join(agent_names)
         return AgentsMovedToFolderResponse(
             message=f"Moved {names_str} to {dest}.",
             agent_ids=moved_ids,

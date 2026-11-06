@@ -2096,15 +2096,20 @@ async def bulk_move_agents_to_folder(
             "id": {"in": agent_ids},
             "userId": user_id,
             "isDeleted": False,
+            "isArchived": False,
         },
         data={"folderId": folder_id},
     )
 
-    # Fetch and return updated agents
+    # Fetch and return updated agents. Filter archived rows too: the update
+    # skipped them, and a row archived while this runs must not be reported
+    # as moved.
     agents = await prisma.models.LibraryAgent.prisma().find_many(
         where={
             "id": {"in": agent_ids},
             "userId": user_id,
+            "isDeleted": False,
+            "isArchived": False,
         },
         include=library_agent_include(
             user_id, include_nodes=False, include_executions=False
