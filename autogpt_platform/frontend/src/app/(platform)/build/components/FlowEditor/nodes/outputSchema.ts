@@ -15,6 +15,161 @@ export function getOutputProperties(schema: unknown): OutputProperties {
     : {};
 }
 
+const MAX_OUTPUT_SCHEMA_DEPTH = 6;
+const COMBINATORS = ["anyOf", "oneOf", "allOf"] as const;
+
+function combinatorBranches(schema: RJSFSchema): (RJSFSchema | boolean)[] {
+  return COMBINATORS.flatMap((keyword) =>
+    Array.isArray(schema[keyword]) ? schema[keyword] : [],
+  );
+}
+
+function isObjectOutputSchema(schema: RJSFSchema): boolean {
+  if (schema.type === "object") return true;
+  if (Array.isArray(schema.type) && schema.type.includes("object")) return true;
+  return Object.keys(getOutputProperties(schema)).length > 0;
+}
+
+function copyOutputProperties(source: OutputProperties): OutputProperties {
+  const copy: OutputProperties = {};
+  for (const [key, value] of Object.entries(source)) {
+    Object.defineProperty(copy, key, {
+      value,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+  }
+  return copy;
+}
+
+function mergeObjectProperties(
+  current: RJSFSchema | boolean,
+  incoming: RJSFSchema | boolean,
+  depth: number,
+): RJSFSchema | undefined {
+  if (
+    depth >= MAX_OUTPUT_SCHEMA_DEPTH ||
+    !isSchemaObject(current) ||
+    !isSchemaObject(incoming) ||
+    !isObjectOutputSchema(current) ||
+    !isObjectOutputSchema(incoming)
+  )
+    return undefined;
+
+  const incomingProperties = getNestedOutputProperties(incoming);
+  if (Object.keys(incomingProperties).length === 0) return undefined;
+  const merged = copyOutputProperties(getNestedOutputProperties(current));
+  let grew = false;
+  for (const [childKey, childValue] of Object.entries(incomingProperties)) {
+    const before = Object.getOwnPropertyDescriptor(merged, childKey)?.value;
+    assignOwnProperty(merged, childKey, childValue, depth + 1);
+    if (Object.getOwnPropertyDescriptor(merged, childKey)?.value !== before)
+      grew = true;
+  }
+  if (!grew) return undefined;
+  return { ...current, properties: merged };
+}
+
+function assignOwnProperty(
+  target: OutputProperties,
+  key: string,
+  value: RJSFSchema | boolean,
+  depth = 0,
+) {
+  const current = Object.getOwnPropertyDescriptor(target, key)?.value as
+    | RJSFSchema
+    | boolean
+    | undefined;
+  const next =
+    current === undefined
+      ? value
+      : (mergeObjectProperties(current, value, depth) ?? current);
+  if (next === current) return;
+  Object.defineProperty(target, key, {
+    value: next,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+}
+
+function nestedOutputProperties(
+  schema: unknown,
+  depth: number,
+  seen: Set<object>,
+): OutputProperties {
+  const direct = getOutputProperties(schema);
+  if (
+    !isSchemaObject(schema) ||
+    depth >= MAX_OUTPUT_SCHEMA_DEPTH ||
+    seen.has(schema)
+  )
+    return direct;
+
+  const hasDirect = Object.keys(direct).length > 0;
+  const branches = [
+    schema.allOf,
+    ...(hasDirect ? [] : [schema.anyOf, schema.oneOf]),
+  ].filter((branch): branch is (RJSFSchema | boolean)[] =>
+    Array.isArray(branch),
+  );
+  if (branches.length === 0) return direct;
+
+  seen.add(schema);
+  const merged = copyOutputProperties(direct);
+  for (const branch of branches) {
+    for (const option of branch) {
+      const nested = nestedOutputProperties(option, depth + 1, seen);
+      for (const [key, value] of Object.entries(nested)) {
+        assignOwnProperty(merged, key, value);
+      }
+    }
+  }
+  return merged;
+}
+
+export function getNestedOutputProperties(schema: unknown): OutputProperties {
+  return nestedOutputProperties(schema, 0, new Set());
+}
+
+function declaresOutputKey(
+  schema: unknown,
+  key: string,
+  seen: Set<object>,
+): boolean {
+  if (!isSchemaObject(schema) || seen.has(schema)) return false;
+  const properties = getOutputProperties(schema);
+  if (Object.hasOwn(properties, key)) return true;
+  if (Object.keys(properties).length > 0) return false;
+  seen.add(schema);
+  return combinatorBranches(schema).some((option) =>
+    declaresOutputKey(option, key, seen),
+  );
+}
+
+function expandCombinator(
+  field: RJSFSchema,
+  segments: string[],
+  index: number,
+): RJSFSchema | undefined {
+  const branches = combinatorBranches(field);
+  const declared = branches.filter((option) =>
+    declaresOutputKey(option, segments[index], new Set()),
+  );
+  for (const option of declared.length > 0 ? declared : branches) {
+    const expanded = withOutputPath(option, segments, index);
+    if (!expanded) continue;
+    return {
+      ...expanded,
+      ...field,
+      type: expanded.type,
+      properties: expanded.properties,
+    };
+  }
+  return undefined;
+}
+
 function withOutputPath(
   schema: unknown,
   segments: string[],
@@ -32,24 +187,11 @@ function withOutputPath(
   const properties = getOutputProperties(field);
   const key = segments[index];
   const exists = Object.hasOwn(properties, key);
-  if (!exists && field.additionalProperties === false) return;
-  if (
-    !field.type &&
-    !Object.keys(properties).length &&
-    Array.isArray(field.anyOf)
-  ) {
-    for (const option of field.anyOf) {
-      const expanded = withOutputPath(option, segments, index);
-      if (expanded)
-        return {
-          ...expanded,
-          ...field,
-          type: expanded.type,
-          properties: expanded.properties,
-        };
-    }
-    return;
+  if (!exists && Object.keys(properties).length === 0) {
+    const branches = combinatorBranches(field);
+    if (branches.length > 0) return expandCombinator(field, segments, index);
   }
+  if (!exists && field.additionalProperties === false) return;
 
   let child = exists ? properties[key] : (field.additionalProperties ?? true);
   if (!exists) {
