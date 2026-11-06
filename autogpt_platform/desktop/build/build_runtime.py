@@ -397,6 +397,7 @@ class Build:
             shutil.copy2(staging / "COPYING", target / "COPYING")
         else:
             shutil.copy2(staging / "bin" / "valkey-server", target / "valkey-server")
+            shutil.copy2(staging / "share" / "LICENSE", target / "LICENSE")
 
     def step_erlang(self) -> None:
         target = self.out / "erlang"

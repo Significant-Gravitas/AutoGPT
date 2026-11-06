@@ -1091,7 +1091,8 @@ On Windows the bundled Valkey is built separately, inside MSYS2, into
 `build/.cache/valkey-windows`:
 
 ```bash
-bash build/valkey-windows.sh 8.1.10 build/.cache/valkey-windows
+bash build/valkey-windows.sh 8.1.10 build/.cache/valkey-windows \
+  c74e50cd83f6d398a3dc570e04ac2fe538249585d021f76ee2449bbf9ebd04ed
 ```
 
 Without it the build stops. `--redis-stand-in` bundles a Redis build instead,
