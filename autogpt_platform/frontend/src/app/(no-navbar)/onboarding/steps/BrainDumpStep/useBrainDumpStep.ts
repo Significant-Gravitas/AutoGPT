@@ -24,6 +24,7 @@ import {
 } from "./recordingStore";
 import { promptSetNameForRole } from "./prompts";
 import { useBrainDumpRecorder } from "./useBrainDumpRecorder";
+import { useInsufficientReply } from "./useInsufficientReply";
 import { useMicrophoneRetry } from "./useMicrophoneRetry";
 import { usePromptRotation } from "./usePromptRotation";
 
@@ -31,6 +32,8 @@ import { usePromptRotation } from "./usePromptRotation";
 // remount that Back from Hire causes waits for it before sending a new take,
 // which the late skip would otherwise replace.
 let pendingSkip: Promise<void> = Promise.resolve();
+
+const INSUFFICIENT_SOURCE = { from: "insufficient" } as const;
 
 export type ScreenState =
   | "rest"
@@ -52,6 +55,7 @@ export function useBrainDumpStep() {
 
   const [screen, setScreen] = useState<ScreenState>("rest");
   const prompt = usePromptRotation({ role, screen });
+  const reply = useInsufficientReply({ role, promptSet: prompt.promptSet });
   // For answers that arrive after the render that asked, like a permission
   // prompt answered once the typed text is already on its way.
   const screenRef = useRef(screen);
@@ -66,11 +70,6 @@ export function useBrainDumpStep() {
   // A refused microphone is one fallback to typing per visit, however many
   // times the user then tries the microphone again.
   const typedFallbackTrackedRef = useRef(false);
-  // Which submission the quality gate last rejected — the recovery
-  // screen's copy and primary action adapt to how the user got there.
-  const [insufficientMode, setInsufficientMode] = useState<"voice" | "typed">(
-    "voice",
-  );
   // Which kind of take was last sent: the failure screen retries that one,
   // and a typed take has no recording to resend.
   const [submittedMode, setSubmittedMode] = useState<"voice" | "typed">(
@@ -266,7 +265,12 @@ export function useBrainDumpStep() {
         // instead of a retry of this one. Nothing is cleared until the
         // user picks their next move.
         if (rejected) {
-          setInsufficientMode("voice");
+          reply.show({
+            mode: "voice",
+            errorCode,
+            heardText:
+              response.status === 200 ? response.data.transcript_preview : null,
+          });
           setScreen("insufficient");
         } else fail(errorCode ?? null);
         return;
@@ -281,6 +285,7 @@ export function useBrainDumpStep() {
       input_mode: "voice",
       finalize_latency_ms: finalizeLatencyMs,
       ...promptProperties(),
+      ...reply.followUpProperties(),
     });
     await completeAndAdvance(recordingId, "A");
   }
@@ -294,7 +299,10 @@ export function useBrainDumpStep() {
       ? claimTakeAction(previousId, "discard")
       : null;
     if (previousId && !actionToken) return;
-    trackBrainDump("brain_dump_restarted");
+    if (isOnInsufficientScreen()) {
+      trackBrainDump("brain_dump_restarted", INSUFFICIENT_SOURCE);
+      reply.startFollowUp();
+    } else trackBrainDump("brain_dump_restarted");
     let started = false;
     try {
       try {
@@ -329,11 +337,20 @@ export function useBrainDumpStep() {
   }
 
   function handleShowTyping() {
+    const fromInsufficient = isOnInsufficientScreen();
+    if (fromInsufficient) reply.startFollowUp();
     setScreen("typing");
     trackBrainDump("brain_dump_typed_fallback", {
       reason: "chose_to_type",
       prompt_set: prompt.promptSet,
+      ...(fromInsufficient ? INSUFFICIENT_SOURCE : {}),
     });
+  }
+
+  // Talk, Write and Continue without it say on their events when they were
+  // pressed on the not-enough screen.
+  function isOnInsufficientScreen() {
+    return screen === "insufficient";
   }
 
   function handleShowRecording() {
@@ -390,10 +407,10 @@ export function useBrainDumpStep() {
         const errorCode =
           response.status === 200 ? response.data.error_code : response.status;
         const rejected = isInsufficientDump(errorCode);
-        // The typed text stays in the composer, so "Type instead" from
-        // the recovery screen reopens it with nothing lost.
+        // The typed text stays in the composer, so Write from the
+        // not-enough screen reopens it with nothing lost.
         if (rejected) {
-          setInsufficientMode("typed");
+          reply.show({ mode: "typed", errorCode, heardText: text });
           setScreen("insufficient");
         } else fail(errorCode ?? null);
         return;
@@ -411,6 +428,7 @@ export function useBrainDumpStep() {
       input_mode: "typed",
       chars: text.length,
       ...promptProperties(),
+      ...reply.followUpProperties(),
     });
     await completeAndAdvance(recordingId, "A");
   }
@@ -420,7 +438,11 @@ export function useBrainDumpStep() {
     // another skip, would advance the wizard a second time, past Hire.
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
-    trackBrainDump("brain_dump_skipped", promptProperties());
+    trackBrainDump("brain_dump_skipped", {
+      ...promptProperties(),
+      ...(isOnInsufficientScreen() ? INSUFFICIENT_SOURCE : {}),
+    });
+    reply.endFollowUp();
     const recordedId = recorder.recordingId;
     recorder.resetQueue();
     setIntroPath("B");
@@ -476,6 +498,7 @@ export function useBrainDumpStep() {
   // IndexedDB is only cleared once the server has confirmed the dump —
   // until then the browser is the backup of record.
   async function completeAndAdvance(recordingId: string, path: "A" | "B") {
+    reply.endFollowUp();
     await releaseTake(recordingId);
     recorder.resetQueue();
     setIntroPath(path);
@@ -585,7 +608,10 @@ export function useBrainDumpStep() {
   return {
     headline: BRAIN_DUMP_HEADLINE,
     screen,
-    insufficientMode,
+    insufficientMode: reply.mode,
+    heardText: reply.heardText,
+    isFollowUp: reply.isFollowUp,
+    typingPlaceholder: reply.typingPlaceholder,
     submittedMode,
     failureReason: failureReason(failure),
     typedText,

@@ -70,6 +70,13 @@ export const BrainDumpEvent = {
   // browser's `error_name` (NotFoundError, NotReadableError, …).
   BRAIN_DUMP_MIC_FAILED: "brain_dump_mic_failed",
   BRAIN_DUMP_TYPED_FALLBACK: "brain_dump_typed_fallback",
+  // The "not enough" screen showed, after a voice or typed take, with the
+  // `mode`, the gate's `error_code`, whether "You" showed any text (`heard`)
+  // and the role's `prompt_set`. Its Talk, Write and Continue without it
+  // send `from: "insufficient"` on `brain_dump_restarted`,
+  // `brain_dump_typed_fallback` and `brain_dump_skipped`, and a take or text
+  // completed after it sends `follow_up: true` on `brain_dump_completed`.
+  BRAIN_DUMP_INSUFFICIENT_SHOWN: "brain_dump_insufficient_shown",
   // The "Otto might ask" prompt moved on, by its timer (`via: auto`) or
   // "Another question" (`click`), with the `screen`, the `prompt_index` now
   // shown and the role's `prompt_set`. Never sent for the first prompt.

@@ -757,6 +757,260 @@ describe("useBrainDumpStep — insufficient content", () => {
   });
 });
 
+describe("useBrainDumpStep — Otto replies", () => {
+  function rejected(code: string, preview?: string) {
+    return {
+      status: 200,
+      data: {
+        status: "failed",
+        error_code: code,
+        ...(preview === undefined ? {} : { transcript_preview: preview }),
+      },
+    };
+  }
+
+  async function rejectVoiceTake(code: string, preview?: string) {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockResolvedValueOnce(rejected(code, preview));
+    const view = await renderStep();
+    await act(async () => {
+      await view.result.current.handleDone();
+    });
+    return view;
+  }
+
+  async function rejectTypedText(text: string, code = "insufficient_content") {
+    finalizeBrainDump.mockResolvedValueOnce(rejected(code));
+    const view = await renderStep();
+    act(() => {
+      view.result.current.showTyping();
+    });
+    act(() => {
+      view.result.current.setTypedText(text);
+    });
+    await act(async () => {
+      await view.result.current.handleSubmitTyped();
+    });
+    return view;
+  }
+
+  function shown() {
+    return trackBrainDump.mock.calls.filter(
+      ([name]) => name === "brain_dump_insufficient_shown",
+    );
+  }
+
+  it("shows what Otto heard from a voice take", async () => {
+    const { result } = await rejectVoiceTake(
+      "insufficient_content",
+      "Um, okay. Hi. Is this working?",
+    );
+
+    expect(result.current.screen).toBe("insufficient");
+    expect(result.current.insufficientMode).toBe("voice");
+    expect(result.current.heardText).toBe("Um, okay. Hi. Is this working?");
+    expect(shown()).toEqual([
+      [
+        "brain_dump_insufficient_shown",
+        {
+          mode: "voice",
+          error_code: "insufficient_content",
+          heard: true,
+          prompt_set: "Other",
+        },
+      ],
+    ]);
+    // Voice rejects keep their existing event exactly as it was.
+    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      error_code: "insufficient_content",
+      finalize_latency_ms: expect.any(Number),
+    });
+  });
+
+  it.each([
+    { code: "no_usable_speech", preview: undefined },
+    { code: "insufficient_content", preview: undefined },
+    { code: "insufficient_content", preview: "" },
+  ])(
+    "shows no words for $code with preview $preview",
+    async ({ code, preview }) => {
+      const { result } = await rejectVoiceTake(code, preview);
+
+      expect(result.current.screen).toBe("insufficient");
+      expect(result.current.heardText).toBeNull();
+      expect(shown()).toEqual([
+        [
+          "brain_dump_insufficient_shown",
+          {
+            mode: "voice",
+            error_code: code,
+            heard: false,
+            prompt_set: "Other",
+          },
+        ],
+      ]);
+    },
+  );
+
+  it("shows the typed text from a typed reject", async () => {
+    useOnboardingWizardStore.getState().setRole("Marketing");
+    const { result } = await rejectTypedText("  idk  ", "no_usable_speech");
+
+    expect(result.current.screen).toBe("insufficient");
+    expect(result.current.insufficientMode).toBe("typed");
+    expect(result.current.heardText).toBe("idk");
+    expect(result.current.typedText).toBe("  idk  ");
+    expect(shown()).toEqual([
+      [
+        "brain_dump_insufficient_shown",
+        {
+          mode: "typed",
+          error_code: "no_usable_speech",
+          heard: true,
+          prompt_set: "Marketing",
+        },
+      ],
+    ]);
+  });
+
+  it("is not a follow-up until the person leaves the screen to talk or write", async () => {
+    const { result } = await rejectVoiceTake("insufficient_content", "Hi");
+
+    expect(result.current.isFollowUp).toBe(false);
+  });
+
+  it("talks again from the screen as a follow-up", async () => {
+    const { result } = await rejectVoiceTake("insufficient_content", "Hi");
+
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+
+    expect(result.current.screen).toBe("recording");
+    expect(result.current.isFollowUp).toBe(true);
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_restarted", {
+      from: "insufficient",
+    });
+  });
+
+  it("writes from the screen as a follow-up", async () => {
+    const { result } = await rejectVoiceTake("insufficient_content", "Hi");
+
+    act(() => {
+      result.current.showTyping();
+    });
+
+    expect(result.current.screen).toBe("typing");
+    expect(result.current.isFollowUp).toBe(true);
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_typed_fallback", {
+      reason: "chose_to_type",
+      prompt_set: "Other",
+      from: "insufficient",
+    });
+    expect(result.current.typingPlaceholder).toBe(
+      "Like: The reminders and invoices for my students.",
+    );
+  });
+
+  it("continues without it from the screen", async () => {
+    const { result } = await rejectVoiceTake("insufficient_content", "Hi");
+
+    await act(async () => {
+      await result.current.handleSkip();
+    });
+
+    expect(result.current.isFollowUp).toBe(false);
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_skipped", {
+      prompt_set: "Other",
+      prompts_seen: 0,
+      from: "insufficient",
+    });
+  });
+
+  it("marks a voice take sent after the screen as a follow-up", async () => {
+    const { result } = await rejectVoiceTake("insufficient_content", "Hi");
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+    recorderState.recordingId = "rec-2";
+    recorderState.stop.mockResolvedValue(30);
+
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
+      duration_secs: 30,
+      input_mode: "voice",
+      finalize_latency_ms: expect.any(Number),
+      prompt_set: "Other",
+      prompts_seen: expect.any(Number),
+      follow_up: true,
+    });
+    expect(result.current.isFollowUp).toBe(false);
+  });
+
+  it("marks text written after the screen as a follow-up", async () => {
+    const { result } = await rejectTypedText("idk");
+    act(() => {
+      result.current.showTyping();
+    });
+    act(() => {
+      result.current.setTypedText("Chasing invoices every Friday.");
+    });
+
+    await act(async () => {
+      await result.current.handleSubmitTyped();
+    });
+
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
+      input_mode: "typed",
+      chars: "Chasing invoices every Friday.".length,
+      prompt_set: "Other",
+      prompts_seen: expect.any(Number),
+      follow_up: true,
+    });
+  });
+
+  it("shows the screen again with the new text after a second reject", async () => {
+    const { result } = await rejectVoiceTake("insufficient_content", "Hi");
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+    finalizeBrainDump.mockResolvedValueOnce(
+      rejected("insufficient_content", "Hello? Can you hear me?"),
+    );
+
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    expect(result.current.screen).toBe("insufficient");
+    expect(result.current.heardText).toBe("Hello? Can you hear me?");
+    expect(shown()).toHaveLength(2);
+  });
+
+  it("keeps every event outside the screen as it was", async () => {
+    recorderState.recordingId = "rec-old";
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+    act(() => {
+      result.current.showTyping();
+    });
+
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_restarted");
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_typed_fallback", {
+      reason: "chose_to_type",
+      prompt_set: "Other",
+    });
+    expect(result.current.isFollowUp).toBe(false);
+    expect(result.current.typingPlaceholder).toBeUndefined();
+  });
+});
+
 describe("useBrainDumpStep — restart", () => {
   it("throws away the old take locally and on the server before listening again", async () => {
     recorderState.recordingId = "rec-old";
