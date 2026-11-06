@@ -105,6 +105,7 @@ from backend.util.llm.provider_billing import (
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
     estimate_token_count,
+    estimate_token_count_str,
     get_compression_target,
 )
 
@@ -201,8 +202,11 @@ from ..expert_kickoff import is_expert_kickoff_turn
 from ..service import (
     _build_system_prompt,
     _update_title_async,
+    build_injected_context_prefix,
+    fetch_business_understanding,
     first_message_expert_context,
     inject_user_context,
+    strip_injected_context_for_display,
     strip_user_context_tags,
 )
 from ..skill_invocation import (
@@ -3461,6 +3465,11 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     tool result summaries so the agent retains full context about what
     tools were invoked and their outcomes.
 
+    The server blocks a first-turn row carries (``<available_skills>``,
+    ``<memory_context>``, ``<user_context>`` …) are peeled off: inside the
+    history the system prompt tells the model to ignore them, and the
+    no-``--resume`` fallback re-sends fresh copies ahead of the history.
+
     Returns None if there are no messages to format.
     """
     if not messages:
@@ -3472,8 +3481,8 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     lines: list[str] = []
     for msg in messages:
         if msg.role == "user":
-            if msg.content:
-                lines.append(f"User: {msg.content}")
+            if content := strip_injected_context_for_display(msg.content or ""):
+                lines.append(f"User: {content}")
         elif msg.role == "assistant":
             if msg.content:
                 lines.append(f"You responded: {msg.content}")
@@ -3500,6 +3509,7 @@ async def _build_query_message(
     target_tokens: int | None = None,
     prior_messages: "list[ChatMessage] | None" = None,
     expect_compaction: bool = False,
+    context_prefix: str = "",
 ) -> tuple[str, "CompactionStats | None"]:
     """Build the query message with appropriate context.
 
@@ -3524,6 +3534,12 @@ async def _build_query_message(
         expect_compaction: What the caller's pre-check predicted.  Logged only,
             beside the branch actually taken, so a row that opens without
             compression (or compression with no row) is one grep away.
+        context_prefix: The first-turn server blocks to lead the query with
+            when ``use_resume=False`` on a session with history — the fresh
+            CLI session has nothing else to carry them.  Ignored on the
+            ``--resume`` paths and below the bare-message token floor.  Its
+            size is taken out of ``target_tokens`` before the history is
+            compressed.
 
     Returns:
         Tuple of (query_message, compaction_stats or None).
@@ -3727,16 +3743,23 @@ async def _build_query_message(
         source = visible_to_model(
             prior_messages if prior_messages is not None else prior
         )
+        history_target = target_tokens
+        if target_tokens is not None and context_prefix:
+            history_target = max(
+                _BARE_MESSAGE_TOKEN_FLOOR,
+                target_tokens - estimate_token_count_str(context_prefix),
+            )
         logger.warning(
             "[SDK] [%s] No --resume for %d-message session — compressing context "
-            "(source=%s, target_tokens=%s)",
+            "(source=%s, target_tokens=%s, context_prefix_chars=%d)",
             session_id[:8],
             msg_count,
             "transcript+gap" if prior_messages is not None else "full-db",
-            target_tokens,
+            history_target,
+            len(context_prefix),
         )
         compressed, _was_compressed, stats = await _compress_messages(
-            source, target_tokens
+            source, history_target
         )
         compaction_stats = stats
         history_context = _format_conversation_context(compressed)
@@ -3748,7 +3771,8 @@ async def _build_query_message(
                 len(history_context),
             )
             return (
-                f"{history_context}\n\nNow, the user says:\n{current_message}",
+                f"{context_prefix}{history_context}"
+                f"\n\nNow, the user says:\n{current_message}",
                 compaction_stats,
             )
         logger.warning(
@@ -3757,6 +3781,7 @@ async def _build_query_message(
             session_id[:8],
             len(source),
         )
+        return context_prefix + current_message, compaction_stats
 
     return current_message, compaction_stats
 
@@ -5620,6 +5645,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         security_hooks = create_security_hooks(
             user_id,
+            context_after_compaction=functools.partial(
+                _context_after_compaction,
+                session,
+                user_id,
+                message,
+                sdk_cwd=sdk_cwd,
+                use_e2b=use_e2b,
+                graphiti_enabled=graphiti_enabled,
+                log_prefix=log_prefix,
+            ),
             sdk_cwd=sdk_cwd,
             max_subtasks=config.claude_agent_max_subtasks,
             on_compact=compaction.on_compact,
@@ -5852,6 +5887,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # transcript already contains the <user_context> prefix and its
         # siblings from the original turn (persisted to the DB via
         # inject_user_context), so the SDK replay carries context continuity
+        resume_fallback_prefix: str | None = None
         # without us prepending them again. Warm context is not among them:
         # no turn persists its memory block, and every send carries its own
         # (``_append_warm_context`` below).
@@ -5895,6 +5931,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
+        elif not use_resume:
+            resume_fallback_prefix = await _rebuild_first_turn_prefix(
+                session,
+                user_id,
+                message,
+                sdk_cwd=sdk_cwd,
+                use_e2b=use_e2b,
+                graphiti_enabled=graphiti_enabled,
+                log_prefix=log_prefix,
+                reason="no-resume fallback",
+            )
 
         # A ``/skill-name arguments`` send carries the skill's instructions
         # into this turn and every later one. Same row as the injection
@@ -6024,6 +6071,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session_msg_ceiling=_pre_drain_msg_count,
             prior_messages=restore_context_messages,
             expect_compaction=forecast.expected,
+            context_prefix=resume_fallback_prefix or "",
         )
 
         # Snapshot before the close persists its synthetic assistant+tool pair:
@@ -6274,6 +6322,23 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # on retry the extra overhead of full-DB context is acceptable.
                 # Keep the ``budget_status +`` prefix through any reflow of this
                 # call: dropping it silently un-ships the retry path's budget line.
+                # A resumed turn whose retry drops --resume needs the first-turn
+                # context just as a turn that never resumed does.
+                if (
+                    has_history
+                    and not state.use_resume
+                    and resume_fallback_prefix is None
+                ):
+                    resume_fallback_prefix = await _rebuild_first_turn_prefix(
+                        session,
+                        user_id,
+                        message,
+                        sdk_cwd=sdk_cwd,
+                        use_e2b=use_e2b,
+                        graphiti_enabled=graphiti_enabled,
+                        log_prefix=log_prefix,
+                        reason="no-resume fallback",
+                    )
                 (
                     state.query_message,
                     state.compaction_stats,
@@ -6286,6 +6351,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     session_msg_ceiling=_pre_drain_msg_count,
                     target_tokens=state.target_tokens,
                     expect_compaction=True,
+                    context_prefix=resume_fallback_prefix or "",
                 )
                 if _retry_reduced_context(
                     reduced=ctx,
@@ -7257,6 +7323,135 @@ async def _fetch_graphiti_context(
         or ""
     )
     return True, ctx
+
+
+async def _first_turn_context_blocks(
+    session: ChatSession,
+    user_id: str | None,
+    *,
+    sdk_cwd: str,
+    use_e2b: bool,
+) -> tuple[str, str, str]:
+    """The ``(env_ctx, session_ctx, skills_ctx)`` bodies for the first-turn prefix.
+
+    ``env_ctx`` names the working directory; ``session_ctx`` lets the model
+    answer "cancel that" / "what did I schedule" without a ``list_schedules``
+    round-trip (it degrades to the bare session_id line on a scheduler RPC
+    hiccup); ``skills_ctx`` is the per-user skill index.  All three land in
+    the per-turn user message, after the cache breakpoint, so they do not bust
+    the cross-session prefix cache.  A skill-index failure must not block the
+    turn: it is logged and the index left empty.
+    """
+    env_ctx = f"working_dir: {sdk_cwd}" if sdk_cwd and not use_e2b else ""
+    session_ctx = ""
+    if user_id:
+        session_ctx = await build_session_context(
+            session_id=session.session_id, user_id=user_id
+        )
+    skills_ctx = ""
+    try:
+        skills_ctx = await build_skills_context(user_id, expert_id=session.expert_id)
+    except Exception:
+        logger.exception("[skills] failed to build skills_ctx — proceeding without it")
+    return env_ctx, session_ctx, skills_ctx
+
+
+# Leads the blocks the ``SessionStart`` hook hands back after a compaction, so
+# the model reads them as the first message's blocks, not as something new.
+_AFTER_COMPACTION_LEAD = (
+    "The conversation was just compacted, and the summary does not carry the "
+    "server-injected blocks from the start of its first user message. Here "
+    "they are again, rebuilt now; treat them exactly as that message's blocks:"
+    "\n\n"
+)
+
+
+async def _context_after_compaction(
+    session: ChatSession,
+    user_id: str | None,
+    message: str | None,
+    *,
+    sdk_cwd: str,
+    use_e2b: bool,
+    graphiti_enabled: bool,
+    log_prefix: str,
+) -> str:
+    """What the ``SessionStart`` hook hands the model after the CLI compacts.
+
+    Compaction replaces the session's first user message with a summary, and
+    the first-turn blocks went with it — for the rest of the turn and for
+    every turn that resumes the compacted session.  ``""`` when there is
+    nothing to re-send.
+    """
+    prefix = await _rebuild_first_turn_prefix(
+        session,
+        user_id,
+        message,
+        sdk_cwd=sdk_cwd,
+        use_e2b=use_e2b,
+        graphiti_enabled=graphiti_enabled,
+        log_prefix=log_prefix,
+        reason="compaction",
+    )
+    return _AFTER_COMPACTION_LEAD + prefix if prefix else ""
+
+
+async def _rebuild_first_turn_prefix(
+    session: ChatSession,
+    user_id: str | None,
+    message: str | None,
+    *,
+    sdk_cwd: str,
+    use_e2b: bool,
+    graphiti_enabled: bool,
+    log_prefix: str,
+    reason: str,
+) -> str:
+    """Render the first-turn prefix again for a context that has lost it.
+
+    The first turn's blocks reach later model calls only through the
+    session's first user message.  Two things take that message away: a
+    later turn that cannot ``--resume`` (``_build_query_message`` puts the
+    result ahead of ``<conversation_history>``), and the CLI's own compaction,
+    which replaces it with a summary (``_context_after_compaction``).  This
+    renders the blocks with the first turn's own builders — skills index,
+    expert or team workflows,
+    follow-ups, working directory and user context.  Best effort: any failure
+    is logged and ``""`` returned, and the turn goes on without them.
+    """
+    try:
+        (env_ctx, session_ctx, skills_ctx), understanding = await asyncio.gather(
+            _first_turn_context_blocks(
+                session, user_id, sdk_cwd=sdk_cwd, use_e2b=use_e2b
+            ),
+            fetch_business_understanding(user_id),
+        )
+        prefix = await build_injected_context_prefix(
+            understanding,
+            env_ctx=env_ctx,
+            session_ctx=session_ctx,
+            skills_ctx=skills_ctx,
+            user_id=user_id,
+            expert_id=session.expert_id,
+            kickoff_turn=is_expert_kickoff_turn(session),
+        )
+    except Exception:
+        logger.exception(
+            "%s Could not rebuild the first-turn context (%s) — going on without it",
+            log_prefix,
+            reason,
+        )
+        return ""
+    logger.info(
+        "%s Re-injecting first-turn context (%s): %d chars;"
+        " skills=%s, user_context=%s",
+        log_prefix,
+        reason,
+        len(prefix),
+        bool(skills_ctx),
+        understanding is not None,
+    )
+    return prefix
 
 
 def _graphiti_ingest_allowed(

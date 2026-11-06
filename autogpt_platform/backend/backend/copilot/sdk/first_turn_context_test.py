@@ -205,7 +205,20 @@ async def test_a_first_turn_reads_its_context_while_setup_runs() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_follow_up_reads_no_first_turn_context() -> None:
+@pytest.mark.parametrize(
+    "resumes, expected",
+    [(True, [0, 0, 0]), (False, [1, 1, 1])],
+    ids=["resumed", "no-resume-fallback"],
+)
+async def test_a_follow_up_reads_the_first_turn_context_only_without_resume(
+    resumes: bool, expected: list[int]
+) -> None:
+    """A resumed follow-up carries the first-turn blocks in its CLI session
+    and reads none of them again. One that cannot resume starts a fresh CLI
+    session, so it rebuilds them, each once. The session-file write is pinned
+    because the restore falls back whenever the CLI projects dir is missing,
+    which differs between machines. The fallback's business-understanding
+    read is stubbed too: without a connected database it goes over RPC."""
     reads = [AsyncMock(return_value="") for _ in range(3)]
 
     await _FirstTurn()._run(
@@ -214,13 +227,18 @@ async def test_a_follow_up_reads_no_first_turn_context() -> None:
         first_block=None,
         refresh=AsyncMock(return_value=None),
         extra=[
+            (f"{_SVC}._write_cli_session_to_disk", dict(return_value=resumes)),
+            (
+                f"{_SVC}.fetch_business_understanding",
+                dict(new=AsyncMock(return_value=None)),
+            ),
             (f"{_SVC}.build_session_context", dict(new=reads[0])),
             (f"{_SVC}.build_skills_context", dict(new=reads[1])),
             (_EXPERT_CONTEXT, dict(new=reads[2])),
         ],
     )
 
-    assert [read.await_count for read in reads] == [0, 0, 0]
+    assert [read.await_count for read in reads] == expected
 
 
 @pytest.mark.asyncio
