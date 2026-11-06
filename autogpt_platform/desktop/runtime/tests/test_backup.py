@@ -326,6 +326,48 @@ def test_restore_publication_failure_restores_original_directory(
     assert not DataLock(root).journal.exists()
 
 
+@pytest.mark.parametrize("existing", [True, False])
+def test_restore_sync_failure_after_publication_retains_recovery_guard(
+    tmp_path, monkeypatch, existing
+):
+    root = tmp_path / "data"
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "document").write_text("restored work", encoding="utf-8")
+    if existing:
+        root.mkdir()
+        (root / "document").write_text("newer work", encoding="utf-8")
+    sync_error = OSError(errno.EIO, "injected directory sync failure")
+
+    def fail_after_publication(path):
+        if path == root.parent and root.exists() and not stage.exists():
+            raise sync_error
+
+    monkeypatch.setattr(backup, "sync_directory", fail_after_publication)
+    with (
+        DataLock(root) as held,
+        pytest.raises(backup.BackupError, match="Restore needs recovery") as caught,
+    ):
+        backup.publish_restore(held, stage)
+    assert caught.value.__cause__ is sync_error
+    assert (root / "document").read_text("utf-8") == "restored work"
+    journal_path = DataLock(root).journal
+    journal = json.loads(journal_path.read_text("utf-8"))
+    assert journal["directory"] == str(root)
+    assert journal["stage"] == str(stage)
+    if existing:
+        assert (Path(journal["previous"]) / "document").read_text(
+            "utf-8"
+        ) == "newer work"
+    else:
+        assert journal["previous"] is None
+    with pytest.raises(DataBusyError, match="restore needs recovery"), DataLock(root):
+        pytest.fail("runtime accepted a restore without durable publication")
+    journal_path.unlink()
+    with DataLock(root):
+        assert (root / "document").read_text("utf-8") == "restored work"
+
+
 def test_concurrent_root_recreation_preserves_all_data_and_blocks_startup(
     populated, monkeypatch
 ):

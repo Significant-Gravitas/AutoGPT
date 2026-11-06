@@ -68,6 +68,8 @@ After restoring, start AutoGPT and check that you can sign in, decrypt a saved t
 
 Before replacing the data directory, restore writes a sibling `.autogpt-restore-<id>.json` journal containing the current, previous and staged directory paths. If the command is interrupted or cannot safely roll back, it retains that journal and all remaining copies. The shell and runtime refuse to initialize or change the data until recovery is resolved, even if another program recreated an empty directory at the original path. Keep every recorded directory. With all app processes closed, use the journal to identify and verify the complete copy you intend to recover; put that verified copy at the original path while retaining the other copies, and remove the journal only after that recovery is complete. Never clear the journal merely because a directory exists at the original path. An ordinary failed replacement that can restore the original directory rolls back and clears the journal itself.
 
+A POSIX directory-flush failure after the replacement rename also requires recovery: the new folder can be visible without its rename being durable on disk. The tool keeps the journal, the restored folder and any previous folder instead of treating visibility as a successful restore. Resolve the storage error and verify the intended copy before completing the recovery procedure above.
+
 ## Upgrade and downgrade behavior
 
 There is no automatic backup or retention policy yet. Make the cold backup before installing the update, then verify your saved data after the new version starts. Keep both the backup and the corresponding installer until you have checked the upgrade.
