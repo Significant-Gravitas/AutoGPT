@@ -132,6 +132,10 @@ function isLocal() {
   return getBehaveAs() === BehaveAs.LOCAL;
 }
 
+function isGraphMemoryAvailable() {
+  return process.env.NEXT_PUBLIC_GRAPH_MEMORY !== "disabled";
+}
+
 function isServerSide() {
   return typeof window === "undefined";
 }
@@ -208,6 +212,7 @@ export const environment = {
   isProd,
   isCloud,
   isLocal,
+  isGraphMemoryAvailable,
   isVercel,
   isVercelPreview,
   isSentryEnabled,

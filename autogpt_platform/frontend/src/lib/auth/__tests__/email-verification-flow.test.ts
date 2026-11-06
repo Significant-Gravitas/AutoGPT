@@ -67,7 +67,8 @@ vi.mock("../provision-platform-user", () => ({
 }));
 
 const sentEmails = vi.hoisted(
-  () => [] as Array<{ to: string; type: string; url: string }>,
+  () =>
+    [] as Array<{ to: string; type: string; url: string; newEmail?: string }>,
 );
 // Addresses the mail provider refuses at send time, as sendAuthEmail reports it.
 const refusedAtSend = vi.hoisted(() => new Set<string>());
@@ -1342,9 +1343,15 @@ describe("change-email verification emails", () => {
     await handler(new Request(confirm?.url ?? ""));
     await emailsSent();
 
-    expect(sentEmails.map(({ to, type }) => ({ to, type }))).toEqual([
-      { to: "old@example.com", type: "change_email" },
-      { to: "new@example.com", type: "verify_new_email" },
+    expect(
+      sentEmails.map(({ to, type, newEmail }) => ({ to, type, newEmail })),
+    ).toEqual([
+      {
+        to: "old@example.com",
+        type: "change_email",
+        newEmail: "new@example.com",
+      },
+      { to: "new@example.com", type: "verify_new_email", newEmail: undefined },
     ]);
   });
 

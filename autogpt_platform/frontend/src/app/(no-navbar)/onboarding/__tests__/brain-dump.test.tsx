@@ -62,9 +62,9 @@ const { recordingStoreState } = vi.hoisted(() => ({
   },
 }));
 
-// Each wizard save, in order, and whether Hire was already on screen.
+// Each wizard save, in order, and whether the plan step was already on screen.
 const { wizardSaves } = vi.hoisted(() => ({
-  wizardSaves: [] as { role: string; hireShown: boolean }[],
+  wizardSaves: [] as { role: string; planShown: boolean }[],
 }));
 
 vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
@@ -145,11 +145,8 @@ vi.mock("@/components/atoms/SwapFade/SwapFade", () => ({
 vi.mock("../steps/RoleStep", () => ({
   RoleStep: () => <div data-testid="step-role" />,
 }));
-vi.mock("../steps/SubscriptionStep/SubscriptionStep", () => ({
-  SubscriptionStep: () => <div data-testid="step-subscription" />,
-}));
-vi.mock("../steps/HireStep/HireStep", () => ({
-  HireStep: () => <div data-testid="step-hire" />,
+vi.mock("../steps/SubscriptionStep/PlanTrialStep", () => ({
+  PlanTrialStep: () => <div data-testid="step-plan" />,
 }));
 
 let currentSearchParams = new URLSearchParams();
@@ -195,7 +192,7 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   }) => {
     wizardSaves.push({
       role: body.wizardProgress.role,
-      hireShown: document.querySelector('[data-testid="step-hire"]') !== null,
+      planShown: document.querySelector('[data-testid="step-plan"]') !== null,
     });
     return Promise.resolve({
       status: 200,
@@ -688,13 +685,14 @@ describe("onboarding brain dump — skip", () => {
       input_mode: "skipped",
     });
 
-    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(await screen.findByTestId("step-plan")).toBeDefined();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
   });
 
   // SECRT-2982: while the first skip waited on its record the button stayed
-  // up, the second click recorded a second skip, and both advanced past Hire.
-  it("moves to Hire on the click, once, however often it is clicked", async () => {
+  // up, the second click recorded a second skip, and both advanced past the
+  // step after it (now the plan step).
+  it("moves to the plan step on the click, once, however often it is clicked", async () => {
     const skip = holdSkipRecord();
     landOnPainPointsStep();
 
@@ -705,23 +703,23 @@ describe("onboarding brain dump — skip", () => {
       screen.getByRole("button", { name: "Skip for now" }),
     );
 
-    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(await screen.findByTestId("step-plan")).toBeDefined();
     await waitFor(() => expect(skip.skipBodies).toHaveLength(1));
     skip.release();
     // Room for a second skip's advance to land, had one been sent.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(skip.skipBodies).toHaveLength(1);
     expect(useOnboardingWizardStore.getState().currentStep).toBe(
-      NO_PAYWALL_STEPS.hire,
+      NO_PAYWALL_STEPS.subscription,
     );
   });
 });
 
-// The server builds the hire step's team from the role in the saved progress,
+// The server builds the plan step's role plan from the role in the saved progress,
 // and the wizard saves a change 200 ms after it is made. Picking the role and
 // leaving the step in one go leaves no time for that timer.
 describe("onboarding brain dump — the role reaches the server first", () => {
-  it("saves a role picked just before a skip before showing Hire", async () => {
+  it("saves a role picked just before a skip before showing the plan", async () => {
     finalizeReturns({ status: "completed" });
     landOnPainPointsStep();
 
@@ -730,13 +728,13 @@ describe("onboarding brain dump — the role reaches the server first", () => {
     act(() => useOnboardingWizardStore.getState().setRole("Marketing"));
     fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
 
-    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(await screen.findByTestId("step-plan")).toBeDefined();
     await waitFor(() =>
       expect(wizardSaves.map((save) => save.role)).toContain("Marketing"),
     );
     expect(wizardSaves.find((save) => save.role === "Marketing")).toEqual({
       role: "Marketing",
-      hireShown: false,
+      planShown: false,
     });
   });
 
@@ -767,7 +765,7 @@ describe("onboarding brain dump — the role reaches the server first", () => {
         act(() => useOnboardingWizardStore.getState().setRole("Marketing")),
       );
 
-      expect(await screen.findByTestId("step-hire")).toBeDefined();
+      expect(await screen.findByTestId("step-plan")).toBeDefined();
       expect(rolesSavedAtFinalize).toContain("Marketing");
     },
   );
@@ -832,7 +830,7 @@ describe("onboarding brain dump — finishing a take", () => {
       await screen.findByRole("button", { name: "Send recording" }),
     );
 
-    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(await screen.findByTestId("step-plan")).toBeDefined();
     expect(bodies).toHaveLength(1);
     const recordingId = (bodies[0] as { recording_id: string }).recording_id;
     // Marked finalized by id, then cleared: an unfinalized row left behind
@@ -1076,7 +1074,7 @@ describe("onboarding brain dump — failure", () => {
       screen.getByRole("button", { name: "Continue without it" }),
     ).toBeDefined();
     // The wizard must not advance on failure.
-    expect(screen.queryByTestId("step-hire")).toBeNull();
+    expect(screen.queryByTestId("step-plan")).toBeNull();
   });
 
   it("retries a typed take with its text and sends no recording", async () => {
@@ -1128,7 +1126,7 @@ describe("onboarding brain dump — failure", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
 
-    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(await screen.findByTestId("step-plan")).toBeDefined();
     expect(finalizeBodies).toHaveLength(2);
     expect(finalizeBodies[1]).toMatchObject({
       input_mode: "typed",
@@ -1179,7 +1177,7 @@ describe("onboarding brain dump — insufficient content", () => {
       screen.getByRole("button", { name: "Continue without it" }),
     ).toBeDefined();
     // No accidental advance to the personalized greeting...
-    expect(screen.queryByTestId("step-hire")).toBeNull();
+    expect(screen.queryByTestId("step-plan")).toBeNull();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
     // ...and the local parts survive until the user picks a next move.
     expect(recordingStoreState.parts).toHaveLength(1);
@@ -1208,7 +1206,7 @@ describe("onboarding brain dump — insufficient content", () => {
       screen.getByRole("button", { name: "Continue without it" }),
     );
 
-    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(await screen.findByTestId("step-plan")).toBeDefined();
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
     await waitFor(() => expect(skip.skipBodies).toHaveLength(1));
     // The take stays for Back, and the skip is recorded as a take of its
@@ -1246,7 +1244,7 @@ describe("onboarding brain dump — insufficient content", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Continue without it" }),
     );
-    await screen.findByTestId("step-hire");
+    await screen.findByTestId("step-plan");
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
 
     expect(
@@ -1434,7 +1432,7 @@ describe("onboarding brain dump — Otto might ask", () => {
       prompt_set: "Engineering",
       prompts_seen: 1,
     });
-    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(await screen.findByTestId("step-plan")).toBeDefined();
   });
 
   it("sends the prompt set with the start of a recording", async () => {
@@ -1657,22 +1655,21 @@ describe("onboarding brain dump — a refused microphone", () => {
 });
 
 describe("onboarding step map integrity", () => {
-  it("keeps personalization and hiring before the optional payment step", () => {
+  it("keeps personalization before the plan step, with or without payment", () => {
     expect(PAYWALL_LAST_STEPS).toEqual({
       team: 1,
       autopilot: 2,
       role: 3,
       painPoints: 4,
-      hire: 5,
-      subscription: 6,
-      preparing: 7,
+      subscription: 5,
+      preparing: 6,
     });
     expect(NO_PAYWALL_STEPS).toEqual({
       team: 1,
       autopilot: 2,
       role: 3,
       painPoints: 4,
-      hire: 5,
+      subscription: 5,
       preparing: 6,
     });
   });

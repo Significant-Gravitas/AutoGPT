@@ -17,6 +17,8 @@ interface SendAuthEmailArgs {
   to: string;
   type: AuthEmailType;
   url: string;
+  // change_email only: the address the account is moving to.
+  newEmail?: string;
 }
 
 /**
@@ -35,7 +37,12 @@ interface SendAuthEmailArgs {
  * and the resend button shows it. Disposable domains still get their email:
  * older accounts on one need it to reset a password or move to a real address.
  */
-export async function sendAuthEmail({ to, type, url }: SendAuthEmailArgs) {
+export async function sendAuthEmail({
+  to,
+  type,
+  url,
+  newEmail,
+}: SendAuthEmailArgs) {
   // DNS errors still send.
   await assertEmailHasMailServer(to);
   try {
@@ -47,7 +54,7 @@ export async function sendAuthEmail({ to, type, url }: SendAuthEmailArgs) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ type, to, url }),
+      body: JSON.stringify({ type, to, url, new_email: newEmail }),
     });
 
     if (!response.ok) {

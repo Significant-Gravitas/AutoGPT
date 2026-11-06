@@ -135,7 +135,10 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/internal/credits/trial/confirm",
     "POST /api/internal/credits/trial/resume",
     "POST /api/internal/credits/{transaction_key}/refund",
-    # Onboarding, which reaches the plan picker only after hiring the team.
+    # Onboarding: the wizard, the brain dump and the plan shown beside the
+    # trial (settled when the step stops waiting), all before anything is
+    # paid for. The plan's hire checks the paywall. POST /api/internal/experts is here from when onboarding hired the
+    # team before the plan picker.
     "POST /api/internal/experts",
     "GET /api/internal/onboarding",
     "PATCH /api/internal/onboarding",
@@ -145,6 +148,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/internal/onboarding/brain-dump/intro",
     "POST /api/internal/onboarding/brain-dump/intro/complete",
     "POST /api/internal/onboarding/brain-dump/parts",
+    "GET /api/internal/onboarding/brain-dump/plan",
+    "POST /api/internal/onboarding/brain-dump/plan/settle",
     "GET /api/internal/onboarding/brain-dump/recommended-experts",
     "GET /api/internal/onboarding/brain-dump/recommended-providers",
     "GET /api/internal/onboarding/brain-dump/recording",
