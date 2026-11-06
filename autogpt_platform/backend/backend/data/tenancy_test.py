@@ -92,7 +92,7 @@ async def test_untagged_rows_are_writable_only_from_the_personal_org(
     assert await writable_organization_ids("u1", "org-1") == writable
     where = mock_prisma.orgmember.find_first.call_args.kwargs["where"]
     assert (where["userId"], where["orgId"]) == ("u1", "org-1")
-    assert where["Org"] == {"isPersonal": True, "deletedAt": None}
+    assert where["Org"] == {"is": {"isPersonal": True, "deletedAt": None}}
 
 
 def test_organization_filter_matches_untagged_rows_only_when_asked():

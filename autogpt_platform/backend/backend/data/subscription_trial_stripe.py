@@ -177,9 +177,10 @@ async def _reconcile_locked(
         await tx.user.update_many(
             where={
                 "id": trial.user_id,
-                "subscriptionTier": {
-                    "not_in": [SubscriptionTier.ENTERPRISE, SubscriptionTier.NO_TIER]
-                },
+                "NOT": [
+                    {"subscriptionTier": SubscriptionTier.ENTERPRISE},
+                    {"subscriptionTier": SubscriptionTier.NO_TIER},
+                ],
             },
             data={"subscriptionTier": tier, "subscriptionEndedAt": now},
         )
@@ -187,7 +188,7 @@ async def _reconcile_locked(
         await tx.user.update_many(
             where={
                 "id": trial.user_id,
-                "subscriptionTier": {"not": SubscriptionTier.ENTERPRISE},
+                "NOT": [{"subscriptionTier": SubscriptionTier.ENTERPRISE}],
             },
             data={"subscriptionTier": tier, "subscriptionEndedAt": None},
         )

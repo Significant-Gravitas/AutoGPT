@@ -118,7 +118,7 @@ async def test_scheduled_cancellation_ends_access_when_stripe_ends_the_trial(
     downgrade = boundaries.user.update_many.await_args.kwargs
     assert downgrade["data"]["subscriptionTier"] == SubscriptionTier.NO_TIER
     assert isinstance(downgrade["data"]["subscriptionEndedAt"], datetime)
-    assert SubscriptionTier.NO_TIER in downgrade["where"]["subscriptionTier"]["not_in"]
+    assert {"subscriptionTier": SubscriptionTier.NO_TIER} in downgrade["where"]["NOT"]
 
 
 @pytest.mark.asyncio

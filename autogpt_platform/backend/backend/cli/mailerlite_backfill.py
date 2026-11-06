@@ -341,7 +341,7 @@ async def _people(
     cursor: str | None = None
     while True:
         page = await prisma.models.User.prisma().find_many(
-            where={"stripeCustomerId": {"not": None}},
+            where={"NOT": [{"stripeCustomerId": None}]},
             take=_ACCOUNT_PAGE,
             order={"id": "asc"},
             **({"cursor": {"id": cursor}, "skip": 1} if cursor else {}),

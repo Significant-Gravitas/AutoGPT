@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from prisma import Prisma
+from prisma.enums import ChatSessionStatus
 from prisma.models import ChatMessage, ChatSession
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
@@ -513,7 +514,7 @@ async def cancel_queued_background_followup(user_id: str, session_id: str) -> bo
         for task in tasks:
             await _finish_followup(tx, task, CANCELLED_MESSAGE)
         await ChatSession.prisma(tx).update(
-            where={"id": session_id}, data={"chatStatus": "idle"}
+            where={"id": session_id}, data={"chatStatus": ChatSessionStatus.idle}
         )
     await invalidate_session_cache(session_id)
     return True
@@ -545,7 +546,7 @@ async def cancel_orphaned_background_tasks(
         turn_id = _parse_json_field(parent.metadata, default={}).get("_active_turn_id")
         tasks = await _cancel_background_tasks(tx, user_id, session_id, turn_id)
         await ChatSession.prisma(tx).update(
-            where={"id": session_id}, data={"chatStatus": "idle"}
+            where={"id": session_id}, data={"chatStatus": ChatSessionStatus.idle}
         )
         return tasks
 
@@ -609,7 +610,7 @@ async def _enqueue(
 ) -> None:
     await _append(tx, session_id, message_id, content, metadata)
     await ChatSession.prisma(tx).update(
-        where={"id": session_id}, data={"chatStatus": "queued"}
+        where={"id": session_id}, data={"chatStatus": ChatSessionStatus.queued}
     )
 
 

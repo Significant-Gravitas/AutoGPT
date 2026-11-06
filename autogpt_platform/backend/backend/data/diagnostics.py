@@ -12,6 +12,7 @@ from croniter import croniter
 from pika.exceptions import ChannelClosedByBroker
 from prisma.enums import AgentExecutionStatus
 from prisma.models import AgentGraph, AgentGraphExecution, LibraryAgent, User
+from prisma.types import AgentGraphExecutionInclude
 from pydantic import BaseModel
 
 from backend.data.db import query_raw_with_schema
@@ -193,7 +194,7 @@ def _to_running_execution_detail(
     )
 
 
-_EXECUTION_ADMIN_INCLUDE = {
+_EXECUTION_ADMIN_INCLUDE: AgentGraphExecutionInclude = {
     "AgentGraph": True,
     "User": True,
 }
@@ -803,9 +804,10 @@ async def get_running_executions_details(
     """
     executions = await AgentGraphExecution.prisma().find_many(
         where={
-            "executionStatus": {
-                "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]  # type: ignore
-            },
+            "OR": [
+                {"executionStatus": AgentExecutionStatus.RUNNING},
+                {"executionStatus": AgentExecutionStatus.QUEUED},
+            ],
             "isDeleted": False,
         },
         include=_EXECUTION_ADMIN_INCLUDE,
@@ -834,9 +836,10 @@ async def get_orphaned_executions_details(
 
     executions = await AgentGraphExecution.prisma().find_many(
         where={
-            "executionStatus": {
-                "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]  # type: ignore
-            },
+            "OR": [
+                {"executionStatus": AgentExecutionStatus.RUNNING},
+                {"executionStatus": AgentExecutionStatus.QUEUED},
+            ],
             "createdAt": {"lt": cutoff},
             "isDeleted": False,
         },
@@ -931,10 +934,10 @@ async def get_invalid_executions_details(
     executions = await AgentGraphExecution.prisma().find_many(
         where={
             "isDeleted": False,
-            "OR": [  # type: ignore
+            "OR": [
                 {
                     "executionStatus": AgentExecutionStatus.QUEUED,
-                    "startedAt": {"not": None},  # type: ignore
+                    "NOT": [{"startedAt": None}],
                 },
                 {
                     "executionStatus": AgentExecutionStatus.RUNNING,
@@ -1165,9 +1168,10 @@ async def cleanup_orphaned_executions_bulk(
         where={
             "id": {"in": execution_ids},
             "isDeleted": False,
-            "executionStatus": {
-                "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]
-            },
+            "OR": [
+                {"executionStatus": AgentExecutionStatus.RUNNING},
+                {"executionStatus": AgentExecutionStatus.QUEUED},
+            ],
         },
         data={
             "executionStatus": AgentExecutionStatus.FAILED,

@@ -200,7 +200,7 @@ async def test_a_guarded_state_change_only_moves_those_states(table):
     assert table.update_many.await_args.kwargs["where"] == {
         "scopeKey": "user-1",
         "userId": "user-1",
-        "state": {"in": [ACTIVE, PAUSED]},
+        "OR": [{"state": ACTIVE}, {"state": PAUSED}],
     }
 
 
@@ -290,7 +290,7 @@ async def test_live_experts_are_hired_unarchived_and_owner_only(mocker):
     assert where == {
         "isTemplate": False,
         "isArchived": False,
-        "ownerUserId": {"not": None},
+        "NOT": [{"ownerUserId": None}],
         "visibility": ResourceVisibility.PRIVATE,
     }
     assert [(s.expert_id, s.paused) for s in scopes] == [("e1", False), ("e2", True)]

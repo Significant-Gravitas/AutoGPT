@@ -59,10 +59,10 @@ class ActivationCase(BaseModel):
                     where={"id": user.id},
                     data={
                         "subscriptionTier": (
-                            "MAX"
+                            SubscriptionTier.MAX
                             if self.subscription["items"]["data"][0]["price"]["id"]
                             == "price_max"
-                            else "PRO"
+                            else SubscriptionTier.PRO
                         )
                     },
                 )
@@ -112,7 +112,8 @@ class ActivationCase(BaseModel):
             }
         )
         await User.prisma().update(
-            where={"id": self.user_id}, data={"subscriptionTier": "TRIAL"}
+            where={"id": self.user_id},
+            data={"subscriptionTier": SubscriptionTier.TRIAL},
         )
         self.subscription["trial_end"] = int(end.timestamp())
         assert row.startedAt is not None
