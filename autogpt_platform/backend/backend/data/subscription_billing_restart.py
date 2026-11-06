@@ -51,6 +51,12 @@ from backend.data.credit import (
 from backend.data.db import transaction
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.stripe_invoice_payments import stripe_id
+from backend.data.subscription_billing_restart_invoice import (
+    bills_only_the_plan,
+    credit_covers_new_period,
+    current_period_start,
+    line_period_start,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +98,7 @@ def late_payment(invoice: dict, period_start: int | None = None) -> LatePayment 
     if invoice.get("billing_reason") not in PERIOD_OPENING_REASONS:
         return None
     paid_at = (invoice.get("status_transitions") or {}).get("paid_at")
-    start = period_start if period_start is not None else _line_period_start(invoice)
+    start = period_start if period_start is not None else line_period_start(invoice)
     if paid_at is None or start is None:
         return None
     late = LatePayment(period_start=start, paid_at=paid_at)
@@ -137,18 +143,17 @@ async def _restart_locked(invoice: dict, sub_id: str, tx: Prisma) -> RestartOutc
     if await replaced_by_newer_plan(customer_id, subscription):
         # The revived old plan is being ended; nothing to restart.
         return RestartOutcome.NOT_APPLICABLE
-    if subscription.get("schedule") or subscription.get("pending_update"):
+    if not _restartable(subscription) or not bills_only_the_plan(invoice):
         logger.error(
             f"Subscription {sub_id} was paid late (invoice {invoice_id}) but has"
-            " a schedule or pending update, so its billing period cannot be"
-            " restarted automatically; restart it by hand"
+            " a schedule, a pending update or a bill beyond the plan, so its"
+            " billing period cannot be restarted automatically; restart it by"
+            " hand"
         )
         return RestartOutcome.NEEDS_MANUAL_FIX
     progress = await _record_progress(invoice_id, user.id, sub_id, late, tx)
     if progress.restartedAt is not None:
         return RestartOutcome.NOT_APPLICABLE
-    if not await _credit_covers_new_period(sub_id, invoice):
-        return RestartOutcome.NEEDS_MANUAL_FIX
     if not await _credit_late_invoice(invoice, late, progress, tx):
         return RestartOutcome.NEEDS_MANUAL_FIX
     if not await _reset_anchor(sub_id, invoice_id):
@@ -163,33 +168,6 @@ async def _restart_locked(invoice: dict, sub_id: str, tx: Prisma) -> RestartOutc
         f" payment of invoice {invoice_id}, paid {_iso(late.paid_at)}"
     )
     return RestartOutcome.RESTARTED
-
-
-async def _credit_covers_new_period(sub_id: str, invoice: dict) -> bool:
-    """Whether the late invoice's credit pays the whole reset invoice.
-
-    The reset invoices the plan at today's terms. When the late invoice cost
-    less (a one-time promotion, a price change since), the card would be
-    charged the difference without the customer agreeing to it, so the
-    restart is left for a person instead."""
-    preview = await stripe_call(
-        stripe.Invoice.create_preview_async,
-        subscription=sub_id,
-        subscription_details={
-            "billing_cycle_anchor": "now",
-            "proration_behavior": "none",
-        },
-    )
-    new_period: int = preview.get("total") or 0
-    credit: int = invoice.get("total") or 0
-    if new_period <= credit:
-        return True
-    logger.error(
-        f"Restarting subscription {sub_id} from late invoice"
-        f" {invoice['id']} would charge {new_period - credit} more than the"
-        " late payment; the billing period was not restarted"
-    )
-    return False
 
 
 async def _record_progress(
@@ -216,25 +194,23 @@ async def _credit_late_invoice(
     progress: SubscriptionBillingRestart,
     tx: Prisma,
 ) -> bool:
-    """Credit the late invoice to the customer's balance, once."""
+    """Credit the late invoice to the customer's balance, once, and only
+    when that credit pays the whole reset invoice."""
     invoice_id: str = invoice["id"]
-    if progress.stripeCreditNoteId:
-        return True
-    notes = await stripe_call(
-        stripe.CreditNote.list_async, invoice=invoice_id, limit=100
-    )
-    async for note in stripe_list_items(notes):
-        if (note.get("metadata") or {}).get(RESTARTED_FROM_INVOICE_KEY) == invoice_id:
-            await _save_credit_note(invoice_id, note["id"], tx)
-            return True
-        if note.get("status") != "void":
-            logger.error(
-                f"Invoice {invoice_id} already has credit note {note.get('id')};"
-                " not crediting it again to restart its billing period"
-            )
-            return False
     total: int = invoice.get("total") or 0
-    if total <= 0:
+    credited = bool(progress.stripeCreditNoteId)
+    if not credited:
+        ours, credited_otherwise = await _existing_credit_notes(invoice_id)
+        if credited_otherwise:
+            return False
+        if ours:
+            await _save_credit_note(invoice_id, ours, tx)
+            credited = True
+    if not await credit_covers_new_period(
+        progress.stripeSubscriptionId, invoice_id, total, credited=credited
+    ):
+        return False
+    if credited or total <= 0:
         return True
     paid_on = datetime.fromtimestamp(late.paid_at, UTC).strftime("%-d %B %Y")
     note = await stripe_call(
@@ -254,6 +230,24 @@ async def _credit_late_invoice(
     return True
 
 
+async def _existing_credit_notes(invoice_id: str) -> tuple[str | None, bool]:
+    """This restart's credit note on the invoice, if any, and whether another
+    credit note already credits it."""
+    notes = await stripe_call(
+        stripe.CreditNote.list_async, invoice=invoice_id, limit=100
+    )
+    async for note in stripe_list_items(notes):
+        if (note.get("metadata") or {}).get(RESTARTED_FROM_INVOICE_KEY) == invoice_id:
+            return note["id"], False
+        if note.get("status") != "void":
+            logger.error(
+                f"Invoice {invoice_id} already has credit note {note.get('id')};"
+                " not crediting it again to restart its billing period"
+            )
+            return None, True
+    return None, False
+
+
 async def _save_credit_note(invoice_id: str, credit_note_id: str, tx: Prisma) -> None:
     await SubscriptionBillingRestart.prisma(tx).update(
         where={"stripeInvoiceId": invoice_id},
@@ -262,6 +256,17 @@ async def _save_credit_note(invoice_id: str, credit_note_id: str, tx: Prisma) ->
 
 
 async def _reset_anchor(sub_id: str, invoice_id: str) -> bool:
+    # An upgrade may have changed the plan while the credit was made.
+    current = dict(await stripe_call(stripe.Subscription.retrieve_async, sub_id))
+    if stripe_id(current.get("latest_invoice")) != invoice_id or not _restartable(
+        current
+    ):
+        logger.error(
+            f"Subscription {sub_id} changed while its billing period was being"
+            f" restarted from invoice {invoice_id}; the credit is on the"
+            " customer's balance and the period was not restarted"
+        )
+        return False
     try:
         await stripe_call(
             stripe.Subscription.modify_async,
@@ -281,28 +286,10 @@ async def _reset_anchor(sub_id: str, invoice_id: str) -> bool:
     return True
 
 
-def current_period_start(subscription: dict) -> int | None:
-    """The current period's start, on the subscription before Stripe API
-    2025-03-31.basil and on its items from then on."""
-    if subscription.get("current_period_start"):
-        return subscription["current_period_start"]
-    items = (subscription.get("items") or {}).get("data") or []
-    starts = [
-        item["current_period_start"]
-        for item in items
-        if item.get("current_period_start")
-    ]
-    return min(starts) if starts else None
-
-
-def _line_period_start(invoice: dict) -> int | None:
-    lines = (invoice.get("lines") or {}).get("data") or []
-    starts = [
-        line["period"]["start"]
-        for line in lines
-        if (line.get("period") or {}).get("start") and not line.get("proration")
-    ]
-    return min(starts) if starts else None
+def _restartable(subscription: dict) -> bool:
+    return subscription.get("status") == "active" and not (
+        subscription.get("schedule") or subscription.get("pending_update")
+    )
 
 
 def _iso(timestamp: int) -> str:

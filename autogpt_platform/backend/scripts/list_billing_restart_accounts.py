@@ -11,7 +11,9 @@ Two lists, printed as CSV:
              ``LATE_PAYMENT_AFTER`` after the period they opened had begun.
              Before the billing-period restart shipped, such a customer kept
              the old renewal date, so they paid for the days without access.
-             ``restarted`` says whether the restart's credit note exists.
+             ``credited`` says whether the restart's credit note exists,
+             ``restarted`` whether the renewal date was also moved; a
+             credited row that was not restarted needs a person.
 
 Nothing is written anywhere: Stripe is only listed and retrieved, the
 database only read. A restricted Stripe key with read access to customers,
@@ -59,6 +61,7 @@ _LATE_COLUMNS = [
     "days_late",
     "amount_paid",
     "currency",
+    "credited",
     "restarted",
 ]
 
@@ -100,7 +103,9 @@ async def _blocked() -> list[dict]:
     import stripe
 
     from backend.data.stripe_client import stripe_call, stripe_list_items
-    from backend.data.subscription_billing_restart import current_period_start
+    from backend.data.subscription_billing_restart_invoice import (
+        current_period_start,
+    )
 
     rows = []
     for status in ("past_due", "unpaid"):
@@ -153,7 +158,7 @@ async def _late(since: datetime) -> list[dict]:
         notes = await stripe_call(
             stripe.CreditNote.list_async, invoice=invoice["id"], limit=100
         )
-        restarted = any(
+        credited = any(
             (note.get("metadata") or {}).get(RESTARTED_FROM_INVOICE_KEY)
             == invoice["id"]
             for note in notes.data
@@ -169,10 +174,24 @@ async def _late(since: datetime) -> list[dict]:
                 "days_late": round(late.seconds_late / 86400, 1),
                 "amount_paid": invoice.get("amount_paid"),
                 "currency": invoice.get("currency"),
-                "restarted": restarted,
+                "credited": credited,
             }
         )
-    return rows
+    restarted = await _restarted_invoices([row["invoice_id"] for row in rows])
+    return [{**row, "restarted": row["invoice_id"] in restarted} for row in rows]
+
+
+async def _restarted_invoices(invoice_ids: list[str]) -> set[str]:
+    """Invoices whose restart finished: credited AND re-anchored. A credit
+    without a restart needs a person."""
+    from prisma.models import SubscriptionBillingRestart
+
+    if not invoice_ids:
+        return set()
+    rows = await SubscriptionBillingRestart.prisma().find_many(
+        where={"stripeInvoiceId": {"in": invoice_ids}, "restartedAt": {"not": None}}
+    )
+    return {row.stripeInvoiceId for row in rows}
 
 
 async def _app_tiers(customer_ids: set[str]) -> dict[str, tuple[str, str]]:
@@ -196,6 +215,12 @@ def _iso(timestamp: int | None) -> str:
     return datetime.fromtimestamp(timestamp, UTC).isoformat()
 
 
+def _since(value: str) -> datetime:
+    """An ISO date or time; one without a timezone is read as UTC."""
+    parsed = datetime.fromisoformat(value)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="List accounts hurt by a failed payment, read-only."
@@ -203,7 +228,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("report", choices=["blocked", "late"])
     parser.add_argument(
         "--since",
-        type=lambda value: datetime.fromisoformat(value).replace(tzinfo=UTC),
+        type=_since,
         default=datetime(2026, 9, 1, tzinfo=UTC),
         help="late: only invoices created on or after this date (default 2026-09-01)",
     )

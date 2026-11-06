@@ -851,11 +851,10 @@ async def _convert_trial(
     return status
 
 
-async def _restart_period_if_paid_late(invoice: dict) -> None:
+async def _restart_period_if_paid_late(invoice_id: str | None) -> None:
     """Last, once access and any trial conversion are recorded against the
     paid invoice: the restart makes a newer invoice the subscription's latest."""
-    invoice_id = invoice.get("id")
-    if not invoice_id or not invoice.get("customer"):
+    if not invoice_id:
         return
     outcome = await restart_period_after_late_payment(invoice_id)
     if outcome == RestartOutcome.NEEDS_MANUAL_FIX:
@@ -863,6 +862,14 @@ async def _restart_period_if_paid_late(invoice: dict) -> None:
             f"Invoice {invoice_id} was paid late but its subscription's billing"
             " period could not be restarted from the payment; see the logs"
         )
+
+
+def _paid_invoice_id(event_type: str, data_object: dict) -> str | None:
+    if event_type in ("invoice.paid", "invoice.payment_succeeded"):
+        return data_object.get("id")
+    if event_type == "invoice_payment.paid":
+        return data_object.get("invoice")
+    return None
 
 
 def _stripe_event_dedup_key(event_id: str) -> str:
@@ -1017,6 +1024,9 @@ async def stripe_webhook(request: Request):
     # not every downstream handler is independently idempotent.
     if not await _claim_stripe_event(event_id):
         await recover_claimed_billing_event(event_type, data_object)
+        # A delivery that died part way through a restart holds the claim;
+        # the restart resumes from its own record.
+        await _restart_period_if_paid_late(_paid_invoice_id(event_type, data_object))
         logger.info(
             "stripe_webhook: event %s (%s) already processed; skipping",
             event_id,
@@ -1083,7 +1093,7 @@ async def stripe_webhook(request: Request):
             await reconcile_wallet_payment_on_paid_invoice(data_object)
             await handle_subscription_payment_success(data_object)
             await on_trial_invoice(data_object, paid=True)
-            await _restart_period_if_paid_late(data_object)
+            await _restart_period_if_paid_late(data_object.get("id"))
 
         if event_type == "customer.subscription.trial_will_end":
             await sync_subscription_from_stripe(data_object)
@@ -1113,7 +1123,7 @@ async def stripe_webhook(request: Request):
                     await reconcile_wallet_payment_on_paid_invoice(invoice_payload)
                     await handle_subscription_payment_success(invoice_payload)
                     await on_trial_invoice(invoice_payload, paid=True)
-                    await _restart_period_if_paid_late(invoice_payload)
+                    await _restart_period_if_paid_late(invoice_id)
                 else:
                     outcome = await handle_subscription_payment_failure(invoice_payload)
                     if outcome == PaymentFailureOutcome.NEEDS_ACTION:

@@ -23,6 +23,7 @@ from backend.data.subscription_billing_restart import (
     RestartOutcome,
     restart_period_after_late_payment,
 )
+from backend.data.subscription_billing_restart_invoice import line_period_start
 
 CUSTOMER = "cus_1"
 SUB = "sub_1"
@@ -49,6 +50,7 @@ class FakeStripe:
         self.modify_started = asyncio.Event()
         self.hold_modify: asyncio.Event | None = None
         self.preview_total: int | None = None
+        self.lock_calls: list[tuple] = []
         self.tier: dict = {}
         self.rows: dict[str, MagicMock] = {}
 
@@ -91,6 +93,20 @@ class FakeStripe:
             "total": total,
             "attempt_count": attempt_count,
             "status_transitions": {"paid_at": paid_at},
+            "lines": {
+                "data": [
+                    {
+                        "type": "subscription",
+                        "proration": False,
+                        "period": {
+                            "start": self.subscriptions.get(sub_id, {}).get(
+                                "current_period_start", paid_at
+                            )
+                        },
+                    }
+                ],
+                "has_more": False,
+            },
         }
         if paid_at:
             self.card_charges.append(total)
@@ -201,7 +217,9 @@ class FakeStripe:
             "proration_behavior": "none",
         }
         total = self.new_period_total(subscription)
-        return {"total": total if self.preview_total is None else self.preview_total}
+        if self.preview_total is not None:
+            total = self.preview_total
+        return {"total": total, "amount_due": max(0, total + self.balance)}
 
     async def list_subscriptions(self, customer: str, status: str, limit: int):
         page = MagicMock()
@@ -232,7 +250,9 @@ def fake():
     async def fake_transaction(timeout=None):
         async with lock:
             tx = MagicMock()
-            tx.execute_raw = AsyncMock()
+            tx.execute_raw = AsyncMock(
+                side_effect=lambda *args: fake.lock_calls.append(args)
+            )
             yield tx
 
     async def find_user(where):
@@ -627,3 +647,92 @@ async def test_a_price_change_after_the_check_is_refused_not_charged(fake):
     )
     assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 3)
     assert fake.subscriptions[SUB]["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_each_restart_holds_the_subscriptions_advisory_lock(fake):
+    _fail_on_3rd_pay_on_9th(fake)
+
+    await restart_period_after_late_payment("in_march")
+
+    assert fake.lock_calls == [
+        (
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            f"billing-restart:{SUB}",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_balance_the_customer_owes_is_never_charged_by_the_reset(fake):
+    _fail_on_3rd_pay_on_9th(fake)
+    fake.balance = 700  # owed from earlier, Stripe adds it to the next invoice
+
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NEEDS_MANUAL_FIX
+    )
+    assert fake.credit_notes == []
+    assert fake.card_charges == [PRICE]
+    assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 3)
+
+
+@pytest.mark.asyncio
+async def test_an_invoice_billing_more_than_the_plan_is_left_for_a_person(fake):
+    """Crediting a one-off line too would leave it on the balance for a
+    later invoice, since the reset bills only the plan."""
+    _fail_on_3rd_pay_on_9th(fake)
+    fake.invoices["in_march"]["lines"]["data"].append(
+        {"type": "invoiceitem", "proration": False, "period": {"start": 1}}
+    )
+
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NEEDS_MANUAL_FIX
+    )
+    assert fake.credit_notes == []
+
+
+@pytest.mark.asyncio
+async def test_a_plan_changed_after_the_credit_is_not_reset(fake):
+    _fail_on_3rd_pay_on_9th(fake)
+    original = fake.create_credit_note
+
+    async def credit_then_upgrade(**params):
+        note = await original(**params)
+        fake.subscriptions[SUB]["latest_invoice"] = "in_upgrade"
+        return note
+
+    fake.create_credit_note = credit_then_upgrade
+    with patch("stripe.CreditNote.create_async", side_effect=credit_then_upgrade):
+        outcome = await restart_period_after_late_payment("in_march")
+
+    assert outcome == RestartOutcome.NEEDS_MANUAL_FIX
+    assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 3)
+    assert fake.card_charges == [PRICE]
+
+
+def test_the_period_start_is_read_from_the_recurring_plan_line_only():
+    invoice = {
+        "lines": {
+            "data": [
+                {"type": "invoiceitem", "proration": False, "period": {"start": 5}},
+                {"type": "subscription", "proration": True, "period": {"start": 7}},
+                {"type": "subscription", "proration": False, "period": {"start": 9}},
+            ]
+        }
+    }
+    basil = {
+        "lines": {
+            "data": [
+                {
+                    "parent": {
+                        "type": "subscription_item_details",
+                        "subscription_item_details": {"proration": False},
+                    },
+                    "period": {"start": 11},
+                }
+            ]
+        }
+    }
+
+    assert line_period_start(invoice) == 9
+    assert line_period_start(basil) == 11

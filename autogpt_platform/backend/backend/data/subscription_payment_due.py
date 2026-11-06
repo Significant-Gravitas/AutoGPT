@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from backend.data.credit import build_price_to_tier_map, replaced_by_newer_plan
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.stripe_invoice_payments import stripe_id
-from backend.data.subscription_billing_restart import current_period_start
+from backend.data.subscription_billing_restart_invoice import current_period_start
 
 logger = logging.getLogger(__name__)
 

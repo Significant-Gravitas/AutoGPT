@@ -217,6 +217,11 @@ def test_claimed_webhook_recovers_subscription_without_collection(
         "backend.api.features.billing.subscriptions.routes.UserCredit.fulfill_checkout",
         new_callable=AsyncMock,
     )
+    restart = mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.restart_period_after_late_payment",
+        new_callable=AsyncMock,
+        return_value=RestartOutcome.NOT_APPLICABLE,
+    )
     response = client.post(
         "/credits/stripe_webhook",
         content=b"{}",
@@ -226,6 +231,11 @@ def test_claimed_webhook_recovers_subscription_without_collection(
     recovered.assert_awaited_once_with(current)
     collection.assert_not_awaited()
     fulfill.assert_not_awaited()
+    # A delivery that died part way through a billing restart resumes it.
+    if event_type == "invoice.paid":
+        restart.assert_awaited_once_with("in_retry")
+    else:
+        restart.assert_not_awaited()
 
 
 def test_stripe_webhook_checkout_propagates_sync_failure(
