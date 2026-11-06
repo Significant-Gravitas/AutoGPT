@@ -32,7 +32,7 @@ BARE_MESSAGE_TOKEN_FLOOR = 5_000
 
 # The CLI's own trigger ceiling is ~93% of the window; an advertised limit
 # that works out higher is held here so the override still takes effect.
-_MAX_TRIGGER_PCT = 90
+MAX_TRIGGER_PCT = 90
 
 
 class CodexEngineWindow(BaseModel):
@@ -59,7 +59,7 @@ class CodexEngineWindow(BaseModel):
         limit = self.auto_compact_token_limit
         if limit is None or limit <= 0 or limit >= self.context_window:
             return None
-        return max(1, min(_MAX_TRIGGER_PCT, limit * 100 // self.context_window))
+        return max(1, min(MAX_TRIGGER_PCT, limit * 100 // self.context_window))
 
 
 def cli_autocompact_threshold(window: int, pct: int | None) -> int:

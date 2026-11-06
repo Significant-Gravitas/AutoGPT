@@ -122,10 +122,9 @@ class ChatConfig(BaseSettings):
     )
     local_adapter: LocalAdapter | None = Field(
         default=None,
-        description="How the local server is spoken to: openai_chat (Chat "
-        "Completions) or anthropic_passthrough (Anthropic Messages). Until the "
-        "shared gateway carries the local route, the fast engine uses the "
-        "server's OpenAI-compatible /v1 API either way.",
+        description="How the model gateway speaks to the local server: "
+        "openai_chat (Chat Completions, for an OpenAI-compatible server) or "
+        "anthropic_passthrough (Anthropic Messages, sent as they are).",
     )
     local_context_tokens: int | None = Field(
         default=None,
@@ -313,9 +312,9 @@ class ChatConfig(BaseSettings):
         ge=1,
         le=10000,
         description="Maximum number of tool-call rounds per turn where no "
-        "spend governor runs: the baseline engine and the orchestrator block's "
-        "CLI launch. AutoPilot's SDK turns, Codex models included, check in at "
-        "``sdk_step_checkin`` instead. Override via CHAT_AGENT_MAX_TURNS.",
+        "spend governor runs: the orchestrator block's CLI launch. AutoPilot's "
+        "SDK turns, Codex models included, check in at ``sdk_step_checkin`` "
+        "instead. Override via CHAT_AGENT_MAX_TURNS.",
     )
     sdk_step_checkin: int = Field(
         default=450,

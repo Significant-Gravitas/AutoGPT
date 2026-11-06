@@ -24,6 +24,7 @@ from backend.copilot.route_table import (
     RoutingSource,
 )
 from backend.copilot.sdk.context_window import (
+    MAX_TRIGGER_PCT,
     CodexEngineWindow,
     cli_autocompact_threshold,
     compaction_target_tokens,
@@ -40,8 +41,6 @@ THINKING_BUDGET_TOKENS = 8_192
 # Sonnet 5's tokenizer counts ~30% more tokens than 4.x for the same text;
 # scaling its trigger keeps the compaction point at the same amount of text.
 _SONNET_5_TOKENIZER_INFLATION = 1.3
-# The CLI's own trigger ceiling is ~93% of the window.
-_MAX_TRIGGER_PCT = 90
 # Where a Moonshot SKU's real window is unknown.
 _MOONSHOT_FALLBACK_WINDOW = 200_000
 
@@ -192,7 +191,7 @@ def route_trigger_pct(
         return None
     pct = row.trigger_pct
     if row.sonnet_5_trigger_scaling and model and "claude-sonnet-5" in model:
-        pct = min(round(pct * _SONNET_5_TOKENIZER_INFLATION), _MAX_TRIGGER_PCT)
+        pct = min(round(pct * _SONNET_5_TOKENIZER_INFLATION), MAX_TRIGGER_PCT)
     return pct
 
 
