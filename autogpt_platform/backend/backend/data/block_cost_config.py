@@ -490,11 +490,9 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         )
     ],
     # ReplicateModelBlock is a generic wrapper — users pass ANY Replicate
-    # model ref. The block reads prediction.metrics.predict_time after
-    # completion and bills predict_time × $/sec via COST_USD 150 cr/$.
-    # Replicate's API doesn't expose hardware tier per prediction, so the
-    # block uses a single $/sec rate sized to cover up to A100-80GB
-    # without under-billing; cheaper hardware is over-billed slightly.
+    # model ref. After the run it emits the run's price as provider_cost,
+    # billed via COST_USD 150 cr/$: an official model at its published price
+    # (blocks/replicate/_pricing.py), a community model as predict_time × $/sec.
     ReplicateModelBlock: [
         BlockCost(
             cost_amount=150,
