@@ -998,6 +998,21 @@
     }
   },
   {
+    "name": "mcp_smartgate",
+    "display_name": "SmartGate",
+    "description": "Hosted search, fetch, compress, dedup, budget, memory and pipelines. Not an LLM proxy.",
+    "mcp_server": {
+      "server_url": "https://smartgate.network/api/mcp",
+      "documentation_url": "https://smartgate.network/docs/mcp-endpoint",
+      "setup_instructions": "Mint a Dashboard API key (sk_live_...) at https://smartgate.network and paste it as the access token. Do not type the word Bearer. A request without Authorization returns 401. Free plan includes 2M tokens/month.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "bearer"
+      ],
+      "icon_id": "smartgate"
+    }
+  },
+  {
     "name": "mcp_sourcegraph",
     "display_name": "Sourcegraph",
     "description": "Search repositories, read code, and retrieve cross-repository context.",
