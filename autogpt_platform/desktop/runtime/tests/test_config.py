@@ -4,6 +4,7 @@ import socket
 import stat
 import sys
 import threading
+import traceback
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,88 @@ def test_settings_values_strip_one_matching_quote_pair(tmp_path, raw, expected):
     path = tmp_path / "settings.env"
     path.write_text(f" TEST_VALUE = {raw} \n", encoding="utf-8")
     assert settings._read_env(path) == {"TEST_VALUE": expected}
+
+
+@pytest.mark.parametrize(
+    ("encoding", "bom"),
+    [
+        ("utf-8", b""),
+        ("utf-8", b"\xef\xbb\xbf"),
+        ("utf-16-le", b"\xff\xfe"),
+        ("utf-16-be", b"\xfe\xff"),
+    ],
+)
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_user_settings_preserve_keys_and_values_across_encodings(
+    data: DataDir, encoding: str, bom: bytes, newline: str
+):
+    path = data.config / "settings.env"
+    value = "café 日本 C:\\folder ${LITERAL} # value \ufeff"
+    content = newline.join(
+        ["AUTOGPT_CLAUDE_CODE=off", f'TEST_VALUE="{value}"', "EMPTY=", "# comment", ""]
+    )
+    encoded = bom + content.encode(encoding)
+    path.write_bytes(encoded)
+
+    assert settings.read_user_settings(data) == {
+        "AUTOGPT_CLAUDE_CODE": "off",
+        "TEST_VALUE": value,
+    }
+    assert path.read_bytes() == encoded
+
+
+@pytest.mark.parametrize("content", [b"", b"\xef\xbb\xbf", b"\xff\xfe", b"\xfe\xff"])
+def test_empty_settings_with_supported_boms_are_empty(data: DataDir, content: bytes):
+    path = data.config / "settings.env"
+    path.write_bytes(content)
+    assert settings.read_user_settings(data) == {}
+    assert path.read_bytes() == content
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        b"VALUE=\x80",
+        b"\xef\xbb\xbfVALUE=\xff",
+        b"\xff\xfeV",
+        b"\xfe\xff\x00",
+        "VALUE=hidden".encode("utf-16-le"),
+        "VALUE=hidden".encode("utf-16-be"),
+        b"\xff\xfe\x00\x00" + "VALUE=hidden".encode("utf-32-le"),
+        b"\x00\x00\xfe\xff" + "VALUE=hidden".encode("utf-32-be"),
+        b"VALUE=hidden\x00value",
+    ],
+)
+def test_invalid_settings_encoding_names_the_file_without_disclosing_contents(
+    data: DataDir, invalid: bytes
+):
+    path = data.config / "settings.env"
+    path.write_bytes(invalid)
+
+    with pytest.raises(ValueError, match="save the file as UTF-8") as caught:
+        settings.read_user_settings(data)
+
+    assert str(path) in str(caught.value)
+    rendered = "".join(traceback.format_exception(caught.value))
+    assert "UnicodeDecodeError" not in rendered
+    assert "hidden" not in rendered
+    assert path.read_bytes() == invalid
+
+
+def test_bom_marked_desktop_secrets_are_preserved(tmp_path: Path, monkeypatch):
+    path = tmp_path / "desktop.env"
+    content = b"\xef\xbb\xbfAUTOGPT_FRONTEND_DB_PASSWORD=keep-existing-value\n"
+    path.write_bytes(content)
+    monkeypatch.setattr(
+        settings.secrets,
+        "token_urlsafe",
+        lambda *args: pytest.fail("existing secrets must not be regenerated"),
+    )
+
+    assert settings._ensure_desktop_secrets(path) == {
+        "AUTOGPT_FRONTEND_DB_PASSWORD": "keep-existing-value"
+    }
+    assert path.read_bytes() == content
 
 
 def test_ports_are_unique_in_range_and_remembered(tmp_path: Path):

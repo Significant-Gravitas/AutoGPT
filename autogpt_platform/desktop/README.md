@@ -394,6 +394,10 @@ the preference cannot be saved; the UI asks the user to retry before restart.
 `database-manager.log`, `postgres.log`, …). Uninstalling the app leaves this
 directory in place. It is readable by its owner only.
 
+Save `settings.env` as UTF-8 (with or without a byte-order mark) or UTF-16
+with a byte-order mark. Other or damaged encodings produce an error naming
+the file and asking you to resave it as UTF-8; its contents are left unchanged.
+
 The data belongs to the PostgreSQL major version that created it (18 on
 Windows and macOS, 16 on Linux). A build with a different major refuses to
 start and says why; changing the bundled major needs a migration path first.

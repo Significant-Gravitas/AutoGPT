@@ -494,8 +494,17 @@ def _ensure_desktop_secrets(path: Path) -> dict[str, str]:
 
 
 def _read_env(path: Path) -> dict[str, str]:
+    raw = path.read_bytes()
+    encoding = "utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig"
+    failure = f"Cannot read {path}: save the file as UTF-8, then restart AutoGPT."
+    try:
+        content = raw.decode(encoding)
+    except UnicodeError:
+        raise ValueError(failure) from None
+    if "\x00" in content:
+        raise ValueError(failure)
     values: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in content.splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
