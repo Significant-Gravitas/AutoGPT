@@ -3,11 +3,14 @@ import { useStableCallback } from "@/hooks/useStableCallback";
 import { isKey } from "@/lib/keyboard";
 import { isMicrophonePermissionDenied } from "@/lib/microphone";
 import { isTouchDevice } from "@/lib/platform";
+import { trackDictation } from "@/services/copilot/dictation-analytics";
 import React, { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { downloadRecording } from "../../voice/downloadRecording";
 import { focusComposer } from "./helpers";
 
 const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
+// Sent by /api/transcribe when the API could not decode the audio.
+const UNREADABLE_RECORDING_CODE = "unreadable_recording";
 
 interface Args {
   setValue: React.Dispatch<React.SetStateAction<string>>;
@@ -35,6 +38,9 @@ export function useVoiceRecording({
   // Up to two minutes of speech. Dropping it on a transient 500 is the whole
   // bug — the user cannot get those two minutes back.
   const [failedRecording, setFailedRecording] = useState<Blob | null>(null);
+  // The API could not decode the audio. Re-sending the same bytes fails the
+  // same way, so the only way on is a new recording.
+  const [isRecordingUnreadable, setIsRecordingUnreadable] = useState(false);
   // Bumped when the user dismisses. An attempt they have already waved away
   // must not put the row back on screen when it finally fails.
   const attemptRef = useRef(0);
@@ -100,6 +106,8 @@ export function useVoiceRecording({
     // The previous failure stays on screen through a retry: clearing it here
     // would blink the row away and back, and take the Retry button with it.
 
+    let isUnreadable = false;
+
     async function transcribe() {
       const formData = new FormData();
       formData.append("audio", audioBlob);
@@ -115,6 +123,7 @@ export function useVoiceRecording({
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
+        isUnreadable = data.code === UNREADABLE_RECORDING_CODE;
         throw new Error(data.error || "Transcription failed");
       }
 
@@ -140,6 +149,8 @@ export function useVoiceRecording({
             : "Transcription failed";
         setTranscriptionError(message);
         setFailedRecording(audioBlob);
+        setIsRecordingUnreadable(isUnreadable);
+        if (isUnreadable) trackDictation("dictation_rejected");
       })
       .finally(() => {
         setIsTranscribing(false);
@@ -148,7 +159,14 @@ export function useVoiceRecording({
 
   /** Re-sends the recording that failed, byte for byte. */
   function retryTranscription() {
-    if (!failedRecording || isTranscribing || isRecordingRef.current) return;
+    if (
+      !failedRecording ||
+      isRecordingUnreadable ||
+      isTranscribing ||
+      isRecordingRef.current
+    ) {
+      return;
+    }
     void transcribeAudio(failedRecording);
   }
 
@@ -160,6 +178,7 @@ export function useVoiceRecording({
     attemptRef.current += 1;
     setTranscriptionError(null);
     setFailedRecording(null);
+    setIsRecordingUnreadable(false);
   }
 
   function stopRecording() {
@@ -216,8 +235,10 @@ export function useVoiceRecording({
       // Only once a new recording is genuinely under way. Everything above
       // can still throw — a denied prompt, an unsupported mime type — and the
       // catch has no way to give the previous recording back.
+      if (isRecordingUnreadable) trackDictation("dictation_rerecorded");
       setTranscriptionError(null);
       setFailedRecording(null);
+      setIsRecordingUnreadable(false);
 
       isRecordingRef.current = true;
       setIsRecording(true);
@@ -319,6 +340,7 @@ export function useVoiceRecording({
     error,
     transcriptionError,
     hasFailedRecording: failedRecording !== null,
+    isRecordingUnreadable,
     retryTranscription,
     downloadFailedRecording,
     dismissTranscriptionError,

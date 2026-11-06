@@ -156,6 +156,32 @@ describe("transcribe route", () => {
     });
   });
 
+  it("explains an audio rejection in plain words and marks it unreadable", async () => {
+    process.env.OPENAI_API_KEY = "openai-token";
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "Invalid file format. Supported formats: [webm]",
+            },
+          }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const response = await POST(makeAudioRequest());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "We couldn't read that recording. Try recording again.",
+      code: "unreadable_recording",
+    });
+  });
+
   it("forwards the composer draft as the transcription prompt", async () => {
     process.env.OPENAI_API_KEY = "openai-token";
     const fetchMock = stubOkFetch();
