@@ -58,7 +58,7 @@ test.describe("a new account goes to onboarding first", () => {
 
     await page.goto("/");
     await expect(page).toHaveURL(/\/login\?next=%2Fhome$/);
-    await page.getByLabel("Email").fill(user.email);
+    await page.getByLabel("Email", { exact: true }).fill(user.email);
     await page.getByLabel("Password", { exact: true }).fill(user.password);
     seen.startCounting();
     await page.getByRole("button", { name: "Log in" }).click();
