@@ -95,7 +95,7 @@ If the `client_id` is unknown or the `redirect_uri` is not one of your app's reg
 
 ### Step 3: Exchange Code for Tokens
 
-Exchange the authorization code for access and refresh tokens:
+Exchange the authorization code for access and refresh tokens. The token endpoint takes the request form-encoded (`application/x-www-form-urlencoded`), as OAuth 2.0 specifies, or as JSON. Send the client ID and secret in the body, as below, or as HTTP Basic credentials in an `Authorization` header, but not both:
 
 ```http
 POST /api/oauth/token
@@ -118,11 +118,15 @@ Content-Type: application/json
   "token_type": "Bearer",
   "access_token": "agpt_xt_...",
   "access_token_expires_at": "2025-01-15T12:00:00Z",
+  "expires_in": 3600,
   "refresh_token": "agpt_rt_...",
   "refresh_token_expires_at": "2025-02-14T12:00:00Z",
+  "scope": "IDENTITY READ_LIBRARY RUN_AGENT READ_RUN",
   "scopes": ["IDENTITY", "READ_LIBRARY", "RUN_AGENT", "READ_RUN"]
 }
 ```
+
+`scope` and `scopes` hold the same permissions: `scope` space-separated, as OAuth 2.0 has it, and `scopes` as a list.
 
 ### Step 4: Use the Access Token
 
@@ -182,8 +186,10 @@ Content-Type: application/json
   "token_type": "Bearer",
   "access_token": "agpt_xt_...",
   "access_token_expires_at": "2025-01-15T13:00:00Z",
+  "expires_in": 3600,
   "refresh_token": "agpt_rt_...",
   "refresh_token_expires_at": "2025-02-14T12:00:00Z",
+  "scope": "IDENTITY READ_LIBRARY RUN_AGENT READ_RUN",
   "scopes": ["IDENTITY", "READ_LIBRARY", "RUN_AGENT", "READ_RUN"]
 }
 ```
