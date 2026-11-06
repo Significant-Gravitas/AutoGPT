@@ -73,7 +73,7 @@ jobs:
         run: |
           python -m pip install uv==0.12.1
           python build/lock_export.py ../backend/poetry.lock "$RUNNER_TEMP/desktop-constraints.txt"
-          uv pip install --system --constraint "$RUNNER_TEMP/desktop-constraints.txt" pytest pytest-asyncio aiohttp psutil psycopg2-binary redis pika bcrypt cryptography uvicorn
+          uv pip install --system --constraint "$RUNNER_TEMP/desktop-constraints.txt" pytest pytest-asyncio aiohttp psutil psycopg2-binary redis pika bcrypt cryptography uvicorn coverage
       - name: Runtime and build contracts
         run: python -B -m pytest -q -p no:cacheprovider -c runtime/pyproject.toml runtime/tests build/tests
       - name: Electron shell unit tests
@@ -92,8 +92,17 @@ jobs:
         run: |
           python -B build/host_fs_windows_check.py `
             --fixture-drive "$env:SystemDrive" `
-            --result "$env:RUNNER_TEMP/desktop-host-fs/result.json"
+            --result "$env:RUNNER_TEMP/desktop-host-fs/result.json" `
+            --coverage "$env:RUNNER_TEMP/desktop-host-fs/coverage.xml"
           exit $LASTEXITCODE
+      - name: Retain native Windows coverage
+        if: runner.os == 'Windows' && steps.host_fs_native.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-host-fs-coverage-${{ github.sha }}
+          path: ${{ runner.temp }}/desktop-host-fs/coverage.xml
+          if-no-files-found: error
+          retention-days: 7
       - name: Retain the native host filesystem summary
         if: >-
           always() && runner.os == 'Windows' &&
@@ -130,6 +139,30 @@ jobs:
           path: ${{ runner.temp }}/desktop-postgres-native/result.json
           if-no-files-found: warn
           retention-days: 7
+
+  native_coverage:
+    name: Native Windows coverage upload
+    needs: checks
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: desktop-host-fs-coverage-${{ github.sha }}
+          path: native-coverage
+      - uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        with:
+          use_oidc: true
+          disable_search: true
+          files: native-coverage/coverage.xml
+          flags: platform-backend
+          name: desktop-windows-native
+          fail_ci_if_error: true
 
   package:
     name: Experimental installer (${{ matrix.os }})

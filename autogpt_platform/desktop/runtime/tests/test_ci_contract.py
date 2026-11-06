@@ -81,6 +81,27 @@ def test_packaging_requires_explicit_opt_in_and_uses_isolated_identity():
     assert "AUTOGPT_DESKTOP_VERSION: 0.0.0-dev." in workflow
 
 
+def test_native_coverage_upload_is_separate_from_unprivileged_checks():
+    workflow = CALLER.read_text("utf-8")
+    checks, remainder = workflow.split("\n  native_coverage:\n", 1)
+    uploader = remainder.split("\n  package:\n", 1)[0]
+    assert "id-token:" not in checks
+    assert '--coverage "$env:RUNNER_TEMP/desktop-host-fs/coverage.xml"' in checks
+    assert "name: desktop-host-fs-coverage-${{ github.sha }}" in checks
+    assert "path: ${{ runner.temp }}/desktop-host-fs/coverage.xml" in checks
+    assert "needs: checks" in uploader
+    assert "contents: read" in uploader and "id-token: write" in uploader
+    assert "name: desktop-host-fs-coverage-${{ github.sha }}" in uploader
+    assert "use_oidc: true" in uploader
+    assert "disable_search: true" in uploader
+    assert "files: native-coverage/coverage.xml" in uploader
+    assert "flags: platform-backend" in uploader
+    assert "fail_ci_if_error: true" in uploader
+    assert "persist-credentials: false" in uploader
+    assert "\n        run:" not in uploader
+    assert "secrets" not in uploader
+
+
 def test_installed_windows_gate_uses_this_runs_artifact_on_a_fresh_runner():
     workflow = CALLER.read_text("utf-8")
     assert "  installed_windows:\n" in workflow
@@ -131,7 +152,7 @@ def test_postgres_initialization_blocks_packaging_only_when_opted_in_on_windows(
 
 
 def test_postgres_probe_uploads_only_its_summary_even_after_failure():
-    checks = CALLER.read_text("utf-8").split("\n  package:\n", 1)[0]
+    checks = CALLER.read_text("utf-8").split("\n  native_coverage:\n", 1)[0]
     upload = checks.split(
         "      - name: Retain the PostgreSQL initialization summary\n", 1
     )[1]

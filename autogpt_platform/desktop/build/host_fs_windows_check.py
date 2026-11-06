@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 import uuid
+import xml.etree.ElementTree as ET
 from contextlib import ExitStack
 from pathlib import Path
 
@@ -421,6 +422,7 @@ def supervise(
     root: Path,
     *,
     callers=False,
+    coverage=False,
     timeout=TEST_SECONDS,
     job_factory=WindowsJob,
     popen=subprocess.Popen,
@@ -440,6 +442,20 @@ def supervise(
                     sys.executable,
                     "-I",
                     "-B",
+                    *(
+                        [
+                            "-m",
+                            "coverage",
+                            "run",
+                            "--branch",
+                            "--source",
+                            str(BACKEND / "backend"),
+                            "--data-file",
+                            str(root / ".coverage"),
+                        ]
+                        if coverage
+                        else []
+                    ),
                     str(Path(__file__).resolve()),
                     "--worker",
                     str(root),
@@ -493,6 +509,29 @@ def supervise(
     return result
 
 
+def export_coverage(root: Path, destination: Path) -> None:
+    import coverage
+
+    backend_source = BACKEND / "backend"
+    measured = coverage.Coverage(
+        data_file=str(root / ".coverage"),
+        source=[str(backend_source)],
+        config_file=False,
+    )
+    measured.load()
+    require(bool(measured.get_data().measured_files()), "native_coverage_missing")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    measured.xml_report(outfile=str(destination))
+    report = ET.parse(destination)
+    for item in report.findall(".//class"):
+        file = (backend_source / item.attrib["filename"]).resolve()
+        require(file.is_relative_to(backend_source), "unexpected_coverage_source")
+        item.set("filename", file.relative_to(BACKEND.parent.parent).as_posix())
+    for source in report.findall("sources/source"):
+        source.text = "."
+    report.write(destination, encoding="utf-8", xml_declaration=True)
+
+
 def accepted(report: dict, sources: dict, *, callers=False) -> bool:
     counts = report.get("collected", {})
     return (
@@ -510,6 +549,9 @@ def accepted(report: dict, sources: dict, *, callers=False) -> bool:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--result", type=Path)
+    parser.add_argument(
+        "--coverage", type=Path, help="Export native test coverage as XML"
+    )
     parser.add_argument("--fixture-drive", default=Path(sys.executable).drive)
     parser.add_argument("--worker", type=Path)
     parser.add_argument(
@@ -543,7 +585,9 @@ def main(argv=None) -> int:
         fixture = PrivateFixture(args.fixture_drive)
         result["cleanup"] = "pending"
         cleanup_safe = False
-        result["worker"] = supervise(fixture.path, callers=args.callers)
+        result["worker"] = supervise(
+            fixture.path, callers=args.callers, coverage=args.coverage is not None
+        )
         cleanup_safe = result["worker"]["active_processes"] == 0
         with (fixture.path / "worker.json").open("rb") as worker_report:
             raw = worker_report.read(65537)
@@ -565,6 +609,8 @@ def main(argv=None) -> int:
             "worker_did_not_finish_cleanly",
         )
         require(result["sources"] == source_hashes(args.callers), "sources_changed")
+        if args.coverage is not None:
+            export_coverage(fixture.path, args.coverage)
         result["status"] = "passed"
     except Exception as exc:  # noqa: BLE001 - Preserve failed acceptance evidence.
         result["error"] = type(exc).__name__

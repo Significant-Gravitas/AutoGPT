@@ -5,9 +5,11 @@ import importlib.util
 import io
 import json
 import os
+import runpy
 import struct
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -268,6 +270,116 @@ def test_caller_mode_reaches_worker(tmp_path):
     popen = Mock(return_value=FakeProcess(0))
     gate.supervise(tmp_path, callers=True, popen=popen, job_factory=FakeJob)
     assert popen.call_args.args[0][-1] == "--callers"
+
+
+def test_coverage_wraps_the_isolated_worker_without_bypassing_ownership(tmp_path):
+    process, job = FakeProcess(0), FakeJob()
+    popen = Mock(return_value=process)
+    result = gate.supervise(
+        tmp_path, coverage=True, popen=popen, job_factory=lambda: job
+    )
+    command = popen.call_args.args[0]
+    assert command[:6] == [sys.executable, "-I", "-B", "-m", "coverage", "run"]
+    assert "--branch" in command
+    assert command[command.index("--source") + 1] == str(gate.BACKEND / "backend")
+    assert command[command.index("--data-file") + 1] == str(tmp_path / ".coverage")
+    assert command[-3:] == [
+        str(Path(gate.__file__).resolve()),
+        "--worker",
+        str(tmp_path),
+    ]
+    process.stdin.write.assert_called_once_with(b"run\n")
+    assert result["exit_code"] == 0 and result["active_processes"] == 0
+    assert job.closed
+
+
+@pytest.mark.parametrize(
+    "tests_pass,coverage_present", [(True, True), (False, True), (True, False)]
+)
+def test_coverage_requires_passed_native_tests_and_measured_files(
+    tmp_path, monkeypatch, tests_pass, coverage_present
+):
+    report = passing_report()
+    if not tests_pass:
+        report["failed"] = 1
+    (tmp_path / "worker.json").write_text(json.dumps(report))
+    fixture = Mock(path=tmp_path)
+    measured = Mock()
+    measured.get_data.return_value.measured_files.return_value = (
+        {"backend/copilot/host_fs.py"} if coverage_present else set()
+    )
+    destination = tmp_path / "reports/coverage.xml"
+
+    def export(*, outfile):
+        assert outfile == str(destination)
+        destination.write_text("<coverage><packages /></coverage>")
+
+    measured.xml_report.side_effect = export
+    coverage_class = Mock(return_value=measured)
+    monkeypatch.setitem(
+        sys.modules, "coverage", SimpleNamespace(Coverage=coverage_class)
+    )
+    monkeypatch.setattr(gate, "require_native", Mock())
+    monkeypatch.setattr(gate, "PrivateFixture", Mock(return_value=fixture))
+    monkeypatch.setattr(gate, "source_hashes", Mock(return_value=report["sources"]))
+    supervise = Mock(
+        return_value={
+            "exit_code": 0,
+            "timed_out": False,
+            "forced_cleanup": False,
+            "active_processes": 0,
+        }
+    )
+    monkeypatch.setattr(gate, "supervise", supervise)
+    result = gate.main(
+        ["--result", str(tmp_path / "result.json"), "--coverage", str(destination)]
+    )
+    assert result == (0 if tests_pass and coverage_present else 1)
+    assert supervise.call_args.kwargs["coverage"] is True
+    assert destination.exists() is (tests_pass and coverage_present)
+    if tests_pass:
+        measured.load.assert_called_once()
+    else:
+        coverage_class.assert_not_called()
+    fixture.cleanup.assert_called_once()
+
+
+def test_coverage_export_uses_repository_paths_and_keeps_actual_hits(
+    tmp_path, monkeypatch
+):
+    import coverage
+
+    backend = tmp_path / "repo/autogpt_platform/backend"
+    source = backend / "backend/copilot/probe.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("answer = 42\nif answer == 0:\n    missing = True\n")
+    measured = coverage.Coverage(
+        data_file=str(tmp_path / ".coverage"),
+        source=[str(backend / "backend")],
+        branch=True,
+        config_file=False,
+    )
+    measured.start()
+    runpy.run_path(str(source))
+    measured.stop()
+    measured.save()
+    monkeypatch.setattr(gate, "BACKEND", backend)
+    monkeypatch.chdir(tmp_path)
+    destination = tmp_path / "reports/coverage.xml"
+    gate.export_coverage(tmp_path, destination)
+    report = ET.parse(destination)
+    assert [item.text for item in report.findall("sources/source")] == ["."]
+    classes = report.findall(".//class")
+    assert [item.attrib["filename"] for item in classes] == [
+        "autogpt_platform/backend/backend/copilot/probe.py"
+    ]
+    hits = {
+        int(item.attrib["number"]): int(item.attrib["hits"])
+        for item in classes[0].findall("lines/line")
+    }
+    assert hits == {1: 1, 2: 1, 3: 0}
+    assert int(report.getroot().attrib["branches-valid"]) == 2
+    assert int(report.getroot().attrib["branches-covered"]) == 1
 
 
 def test_timeout_terminates_only_owned_job_and_worker(tmp_path):
