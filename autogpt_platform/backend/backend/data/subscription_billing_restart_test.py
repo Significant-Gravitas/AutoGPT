@@ -423,8 +423,7 @@ async def test_simultaneous_events_for_one_payment_restart_once(fake):
     outcomes = await asyncio.wait_for(asyncio.gather(*tasks), timeout=10)
 
     assert sorted(outcomes) == sorted(
-        [RestartOutcome.RESTARTED]
-        + [RestartOutcome.NOT_APPLICABLE] * 2
+        [RestartOutcome.RESTARTED] + [RestartOutcome.NOT_APPLICABLE] * 2
     )
     assert len(fake.credit_notes) == 1
     assert fake.card_charges == [PRICE]

@@ -176,7 +176,7 @@ class SubscriptionStatusResponse(BaseModel):
             " Counted only for NO_TIER; 0 for every other tier."
         ),
     )
-    payment_due: Optional[SubscriptionPaymentDue] = Field(
+    payment_due: SubscriptionPaymentDue | None = Field(
         default=None,
         description=(
             "The open bill of a renewal whose charge failed. Paying it at"

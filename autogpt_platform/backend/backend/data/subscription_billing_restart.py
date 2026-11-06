@@ -187,7 +187,9 @@ async def _credit_late_invoice(
     invoice_id: str = invoice["id"]
     if progress.stripeCreditNoteId:
         return True
-    notes = await stripe_call(stripe.CreditNote.list_async, invoice=invoice_id, limit=100)
+    notes = await stripe_call(
+        stripe.CreditNote.list_async, invoice=invoice_id, limit=100
+    )
     async for note in stripe_list_items(notes):
         if (note.get("metadata") or {}).get(RESTARTED_FROM_INVOICE_KEY) == invoice_id:
             await _save_credit_note(invoice_id, note["id"])

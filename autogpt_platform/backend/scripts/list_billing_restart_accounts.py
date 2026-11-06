@@ -197,7 +197,9 @@ def _iso(timestamp: int | None) -> str:
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(
+        description="List accounts hurt by a failed payment, read-only."
+    )
     parser.add_argument("report", choices=["blocked", "late"])
     parser.add_argument(
         "--since",
