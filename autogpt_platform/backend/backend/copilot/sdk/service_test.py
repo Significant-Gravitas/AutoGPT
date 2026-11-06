@@ -177,7 +177,6 @@ class TestExecutorSetup:
         manager = MagicMock()
         manager.get_hello_async = AsyncMock(return_value=None)
         chat_config = MagicMock(
-            use_local_pc_executor=True,
             active_e2b_api_key="e2b-key",
             use_e2b_sandbox=True,
             e2b_sandbox_template="base",
@@ -220,7 +219,6 @@ class TestExecutorSetup:
     @pytest.mark.asyncio
     async def test_local_pc_flag_off_gives_no_executor(self):
         chat_config = MagicMock(
-            use_local_pc_executor=True,
             active_e2b_api_key="e2b-key",
             use_e2b_sandbox=True,
             e2b_sandbox_template="base",
@@ -254,7 +252,6 @@ class TestExecutorSetup:
         self, changed_binding
     ):
         chat_config = MagicMock(
-            use_local_pc_executor=True,
             local_pc_executor_oauth_client_id="autogpt-local-executor",
         )
         manager = MagicMock()
@@ -311,7 +308,6 @@ class TestExecutorSetup:
     @pytest.mark.asyncio
     async def test_mismatched_data_channel_is_closed_before_restore(self):
         chat_config = MagicMock(
-            use_local_pc_executor=True,
             local_pc_executor_oauth_client_id="autogpt-local-executor",
         )
         mismatched = SimpleNamespace(kill=AsyncMock())
@@ -423,24 +419,23 @@ class TestExecutorSetup:
             name="cua-driver", version="0.38.0", runtime="direct"
         )
         shim.computer_use_tools = ["click", "type_text"]
-        chat_config = MagicMock(
-            use_local_pc_executor=True,
-            allow_computer_use=True,
-        )
 
-        with patch(
-            "backend.copilot.sdk.service.is_computer_use_approved",
-            new_callable=AsyncMock,
-            return_value=True,
-        ) as approved:
-            result = await _is_local_pc_computer_approved(
-                shim,
-                "session-1",
-                "user-1",
-                chat_config,
-            )
+        with (
+            patch(
+                "backend.copilot.sdk.service.is_computer_use_enabled",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as flag,
+            patch(
+                "backend.copilot.sdk.service.is_computer_use_approved",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as approved,
+        ):
+            result = await _is_local_pc_computer_approved(shim, "session-1", "user-1")
 
         assert result is True
+        flag.assert_awaited_once_with("user-1")
         approved.assert_awaited_once_with(
             "session-1",
             "user-1",

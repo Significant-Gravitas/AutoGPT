@@ -2551,7 +2551,6 @@ def _patch_failing_local_activation(
     mocker.patch(
         "backend.api.features.chat.routes.ChatConfig",
         return_value=SimpleNamespace(
-            use_local_pc_executor=True,
             local_pc_executor_oauth_client_id="autogpt-local-executor",
         ),
     )
@@ -2662,7 +2661,6 @@ async def test_local_session_success_detaches_validation_child(
     mocker.patch(
         "backend.api.features.chat.routes.ChatConfig",
         return_value=SimpleNamespace(
-            use_local_pc_executor=True,
             local_pc_executor_oauth_client_id="autogpt-local-executor",
         ),
     )
@@ -2769,7 +2767,6 @@ async def test_local_session_detach_failure_preserves_valid_session(
     mocker.patch(
         "backend.api.features.chat.routes.ChatConfig",
         return_value=SimpleNamespace(
-            use_local_pc_executor=True,
             local_pc_executor_oauth_client_id="autogpt-local-executor",
         ),
     )
@@ -2848,7 +2845,6 @@ def _mock_local_create_preconditions(mocker: pytest_mock.MockerFixture) -> Magic
     mocker.patch(
         "backend.api.features.chat.routes.ChatConfig",
         return_value=SimpleNamespace(
-            use_local_pc_executor=True,
             local_pc_executor_oauth_client_id="autogpt-local-executor",
         ),
     )
@@ -3029,7 +3025,6 @@ async def test_local_session_creation_cancellation_still_compensates(
     mocker.patch(
         "backend.api.features.chat.routes.ChatConfig",
         return_value=SimpleNamespace(
-            use_local_pc_executor=True,
             local_pc_executor_oauth_client_id="autogpt-local-executor",
         ),
     )

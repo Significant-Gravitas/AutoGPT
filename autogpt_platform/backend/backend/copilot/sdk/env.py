@@ -144,9 +144,9 @@ def build_sdk_env(
     *enable_computer_use_beta* opts the CLI into the Anthropic
     ``computer-use-2025-11-24`` beta header via the ``ANTHROPIC_BETAS``
     env var (which works across subscription, direct, and API-key auth).
-    This is gated by the caller on (a) ``use_local_pc_executor``,
-    (b) the per-user LaunchDarkly flag, and (c) the connected shim
-    advertising the ``computer_use`` capability.  This function adds the
+    This is gated by the caller on (a) the per-user Local PC and
+    computer-use flags, (b) the user's consent for the machine, and (c) the
+    connected shim advertising the ``computer_use`` capability.  This function adds the
     final guard: **OpenRouter transport always rejects Anthropic beta
     headers**, so even if the caller asks for it, OpenRouter mode keeps
     the strip flag and skips the beta opt-in.  A Codex gateway or a

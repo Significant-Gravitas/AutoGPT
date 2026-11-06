@@ -14,6 +14,7 @@ from backend.api.features.local_executor.consent import (
     set_computer_use_consent,
 )
 from backend.api.features.local_executor.gating import (
+    is_computer_use_enabled,
     is_local_executor_enabled,
     is_workflow_recording_enabled,
 )
@@ -178,12 +179,15 @@ async def get_session_executor(
     """Return executor metadata only when the caller owns the session."""
     session = await _require_owned_session(session_id, user_id)
     hello = await _get_session_executor_hello(session, user_id)
+    # Outside the computer-use rollout the machine shows no computer use, so
+    # the consent dialog never opens.
+    computer = hello if await is_computer_use_enabled(user_id) else None
     consent = await get_computer_use_consent(
         session_id,
         user_id,
         machine_id=hello.machine_id if hello else None,
-        driver=_computer_use_driver_label(hello),
-        tools=_grantable_computer_use_tools(hello),
+        driver=_computer_use_driver_label(computer),
+        tools=_grantable_computer_use_tools(computer),
     )
     if hello is None:
         return ExecutorStatus(kind="none", computer_use_consent=consent)
@@ -196,8 +200,8 @@ async def get_session_executor(
         machine_id=hello.machine_id or None,
         shim_version=hello.shim_version or None,
         capabilities=hello.capabilities or None,
-        computer_use_driver=_computer_use_driver_label(hello),
-        computer_use_tools=_grantable_computer_use_tools(hello),
+        computer_use_driver=_computer_use_driver_label(computer),
+        computer_use_tools=_grantable_computer_use_tools(computer),
         recording_channels=hello.recording_channels or None,
         recording_routes=hello.recording_routes or None,
     )
@@ -220,6 +224,11 @@ async def set_session_computer_use_consent(
             detail="This session is not bound to a Local PC executor",
         )
     await _require_local_executor_enabled(user_id)
+    if request.approved and not await is_computer_use_enabled(user_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Computer use is not enabled",
+        )
     hello = await _get_session_executor_hello(session, user_id)
     if request.approved:
         if hello is None or not hello.machine_id or computer_use_scope(hello) is None:

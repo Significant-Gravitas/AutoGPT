@@ -30,13 +30,13 @@ from typing import Any, Callable
 from pydantic import BaseModel, Field
 
 from backend.api.features.local_executor.consent import is_computer_use_approved
+from backend.api.features.local_executor.gating import is_computer_use_enabled
 from backend.api.features.local_executor.state import (
     get_recording_state,
     list_recording_states,
     mark_recording_started,
     mark_recording_stopped,
 )
-from backend.copilot.config import ChatConfig
 from backend.copilot.context import (
     get_current_sandbox,
     get_execution_context,
@@ -61,7 +61,6 @@ from backend.copilot.tools.recording_skill import (
 
 logger = logging.getLogger(__name__)
 
-_chat_config = ChatConfig()
 
 # The cua-driver tools a dry run replays through. It calls the shim
 # directly, so the shim must offer them and the session must have approved
@@ -394,12 +393,13 @@ async def _require_replay_input(
     shim: LocalPCShim,
 ) -> tuple[ShimConnectionGuard | None, dict[str, Any] | None]:
     """What computer use needs before replay drives the mouse and keyboard:
-    the deployment allowing it, the `computer_use` capability, the replayed
-    tools among those the shim offers, and the session's consent."""
-    if not _chat_config.allow_computer_use:
+    the computer-use flag, the `computer_use` capability, the replayed tools
+    among those the shim offers, and the session's consent."""
+    flag_user, _ = get_execution_context()
+    if not flag_user or not await is_computer_use_enabled(flag_user):
         return None, _err(
             "COMPUTER_USE_DISABLED",
-            "Computer control is turned off on this deployment, so a recorded "
+            "Computer control isn't turned on for this account, so a recorded "
             "skill can't be replayed.",
         )
     if "computer_use" not in shim.capability_set:

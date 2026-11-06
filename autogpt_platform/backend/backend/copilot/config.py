@@ -814,17 +814,6 @@ class ChatConfig(BaseSettings):
     )
 
     # --- Local PC executor ---
-    use_local_pc_executor: bool = Field(
-        default=False,
-        description=(
-            "Route copilot execution to the user's local machine via the "
-            "autogpt-local-executor shim. When True, LocalPCShim is used instead of E2B."
-        ),
-    )
-    allow_computer_use: bool = Field(
-        default=False,
-        description="Allow Claude computer-use beta tools when the local PC shim is active.",
-    )
     local_pc_executor_oauth_client_id: str = Field(
         default="autogpt-local-executor",
         min_length=1,

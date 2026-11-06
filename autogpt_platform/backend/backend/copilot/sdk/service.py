@@ -44,6 +44,7 @@ from claude_agent_sdk.types import SystemPromptPreset
 from pydantic import BaseModel
 
 from backend.api.features.local_executor.consent import is_computer_use_approved
+from backend.api.features.local_executor.gating import is_computer_use_enabled
 from backend.copilot.local_executor import build_local_pc_env_context
 from backend.copilot.sdk.computer_use_policy import guard_scope, local_pc_tool_names
 from backend.blocks.desktop._common import workspace_volume_mounts
@@ -4834,7 +4835,7 @@ async def _setup_local_pc_executor(
     connected (or does not match its binding) gets no executor at all, and
     the caller fails the turn.
     """
-    if not user_id or not chat_config.use_local_pc_executor:
+    if not user_id:
         return None
     local_pc_enabled = await is_feature_enabled(
         Flag.LOCAL_PC_EXECUTOR,
@@ -4959,13 +4960,12 @@ async def _is_local_pc_computer_approved(
     sandbox: Any | None,
     session_id: str,
     user_id: str | None,
-    chat_config: ChatConfig,
 ) -> bool:
     if not (
-        chat_config.use_local_pc_executor
-        and chat_config.allow_computer_use
+        user_id
         and isinstance(sandbox, LocalPCShim)
         and "computer_use" in sandbox.capability_set
+        and await is_computer_use_enabled(user_id)
     ):
         return False
     guard = sandbox.capture_connection_guard()
@@ -5705,16 +5705,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         # Compute the computer-use gate once — reused for both the MCP-tool
         # registration (below) and the CLI beta env var (further down).
-        # Conditions: deploy flag + per-session allow + the active executor
-        # is a LocalPCShim that advertised the ``computer_use`` capability
-        # in HELLO. If any check fails, the LLM still sees no local_pc_*
+        # Conditions: the computer-use flag + per-session allow + the active
+        # executor is a LocalPCShim that advertised the ``computer_use``
+        # capability in HELLO. If any check fails, the LLM still sees no local_pc_*
         # tools registered, and the CLI subprocess gets the OpenRouter-safe
         # default env (CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1).
         use_local_pc_computer = await _is_local_pc_computer_approved(
             e2b_sandbox,
             session_id,
             user_id,
-            config,
         )
         local_pc_computer_tool_names: frozenset[str] | None = None
         if use_local_pc_computer and isinstance(e2b_sandbox, LocalPCShim):
@@ -5726,13 +5725,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
 
         # Workflow-recording gate — same shape as the computer-use gate, but
-        # additionally behind the WORKFLOW_RECORDING LaunchDarkly flag
-        # (default off, per-user rollout). Requires the deploy-level LocalPC
-        # config, the shim, and the shim's `recording` capability. Handler-
-        # level gating in recording_tools fails closed if this is wrong.
+        # behind the WORKFLOW_RECORDING flag (default off, per-user rollout).
+        # Requires the Local PC shim and its `recording` capability (the shim
+        # connects only for users the LOCAL_PC_EXECUTOR flag lets in).
+        # Handler-level gating in recording_tools fails closed if this is wrong.
         use_recording = bool(
-            config.use_local_pc_executor
-            and isinstance(e2b_sandbox, LocalPCShim)
+            isinstance(e2b_sandbox, LocalPCShim)
             and "recording" in (e2b_sandbox.capabilities or [])
         )
         if use_recording:

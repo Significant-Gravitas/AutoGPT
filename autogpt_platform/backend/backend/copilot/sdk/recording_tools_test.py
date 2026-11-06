@@ -58,9 +58,7 @@ def _shim(*, capabilities=("recording", "computer_use")):
 
 def _install(monkeypatch, shim):
     monkeypatch.setattr(rt, "get_current_sandbox", lambda: shim)
-    monkeypatch.setattr(
-        rt, "_chat_config", SimpleNamespace(allow_computer_use=True), raising=False
-    )
+    monkeypatch.setattr(rt, "is_computer_use_enabled", AsyncMock(return_value=True))
     monkeypatch.setattr(
         rt,
         "get_execution_context",
@@ -475,7 +473,7 @@ class TestDryRunSkill:
         assert _parse(out)["code"] == "COMPUTER_USE_CONSENT_REQUIRED"
 
     @pytest.mark.asyncio
-    async def test_dry_run_refuses_when_the_deployment_turns_computer_use_off(
+    async def test_dry_run_refuses_a_user_outside_the_computer_use_rollout(
         self, monkeypatch
     ):
         """Replay drives the mouse and keyboard, but it checked only the
@@ -483,7 +481,7 @@ class TestDryRunSkill:
         shim = _shim()
         _install(monkeypatch, shim)
         monkeypatch.setattr(
-            rt, "_chat_config", SimpleNamespace(allow_computer_use=False), raising=False
+            rt, "is_computer_use_enabled", AsyncMock(return_value=False)
         )
 
         out = await rt._h_dry_run_skill(

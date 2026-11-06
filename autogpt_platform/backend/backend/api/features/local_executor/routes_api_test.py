@@ -45,6 +45,10 @@ def _enabled_local_executor_features():
             "backend.api.features.local_executor.routes.is_workflow_recording_enabled",
             AsyncMock(return_value=True),
         ),
+        patch(
+            "backend.api.features.local_executor.routes.is_computer_use_enabled",
+            AsyncMock(return_value=True),
+        ),
     ):
         yield
 
@@ -365,6 +369,98 @@ def test_executor_status_lists_exactly_the_tools_consent_would_grant() -> None:
         "get_window_state",
         "type_text",
     ]
+
+
+def test_executor_status_shows_no_computer_use_outside_its_rollout() -> None:
+    """The consent dialog opens for a machine that offers computer use, so a
+    user outside the computer-use flag was asked to allow what nothing then
+    let Otto do."""
+    manager = MagicMock()
+    manager.get_hello_async = AsyncMock(
+        return_value=ShimHello(
+            machine_id="machine-1",
+            allowed_root="C:\\Users\\Ada\\Projects",
+            capabilities=["files", "computer_use"],
+            computer_use_driver=_DRIVER,
+            computer_use_tools=["click", "type_text"],
+        )
+    )
+    consent = AsyncMock(return_value="pending")
+    with (
+        patch(
+            "backend.api.features.local_executor.routes.get_chat_session_metadata",
+            AsyncMock(return_value=_owned_session()),
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.get_shim_manager",
+            return_value=manager,
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.get_computer_use_consent",
+            consent,
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.is_computer_use_enabled",
+            AsyncMock(return_value=False),
+        ),
+    ):
+        response = _make_client().get("/api/copilot/sessions/session-1/executor")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["kind"] == "shim"
+    assert body["computer_use_driver"] is None
+    assert body["computer_use_tools"] is None
+    assert consent.await_args.kwargs["driver"] is None
+    assert consent.await_args.kwargs["tools"] is None
+
+
+@pytest.mark.parametrize("in_rollout", [False, True])
+def test_computer_use_approval_refused_outside_its_rollout(in_rollout: bool) -> None:
+    manager = MagicMock()
+    manager.get_hello_async = AsyncMock(
+        return_value=ShimHello(
+            machine_id="machine-1",
+            allowed_root="C:\\Users\\Ada\\Projects",
+            capabilities=["computer_use"],
+            computer_use_driver=_DRIVER,
+            computer_use_tools=["click"],
+        )
+    )
+    with (
+        patch(
+            "backend.api.features.local_executor.routes.get_chat_session_metadata",
+            AsyncMock(return_value=_local_owned_session()),
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.get_shim_manager",
+            return_value=manager,
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.is_computer_use_enabled",
+            AsyncMock(return_value=in_rollout),
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.set_computer_use_consent",
+            AsyncMock(return_value="approved"),
+        ) as stored,
+    ):
+        response = _make_client().post(
+            "/api/copilot/sessions/session-1/executor/consent",
+            json={
+                "approved": True,
+                "expected_machine_id": "machine-1",
+                "expected_driver": "cua-driver 0.38.0",
+                "expected_tools": ["click"],
+            },
+        )
+
+    if in_rollout:
+        assert response.status_code == 200
+        stored.assert_awaited_once()
+    else:
+        assert response.status_code == 404
+        stored.assert_not_awaited()
 
 
 def test_executor_status_offers_no_tools_without_a_driver() -> None:

@@ -75,16 +75,19 @@ class Flag(str, Enum):
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
     # Local PC Executor — route copilot execution to a user's local machine
-    # via the autogpt-local-executor shim. EXPERIMENTAL; gated as
-    # `config.use_local_pc_executor AND flag(LOCAL_PC_EXECUTOR, user)` so the
-    # config is the deploy-level kill switch and the flag controls per-user
-    # opt-in / staged rollout. Default off.
+    # via the autogpt-local-executor shim, and let them link one. EXPERIMENTAL;
+    # the flag alone decides who gets it (per-user beta, then staged rollout).
+    # Default off. See `api/features/local_executor/gating.py`.
     LOCAL_PC_EXECUTOR = "local-pc-executor"
+    # Computer use on a Local PC — Otto drives the user's apps through the
+    # shim's cua-driver tools. Needs LOCAL_PC_EXECUTOR too, the shim offering
+    # computer use, and the user's consent for the machine. Default off.
+    LOCAL_PC_COMPUTER_USE = "local-pc-computer-use"
     # Workflow recording — record a task the user performs on their machine
     # and generalize it into a reusable skill (UI-owned recording/review plus
-    # list/generate/dry-run MCP tools). Gated as
-    # `config.use_local_pc_executor AND shim advertises recording AND
-    # flag(WORKFLOW_RECORDING, user)` — same shape as LOCAL_PC_EXECUTOR.
+    # list/generate/dry-run MCP tools). Gated as `flag(LOCAL_PC_EXECUTOR) AND
+    # shim advertises recording AND flag(WORKFLOW_RECORDING, user)`; replaying
+    # a recorded skill drives the computer, so it needs LOCAL_PC_COMPUTER_USE.
     # See `copilot/tools/recording_skill.py`. Default off; per-user rollout.
     WORKFLOW_RECORDING = "workflow-recording"
     # Local LLM routing — when on AND the user's shim advertises `local_llm`

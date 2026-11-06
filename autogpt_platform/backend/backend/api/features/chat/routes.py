@@ -754,12 +754,6 @@ async def _create_local_chat_session(
         raise HTTPException(status_code=404, detail="Local PC executor is not enabled")
 
     config = ChatConfig()
-    if not config.use_local_pc_executor:
-        raise HTTPException(
-            status_code=409,
-            detail="Local PC execution is unavailable on this deployment",
-        )
-
     if expert_id is not None:
         organization_id, team_id = await experts_db.resolve_private_expert_tenancy(
             user_id, expert_id

@@ -38,10 +38,9 @@ _CATALOG = {
 
 
 @pytest.fixture(autouse=True)
-def _deployment_allows_computer_use(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Both settings are off by default; a deployment turns them on."""
-    monkeypatch.setattr(tools._chat_config, "use_local_pc_executor", True)
-    monkeypatch.setattr(tools._chat_config, "allow_computer_use", True)
+def _user_in_the_computer_use_rollout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Its rollout flags are off by default; a user in the beta has them on."""
+    monkeypatch.setattr(tools, "is_computer_use_enabled", AsyncMock(return_value=True))
 
 
 def _shim(*, capabilities: tuple[str, ...] = ("computer_use",)) -> LocalPCShim:
@@ -95,20 +94,21 @@ class TestGating:
         assert _payload(result)["code"] == "NO_LOCAL_PC_EXECUTOR"
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("setting", ["use_local_pc_executor", "allow_computer_use"])
     @pytest.mark.parametrize("handler", ["_h_computer", "_h_computer_tools"])
-    async def test_a_deployment_that_turned_computer_use_off_refuses(
-        self, monkeypatch: pytest.MonkeyPatch, setting: str, handler: str
+    async def test_a_user_outside_the_computer_use_rollout_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch, handler: str
     ):
         """A call held for approval replays through the handler on a later
-        turn, maybe after the deployment turned computer use off."""
+        turn, maybe after the flag turned computer use off for the user."""
         shim = _shim()
         _install(monkeypatch, shim)
-        monkeypatch.setattr(tools._chat_config, setting, False)
+        gate = AsyncMock(return_value=False)
+        monkeypatch.setattr(tools, "is_computer_use_enabled", gate)
 
         result = await getattr(tools, handler)({"tool": "click"})
 
         assert _payload(result)["code"] == "COMPUTER_USE_DISABLED"
+        gate.assert_awaited_once_with("user-1")
         shim.computer.call.assert_not_awaited()
         shim.computer.tools.assert_not_awaited()
 

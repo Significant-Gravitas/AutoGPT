@@ -1,8 +1,9 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from backend.api.features.local_executor.gating import (
+    is_computer_use_enabled,
     is_local_executor_enabled,
     is_workflow_recording_enabled,
     local_executor_turned_off,
@@ -10,60 +11,51 @@ from backend.api.features.local_executor.gating import (
 from backend.util.feature_flag import Flag
 
 
-@pytest.mark.asyncio
-async def test_deployment_kill_switch_prevents_flag_evaluation() -> None:
-    get_flag = AsyncMock(return_value=True)
-
-    with (
-        patch(
-            "backend.api.features.local_executor.gating.ChatConfig",
-            return_value=MagicMock(use_local_pc_executor=False),
-        ),
-        patch(
-            "backend.api.features.local_executor.gating.is_feature_enabled",
-            get_flag,
-        ),
-    ):
-        assert await is_local_executor_enabled("user-1") is False
-
-    get_flag.assert_not_awaited()
+def _flags(*on: Flag) -> AsyncMock:
+    return AsyncMock(side_effect=lambda flag, _user_id, default=False: flag in on)
 
 
 @pytest.mark.asyncio
-async def test_local_executor_requires_per_user_flag() -> None:
-    get_flag = AsyncMock(return_value=False)
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_local_executor_is_its_per_user_flag_alone(enabled: bool) -> None:
+    """One switch per feature: the rollout flag, with no environment setting
+    beside it to keep in step across deployments."""
+    get_flag = AsyncMock(return_value=enabled)
 
-    with (
-        patch(
-            "backend.api.features.local_executor.gating.ChatConfig",
-            return_value=MagicMock(use_local_pc_executor=True),
-        ),
-        patch(
-            "backend.api.features.local_executor.gating.is_feature_enabled",
-            get_flag,
-        ),
+    with patch(
+        "backend.api.features.local_executor.gating.is_feature_enabled", get_flag
     ):
-        assert await is_local_executor_enabled("user-1") is False
+        assert await is_local_executor_enabled("user-1") is enabled
 
     get_flag.assert_awaited_once_with(Flag.LOCAL_PC_EXECUTOR, "user-1", default=False)
 
 
 @pytest.mark.asyncio
-async def test_recording_requires_both_feature_flags() -> None:
-    get_flag = AsyncMock(
-        side_effect=lambda flag, _user_id, default=False: flag
-        in {Flag.LOCAL_PC_EXECUTOR, Flag.WORKFLOW_RECORDING}
-    )
+@pytest.mark.parametrize(
+    ("on", "enabled"),
+    [
+        ((Flag.LOCAL_PC_EXECUTOR, Flag.LOCAL_PC_COMPUTER_USE), True),
+        ((Flag.LOCAL_PC_EXECUTOR,), False),
+        # Computer use is a part of Local PC, never without it.
+        ((Flag.LOCAL_PC_COMPUTER_USE,), False),
+    ],
+    ids=["both", "local-pc-only", "computer-use-only"],
+)
+async def test_computer_use_needs_its_own_flag_and_local_pcs(
+    on: tuple[Flag, ...], enabled: bool
+) -> None:
+    with patch(
+        "backend.api.features.local_executor.gating.is_feature_enabled", _flags(*on)
+    ):
+        assert await is_computer_use_enabled("user-1") is enabled
 
-    with (
-        patch(
-            "backend.api.features.local_executor.gating.ChatConfig",
-            return_value=MagicMock(use_local_pc_executor=True),
-        ),
-        patch(
-            "backend.api.features.local_executor.gating.is_feature_enabled",
-            get_flag,
-        ),
+
+@pytest.mark.asyncio
+async def test_recording_requires_both_feature_flags() -> None:
+    get_flag = _flags(Flag.LOCAL_PC_EXECUTOR, Flag.WORKFLOW_RECORDING)
+
+    with patch(
+        "backend.api.features.local_executor.gating.is_feature_enabled", get_flag
     ):
         assert await is_workflow_recording_enabled("user-1") is True
 
@@ -73,28 +65,21 @@ async def test_recording_requires_both_feature_flags() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("deployment", "flag_read", "turned_off"),
+    ("flag_read", "turned_off"),
     [
-        (False, (True, True), True),
-        (True, (False, True), True),
-        (True, (True, True), False),
+        ((False, True), True),
+        ((True, True), False),
         # A flag read that failed returns its default, which says nothing.
-        (True, (False, False), False),
+        ((False, False), False),
     ],
-    ids=["deployment-off", "flag-off", "on", "flag-unreadable"],
+    ids=["flag-off", "on", "flag-unreadable"],
 )
 async def test_an_open_connection_ends_only_on_a_real_off(
-    deployment: bool, flag_read: tuple[bool, bool], turned_off: bool
+    flag_read: tuple[bool, bool], turned_off: bool
 ) -> None:
     """A flag outage must not drop every connected machine at once."""
-    with (
-        patch(
-            "backend.api.features.local_executor.gating.ChatConfig",
-            return_value=MagicMock(use_local_pc_executor=deployment),
-        ),
-        patch(
-            "backend.api.features.local_executor.gating.evaluate_feature_flag",
-            AsyncMock(return_value=flag_read),
-        ),
+    with patch(
+        "backend.api.features.local_executor.gating.evaluate_feature_flag",
+        AsyncMock(return_value=flag_read),
     ):
         assert await local_executor_turned_off("user-1") is turned_off

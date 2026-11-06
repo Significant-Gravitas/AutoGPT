@@ -145,10 +145,9 @@ class _Rows:
 
 
 @pytest.fixture(autouse=True)
-def _deployment_allows_computer_use(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Both settings are off by default; a deployment turns them on."""
-    monkeypatch.setattr(tools._chat_config, "use_local_pc_executor", True)
-    monkeypatch.setattr(tools._chat_config, "allow_computer_use", True)
+def _user_in_the_computer_use_rollout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Its rollout flags are off by default; a user in the beta has them on."""
+    monkeypatch.setattr(tools, "is_computer_use_enabled", AsyncMock(return_value=True))
 
 
 @pytest.fixture
