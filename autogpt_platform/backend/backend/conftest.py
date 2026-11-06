@@ -142,6 +142,14 @@ def no_force_all_flags(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture(autouse=True)
+def no_sandbox_limits(monkeypatch: pytest.MonkeyPatch):
+    """The running-box limits list E2B and write Redis on every box start, so a
+    test that fakes a create would reach both; ``sandbox_limits_test`` sets them."""
+    monkeypatch.setenv("E2B_DEPLOYMENT_SANDBOX_LIMIT", "0")
+    monkeypatch.setenv("E2B_ACCOUNT_SANDBOX_LIMIT", "0")
+
+
+@pytest.fixture(autouse=True)
 def platform_payment_off(set_platform_payment):
     """Payment is off unless a test turns it on, whatever this machine's ``.env`` sets."""
     set_platform_payment(False)

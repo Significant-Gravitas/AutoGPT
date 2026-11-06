@@ -5050,6 +5050,7 @@
               }
             }
           },
+          "429": { "description": "Too many sandboxes are running" },
           "502": { "description": "The desktop could not be started" },
           "503": { "description": "E2B is not configured" }
         }
@@ -8181,6 +8182,7 @@
               }
             }
           },
+          "429": { "description": "Too many sandboxes are running" },
           "502": { "description": "The desktop could not be started" },
           "503": { "description": "E2B is not configured" }
         }

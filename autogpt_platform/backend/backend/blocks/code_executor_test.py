@@ -14,6 +14,7 @@ from contextlib import nullcontext
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from e2b import SandboxState
 from e2b_code_interpreter.constants import DEFAULT_TIMEOUT as RUN_CODE_TIMEOUT
 from pydantic import SecretStr
 
@@ -668,15 +669,7 @@ class TestKeptSandbox:
         """Another run returning during the connect must not pause the box
         under this one, and the box must outlive ``run_code``'s own limit."""
         context = _execution_context()
-        user = context.user_id
-        stamp = {
-            "service": "autogpt-platform",
-            "autogpt_owner": f"user:{user}",
-            "autogpt_kind": "code",
-            "autogpt_source": "block",
-            "autogpt_env": "dev",
-            "autogpt_user": user,
-        }
+        stamp = _block_stamp(context.user_id)
         box = _executed_box("sb-mine")
         order: list[str] = []
         hold = AsyncMock(side_effect=lambda *_: order.append("hold"))
@@ -710,6 +703,43 @@ class TestKeptSandbox:
         assert release.await_args_list == [
             call("sb-mine", box if connects else None, api_key="k")
         ]
+
+    @pytest.mark.parametrize(
+        "pause_when_kept, state, resumes",
+        [
+            (True, SandboxState.RUNNING, True),
+            (False, SandboxState.RUNNING, False),
+            (False, SandboxState.PAUSED, True),
+        ],
+        ids=["held-running", "unheld-running", "unheld-paused"],
+    )
+    async def test_a_connect_that_may_wake_the_box_waits_for_a_place(
+        self, pause_when_kept, state, resumes
+    ):
+        """Another run's release can pause a box read as running before this
+        run holds it, so only an unheld connect to a running box skips the
+        running-box limits."""
+        context = _execution_context()
+        stamp = _block_stamp(context.user_id)
+        m = "backend.blocks.code_executor"
+        connect = AsyncMock(return_value=_executed_box("sb-mine"))
+        with patch(f"{m}.AsyncSandbox") as cls, patch(
+            f"{m}.connect_sandbox", connect
+        ), patch(f"{m}.hold_sandbox", AsyncMock()), patch(
+            f"{m}.release_sandbox", AsyncMock()
+        ):
+            cls.get_info = AsyncMock(
+                return_value=MagicMock(metadata=stamp, state=state)
+            )
+            await ExecuteCodeStepBlock().execute_code(
+                api_key="k",
+                code="1",
+                language=ProgrammingLanguage.PYTHON,
+                sandbox_id="sb-mine",
+                pause_when_kept=pause_when_kept,
+                execution_context=context,
+            )
+        assert connect.await_args.kwargs["resumes"] is resumes
 
     @pytest.mark.parametrize(
         "block_cls, fields",
@@ -795,3 +825,15 @@ class TestKeptSandbox:
                 pass
         assert execute.await_args.kwargs.get("dispose_sandbox", False) is False
         assert execute.await_args.kwargs["pause_when_kept"] is True
+
+
+def _block_stamp(user: str) -> dict[str, str]:
+    """The metadata a code block's box carries for *user*."""
+    return {
+        "service": "autogpt-platform",
+        "autogpt_owner": f"user:{user}",
+        "autogpt_kind": "code",
+        "autogpt_source": "block",
+        "autogpt_env": "dev",
+        "autogpt_user": user,
+    }

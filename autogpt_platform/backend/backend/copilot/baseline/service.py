@@ -99,6 +99,7 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
     pending_message_text,
+    push_pending_message,
 )
 from backend.copilot.permissions import allowed_providers, denied_tool_names
 from backend.copilot.prompting import (
@@ -206,6 +207,7 @@ from backend.util.prompt import (
     estimate_token_count,
     estimate_token_count_str,
 )
+from backend.util.sandbox_limits import SandboxLimitError
 from backend.util.tool_call_loop import (
     LLMLoopResponse,
     LLMToolCall,
@@ -2016,6 +2018,21 @@ async def stream_chat_completion_baseline(
                 # unpaused at every later turn end.
                 count_turn=False,
             )
+        except SandboxLimitError as refusal:
+            # Refused under a running-box limit: the turn ends here rather
+            # than running its commands on the local fallback.
+            await forget_turn_ceiling(session_id, session.expert_id)
+            await _requeue_pending(session_id, drained_at_start_pending)
+            # Saved before the yield, as on the outer error path, so a reloaded
+            # chat still shows why the turn did not run.
+            if append_error_marker(session, str(refusal), retryable=True):
+                stamp_turn_trace_id(session.messages, turn_start)
+                try:
+                    await upsert_chat_session(session)
+                except Exception:
+                    logger.exception("[Baseline] Could not record the sandbox refusal")
+            yield StreamError(errorText=str(refusal), code=refusal.code)
+            return
         except Exception:
             logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
             await forget_turn_ceiling(session_id, session.expert_id)
@@ -3229,6 +3246,17 @@ async def stream_chat_completion_baseline(
     for event in _engine_switch_finish_events(session_id):
         yield event
     yield StreamFinish()
+
+
+async def _requeue_pending(session_id: str, messages: list[PendingMessage]) -> None:
+    """Put back messages a turn drained but will not run, for the next turn."""
+    for message in messages:
+        try:
+            await push_pending_message(session_id, message)
+        except Exception:
+            logger.exception(
+                f"[Baseline] Could not re-queue a message for {session_id}"
+            )
 
 
 def _engine_switch_finish_events(session_id: str) -> "list[StreamBaseResponse]":
