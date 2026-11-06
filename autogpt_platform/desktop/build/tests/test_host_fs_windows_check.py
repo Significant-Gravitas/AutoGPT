@@ -6,6 +6,8 @@ import io
 import json
 import os
 import struct
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -141,6 +143,72 @@ def test_component_worker_does_not_require_or_replace_bundled_tools(
     assert gate.worker(tmp_path) == 0
     assert os.environ["IMAGEIO_FFMPEG_EXE"] == "untouched"
     assert os.environ["PATH"] == "original-tools"
+
+
+@pytest.mark.parametrize("bundled_tool", [True, False])
+def test_isolated_caller_worker_bootstraps_checkout_runtime(tmp_path, bundled_tool):
+    bundle = (tmp_path / "runtime").resolve()
+    tools = bundle / "tools/bin"
+    tools.mkdir(parents=True)
+    if bundled_tool:
+        (tools / ("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")).write_bytes(
+            b"synthetic tool; not executed"
+        )
+    probe = """
+import importlib.util, os, sys, types
+from pathlib import Path
+assert sys.flags.isolated == 1
+assert importlib.util.find_spec('autogpt_desktop') is None
+spec = importlib.util.spec_from_file_location('gate', sys.argv[1])
+gate = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gate)
+gate.require_native = lambda: None
+sys.executable = sys.argv[3]
+os.environ['IMAGEIO_FFMPEG_EXE'] = 'stale-host-tool'
+original_path = os.environ.get('PATH', '')
+def collect(args, plugins):
+    from autogpt_desktop import layout, settings
+    expected = gate.BUILD.parent / 'runtime/autogpt_desktop'
+    assert Path(layout.__file__).resolve() == (expected / 'layout.py').resolve()
+    assert Path(settings.__file__).resolve() == (expected / 'settings.py').resolve()
+    bundle = layout.Bundle(Path(sys.executable).resolve().parent.parent)
+    assert os.environ['IMAGEIO_FFMPEG_EXE'] == str(bundle.ffmpeg)
+    assert os.environ['PATH'] == os.pathsep.join([str(bundle.tools_bin), original_path])
+    print('COLLECTION_STARTED')
+    return 0
+pytest = types.ModuleType('pytest')
+pytest.main = collect
+sys.modules['pytest'] = pytest
+raise SystemExit(gate.worker(Path(sys.argv[2]), callers=True))
+"""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            probe,
+            str(gate.BUILD / "host_fs_windows_check.py"),
+            str(tmp_path),
+            str(bundle / "python/python.exe"),
+        ],
+        cwd=gate.BACKEND,
+        input="run\n",
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if bundled_tool:
+        assert result.returncode == 0, result.stderr
+        assert "COLLECTION_STARTED" in result.stdout
+        assert json.loads((tmp_path / "worker.json").read_text())["exit_code"] == 0
+    else:
+        assert result.returncode != 0
+        assert "bundled_ffmpeg_missing" in result.stderr
+        assert "COLLECTION_STARTED" not in result.stdout
+        assert not (tmp_path / "worker.json").exists()
 
 
 class FakeProcess:
@@ -362,6 +430,47 @@ def test_main_preserves_test_and_cleanup_failures(
     assert code == expected
     saved = json.loads((tmp_path / "result.json").read_text())
     assert saved["cleanup"] == ("passed" if cleanup_ok else "failed")
+    fixture.cleanup.assert_called_once()
+
+
+@pytest.mark.parametrize("report_state", ["missing", "malformed", "worker-exit"])
+def test_main_prints_bounded_worker_diagnostics_before_cleanup(
+    tmp_path, capsys, report_state
+):
+    report = passing_report()
+    if report_state != "missing":
+        (tmp_path / "worker.json").write_text(
+            "{" if report_state == "malformed" else json.dumps(report), encoding="utf-8"
+        )
+    log = tmp_path / "pytest.log"
+    log.write_text(
+        "EXCLUDED_PREFIX\n" + "x" * 20000 + "\nWORKER_STARTUP_FAILURE\n",
+        encoding="utf-8",
+    )
+    fixture = Mock(path=tmp_path)
+    fixture.cleanup.side_effect = log.unlink
+    worker = {
+        "exit_code": 1,
+        "timed_out": False,
+        "forced_cleanup": False,
+        "active_processes": 0,
+    }
+    with patch.object(gate, "require_native"), patch.object(
+        gate, "PrivateFixture", return_value=fixture
+    ), patch.object(
+        gate, "source_hashes", return_value=report["sources"]
+    ), patch.object(
+        gate, "supervise", return_value=worker
+    ):
+        assert gate.main(["--result", str(tmp_path / "result.json")]) == 1
+    captured = capsys.readouterr()
+    assert "WORKER_STARTUP_FAILURE" in captured.err
+    assert "EXCLUDED_PREFIX" not in captured.err
+    assert len(captured.err) < 17000
+    saved = json.loads((tmp_path / "result.json").read_text())
+    assert saved["status"] == "failed"
+    assert saved["cleanup"] == "passed"
+    assert saved["worker"] == worker
     fixture.cleanup.assert_called_once()
 
 

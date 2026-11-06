@@ -375,6 +375,7 @@ def worker(root: Path, *, callers=False) -> int:
     require_native()
     os.environ.update(PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", PYTHON_DOTENV_DISABLED="1")
     if callers:
+        sys.path.insert(0, str(BUILD.parent / "runtime"))
         from autogpt_desktop.layout import Bundle
         from autogpt_desktop.settings import _bundled_tools
 
@@ -549,13 +550,6 @@ def main(argv=None) -> int:
         require(len(raw) <= 65536, "worker_report_limit")
         report = json.loads(raw)
         result["tests"] = report
-        if not accepted(report, result["sources"], callers=args.callers):
-            with (fixture.path / "pytest.log").open("rb") as output:
-                output.seek(max(0, output.seek(0, 2) - 16384))
-                print(
-                    output.read(16384).decode("utf-8", errors="replace"),
-                    file=sys.stderr,
-                )
         require(
             accepted(report, result["sources"], callers=args.callers),
             "native_tests_failed_or_skipped",
@@ -574,6 +568,16 @@ def main(argv=None) -> int:
         result["status"] = "passed"
     except Exception as exc:  # noqa: BLE001 - Preserve failed acceptance evidence.
         result["error"] = type(exc).__name__
+        if fixture is not None:
+            try:
+                with (fixture.path / "pytest.log").open("rb") as output:
+                    output.seek(max(0, output.seek(0, 2) - 16384))
+                    print(
+                        output.read(16384).decode("utf-8", errors="replace"),
+                        file=sys.stderr,
+                    )
+            except OSError:
+                pass
         print(
             f"Windows host-filesystem gate failed: {type(exc).__name__}: {exc}",
             file=sys.stderr,
