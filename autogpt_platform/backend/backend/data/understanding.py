@@ -8,6 +8,7 @@ import pydantic
 from prisma.models import CoPilotUnderstanding
 
 from backend.data.redis_client import get_redis_async
+from backend.data.user import get_user_by_id, set_user_name_if_unset
 from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,10 @@ CACHE_KEY_PREFIX = "understanding"
 CACHE_TTL_SECONDS = 48 * 60 * 60  # 48 hours
 # Left in the cache by a forget, so a read that fetched the row before it cannot cache it again.
 FORGOTTEN_MARKER = "forgotten"
+
+
+# Read from the account on every read, so a cached copy never goes stale on it.
+_NOT_CACHED = {"user_name"}
 
 
 def _cache_key(user_id: str) -> str:
@@ -139,7 +144,8 @@ class BusinessUnderstanding(pydantic.BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    # User info
+    # The account's name (`User.name`), attached on every read; the row's own copy is
+    # graph memory's label (`get_stored_user_name`).
     user_name: Optional[str] = None
     job_title: Optional[str] = None
 
@@ -181,7 +187,6 @@ class BusinessUnderstanding(pydantic.BaseModel):
             user_id=db_record.userId,
             created_at=db_record.createdAt,
             updated_at=db_record.updatedAt,
-            user_name=data.get("name"),
             job_title=business.get("job_title"),
             business_name=business.get("business_name"),
             industry=business.get("industry"),
@@ -233,7 +238,7 @@ async def _set_cache(user_id: str, understanding: BusinessUnderstanding) -> None
         await redis.setex(
             _cache_key(user_id),
             CACHE_TTL_SECONDS,
-            understanding.model_dump_json(),
+            understanding.model_dump_json(exclude=_NOT_CACHED),
         )
     except Exception as e:
         logger.warning(f"Failed to set understanding in cache: {e}")
@@ -245,7 +250,7 @@ async def _fill_cache(user_id: str, understanding: BusinessUnderstanding) -> Non
         redis = await get_redis_async()
         await redis.set(
             _cache_key(user_id),
-            understanding.model_dump_json(),
+            understanding.model_dump_json(exclude=_NOT_CACHED),
             ex=CACHE_TTL_SECONDS,
             nx=True,
         )
@@ -265,7 +270,7 @@ async def get_business_understanding(
     cached = await _get_from_cache(user_id)
     if cached:
         logger.debug(f"Business understanding cache hit for user {user_id}")
-        return cached
+        return await _with_account_name(cached)
 
     # Cache miss - load from database
     logger.debug(f"Business understanding cache miss for user {user_id}")
@@ -277,7 +282,26 @@ async def get_business_understanding(
 
     await _fill_cache(user_id, understanding)
 
-    return understanding
+    return await _with_account_name(understanding)
+
+
+async def _with_account_name(
+    understanding: BusinessUnderstanding,
+) -> BusinessUnderstanding:
+    """``understanding`` with the account's current name; a failed read leaves none."""
+    try:
+        user = await get_user_by_id(understanding.user_id)
+    except Exception as e:
+        logger.warning(f"Could not read the name of user {understanding.user_id}: {e}")
+        return understanding.model_copy(update={"user_name": None})
+    return understanding.model_copy(update={"user_name": user.name or None})
+
+
+async def get_stored_user_name(user_id: str) -> str | None:
+    """The name the understanding's row keeps, which only graph memory reads."""
+    row = await CoPilotUnderstanding.prisma().find_unique(where={"userId": user_id})
+    data = row.data if row and isinstance(row.data, dict) else {}
+    return data.get("name") or None
 
 
 def merge_business_understanding_data(
@@ -315,7 +339,7 @@ def merge_business_understanding_data(
         "existing_automation",
     ]
 
-    # Handle top-level name field
+    # Graph memory's speaker label; Otto's other readers use `User.name`.
     if input_data.user_name is not None:
         existing_data["name"] = input_data.user_name
 
@@ -354,9 +378,13 @@ async def upsert_business_understanding(
     - String fields: new value overwrites if provided (not None)
     - List fields: new items are appended to existing (deduplicated)
     - suggested_prompts: fully replaced if provided (not None)
+    - user_name: fills an empty account name, and is stored as memory's label
 
-    Data is stored as: {name: ..., business: {version: 1, ...}}
+    Data is stored as: {name: ..., business: {version: 1, ...}, suggested_prompts: ...}
     """
+    if input_data.user_name:
+        await set_user_name_if_unset(user_id, input_data.user_name)
+
     # Get existing record for merge
     existing = await CoPilotUnderstanding.prisma().find_unique(
         where={"userId": user_id}
@@ -383,7 +411,7 @@ async def upsert_business_understanding(
     # Update cache with new understanding
     await _set_cache(user_id, understanding)
 
-    return understanding
+    return await _with_account_name(understanding)
 
 
 async def clear_business_understanding(user_id: str) -> bool:

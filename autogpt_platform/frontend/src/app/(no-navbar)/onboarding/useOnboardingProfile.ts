@@ -35,8 +35,7 @@ export function useOnboardingProfile({
   }, [userID]);
 
   useEffect(() => {
-    if (enabled && accountDisplayName(user))
-      void ensureSaved().catch(() => undefined);
+    if (enabled && user) void ensureSaved().catch(() => undefined);
   }, [enabled, user]);
 
   async function ensureSaved() {
@@ -51,13 +50,12 @@ export function useOnboardingProfile({
     const { role, painPoints } = normalizeOnboardingProfile(
       useOnboardingWizardStore.getState(),
     );
-    const userName = accountDisplayName(user);
-    if (!role.trim() || !userName) {
+    if (!role.trim()) {
       setFailure({ userID, message: SAVE_ERROR });
       throw new Error(SAVE_ERROR);
     }
     const profile = {
-      user_name: userName,
+      user_name: accountDisplayName(user),
       user_role: role,
       pain_points: painPoints,
     };

@@ -18,7 +18,7 @@ export async function provisionPlatformUser(
   try {
     const result = await pool.query(
       'INSERT INTO "User" (id, email, name, "updatedAt") VALUES ($1, $2, $3, NOW()) ON CONFLICT (id) DO NOTHING',
-      [user.id, user.email, user.name ?? null],
+      [user.id, user.email, user.name || null],
     );
     return (result.rowCount ?? 0) > 0 ? "created" : "exists";
   } catch (error) {

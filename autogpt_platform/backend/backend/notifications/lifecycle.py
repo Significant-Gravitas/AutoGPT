@@ -395,7 +395,7 @@ async def _release_welcome(user: BillingEmailRecipient) -> None:
 
 
 def _greeting_name(user: BillingEmailRecipient) -> str:
-    return first_name(user.name, user.email) or "there"
+    return first_name(user.name) or "there"
 
 
 def _now() -> datetime:

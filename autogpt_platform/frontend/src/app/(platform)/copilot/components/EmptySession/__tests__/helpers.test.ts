@@ -30,14 +30,8 @@ describe("getGreetingName", () => {
     expect(getGreetingName(user)).toBe("John");
   });
 
-  it("keeps a given name that the email address starts with", () => {
-    const user = makeUser({ name: "Jane Doe" }, "jane@example.com");
-    expect(getGreetingName(user)).toBe("Jane");
-  });
-
-  // Email sign-up stores the address's local part as the name.
   it.each([
-    ["the name an email sign-up stores", { name: "Jane.Doe" }],
+    ["an empty name, as a sign-up without one stores", { name: "" }],
     ["no name at all", {}],
   ])("has no name for %s", (_, metadata) => {
     expect(getGreetingName(makeUser(metadata, "jane.doe@example.com"))).toBe(
