@@ -93,14 +93,14 @@ beforeEach(() => {
   listRequests = 0;
   itemRenders.mockClear();
   server.use(
-    http.get("*/api/chat/sessions", () => {
+    http.get("*/api/internal/chat/sessions", () => {
       listRequests += 1;
       return HttpResponse.json({
         sessions: listed.map(toSummary),
         total: listed.length,
       });
     }),
-    http.patch("*/api/chat/sessions/:id/pinned", ({ params }) => {
+    http.patch("*/api/internal/chat/sessions/:id/pinned", ({ params }) => {
       const pinned = listed.find((s) => s.id === params.id);
       if (pinned) {
         listed = [

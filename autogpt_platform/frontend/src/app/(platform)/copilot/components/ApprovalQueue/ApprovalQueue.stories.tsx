@@ -28,7 +28,7 @@ import {
 } from "./__tests__/fixtures";
 
 function answerAfter(ms: number, status = 200) {
-  return http.post("*/api/review/action", async () => {
+  return http.post("*/api/internal/review/action", async () => {
     await delay(ms);
     return status === 200
       ? HttpResponse.json({
@@ -68,7 +68,7 @@ export const TwoOnTheSameSubject: Story = {
   args: queueOf([folder("a", "Q3 reports", 6), folder("b", "Invoices", 5)]),
 };
 
-const GMAIL_SCHEMA = http.get("*/api/builder/blocks/batch", () =>
+const GMAIL_SCHEMA = http.get("*/api/internal/builder/blocks/batch", () =>
   HttpResponse.json([
     {
       id: "b-gmail",
@@ -479,7 +479,7 @@ export const ReviewAllAndContinue: Story = (() => {
       msw: {
         handlers: [
           realCardSchemaHandler(cards),
-          http.post("*/api/review/action", () =>
+          http.post("*/api/internal/review/action", () =>
             HttpResponse.json({
               approved_count: 1,
               rejected_count: 0,
@@ -488,7 +488,7 @@ export const ReviewAllAndContinue: Story = (() => {
             }),
           ),
           http.post(
-            "*/api/review/session/*/continue",
+            "*/api/internal/review/session/*/continue",
             () => new HttpResponse(null, { status: 204 }),
           ),
         ],

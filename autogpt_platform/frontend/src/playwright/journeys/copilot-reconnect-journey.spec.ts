@@ -32,7 +32,7 @@ test.describe("copilot reconnect journey", () => {
       {
         status: 409,
         method: "GET",
-        url: /\/api\/chat\/sessions\/[^/]+\/stream\?turn=/,
+        url: /\/api\/internal\/chat\/sessions\/[^/]+\/stream\?turn=/,
       },
     ],
   });

@@ -74,7 +74,7 @@ test("builder happy path: user can save the created agent", async ({
   expect(await buildPage.isRunButtonEnabled()).toBeTruthy();
 
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${graphId}?version=${graphVersion}`,
+    `/api/proxy/api/internal/graphs/${graphId}?version=${graphVersion}`,
   );
   expect(response.ok(), `GET saved graph: ${response.status()}`).toBe(true);
   const graph = (await response.json()) as SavedGraph;

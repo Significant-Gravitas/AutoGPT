@@ -37,7 +37,7 @@ vi.mock("next/navigation", () => ({
 
 const POLL_MS = 1_000;
 const MAX_WAIT_MS = 30_000;
-const SETTLE_URL = "*/api/onboarding/brain-dump/plan/settle";
+const SETTLE_URL = "*/api/internal/onboarding/brain-dump/plan/settle";
 // Every settle attempt failing at once, with the pause between attempts.
 const ALL_SETTLES_FAIL_MS = 3 * POLL_MS;
 // Every settle attempt hanging until its own time limit.

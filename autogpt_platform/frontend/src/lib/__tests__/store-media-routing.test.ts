@@ -50,7 +50,9 @@ it.each([
       nextConfig,
     });
     const proxyURL = getRewrittenUrl(routing);
-    expect(proxyURL).toBe(`http://localhost:3000/api/proxy${relativeURL}?v=2`);
+    expect(proxyURL).toBe(
+      `http://localhost:3000/api/proxy/api/internal${relativeURL.slice("/api".length)}?v=2`,
+    );
 
     const bytes = Uint8Array.from(
       { length: 256 * 1024 },
@@ -117,7 +119,9 @@ it("rewrites private media through the authenticated proxy without caching it", 
     nextConfig,
   });
   const proxyURL = getRewrittenUrl(routing);
-  expect(proxyURL).toBe(`http://localhost:3000/api/proxy${relativeURL}?v=2`);
+  expect(proxyURL).toBe(
+    `http://localhost:3000/api/proxy/api/internal${relativeURL.slice("/api".length)}?v=2`,
+  );
 
   vi.mocked(fetch).mockResolvedValue(
     new Response("private image", {

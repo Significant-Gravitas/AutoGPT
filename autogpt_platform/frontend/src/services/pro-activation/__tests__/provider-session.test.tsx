@@ -57,7 +57,7 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/");
   server.use(
     http.get(
-      "*/api/proxy/api/credits/pro-activation/current",
+      "*/api/proxy/api/internal/credits/pro-activation/current",
       () => new HttpResponse(null, { status: 404 }),
     ),
   );
@@ -86,7 +86,7 @@ describe("Pro activation account lifecycle", () => {
       JSON.stringify({ id: quote.id, token: quote.terms_token }),
     );
     server.use(
-      http.get("*/api/proxy/api/credits/pro-activation/current", () =>
+      http.get("*/api/proxy/api/internal/credits/pro-activation/current", () =>
         HttpResponse.json({
           ...quote,
           status: "ready",
@@ -94,13 +94,13 @@ describe("Pro activation account lifecycle", () => {
           activation_id: "generation-1",
         }),
       ),
-      http.get("*/api/proxy/api/credits/trial", () =>
+      http.get("*/api/proxy/api/internal/credits/trial", () =>
         HttpResponse.json({ active: false, converted: true }),
       ),
-      http.get("*/api/proxy/api/credits/subscription", () =>
+      http.get("*/api/proxy/api/internal/credits/subscription", () =>
         HttpResponse.json({ tier: "PRO" }),
       ),
-      http.get("*/api/proxy/api/chat/usage", () =>
+      http.get("*/api/proxy/api/internal/chat/usage", () =>
         HttpResponse.json({ tier: "PRO" }),
       ),
     );

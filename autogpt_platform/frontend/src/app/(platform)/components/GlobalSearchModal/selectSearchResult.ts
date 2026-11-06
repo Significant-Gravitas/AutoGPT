@@ -33,7 +33,7 @@ export function selectSearchResult(
       // No dedicated viewer route — open the file's download URL in a new tab
       // so the user gets the content immediately.
       window.open(
-        `/api/proxy/api/workspace/files/${item.id}/download`,
+        `/api/proxy/api/internal/workspace/files/${item.id}/download`,
         "_blank",
         "noopener,noreferrer",
       );

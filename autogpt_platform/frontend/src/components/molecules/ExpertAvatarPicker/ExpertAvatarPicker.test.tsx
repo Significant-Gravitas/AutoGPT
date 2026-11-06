@@ -11,14 +11,17 @@ import { defaultAvatarUrl } from "./helpers";
 
 function completesAs(url: string, requests: unknown[] = []) {
   return [
-    http.post("*/api/experts/avatars/generations", async ({ request }) => {
-      requests.push(await request.json());
-      return HttpResponse.json(
-        { id: "job-1", status: "pending" },
-        { status: 202 },
-      );
-    }),
-    http.get("*/api/experts/avatars/generations/job-1", () =>
+    http.post(
+      "*/api/internal/experts/avatars/generations",
+      async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json(
+          { id: "job-1", status: "pending" },
+          { status: 202 },
+        );
+      },
+    ),
+    http.get("*/api/internal/experts/avatars/generations/job-1", () =>
       HttpResponse.json({
         id: "job-1",
         status: "complete",
@@ -100,10 +103,10 @@ test("regenerating rolls every trait but the category", async () => {
 test("a failed generation leaves the category artwork ready to keep", async () => {
   const onPick = vi.fn();
   server.use(
-    http.post("*/api/experts/avatars/generations", () =>
+    http.post("*/api/internal/experts/avatars/generations", () =>
       HttpResponse.json({ id: "job-2", status: "pending" }, { status: 202 }),
     ),
-    http.get("*/api/experts/avatars/generations/job-2", () =>
+    http.get("*/api/internal/experts/avatars/generations/job-2", () =>
       HttpResponse.json({
         id: "job-2",
         status: "failed",
@@ -125,7 +128,7 @@ test("a failed generation leaves the category artwork ready to keep", async () =
 test("an existing avatar is kept until a generation replaces it", async () => {
   const onPick = vi.fn();
   server.use(
-    http.post("*/api/experts/avatars/generations", () =>
+    http.post("*/api/internal/experts/avatars/generations", () =>
       HttpResponse.json(
         { detail: "Please wait before generating again." },
         { status: 429 },
@@ -154,7 +157,7 @@ test("an existing avatar is kept until a generation replaces it", async () => {
 test("uploads remain previews until chosen", async () => {
   const onPick = vi.fn();
   server.use(
-    http.post("*/api/store/submissions/media", () =>
+    http.post("*/api/internal/store/submissions/media", () =>
       HttpResponse.json("https://cdn.test/upload.png"),
     ),
   );
@@ -178,7 +181,7 @@ test("uploads remain previews until chosen", async () => {
 test("rejects uploads above the private media limit before making a request", async () => {
   const upload = vi.fn();
   server.use(
-    http.post("*/api/store/submissions/media", () => {
+    http.post("*/api/internal/store/submissions/media", () => {
       upload();
       return HttpResponse.json("https://cdn.test/upload.png");
     }),
@@ -200,7 +203,7 @@ test("rejects uploads above the private media limit before making a request", as
 test("accepts uploads at the private media limit", async () => {
   const upload = vi.fn();
   server.use(
-    http.post("*/api/store/submissions/media", () => {
+    http.post("*/api/internal/store/submissions/media", () => {
       upload();
       return HttpResponse.json("https://cdn.test/upload.png");
     }),
@@ -221,13 +224,13 @@ test("accepts uploads at the private media limit", async () => {
 
 test("a pending generation allows uploads and confirmation", async () => {
   server.use(
-    http.post("*/api/experts/avatars/generations", () =>
+    http.post("*/api/internal/experts/avatars/generations", () =>
       HttpResponse.json(
         { id: "pending-job", status: "pending" },
         { status: 202 },
       ),
     ),
-    http.get("*/api/experts/avatars/generations/pending-job", () =>
+    http.get("*/api/internal/experts/avatars/generations/pending-job", () =>
       HttpResponse.json({ id: "pending-job", status: "pending" }),
     ),
   );

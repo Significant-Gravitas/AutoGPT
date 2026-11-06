@@ -281,7 +281,7 @@ describe("useChatSession — expert sessions", () => {
     let createBody: unknown = null;
     let transportInventoryLoaded = false;
     server.use(
-      http.post("*/api/chat/sessions", async ({ request }) => {
+      http.post("*/api/internal/chat/sessions", async ({ request }) => {
         createBody = await request.json();
         return HttpResponse.json({
           id: "new-session-1",
@@ -290,7 +290,7 @@ describe("useChatSession — expert sessions", () => {
           expert_id: "expert-maria",
         });
       }),
-      http.get("*/api/chat/sessions/new-session-1", () =>
+      http.get("*/api/internal/chat/sessions/new-session-1", () =>
         HttpResponse.json({
           id: "new-session-1",
           created_at: "2026-01-01T00:00:00Z",
@@ -299,7 +299,7 @@ describe("useChatSession — expert sessions", () => {
           messages: [],
         }),
       ),
-      http.get("*/api/chat/transports", () => {
+      http.get("*/api/internal/chat/transports", () => {
         transportInventoryLoaded = true;
         return HttpResponse.json({
           transports: [
@@ -346,7 +346,7 @@ describe("useChatSession — expert sessions", () => {
   it("does not emit expert_thread_created for an Autopilot session", async () => {
     let transportInventoryLoaded = false;
     server.use(
-      http.post("*/api/chat/sessions", () =>
+      http.post("*/api/internal/chat/sessions", () =>
         HttpResponse.json({
           id: "new-autopilot-session",
           created_at: "2026-01-01T00:00:00Z",
@@ -354,7 +354,7 @@ describe("useChatSession — expert sessions", () => {
           expert_id: null,
         }),
       ),
-      http.get("*/api/chat/sessions/new-autopilot-session", () =>
+      http.get("*/api/internal/chat/sessions/new-autopilot-session", () =>
         HttpResponse.json({
           id: "new-autopilot-session",
           created_at: "2026-01-01T00:00:00Z",
@@ -363,7 +363,7 @@ describe("useChatSession — expert sessions", () => {
           messages: [],
         }),
       ),
-      http.get("*/api/chat/transports", () => {
+      http.get("*/api/internal/chat/transports", () => {
         transportInventoryLoaded = true;
         return HttpResponse.json({
           transports: [
@@ -401,7 +401,7 @@ describe("useChatSession — expert sessions", () => {
   it("opens the expert's latest thread when one already exists", async () => {
     const seenExpertFilters: (string | null)[] = [];
     server.use(
-      http.get("*/api/chat/sessions", ({ request }) => {
+      http.get("*/api/internal/chat/sessions", ({ request }) => {
         const url = new URL(request.url);
         seenExpertFilters.push(url.searchParams.get("expert_id"));
         return HttpResponse.json({
@@ -416,7 +416,7 @@ describe("useChatSession — expert sessions", () => {
           total: 1,
         });
       }),
-      http.get("*/api/chat/sessions/s-maria-latest", () =>
+      http.get("*/api/internal/chat/sessions/s-maria-latest", () =>
         HttpResponse.json({
           id: "s-maria-latest",
           created_at: "2026-01-01T00:00:00Z",
@@ -444,7 +444,7 @@ describe("useChatSession — expert sessions", () => {
   it("keeps a fresh thread addressed to the expert when the link carries new=1", async () => {
     let listedSessions = 0;
     server.use(
-      http.get("*/api/chat/sessions", () => {
+      http.get("*/api/internal/chat/sessions", () => {
         listedSessions += 1;
         return HttpResponse.json({
           sessions: [
@@ -481,13 +481,13 @@ describe("useChatSession — expert sessions", () => {
     let adoptionLookups = 0;
     const writesToRunningSession: string[] = [];
     server.use(
-      http.get("*/api/chat/sessions", ({ request }) => {
+      http.get("*/api/internal/chat/sessions", ({ request }) => {
         if (new URL(request.url).searchParams.get("expert_id")) {
           adoptionLookups += 1;
         }
         return HttpResponse.json({ sessions: [runningSession], total: 1 });
       }),
-      http.get("*/api/chat/sessions/s-maria-running", () =>
+      http.get("*/api/internal/chat/sessions/s-maria-running", () =>
         HttpResponse.json({
           ...runningSession,
           user_id: "user-1",
@@ -495,11 +495,14 @@ describe("useChatSession — expert sessions", () => {
           active_stream: { started_at: "2026-01-01T00:00:00Z" },
         }),
       ),
-      http.all("*/api/chat/sessions/s-maria-running/*", ({ request }) => {
-        writesToRunningSession.push(`${request.method} ${request.url}`);
-        return HttpResponse.json({});
-      }),
-      http.post("*/api/chat/sessions", () =>
+      http.all(
+        "*/api/internal/chat/sessions/s-maria-running/*",
+        ({ request }) => {
+          writesToRunningSession.push(`${request.method} ${request.url}`);
+          return HttpResponse.json({});
+        },
+      ),
+      http.post("*/api/internal/chat/sessions", () =>
         HttpResponse.json({
           id: "s-maria-fresh",
           created_at: "2026-01-03T00:00:00Z",
@@ -507,7 +510,7 @@ describe("useChatSession — expert sessions", () => {
           expert_id: "expert-maria",
         }),
       ),
-      http.get("*/api/chat/sessions/s-maria-fresh", () =>
+      http.get("*/api/internal/chat/sessions/s-maria-fresh", () =>
         HttpResponse.json({
           id: "s-maria-fresh",
           created_at: "2026-01-03T00:00:00Z",
@@ -517,7 +520,7 @@ describe("useChatSession — expert sessions", () => {
           messages: [],
         }),
       ),
-      http.get("*/api/chat/transports", () =>
+      http.get("*/api/internal/chat/transports", () =>
         HttpResponse.json({
           transports: [
             {
@@ -603,7 +606,7 @@ describe("useChatSession — expert sessions", () => {
 
   it("stays on a fresh session after New Chat instead of re-adopting the expert's thread", async () => {
     server.use(
-      http.get("*/api/chat/sessions", ({ request }) => {
+      http.get("*/api/internal/chat/sessions", ({ request }) => {
         const url = new URL(request.url);
         const expertId = url.searchParams.get("expert_id");
         const mariaSession = makeSession({
@@ -616,7 +619,7 @@ describe("useChatSession — expert sessions", () => {
         }
         return HttpResponse.json({ sessions: [mariaSession], total: 1 });
       }),
-      http.get("*/api/chat/sessions/s-maria-latest", () =>
+      http.get("*/api/internal/chat/sessions/s-maria-latest", () =>
         HttpResponse.json({
           id: "s-maria-latest",
           created_at: "2026-01-01T00:00:00Z",
@@ -724,7 +727,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     let workspaceFileRequests = 0;
     server.use(
       getGetExpertMockHandler(mariaExpert),
-      http.get("*/api/workspace/files", () => {
+      http.get("*/api/internal/workspace/files", () => {
         workspaceFileRequests += 1;
         return HttpResponse.json({ files: [], offset: 0, has_more: false });
       }),
@@ -836,7 +839,7 @@ describe("recipient picker", () => {
   it("does not look up or adopt the expert's latest thread when the recipient is picked after mount", async () => {
     let expertListRequests = 0;
     server.use(
-      http.get("*/api/chat/sessions", ({ request }) => {
+      http.get("*/api/internal/chat/sessions", ({ request }) => {
         const url = new URL(request.url);
         if (url.searchParams.get("expert_id") === "expert-maria") {
           expertListRequests += 1;
@@ -921,7 +924,7 @@ describe("recipient picker", () => {
 
   it("clears an unresolved expert recipient after the identity query errors", async () => {
     server.use(
-      http.get("*/api/experts/identities", () =>
+      http.get("*/api/internal/experts/identities", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );

@@ -33,7 +33,7 @@ function makeWorkspaceItem(
 describe("workspaceAttachments", () => {
   it("builds the workspace download URL from a file id", () => {
     expect(workspaceFileDownloadUrl("abc")).toBe(
-      "/api/proxy/api/workspace/files/abc/download",
+      "/api/proxy/api/internal/workspace/files/abc/download",
     );
   });
 
@@ -67,7 +67,7 @@ describe("workspaceAttachments", () => {
       type: "file",
       mediaType: "text/csv",
       filename: "data.csv",
-      url: "/api/proxy/api/workspace/files/file-9/download",
+      url: "/api/proxy/api/internal/workspace/files/file-9/download",
     });
   });
 

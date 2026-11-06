@@ -54,7 +54,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
-const URL = "*/api/onboarding/brain-dump/suggested-tasks";
+const URL = "*/api/internal/onboarding/brain-dump/suggested-tasks";
 const COLLAPSED_KEY = "home.suggestedTasks.collapsed";
 const SOMETHING_ELSE =
   "Want to do something else? Just write it in the textbox below.";
@@ -908,7 +908,7 @@ describe("Suggested first tasks on Home — when to show them", () => {
 
   it("holds the list while the team can't be read, rather than giving Maria's task to Otto", async () => {
     server.use(
-      http.get("*/api/experts/identities", () =>
+      http.get("*/api/internal/experts/identities", () =>
         HttpResponse.json({ detail: "down" }, { status: 500 }),
       ),
     );
@@ -933,7 +933,7 @@ describe("Suggested first tasks on Home — when to show them", () => {
   it("still offers the tasks while the team can't be read when none names an expert", async () => {
     stored = TASKS.map((task) => ({ ...task, expert_id: null }));
     server.use(
-      http.get("*/api/experts/identities", () =>
+      http.get("*/api/internal/experts/identities", () =>
         HttpResponse.json({ detail: "down" }, { status: 500 }),
       ),
     );
@@ -1012,7 +1012,7 @@ describe("Suggested first tasks — the greeting page", () => {
     let teamReads = 0;
     withGreeting();
     server.use(
-      http.get("*/api/experts/identities", () => {
+      http.get("*/api/internal/experts/identities", () => {
         teamReads += 1;
         return HttpResponse.json({ detail: "down" }, { status: 500 });
       }),
@@ -1199,7 +1199,7 @@ describe("Suggested first tasks — while the greeting is being written", () => 
     let introReads = 0;
     let written = false;
     server.use(
-      http.get("*/api/onboarding/brain-dump/intro", () => {
+      http.get("*/api/internal/onboarding/brain-dump/intro", () => {
         introReads += 1;
         written = introReads > 1;
         return HttpResponse.json({

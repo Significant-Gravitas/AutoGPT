@@ -111,7 +111,7 @@ describe("resuming a cancel-pending trial", () => {
     server.use(
       getGetTrialsGetTrialStatusMockHandler200(status),
       getPostTrialsCancelTrialMockHandler200(cancelPending),
-      http.post("*/api/credits/trial/resume", () =>
+      http.post("*/api/internal/credits/trial/resume", () =>
         HttpResponse.json({ detail: "Stripe is unavailable" }, { status: 502 }),
       ),
     );
@@ -138,12 +138,12 @@ describe("resuming a cancel-pending trial", () => {
   it("keeps the trial card when the refetch after a failed resume fails too", async () => {
     let limited = false;
     server.use(
-      http.get("*/api/credits/trial", () =>
+      http.get("*/api/internal/credits/trial", () =>
         limited
           ? HttpResponse.json({ detail: "Too many requests" }, { status: 429 })
           : HttpResponse.json(cancelPending),
       ),
-      http.post("*/api/credits/trial/resume", () => {
+      http.post("*/api/internal/credits/trial/resume", () => {
         limited = true;
         return HttpResponse.json(
           { detail: "Too many requests" },

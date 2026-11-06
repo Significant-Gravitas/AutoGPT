@@ -21,13 +21,13 @@ afterEach(() => setTrialUser(null));
 
 function mockUsage(tier: string, trial = {}, daily = 100, weekly = 100) {
   server.use(
-    http.get("*/api/credits/subscription", () =>
+    http.get("*/api/internal/credits/subscription", () =>
       HttpResponse.json({ tier, monthly_cost: 0 }),
     ),
-    http.get("*/api/credits/trial", () =>
+    http.get("*/api/internal/credits/trial", () =>
       HttpResponse.json(trialResponse(trial)),
     ),
-    http.get("*/api/chat/usage", () =>
+    http.get("*/api/internal/chat/usage", () =>
       HttpResponse.json({
         tier,
         daily: { percent_used: daily, resets_at: "2030-09-13T00:00:00Z" },
@@ -73,7 +73,7 @@ it("offers a real retry rather than showing zero after a usage failure", async (
   mockUsage("PRO", { active: false, converted: true }, 12, 35);
   let attempts = 0;
   server.use(
-    http.get("*/api/chat/usage", () => {
+    http.get("*/api/internal/chat/usage", () => {
       attempts += 1;
       return attempts === 1
         ? HttpResponse.json({}, { status: 500 })
@@ -93,7 +93,9 @@ it("offers a real retry rather than showing zero after a usage failure", async (
 it("keeps plan recovery visible when an inactive account has no usage permission", async () => {
   mockUsage("NO_TIER", { active: false, converted: true });
   server.use(
-    http.get("*/api/chat/usage", () => HttpResponse.json({}, { status: 403 })),
+    http.get("*/api/internal/chat/usage", () =>
+      HttpResponse.json({}, { status: 403 }),
+    ),
   );
   render(<AutopilotUsageCard />);
   expect(
@@ -106,7 +108,7 @@ it("keeps plan recovery visible when an inactive account has no usage permission
 it("explains an unlimited paid plan without inventing zero usage", async () => {
   mockUsage("ENTERPRISE", { active: false, converted: true });
   server.use(
-    http.get("*/api/chat/usage", () =>
+    http.get("*/api/internal/chat/usage", () =>
       HttpResponse.json({ tier: "ENTERPRISE", daily: null, weekly: null }),
     ),
   );
@@ -154,10 +156,10 @@ it("refreshes the rendered usage after a Max upgrade without resetting consumpti
   let upgraded = false;
   let usageRequests = 0;
   server.use(
-    http.post("*/api/credits/subscription/preview", () =>
+    http.post("*/api/internal/credits/subscription/preview", () =>
       HttpResponse.json(maxUpgradePreview()),
     ),
-    http.get("*/api/credits/subscription", () =>
+    http.get("*/api/internal/credits/subscription", () =>
       HttpResponse.json({
         tier: upgraded ? "MAX" : "PRO",
         monthly_cost: upgraded ? 32000 : 5000,
@@ -166,10 +168,10 @@ it("refreshes the rendered usage after a Max upgrade without resetting consumpti
         has_active_stripe_subscription: true,
       }),
     ),
-    http.get("*/api/credits/manage", () =>
+    http.get("*/api/internal/credits/manage", () =>
       HttpResponse.json({ url: "https://billing.stripe.com/p/test" }),
     ),
-    http.get("*/api/chat/usage", () => {
+    http.get("*/api/internal/chat/usage", () => {
       usageRequests += 1;
       return HttpResponse.json({
         tier: upgraded ? "MAX" : "PRO",
@@ -183,7 +185,7 @@ it("refreshes the rendered usage after a Max upgrade without resetting consumpti
         },
       });
     }),
-    http.post("*/api/credits/subscription", () => {
+    http.post("*/api/internal/credits/subscription", () => {
       upgraded = true;
       return HttpResponse.json({ url: "" });
     }),

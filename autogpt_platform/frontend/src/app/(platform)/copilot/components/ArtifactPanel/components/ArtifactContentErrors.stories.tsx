@@ -5,7 +5,7 @@ import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import { ArtifactContent } from "./ArtifactContent";
 
-const PROXY_BASE = "/api/proxy/api/workspace/files";
+const PROXY_BASE = "/api/proxy/api/internal/workspace/files";
 
 const IMAGE_ARTIFACT: ArtifactRef = {
   id: "broken-image",

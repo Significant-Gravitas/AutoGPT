@@ -47,7 +47,7 @@ describe("Memory chat start", () => {
   ])(
     "offers plans for a 402 with %s without reporting an exception",
     async (_case, response) => {
-      server.use(http.post("*/api/chat/sessions", response));
+      server.use(http.post("*/api/internal/chat/sessions", response));
 
       await openSummaryChat();
 
@@ -75,7 +75,7 @@ describe("Memory chat start", () => {
   it("provides administrator guidance when billing is disabled", async () => {
     memoryChatTestConfig.billingEnabled = false;
     server.use(
-      http.post("*/api/chat/sessions", () =>
+      http.post("*/api/internal/chat/sessions", () =>
         HttpResponse.json({}, { status: 402 }),
       ),
     );
@@ -96,7 +96,7 @@ describe("Memory chat start", () => {
     "keeps HTTP %s retryable even when its body mentions a paywall",
     async (status) => {
       server.use(
-        http.post("*/api/chat/sessions", () =>
+        http.post("*/api/internal/chat/sessions", () =>
           HttpResponse.json(
             {
               status: 402,
@@ -124,7 +124,9 @@ describe("Memory chat start", () => {
   );
 
   it("keeps network failures retryable without offering a plan", async () => {
-    server.use(http.post("*/api/chat/sessions", () => HttpResponse.error()));
+    server.use(
+      http.post("*/api/internal/chat/sessions", () => HttpResponse.error()),
+    );
 
     await openSummaryChat();
 
@@ -137,7 +139,7 @@ describe("Memory chat start", () => {
 
   it("does not mistake a malformed success body for a paywall", async () => {
     server.use(
-      http.post("*/api/chat/sessions", () =>
+      http.post("*/api/internal/chat/sessions", () =>
         HttpResponse.json({ status: 402 }),
       ),
     );
@@ -158,7 +160,7 @@ describe("Memory chat start", () => {
   it("retries a temporary subscription lookup failure and starts the chat", async () => {
     server.use(
       http.post(
-        "*/api/chat/sessions",
+        "*/api/internal/chat/sessions",
         () =>
           HttpResponse.json(
             {

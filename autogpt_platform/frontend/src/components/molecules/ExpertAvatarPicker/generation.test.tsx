@@ -14,13 +14,13 @@ test(
   async () => {
     let polls = 0;
     server.use(
-      http.post("*/api/experts/avatars/generations", () =>
+      http.post("*/api/internal/experts/avatars/generations", () =>
         HttpResponse.json(
           { id: "poll-job", status: "pending" },
           { status: 202 },
         ),
       ),
-      http.get("*/api/experts/avatars/generations/poll-job", () => {
+      http.get("*/api/internal/experts/avatars/generations/poll-job", () => {
         polls += 1;
         return HttpResponse.json(
           polls === 1
@@ -59,13 +59,13 @@ test(
 
 test("offers regeneration when polling fails", async () => {
   server.use(
-    http.post("*/api/experts/avatars/generations", () =>
+    http.post("*/api/internal/experts/avatars/generations", () =>
       HttpResponse.json(
         { id: "failed-poll-job", status: "pending" },
         { status: 202 },
       ),
     ),
-    http.get("*/api/experts/avatars/generations/failed-poll-job", () =>
+    http.get("*/api/internal/experts/avatars/generations/failed-poll-job", () =>
       HttpResponse.json({}, { status: 500 }),
     ),
   );

@@ -87,10 +87,10 @@ function Composer({ expertId, onSend }: Props) {
 function arrangeSentry() {
   const state = { connected: false, granted: [] as string[] };
   server.use(
-    http.get("*/api/integrations/credentials", () =>
+    http.get("*/api/internal/integrations/credentials", () =>
       HttpResponse.json(state.connected ? [SENTRY_CREDENTIAL] : []),
     ),
-    http.get("*/api/integrations/providers", () =>
+    http.get("*/api/internal/integrations/providers", () =>
       HttpResponse.json([
         {
           name: "mcp_sentry",
@@ -118,17 +118,17 @@ function arrangeSentry() {
         },
       ]),
     ),
-    http.post("*/api/mcp/discover-tools", () =>
+    http.post("*/api/internal/mcp/discover-tools", () =>
       HttpResponse.json({
         tools: [],
         server_url: "https://mcp.sentry.dev/mcp",
       }),
     ),
-    http.post("*/api/mcp/token", () => {
+    http.post("*/api/internal/mcp/token", () => {
       state.connected = true;
       return HttpResponse.json(SENTRY_CREDENTIAL);
     }),
-    http.get("*/api/experts/expert-maria/credentials", () =>
+    http.get("*/api/internal/experts/expert-maria/credentials", () =>
       HttpResponse.json(
         state.granted.includes("cred-sentry")
           ? [
@@ -142,12 +142,15 @@ function arrangeSentry() {
           : [],
       ),
     ),
-    http.post("*/api/experts/expert-maria/credentials", async ({ request }) => {
-      state.granted = (
-        (await request.json()) as { credential_ids: string[] }
-      ).credential_ids;
-      return HttpResponse.json([]);
-    }),
+    http.post(
+      "*/api/internal/experts/expert-maria/credentials",
+      async ({ request }) => {
+        state.granted = (
+          (await request.json()) as { credential_ids: string[] }
+        ).credential_ids;
+        return HttpResponse.json([]);
+      },
+    ),
   );
   return state;
 }
@@ -234,7 +237,7 @@ describe("Connect an integration from the @ mention list", () => {
   it("saving an API key in the dialog does not send the half-written message", async () => {
     let connected = false;
     server.use(
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json(
           connected
             ? [
@@ -250,7 +253,7 @@ describe("Connect an integration from the @ mention list", () => {
             : [],
         ),
       ),
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([
           {
             name: "linear",
@@ -259,7 +262,7 @@ describe("Connect an integration from the @ mention list", () => {
           },
         ]),
       ),
-      http.post("*/api/integrations/linear/credentials", () => {
+      http.post("*/api/internal/integrations/linear/credentials", () => {
         connected = true;
         return HttpResponse.json({
           id: "cred-linear",

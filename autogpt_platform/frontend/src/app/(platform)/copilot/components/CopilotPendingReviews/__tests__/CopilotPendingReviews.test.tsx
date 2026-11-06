@@ -107,7 +107,7 @@ function serveSpendRuns({
   const waiting = new Set(RUNS);
   const calls = { posted: [] as string[][], heldRefetches: 0 };
   server.use(
-    http.get("*/api/review/execution/:id", async ({ params }) => {
+    http.get("*/api/internal/review/execution/:id", async ({ params }) => {
       const id = String(params.id);
       if (holdRefetch && calls.posted.length > 0 && id === RUNS[0]) {
         calls.heldRefetches++;
@@ -137,7 +137,7 @@ function serveSpendRuns({
       );
     }),
     // Like the real endpoint, one run's reviews per request.
-    http.post("*/api/review/action", async ({ request }) => {
+    http.post("*/api/internal/review/action", async ({ request }) => {
       const body = (await request.json()) as ReviewRequest;
       const ids = body.reviews.map((r) => r.node_exec_id);
       calls.posted.push(ids);

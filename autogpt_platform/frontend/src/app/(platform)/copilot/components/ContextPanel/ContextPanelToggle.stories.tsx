@@ -36,7 +36,7 @@ const GENERATED_FILES: WorkspaceFileItem[] = [
 ];
 
 function filesHandler(files: WorkspaceFileItem[]) {
-  return http.get("*/api/workspace/files", () =>
+  return http.get("*/api/internal/workspace/files", () =>
     HttpResponse.json({ files, offset: 0, has_more: false }),
   );
 }

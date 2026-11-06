@@ -173,7 +173,7 @@ describe("RecentChats — load more", () => {
   it("shows 'Load more' and fetches the next page", async () => {
     const seenOffsets: string[] = [];
     server.use(
-      http.get("*/api/chat/sessions", ({ request }) => {
+      http.get("*/api/internal/chat/sessions", ({ request }) => {
         const offset = new URL(request.url).searchParams.get("offset") ?? "0";
         seenOffsets.push(offset);
         const sessions =

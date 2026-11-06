@@ -151,7 +151,7 @@ def build_device_login_url(
         }
     )
     return (
-        f"{base_url}/api/proxy/api/integrations/codex/"
+        f"{base_url}/api/proxy/api/internal/integrations/codex/"
         f"device-login/{login_id}#{fragment}"
     )
 
@@ -160,7 +160,7 @@ def build_device_login_cancel_url(
     login: CodexDeviceLogin,
 ) -> str:
     login_id = quote(login.login_id, safe="")
-    return f"/api/proxy/api/integrations/codex/device-login/{login_id}/cancel"
+    return f"/api/proxy/api/internal/integrations/codex/device-login/{login_id}/cancel"
 
 
 async def revoke_codex_credentials(

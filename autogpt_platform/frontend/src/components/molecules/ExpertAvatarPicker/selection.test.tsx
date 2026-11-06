@@ -8,10 +8,10 @@ import { defaultAvatarUrl } from "./helpers";
 
 function pendingGeneration() {
   return [
-    http.post("*/api/experts/avatars/generations", () =>
+    http.post("*/api/internal/experts/avatars/generations", () =>
       HttpResponse.json({ id: "pending", status: "pending" }, { status: 202 }),
     ),
-    http.get("*/api/experts/avatars/generations/pending", () =>
+    http.get("*/api/internal/experts/avatars/generations/pending", () =>
       HttpResponse.json({ id: "pending", status: "pending" }),
     ),
   ];
@@ -33,10 +33,10 @@ test("can keep the default while generation is pending", async () => {
 test("keeps an uploaded preview through a failed regeneration", async () => {
   const onPick = vi.fn();
   server.use(
-    http.post("*/api/store/submissions/media", () =>
+    http.post("*/api/internal/store/submissions/media", () =>
       HttpResponse.json("https://cdn.test/upload.png"),
     ),
-    http.post("*/api/experts/avatars/generations", () =>
+    http.post("*/api/internal/experts/avatars/generations", () =>
       HttpResponse.json({ detail: "Try again later" }, { status: 429 }),
     ),
   );
@@ -70,14 +70,14 @@ test("a late generation response cannot replace an upload", async () => {
     respond = resolve;
   });
   server.use(
-    http.post("*/api/experts/avatars/generations", async () => {
+    http.post("*/api/internal/experts/avatars/generations", async () => {
       await pending;
       return HttpResponse.json(
         { id: "late", status: "pending" },
         { status: 202 },
       );
     }),
-    http.get("*/api/experts/avatars/generations/late", () => {
+    http.get("*/api/internal/experts/avatars/generations/late", () => {
       poll();
       return HttpResponse.json({
         id: "late",
@@ -85,7 +85,7 @@ test("a late generation response cannot replace an upload", async () => {
         avatar_url: "https://cdn.test/late.png",
       });
     }),
-    http.post("*/api/store/submissions/media", () =>
+    http.post("*/api/internal/store/submissions/media", () =>
       HttpResponse.json("https://cdn.test/upload.png"),
     ),
   );

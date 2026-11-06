@@ -80,7 +80,7 @@ describe("trial Checkout return", () => {
 
   it("keeps a failed confirmation visible and lets the user retry", async () => {
     server.use(
-      http.post("*/api/credits/trial/confirm", () =>
+      http.post("*/api/internal/credits/trial/confirm", () =>
         HttpResponse.json(
           { detail: "Card setup is not complete yet" },
           { status: 409 },
@@ -235,7 +235,7 @@ describe("trial start Google Ads conversion", () => {
 
   it("does not report a failed confirmation", async () => {
     server.use(
-      http.post("*/api/credits/trial/confirm", () =>
+      http.post("*/api/internal/credits/trial/confirm", () =>
         HttpResponse.json(
           { detail: "Card setup is not complete yet" },
           { status: 409 },

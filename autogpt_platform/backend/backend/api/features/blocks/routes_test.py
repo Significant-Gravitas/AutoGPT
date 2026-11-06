@@ -67,9 +67,9 @@ def setup_app_auth(mock_jwt_user, test_user_id):
 # Tags differ across the three, so they stay per-route and the mount supplies
 # only ["v1"]; execute keeps its paywall on top of the router's auth.
 EXPECTED_OPERATIONS = {
-    ("get", "/api/blocks"): ["v1", "blocks"],
-    ("post", "/api/blocks/{block_id}/execute"): ["v1", "blocks"],
-    ("post", "/api/files/upload"): ["v1", "files"],
+    ("get", "/api/internal/blocks"): ["v1", "blocks"],
+    ("post", "/api/internal/blocks/{block_id}/execute"): ["v1", "blocks"],
+    ("post", "/api/internal/files/upload"): ["v1", "files"],
 }
 
 
@@ -98,7 +98,8 @@ def test_execute_block_is_behind_the_payment_paywall():
     route = next(
         r
         for r in real_app.routes
-        if isinstance(r, APIRoute) and r.path == "/api/blocks/{block_id}/execute"
+        if isinstance(r, APIRoute)
+        and r.path == "/api/internal/blocks/{block_id}/execute"
     )
     assert "enforce_payment_paywall" in {
         d.call.__name__ for d in route.dependant.dependencies if d.call

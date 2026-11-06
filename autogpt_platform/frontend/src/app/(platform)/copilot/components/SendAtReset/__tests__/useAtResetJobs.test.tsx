@@ -26,7 +26,7 @@ function withQueryClient() {
 describe("useAtResetJobs", () => {
   it("keeps a write that a read already on its way would otherwise undo", async () => {
     server.use(
-      http.get("*/api/chat/sessions/:sessionId/at-reset", async () => {
+      http.get("*/api/internal/chat/sessions/:sessionId/at-reset", async () => {
         await delay(150);
         return HttpResponse.json({ jobs: [] });
       }),
@@ -50,7 +50,7 @@ describe("useAtResetJobs", () => {
     vi.setSystemTime(JOB.run_at.getTime() - 20_000);
     let reads = 0;
     server.use(
-      http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
+      http.get("*/api/internal/chat/sessions/:sessionId/at-reset", () => {
         reads += 1;
         return HttpResponse.json({ jobs: [JOB] });
       }),
@@ -76,7 +76,7 @@ describe("useAtResetJobs", () => {
     vi.setSystemTime(JOB.run_at.getTime() - 3 * 60 * 60_000);
     let reads = 0;
     server.use(
-      http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
+      http.get("*/api/internal/chat/sessions/:sessionId/at-reset", () => {
         reads += 1;
         return HttpResponse.json({ jobs: [JOB] });
       }),

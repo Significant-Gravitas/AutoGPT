@@ -111,7 +111,7 @@ function SessionHarness() {
 function captureCreateRequest() {
   let requestBody: unknown;
   server.use(
-    http.post("*/api/chat/sessions", async ({ request }) => {
+    http.post("*/api/internal/chat/sessions", async ({ request }) => {
       requestBody = await request.json();
       return HttpResponse.json({
         id: "new-session-1",
@@ -306,7 +306,7 @@ describe("useChatSession transport route", () => {
 
   it("restores the immutable route from existing session metadata", async () => {
     server.use(
-      http.get("*/api/chat/sessions/existing", () =>
+      http.get("*/api/internal/chat/sessions/existing", () =>
         HttpResponse.json({
           id: "existing",
           created_at: "2026-01-01T00:00:00Z",

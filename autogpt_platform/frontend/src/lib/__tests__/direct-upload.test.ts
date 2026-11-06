@@ -80,7 +80,7 @@ describe("uploadSubmissionMediaDirect", () => {
     });
     await uploadSubmissionMediaDirect(makeFile(10), "expert-avatar");
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      "http://backend.test/api/store/submissions/media?purpose=expert-avatar",
+      "http://backend.test/api/internal/store/submissions/media?purpose=expert-avatar",
     );
   });
 
@@ -95,7 +95,7 @@ describe("uploadSubmissionMediaDirect", () => {
 
     expect(url).toBe("https://cdn.test/uploaded.png");
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://backend.test/api/store/submissions/media",
+      "http://backend.test/api/internal/store/submissions/media",
       expect.objectContaining({
         method: "POST",
         headers: { Authorization: "Bearer test-token" },
@@ -115,7 +115,7 @@ describe("uploadSubmissionMediaDirect", () => {
     await uploadSubmissionMediaDirect(makeFile(10));
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://autogpt.test/_agpt/api/store/submissions/media",
+      "http://autogpt.test/_agpt/api/internal/store/submissions/media",
       expect.any(Object),
     );
   });
@@ -168,7 +168,7 @@ describe("uploadOAuthAppLogoDirect", () => {
     await uploadOAuthAppLogoDirect("app-123", makeFile(10));
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://backend.test/api/oauth/apps/app-123/logo/upload",
+      "http://backend.test/api/internal/oauth/apps/app-123/logo/upload",
       expect.objectContaining({
         method: "POST",
         headers: { Authorization: "Bearer test-token" },
@@ -205,7 +205,7 @@ describe("uploadFileDirect (workspace)", () => {
     expect(result.file_id).toBe("f1");
     const calledUrl = fetchMock.mock.calls[0]?.[0] as string;
     expect(calledUrl).toContain(
-      "http://backend.test/api/workspace/files/upload",
+      "http://backend.test/api/internal/workspace/files/upload",
     );
     expect(calledUrl).toContain("overwrite=true");
     expect(calledUrl).toContain("session_id=sess-1");

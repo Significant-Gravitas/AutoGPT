@@ -207,7 +207,7 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     "public discovery reports %i tools without saving or reusing credentials",
     async (toolCount) => {
       server.use(
-        http.post("*/api/mcp/discover-tools", async ({ request }) => {
+        http.post("*/api/internal/mcp/discover-tools", async ({ request }) => {
           discoveryRequest(await request.json());
           return HttpResponse.json({
             tools: Array.from({ length: toolCount }, (_, i) => ({

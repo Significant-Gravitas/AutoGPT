@@ -9,11 +9,11 @@ import { useCopilotPendingReviews } from "../useCopilotPendingReviews";
 function countRequests(status: string) {
   const calls = { execution: 0, reviews: 0 };
   server.use(
-    http.get("*/api/graphs/graph-1/executions/exec-1", () => {
+    http.get("*/api/internal/graphs/graph-1/executions/exec-1", () => {
       calls.execution++;
       return HttpResponse.json({ id: "exec-1", graph_id: "graph-1", status });
     }),
-    http.get("*/api/review/execution/exec-1", () => {
+    http.get("*/api/internal/review/execution/exec-1", () => {
       calls.reviews++;
       return HttpResponse.json([]);
     }),
@@ -70,10 +70,10 @@ describe("useCopilotPendingReviews", () => {
   test("still polls the reviews when the run's status cannot be read", async () => {
     const calls = { reviews: 0 };
     server.use(
-      http.get("*/api/graphs/graph-1/executions/exec-1", () =>
+      http.get("*/api/internal/graphs/graph-1/executions/exec-1", () =>
         HttpResponse.json({ detail: "down" }, { status: 500 }),
       ),
-      http.get("*/api/review/execution/exec-1", () => {
+      http.get("*/api/internal/review/execution/exec-1", () => {
         calls.reviews++;
         return HttpResponse.json([]);
       }),
@@ -94,15 +94,15 @@ describe("useCopilotPendingReviews", () => {
   test("a chat's queue is polled from the chat, never from a run", async () => {
     const calls = { chat: 0, execution: 0, runReviews: 0 };
     server.use(
-      http.get("*/api/review/session/chat-1", () => {
+      http.get("*/api/internal/review/session/chat-1", () => {
         calls.chat++;
         return HttpResponse.json([{ node_exec_id: "chat-review" }]);
       }),
-      http.get("*/api/graphs/*", () => {
+      http.get("*/api/internal/graphs/*", () => {
         calls.execution++;
         return HttpResponse.json({});
       }),
-      http.get("*/api/review/execution/*", () => {
+      http.get("*/api/internal/review/execution/*", () => {
         calls.runReviews++;
         return HttpResponse.json([]);
       }),
@@ -147,7 +147,7 @@ describe("useCopilotPendingReviews", () => {
     async ({ rows, polls }) => {
       let requests = 0;
       server.use(
-        http.get("*/api/review/session/s1", () => {
+        http.get("*/api/internal/review/session/s1", () => {
           requests++;
           return HttpResponse.json(rows);
         }),
@@ -172,7 +172,7 @@ describe("useCopilotPendingReviews", () => {
   test("a new held call on screen fetches the chat's cards again", async () => {
     let requests = 0;
     server.use(
-      http.get("*/api/review/session/s1", () => {
+      http.get("*/api/internal/review/session/s1", () => {
         requests++;
         return HttpResponse.json([]);
       }),

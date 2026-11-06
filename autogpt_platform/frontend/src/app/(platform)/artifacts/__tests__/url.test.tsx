@@ -28,7 +28,7 @@ vi.mock("framer-motion", async (importActual) => {
 
 import ArtifactsPage from "../page";
 
-const PROXY = "/api/proxy/api/workspace";
+const PROXY = "/api/proxy/api/internal/workspace";
 
 // Root lists root.txt, the one live folder lists inside.txt — so which listing
 // rendered says which folder the page opened.

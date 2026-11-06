@@ -26,7 +26,7 @@ vi.mock("next/navigation", () => ({
 function captureTopUpRequest() {
   let body: unknown = null;
   server.use(
-    http.post("*/api/credits", async ({ request }) => {
+    http.post("*/api/internal/credits", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ checkout_url: CHECKOUT_URL });
     }),
@@ -71,7 +71,7 @@ describe("TopUpForm", () => {
   test("disables the submit button while the checkout request is in flight", async () => {
     // Hold the request open so the in-flight loading state is observable.
     server.use(
-      http.post("*/api/credits", async () => {
+      http.post("*/api/internal/credits", async () => {
         await new Promise((resolve) => setTimeout(resolve, 300));
         return HttpResponse.json({ checkout_url: CHECKOUT_URL });
       }),
@@ -99,7 +99,7 @@ describe("TopUpForm", () => {
     const checkoutURL = "https://checkout.stripe.com/pay/cs_top_up";
     let topUps = 0;
     server.use(
-      http.post("*/api/credits", () => {
+      http.post("*/api/internal/credits", () => {
         topUps += 1;
         return HttpResponse.json({ checkout_url: checkoutURL });
       }),
@@ -130,7 +130,7 @@ describe("TopUpForm", () => {
   test("releases the button without leaving when no checkout URL comes back", async () => {
     let topUps = 0;
     server.use(
-      http.post("*/api/credits", () => {
+      http.post("*/api/internal/credits", () => {
         topUps += 1;
         return HttpResponse.json({ checkout_url: "" });
       }),

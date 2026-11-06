@@ -192,7 +192,7 @@ describe("/admin/users", () => {
 
   it("says when the plan couldn't load rather than showing it blank", async () => {
     server.use(
-      http.get("*/api/copilot/admin/rate_limit", () =>
+      http.get("*/api/internal/copilot/admin/rate_limit", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -204,7 +204,7 @@ describe("/admin/users", () => {
 
   it("shows a billing-set plan again after a plan change is cancelled", async () => {
     server.use(
-      http.get("*/api/copilot/admin/rate_limit", () =>
+      http.get("*/api/internal/copilot/admin/rate_limit", () =>
         HttpResponse.json({
           user_id: ALEX.id,
           user_email: ALEX.email,
@@ -271,7 +271,7 @@ describe("/admin/users", () => {
   it("offers a retry when the organisations fail to load", async () => {
     let calls = 0;
     server.use(
-      http.get(`*/api/admin/users/${ALEX.id}/organizations`, () => {
+      http.get(`*/api/internal/admin/users/${ALEX.id}/organizations`, () => {
         calls += 1;
         return calls === 1
           ? HttpResponse.json({ detail: "boom" }, { status: 500 })
@@ -328,7 +328,7 @@ function mockUserRoutes(user: typeof ALEX) {
       const users = value === user.email ? [user] : [];
       return HttpResponse.json({ users, total: users.length });
     }),
-    http.get("*/api/copilot/admin/rate_limit", () =>
+    http.get("*/api/internal/copilot/admin/rate_limit", () =>
       HttpResponse.json({
         user_id: user.id,
         user_email: user.email,
@@ -340,7 +340,7 @@ function mockUserRoutes(user: typeof ALEX) {
         tier_multipliers: { BASIC: 1, PRO: 3, MAX: 10 },
       }),
     ),
-    http.get(`*/api/admin/users/${user.id}/organizations`, () =>
+    http.get(`*/api/internal/admin/users/${user.id}/organizations`, () =>
       HttpResponse.json([ORGANISATION]),
     ),
     // The admin's own session, for the Sign-ins card's "that's you" warning.
@@ -365,10 +365,13 @@ function mockBan() {
 function mockSetTier() {
   const bodies: unknown[] = [];
   server.use(
-    http.post("*/api/copilot/admin/rate_limit/tier", async ({ request }) => {
-      bodies.push(await request.json());
-      return HttpResponse.json({ user_id: ALEX.id, tier: "MAX" });
-    }),
+    http.post(
+      "*/api/internal/copilot/admin/rate_limit/tier",
+      async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ user_id: ALEX.id, tier: "MAX" });
+      },
+    ),
   );
   return bodies;
 }
@@ -376,15 +379,18 @@ function mockSetTier() {
 function mockImpersonationNotice(status: 200 | 502) {
   const bodies: unknown[] = [];
   server.use(
-    http.post("*/api/admin/impersonation/notify", async ({ request }) => {
-      bodies.push(await request.json());
-      return status === 200
-        ? HttpResponse.json({ alerted: true })
-        : HttpResponse.json(
-            { detail: "audit channel unavailable" },
-            { status },
-          );
-    }),
+    http.post(
+      "*/api/internal/admin/impersonation/notify",
+      async ({ request }) => {
+        bodies.push(await request.json());
+        return status === 200
+          ? HttpResponse.json({ alerted: true })
+          : HttpResponse.json(
+              { detail: "audit channel unavailable" },
+              { status },
+            );
+      },
+    ),
   );
   return bodies;
 }

@@ -172,7 +172,7 @@ export function assistantTextChunks(
 }
 
 function streamUrl(baseUrl: string, sessionId: string) {
-  return `${baseUrl}/api/chat/sessions/${sessionId}/stream`;
+  return `${baseUrl}/api/internal/chat/sessions/${sessionId}/stream`;
 }
 
 interface CopilotStreamHandlerOptions extends StreamChunksOptions {

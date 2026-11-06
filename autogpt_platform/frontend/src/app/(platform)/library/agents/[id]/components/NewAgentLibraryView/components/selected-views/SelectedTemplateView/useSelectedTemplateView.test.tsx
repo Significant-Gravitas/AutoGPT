@@ -16,7 +16,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 
 beforeEach(() => toastMock.mockClear());
 
-const PRESET_PATH = "/api/proxy/api/library/presets/:presetId";
+const PRESET_PATH = "/api/proxy/api/internal/library/presets/:presetId";
 
 // A triggered preset whose webhook was detached (credential removal) is filed
 // under Templates, so this view receives the nested trigger-config shape too.

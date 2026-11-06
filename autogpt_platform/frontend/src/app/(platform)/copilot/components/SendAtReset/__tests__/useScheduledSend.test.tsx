@@ -30,7 +30,7 @@ describe("useScheduledSend", () => {
   it("leaves the chat alone while its draft is typed", async () => {
     let reads = 0;
     server.use(
-      http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
+      http.get("*/api/internal/chat/sessions/:sessionId/at-reset", () => {
         reads += 1;
         return HttpResponse.json({ jobs: [] });
       }),
@@ -62,13 +62,16 @@ describe("useScheduledSend", () => {
     function serverHolding(jobs: () => unknown[]) {
       const calls = { cancelled: 0 };
       server.use(
-        http.get("*/api/chat/sessions/:sessionId/at-reset", () =>
+        http.get("*/api/internal/chat/sessions/:sessionId/at-reset", () =>
           HttpResponse.json({ jobs: jobs() }),
         ),
-        http.delete("*/api/chat/sessions/:sessionId/at-reset/:kind", () => {
-          calls.cancelled += 1;
-          return new HttpResponse(null, { status: 204 });
-        }),
+        http.delete(
+          "*/api/internal/chat/sessions/:sessionId/at-reset/:kind",
+          () => {
+            calls.cancelled += 1;
+            return new HttpResponse(null, { status: 204 });
+          },
+        ),
       );
       return calls;
     }
@@ -128,7 +131,7 @@ describe("useScheduledSend", () => {
       let reads = 0;
       let cancelled = 0;
       server.use(
-        http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
+        http.get("*/api/internal/chat/sessions/:sessionId/at-reset", () => {
           reads += 1;
           return reads === 1
             ? HttpResponse.json({
@@ -145,10 +148,13 @@ describe("useScheduledSend", () => {
                 { status: 503 },
               );
         }),
-        http.delete("*/api/chat/sessions/:sessionId/at-reset/:kind", () => {
-          cancelled += 1;
-          return new HttpResponse(null, { status: 204 });
-        }),
+        http.delete(
+          "*/api/internal/chat/sessions/:sessionId/at-reset/:kind",
+          () => {
+            cancelled += 1;
+            return new HttpResponse(null, { status: 204 });
+          },
+        ),
       );
       const { result } = renderHook(
         () => useScheduledSend({ sessionId: "chat-unread" }),
@@ -180,33 +186,42 @@ describe("useScheduledSend", () => {
         const hold: { nextRead?: Promise<void>; add?: Promise<void> } = {};
         let waiting: string | null = FIRST;
         server.use(
-          http.get("*/api/chat/sessions/:sessionId/at-reset", async () => {
-            calls.reads += 1;
-            const answer = waiting;
-            const held = hold.nextRead;
-            hold.nextRead = undefined;
-            await held;
-            return HttpResponse.json({
-              jobs: answer
-                ? [{ kind: "send", run_at: RUN_AT, message: answer }]
-                : [],
-            });
-          }),
-          http.post("*/api/chat/sessions/:sessionId/at-reset", async () => {
-            calls.added += 1;
-            await hold.add;
-            waiting = JOINED;
-            return HttpResponse.json({
-              kind: "send",
-              run_at: RUN_AT,
-              message: JOINED,
-            });
-          }),
-          http.delete("*/api/chat/sessions/:sessionId/at-reset/:kind", () => {
-            calls.cancelled += 1;
-            waiting = null;
-            return new HttpResponse(null, { status: 204 });
-          }),
+          http.get(
+            "*/api/internal/chat/sessions/:sessionId/at-reset",
+            async () => {
+              calls.reads += 1;
+              const answer = waiting;
+              const held = hold.nextRead;
+              hold.nextRead = undefined;
+              await held;
+              return HttpResponse.json({
+                jobs: answer
+                  ? [{ kind: "send", run_at: RUN_AT, message: answer }]
+                  : [],
+              });
+            },
+          ),
+          http.post(
+            "*/api/internal/chat/sessions/:sessionId/at-reset",
+            async () => {
+              calls.added += 1;
+              await hold.add;
+              waiting = JOINED;
+              return HttpResponse.json({
+                kind: "send",
+                run_at: RUN_AT,
+                message: JOINED,
+              });
+            },
+          ),
+          http.delete(
+            "*/api/internal/chat/sessions/:sessionId/at-reset/:kind",
+            () => {
+              calls.cancelled += 1;
+              waiting = null;
+              return new HttpResponse(null, { status: 204 });
+            },
+          ),
         );
         return { calls, hold };
       }
@@ -310,10 +325,10 @@ describe("useScheduledSend", () => {
   // cleared the message by then.
   it("puts the message back when the server answers without the send", async () => {
     server.use(
-      http.get("*/api/chat/sessions/:sessionId/at-reset", () =>
+      http.get("*/api/internal/chat/sessions/:sessionId/at-reset", () =>
         HttpResponse.json({ jobs: [] }),
       ),
-      http.post("*/api/chat/sessions/:sessionId/at-reset", () =>
+      http.post("*/api/internal/chat/sessions/:sessionId/at-reset", () =>
         HttpResponse.json(null, { status: 202 }),
       ),
     );

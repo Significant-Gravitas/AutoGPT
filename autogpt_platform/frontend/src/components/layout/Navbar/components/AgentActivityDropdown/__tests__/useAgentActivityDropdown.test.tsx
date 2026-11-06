@@ -67,7 +67,7 @@ function serveLibrary() {
   });
   releaseHeldPage = releasePage2;
   server.use(
-    http.get("*/api/library/agents", async ({ request }) => {
+    http.get("*/api/internal/library/agents", async ({ request }) => {
       const params = new URL(request.url).searchParams;
       const page = Number(params.get("page") ?? 1);
       const pageSize = Number(params.get("page_size") ?? 15);

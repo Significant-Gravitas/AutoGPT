@@ -239,7 +239,7 @@ describe("customMutator — response body handling", () => {
       data: unknown;
       status: number;
       headers: Headers;
-    }>("/api/executions/abc", { method: "DELETE" });
+    }>("/api/internal/executions/abc", { method: "DELETE" });
 
     expect(result.status).toBe(204);
     expect(result.data).toBeNull();
@@ -314,7 +314,7 @@ describe("customMutator — response body handling", () => {
       data: Blob;
       status: number;
       headers: Headers;
-    }>("/api/store/media/user/images/image.png", { method: "GET" });
+    }>("/api/internal/store/media/user/images/image.png", { method: "GET" });
 
     expect(result.data).toBeInstanceOf(Blob);
     expect(new Uint8Array(await result.data.arrayBuffer())).toEqual(bytes);

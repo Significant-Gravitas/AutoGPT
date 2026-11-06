@@ -22,7 +22,7 @@ export interface RecordedTurn {
   rows: Row[];
 }
 
-export const STREAM_URL = `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`;
+export const STREAM_URL = `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`;
 const FIXTURE_ROOT = path.resolve(
   process.cwd(),
   "../backend/test/fixtures/copilot_stream",

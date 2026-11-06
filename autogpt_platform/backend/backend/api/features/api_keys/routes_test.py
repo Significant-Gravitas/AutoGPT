@@ -10,12 +10,15 @@ from fastapi.routing import APIRoute
 from backend.api.rest_api import app
 
 EXPECTED_OPERATIONS = {
-    ("get", "/api/api-keys"): "getV1List user api keys",
-    ("post", "/api/api-keys"): "postV1Create new api key",
-    ("delete", "/api/api-keys/{key_id}"): "deleteV1Revoke api key",
-    ("get", "/api/api-keys/{key_id}"): "getV1Get specific api key",
-    ("put", "/api/api-keys/{key_id}/permissions"): "putV1Update key permissions",
-    ("post", "/api/api-keys/{key_id}/suspend"): "postV1Suspend api key",
+    ("get", "/api/internal/api-keys"): "getV1List user api keys",
+    ("post", "/api/internal/api-keys"): "postV1Create new api key",
+    ("delete", "/api/internal/api-keys/{key_id}"): "deleteV1Revoke api key",
+    ("get", "/api/internal/api-keys/{key_id}"): "getV1Get specific api key",
+    (
+        "put",
+        "/api/internal/api-keys/{key_id}/permissions",
+    ): "putV1Update key permissions",
+    ("post", "/api/internal/api-keys/{key_id}/suspend"): "postV1Suspend api key",
 }
 
 
@@ -33,7 +36,7 @@ def test_api_key_surface_has_no_other_operations():
     published = {
         (method, path)
         for path, operations in app.openapi()["paths"].items()
-        if path.startswith("/api/api-keys")
+        if path.startswith("/api/internal/api-keys")
         for method in operations
     }
     assert published == set(EXPECTED_OPERATIONS)

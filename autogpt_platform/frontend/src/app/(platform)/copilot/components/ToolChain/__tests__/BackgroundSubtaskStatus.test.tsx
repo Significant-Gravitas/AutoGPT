@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SubSessionCard } from "../AgentCards";
 
-const SESSION_ROUTE = "/api/proxy/api/chat/sessions/:sessionId";
+const SESSION_ROUTE = "/api/proxy/api/internal/chat/sessions/:sessionId";
 /** Mirrors POLL_CAP_MS in SubSessionLive.tsx: where a foreground card gives up. */
 const POLL_CAP_MS = 5 * 60_000;
 

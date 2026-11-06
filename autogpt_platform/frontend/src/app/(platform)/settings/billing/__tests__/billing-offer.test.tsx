@@ -12,7 +12,7 @@ import { YourPlanCard } from "../components/SubscriptionTab/YourPlanCard/YourPla
 beforeEach(() => {
   setTrialUser("billing-user");
   server.use(
-    http.get("*/api/credits/manage", () =>
+    http.get("*/api/internal/credits/manage", () =>
       HttpResponse.json({ url: "https://billing.stripe.com/test" }),
     ),
   );
@@ -21,10 +21,10 @@ afterEach(() => setTrialUser(null));
 
 function mockTrialAt(percent: number) {
   server.use(
-    http.get("*/api/credits/subscription", () =>
+    http.get("*/api/internal/credits/subscription", () =>
       HttpResponse.json({ tier: "TRIAL", monthly_cost: 0 }),
     ),
-    http.get("*/api/credits/trial", () =>
+    http.get("*/api/internal/credits/trial", () =>
       HttpResponse.json(
         trialResponse({
           usage_policy: "lifetime",
@@ -32,7 +32,7 @@ function mockTrialAt(percent: number) {
         }),
       ),
     ),
-    http.get("*/api/chat/usage", () =>
+    http.get("*/api/internal/chat/usage", () =>
       HttpResponse.json({ tier: "TRIAL", daily: null, weekly: null }),
     ),
   );
@@ -75,7 +75,7 @@ it.each([80, 100])(
 
 it("shows one usage error and keeps the normal plan card when usage fails", async () => {
   server.use(
-    http.get("*/api/credits/subscription", () =>
+    http.get("*/api/internal/credits/subscription", () =>
       HttpResponse.json({
         tier: "PRO",
         monthly_cost: 5000,
@@ -85,10 +85,12 @@ it("shows one usage error and keeps the normal plan card when usage fails", asyn
         has_active_stripe_subscription: true,
       }),
     ),
-    http.get("*/api/credits/trial", () =>
+    http.get("*/api/internal/credits/trial", () =>
       HttpResponse.json(trialResponse({ active: false, converted: true })),
     ),
-    http.get("*/api/chat/usage", () => HttpResponse.json({}, { status: 500 })),
+    http.get("*/api/internal/chat/usage", () =>
+      HttpResponse.json({}, { status: 500 }),
+    ),
   );
   render(<YourPlanCard showUsage />);
   expect(await screen.findByText("We couldn’t load your usage")).toBeDefined();

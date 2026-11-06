@@ -12,19 +12,21 @@ const PRIVATE_PREFIXES = ["/api", "/auth"];
 // are opened; longest-match wins, so these beat the /api disallow.
 const PUBLIC_API_PREFIXES = [
   "/api/store/media/",
-  "/api/proxy/api/store/media/",
-  "/api/proxy/api/store/agents",
-  "/api/proxy/api/store/creators",
-  "/api/proxy/api/store/categories",
-  "/api/proxy/api/store/search",
-  "/api/proxy/api/store/skills",
-  "/api/proxy/api/experts/templates",
-  "/api/proxy/api/integrations/providers/system",
+  "/api/proxy/api/internal/store/media/",
+  "/api/proxy/api/internal/store/agents",
+  "/api/proxy/api/internal/store/creators",
+  "/api/proxy/api/internal/store/categories",
+  "/api/proxy/api/internal/store/search",
+  "/api/proxy/api/internal/store/skills",
+  "/api/proxy/api/internal/experts/templates",
+  "/api/proxy/api/internal/integrations/providers/system",
 ];
 
 // Private routes nested under an allowed prefix need their own, longer
 // disallow to keep winning the match.
-const PRIVATE_API_PREFIXES = ["/api/proxy/api/store/skills/submissions"];
+const PRIVATE_API_PREFIXES = [
+  "/api/proxy/api/internal/store/skills/submissions",
+];
 
 export default function robots(): MetadataRoute.Robots {
   const siteUrl = getSiteUrl();

@@ -69,7 +69,7 @@ const FILE = "6f1e2b3c-4d5e-4b7e-9d0a-9c1f6a523c0e";
 describe("a failed API request in Sentry", () => {
   it("is reported once, under its route, when the generated client made it", async () => {
     server.use(
-      http.get("*/api/proxy/api/schedules/followups", () =>
+      http.get("*/api/proxy/api/internal/schedules/followups", () =>
         HttpResponse.json(
           { detail: "All connection attempts failed" },
           { status: 500 },
@@ -83,13 +83,13 @@ describe("a failed API request in Sentry", () => {
     await Sentry.flush(2000);
 
     expect(sent.map((event) => event.message)).toEqual([
-      "Request failed on client: GET /api/schedules/followups 500",
+      "Request failed on client: GET /api/internal/schedules/followups 500",
     ]);
   });
 
   it("is reported once when its URL carries a query", async () => {
     server.use(
-      http.get("*/api/proxy/api/library/agents", () =>
+      http.get("*/api/proxy/api/internal/library/agents", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -102,13 +102,13 @@ describe("a failed API request in Sentry", () => {
 
   it("is still reported once when the request bypassed the generated client", async () => {
     server.use(
-      http.get("*/api/proxy/api/workspace/files/:id/download", () =>
+      http.get("*/api/proxy/api/internal/workspace/files/:id/download", () =>
         HttpResponse.text("upstream unavailable", { status: 503 }),
       ),
     );
 
     const response = await fetch(
-      `/api/proxy/api/workspace/files/${FILE}/download`,
+      `/api/proxy/api/internal/workspace/files/${FILE}/download`,
     );
     await Sentry.flush(2000);
 

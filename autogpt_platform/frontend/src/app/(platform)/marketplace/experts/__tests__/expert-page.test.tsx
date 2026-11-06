@@ -445,7 +445,7 @@ describe("Marketplace expert page", () => {
     });
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),
-      http.get("*/api/experts", async () => {
+      http.get("*/api/internal/experts", async () => {
         await rosterHeld;
         return HttpResponse.json([hiredMaria]);
       }),
@@ -547,7 +547,7 @@ describe("Marketplace expert page", () => {
       getListExpertTemplatesMockHandler([mariaWithSamples]),
       getListExpertsMockHandler([]),
       getHireExpertMockHandler({ expert: hiredMaria }),
-      http.patch("/api/proxy/api/experts/:expertId/soul", () => {
+      http.patch("/api/proxy/api/internal/experts/:expertId/soul", () => {
         patchAttempts += 1;
         return patchAttempts === 1
           ? HttpResponse.json({ detail: [] }, { status: 422 })

@@ -15,7 +15,7 @@ describe("AutoGPT server URL resolution", () => {
     vi.stubEnv("NEXT_PUBLIC_AGPT_SERVER_URL", "/backend/api");
 
     expect(environment.getAGPTServerApiUrl()).toBe(
-      "http://autogpt.local:3000/backend/api",
+      "http://autogpt.local:3000/backend/api/internal",
     );
     expect(environment.getAGPTServerBaseUrl()).toBe(
       "http://autogpt.local:3000/backend",
@@ -29,7 +29,7 @@ describe("AutoGPT server URL resolution", () => {
     vi.stubEnv("NEXT_PUBLIC_AGPT_SERVER_URL", "/backend/api");
 
     expect(environment.getAGPTServerApiUrl()).toBe(
-      "https://autogpt.example.com/backend/api",
+      "https://autogpt.example.com/backend/api/internal",
     );
   });
 
@@ -76,7 +76,7 @@ describe("AutoGPT server URL resolution", () => {
     vi.stubEnv("NEXT_PUBLIC_AGPT_WS_SERVER_URL", "/backend/ws");
 
     expect(environment.getAGPTServerApiUrl()).toBe(
-      "http://backend.internal:8006/api",
+      "http://backend.internal:8006/api/internal",
     );
     expect(environment.getAGPTWsServerUrl()).toBe(
       "ws://backend.internal:8001/ws",

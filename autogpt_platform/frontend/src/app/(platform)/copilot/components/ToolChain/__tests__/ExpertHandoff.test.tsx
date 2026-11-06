@@ -243,7 +243,7 @@ function confirmPart(id: string, output: Record<string, unknown>) {
 
 /** The hire's own chats, as the session list returns them. */
 function expertThreads(ids: string[]) {
-  return http.get("/api/proxy/api/chat/sessions", () =>
+  return http.get("/api/proxy/api/internal/chat/sessions", () =>
     HttpResponse.json({
       sessions: ids.map((id) => ({
         id,
@@ -313,7 +313,7 @@ describe("after the hire and hand-off", () => {
     const POLL_MS = 3000;
     let chatStatus = "queued";
     server.use(
-      http.get("/api/proxy/api/chat/sessions/:sessionId", () =>
+      http.get("/api/proxy/api/internal/chat/sessions/:sessionId", () =>
         HttpResponse.json({
           id: "thread-1",
           created_at: "2026-10-26T00:00:00Z",
@@ -356,7 +356,7 @@ describe("after the hire and hand-off", () => {
   it("does not claim the task is running when the thread can't be read", async () => {
     server.use(
       http.get(
-        "/api/proxy/api/chat/sessions/:sessionId",
+        "/api/proxy/api/internal/chat/sessions/:sessionId",
         () => new HttpResponse(null, { status: 500 }),
       ),
     );
@@ -374,7 +374,7 @@ describe("after the hire and hand-off", () => {
   it("never reads an idle thread as a reply when the start is unconfirmed", async () => {
     let polled = false;
     server.use(
-      http.get("/api/proxy/api/chat/sessions/:sessionId", () => {
+      http.get("/api/proxy/api/internal/chat/sessions/:sessionId", () => {
         polled = true;
         return HttpResponse.json({});
       }),

@@ -74,7 +74,7 @@ describe("Marketplace category filter over experts", () => {
     server.use(
       getListExpertsMockHandler([]),
       getGetV2ListStoreCategoriesMockHandler(CATEGORIES),
-      http.get("/api/proxy/api/experts/templates", ({ request }) => {
+      http.get("/api/proxy/api/internal/experts/templates", ({ request }) => {
         const category = new URL(request.url).searchParams.get("category");
         requestedCategories.push(category);
         return HttpResponse.json(
@@ -83,7 +83,7 @@ describe("Marketplace category filter over experts", () => {
             : ROSTER,
         );
       }),
-      http.get("/api/proxy/api/store/agents", () =>
+      http.get("/api/proxy/api/internal/store/agents", () =>
         HttpResponse.json({
           agents: [],
           pagination: {
@@ -94,7 +94,7 @@ describe("Marketplace category filter over experts", () => {
           },
         }),
       ),
-      http.get("/api/proxy/api/store/creators", () =>
+      http.get("/api/proxy/api/internal/store/creators", () =>
         HttpResponse.json({
           creators: [],
           pagination: {
@@ -116,7 +116,7 @@ describe("Marketplace category filter over experts", () => {
         { value: "research", label: "Research", description: "Research" },
         { value: "finance", label: "Finance", description: "Finance" },
       ]),
-      http.get("/api/proxy/api/experts/templates", () =>
+      http.get("/api/proxy/api/internal/experts/templates", () =>
         HttpResponse.json([expert]),
       ),
     );
@@ -184,7 +184,7 @@ describe("Marketplace category filter over experts", () => {
 
   test("a category with no experts hides the shelf entirely", async () => {
     server.use(
-      http.get("/api/proxy/api/experts/templates", ({ request }) => {
+      http.get("/api/proxy/api/internal/experts/templates", ({ request }) => {
         const category = new URL(request.url).searchParams.get("category");
         return HttpResponse.json(category ? [] : ROSTER);
       }),
@@ -204,7 +204,7 @@ describe("Marketplace category filter over experts", () => {
 
   test("a failed roster request under a category still offers the raise link", async () => {
     server.use(
-      http.get("/api/proxy/api/experts/templates", ({ request }) => {
+      http.get("/api/proxy/api/internal/experts/templates", ({ request }) => {
         const category = new URL(request.url).searchParams.get("category");
         // Unfiltered succeeds so the page renders; the filtered fetch fails.
         return category

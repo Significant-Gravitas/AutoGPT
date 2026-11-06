@@ -126,7 +126,7 @@ describe("Marketplace skills browse page", () => {
 
   test("keeps a retry on the page when the catalogue fails", async () => {
     server.use(
-      http.get("/api/proxy/api/store/skills", () =>
+      http.get("/api/proxy/api/internal/store/skills", () =>
         HttpResponse.json({ detail: "Unavailable" }, { status: 500 }),
       ),
     );

@@ -40,13 +40,16 @@ const UNAVAILABLE = /this chat isn't available on this account/i;
 
 function sessionError(status: number) {
   let calls = 0;
-  const handler = http.get(`*/api/chat/sessions/${TEST_SESSION_ID}`, () => {
-    calls += 1;
-    return HttpResponse.json(
-      { detail: `Session ${TEST_SESSION_ID} not found.` },
-      { status },
-    );
-  });
+  const handler = http.get(
+    `*/api/internal/chat/sessions/${TEST_SESSION_ID}`,
+    () => {
+      calls += 1;
+      return HttpResponse.json(
+        { detail: `Session ${TEST_SESSION_ID} not found.` },
+        { status },
+      );
+    },
+  );
   return { handler, calls: () => calls };
 }
 

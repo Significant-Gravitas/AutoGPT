@@ -87,12 +87,15 @@ To override with custom data, pass a resolver:
 import { http, HttpResponse } from "msw";
 
 server.use(
-  http.get("http://localhost:3000/api/proxy/api/library/agents", () => {
-    return HttpResponse.json({
-      agents: [{ id: "1", name: "My Agent" }],
-      pagination: { total: 1 },
-    });
-  }),
+  http.get(
+    "http://localhost:3000/api/proxy/api/internal/library/agents",
+    () => {
+      return HttpResponse.json({
+        agents: [{ id: "1", name: "My Agent" }],
+        pagination: { total: 1 },
+      });
+    },
+  ),
 );
 ```
 

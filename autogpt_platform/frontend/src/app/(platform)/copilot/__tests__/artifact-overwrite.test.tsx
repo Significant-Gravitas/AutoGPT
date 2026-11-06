@@ -143,15 +143,18 @@ function fileDownloads(
 ) {
   const fetched: string[] = [];
   server.use(
-    http.get("*/api/workspace/files/:id/download", async ({ params }) => {
-      const id = String(params.id);
-      fetched.push(id);
-      if (id === V1_ID) return HttpResponse.text(V1_TEXT);
-      if (id === V2_ID) return HttpResponse.text(await (texts.v2 ?? V2_TEXT));
-      if (id === V3_ID) return HttpResponse.text(await (texts.v3 ?? V3_TEXT));
-      return new HttpResponse(null, { status: 404 });
-    }),
-    http.get("*/api/workspace/files", () =>
+    http.get(
+      "*/api/internal/workspace/files/:id/download",
+      async ({ params }) => {
+        const id = String(params.id);
+        fetched.push(id);
+        if (id === V1_ID) return HttpResponse.text(V1_TEXT);
+        if (id === V2_ID) return HttpResponse.text(await (texts.v2 ?? V2_TEXT));
+        if (id === V3_ID) return HttpResponse.text(await (texts.v3 ?? V3_TEXT));
+        return new HttpResponse(null, { status: 404 });
+      },
+    ),
+    http.get("*/api/internal/workspace/files", () =>
       HttpResponse.json({ files: [], offset: 0, has_more: false }),
     ),
   );

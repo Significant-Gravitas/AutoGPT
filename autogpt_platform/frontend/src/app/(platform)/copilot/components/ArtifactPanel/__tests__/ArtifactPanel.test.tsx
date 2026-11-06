@@ -22,7 +22,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 }));
 
 const ARTIFACT_ID = "11111111-0000-0000-0000-000000000000";
-const ARTIFACT_SOURCE_URL = `/api/proxy/api/workspace/files/${ARTIFACT_ID}/download`;
+const ARTIFACT_SOURCE_URL = `/api/proxy/api/internal/workspace/files/${ARTIFACT_ID}/download`;
 
 function makeArtifact(): ArtifactRef {
   return {

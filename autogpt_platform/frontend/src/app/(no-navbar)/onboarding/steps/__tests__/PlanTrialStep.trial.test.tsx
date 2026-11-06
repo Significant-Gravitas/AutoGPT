@@ -133,7 +133,7 @@ test.each(["paid", "trial"])(
     const requested = vi.fn();
     server.use(
       http.post(
-        `*/api/credits/${mode === "paid" ? "subscription" : "trial"}`,
+        `*/api/internal/credits/${mode === "paid" ? "subscription" : "trial"}`,
         async ({ request }) => {
           requested(await request.json());
           await pending;
@@ -197,7 +197,7 @@ test.each(["paid", "trial"])(
     let attempts = 0;
     server.use(
       http.post(
-        `*/api/credits/${mode === "paid" ? "subscription" : "trial"}`,
+        `*/api/internal/credits/${mode === "paid" ? "subscription" : "trial"}`,
         () => {
           attempts++;
           return attempts === 1
@@ -417,7 +417,7 @@ test("refreshes a rejected offer and submits its new token on retry", async () =
           : trialOffer,
       ),
     ),
-    http.post("*/api/credits/trial", async ({ request }) => {
+    http.post("*/api/internal/credits/trial", async ({ request }) => {
       requestBody(await request.json());
       if (rejected)
         return HttpResponse.json({
@@ -593,11 +593,11 @@ test("locks Pro checkout while the fallback trial starts, and frees it if that f
   });
   const paid = vi.fn();
   server.use(
-    http.post("*/api/credits/subscription", () => {
+    http.post("*/api/internal/credits/subscription", () => {
       paid();
       return HttpResponse.json({ url: "https://checkout.stripe.com/paid" });
     }),
-    http.post("*/api/credits/trial", async () => {
+    http.post("*/api/internal/credits/trial", async () => {
       await trialPending;
       return HttpResponse.json({ detail: "Please try again" }, { status: 503 });
     }),
@@ -629,7 +629,7 @@ test.each(["failed", "left with Back"])(
   async (outcome) => {
     mockStatus(eligible({ ...trialOffer, tier: "BASIC" }));
     server.use(
-      http.post("*/api/credits/subscription", () =>
+      http.post("*/api/internal/credits/subscription", () =>
         outcome === "failed"
           ? HttpResponse.json({ detail: "Please try again" }, { status: 503 })
           : HttpResponse.json({ url: "https://checkout.stripe.com/paid" }),

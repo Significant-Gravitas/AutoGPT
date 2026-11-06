@@ -184,7 +184,7 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
 
 async function libraryAgentNames(page: Page) {
   const response = await page.request.get(
-    "/api/proxy/api/library/agents?page_size=100",
+    "/api/proxy/api/internal/library/agents?page_size=100",
   );
   expect(response.ok()).toBe(true);
   const { agents } = (await response.json()) as { agents: { name: string }[] };

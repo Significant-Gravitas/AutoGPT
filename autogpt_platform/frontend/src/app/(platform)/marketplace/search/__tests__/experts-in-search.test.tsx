@@ -61,10 +61,13 @@ const maria: Expert = {
 const searchedTerms: (string | null)[] = [];
 
 function rosterHandler(matches: Expert[]) {
-  return http.get("/api/proxy/api/experts/templates", ({ request }) => {
-    searchedTerms.push(new URL(request.url).searchParams.get("search_query"));
-    return HttpResponse.json(matches);
-  });
+  return http.get(
+    "/api/proxy/api/internal/experts/templates",
+    ({ request }) => {
+      searchedTerms.push(new URL(request.url).searchParams.get("search_query"));
+      return HttpResponse.json(matches);
+    },
+  );
 }
 
 describe("Experts in marketplace search", () => {
@@ -145,7 +148,7 @@ describe("Experts in marketplace search", () => {
 
   test("a roster still in flight shows the skeleton, not 'No results found'", async () => {
     server.use(
-      http.get("/api/proxy/api/experts/templates", async () => {
+      http.get("/api/proxy/api/internal/experts/templates", async () => {
         await delay(3000);
         return HttpResponse.json([maria]);
       }),
@@ -235,14 +238,17 @@ describe("Experts in marketplace search", () => {
   test("a new search term never shows the previous term's experts", async () => {
     const max: Expert = { ...maria, id: "template-max", name: "Max" };
     server.use(
-      http.get("/api/proxy/api/experts/templates", async ({ request }) => {
-        const term = new URL(request.url).searchParams.get("search_query");
-        if (term === "Max") {
-          await delay(1500);
-          return HttpResponse.json([max]);
-        }
-        return HttpResponse.json([maria]);
-      }),
+      http.get(
+        "/api/proxy/api/internal/experts/templates",
+        async ({ request }) => {
+          const term = new URL(request.url).searchParams.get("search_query");
+          if (term === "Max") {
+            await delay(1500);
+            return HttpResponse.json([max]);
+          }
+          return HttpResponse.json([maria]);
+        },
+      ),
     );
     const { rerender } = render(
       <MainSearchResultPage searchTerm="Maria" sort="runs" />,
