@@ -89,13 +89,23 @@ WebSocket.
 | `autogpt_platform/.env` | `FRONTEND_BASE_URL` | `https://autogpt.example.com` | Links the backend sends people: OAuth redirects, emails, Stripe |
 | `autogpt_platform/.env` | `NEXT_PUBLIC_FRONTEND_BASE_URL` | `https://autogpt.example.com` | The frontend's own address |
 | `frontend/.env` | `BETTER_AUTH_URL` | `https://autogpt.example.com` | The login service's own address, used in password-reset and verification links and social sign-in callbacks |
+| `frontend/.env` | `BETTER_AUTH_INTERNAL_URL` | `http://localhost:3000` | Where the frontend's server reaches its own login service. Always `http://localhost:3000` under Docker |
 | `frontend/.env` | `NEXT_PUBLIC_AGPT_SERVER_URL` | `https://api.autogpt.example.com/api` | The backend API, as the browser reaches it |
 | `frontend/.env` | `NEXT_PUBLIC_AGPT_WS_SERVER_URL` | `wss://api.autogpt.example.com/ws` | The WebSocket server, as the browser reaches it |
 | `backend/.env` | `PLATFORM_BASE_URL` | `https://api.autogpt.example.com` | Webhook and MCP URLs the backend hands to other services |
 | `backend/.env` | `BACKEND_CORS_ALLOW_ORIGINS` | `["https://autogpt.example.com"]` | Origins the API and WebSocket server accept calls from (a JSON list; the default only allows `http://localhost:3000`) |
 
-`FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` are not in
-`autogpt_platform/.env` yet: add both lines. Leave out the trailing `/`.
+Some of these lines are not in the files yet, so add them:
+`FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` in
+`autogpt_platform/.env`, `BACKEND_CORS_ALLOW_ORIGINS` in `backend/.env`, and
+`BETTER_AUTH_INTERNAL_URL` in `frontend/.env`. Leave out the trailing `/`.
+
+Without `BETTER_AUTH_INTERNAL_URL`, the frontend's server calls
+`BETTER_AUTH_URL` to fetch a signed-in visitor's token. That works only if the
+frontend container can resolve your public hostname, reach it, and trust its
+certificate. With a name only your network's clients know about, or a
+self-signed or internal certificate, it cannot: sign-up then fails, and the
+sign-up page stays where it is without an error.
 
 Give `FRONTEND_BASE_URL`, `NEXT_PUBLIC_FRONTEND_BASE_URL` and
 `BETTER_AUTH_URL` the same value. The backend sends password-reset and
@@ -231,8 +241,8 @@ files do not set them, so setting those two in `backend/.env` is enough.
 - [ ] `make init-env` in `autogpt_platform/`
 - [ ] A real `mailto:` `VAPID_CLAIM_EMAIL` in `backend/.env`
 - [ ] `FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` added to `autogpt_platform/.env`
-- [ ] `BETTER_AUTH_URL`, `NEXT_PUBLIC_AGPT_SERVER_URL` and `NEXT_PUBLIC_AGPT_WS_SERVER_URL` in `frontend/.env`
-- [ ] `PLATFORM_BASE_URL` and `BACKEND_CORS_ALLOW_ORIGINS` in `backend/.env`
+- [ ] `BETTER_AUTH_URL`, `BETTER_AUTH_INTERNAL_URL`, `NEXT_PUBLIC_AGPT_SERVER_URL` and `NEXT_PUBLIC_AGPT_WS_SERVER_URL` in `frontend/.env`
+- [ ] `PLATFORM_BASE_URL` and `BACKEND_CORS_ALLOW_ORIGINS` (added) in `backend/.env`
 - [ ] A TLS reverse proxy in front of `3000`, `8001` and `8006`, those ports firewalled, `TRUSTED_PROXY_COUNT` set, and in `frontend/.env` either `TRUST_X_FORWARDED_FOR=true` if the proxy replaces `X-Forwarded-For`, or `TRUSTED_PROXIES` if it does not
 - [ ] Sign-ups limited, if the server is public
 - [ ] `docker compose up -d --build`
