@@ -256,16 +256,20 @@ def test_native_reaper_kills_owned_child_and_preserves_reused_pid(tmp_path, matc
     )
     try:
         started = psutil.Process(child.pid).create_time()
+        entry = {
+            "name": "owned test child",
+            "pid": child.pid,
+            "started": started if matching else started - 0.5,
+        }
+        if sys.platform == "linux":
+            boot_id, ticks = process._linux_process_identity(child.pid)
+            entry["started"] = started - 1.0
+            entry["linux_identity"] = {
+                "boot_id": boot_id,
+                "start_ticks": ticks if matching else ticks + 1,
+            }
         registry.write_text(
-            json.dumps(
-                [
-                    {
-                        "name": "owned test child",
-                        "pid": child.pid,
-                        "started": started if matching else started - 0.5,
-                    }
-                ]
-            ),
+            json.dumps([entry]),
             encoding="utf-8",
         )
         reap.reap(root)

@@ -30,6 +30,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from uuid import UUID
 
 logger = logging.getLogger("autogpt_desktop")
 
@@ -404,6 +405,27 @@ def run_tool(argv: list[str], **kwargs) -> subprocess.CompletedProcess[bytes]:
     )
 
 
+def _linux_process_identity(pid: int) -> tuple[str, int]:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_bytes()
+    except FileNotFoundError as exc:
+        raise ProcessLookupError(pid) from exc
+    prefix, separator, _ = stat.partition(b" (")
+    closing = stat.rfind(b")")
+    if not separator or prefix != str(pid).encode() or closing < len(prefix) + 2:
+        raise ValueError("Invalid Linux process stat")
+    fields = stat[closing + 1 :].split()
+    if len(fields) < 20:
+        raise ValueError("Invalid Linux process stat")
+    ticks = int(fields[19])
+    if ticks < 0:
+        raise ValueError("Invalid Linux process start ticks")
+    boot_id = str(
+        UUID(Path("/proc/sys/kernel/random/boot_id").read_bytes().decode().strip())
+    )
+    return boot_id, ticks
+
+
 class ChildRegistry:
     """Remembers running children on disk so a later boot can clean up after
     a runtime that died without stopping them (POSIX has no Job Objects)."""
@@ -419,12 +441,32 @@ class ChildRegistry:
             if process.pid is None or process.exit_code() is not None:
                 continue
             try:
-                started = psutil.Process(process.pid).create_time()
+                child = psutil.Process(process.pid)
+                started = child.create_time()
+                entry: dict[str, object] = {
+                    "name": process.name,
+                    "pid": process.pid,
+                    "started": started,
+                }
+                if sys.platform == "linux":
+                    try:
+                        boot_id, ticks = _linux_process_identity(process.pid)
+                        entry["linux_identity"] = {
+                            "boot_id": boot_id,
+                            "start_ticks": ticks,
+                        }
+                    except ProcessLookupError:
+                        continue
+                    except (OSError, ValueError):
+                        entry["linux_identity"] = None
+                        logger.warning(
+                            "Could not record Linux identity for pid %s", process.pid
+                        )
+                if not child.is_running():
+                    continue
             except psutil.Error:
                 continue
-            entries.append(
-                {"name": process.name, "pid": process.pid, "started": started}
-            )
+            entries.append(entry)
         self._write_entries(entries)
 
     def _write_entries(self, entries: list) -> None:
@@ -460,7 +502,27 @@ class ChildRegistry:
                 continue
             try:
                 process = psutil.Process(pid)
-                if process.create_time() != started or not process.is_running():
+                if sys.platform == "linux" and "linux_identity" in entry:
+                    identity = entry["linux_identity"]
+                    if (
+                        not isinstance(identity, dict)
+                        or not isinstance(identity.get("boot_id"), str)
+                        or str(UUID(identity["boot_id"])) != identity["boot_id"]
+                        or type(identity.get("start_ticks")) is not int
+                        or identity["start_ticks"] < 0
+                    ):
+                        raise ValueError("Invalid recorded Linux process identity")
+                    if _linux_process_identity(pid) != (
+                        identity["boot_id"],
+                        identity["start_ticks"],
+                    ):
+                        continue
+                elif process.create_time() != started:
+                    # Old Linux records cannot distinguish clock drift from PID reuse.
+                    if sys.platform == "linux" and process.is_running():
+                        uncertain = True
+                    continue
+                if not process.is_running():
                     continue
                 if sys.platform != "win32" and os.getpgid(pid) != pid:
                     continue
@@ -502,7 +564,7 @@ class ChildRegistry:
                     os.killpg(pid, signal.SIGKILL)
             except (psutil.NoSuchProcess, ProcessLookupError):
                 continue
-            except (psutil.Error, OSError, KeyError, TypeError):
+            except (psutil.Error, OSError, KeyError, TypeError, ValueError):
                 uncertain = True
         # Their ports are about to be checked, and reused if they are free.
         _, alive = psutil.wait_procs(killed, timeout=10)

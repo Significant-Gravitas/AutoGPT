@@ -148,6 +148,13 @@ user chose to stop (below). A first start that is cut
 short anyway (power loss) is detected and redone from scratch on the next
 one, since nobody has used that database yet.
 
+Linux crash cleanup records the boot ID and process start ticks in
+`run/children.json`, so wall-clock corrections do not hide leftover services.
+Older records contain only a wall-clock start time. If that time no longer
+matches a running process, startup retains the registry and stops for manual
+recovery; it does not guess which process to kill. Verify and stop any services
+left by the previous runtime before removing an ambiguous legacy registry.
+
 **Quitting while agents run.** The runtime counts agent runs from executor
 locks and AutoPilot turns from both locks and running-session metadata,
 and tells the shell whenever the count changes. A lock lasts five minutes
