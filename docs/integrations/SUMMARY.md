@@ -152,6 +152,8 @@
 * [Notion Search](block-integrations/notion/search.md)
 * [Notion Update Page Properties](block-integrations/notion/update_page_properties.md)
 * [Nvidia Deepfake](block-integrations/nvidia/deepfake.md)
+* [Outcrawl Scrape](block-integrations/outcrawl/scrape.md)
+* [Outcrawl Search](block-integrations/outcrawl/search.md)
 * [Parallel Ask Many](block-integrations/parallel/ask_many.md)
 * [Parallel Choice](block-integrations/parallel/choice.md)
 * [Parallel Score](block-integrations/parallel/score.md)
