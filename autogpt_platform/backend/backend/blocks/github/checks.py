@@ -21,6 +21,7 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+from ._utils import canonical_repo_url
 
 
 # queued, in_progress, completed, waiting, requested, pending
@@ -150,6 +151,7 @@ class GithubCreateCheckRunBlock(Block):
         output_text: Optional[str] = None,
     ) -> dict:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
 
         class CheckRunData(BaseModel):
             name: str
@@ -311,6 +313,7 @@ class GithubUpdateCheckRunBlock(Block):
         output_text: Optional[str] = None,
     ) -> dict:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
 
         class UpdateCheckRunData(BaseModel):
             status: str

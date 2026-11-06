@@ -21,6 +21,7 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+from ._utils import canonical_repo_url
 
 
 class GithubReadFileBlock(Block):
@@ -79,7 +80,7 @@ class GithubReadFileBlock(Block):
     ) -> tuple[str, int]:
         api = get_api(credentials)
         content_url = (
-            repo_url
+            canonical_repo_url(repo_url)
             + f"/contents/{quote(file_path, safe='')}?ref={quote(branch, safe='')}"
         )
         response = await api.get(content_url)
@@ -196,7 +197,7 @@ class GithubReadFolderBlock(Block):
     ) -> tuple[list[Output.FileEntry], list[Output.DirEntry]]:
         api = get_api(credentials)
         contents_url = (
-            repo_url
+            canonical_repo_url(repo_url)
             + f"/contents/{quote(folder_path, safe='/')}?ref={quote(branch, safe='')}"
         )
         response = await api.get(contents_url)
@@ -318,6 +319,7 @@ class GithubCreateFileBlock(Block):
         commit_message: str,
     ) -> tuple[str, str]:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         contents_url = repo_url + f"/contents/{quote(file_path, safe='/')}"
         content_base64 = base64.b64encode(content.encode()).decode()
         data = {
@@ -418,6 +420,7 @@ class GithubUpdateFileBlock(Block):
         commit_message: str,
     ) -> tuple[str, str]:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         contents_url = repo_url + f"/contents/{quote(file_path, safe='/')}"
         params = {"ref": branch}
         response = await api.get(contents_url, params=params)
@@ -690,6 +693,7 @@ class GithubGetRepositoryTreeBlock(Block):
         recursive: bool,
     ) -> tuple[bool, list[Output.TreeEntry]]:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         tree_url = repo_url + f"/git/trees/{quote(branch, safe='')}"
         params = {"recursive": "1"} if recursive else {}
         response = await api.get(tree_url, params=params)
