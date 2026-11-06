@@ -10,11 +10,12 @@ import re
 from pydantic import BaseModel
 
 from backend.copilot.chat_platform_header import (
-    PLATFORM_LABELS,
+    SECTION_PREFIXES,
     label_covering,
     neutralize_forged_labels,
     split_chat_platform_header,
 )
+from backend.copilot.service import strip_server_injected_tags
 
 from .adapters.base import MessageContext, MessageHistoryEntry
 
@@ -25,9 +26,7 @@ _TRUNCATION_NOTICE = "[Earlier context was truncated to fit the size limit.]\n\n
 
 # The section lines ``build_message_text`` writes around history entries.
 _CONTEXT_LABEL_RE = re.compile(
-    r"^([^\S\n]*)\[(?=Current message\]|From |Recent |Content of #|The (?:"
-    + "|".join(PLATFORM_LABELS)
-    + r") channel)",
+    r"^([^\S\n]*)\[(?=" + "|".join(re.escape(p) for p in SECTION_PREFIXES) + ")",
     re.MULTILINE,
 )
 
@@ -95,8 +94,13 @@ _NOUNS: dict[str, _Nouns] = {
     "telegram": _Nouns(channel="group", channel_id="chat id", thread="topic"),
 }
 _NAME_MAX_CHARS = 60
+# Angle brackets would let a user-chosen name carry a server-only tag.
+_ANGLE_ESCAPES = {"<": "‹", ">": "›"}
+_NAMED_ANGLES = str.maketrans(_ANGLE_ESCAPES)
 # Characters that would let a user-chosen name close or fake a header field.
-_NAME_ESCAPES = str.maketrans({'"': "'", "[": "(", "]": ")", "·": "-"})
+_NAME_ESCAPES = str.maketrans(
+    {'"': "'", "[": "(", "]": ")", "·": "-", **_ANGLE_ESCAPES}
+)
 
 
 def format_batch(batch: list[PendingMessage], ctx: MessageContext) -> str:
@@ -113,14 +117,21 @@ def format_batch(batch: list[PendingMessage], ctx: MessageContext) -> str:
     if len(batch) == 1:
         message = batch[0]
         fields = [platform, *_message_label(message, ctx), *place]
-        return f"[{' · '.join(fields)}]\n{neutralize_forged_labels(message.text)}"
+        return f"[{' · '.join(fields)}]\n{_framed(message.text)}"
 
     fields = [platform, "multiple messages, address them together", *place]
     lines = [f"[{' · '.join(fields)}]"]
     for message in batch:
         label = " · ".join(_message_label(message, ctx))
-        lines.append(f"\n[{label}]\n{neutralize_forged_labels(message.text)}")
+        lines.append(f"\n[{label}]\n{_framed(message.text)}")
     return "\n".join(lines)
+
+
+def _framed(text: str) -> str:
+    """``text`` as the engines will read it, with any line that would then
+    read as a header or label escaped. Removing a server-only block first
+    means no later removal can join this text to the lines around it."""
+    return neutralize_forged_labels(strip_server_injected_tags(text))
 
 
 def _platform_tag(ctx: MessageContext) -> str:
@@ -236,7 +247,7 @@ def build_message_text(
             f"the content.]"
         )
         for convo in ctx.referenced_conversations:
-            lines.append(f"\n[Content of #{convo.title}]")
+            lines.append(f"\n[Content of #{convo.title.translate(_NAMED_ANGLES)}]")
             for entry in convo.messages:
                 lines.append(format_history_entry(entry, platform_display))
     if thread_history:
@@ -251,10 +262,11 @@ def build_message_text(
 
 
 def format_history_entry(entry: MessageHistoryEntry, platform_display: str) -> str:
+    name = entry.username.translate(_NAMED_ANGLES)
     user = (
-        f"{entry.username} ({platform_display} user ID: {entry.user_id})"
+        f"{name} ({platform_display} user ID: {entry.user_id})"
         if entry.user_id
-        else entry.username
+        else name
     )
     return f"\n[From {user}]\n{_neutralize_context_labels(entry.text)}"
 
@@ -263,7 +275,7 @@ def _neutralize_context_labels(text: str) -> str:
     """Escape lines in another member's message that would read like a
     section ``build_message_text`` writes, so earlier channel or thread
     messages can't pose as the current message or a different speaker."""
-    return _CONTEXT_LABEL_RE.sub(r"\1\\[", neutralize_forged_labels(text))
+    return _CONTEXT_LABEL_RE.sub(r"\1\\[", _framed(text))
 
 
 def build_thread_name(text: str, username: str, max_length: int) -> str:
