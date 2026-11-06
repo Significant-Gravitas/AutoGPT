@@ -220,20 +220,24 @@ class Cache:
     _known_turns: dict[str, str] = field(
         default_factory=dict, compare=False, repr=False
     )
+    _activity_lock: threading.Lock = field(
+        default_factory=threading.Lock, compare=False, repr=False
+    )
 
     def clear_stale_locks(self, services: Iterable[str]) -> None:
         """Before the process hosting `services` starts: any lock of theirs
         that exists belongs to a process that is gone."""
         patterns = [LOCK_PATTERNS[name] for name in services if name in LOCK_PATTERNS]
-        if LOCK_PATTERNS["copilot-executor"] in patterns:
-            self._known_turns.clear()
-        if not patterns or (self.up is not None and not self.up.is_set()):
-            return
-        try:
-            removed = self._delete_matching(patterns)
-        except Exception as exc:  # a lock left behind costs one run, not the app
-            logger.warning(f"could not clear stale run locks: {exc}")
-            return
+        with self._activity_lock:
+            if LOCK_PATTERNS["copilot-executor"] in patterns:
+                self._known_turns.clear()
+            if not patterns or (self.up is not None and not self.up.is_set()):
+                return
+            try:
+                removed = self._delete_matching(patterns)
+            except Exception as exc:  # a lock left behind costs one run, not the app
+                logger.warning(f"could not clear stale run locks: {exc}")
+                return
         if removed:
             logger.info(f"cleared {removed} lock(s) left by a process that is gone")
 
@@ -241,38 +245,39 @@ class Cache:
         """Work held by a lock or recorded as running by AutoPilot.
         None when the node did not say."""
         try:
-            graphs = self._locked(LOCK_PATTERNS["executor"])
-            locked = self._locked(LOCK_PATTERNS["copilot-executor"])
-            metadata = self.turn_metadata()
-            sessions = tuple(
-                sorted(
-                    set(locked)
-                    | {
-                        session
-                        for session, meta in metadata.items()
-                        if meta.get("status") == "running"
-                    }
-                    | {
-                        session
-                        for session in self._known_turns
-                        if session not in metadata
-                    }
+            with self._activity_lock:
+                graphs = self._locked(LOCK_PATTERNS["executor"])
+                locked = self._locked(LOCK_PATTERNS["copilot-executor"])
+                metadata = self.turn_metadata()
+                sessions = tuple(
+                    sorted(
+                        set(locked)
+                        | {
+                            session
+                            for session, meta in metadata.items()
+                            if meta.get("status") == "running"
+                        }
+                        | {
+                            session
+                            for session in self._known_turns
+                            if session not in metadata
+                        }
+                    )
                 )
-            )
-            identities = tuple(
-                (
-                    session,
-                    metadata.get(session, {}).get("turn_id")
-                    or self._known_turns.get(session, ""),
+                identities = tuple(
+                    (
+                        session,
+                        metadata.get(session, {}).get("turn_id")
+                        or self._known_turns.get(session, ""),
+                    )
+                    for session in sessions
+                    if metadata.get(session, {}).get("turn_id")
+                    or self._known_turns.get(session)
                 )
-                for session in sessions
-                if metadata.get(session, {}).get("turn_id")
-                or self._known_turns.get(session)
-            )
-            self._known_turns.clear()
-            self._known_turns.update(
-                (session, dict(identities).get(session, "")) for session in sessions
-            )
+                self._known_turns.clear()
+                self._known_turns.update(
+                    (session, dict(identities).get(session, "")) for session in sessions
+                )
             return Activity(graphs, sessions, identities)
         except Exception as exc:
             logger.debug("could not ask the cache what is running: %s", exc)

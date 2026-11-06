@@ -4,6 +4,7 @@ import socket
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -226,6 +227,66 @@ class NothingToSettle:
 
 
 # --- what is running, and what the user chose to stop -------------------------
+
+
+@pytest.mark.parametrize("operation", ["active", "restart"])
+def test_concurrent_cache_observation_preserves_turn_tracking(monkeypatch, operation):
+    cleared = threading.Event()
+    finish_update = threading.Event()
+
+    class PausedTurns(dict):
+        def clear(self):
+            super().clear()
+            if not cleared.is_set():
+                cleared.set()
+                if not finish_update.wait(10):
+                    raise TimeoutError("second cache operation did not arrive")
+
+    class ObservedLock:
+        def __init__(self):
+            self.lock = threading.Lock()
+
+        def __enter__(self):
+            if not self.lock.acquire(blocking=False):
+                finish_update.set()
+                if not self.lock.acquire(timeout=10):
+                    raise TimeoutError("first cache operation did not finish")
+            return self
+
+        def __exit__(self, *exc):
+            self.lock.release()
+
+    cache = runs.Cache(1, "password", _known_turns=PausedTurns(chat="turn"))
+    object.__setattr__(cache, "_activity_lock", ObservedLock())
+    monkeypatch.setattr(runs.Cache, "_locked", lambda *args: ())
+    monkeypatch.setattr(runs.Cache, "turn_metadata", lambda self: {})
+    monkeypatch.setattr(runs.Cache, "_delete_matching", lambda *args: 0)
+
+    def second_operation():
+        try:
+            if operation == "active":
+                return cache.active()
+            return cache.clear_stale_locks(["copilot-executor"])
+        finally:
+            finish_update.set()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(cache.active)
+        try:
+            assert cleared.wait(10), "first cache update did not reach the boundary"
+            second = executor.submit(second_operation)
+            second_result = second.result(timeout=10)
+        finally:
+            finish_update.set()
+        first_result = first.result(timeout=10)
+
+    expected = runs.Activity((), ("chat",), (("chat", "turn"),))
+    assert first_result == expected
+    if operation == "active":
+        assert second_result == expected
+        assert cache.active() == expected
+    else:
+        assert cache.active() == runs.Activity()
 
 
 def test_what_is_running_is_said_in_words():
