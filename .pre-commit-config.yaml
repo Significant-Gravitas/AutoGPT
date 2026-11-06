@@ -74,6 +74,18 @@ repos:
         alias: ruff-lint-platform-libs
         files: ^autogpt_platform/autogpt_libs/
 
+      # The Local PC companion is formatted with Ruff, not Black.
+      - id: ruff
+        name: Lint (Ruff) - Local Executor
+        alias: ruff-lint-local-executor
+        files: ^local_executor/
+        args: [--fix]
+
+      - id: ruff-format
+        name: Format (Ruff) - Local Executor
+        alias: ruff-format-local-executor
+        files: ^local_executor/
+
   - repo: local
     # isort needs the context of which packages are installed to function, so we
     # can't use a vendored isort pre-commit hook (which runs in its own isolated venv).
@@ -106,6 +118,8 @@ repos:
     hooks:
       - id: black
         name: Format (Black)
+        # local_executor/ is formatted with Ruff (see above).
+        exclude: ^local_executor/
 
   - repo: https://github.com/PyCQA/flake8
     rev: 7.0.0
