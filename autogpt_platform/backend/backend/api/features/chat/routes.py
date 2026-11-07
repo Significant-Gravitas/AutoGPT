@@ -2446,6 +2446,7 @@ async def stream_chat_post(
             "client should honour the Retry-After header before retrying."
         },
     },
+    dependencies=[Security(auth.requires_live_session)],
 )
 async def queue_pending_message(
     session_id: str,

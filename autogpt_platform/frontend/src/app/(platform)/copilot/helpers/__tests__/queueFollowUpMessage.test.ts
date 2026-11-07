@@ -130,6 +130,39 @@ describe("queueFollowUpMessage", () => {
     );
   });
 
+  it("signs out when the session behind the token has ended", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { pathname: "/copilot", replace });
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          detail: { code: "session_revoked", message: "Session ended" },
+        }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(queueFollowUpMessage("sess-1", "hi")).rejects.toThrow(
+      /got 401/,
+    );
+    expect(replace).toHaveBeenCalledWith("/logout");
+  });
+
+  it("stays signed in on a 401 that is not an ended session", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { pathname: "/copilot", replace });
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Not authenticated" }), {
+        status: 401,
+      }),
+    );
+
+    await expect(queueFollowUpMessage("sess-1", "hi")).rejects.toThrow(
+      /got 401/,
+    );
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it("throws on 429 rate-limit response", async () => {
     const fetchMock = vi.mocked(global.fetch);
     fetchMock.mockResolvedValueOnce(

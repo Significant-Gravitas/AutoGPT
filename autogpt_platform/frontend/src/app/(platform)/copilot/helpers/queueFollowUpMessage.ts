@@ -1,3 +1,4 @@
+import { signOutIfRefused } from "@/lib/auth/account-banned";
 import { environment } from "@/services/environment";
 import { v4 as uuidv4 } from "uuid";
 
@@ -52,6 +53,10 @@ export async function queueFollowUpMessage(
 
   if (res.status === 409) {
     throw new QueueFollowUpNotActiveError();
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    signOutIfRefused(res.status, await res.json().catch(() => null));
   }
 
   throw new Error(`Expected 200 from /messages/pending; got ${res.status}`);
