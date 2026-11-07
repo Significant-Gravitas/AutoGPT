@@ -1,4 +1,4 @@
-"""``handle_internal_http_error`` response bodies (#15651, #15660)."""
+"""5xx redaction in the shared REST exception handlers (#15651, #15660)."""
 
 import fastapi
 import fastapi.testclient
@@ -6,13 +6,24 @@ import pytest
 from prisma.errors import PrismaError
 
 from backend.api.rest_api import app as rest_app
-from backend.api.rest_api import handle_internal_http_error
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.util.exceptions import MissingConfigError, NotFoundError
 
 SECRET = "/data/workspaces/ws/file/name.txt"
 
 
-def _client(exc: Exception, handler) -> fastapi.testclient.TestClient:
+def _client(exc: Exception, **handler_kwargs) -> fastapi.testclient.TestClient:
+    app = fastapi.FastAPI()
+    add_exception_handlers(app, **handler_kwargs)
+
+    @app.get("/boom")
+    async def boom():
+        raise exc
+
+    return fastapi.testclient.TestClient(app, raise_server_exceptions=False)
+
+
+def _client_for_handler(exc: Exception, handler) -> fastapi.testclient.TestClient:
     app = fastapi.FastAPI()
     app.add_exception_handler(type(exc), handler)
 
@@ -31,7 +42,7 @@ def _client(exc: Exception, handler) -> fastapi.testclient.TestClient:
     ],
 )
 def test_5xx_detail_is_generic(exc: Exception):
-    response = _client(exc, handle_internal_http_error(500)).get("/boom")
+    response = _client(exc, server_error_detail=False).get("/boom")
 
     assert response.status_code == 500
     body = response.json()
@@ -49,7 +60,7 @@ def test_5xx_detail_is_generic(exc: Exception):
     ],
 )
 def test_4xx_keeps_exception_message(exc: Exception, status: int):
-    response = _client(exc, handle_internal_http_error(status)).get("/boom")
+    response = _client(exc, server_error_detail=False).get("/boom")
 
     assert response.status_code == status
     assert response.json()["detail"] == str(exc)
@@ -58,12 +69,23 @@ def test_4xx_keeps_exception_message(exc: Exception, status: int):
 def test_5xx_can_opt_in_to_exposing_detail():
     exc = MissingConfigError("AYRSHARE_API_KEY is not configured")
 
-    response = _client(exc, handle_internal_http_error(503, expose_detail=True)).get(
-        "/boom"
-    )
+    response = _client(
+        exc, server_error_detail=False, expose_missing_config_detail=True
+    ).get("/boom")
 
     assert response.status_code == 503
     assert response.json()["detail"] == "AYRSHARE_API_KEY is not configured"
+
+
+def test_external_apps_keep_missing_config_redacted():
+    """v1/external already pass server_error_detail=False and must stay opaque."""
+    exc = MissingConfigError("AYRSHARE_API_KEY is not configured")
+
+    response = _client(exc, server_error_detail=False).get("/boom")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Internal server error"
+    assert "AYRSHARE_API_KEY" not in response.text
 
 
 # Engine text of the NUL-byte failure from #15660, as Prisma raises it.
@@ -87,7 +109,7 @@ def test_production_5xx_handlers_hide_exception_text(exc: Exception):
     handler_type = PrismaError if isinstance(exc, PrismaError) else Exception
     handler = rest_app.exception_handlers[handler_type]
 
-    response = _client(exc, handler).get("/boom")
+    response = _client_for_handler(exc, handler).get("/boom")
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Internal server error"
@@ -98,9 +120,9 @@ def test_production_5xx_handlers_hide_exception_text(exc: Exception):
 def test_production_missing_config_handler_keeps_message():
     exc = MissingConfigError("AYRSHARE_API_KEY is not configured")
 
-    response = _client(exc, rest_app.exception_handlers[MissingConfigError]).get(
-        "/boom"
-    )
+    response = _client_for_handler(
+        exc, rest_app.exception_handlers[MissingConfigError]
+    ).get("/boom")
 
     assert response.status_code == 503
     assert response.json()["detail"] == "AYRSHARE_API_KEY is not configured"
@@ -109,7 +131,9 @@ def test_production_missing_config_handler_keeps_message():
 def test_production_value_error_handler_keeps_message():
     exc = ValueError("Search text must not contain NUL characters")
 
-    response = _client(exc, rest_app.exception_handlers[ValueError]).get("/boom")
+    response = _client_for_handler(exc, rest_app.exception_handlers[ValueError]).get(
+        "/boom"
+    )
 
     assert response.status_code == 400
     assert response.json()["detail"] == str(exc)

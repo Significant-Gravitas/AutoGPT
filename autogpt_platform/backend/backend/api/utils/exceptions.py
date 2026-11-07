@@ -38,7 +38,10 @@ logger = logging.getLogger(__name__)
 
 
 def add_exception_handlers(
-    app: fastapi.FastAPI, *, server_error_detail: bool = True
+    app: fastapi.FastAPI,
+    *,
+    server_error_detail: bool = True,
+    expose_missing_config_detail: bool | None = None,
 ) -> None:
     """
     Register standard exception handlers on the given FastAPI app.
@@ -48,10 +51,22 @@ def add_exception_handlers(
 
     ``server_error_detail=False`` keeps the exception text out of 5xx bodies,
     for an app third parties call: it can name internal services and queries.
+    4xx mappings still return ``str(exc)``. ``MissingConfigError`` (503) follows
+    ``server_error_detail`` unless ``expose_missing_config_detail`` is set:
+    REST opts in so operators still see the missing-setting message; the
+    external apps leave it unset and stay fully redacted.
     """
 
-    def _handle_error(status_code: int = 500, log_error: bool = True):
-        return _error_handler(status_code, log_error, server_error_detail)
+    if expose_missing_config_detail is None:
+        expose_missing_config_detail = server_error_detail
+
+    def _handle_error(
+        status_code: int = 500,
+        log_error: bool = True,
+        expose_detail: bool | None = None,
+    ):
+        detail = server_error_detail if expose_detail is None else expose_detail
+        return _error_handler(status_code, log_error, detail)
 
     for exception, handler in {
         # It's the client's problem: HTTP 4XX
@@ -75,7 +90,10 @@ def add_exception_handlers(
         GraphActivationError: _handle_error(status.HTTP_400_BAD_REQUEST),
         ValueError: _handle_error(status.HTTP_400_BAD_REQUEST),
         # It's the backend's problem: HTTP 5XX
-        MissingConfigError: _handle_error(status.HTTP_503_SERVICE_UNAVAILABLE),
+        MissingConfigError: _handle_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            expose_detail=expose_missing_config_detail,
+        ),
         PrismaError: _handle_error(status.HTTP_500_INTERNAL_SERVER_ERROR),
         Exception: _handle_error(status.HTTP_500_INTERNAL_SERVER_ERROR),
     }.items():
