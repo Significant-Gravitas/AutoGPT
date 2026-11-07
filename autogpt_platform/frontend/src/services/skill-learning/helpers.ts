@@ -37,25 +37,8 @@ export function versionLabel(version: SkillVersionSummary) {
   return `v${version.version} · ${version.origin_label}`;
 }
 
-export function evidenceLine(version: SkillVersionSummary) {
-  const primary = (version.evidence ?? []).find(
-    (item) => item.kind === "outcome",
-  );
-  return primary?.label ?? reuseLabel(version);
-}
-
 export function reuseLabel(version: SkillVersionSummary) {
   return version.use?.reuse_label ?? "Not yet reused";
-}
-
-export function recentChangeLine(version: SkillVersionSummary) {
-  const verb =
-    version.origin === "restored"
-      ? "Restored"
-      : version.version === 1
-        ? "Added"
-        : "Updated";
-  return `${verb} ${version.skill_name} · ${version.origin_label} · ${evidenceLine(version)}`;
 }
 
 export interface StepChange {

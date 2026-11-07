@@ -3,7 +3,6 @@
 from typing import Literal
 
 from moviepy import CompositeVideoClip, TextClip
-from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from backend.blocks._base import (
     Block,
@@ -14,17 +13,19 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.video._utils import (
+    VideoMediaStorage,
     extract_source_name,
     get_video_codecs,
+    open_video_clip,
     strip_chapters_inplace,
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
-from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
+from backend.util.file import MediaFileType, get_exec_file_path
 
 
-class VideoTextOverlayBlock(Block):
+class VideoTextOverlayBlock(VideoMediaStorage, Block):
     """Add text overlay/caption to video."""
 
     class Input(BlockSchemaInput):
@@ -86,26 +87,6 @@ class VideoTextOverlayBlock(Block):
             effect=BlockEffect.WORKSPACE,
         )
 
-    async def _store_input_video(
-        self, execution_context: ExecutionContext, file: MediaFileType
-    ) -> MediaFileType:
-        """Store input video. Extracted for testability."""
-        return await store_media_file(
-            file=file,
-            execution_context=execution_context,
-            return_format="for_local_processing",
-        )
-
-    async def _store_output_video(
-        self, execution_context: ExecutionContext, file: MediaFileType
-    ) -> MediaFileType:
-        """Store output video. Extracted for testability."""
-        return await store_media_file(
-            file=file,
-            execution_context=execution_context,
-            return_format="for_block_output",
-        )
-
     def _add_text_overlay(
         self,
         video_abspath: str,
@@ -124,7 +105,9 @@ class VideoTextOverlayBlock(Block):
         txt_clip = None
         try:
             strip_chapters_inplace(video_abspath)
-            video = VideoFileClip(video_abspath)
+            video = open_video_clip(
+                video_abspath, block_name=self.name, block_id=str(self.id)
+            )
 
             txt_clip = TextClip(
                 text=text,

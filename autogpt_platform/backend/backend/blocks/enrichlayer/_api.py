@@ -117,13 +117,6 @@ class PersonProfileResponse(BaseModel):
     extra: Optional[dict[str, Any]] = None
 
 
-class SimilarProfile(BaseModel):
-    """Similar profile model for LinkedIn person lookup."""
-
-    similarity: float
-    linkedin_profile_url: str
-
-
 class PersonLookupResponse(BaseModel):
     """Response model for LinkedIn person lookup.
 

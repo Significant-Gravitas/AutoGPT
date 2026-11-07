@@ -10,7 +10,7 @@ import {
 import { useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 
 import { InsetHeaderSidebarTrigger } from "../components/InsetHeaderSidebarTrigger/InsetHeaderSidebarTrigger";
 import { useIsChatSession } from "../useIsChatSession";

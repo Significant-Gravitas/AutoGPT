@@ -18,11 +18,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? { enabled: true, ready: true }
-        : actual.useFlagStatus(flag as never),
-    useGetFlag: (flag: string) => flag === actual.Flag.HIRE_EXPERTS,
+    useGetFlag: () => false,
   };
 });
 

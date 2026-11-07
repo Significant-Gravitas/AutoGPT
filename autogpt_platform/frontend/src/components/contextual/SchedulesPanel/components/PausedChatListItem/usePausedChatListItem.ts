@@ -1,3 +1,4 @@
+import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import {
   getListPausedScheduledChatsQueryKey,
   useDeleteV1DeleteExecutionSchedule,
@@ -24,6 +25,8 @@ export function usePausedChatListItem({ paused }: Args) {
     queryClient.invalidateQueries({
       queryKey: getListPausedScheduledChatsQueryKey(),
     });
+    // Home lists each paused chat under Needs you.
+    queryClient.invalidateQueries({ queryKey: getGetHomeDashboardQueryKey() });
     return invalidateAllScheduleQueries(queryClient);
   }
 

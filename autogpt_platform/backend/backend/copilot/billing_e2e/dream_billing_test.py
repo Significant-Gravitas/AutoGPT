@@ -6,15 +6,29 @@ billing_e2e capture, so these tests do not require a database or Redis.
 
 import pytest
 
-from backend.copilot.dream import billing, llm, orchestrator
-from backend.copilot.dream.llm import DreamLLMError
+from backend.copilot.dream import billing
+from backend.copilot.dream.phase_jobs import phase_job
 from backend.copilot.dream.schemas import ConsolidationOutput
+from backend.copilot.inference import routing as inference_routing
+from backend.copilot.inference.complete import structured_complete
+from backend.copilot.inference.context import (
+    InferenceContext,
+    InferenceError,
+    InferenceScope,
+)
+from backend.copilot.inference.routing import resolve_route
 from backend.copilot.transport_routing import ProviderRoutingKwargs
 from backend.data.block_cost_config import compute_token_credits
 from backend.data.execution import NodeExecutionStats
 
 from . import dream_provider as provider_fixtures
 from .ledger import PlatformLedger
+
+
+def _context(model: str) -> InferenceContext:
+    scope = InferenceScope(user_id="dream-owner")
+    job = phase_job("consolidate", "dream-pass", timeout_seconds=30, pinned_model=model)
+    return InferenceContext(scope=scope, job=job, route=resolve_route(scope, job))
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -38,21 +52,14 @@ async def test_native_dream_http_usage_reaches_ledger(
     ledger: PlatformLedger,
 ) -> None:
     dream_provider.prose = prose
-    completion = await llm.structured_completion(
-        model=model,
+    ctx = _context(model)
+    completion = await structured_complete(
+        ctx,
         messages=[{"role": "user", "content": "Consolidate facts."}],
         response_model=ConsolidationOutput,
     )
     assert completion.value.facts == []
-    usage = orchestrator._phase_usage_from_completion(
-        "consolidate", completion.usage, "sync_baseline"
-    )
-    await billing.record_phase_cost(
-        user_id="dream-owner",
-        pass_id="dream-pass",
-        phase_usage=usage,
-        execution_path="sync_baseline",
-    )
+    await billing.record_phase_cost(ctx, completion.usage)
     await ledger.settle()
     assert len(dream_provider.requests) == 1
     sent = dream_provider.requests[0]
@@ -82,9 +89,9 @@ async def test_truncated_http_response_preserves_usage_but_rejects_valid_json(
     dream_provider: provider_fixtures.DreamProvider,
 ) -> None:
     dream_provider.stop_reason = "max_tokens"
-    with pytest.raises(DreamLLMError, match="max_tokens") as caught:
-        await llm.structured_completion(
-            model="anthropic/claude-sonnet-5-5",
+    with pytest.raises(InferenceError, match="max_tokens") as caught:
+        await structured_complete(
+            _context("anthropic/claude-sonnet-5-5"),
             messages=[{"role": "user", "content": "Consolidate facts."}],
             response_model=ConsolidationOutput,
         )
@@ -124,22 +131,16 @@ async def test_openrouter_cache_buckets_and_reported_cost(
         supports_flex=True,
         cost_log_provider="open_router",
     )
-    monkeypatch.setattr(llm, "routing_kwargs_for_chat_transport", lambda: routing)
-    monkeypatch.setattr(billing, "routing_kwargs_for_chat_transport", lambda: routing)
-    completion = await llm.structured_completion(
-        model="anthropic/claude-sonnet-5-5",
+    monkeypatch.setattr(
+        inference_routing, "routing_kwargs_for_chat_transport", lambda: routing
+    )
+    ctx = _context("anthropic/claude-sonnet-5-5")
+    completion = await structured_complete(
+        ctx,
         messages=[{"role": "user", "content": "Consolidate facts as JSON."}],
         response_model=ConsolidationOutput,
     )
-    usage = orchestrator._phase_usage_from_completion(
-        "consolidate", completion.usage, "sync_baseline"
-    )
-    await billing.record_phase_cost(
-        user_id="dream-owner",
-        pass_id="dream-pass",
-        phase_usage=usage,
-        execution_path="sync_baseline",
-    )
+    await billing.record_phase_cost(ctx, completion.usage)
     await ledger.settle()
     (row,) = ledger.rows_in(0)
     assert row.input_tokens == 1001
@@ -147,6 +148,39 @@ async def test_openrouter_cache_buckets_and_reported_cost(
     assert row.cache_creation_tokens == 509
     assert row.cost_microdollars == expected_microdollars
     assert [s.microdollars for s in ledger.spend] == [expected_microdollars]
+
+
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.parametrize("cache_read,cache_write", [(3007, 0), (0, 509), (3007, 509)])
+async def test_unpriced_cache_only_http_response_keeps_one_token_row(
+    cache_read: int,
+    cache_write: int,
+    dream_provider: provider_fixtures.DreamProvider,
+    ledger: PlatformLedger,
+) -> None:
+    dream_provider.usage = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_input_tokens": cache_read,
+        "cache_creation_input_tokens": cache_write,
+    }
+    ctx = _context("anthropic/claude-unpriced-test")
+    completion = await structured_complete(
+        ctx,
+        [{"role": "user", "content": "Consolidate facts."}],
+        ConsolidationOutput,
+    )
+    await billing.record_phase_cost(ctx, completion.usage)
+    await ledger.settle()
+    (row,) = ledger.rows_in(0)
+    assert (row.input_tokens, row.output_tokens) == (0, 0)
+    assert (row.cache_read_tokens or 0, row.cache_creation_tokens or 0) == (
+        cache_read,
+        cache_write,
+    )
+    assert row.cost_microdollars is None
+    assert row.tracking_type == "tokens"
+    assert ledger.spend == []
 
 
 dream_provider = provider_fixtures.dream_provider

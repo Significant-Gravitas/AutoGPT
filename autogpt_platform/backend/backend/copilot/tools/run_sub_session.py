@@ -26,12 +26,15 @@ other turn.
 import json
 import logging
 import time
+from datetime import datetime
 from typing import Any
 
 from backend.copilot.active_turns import spawn_limit_message
+from backend.copilot.background_subtasks import start_background_subtask
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
+from backend.copilot.gate import child_autopilot_mode
 from backend.copilot.model import (
     ChatSession,
     create_chat_session,
@@ -44,7 +47,8 @@ from backend.copilot.sdk.session_waiter import (
     run_copilot_turn_via_queue,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
-from backend.copilot.tree import SpawnRequest
+from backend.copilot.tree import SpawnRequest, TreeRefusal
+from backend.data.workspace_internal import is_internal_workspace_file
 
 from .base import BaseTool
 from .expert_delegation import sent_from_metadata
@@ -55,6 +59,7 @@ from .models import (
     ToolResponseBase,
     WorkspaceFileInfoData,
 )
+from .workspace_files import AGENT_CREATED_METADATA
 
 logger = logging.getLogger(__name__)
 
@@ -83,11 +88,8 @@ class RunSubSessionTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Delegate a task to a fresh child session. Runs on the copilot "
-            "executor queue — survives tab-close AND worker restarts. Waits "
-            f"up to wait_for_result sec (max {MAX_SUB_SESSION_WAIT_SECONDS}). "
-            "If not done, returns status=running + sub_session_id — poll via "
-            "tool:get_sub_session_result."
+            "Run a durable subtask. Foreground waits; "
+            "poll tool:get_sub_session_result if still running."
         )
 
     @property
@@ -97,20 +99,20 @@ class RunSubSessionTool(BaseTool):
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "The task for the child session to execute.",
+                    "description": "Task to run.",
                     "title": "Task",
                 },
                 "system_context": {
                     "type": "string",
-                    "description": "Optional context prepended to the prompt.",
+                    "description": "Context prepended to prompt.",
                     "default": "",
                     "title": "Background",
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
                     "description": (
-                        "Continue or queue into a prior sub; empty = new. "
-                        "Cheaper when the follow-up builds on what it read."
+                        "Prior subtask to continue/queue; empty = new. "
+                        "Reuse for related work."
                     ),
                     "default": "",
                     "title": "Continues",
@@ -119,12 +121,22 @@ class RunSubSessionTool(BaseTool):
                 "wait_for_result": {
                     "type": "integer",
                     "description": (
-                        "Seconds to wait inline. 0 = return immediately. "
-                        f"Clamped to {MAX_SUB_SESSION_WAIT_SECONDS}."
+                        "Inline wait in seconds; 0 returns immediately. "
+                        f"Max {MAX_SUB_SESSION_WAIT_SECONDS}."
                     ),
                     "default": 60,
                     "title": "Waits up to",
                     "format": "seconds",
+                },
+                "background": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Only if the user asks for background work: a fresh subtask "
+                        "runs on its own and this chat is woken to carry on when it "
+                        "finishes. Returns immediately; no polling."
+                    ),
+                    "title": "Run in background",
                 },
             },
             "required": ["prompt"],
@@ -139,6 +151,7 @@ class RunSubSessionTool(BaseTool):
         system_context: str = "",
         sub_autopilot_session_id: str = "",
         wait_for_result: int = 60,
+        background: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         if not prompt.strip():
@@ -150,6 +163,45 @@ class RunSubSessionTool(BaseTool):
             return ErrorResponse(
                 message="Authentication required",
                 session_id=session.session_id,
+            ).from_outside()
+
+        if background:
+            if sub_autopilot_session_id.strip():
+                return ErrorResponse(
+                    message="Background subtasks must start a fresh conversation."
+                )
+            background_prompt = (
+                f"{system_context.strip()}\n\n{prompt}"
+                if system_context.strip()
+                else prompt
+            )
+            try:
+                task = await start_background_subtask(
+                    user_id, session, background_prompt
+                )
+            except TreeRefusal as refused:
+                return ErrorResponse(message=refused.message).from_outside()
+            return SubSessionStatusResponse(
+                session_id=session.session_id,
+                status=(
+                    "queued"
+                    if task.outcome is None
+                    else (
+                        "completed"
+                        if task.outcome == "completed"
+                        else "cancelled" if task.outcome == "cancelled" else "error"
+                    )
+                ),
+                sub_session_id=task.child_session_id,
+                sub_autopilot_session_id=task.child_session_id,
+                sub_autopilot_session_link=_sub_session_link(task.child_session_id),
+                background_task_id=task.id,
+                message=(
+                    "Subtask accepted in the background. You can finish this reply now; "
+                    "when it finishes, you are woken in this chat to carry on with its "
+                    "result. Use the subtask's Stop control to cancel it. No polling "
+                    "is needed."
+                ),
             ).from_outside()
 
         # Resolve the sub's ChatSession id — either resume an owned one or
@@ -255,6 +307,8 @@ class RunSubSessionTool(BaseTool):
                 # origin would put the staffing tools one hop away from the
                 # gate that refuses them directly.
                 origin="automation",
+                # It starts in the mode the parent's gate enforces.
+                inherited_autopilot_mode=child_autopilot_mode(session, None),
             )
             inner_session_id = new_session.session_id
             opened_here = True
@@ -332,9 +386,15 @@ def _sub_session_link(inner_session_id: str | None) -> str | None:
 async def list_sub_workspace_files(
     user_id: str,
     inner_session_id: str,
+    *,
+    written_from: datetime | None = None,
+    written_until: datetime | None = None,
 ) -> list[WorkspaceFileInfoData] | None:
     """Authoritative manifest of the persistent files a sub wrote, read from
-    the sub's session workspace.
+    the sub's session workspace. ``written_from`` and ``written_until``
+    restrict the query to the files written in that window, ahead of the
+    manifest limit: a recorded background result lists the files of its own
+    turn, so a later turn's never join it, nor crowd it out.
 
     A sub may deliver its real output by writing workspace files and only
     summarising in its final message (SECRT-2377). This queries the sub's
@@ -345,7 +405,8 @@ async def list_sub_workspace_files(
     The ``origin=agent-created`` filter means only files the sub persisted via
     ``write_workspace_file`` are listed — transient working-directory artefacts
     (e.g. a ``git clone`` the sub inspects but never persists) are not workspace
-    files and never appear here. When the sub persists more than
+    files and never appear here, and neither do the sub's own working files
+    (its build scratchpad). When the sub persists more than
     ``_WORKSPACE_FILE_MANIFEST_LIMIT`` files, the most recently written ones win
     (the listing is ordered ``createdAt`` descending).
 
@@ -356,7 +417,10 @@ async def list_sub_workspace_files(
         manager = await get_workspace_manager(user_id, inner_session_id)
         files = await manager.list_files(
             limit=_WORKSPACE_FILE_MANIFEST_LIMIT,
-            metadata_equals={"origin": "agent-created"},
+            metadata_equals=AGENT_CREATED_METADATA,
+            include_internal=False,
+            created_after=written_from,
+            created_before=written_until,
         )
     except Exception:
         logger.warning(
@@ -402,10 +466,17 @@ def _workspace_files_from_tool_calls(
         if not file_id or not path or file_id in seen_ids:
             continue
         seen_ids.add(file_id)
+        name = payload.get("name") or path.rsplit("/", 1)[-1]
+        # The log does not carry the mark, but this tool's writes are marked by
+        # name and path alone, so the same rule gives the same answer.
+        if is_internal_workspace_file(
+            name=name, path=path, metadata=AGENT_CREATED_METADATA
+        ):
+            continue
         files.append(
             WorkspaceFileInfoData(
                 file_id=file_id,
-                name=payload.get("name") or path.rsplit("/", 1)[-1],
+                name=name,
                 path=path,
                 mime_type=payload.get("mime_type") or "",
                 size_bytes=_coerce_size_bytes(payload.get("size_bytes")),
