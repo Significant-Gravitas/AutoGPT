@@ -31,7 +31,7 @@ def test_canceled_notice_keeps_access_until_the_trial_ends(trial, urls):
         assert "immediately" not in body
 
 
-def test_resumed_notice_copy_is_unchanged(trial, urls):
+def test_resumed_notice_explains_how_to_cancel_and_keep_access(trial, urls):
     data = notices.trial_notice_data(trial, "resumed", "Sam")
     email = render(NotificationType.TRIAL_UPDATE, data, "sam@example.com", urls)
     assert email.subject == "Your AutoGPT trial will continue into your plan"
@@ -39,11 +39,11 @@ def test_resumed_notice_copy_is_unchanged(trial, urls):
         "Your saved card will be charged for your Pro plan on "
         f"{data.ends_label} at $20.00 / month."
     )
-    assert (
-        "Applicable tax may be added. Review your plan or cancel in billing "
-        f"settings before {data.ends_label}."
-    ) in email.text
-    assert "You keep full access" not in email.text
+    for body in (email.html, email.text):
+        assert "Applicable tax may be added." in body
+        assert "open billing settings and choose Cancel trial" in body
+        assert f"before {data.ends_label}" in body
+        assert "you keep access until then and your card isn't charged" in body
 
 
 def _trial_subscription(trial: TrialState, **over) -> dict:

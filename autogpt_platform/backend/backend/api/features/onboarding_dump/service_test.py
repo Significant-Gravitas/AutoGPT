@@ -7,6 +7,7 @@ stored row rather than inferred from a response body.
 """
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -14,7 +15,7 @@ import pytest
 from fastapi import BackgroundTasks
 from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
-from prisma.models import OnboardingBrainDump
+from prisma.models import OnboardingBrainDump, UserOnboarding
 from pytest_mock import MockerFixture
 
 from backend.api.features.experts.models import Expert
@@ -22,13 +23,14 @@ from backend.api.features.onboarding_dump import (
     db,
     intro,
     prompts,
+    quality,
     service,
     transcription,
 )
 from backend.api.features.onboarding_dump.models import (
     ExpertRecommendations,
     RecommendedExpert,
-    RecommendedExpertsResponse,
+    SuggestedPrompt,
 )
 from backend.data.understanding import BusinessUnderstanding, BusinessUnderstandingInput
 
@@ -47,7 +49,16 @@ _NEW_TAKE_COLUMNS: dict[str, Any] = {
     "recommendedProviders": None,
     "recommendedExperts": None,
     "errorCode": None,
+    "errorReason": None,
+    "updatedAt": datetime(2026, 10, 1, tzinfo=UTC),
 }
+
+DETERMINISTIC = quality.QualityRejection(
+    error_code=quality.NO_USABLE_SPEECH, reason="deterministic"
+)
+JUDGED_UNUSABLE = quality.QualityRejection(
+    error_code=quality.INSUFFICIENT_CONTENT, reason="judge_unusable"
+)
 
 
 class DumpStore:
@@ -70,20 +81,21 @@ class DumpStore:
     ) -> OnboardingBrainDump:
         # Mirrors the real `start_dump`: a take already moving through
         # the pipeline is returned untouched, so a replayed part 0 or a
-        # repeated finalize cannot reset it.
-        if (
-            self.row is not None
-            and self.row.status
-            in (
-                BrainDumpStatus.recording_uploaded,
-                BrainDumpStatus.transcribing,
-                BrainDumpStatus.transcribed,
-                BrainDumpStatus.extracting,
-                BrainDumpStatus.completed,
-            )
-            and (
+        # repeated finalize cannot reset it, and a typed or skipped take
+        # cannot displace one still being processed.
+        processing = (
+            BrainDumpStatus.recording_uploaded,
+            BrainDumpStatus.transcribing,
+            BrainDumpStatus.transcribed,
+            BrainDumpStatus.extracting,
+        )
+        if self.row is not None and (
+            (
                 self.row.recordingId == recording_id
-                or input_mode != BrainDumpInputMode.voice
+                and self.row.status in (*processing, BrainDumpStatus.completed)
+            )
+            or (
+                input_mode != BrainDumpInputMode.voice and self.row.status in processing
             )
         ):
             return self.row
@@ -93,6 +105,7 @@ class DumpStore:
             self.row.status = BrainDumpStatus.recording_uploaded
             self.row.inputMode = input_mode
             self.row.errorCode = None
+            self.row.errorReason = None
         else:
             # model_construct skips defaults, so every column the code
             # under test reads has to be seeded explicitly — otherwise a
@@ -115,11 +128,37 @@ class DumpStore:
             return False
         for name, value in fields.items():
             setattr(self.row, name, value.data if isinstance(value, Json) else value)
+        self.row.updatedAt += timedelta(milliseconds=1)
         status = fields.get("status")
         if status is not None:
             self.statuses.append(status)
         if "transcript" in fields:
             self.transcripts.append(fields["transcript"])
+        return True
+
+    async def store_greeting(
+        self, user_id: str, recording_id: str, greeting: str, prompts: list[Any]
+    ) -> bool:
+        """Mirrors the real write: the tasks go in only while the take has none."""
+        if self.row is None or self.row.recordingId != recording_id:
+            return False
+        fields: dict[str, Any] = {"greeting": greeting, "errorCode": None}
+        if not self.row.suggestedPrompts:
+            fields["suggestedPrompts"] = prompts
+        return await self.update_dump(user_id, recording_id, **fields)
+
+    async def replace_team(
+        self, user_id: str, recording_id: str, read_at: datetime, team: Any
+    ) -> bool:
+        """Mirrors the conditional write: a changed or superseded row is missed."""
+        if (
+            self.row is None
+            or self.row.recordingId != recording_id
+            or self.row.updatedAt != read_at
+        ):
+            return False
+        self.row.recommendedExperts = team
+        self.row.updatedAt += timedelta(milliseconds=1)
         return True
 
     async def claim_transition(
@@ -142,19 +181,44 @@ class DumpStore:
         return True
 
     async def mark_failed(
-        self, user_id: str, recording_id: str, error_code: str
+        self,
+        user_id: str,
+        recording_id: str,
+        error_code: str,
+        reason: str | None = None,
     ) -> None:
         await self.update_dump(
             user_id,
             recording_id,
             status=BrainDumpStatus.failed,
             errorCode=error_code,
+            errorReason=reason,
         )
 
     async def mark_greeting_seen(self, user_id: str) -> None:
         if self.row is not None:
             self.row.greetingSeen = True
         self.greeting_seen_writes += 1
+
+    async def replace_plan(
+        self,
+        user_id: str,
+        recording_id: str,
+        read_at: datetime,
+        prompts: list[Any],
+        team: dict[str, Any],
+    ) -> bool:
+        """Mirrors the conditional write: a changed or superseded row is missed."""
+        if (
+            self.row is None
+            or self.row.recordingId != recording_id
+            or self.row.updatedAt != read_at
+        ):
+            return False
+        self.row.suggestedPrompts = prompts
+        self.row.recommendedExperts = team
+        self.row.updatedAt += timedelta(milliseconds=1)
+        return True
 
 
 @pytest.fixture(autouse=True)
@@ -175,6 +239,9 @@ def dumps(mocker: MockerFixture) -> DumpStore:
     mocker.patch(f"{module}.mark_failed", new=store.mark_failed)
     mocker.patch(f"{module}.claim_transition", new=store.claim_transition)
     mocker.patch(f"{module}.mark_greeting_seen", new=store.mark_greeting_seen)
+    mocker.patch(f"{module}.replace_plan", new=store.replace_plan)
+    mocker.patch(f"{module}.store_greeting", new=store.store_greeting)
+    mocker.patch(f"{module}.replace_team", new=store.replace_team)
     return store
 
 
@@ -219,6 +286,16 @@ def extraction(mocker: MockerFixture) -> dict[str, AsyncMock]:
     for name, mock in mocks.items():
         mocker.patch(f"{module}.{name}", new=mock)
     return mocks
+
+
+@pytest.fixture(autouse=True)
+def onboarding(mocker: MockerFixture) -> AsyncMock:
+    """No saved wizard answers, so the understanding answers for the role."""
+    mock = AsyncMock(
+        return_value=UserOnboarding.model_construct(userId=USER_ID, wizardProgress=None)
+    )
+    mocker.patch.object(service, "get_user_onboarding", new=mock)
+    return mock
 
 
 @pytest.fixture(autouse=True)
@@ -433,27 +510,26 @@ async def test_repeating_a_typed_finalize_does_not_restart_the_pipeline(
 
 
 @pytest.mark.asyncio
-async def test_a_stale_typed_finalize_cannot_replace_a_completed_take(
+async def test_a_typed_take_after_a_completed_one_replaces_it(
     dumps: DumpStore,
 ):
-    newer_tasks = BackgroundTasks()
+    """Back from Hire, then typing again, is a re-take, not a stale request."""
+    first_tasks = BackgroundTasks()
     await service.finalize_typed_dump(
-        USER_ID, "rec-newer", "This is the newer transcript.", newer_tasks
+        USER_ID, "rec-first", "This is the first transcript.", first_tasks
     )
-    await newer_tasks()
-    assert dumps.row is not None
-    newer_transcript = dumps.row.transcript
-    stale_tasks = BackgroundTasks()
+    await first_tasks()
+    retake_tasks = BackgroundTasks()
 
     response = await service.finalize_typed_dump(
-        USER_ID, "rec-stale", "This stale request arrived late.", stale_tasks
+        USER_ID, "rec-retake", "This is what I meant to say.", retake_tasks
     )
 
-    assert response.status == BrainDumpStatus.failed
-    assert response.error_code == "superseded"
-    assert dumps.row.recordingId == "rec-newer"
-    assert dumps.row.transcript == newer_transcript
-    assert stale_tasks.tasks == []
+    assert response.status == BrainDumpStatus.transcribed
+    assert dumps.row is not None
+    assert dumps.row.recordingId == "rec-retake"
+    assert dumps.row.transcript == "This is what I meant to say."
+    assert len(retake_tasks.tasks) == 1
 
 
 @pytest.mark.asyncio
@@ -1116,7 +1192,7 @@ async def test_quality_rejected_voice_dump_keeps_its_transcript_and_queues_nothi
     storage_mocks: dict[str, AsyncMock],
 ):
     await start_voice_take(dumps)
-    quality_gate.return_value = "no_usable_speech"
+    quality_gate.return_value = DETERMINISTIC
     background = BackgroundTasks()
 
     response = await service.finalize_voice_dump(
@@ -1126,9 +1202,12 @@ async def test_quality_rejected_voice_dump_keeps_its_transcript_and_queues_nothi
 
     assert response.status == BrainDumpStatus.failed
     assert response.error_code == "no_usable_speech"
+    assert response.error_reason == "deterministic"
+    assert response.transcript_words == 11
     assert dumps.row is not None
     assert dumps.row.status == BrainDumpStatus.failed
     assert dumps.row.errorCode == "no_usable_speech"
+    assert dumps.row.errorReason == "deterministic"
     # The transcript survives the rejection for debugging. The recording
     # does not: it went once the transcript was stored, and the user
     # re-records from the browser rather than from it.
@@ -1145,7 +1224,7 @@ async def test_quality_rejected_voice_dump_keeps_its_transcript_and_queues_nothi
 async def test_quality_rejected_typed_dump_records_the_error(
     dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
 ):
-    quality_gate.return_value = "insufficient_content"
+    quality_gate.return_value = JUDGED_UNUSABLE
     background = BackgroundTasks()
 
     response = await service.finalize_typed_dump(
@@ -1153,11 +1232,17 @@ async def test_quality_rejected_typed_dump_records_the_error(
     )
     await background()
 
+    quality_gate.assert_awaited_once_with(
+        "hello hello testing", input_mode=BrainDumpInputMode.typed
+    )
     assert response.status == BrainDumpStatus.failed
     assert response.error_code == "insufficient_content"
+    assert response.error_reason == "judge_unusable"
+    assert response.transcript_words == 3
     assert dumps.row is not None
     assert dumps.row.status == BrainDumpStatus.failed
     assert dumps.row.errorCode == "insufficient_content"
+    assert dumps.row.errorReason == "judge_unusable"
     assert dumps.row.transcript == "hello hello testing"
     assert background.tasks == []
     extraction["upsert_business_understanding"].assert_not_awaited()
@@ -1174,7 +1259,7 @@ async def test_repeating_finalize_after_quality_rejection_does_not_rerun_the_gat
     the row's failure instead, without a second quality check.
     """
     await start_voice_take(dumps)
-    quality_gate.return_value = "no_usable_speech"
+    quality_gate.return_value = DETERMINISTIC
     await finalize_voice()
 
     response = await finalize_voice()
@@ -1189,7 +1274,7 @@ async def test_a_new_take_after_quality_rejection_runs_the_pipeline(
     dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
 ):
     await start_voice_take(dumps)
-    quality_gate.return_value = "insufficient_content"
+    quality_gate.return_value = JUDGED_UNUSABLE
     await finalize_voice()
 
     quality_gate.return_value = None
@@ -1208,16 +1293,23 @@ async def test_a_new_take_after_quality_rejection_runs_the_pipeline(
 
 
 @pytest.mark.asyncio
-async def test_intro_card_takes_path_b_for_a_quality_rejected_dump(dumps: DumpStore):
+@pytest.mark.parametrize(
+    "error_code",
+    ["no_usable_speech", "insufficient_content", "quality_check_unavailable"],
+)
+async def test_intro_card_takes_path_b_for_a_quality_rejected_dump(
+    dumps: DumpStore, error_code: str
+):
     """The preserved transcript of a rejected dump must never leak into a
-    Path A greeting — the gate already decided it isn't worth reflecting."""
+    Path A greeting, even one the judge was unavailable for: the gate
+    fails closed."""
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
     await dumps.update_dump(
         USER_ID,
         RECORDING_ID,
         status=BrainDumpStatus.failed,
         transcript="Thank you for watching.",
-        errorCode="insufficient_content",
+        errorCode=error_code,
     )
 
     card = await service.get_intro_card(USER_ID)
@@ -1346,15 +1438,6 @@ def _stored_team(dumps: DumpStore) -> dict:
 
 
 @pytest.fixture
-def team_flag(mocker: MockerFixture) -> AsyncMock:
-    """Both flags on. ``ONBOARDING_EXPERT_TEAM`` is a child of
-    ``HIRE_EXPERTS``, so the reads are separate and both must pass."""
-    mock = AsyncMock(return_value=True)
-    mocker.patch.object(service, "is_feature_enabled", new=mock)
-    return mock
-
-
-@pytest.fixture
 def templates(mocker: MockerFixture) -> AsyncMock:
     mock = AsyncMock(return_value=TEMPLATES)
     mocker.patch.object(service, "list_templates", new=mock)
@@ -1383,38 +1466,8 @@ def generate_team(mocker: MockerFixture) -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_the_flag_being_off_costs_no_llm_call_and_no_roster_read(
-    dumps: DumpStore,
-    mocker: MockerFixture,
-    templates: AsyncMock,
-    generate_team: AsyncMock,
-):
-    """A dark feature must not bill for itself.
-
-    The result is still written: a null column reads as "still running",
-    and the client would poll it to its own ceiling.
-    """
-    mocker.patch.object(
-        service, "is_feature_enabled", new=AsyncMock(return_value=False)
-    )
-    await start_voice_take(dumps)
-
-    await finalize_voice()
-
-    generate_team.assert_not_awaited()
-    templates.assert_not_awaited()
-    assert _stored_team(dumps) == {
-        "diagnosis": "",
-        "experts": [],
-        "raise_suggestion": None,
-        "source": "disabled",
-    }
-
-
-@pytest.mark.asyncio
 async def test_the_generated_team_is_stored_with_the_wizard_answers(
     dumps: DumpStore,
-    team_flag: AsyncMock,
     templates: AsyncMock,
     generate_team: AsyncMock,
     extraction: dict[str, AsyncMock],
@@ -1438,7 +1491,6 @@ async def test_the_generated_team_is_stored_with_the_wizard_answers(
 @pytest.mark.asyncio
 async def test_a_failed_team_job_still_stores_an_answer(
     dumps: DumpStore,
-    team_flag: AsyncMock,
     templates: AsyncMock,
     generate_team: AsyncMock,
 ):
@@ -1462,25 +1514,8 @@ async def test_a_failed_team_job_still_stores_an_answer(
 
 
 @pytest.mark.asyncio
-async def test_the_team_is_withheld_entirely_while_the_flag_is_off(
-    dumps: DumpStore, mocker: MockerFixture
-):
-    mocker.patch.object(
-        service, "is_feature_enabled", new=AsyncMock(return_value=False)
-    )
-    await start_voice_take(dumps)
-
-    response = await service.get_recommended_experts(USER_ID)
-    card = await service.get_intro_card(USER_ID)
-
-    assert response == RecommendedExpertsResponse(ready=True, team=None)
-    assert card.team is None
-    assert card.team_pending is False
-
-
-@pytest.mark.asyncio
 async def test_the_team_is_pending_while_the_job_is_still_running(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     await start_voice_take(dumps)
     await dumps.update_dump(
@@ -1499,7 +1534,7 @@ async def test_the_team_is_pending_while_the_job_is_still_running(
 
 @pytest.mark.asyncio
 async def test_a_terminal_dump_with_no_stored_team_falls_back(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     """The job died with the process, so nothing is coming.
 
@@ -1524,7 +1559,7 @@ async def test_a_terminal_dump_with_no_stored_team_falls_back(
 
 @pytest.mark.asyncio
 async def test_a_stored_team_is_served_as_written(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     await start_voice_take(dumps)
     await dumps.update_dump(
@@ -1552,7 +1587,7 @@ async def test_a_stored_team_is_served_as_written(
 
 @pytest.mark.asyncio
 async def test_a_malformed_stored_team_falls_back_rather_than_500s(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock
 ):
     await start_voice_take(dumps)
     await dumps.update_dump(
@@ -1572,13 +1607,16 @@ async def test_a_malformed_stored_team_falls_back_rather_than_500s(
 
 @pytest.mark.asyncio
 async def test_a_team_written_while_the_flag_was_off_is_recomputed(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore, templates: AsyncMock, extraction: dict[str, AsyncMock]
 ):
     """A flag flip must not strand the user with an empty section.
 
     ``source="disabled"`` records that the job declined to spend, not
     that this user has no team.
     """
+    extraction["get_business_understanding"].return_value = (
+        BusinessUnderstanding.model_construct(user_role="Marketing", pain_points=[])
+    )
     await start_voice_take(dumps)
     await dumps.update_dump(
         USER_ID,
@@ -1597,9 +1635,7 @@ async def test_a_team_written_while_the_flag_was_off_is_recomputed(
 
 
 @pytest.mark.asyncio
-async def test_a_skipped_dump_still_gets_a_team(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
-):
+async def test_a_skipped_dump_still_gets_a_team(dumps: DumpStore, templates: AsyncMock):
     """Path B has no transcript, so the job never ran for it.
 
     The raise door has to be reachable anyway, which means the section
@@ -1618,7 +1654,6 @@ async def test_a_skipped_dump_still_gets_a_team(
 @pytest.mark.asyncio
 async def test_the_intro_card_carries_the_stored_team(
     dumps: DumpStore,
-    team_flag: AsyncMock,
     templates: AsyncMock,
     generate_team: AsyncMock,
 ):
@@ -1634,39 +1669,22 @@ async def test_the_intro_card_carries_the_stored_team(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "hire_enabled,team_enabled",
-    [(False, False), (False, True), (True, False), (True, True)],
-)
-async def test_pending_greeting_only_waits_for_an_enabled_team(
-    dumps: DumpStore,
-    team_flag: AsyncMock,
-    templates: AsyncMock,
-    hire_enabled: bool,
-    team_enabled: bool,
+async def test_pending_greeting_waits_for_the_team(
+    dumps: DumpStore, templates: AsyncMock
 ):
-    team_flag.side_effect = lambda flag, *args, **kwargs: (
-        hire_enabled if flag == service.Flag.HIRE_EXPERTS else team_enabled
-    )
     await start_voice_take(dumps)
     await dumps.update_dump(
-        USER_ID,
-        RECORDING_ID,
-        status=BrainDumpStatus.extracting,
-        transcript=TRANSCRIPT,
+        USER_ID, RECORDING_ID, status=BrainDumpStatus.extracting, transcript=TRANSCRIPT
     )
-
     card = await service.get_intro_card(USER_ID)
-
     assert card.greeting_pending is True
-    assert card.team_pending is (hire_enabled and team_enabled)
+    assert card.team_pending is True
     assert card.team is None
 
 
 @pytest.mark.asyncio
 async def test_team_uses_signup_snapshot_and_stays_pending_until_its_job_finishes(
     dumps: DumpStore,
-    team_flag: AsyncMock,
     templates: AsyncMock,
     generate_team: AsyncMock,
     extraction: dict[str, AsyncMock],
@@ -1728,3 +1746,348 @@ async def test_failed_final_status_write_does_not_leave_the_dump_pending(
     assert dumps.row is not None
     assert dumps.row.status == BrainDumpStatus.failed
     assert dumps.row.errorCode == "understanding_failed"
+
+
+GREETING_PROMPTS = [
+    SuggestedPrompt(title="Plan a holiday drop", prompt="Plan it.", icon="sparkle"),
+    SuggestedPrompt(title="Draft the newsletter", prompt="Draft it.", icon="megaphone"),
+    SuggestedPrompt(title="Chase cold leads", prompt="Chase them.", icon="envelope"),
+]
+FOUR_EXPERTS = ExpertRecommendations(
+    experts=[
+        RecommendedExpert(template_id=t, name=n, role=r)
+        for t, n, r in [
+            ("tpl-maria", "Maria", "Marketing"),
+            ("tpl-max", "Max", "Sales"),
+            ("tpl-frankie", "Frankie", "Ops"),
+            ("tpl-nadia", "Nadia", "Research"),
+        ]
+    ],
+    source="llm",
+)
+
+
+@pytest.fixture
+def greeting(mocker: MockerFixture) -> AsyncMock:
+    mock = AsyncMock(return_value=("You run a bakery.", GREETING_PROMPTS))
+    mocker.patch.object(intro, "generate_intro", new=mock)
+    return mock
+
+
+@pytest.mark.asyncio
+async def test_both_jobs_storing_leads_to_a_ranked_owned_plan_before_completion(
+    dumps: DumpStore,
+    templates: AsyncMock,
+    generate_team: AsyncMock,
+    greeting: AsyncMock,
+    mocker: MockerFixture,
+):
+    generate_team.return_value = FOUR_EXPERTS
+    landed_at: list[BrainDumpStatus] = []
+
+    async def replace_plan(*args: Any, **kwargs: Any) -> bool:
+        assert dumps.row is not None
+        landed_at.append(dumps.row.status)
+        return await dumps.replace_plan(*args, **kwargs)
+
+    mocker.patch.object(db, "replace_plan", new=replace_plan)
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    # The plan is written while the dump still reads as running.
+    assert landed_at == [BrainDumpStatus.extracting]
+    # Jev has no key here (conftest's ``no_jev_key``), so the fallback keeps
+    # the greeting's order and matches owners from the team.
+    assert [p["title"] for p in dumps.row.suggestedPrompts] == [
+        p.title for p in GREETING_PROMPTS
+    ]
+    assert [p["expert_template_id"] for p in dumps.row.suggestedPrompts] == [
+        None,
+        "tpl-maria",
+        "tpl-max",
+    ]
+    assert [e["name"] for e in _stored_team(dumps)["experts"]] == [
+        "Maria",
+        "Max",
+        "Frankie",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_team_write_leaves_the_greetings_prompts_as_they_were(
+    dumps: DumpStore,
+    templates: AsyncMock,
+    generate_team: AsyncMock,
+    greeting: AsyncMock,
+    mocker: MockerFixture,
+):
+    mocker.patch.object(
+        service.db, "replace_team", side_effect=RuntimeError("team write failed")
+    )
+    store_plan = mocker.spy(service.plan_job, "store_ranked_plan")
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    store_plan.assert_not_awaited()
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.suggestedPrompts == [p.model_dump() for p in GREETING_PROMPTS]
+
+
+# --- The wizard's answers ------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_failed_wizard_read_costs_the_team_its_context_not_the_team(
+    onboarding: AsyncMock,
+):
+    onboarding.side_effect = RuntimeError("database down")
+
+    assert await service.wizard_answers(USER_ID) == (None, [])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failing", ["progress", "understanding"])
+async def test_a_failed_wizard_read_fails_a_list_about_to_be_stored(
+    onboarding: AsyncMock, extraction: dict[str, AsyncMock], failing: str
+):
+    # Either read: the saved progress, or the understanding it falls back to.
+    if failing == "progress":
+        onboarding.side_effect = RuntimeError("database down")
+    else:
+        onboarding.return_value = UserOnboarding.model_construct(
+            userId=USER_ID, wizardProgress=None
+        )
+        extraction["get_business_understanding"].side_effect = RuntimeError(
+            "database down"
+        )
+
+    with pytest.raises(RuntimeError):
+        await service.read_wizard_answers(USER_ID)
+
+
+@pytest.mark.asyncio
+async def test_unreadable_saved_wizard_answers_fall_through_to_the_understanding(
+    onboarding: AsyncMock, extraction: dict[str, AsyncMock]
+):
+    onboarding.return_value = UserOnboarding.model_construct(
+        userId=USER_ID, wizardProgress={"version": 2, "role": 7}
+    )
+    extraction["get_business_understanding"].return_value = (
+        BusinessUnderstanding.model_construct(
+            user_role="Marketing", pain_points=["Social media"]
+        )
+    )
+
+    assert await service.read_wizard_answers(USER_ID) == (
+        "Marketing",
+        ["Social media"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_intro_card_keeps_a_why_up_to_its_cap_and_drops_a_longer_one(
+    dumps: DumpStore,
+):
+    at_cap = "x" * intro.MAX_WHY_CHARS
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You mentioned the weekly order emails.",
+        suggestedPrompts=[
+            {"title": "Handle the order emails", "prompt": "Do it.", "why": at_cap},
+            {"title": "Chase invoices", "prompt": "Do it.", "why": at_cap + "x"},
+        ],
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert [(p.title, p.why) for p in card.prompts] == [
+        ("Handle the order emails", at_cap),
+        ("Chase invoices", None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_intro_card_carries_each_task_s_owner_and_their_name(
+    dumps: DumpStore,
+):
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You mentioned the weekly order emails.",
+        suggestedPrompts=[
+            {
+                "title": "Handle the order emails",
+                "prompt": "Do it.",
+                "expert_template_id": "tpl-maria",
+                "expert_name": "Maria",
+            },
+            {"title": "Chase invoices", "prompt": "Do it."},
+        ],
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert [(p.expert_template_id, p.expert_name) for p in card.prompts] == [
+        ("tpl-maria", "Maria"),
+        (None, None),
+    ]
+
+
+# --- What the plan step waits on -----------------------------------------
+
+
+async def _until(condition: Any) -> None:
+    while not condition():
+        await asyncio.sleep(0.01)
+
+
+def _completed(dumps: DumpStore) -> bool:
+    return dumps.row is not None and dumps.row.status == BrainDumpStatus.completed
+
+
+@pytest.mark.asyncio
+async def test_the_plan_is_ready_before_the_provider_picks_finish(
+    dumps: DumpStore, mocker: MockerFixture
+):
+    """The picks are read after the trial, so the plan step never waits on them."""
+    release = asyncio.Event()
+
+    async def picks(transcript: str) -> list:
+        await release.wait()
+        return []
+
+    mocker.patch(
+        "backend.api.features.onboarding_dump.recommend.generate_recommendations",
+        new=picks,
+    )
+    await start_voice_take(dumps)
+    task = asyncio.create_task(finalize_voice())
+    try:
+        await asyncio.wait_for(_until(lambda: _completed(dumps)), timeout=5)
+        assert dumps.row is not None
+        assert dumps.row.recommendedProviders is None
+    finally:
+        release.set()
+        await asyncio.wait_for(task, timeout=5)
+    assert dumps.row.recommendedProviders == []
+
+
+@pytest.mark.asyncio
+async def test_the_plan_is_ready_before_the_understanding_is_stored(
+    dumps: DumpStore, extraction: dict[str, AsyncMock]
+):
+    """The extraction feeds Otto's chats, not the plan, so the plan step never
+    waits on it; the understanding still lands once it finishes."""
+    release = asyncio.Event()
+
+    async def extract(*args: Any, **kwargs: Any) -> BusinessUnderstandingInput:
+        await release.wait()
+        return BusinessUnderstandingInput.model_construct()
+
+    extraction["extract_business_understanding"].side_effect = extract
+    await start_voice_take(dumps)
+    task = asyncio.create_task(finalize_voice())
+    try:
+        await asyncio.wait_for(_until(lambda: _completed(dumps)), timeout=5)
+        extraction["upsert_business_understanding"].assert_not_awaited()
+    finally:
+        release.set()
+        await asyncio.wait_for(task, timeout=5)
+    extraction["upsert_business_understanding"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_understanding_write_costs_the_context_not_the_take(
+    dumps: DumpStore, extraction: dict[str, AsyncMock], mocker: MockerFixture
+):
+    extraction["upsert_business_understanding"].side_effect = RuntimeError("db down")
+    mocker.patch(
+        "backend.api.features.onboarding_dump.intro.generate_intro",
+        new=AsyncMock(return_value=("You mentioned the order emails.", [])),
+    )
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.greeting == "You mentioned the order emails."
+
+
+SETTLED_ROWS = [
+    {"id": "0", "title": "Find 25 leads", "prompt": "Find.", "state": "open"}
+]
+SETTLED_TEAM = {"experts": [], "source": "fallback"}
+
+
+@pytest.mark.asyncio
+async def test_tasks_and_team_stored_while_the_jobs_ran_stand(
+    dumps: DumpStore,
+    templates: AsyncMock,
+    generate_team: AsyncMock,
+    greeting: AsyncMock,
+    mocker: MockerFixture,
+):
+    """The plan step settled on the role plan before either job answered: the
+    greeting still lands for Home, but the tasks and team the step showed,
+    and the trial hires, are not replaced, and there is nothing to rank."""
+    generate_team.return_value = FOUR_EXPERTS
+    replace_plan = mocker.spy(db, "replace_plan")
+    await start_voice_take(dumps)
+
+    async def settle_first(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
+        assert dumps.row is not None
+        dumps.row.suggestedPrompts = SETTLED_ROWS
+        dumps.row.recommendedExperts = SETTLED_TEAM
+        dumps.row.updatedAt += timedelta(milliseconds=1)
+        return "You run a bakery.", GREETING_PROMPTS
+
+    greeting.side_effect = settle_first
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.greeting == "You run a bakery."
+    assert dumps.row.suggestedPrompts == SETTLED_ROWS
+    assert dumps.row.recommendedExperts == SETTLED_TEAM
+    replace_plan.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_team_write_that_loses_a_race_is_written_on_the_next_read(
+    dumps: DumpStore,
+    templates: AsyncMock,
+    generate_team: AsyncMock,
+    mocker: MockerFixture,
+):
+    """Another write can land between the team job's read and its write; the
+    team goes in on the next read rather than being lost."""
+    attempts: list[datetime] = []
+
+    async def lose_once(user_id, recording_id, read_at, team) -> bool:
+        attempts.append(read_at)
+        if len(attempts) == 1:
+            assert dumps.row is not None
+            dumps.row.updatedAt += timedelta(milliseconds=1)
+        return await dumps.replace_team(user_id, recording_id, read_at, team)
+
+    mocker.patch.object(db, "replace_team", new=lose_once)
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert len(attempts) == 2
+    assert _stored_team(dumps)["source"] == "llm"

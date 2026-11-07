@@ -101,7 +101,7 @@ async def test_a_new_recording_id_always_claims_the_row(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "status",
-    [BrainDumpStatus.recording_uploaded, BrainDumpStatus.completed],
+    [BrainDumpStatus.recording_uploaded, BrainDumpStatus.extracting],
 )
 async def test_a_delayed_typed_finalize_cannot_replace_an_active_take(
     mocker: MockerFixture, upsert: AsyncMock, status: BrainDumpStatus
@@ -168,7 +168,13 @@ async def test_retrying_the_same_take_keeps_what_that_take_produced(
     update = upsert.await_args.kwargs["data"]["update"]
     assert create["recommendedProviders"] == Json(None)
     assert create["recommendedExperts"] == Json(None)
-    assert set(update) == {"recordingId", "status", "inputMode", "errorCode"}
+    assert set(update) == {
+        "recordingId",
+        "status",
+        "inputMode",
+        "errorCode",
+        "errorReason",
+    }
 
 
 @pytest.mark.asyncio

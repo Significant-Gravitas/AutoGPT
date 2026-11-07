@@ -14,8 +14,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.copilot.dream.routing import ExecutionPath
 from backend.util.llm.providers import ProviderLiteral
+
+from .execution_path import ExecutionPath
 
 InferenceKind = Literal[
     "dream", "briefing_narrative", "consult", "eval_judge", "skill_learning"
@@ -115,14 +116,13 @@ class InferenceUsage(BaseModel):
 
 
 class InferenceContext(BaseModel):
-    """One call's scope, job and route; ``trace_id`` once it is traced."""
+    """One call's scope, job and route."""
 
     model_config = ConfigDict(frozen=True)
 
     scope: InferenceScope
     job: InferenceJob
     route: RouteDecision
-    trace_id: str | None = None
 
 
 # How a background call failed, naming it without quoting the model.

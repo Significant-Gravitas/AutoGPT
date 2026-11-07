@@ -1,4 +1,5 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { getPostHogReplayUrl } from "@/services/analytics/posthog-request-context";
 
 const TALLY_EMBED_URL = "https://tally.so/widgets/embed.js";
 export const FEEDBACK_TALLY_FORM_ID = "3yx2L0";
@@ -54,16 +55,14 @@ export function loadTallyEmbed(): Promise<TallyApi> {
 }
 
 interface FeedbackContext {
-  sentryReplayId: string;
-  replayUrl: string;
   pageUrl: string;
   isAuthenticated: boolean | null;
 }
 
 export function getFeedbackHiddenFields(context: FeedbackContext) {
+  const posthogReplayUrl = getPostHogReplayUrl();
   return {
-    sentryReplayId: context.sentryReplayId || "not-initialized",
-    sentryReplayUrl: context.replayUrl || "not-initialized",
+    ...(posthogReplayUrl && { posthogReplayUrl }),
     pageUrl: context.pageUrl
       ? context.pageUrl.split("?")[0]
       : "not-initialized",
@@ -84,6 +83,7 @@ export function showFeedbackLoadError() {
           href={FEEDBACK_FORM_URL}
           target="_blank"
           rel="noopener noreferrer"
+          data-slot="feedback-form-link"
           className="underline"
         >
           Open the form in a new tab

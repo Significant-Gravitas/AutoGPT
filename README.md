@@ -136,6 +136,7 @@ Experts can use skills and workflows to do their jobs. The visual builder lets y
 - **[Visual builder](https://agpt.co/product/build/?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=build):** connect blocks, branch logic, and control the steps.
 - **[Marketplace](https://platform.agpt.co/marketplace?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=marketplace):** discover workflows you can adapt to your work.
 - **[Integrations](https://agpt.co/docs/integrations):** connect the tools your team uses.
+- **[API and MCP server](https://agpt.co/docs/platform/api-and-integrations/api-guide):** run and build workflows from your own code, or from an AI coding agent.
 
 ## Build with us
 

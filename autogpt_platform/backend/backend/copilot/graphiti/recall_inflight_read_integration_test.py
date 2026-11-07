@@ -205,9 +205,6 @@ async def test_forget_search_rechecks_live_candidates_after_forgotten_search(
 ) -> None:
     driver, scope = scope_graph
     alice = await _alice_and_bob(driver, scope, stub_graphiti_client)
-    mocker.patch.object(
-        graphiti_forget, "is_enabled_for_user", mocker.AsyncMock(return_value=True)
-    )
     search = graphiti_forget.search_forgotten_facts
 
     def pause(reached: asyncio.Event, release: asyncio.Event):

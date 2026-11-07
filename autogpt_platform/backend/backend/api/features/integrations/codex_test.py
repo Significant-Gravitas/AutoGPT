@@ -247,11 +247,13 @@ def test_codex_callback_persists_one_safe_credential():
         "scopes": [],
         "username": "user@example.com",
         "host": None,
+        "scope": None,
         "mcp_auth_scheme": None,
         "is_managed": False,
         "service": "codex",
         "service_name": None,
         "service_icon": "codex",
+        "microsoft_identity": None,
     }
     raw_response = response.text
     assert "access-secret" not in raw_response

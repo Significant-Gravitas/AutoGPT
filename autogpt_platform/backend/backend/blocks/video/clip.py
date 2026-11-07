@@ -2,8 +2,6 @@
 
 from typing import Literal
 
-from moviepy.video.io.VideoFileClip import VideoFileClip
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -13,17 +11,19 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.video._utils import (
+    VideoMediaStorage,
     extract_source_name,
     get_video_codecs,
+    open_video_clip,
     strip_chapters_inplace,
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
-from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
+from backend.util.file import MediaFileType, get_exec_file_path
 
 
-class VideoClipBlock(Block):
+class VideoClipBlock(VideoMediaStorage, Block):
     """Extract a time segment from a video."""
 
     class Input(BlockSchemaInput):
@@ -63,26 +63,6 @@ class VideoClipBlock(Block):
             effect=BlockEffect.WORKSPACE,
         )
 
-    async def _store_input_video(
-        self, execution_context: ExecutionContext, file: MediaFileType
-    ) -> MediaFileType:
-        """Store input video. Extracted for testability."""
-        return await store_media_file(
-            file=file,
-            execution_context=execution_context,
-            return_format="for_local_processing",
-        )
-
-    async def _store_output_video(
-        self, execution_context: ExecutionContext, file: MediaFileType
-    ) -> MediaFileType:
-        """Store output video. Extracted for testability."""
-        return await store_media_file(
-            file=file,
-            execution_context=execution_context,
-            return_format="for_block_output",
-        )
-
     def _clip_video(
         self,
         video_abspath: str,
@@ -95,7 +75,9 @@ class VideoClipBlock(Block):
         subclip = None
         try:
             strip_chapters_inplace(video_abspath)
-            clip = VideoFileClip(video_abspath)
+            clip = open_video_clip(
+                video_abspath, block_name=self.name, block_id=str(self.id)
+            )
             subclip = clip.subclipped(start_time, end_time)
             video_codec, audio_codec = get_video_codecs(output_abspath)
             subclip.write_videofile(

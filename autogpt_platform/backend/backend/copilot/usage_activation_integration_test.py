@@ -26,6 +26,7 @@ from backend.data.redis_client import get_redis_async
 from backend.data.subscription_trial import get_subscription_trial
 
 enrollment = fixtures.enrollment
+usage_now = fixtures.usage_now
 pytestmark = fixtures.pytestmark
 
 
@@ -51,13 +52,16 @@ async def publish(user_id: str, generation: str) -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("trial_spent", [40, 100])
 async def test_delayed_trial_children_and_retries_preserve_fresh_paid_usage(
-    enrollment, trial_spent
+    enrollment, usage_now, trial_spent
 ):
     now = datetime.now(UTC)
     user_id = enrollment.user_id
     generation = str(uuid4())
     redis = await get_redis_async()
-    keys = [*usage_keys(user_id, None, now), *usage_keys(user_id, generation, now)]
+    keys = [
+        *usage_keys(user_id, None, usage_now),
+        *usage_keys(user_id, generation, usage_now),
+    ]
     release = asyncio.Event()
     await User.prisma().update(
         where={"id": user_id}, data={"subscriptionTier": "TRIAL"}
@@ -109,12 +113,14 @@ async def test_delayed_trial_children_and_retries_preserve_fresh_paid_usage(
 
 
 @pytest.mark.asyncio
-async def test_unpaid_work_keeps_legacy_namespace_after_initial_signup(enrollment):
+async def test_unpaid_work_keeps_legacy_namespace_after_initial_signup(
+    enrollment, usage_now
+):
     user_id, generation = enrollment.user_id, str(uuid4())
     redis = await get_redis_async()
     keys = [
-        *usage_keys(user_id, None, datetime.now(UTC)),
-        *usage_keys(user_id, generation, datetime.now(UTC)),
+        *usage_keys(user_id, None, usage_now),
+        *usage_keys(user_id, generation, usage_now),
     ]
     try:
         old = await capture_cost_context(user_id)

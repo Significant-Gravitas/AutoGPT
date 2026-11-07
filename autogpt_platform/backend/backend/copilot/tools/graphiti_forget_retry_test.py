@@ -20,10 +20,6 @@ from backend.copilot.tools.models import MemoryForgetConfirmResponse
 _MODULE = "backend.copilot.tools.graphiti_forget"
 
 
-async def _enabled(_user_id: str) -> bool:
-    return True
-
-
 class TestForgetConfirmWhenMemoryIsBusy:
     """A forget that found memory busy wrote nothing: the tool waits five
     seconds and tries once more, then reports it."""
@@ -35,7 +31,6 @@ class TestForgetConfirmWhenMemoryIsBusy:
         sleep = AsyncMock()
         session = ChatSession.new("user-abc", dry_run=False)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(f"{_MODULE}.retract", retract),
             patch(f"{_MODULE}.asyncio.sleep", sleep),
         ):
@@ -54,7 +49,6 @@ class TestForgetConfirmWhenMemoryIsBusy:
         retract = AsyncMock(return_value=busy)
         session = ChatSession.new("user-abc", dry_run=False)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(f"{_MODULE}.retract", retract),
             patch(f"{_MODULE}.asyncio.sleep", AsyncMock()),
         ):
@@ -74,7 +68,6 @@ class TestForgetConfirmWhenMemoryIsBusy:
         sleep = AsyncMock()
         session = ChatSession.new("user-abc", dry_run=False)
         with (
-            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
             patch(f"{_MODULE}.retract", retract),
             patch(f"{_MODULE}.asyncio.sleep", sleep),
         ):

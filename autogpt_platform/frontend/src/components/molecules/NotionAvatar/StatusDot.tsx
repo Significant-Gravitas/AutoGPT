@@ -21,6 +21,7 @@ export function StatusDot({ status, size, className }: Props) {
       aria-hidden
       data-testid="status-dot"
       data-status={status}
+      data-slot="status-dot"
       className={cn("pointer-events-none shrink-0", className)}
       dangerouslySetInnerHTML={{
         __html: `<circle r="8" fill="${BADGE_FILL[status]}" stroke="#fff" stroke-width="2.5"/>${BADGE_GLYPH[status]}`,
