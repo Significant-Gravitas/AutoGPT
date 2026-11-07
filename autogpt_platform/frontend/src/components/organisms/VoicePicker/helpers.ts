@@ -32,7 +32,7 @@ export function buildVoicePreferences(
 import { cn } from "@/lib/utils";
 
 const SELECTABLE_CARD_CLASS_NAME =
-  "border border-border bg-background transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring";
+  "border border-border-base bg-canvas transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-focus";
 const CARD_DENSITY = {
   regular: "rounded-2xl p-5",
   compact: "rounded-lg p-3",
@@ -54,13 +54,13 @@ export function selectableCardClassName(
   return cn(
     SELECTABLE_CARD_CLASS_NAME,
     compact ? CARD_DENSITY.compact : CARD_DENSITY.regular,
-    colors.interactive ?? "focus-within:ring-ring",
+    colors.interactive ?? "focus-within:ring-focus",
     isSelected
-      ? (colors.selected ?? "border-accent bg-accent/5 ring-2 ring-accent/20")
+      ? (colors.selected ?? "border-brand bg-brand/5 ring-2 ring-brand/20")
       : interactive &&
           cn(
             "cursor-pointer",
-            colors.interactive ? null : "hover:border-foreground/30",
+            colors.interactive ? null : "hover:border-foreground-base/30",
           ),
   );
 }

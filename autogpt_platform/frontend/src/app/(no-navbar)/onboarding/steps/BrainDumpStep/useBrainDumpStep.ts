@@ -6,6 +6,7 @@ import { setIntroPath } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { useOnboardingWizardStore } from "../../store";
+import { forgetShownPlan } from "../SubscriptionStep/components/PlanPanel/helpers";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   BRAIN_DUMP_HEADLINE,
@@ -28,9 +29,15 @@ import { useMicrophoneRetry } from "./useMicrophoneRetry";
 import { usePromptRotation } from "./usePromptRotation";
 
 // A skip whose discard and record are still on the wire. Module scope, so the
-// remount that Back from Hire causes waits for it before sending a new take,
-// which the late skip would otherwise replace.
+// remount that Back from the plan step causes waits for it before sending a
+// new take, which the late skip would otherwise replace.
 let pendingSkip: Promise<void> = Promise.resolve();
+
+// The plan step reads the plan only once the skip has landed: before then
+// the server still holds the take the user went Back from.
+export function whenSkipSettled() {
+  return pendingSkip;
+}
 
 export type ScreenState =
   | "rest"
@@ -424,6 +431,7 @@ export function useBrainDumpStep() {
     const recordedId = recorder.recordingId;
     recorder.resetQueue();
     setIntroPath("B");
+    forgetShownPlan(useOnboardingWizardStore.getState().userID);
     await saveWizardAnswers();
     // Nothing below can change where a skip goes, so the user is not kept
     // waiting on it.
@@ -479,6 +487,7 @@ export function useBrainDumpStep() {
     await releaseTake(recordingId);
     recorder.resetQueue();
     setIntroPath(path);
+    forgetShownPlan(useOnboardingWizardStore.getState().userID);
     nextStep();
   }
 

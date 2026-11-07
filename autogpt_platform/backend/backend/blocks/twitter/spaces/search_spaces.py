@@ -41,7 +41,7 @@ class TwitterSearchSpacesBlock(Block):
 
     class Input(SpaceExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["spaces.read", "users.read", "tweet.read", "offline.access"]
+            ["space.read", "users.read", "tweet.read", "offline.access"]
         )
 
         query: str = SchemaField(

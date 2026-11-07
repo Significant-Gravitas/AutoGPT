@@ -99,9 +99,6 @@ export const publishAgentSchemaFactory = (
   return z.object(baseSchema);
 };
 
-// Default schema for backwards compatibility
-export const publishAgentSchema = publishAgentSchemaFactory(false);
-
 export type PublishAgentFormData = z.infer<
   ReturnType<typeof publishAgentSchemaFactory>
 >;

@@ -24,8 +24,7 @@ export function AttentionRowActions({
       as="NextLink"
       href={item.primary_action.href}
       variant="secondary"
-      size="small"
-      className="h-8 min-w-0 px-3"
+      size="row"
     >
       {item.primary_action.label}
     </Button>

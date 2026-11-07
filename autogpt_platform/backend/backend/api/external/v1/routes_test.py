@@ -1,3 +1,5 @@
+import asyncio
+import threading
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -22,8 +24,8 @@ client = fastapi.testclient.TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def setup_auth(test_user_id):
-    """Override require_auth to return a synthetic API-key principal with all scopes."""
+def setup_auth(test_user_id, v1_counter):
+    """Give each case an authenticated principal and a fresh quota counter."""
 
     async def fake_require_auth() -> APIAuthorizationInfo:
         return APIAuthorizationInfo(
@@ -186,6 +188,77 @@ def test_execute_block_forwards_execution_context(
     assert ctx.user_timezone == "Europe/Amsterdam"
 
 
+def test_execute_block_runs_off_the_server_loop_under_the_time_budget(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS",
+        0.5,
+    )
+    thread_names: list[str] = []
+    block = _stub_block(name="SlowBlock")
+
+    async def _never_finishes(_data, **kwargs):
+        thread_names.append(threading.current_thread().name)
+        await asyncio.Event().wait()
+        yield "result", "unreachable"
+
+    block.execute = _never_finishes
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    monkeypatch.setattr(
+        "backend.executor.utils.block_usage_cost", lambda *_a, **_k: (0, {})
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 504, f"got {response.status_code}: {response.text}"
+    assert "did not finish within 0.5 seconds" in response.json()["detail"]
+    assert len(thread_names) == 1
+    assert thread_names[0].startswith("direct-block-execution")
+
+
+def test_execute_block_over_the_run_cap_returns_429_before_charging(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER",
+        0,
+    )
+    block = _stub_block(name="CappedBlock")
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    charge = AsyncMock()
+    monkeypatch.setattr(
+        "backend.api.external.v1.routes.charge_for_direct_block_execution", charge
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 429, f"got {response.status_code}: {response.text}"
+    assert "Wait for one to finish" in response.json()["detail"]
+    charge.assert_not_awaited()
+
+
+def test_execute_block_at_the_retired_worker_cap_returns_503_before_charging(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS",
+        0,
+    )
+    block = _stub_block(name="UnavailableBlock")
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    charge = AsyncMock()
+    monkeypatch.setattr(
+        "backend.api.external.v1.routes.charge_for_direct_block_execution", charge
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 503, f"got {response.status_code}: {response.text}"
+    assert "temporarily unavailable" in response.json()["detail"]
+    charge.assert_not_awaited()
+
+
 def test_disabled_block_still_403(monkeypatch: pytest.MonkeyPatch):
     """Pre-existing behavior: disabled blocks return 403, not bypassed by new gates."""
     block = _stub_block(name="DisabledBlock", disabled=True)
@@ -199,8 +272,11 @@ def test_disabled_block_still_403(monkeypatch: pytest.MonkeyPatch):
 
 def test_registry_blocks_needing_a_workflow_are_refused(
     monkeypatch: pytest.MonkeyPatch,
+    v1_counter: AsyncMock,
 ):
-    """The registry's own blocks are refused before they are charged or run."""
+    """Check graph-only blocks before charging or running, independent of quota."""
+    v1_counter.side_effect = None
+    v1_counter.return_value = 1
     ran: list[str] = []
 
     async def _record_run(self, _data, **_kwargs):

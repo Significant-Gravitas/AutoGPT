@@ -87,12 +87,13 @@ export const TaskProgressBar = memo(function TaskProgressBar({
               <Icon
                 icon={CheckmarkBadge01Icon}
                 size={22}
-                className="flex-shrink-0 text-success"
+                tone="success"
+                className="flex-shrink-0"
               />
               <Text
+                variant="body-medium-tight"
                 tone="emphasis"
-                variant="body-medium"
-                className="min-w-0 flex-1 truncate text-sm"
+                className="min-w-0 flex-1 truncate"
               >
                 All tasks complete
               </Text>
@@ -108,9 +109,9 @@ export const TaskProgressBar = memo(function TaskProgressBar({
                   status={toDisplayStatus(current.status, isStreaming)}
                 />
                 <Text
+                  variant="body-medium-tight"
                   tone="emphasis"
-                  variant="body-medium"
-                  className="min-w-0 flex-1 truncate text-sm"
+                  className="min-w-0 flex-1 truncate"
                 >
                   {toDisplayStatus(current.status, isStreaming) === "stopped"
                     ? current.content
@@ -123,12 +124,13 @@ export const TaskProgressBar = memo(function TaskProgressBar({
               <Icon
                 icon={CheckListIcon}
                 size={16}
-                className="flex-shrink-0 text-foreground-tertiary"
+                tone="muted"
+                className="flex-shrink-0"
               />
               <Text
+                variant="body-medium-tight"
                 tone="emphasis"
-                variant="body-medium"
-                className="min-w-0 flex-1 text-sm"
+                className="min-w-0 flex-1"
               >
                 Task Progress
               </Text>
@@ -140,7 +142,8 @@ export const TaskProgressBar = memo(function TaskProgressBar({
           variant="body-tight"
           as="span"
           tone="primary"
-          className="flex-shrink-0 tabular-nums"
+          tabular
+          className="flex-shrink-0"
         >
           {allDone ? todos.length : currentIndex + 1}/{todos.length}
         </Text>
