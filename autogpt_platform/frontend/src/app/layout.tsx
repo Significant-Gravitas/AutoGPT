@@ -11,6 +11,7 @@ import { SetupAnalytics } from "@/services/analytics";
 import { buildConsentDefaultsScript } from "@/services/analytics/consent-mode";
 import { VercelSpeedInsights } from "@/services/analytics/VercelSpeedInsights";
 import { ConsentWithdrawalReload } from "@/services/consent/ConsentWithdrawalReload";
+import { TrackerCookieCleanup } from "@/services/consent/TrackerCookieCleanup";
 import {
   COOKIEBOT_SCRIPT_ID,
   COOKIEBOT_SCRIPT_URL,
@@ -140,6 +141,7 @@ export default async function RootLayout({
               )}
             </div>
             <Toaster />
+            <TrackerCookieCleanup />
             <ConsentWithdrawalReload />
           </Providers>
         </ErrorBoundary>

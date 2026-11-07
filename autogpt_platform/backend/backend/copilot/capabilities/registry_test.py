@@ -1,10 +1,12 @@
 """The assembled platform registry over the real tool, block and catalog sources."""
 
 import json
+from unittest.mock import patch
 
 import pytest
 
 from backend.blocks import get_blocks
+from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.tools import TOOL_GROUPS, TOOL_REGISTRY
 from backend.integrations.mcp_catalog import get_mcp_catalog
 
@@ -27,7 +29,8 @@ EXPLICIT_PRIMITIVES = {
 
 @pytest.fixture(scope="module")
 def entries():
-    return build_entries(TOOL_REGISTRY, TOOL_GROUPS)
+    with patch("backend.copilot.tools.bash_exec.has_full_sandbox", return_value=True):
+        return build_entries(TOOL_REGISTRY, TOOL_GROUPS)
 
 
 @pytest.fixture(scope="module")
@@ -58,6 +61,19 @@ def test_bash_exec_and_execute_code_block_are_one_capability(index):
     # for the block ("sandbox") still lands on the one capability.
     assert "sandbox" in entry.description
     assert index.search("code sandbox").names[0] == "bash_exec"
+
+
+def test_unavailable_bash_keeps_execute_code_block(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(chat_config, "use_e2b_sandbox", False)
+    monkeypatch.setattr(chat_config, "e2b_api_key", None)
+    with patch("backend.copilot.tools.bash_exec.has_full_sandbox", return_value=False):
+        index = CapabilityIndex(build_entries(TOOL_REGISTRY, TOOL_GROUPS))
+
+    assert index.get("tool:bash_exec") is None
+    [entry] = [e for e in index.entries if e.name == "ExecuteCodeBlock"]
+    assert entry.kind == "block" and entry.context == "both"
+    assert {impl.kind for impl in entry.implementations} == {"block"}
+    assert "ExecuteCodeBlock" in index.search("ExecuteCodeBlock", context="graph").names
 
 
 def test_block_capability_kind_drives_class(index):

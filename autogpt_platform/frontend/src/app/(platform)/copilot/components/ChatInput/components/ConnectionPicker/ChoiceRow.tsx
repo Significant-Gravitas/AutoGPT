@@ -6,6 +6,7 @@ import { LockIcon, Tick02Icon } from "@hugeicons/core-free-icons";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   /** The mark that identifies the row at a glance — a provider logo, a glyph. */
@@ -63,7 +64,7 @@ export function ChoiceRow({
     <div
       className={cn(
         "flex w-full items-center gap-3 px-3 py-2.5 transition-colors",
-        "hover:bg-background has-[button:focus-visible]:bg-background",
+        "hover:bg-canvas has-[button:focus-visible]:bg-canvas",
       )}
     >
       <button
@@ -83,20 +84,17 @@ export function ChoiceRow({
         )}
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-center gap-1.5">
-            <span className="text-sm font-medium text-foreground-strong">
+            <Text variant="body-medium-tight" as="span" tone="primary">
               {title}
-            </span>
+            </Text>
             {badge && (
-              <span
-                // TODO(tokens): no exact role for bg-green-500/10
-                className="rounded-full bg-green-500/10 px-1.5 py-px text-tiny font-medium leading-inherit text-success-foreground"
-              >
+              <span className="rounded-full bg-success/10 px-1.5 py-px text-tiny leading-inherit font-medium text-success-foreground">
                 {badge}
               </span>
             )}
           </span>
           {subtitle && (
-            <span className="break-words text-sm leading-snug text-foreground-tertiary">
+            <span className="text-body leading-snug break-words text-foreground-tertiary">
               {subtitle}
             </span>
           )}
@@ -115,8 +113,9 @@ export function ChoiceRow({
         icon={Tick02Icon}
         size={16}
         aria-hidden
+        motion="opacity"
         className={cn(
-          "flex-none text-primary transition-opacity",
+          "flex-none text-action",
           isSelected ? "opacity-100" : "opacity-0",
         )}
       />
@@ -143,14 +142,15 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
         icon={LockIcon}
         size={14}
         aria-hidden
-        className="mt-[3px] flex-none text-foreground-subtle"
+        tone="subtle"
+        className="mt-[3px] flex-none"
       />
       <span className="flex min-w-0 flex-col">
-        <span className="text-sm font-medium text-foreground-tertiary">
+        <Text variant="body-medium-tight" as="span" tone="muted">
           {title}
-        </span>
+        </Text>
         {subtitle && (
-          <span className="break-words text-sm leading-snug text-foreground-subtle">
+          <span className="text-body leading-snug break-words text-foreground-subtle">
             {subtitle}
           </span>
         )}
@@ -168,7 +168,7 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
         {lock.href && (
           <Link
             href={lock.href}
-            className="mt-1 w-fit text-caption-sm font-medium leading-inherit text-foreground-strong underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+            className="mt-1 w-fit text-caption-sm leading-inherit font-medium text-foreground-strong underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
           >
             See plans
           </Link>

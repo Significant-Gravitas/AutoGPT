@@ -9,6 +9,7 @@ import {
   ContentGrid,
   ContentMessage,
 } from "../../../../components/ToolAccordion/AccordionContent";
+import { deriveFieldTitle } from "./helpers";
 
 interface Props {
   output: BlockDetailsResponse;
@@ -30,12 +31,14 @@ function SchemaFieldList({
 
   return (
     <ContentCard>
-      <ContentCardTitle className="text-xs">{title}</ContentCardTitle>
+      <ContentCardTitle size="small">{title}</ContentCardTitle>
       <div className="mt-2 grid gap-2">
         {entries.map(([name, schema]) => {
           const field = schema as Record<string, unknown> | undefined;
           const fieldTitle =
-            typeof field?.title === "string" ? field.title : name;
+            typeof field?.title === "string"
+              ? field.title
+              : deriveFieldTitle(name);
           const fieldType =
             typeof field?.type === "string" ? field.type : "unknown";
           const description =
@@ -46,9 +49,7 @@ function SchemaFieldList({
           return (
             <div key={name} className="rounded-xl border p-2">
               <div className="flex items-center justify-between gap-2">
-                <ContentCardTitle className="text-xs">
-                  {fieldTitle}
-                </ContentCardTitle>
+                <ContentCardTitle size="small">{fieldTitle}</ContentCardTitle>
                 <div className="flex gap-1">
                   <ContentBadge>{fieldType}</ContentBadge>
                   {requiredSet.has(name) && (
@@ -57,7 +58,7 @@ function SchemaFieldList({
                 </div>
               </div>
               {description && (
-                <ContentCardDescription className="mt-1 text-xs">
+                <ContentCardDescription size="small" className="mt-1">
                   {description}
                 </ContentCardDescription>
               )}

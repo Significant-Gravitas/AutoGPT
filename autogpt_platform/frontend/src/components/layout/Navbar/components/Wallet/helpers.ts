@@ -1,3 +1,5 @@
+import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
+import { formatTrialEndDate } from "@/components/organisms/TrialCard/helpers";
 import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
 
 export interface Task {
@@ -32,10 +34,10 @@ export function getTaskGroups(state: UserOnboarding | null): TaskGroup[] {
         },
         {
           id: "MARKETPLACE_ADD_AGENT",
-          name: "Get a workflow from the marketplace",
+          name: "Hire an expert or get a workflow from the marketplace",
           amount: 1,
           details:
-            "Search for a workflow in the Marketplace and add it to your Library",
+            "Hire an expert in the Marketplace, or add one of its workflows to your Library",
           video: "/onboarding/marketplace-add.mp4",
         },
         {
@@ -163,4 +165,17 @@ export function getEarnGroups(
       rows,
     };
   });
+}
+
+// One line during an active trial; the explainer dialog covers what the card
+// pays for. A canceled trial has no plan to start, so it names the end instead.
+export function getTrialPlanLine(trial: TrialStatusResponse | undefined) {
+  if (!trial?.active) return null;
+  const date = trial.ends_at ? formatTrialEndDate(trial.ends_at) : null;
+  if (trial.cancel_at_period_end) {
+    return date ? `Your trial ends ${date}` : null;
+  }
+  return date
+    ? `Your plan starts ${date}`
+    : "Your plan starts when your trial ends";
 }

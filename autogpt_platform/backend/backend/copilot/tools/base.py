@@ -9,7 +9,7 @@ from openai.types.chat import ChatCompletionToolParam
 from prisma.enums import APIKeyPermission
 
 from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
-from backend.copilot.context import get_current_envelope
+from backend.copilot.context import args_already_bound, get_current_envelope
 from backend.copilot.google_data_redaction import (
     GOOGLE_DATA_METADATA_KEY,
     is_google_call,
@@ -19,6 +19,7 @@ from backend.copilot.google_data_redaction import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.tool_call_context import tool_call_context
 from backend.copilot.tool_image import HeldImage, parse_held_image
 from backend.copilot.trial_reads import trial_reads_fresh
 from backend.copilot.turn_tracing import tool_transaction
@@ -51,17 +52,21 @@ _AWAITING_THE_USER = frozenset(
     {ResponseType.APPROVAL_REQUIRED.value, ResponseType.NEED_LOGIN.value}
 )
 
-# Persist full tool output to workspace when it exceeds this threshold.
-# Must be below _MAX_TOOL_OUTPUT_SIZE (100K) in response_model.py so we
-# capture the data before model_post_init middle-out truncation discards it.
-_LARGE_OUTPUT_THRESHOLD = 80_000
+# The Claude CLI saves any tool result longer than 50,000 characters (it
+# counts characters, not tokens) to a ``tool-results/`` folder on the executor
+# host and shows the model a 2 KB preview.  bash_exec runs in the sandbox and
+# can't open that folder, so anything that long has to reach the workspace
+# first, where ``read_workspace_file(save_to_path=...)`` can copy it over.
+_CLI_SPILL_CHARS = 50_000
 
-# Character budget for the middle-out preview.  The total preview + wrapper
-# must stay below BOTH:
-#   - _MAX_TOOL_OUTPUT_SIZE (100K) in response_model.py (our own truncation)
-#   - Claude SDK's ~100 KB tool-result spill-to-disk threshold
-# to avoid double truncation/spilling.  95K + ~300 wrapper = ~95.3K, under both.
-_PREVIEW_CHARS = 95_000
+# Persist full tool output to workspace when it exceeds this threshold.
+# Must be below _CLI_SPILL_CHARS (see above) and _MAX_TOOL_OUTPUT_SIZE (100K)
+# in response_model.py, so we keep the data before either discards it.
+_LARGE_OUTPUT_THRESHOLD = 45_000
+
+# Character budget for the middle-out preview.  Preview + wrapper (under 1K)
+# must stay below _CLI_SPILL_CHARS, or the CLI spills the preview itself.
+_PREVIEW_CHARS = 40_000
 
 # Threshold and budget for the digest, which fires when the tool opts in.  The
 # budget is derived from the trigger so a digest can never be larger than the
@@ -162,10 +167,14 @@ async def _persist_and_summarize(
         # everything back, which is how a digest ends up costing more.
         retrieval = (
             f"\nThe preview above is a structural outline of the {total:,}-char "
-            f"output, not a literal prefix of it. Each `@offset+length` is that "
-            f"node's exact window in the file: "
+            f"output, not a literal prefix of it. Each `@offset+length` is a "
+            f"window in the file: "
             f'read_workspace_file(path="{file_path}", offset=<offset>, '
-            f"length=<length>) returns it and nothing else."
+            f"length=<length>) starts that window. Reads may return less than "
+            f"requested; continue from the returned end offset with the "
+            f"remaining length until the node's window is complete. On a node "
+            f"too large to quote whole the window is its first chunk — "
+            f"continue from offset+length."
             f"\n{sandbox}"
         )
     else:
@@ -174,7 +183,8 @@ async def _persist_and_summarize(
             f"\nFull output ({total:,} chars) saved to workspace. "
             f"Use read_workspace_file("
             f'path="{file_path}", offset=<char_offset>, length=50000) '
-            f"to read any section. "
+            f"to read any section. If a read returns less than requested, "
+            f"continue from the returned end offset with the remaining length. "
             f"{sandbox}"
         )
     return (
@@ -265,6 +275,7 @@ def _render_outline(
     used = 0
     # read_workspace_file base64-encodes its slice, so a window past three
     # quarters of the file costs more to read back than the whole output did.
+    # A node over that gets its first chunk rather than no window at all.
     widest = offsets.get("$", (0, 0))[1] * 3 // 4
     queue: deque[tuple[str, Any]] = deque([("$", root)])
     while queue:
@@ -277,7 +288,7 @@ def _render_outline(
                 braces = "{}" if isinstance(value, dict) else "[]"
                 unit = "keys" if isinstance(value, dict) else "items"
                 start, length = offsets.get(child, (0, 0))
-                window = f" @{start}+{length}" if length < widest else ""
+                window = f" @{start}+{min(length, widest)}" if widest else ""
                 parts.append(
                     f"{key}={braces[0]}…{len(value)} {unit}{window}{braces[1]}"
                 )
@@ -341,6 +352,10 @@ GATE_APPROVED = "_gate_approved"
 # Passed beside it when an active gate reached any verdict on the call: a card,
 # a rule, the mode or the supervisor. Stripped the same way.
 GATE_DECIDED = "_gate_decided"
+# Passed when ``bind_args`` already resolved the call's arguments, so the tool
+# runs them as reviewed rather than resolving them a second time. Stripped the
+# same way.
+ARGS_BOUND = "_args_bound"
 
 
 def parameters_without(parameters: dict[str, Any], *names: str) -> dict[str, Any]:
@@ -377,6 +392,11 @@ class BaseTool:
     # True where ``gate_subject`` is implemented; ``_execute`` then accepts
     # GATE_APPROVED.
     has_gate_subject: bool = False
+    # True where a call can create, change or delete a file another call in
+    # the same message may read (the sandbox or the workspace).  Both engines
+    # run such a call on its own, in the order the model wrote it, so a copy
+    # made beside the command building the file never stores half of it.
+    writes_files: bool = False
 
     @property
     def name(self) -> str:
@@ -489,6 +509,14 @@ class BaseTool:
         """
         return None
 
+    async def bind_args(
+        self, user_id: str | None, session: ChatSession, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """The call's arguments as they will run. A tool that resolves part of
+        its input at run time (a file reference) resolves it here, once, so the
+        approval binds what runs and a changed file asks again."""
+        return args
+
     async def gate_context(self, args: dict[str, Any]) -> dict[str, str | None] | None:
         """The content of files this call runs, by path, for the supervisor; None
         for one that could not be read, which holds the call."""
@@ -530,6 +558,7 @@ class BaseTool:
         """
         with (
             tool_transaction(self.name, tool_call_id, session.session_id) as span,
+            tool_call_context(tool_call_id),
             trial_reads_fresh(),
             tool_span(
                 self.name,
@@ -555,6 +584,7 @@ class BaseTool:
     ) -> StreamToolOutputAvailable:
         kwargs.pop(GATE_APPROVED, None)
         kwargs.pop(GATE_DECIDED, None)
+        kwargs.pop(ARGS_BOUND, None)
         if self.requires_auth and not user_id:
             logger.warning(
                 "Attempted tool call for %s but user not authenticated",
@@ -620,11 +650,23 @@ class BaseTool:
         # The gate's model calls quote the call's arguments and result in
         # prompts of their own, so for a Google call their traces are redacted.
         google_call = is_google_call(kwargs)
+        # What the call will run, resolved once: the gate reviews, the card
+        # shows and the approval binds these values, and the tool runs them.
+        # An approved held call replays the arguments it was resolved to.
+        replayed = self.has_gate_subject and args_already_bound()
+        bound = (
+            await self.bind_args(user_id, session, kwargs)
+            if self.has_gate_subject and not replayed
+            else kwargs
+        )
+        args_bound = replayed or bound is not kwargs
         with tracing_google_data(google_call):
-            gated, decision = await self._gate(user_id, session, tool_call_id, kwargs)
+            gated, decision = await self._gate(
+                user_id, session, tool_call_id, bound, args_bound
+            )
         if gated is not None:
             return gated
-        run_kwargs = kwargs
+        run_kwargs = {**bound, ARGS_BOUND: True} if args_bound else kwargs
         if decision is not None and self.has_gate_subject:
             if decision.approved:
                 run_kwargs = {**run_kwargs, GATE_APPROVED: True}
@@ -671,6 +713,11 @@ class BaseTool:
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=raw_output,
+                # An MCP client reads a refusal from the call's status; chat's
+                # engines hand it to the model as the tool's result.
+                success=not (
+                    session.external_caller and result.type == ResponseType.ERROR
+                ),
             ).with_image(result.image)
             # Remembered as the model gets it, previews and caps included, so
             # the traces can redact it even where it no longer parses.
@@ -703,6 +750,7 @@ class BaseTool:
         session: ChatSession,
         tool_call_id: str,
         kwargs: dict[str, Any],
+        args_bound: bool = False,
     ) -> tuple[StreamToolOutputAvailable | None, "Decision | None"]:
         """A refusal to return instead of running (or None to proceed), and
         the gate's decision on a call that proceeds.
@@ -724,6 +772,7 @@ class BaseTool:
                 tool_call_id,
                 subject_of=subject_of if self.has_gate_subject else None,
                 context_of=lambda: self.gate_context(kwargs),
+                args_bound=args_bound,
             )
         except Exception:
             logger.warning(f"Action gate failed for {self.name}", exc_info=True)

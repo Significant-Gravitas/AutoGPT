@@ -58,13 +58,18 @@ The jobs have separate permissions and no shared report artifacts:
 
 1. The read-only job checks out trusted `master` code and passes only a
    snapshot digest and source commit to the writers. Its job summary previews
-   the exact generated security sections and their public target releases.
-   The preview contains no existing release text or raw advisory content.
+   the exact generated security sections and their public target releases, and
+   names any published advisory that no published release lists. That happens when
+   its description doesn't link the release that fixed it, its patched version
+   doesn't match that release, or the release isn't published yet. The credits PR
+   names them too. The preview contains no existing release text or raw advisory
+   content.
 2. The credits job uses that exact code commit, re-fetches anonymous public
    records, and requires the digest to agree. It treats `dev` as data, generates
    the two allowed files, and opens or updates one PR against `dev`. The existing
    bot PR branch is never executed. Both public Git checkouts run without
-   credentials; only the PR action is supplied the write token.
+   credentials. After the files are generated, the job mints a batch-bot App token
+   scoped to contents and pull requests, and only the PR action receives it.
 3. The release job independently re-fetches and compares public records, then
    rechecks the projection after reading release metadata. It reads each target
    release anonymously immediately before updating its managed section. Drafts
@@ -87,13 +92,19 @@ credits PR does not enable or approve release updates. A PR creation failure doe
 not block an independently enabled release writer.
 
 The release writer uses only the repository's short-lived `GITHUB_TOKEN` with
-`contents: write`. The credits writer additionally needs `pull-requests: write`.
-No personal access token or advisory-write credential is used. The authenticated
-transport can only PATCH the body and Latest flag of an existing release; there is no operation
-that creates or publishes an advisory or release. GitHub does not start release
-workflows for release edits made with this token. Do not replace it with a PAT:
-older release tags may retain workflows that build images on `release.edited`.
-The current Classic workflow also limits itself to published Classic tags.
+`contents: write`. Its authenticated transport can only PATCH the body and Latest
+flag of an existing release; there is no operation that creates or publishes an
+advisory or release. GitHub does not start release workflows for release edits
+made with this token. Do not replace it with a PAT or App token: older release
+tags may retain workflows that build images on `release.edited`. The current
+Classic workflow also limits itself to published Classic tags.
+
+The credits writer is the opposite case. A PR opened with `GITHUB_TOKEN` gets its
+CI runs parked until a maintainer approves them, so the credits PR is opened with
+the batch-bot App's token instead (`BATCH_BOT_APP_ID`, `BATCH_BOT_PRIVATE_KEY`,
+as the GitBook sync uses), and its CI runs like any other PR's. The job's own
+`GITHUB_TOKEN` has no permissions. No personal access token or advisory-write
+credential is used.
 
 Public release sections contain advisory links, CVEs and accepted credits, not
 arbitrary report text or titles. When a mapping or published advisory is removed,
@@ -112,9 +123,10 @@ history remain public history; withdrawal cannot erase previously published data
    from the preview and preserved when writing. Local dry runs use the command below.
 3. Set only `PUBLIC_SECURITY_CREDITS_ENABLED=true`, then dispatch with
    `dry_run: false`. This enables the credits PR writer without editing releases.
-4. Review the generated credits PR. GitHub may require a maintainer to approve
-   CI workflows for a PR created with `GITHUB_TOKEN`; this automation does not
-   approve or merge its own PRs. The repository must allow Actions to create PRs.
+4. Review the generated credits PR. The batch-bot App opens it, so its CI runs on
+   its own; it still needs an approving review, and this automation never
+   approves or merges its own PRs. Its body names any published advisory that no
+   published release lists.
 5. After reviewing the public release preview, set
    `PUBLIC_SECURITY_RELEASE_NOTES_ENABLED=true` and dispatch with `dry_run: false`.
    Verify the first applied release sections, preservation of unrelated notes,

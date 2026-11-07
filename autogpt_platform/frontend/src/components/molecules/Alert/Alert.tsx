@@ -1,6 +1,11 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { InfoIcon, AlertTriangleIcon, XCircleIcon } from "lucide-react";
+import {
+  Alert02Icon,
+  CancelCircleIcon,
+  InformationCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { createIconComponent } from "@/components/atoms/Icon/Icon";
 
 import { cn } from "@/lib/utils";
 
@@ -10,14 +15,10 @@ const alertVariants = cva(
     variants: {
       variant: {
         default: "bg-surface text-foreground-emphasis [&>svg]:text-brand",
-        // TODO(tokens): no role for orange-50 at 0x80 (#FFF3E680), yellow-300
-        // (#F8D554) or orange-600 (#E77B00).
         warning:
-          "bg-[#FFF3E680] border-yellow-300 text-foreground-emphasis [&>svg]:text-orange-600",
-        // TODO(tokens): no role for red-100 at 0x80 (#FDECEC80) or red-300
-        // (#F69999).
+          "bg-warning-surface border-warning-border text-foreground-emphasis [&>svg]:text-warning-foreground",
         error:
-          "bg-[#FDECEC80] border-red-300 text-foreground-emphasis [&>svg]:text-error",
+          "bg-error-surface border-error/40 text-foreground-emphasis [&>svg]:text-error",
       },
     },
     defaultVariants: {
@@ -27,9 +28,9 @@ const alertVariants = cva(
 );
 
 const variantIcons = {
-  default: InfoIcon,
-  warning: AlertTriangleIcon,
-  error: XCircleIcon,
+  default: createIconComponent(InformationCircleIcon),
+  warning: createIconComponent(Alert02Icon),
+  error: createIconComponent(CancelCircleIcon),
 } as const;
 
 interface AlertProps
@@ -54,6 +55,7 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
         {...props}
       >
         <IconComponent
+          aria-hidden
           data-slot="alert-icon"
           className="h-[1.125rem] w-[1.125rem]"
         />
@@ -72,7 +74,7 @@ const AlertTitle = React.forwardRef<
   <h5
     ref={ref}
     data-slot="alert-title"
-    className={cn("mb-1 font-medium leading-none tracking-tight", className)}
+    className={cn("mb-1 leading-none font-medium tracking-tight", className)}
     {...props}
   />
 ));

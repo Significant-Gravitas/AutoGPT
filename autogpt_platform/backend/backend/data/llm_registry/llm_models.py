@@ -146,6 +146,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GPT6_ASTRA = "gpt-6-astra"
     GPT6_SOL = "gpt-6-sol"
     GPT6_1_SOL = "gpt-6.1-sol"
+    GPT6_1_TERRA = "gpt-6.1-terra"
     GPT6_LUNA = "gpt-6-luna"
     # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
@@ -207,6 +208,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
+    GEMINI_3_1_FLASH_LITE = "google/gemini-3.1-flash-lite"
+    GEMINI_3_5_FLASH = "google/gemini-3.5-flash"
+    GEMINI_3_5_FLASH_LITE = "google/gemini-3.5-flash-lite"
     GEMINI_3_8_FLASH = "google/gemini-3.8-flash"
     GEMINI_4_ARGON = "google/gemini-4-argon"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
@@ -282,6 +286,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     INCEPTION_MERCURY_2_5 = "inception/mercury-2.5"
     # Tencent models
     TENCENT_HY4_PREVIEW = "tencent/hy4-preview"
+    TENCENT_HY4 = "tencent/hy4"
     # Unbiased models
     UNBIASED_PARETO = "unbiased/pareto"
     # Llama API models
@@ -462,12 +467,22 @@ DEFAULT_LLM_MODEL = _default_model_from_catalog()
 # definitions and by the boot-time safety net (`migrate_llm_models` in
 # backend/data/graph.py) so a Claude Opus user lands on a newer Opus instead of
 # the global GPT default. Keep this in sync with
-# migrations/20260512120000_retire_deprecated_llm_models/migration.sql.
+# migrations/20260512120000_retire_deprecated_llm_models/migration.sql and
+# migrations/20261025120000_retire_undated_claude_aliases/migration.sql.
+# Never resolve these in ``LLMModel._missing_``: the copilot's registry gate
+# accepts what the enum accepts and sends the slug unchanged.
 LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     "claude-3-haiku-20240307": LLMModel.CLAUDE_4_5_HAIKU,
     "claude-opus-4-20250514": LLMModel.CLAUDE_4_7_OPUS,
     "claude-sonnet-4-20250514": LLMModel.CLAUDE_4_6_SONNET,
     "claude-opus-4-1-20250805": LLMModel.CLAUDE_4_7_OPUS,
+    # Anthropic's undated aliases and OpenRouter's slugs for the same models.
+    "claude-opus-4-1": LLMModel.CLAUDE_4_7_OPUS,
+    "anthropic/claude-opus-4.1": LLMModel.CLAUDE_4_7_OPUS,
+    "claude-opus-4-0": LLMModel.CLAUDE_4_7_OPUS,
+    "anthropic/claude-opus-4": LLMModel.CLAUDE_4_7_OPUS,
+    "claude-sonnet-4-0": LLMModel.CLAUDE_4_6_SONNET,
+    "anthropic/claude-sonnet-4": LLMModel.CLAUDE_4_6_SONNET,
     "gpt-4-turbo": LLMModel.GPT41,
     "o1": LLMModel.O3,
     "o1-mini": LLMModel.O3_MINI,

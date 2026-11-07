@@ -13,26 +13,40 @@ import asyncio
 import logging
 import os
 
-from langfuse import get_client
+from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletion
 
-from backend.api.features.onboarding_dump.models import SuggestedPrompt
+from backend.api.features.onboarding_dump.greeting_race import Attempt, IntroReply, race
+from backend.api.features.onboarding_dump.models import MAX_WHY_CHARS, SuggestedPrompt
 from backend.api.features.onboarding_dump.parsing import parse_response_json
 from backend.api.features.onboarding_dump.providers import (
     known_providers,
     provider_lines,
 )
+from backend.api.features.onboarding_dump.structured import NO_REASONING
 from backend.util.clients import get_openai_client
-from backend.util.settings import Settings
+from backend.util.langfuse_prompts import (
+    get_langfuse_prompt_client,
+    langfuse_prompts_configured,
+)
 
 logger = logging.getLogger(__name__)
 
-settings = Settings()
-
-_MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5-5")
+# OpenRouter's own spelling: the one its responses carry.
+_MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5.5")
 _TIMEOUT_SECONDS = 45
-# The model thinks adaptively and the thinking counts against this: at 3,000
-# one call in five came back cut off mid-JSON.
-_MAX_TOKENS = 6_000
+# The fast answer behind Sonnet (``greeting_race``): the model the team job
+# calls the same way. It starts when Sonnet fails, or once Sonnet has run
+# _HEDGE_SECONDS, so the tasks land inside the plan step's wait.
+_BACKUP_MODEL = os.environ.get(
+    "BRAIN_DUMP_GREETING_BACKUP_MODEL", "anthropic/claude-haiku-5.5"
+)
+_BACKUP_TIMEOUT_SECONDS = 25
+_HEDGE_SECONDS = 12
+# Reasoning is off (``structured.NO_REASONING``): the plan step waits on this
+# call, and adaptive thinking came before every token of the answer. The
+# answer alone, a greeting and six prompts at their longest, fits in this.
+_MAX_TOKENS = 4_000
 
 # The Langfuse copy of these instructions wins whenever it is reachable,
 # so it must be versioned in lockstep with ``_LOCAL_PROMPT`` — a voice
@@ -134,6 +148,10 @@ details from the title so work can start immediately.
 chart-bar, envelope, magnifying-glass, calendar-check, bell, \
 rocket-launch, file-text, globe, code, newspaper, users, shopping-cart, \
 chats, lightning, target, robot, clock, megaphone, currency-dollar.
+  - "why" (optional): one short clause, at most {MAX_WHY_CHARS} characters, \
+second person, naming the thing they said this task fixes ("Because \
+listings eat your evenings."). Leave the key out when nothing they said \
+ties to the task.
 
 Example of the required jump in specificity (do NOT copy these, derive \
 your own from the transcript):
@@ -180,48 +198,79 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
 
     instructions = await _fetch_langfuse_prompt() or _LOCAL_PROMPT
     content = f"{_integrations_block()}{instructions}{text}"
-    data = None
-    # Two attempts: at temperature 0.6 an occasional generation comes back
-    # truncated or malformed, and one retry is far cheaper than shipping
-    # the generic fallback to a brand-new user.
-    for attempt in range(2):
-        try:
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=_MODEL,
-                    messages=[
-                        {"role": "system", "content": COVERAGE_CONTRACT},
-                        {"role": "user", "content": content},
-                    ],
-                    temperature=0.6,
-                    max_tokens=_MAX_TOKENS,
-                ),
-                timeout=_TIMEOUT_SECONDS,
-            )
-            data = parse_response_json(response.choices[0].message.content or "")
-        except Exception as e:  # degrades to the template below
-            logger.warning(
-                "Brain dump greeting generation failed (attempt %s): %s",
-                attempt + 1,
-                e,
-            )
-            continue
-        if data is not None:
-            break
-        logger.warning("Brain dump greeting: non-JSON output (attempt %s)", attempt + 1)
-    if data is None:
+    reply = await race(
+        Attempt(model=_MODEL, timeout=_TIMEOUT_SECONDS),
+        Attempt(model=_BACKUP_MODEL, timeout=_BACKUP_TIMEOUT_SECONDS),
+        lambda model, timeout: _generate(client, content, model, timeout),
+        hedge_after=_HEDGE_SECONDS,
+    )
+    if reply.greeting is None:
         return fallback_intro(text)
-
-    greeting = data.get("greeting")
-    if not isinstance(greeting, str) or not greeting.strip():
-        return fallback_intro(text)
-
-    prompts = _parse_prompts(data.get("prompts"))
-    if len(prompts) < MIN_PROMPTS:
+    if not reply.prompts:
         # A greeting with two suggestions under it looks broken; the
         # generic set is better than a half-empty one.
-        return _clip_greeting(greeting), fallback_prompts()
-    return _clip_greeting(greeting), prompts[:MAX_PROMPTS]
+        return reply.greeting, fallback_prompts()
+    return reply.greeting, reply.prompts
+
+
+async def _generate(
+    client: AsyncOpenAI, content: str, model: str, timeout: float
+) -> IntroReply:
+    """One model's greeting for ``content``. Never raises: a failed call or
+    an unusable answer, however malformed, is logged with the model and
+    comes back empty, so the other model still gets its turn."""
+    try:
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": COVERAGE_CONTRACT},
+                    {"role": "user", "content": content},
+                ],
+                temperature=0.6,
+                max_tokens=_MAX_TOKENS,
+                extra_body=NO_REASONING,
+            ),
+            timeout=timeout,
+        )
+        return _read_reply(response, model)
+    except Exception as e:  # the other model, or the template, answers instead
+        # The type too: a timeout's message is empty.
+        logger.warning(
+            "Brain dump greeting from %s failed: %s: %s", model, type(e).__name__, e
+        )
+        return IntroReply()
+
+
+def _read_reply(response: ChatCompletion, model: str) -> IntroReply:
+    """The greeting and tasks in ``response``, or why there are none."""
+    choice = response.choices[0] if response.choices else None
+    message = choice.message if choice else None
+    answer = (message.content if message else None) or ""
+    data = parse_response_json(answer)
+    if data is None:
+        # Why it stopped and any error the gateway sent, never the content:
+        # a reply cut off at the token cap reads "length".
+        logger.warning(
+            "Brain dump greeting from %s: no JSON (finish_reason=%s, %s chars, "
+            "error=%s)",
+            model,
+            choice.finish_reason if choice else None,
+            len(answer),
+            (response.model_extra or {}).get("error"),
+        )
+        return IntroReply()
+    greeting = data.get("greeting")
+    if not isinstance(greeting, str) or not greeting.strip():
+        logger.warning("Brain dump greeting from %s: no greeting", model)
+        return IntroReply()
+    prompts = _parse_prompts(data.get("prompts"))
+    if len(prompts) < MIN_PROMPTS:
+        logger.warning(
+            "Brain dump greeting from %s: %s usable prompts", model, len(prompts)
+        )
+        return IntroReply(greeting=_clip_greeting(greeting))
+    return IntroReply(greeting=_clip_greeting(greeting), prompts=prompts[:MAX_PROMPTS])
 
 
 def _integrations_block() -> str:
@@ -250,13 +299,11 @@ async def _fetch_langfuse_prompt() -> str | None:
     unconfigured or the fetch fails — the caller falls back to
     ``_LOCAL_PROMPT`` so a Langfuse outage never blocks onboarding.
     """
-    if not (
-        settings.secrets.langfuse_public_key and settings.secrets.langfuse_secret_key
-    ):
+    if not langfuse_prompts_configured():
         return None
     try:
         prompt = await asyncio.to_thread(
-            get_client().get_prompt,
+            get_langfuse_prompt_client().get_prompt,
             LANGFUSE_PROMPT_NAME,
             cache_ttl_seconds=LANGFUSE_PROMPT_CACHE_TTL_SECONDS,
         )
@@ -298,9 +345,19 @@ def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
                 title=title.strip()[:MAX_TITLE_CHARS],
                 prompt=prompt.strip()[:MAX_PROMPT_CHARS],
                 icon=icon if icon in PROMPT_ICONS else DEFAULT_PROMPT_ICON,
+                why=parse_why(item.get("why")),
             )
         )
     return prompts
+
+
+def parse_why(raw: object) -> str | None:
+    """The optional ``why`` clause, or None when it is missing, empty or
+    too long to read as one: a clipped clause reads worse than none."""
+    if not isinstance(raw, str):
+        return None
+    why = " ".join(raw.split())
+    return why if 0 < len(why) <= MAX_WHY_CHARS else None
 
 
 def fallback_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:

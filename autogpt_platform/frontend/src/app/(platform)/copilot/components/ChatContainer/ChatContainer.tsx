@@ -38,6 +38,7 @@ import { useIsMobile } from "../../useIsMobile";
 import { ComposerPanelTab } from "./components/ComposerPanelTab";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
+import { useFollowOverwrittenArtifact } from "./useFollowOverwrittenArtifact";
 import { useOpenPendingOnboarding } from "./useOpenPendingOnboarding";
 import { VoiceModeBar } from "../../voice/components/VoiceModeBar";
 import { VoiceModeButton } from "../../voice/components/VoiceModeButton";
@@ -201,6 +202,7 @@ export const ChatContainer = ({
     messages,
     isLoadingSession,
   });
+  useFollowOverwrittenArtifact(messages);
   // isStreaming controls the stop-button UI and routes submits to the queue
   // endpoint — the input itself must NOT be disabled during streaming so users
   // can type and queue their next message. ``isUserStopping`` force-flips
@@ -508,7 +510,7 @@ export const ChatContainer = ({
             <SessionNotFound />
           ) : sessionId ? (
             <div className="relative flex h-full min-h-0 w-full flex-col bg-surface">
-              <div className="absolute right-0 top-0 z-30">
+              <div className="absolute top-0 right-0 z-30">
                 <ContextPanelToggle
                   sessionId={sessionId}
                   expert={chatExpert}
@@ -521,6 +523,7 @@ export const ChatContainer = ({
                 error={error}
                 isLoading={isLoadingSession}
                 isRestoringActiveSession={isRestoringActiveSession}
+                isTurnSettling={!!isReconnecting || !!isFinishProbing}
                 restoreStatusMessage={restoreStatusMessage}
                 activeStreamStartedAt={activeStreamStartedAt}
                 sessionID={sessionId}
@@ -623,6 +626,7 @@ export const ChatContainer = ({
                           expertId={expertIdentity?.id ?? null}
                           modeSelector={modeSelector}
                           expertName={expertIdentity?.name ?? null}
+                          assistantName={expertIdentity?.name ?? null}
                           voiceMode={voiceMode}
                           voiceBar={voiceBar}
                         />

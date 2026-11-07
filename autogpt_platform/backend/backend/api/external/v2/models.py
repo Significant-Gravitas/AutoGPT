@@ -14,10 +14,33 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Collection, Literal, Optional, Self, TypeAlias
 
-from pydantic import AwareDatetime, BaseModel, Field, JsonValue, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    Field,
+    JsonValue,
+    field_validator,
+    model_validator,
+)
 
 import backend.blocks._base as block_types
+from backend.data.credential_scope import scope_error
 from backend.data.model import CredentialsMetaInput
+from backend.util.text_limits import (
+    MAX_CRON_LENGTH,
+    MAX_DESCRIPTION_LENGTH,
+    MAX_ID_LENGTH,
+    MAX_INSTRUCTIONS_LENGTH,
+    MAX_LIST_ENTRIES,
+    MAX_LONG_NAME_LENGTH,
+    MAX_NAME_LENGTH,
+    MAX_SECRET_LENGTH,
+    MAX_SUMMARY_LENGTH,
+    MAX_URL_LENGTH,
+    NameText,
+    SecretText,
+    URLText,
+)
 from backend.util.timezone_utils import validate_timezone
 
 if TYPE_CHECKING:
@@ -133,8 +156,10 @@ class GraphNode(BaseModel):
 class GraphCreateRequest(BaseModel):
     """Graph model for creating or updating an agent graph."""
 
-    name: str = Field(description="Graph name")
-    description: str = Field(default="", description="Graph description")
+    name: str = Field(max_length=MAX_LONG_NAME_LENGTH, description="Graph name")
+    description: str = Field(
+        default="", max_length=MAX_INSTRUCTIONS_LENGTH, description="Graph description"
+    )
     nodes: list[GraphNode] = Field(description="List of nodes")
     links: list[GraphLink] = Field(description="Links between nodes")
     is_active: bool = Field(default=True, description="Whether this version is active")
@@ -423,9 +448,16 @@ class AgentRunSchedule(BaseModel):
 class AgentRunScheduleCreateRequest(BaseModel):
     """Request to create a schedule."""
 
-    graph_id: str = Field(description="Graph to run on this schedule")
-    name: str = Field(description="Display name for the schedule")
-    cron: str = Field(description="Cron expression (e.g., '0 9 * * *' for 9am daily)")
+    graph_id: str = Field(
+        max_length=MAX_ID_LENGTH, description="Graph to run on this schedule"
+    )
+    name: str = Field(
+        max_length=MAX_NAME_LENGTH, description="Display name for the schedule"
+    )
+    cron: str = Field(
+        max_length=MAX_CRON_LENGTH,
+        description="Cron expression (e.g., '0 9 * * *' for 9am daily)",
+    )
     inputs: dict[str, Any] = Field(
         default_factory=dict, description="Input values for each scheduled run"
     )
@@ -441,6 +473,7 @@ class AgentRunScheduleCreateRequest(BaseModel):
     )
     timezone: Optional[str] = Field(
         default=None,
+        max_length=MAX_NAME_LENGTH,
         description=(
             "Timezone for schedule (e.g., 'America/New_York'). "
             "Defaults to user's timezone."
@@ -554,7 +587,7 @@ class LibraryAgentUpdateRequest(BaseModel):
     graph_version: Optional[int] = None
     is_favorite: Optional[bool] = None
     is_archived: Optional[bool] = None
-    folder_id: Optional[str] = None
+    folder_id: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
 
 
 class AgentRunRequest(BaseModel):
@@ -634,27 +667,37 @@ class LibraryFolderTree(BaseModel):
 class LibraryFolderCreateRequest(BaseModel):
     """Request to create a folder."""
 
-    name: str = Field(min_length=1, max_length=100)
-    icon: Optional[str] = None
+    name: str = Field(min_length=1, max_length=MAX_NAME_LENGTH)
+    icon: Optional[str] = Field(default=None, max_length=MAX_NAME_LENGTH)
     color: Optional[str] = Field(
-        default=None, pattern=r"^#[0-9A-Fa-f]{6}$", description="Hex color (#RRGGBB)"
+        default=None,
+        max_length=7,
+        pattern=r"^#[0-9A-Fa-f]{6}$",
+        description="Hex color (#RRGGBB)",
     )
-    parent_id: Optional[str] = None
+    parent_id: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
 
 
 class LibraryFolderUpdateRequest(BaseModel):
     """Request to update a folder."""
 
-    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    icon: Optional[str] = None
-    color: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=MAX_NAME_LENGTH)
+    icon: Optional[str] = Field(default=None, max_length=MAX_NAME_LENGTH)
+    color: Optional[str] = Field(
+        default=None,
+        max_length=7,
+        pattern=r"^#[0-9A-Fa-f]{6}$",
+        description="Hex color (#RRGGBB)",
+    )
 
 
 class LibraryFolderMoveRequest(BaseModel):
     """Request to move a folder."""
 
     target_parent_id: Optional[str] = Field(
-        default=None, description="Target parent folder ID (null = root)"
+        default=None,
+        max_length=MAX_ID_LENGTH,
+        description="Target parent folder ID (null = root)",
     )
 
 
@@ -672,11 +715,15 @@ class AgentPreset(TenantedResource):
     name: str
     description: str
     is_active: bool
-    inputs: dict[str, Any]
+    inputs: dict[str, Any] = Field(description="The agent's saved input values")
+    trigger_config: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="A webhook trigger's settings, less those in `hidden_inputs`",
+    )
     hidden_inputs: list[str] = Field(
         default_factory=list,
         description="A trigger's secret settings that are set but returned only when "
-        "it is created. An update that leaves them out of `inputs` keeps them",
+        "it is created. An update that leaves them out of `trigger_config` keeps them",
     )
     webhook_id: Optional[str] = Field(
         default=None,
@@ -692,8 +739,11 @@ class AgentPreset(TenantedResource):
 
     @classmethod
     def from_internal(cls, p: _LibraryAgentPreset, hide: Collection[str] = ()) -> Self:
-        """`hide` names the secret settings a trigger's `inputs` leave out."""
-        hidden = sorted(name for name in hide if p.webhook_id and name in p.inputs)
+        """`hide` names the secret settings a trigger's `trigger_config` leaves out."""
+        from backend.api.features.library.model import split_stored_trigger_inputs
+
+        inputs, config = split_stored_trigger_inputs(p.inputs, bool(p.webhook_id))
+        hidden = sorted(name for name in hide if config and name in config)
         return cls(
             id=p.id,
             graph_id=p.graph_id,
@@ -701,7 +751,12 @@ class AgentPreset(TenantedResource):
             name=p.name,
             description=p.description,
             is_active=p.is_active,
-            inputs={k: v for k, v in p.inputs.items() if k not in hidden},
+            inputs=inputs,
+            trigger_config=(
+                None
+                if config is None
+                else {k: v for k, v in config.items() if k not in hidden}
+            ),
             hidden_inputs=hidden,
             webhook_id=p.webhook_id,
             webhook_url=p.webhook.url if p.webhook else None,
@@ -715,10 +770,12 @@ class AgentPreset(TenantedResource):
 class AgentPresetCreateRequest(BaseModel):
     """Request to create a preset."""
 
-    graph_id: str = Field(description="Graph ID")
+    graph_id: str = Field(max_length=MAX_ID_LENGTH, description="Graph ID")
     graph_version: int = Field(description="Graph version")
-    name: str = Field(description="Preset name")
-    description: str = Field(default="", description="Preset description")
+    name: str = Field(max_length=MAX_NAME_LENGTH, description="Preset name")
+    description: str = Field(
+        default="", max_length=MAX_DESCRIPTION_LENGTH, description="Preset description"
+    )
     inputs: dict[str, Any] = Field(default_factory=dict, description="Input values")
     credentials_inputs: dict[str, CredentialsMetaInput] = Field(
         default_factory=dict,
@@ -731,12 +788,15 @@ class AgentPresetCreateRequest(BaseModel):
 class AgentPresetUpdateRequest(BaseModel):
     """Request to update a preset."""
 
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=MAX_NAME_LENGTH)
+    description: Optional[str] = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
     inputs: Optional[dict[str, Any]] = Field(
+        default=None, description="Replaces the agent's saved input values"
+    )
+    trigger_config: Optional[dict[str, Any]] = Field(
         default=None,
-        description="Replaces the saved inputs. For a webhook trigger, its "
-        "configuration; changing it re-registers the webhook",
+        description="Replaces a webhook trigger's settings, re-registering its "
+        "webhook. Settings in `hidden_inputs` it leaves out keep their value",
     )
     credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = Field(
         default=None, description="Replaces the saved credentials"
@@ -747,11 +807,17 @@ class AgentPresetUpdateRequest(BaseModel):
 class AgentTriggerSetupRequest(BaseModel):
     """Request to set up a webhook-triggered preset."""
 
-    name: str = Field(description="Preset name")
-    description: str = Field(default="", description="Preset description")
-    graph_id: str = Field(description="Graph ID")
+    name: str = Field(max_length=MAX_NAME_LENGTH, description="Preset name")
+    description: str = Field(
+        default="", max_length=MAX_DESCRIPTION_LENGTH, description="Preset description"
+    )
+    graph_id: str = Field(max_length=MAX_ID_LENGTH, description="Graph ID")
     graph_version: int = Field(description="Graph version")
     trigger_config: dict[str, Any] = Field(description="Trigger block configuration")
+    inputs: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Values for the agent's own inputs, beside its trigger",
+    )
     credentials_inputs: dict[str, CredentialsMetaInput] = Field(
         default_factory=dict,
         description="Credentials, keyed by the `field_name` of each of the agent's "
@@ -1275,9 +1341,14 @@ class CredentialInfo(BaseModel):
 
 
 class _CredentialCreateBase(BaseModel):
-    provider: str = Field(description="Provider name (e.g., 'github', 'openai')")
+    provider: str = Field(
+        max_length=MAX_NAME_LENGTH,
+        description="Provider name (e.g., 'github', 'openai')",
+    )
     title: Optional[str] = Field(
-        default=None, description="User-friendly name for this credential"
+        default=None,
+        max_length=MAX_NAME_LENGTH,
+        description="User-friendly name for this credential",
     )
 
 
@@ -1285,7 +1356,7 @@ class APIKeyCredentialCreateRequest(_CredentialCreateBase):
     """Request to create an API key credential."""
 
     type: Literal["api_key"]
-    api_key: str
+    api_key: str = Field(max_length=MAX_SECRET_LENGTH)
     expires_at: AwareDatetime | None = Field(
         default=None,
         description=(
@@ -1299,8 +1370,21 @@ class UserPasswordCredentialCreateRequest(_CredentialCreateBase):
     """Request to create a username/password credential."""
 
     type: Literal["user_password"]
-    username: str
-    password: str
+    username: str = Field(max_length=MAX_NAME_LENGTH)
+    password: str = Field(max_length=MAX_SECRET_LENGTH)
+    scope: str | None = Field(
+        default=None,
+        max_length=MAX_URL_LENGTH,
+        description="What this login may be used for, as a URI: "
+        "smtp://host[:port] for smtp, postgresql:// mysql:// or mssql:// "
+        "host[:port] for database; required for those providers",
+    )
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> Self:
+        if error := scope_error(self.provider, self.scope):
+            raise ValueError(error)
+        return self
 
 
 class HostScopedCredentialCreateRequest(_CredentialCreateBase):
@@ -1308,14 +1392,16 @@ class HostScopedCredentialCreateRequest(_CredentialCreateBase):
 
     type: Literal["host_scoped"]
     host: str = Field(
+        max_length=MAX_URL_LENGTH,
         description=(
             "Host pattern to match against request URLs. "
             "Supports exact hosts (api.example.com), wildcard subdomains "
             "(*.example.com), and optional port (api.example.com:8080)"
         ),
     )
-    headers: dict[str, str] = Field(
-        description="Key-value header map to add to matching requests"
+    headers: dict[NameText, SecretText] = Field(
+        max_length=MAX_LIST_ENTRIES,
+        description="Key-value header map to add to matching requests",
     )
 
     @field_validator("host")
@@ -1539,11 +1625,21 @@ class MarketplaceUserProfile(BaseModel):
 class MarketplaceUserProfileUpdateRequest(BaseModel):
     """Request to partially update marketplace profile."""
 
-    name: Optional[str] = Field(default=None, description="Display name")
-    username: Optional[str] = Field(default=None, description="Unique username")
-    description: Optional[str] = Field(default=None, description="Bio/description")
-    links: Optional[list[str]] = Field(default=None, description="Profile links")
-    avatar_url: Optional[str] = Field(default=None, description="Avatar image URL")
+    name: Optional[str] = Field(
+        default=None, max_length=MAX_NAME_LENGTH, description="Display name"
+    )
+    username: Optional[str] = Field(
+        default=None, max_length=MAX_NAME_LENGTH, description="Unique username"
+    )
+    description: Optional[str] = Field(
+        default=None, max_length=MAX_DESCRIPTION_LENGTH, description="Bio/description"
+    )
+    links: Optional[list[URLText]] = Field(
+        default=None, max_length=MAX_LIST_ENTRIES, description="Profile links"
+    )
+    avatar_url: Optional[str] = Field(
+        default=None, max_length=MAX_URL_LENGTH, description="Avatar image URL"
+    )
 
 
 class MarketplaceCreatorDetails(MarketplaceUserProfile):
@@ -1639,22 +1735,40 @@ class MarketplaceAgentSubmission(BaseModel):
 class MarketplaceAgentSubmissionCreateRequest(BaseModel):
     """Request to create a marketplace submission."""
 
-    graph_id: str = Field(description="ID of the graph to submit")
+    graph_id: str = Field(
+        max_length=MAX_ID_LENGTH, description="ID of the graph to submit"
+    )
     graph_version: int = Field(description="Version of the graph to submit")
-    name: str = Field(description="Display name for the agent")
-    slug: str = Field(description="URL-friendly identifier")
-    description: str = Field(description="Full description")
-    sub_heading: str = Field(description="Short tagline")
-    image_urls: list[str] = Field(default_factory=list)
-    video_url: Optional[str] = None
-    agent_output_demo_url: Optional[str] = None
-    categories: list[str] = Field(default_factory=list)
-    instructions: Optional[str] = Field(default=None, description="Usage instructions")
+    name: str = Field(
+        max_length=MAX_NAME_LENGTH, description="Display name for the agent"
+    )
+    slug: str = Field(max_length=MAX_NAME_LENGTH, description="URL-friendly identifier")
+    description: str = Field(
+        max_length=MAX_DESCRIPTION_LENGTH, description="Full description"
+    )
+    sub_heading: str = Field(max_length=MAX_NAME_LENGTH, description="Short tagline")
+    image_urls: list[URLText] = Field(default_factory=list, max_length=MAX_LIST_ENTRIES)
+    video_url: Optional[str] = Field(default=None, max_length=MAX_URL_LENGTH)
+    agent_output_demo_url: Optional[str] = Field(
+        default=None, max_length=MAX_URL_LENGTH
+    )
+    categories: list[NameText] = Field(
+        default_factory=list, max_length=MAX_LIST_ENTRIES
+    )
+    instructions: Optional[str] = Field(
+        default=None,
+        max_length=MAX_INSTRUCTIONS_LENGTH,
+        description="Usage instructions",
+    )
     changes_summary: Optional[str] = Field(
-        default="Initial Submission", description="Summary of changes"
+        default="Initial Submission",
+        max_length=MAX_SUMMARY_LENGTH,
+        description="Summary of changes",
     )
     recommended_schedule_cron: Optional[str] = Field(
-        default=None, description="Recommended cron schedule"
+        default=None,
+        max_length=MAX_CRON_LENGTH,
+        description="Recommended cron schedule",
     )
 
 
@@ -1666,22 +1780,40 @@ class MarketplaceAgentSubmissionEditRequest(BaseModel):
     any caller that sent only the field it meant to change.
     """
 
-    name: str = Field(description="Agent display name")
-    sub_heading: str = Field(description="Short tagline")
-    description: str = Field(description="Full description")
-    image_urls: list[str] = Field(description="Image URLs")
-    video_url: Optional[str] = Field(default=None, description="Demo video URL")
-    agent_output_demo_url: Optional[str] = Field(
-        default=None, description="Agent output demo URL"
+    name: str = Field(max_length=MAX_NAME_LENGTH, description="Agent display name")
+    sub_heading: str = Field(max_length=MAX_NAME_LENGTH, description="Short tagline")
+    description: str = Field(
+        max_length=MAX_DESCRIPTION_LENGTH, description="Full description"
     )
-    categories: list[str] = Field(description="Categories")
+    image_urls: list[URLText] = Field(
+        max_length=MAX_LIST_ENTRIES, description="Image URLs"
+    )
+    video_url: Optional[str] = Field(
+        default=None, max_length=MAX_URL_LENGTH, description="Demo video URL"
+    )
+    agent_output_demo_url: Optional[str] = Field(
+        default=None,
+        max_length=MAX_URL_LENGTH,
+        description="Agent output demo URL",
+    )
+    categories: list[NameText] = Field(
+        max_length=MAX_LIST_ENTRIES, description="Categories"
+    )
     changes_summary: Optional[str] = Field(
-        default="Update submission", description="Summary of changes"
+        default="Update submission",
+        max_length=MAX_SUMMARY_LENGTH,
+        description="Summary of changes",
     )
     recommended_schedule_cron: Optional[str] = Field(
-        default=None, description="Recommended cron schedule"
+        default=None,
+        max_length=MAX_CRON_LENGTH,
+        description="Recommended cron schedule",
     )
-    instructions: Optional[str] = Field(default=None, description="Usage instructions")
+    instructions: Optional[str] = Field(
+        default=None,
+        max_length=MAX_INSTRUCTIONS_LENGTH,
+        description="Usage instructions",
+    )
 
 
 class MarketplaceMediaUploadResponse(BaseModel):

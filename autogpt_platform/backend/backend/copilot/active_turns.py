@@ -114,6 +114,10 @@ class ConcurrentTurnLimitError(Exception):
         super().__init__(message or running_turn_limit_message())
 
 
+class SessionNotIdle(Exception):
+    """The session already has a turn queued or running."""
+
+
 async def count_running_turns(user_id: str) -> int:
     """User's current running-turn count."""
     return await chat_db().count_chat_sessions_by_status(
@@ -127,6 +131,16 @@ async def get_running_session_ids(user_id: str) -> set[str]:
         user_id=user_id, status=CHAT_STATUS_RUNNING
     )
     return {r.session_id for r in rows}
+
+
+# A chat still ``running`` this long after its last write, with no live stream
+# for its turn, lost its worker. The chat routes release it when the chat is
+# read; the background sweep applies the same rule for a chat nobody reads.
+# The bound has to clear the ``acquire_turn_slot`` → ``dispatch_turn``
+# ``create_session`` window, a few ms in practice, so 30 s is a generous
+# margin: anything still running past it with no stream is an orphan, not an
+# in-flight admit racing the read.
+ORPHAN_RUNNING_RESET_SECONDS = 30
 
 
 async def release_turn_slot(user_id: str, session_id: str) -> None:
@@ -225,6 +239,17 @@ async def acquire_turn_slot(
 
     try:
         yield handle
-    finally:
+    except BaseException:
+        # Cleanup on a failure path: a release that fails too must not replace
+        # the error the caller acts on (a publish that may have reached the
+        # broker would otherwise read as a turn that was never sent).
         if handle.admitted and not handle._kept:
-            await release_turn_slot(user_id, session_id)
+            try:
+                await release_turn_slot(user_id, session_id)
+            except Exception:
+                logger.exception(
+                    f"acquire_turn_slot: release failed for session={session_id}"
+                )
+        raise
+    if handle.admitted and not handle._kept:
+        await release_turn_slot(user_id, session_id)

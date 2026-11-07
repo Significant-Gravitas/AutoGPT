@@ -81,6 +81,7 @@ def make_mock_block_with_schema(
     mock.input_schema.jsonschema.return_value = input_schema
     mock.input_schema.get_credentials_fields_info.return_value = {}
     mock.input_schema.get_credentials_fields.return_value = {}
+    mock.input_schema.validate_data.return_value = None
 
     output_schema = {
         "properties": output_properties or {"result": {"type": "string"}},
@@ -122,7 +123,7 @@ class TestRunBlockFiltering:
 
         assert isinstance(response, ErrorResponse)
         assert "cannot be run directly" in response.message
-        assert "designed for use within graphs only" in response.message
+        assert "designed for use within workflows only" in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_excluded_block_id_returns_error(self):
@@ -711,7 +712,12 @@ class TestRunBlockInputValidation:
             )
 
         assert isinstance(response, SetupRequirementsResponse)
-        assert "'spreadsheet'" in response.message
+        # The card shows this line to the user, so it names the field by its
+        # title (the key here, since the schema gives none), never quoted.
+        assert response.message == (
+            "Choose your spreadsheet in the card below. The step runs again "
+            "with your choice."
+        )
         inputs = response.setup_info.requirements["inputs"]
         picker_field = next((i for i in inputs if i["name"] == "spreadsheet"), None)
         assert picker_field is not None
@@ -1010,7 +1016,8 @@ class TestExecuteBlockTimeout:
       1. Return an actionable ErrorResponse pointing at run_agent / run_sub_session.
       2. Log a ``copilot_tool_timeout`` warning (SECRT-2247 part 3).
       3. Still charge credits when outputs were produced before the timeout
-         (sentry r3105079148 — cancellation must not leak billing)."""
+         (sentry r3105079148 — cancellation must not leak billing). The run
+         is debited before it starts, so the cancel cannot skip the charge."""
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_timeout_returns_error_and_logs(self, caplog):
@@ -1076,8 +1083,8 @@ class TestExecuteBlockTimeout:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_cancellation_after_output_still_charges_credits(self):
         """Regression for sentry r3105079148 — wait_for's CancelledError
-        bypassed credit charging; fix uses a shielded finally. One output
-        emitted, then timeout: spend_credits must still be called once."""
+        bypassed credit charging. One output emitted, then timeout:
+        spend_credits must still be called once (it ran before the block)."""
         import asyncio
 
         from backend.copilot.tools.helpers import execute_block
@@ -1091,6 +1098,7 @@ class TestExecuteBlockTimeout:
             "required": [],
         }
         mock_block.input_schema.get_credentials_fields.return_value = {}
+        mock_block.input_schema.validate_data.return_value = None
 
         # Generator: emit ONE output (simulating a side-effectful API call),
         # then hang — execute_block's internal wait_for cancels us.
@@ -1158,9 +1166,8 @@ class TestExecuteBlockTimeout:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_no_double_charge_on_cancellation_during_charge(self):
-        """Regression for sentry r3105216985 — if the caller cancels during
-        the normal-path credit charge, the finally must NOT charge a second
-        time. The fix marks charge_handled BEFORE awaiting spend_credits."""
+        """Regression for sentry r3105216985 — a run must be charged exactly
+        once, never by both a normal path and a recovery path."""
         import asyncio
 
         from backend.copilot.tools.helpers import execute_block
@@ -1174,6 +1181,7 @@ class TestExecuteBlockTimeout:
             "required": [],
         }
         mock_block.input_schema.get_credentials_fields.return_value = {}
+        mock_block.input_schema.validate_data.return_value = None
 
         async def _one_then_done(_input, **_kw):
             yield "result", "done"
@@ -1418,7 +1426,7 @@ class TestExecuteBlockCredentialRejection:
     reconnect card, not a bare "Block execution failed"."""
 
     @staticmethod
-    def _block(exc: Exception):
+    def _block(exc: Exception, output_first: bool = False):
         from backend.data.model import CredentialsFieldInfo
 
         block = MagicMock()
@@ -1438,17 +1446,26 @@ class TestExecuteBlockCredentialRejection:
             )
         }
         block.input_schema.get_required_fields.return_value = {"credentials"}
+        block.input_schema.validate_data.return_value = None
 
         async def _fail(_input, **_kwargs):
+            if output_first:
+                yield "post_id", "posted"
             raise exc
-            yield  # pragma: no cover -- keeps this an async generator
 
         block.execute = _fail
         return block
 
     @staticmethod
     async def _run(
-        exc: Exception, load_error: Exception | None = None, stored: Any = None
+        exc: Exception,
+        load_error: Exception | None = None,
+        stored: Any = None,
+        *,
+        cost: int = 0,
+        credit: MagicMock | None = None,
+        output_first: bool = False,
+        system_credential: bool = False,
     ):
         from backend.copilot.tools.helpers import execute_block
         from backend.data.model import CredentialsMetaInput
@@ -1482,11 +1499,17 @@ class TestExecuteBlockCredentialRejection:
                 return_value=({}, []),
             ),
             patch(
-                "backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(cost, {}),
+            ),
+            patch("backend.copilot.tools.helpers.credit_db", return_value=credit),
+            patch(
+                "backend.copilot.tools.helpers.is_system_credential",
+                return_value=system_credential,
             ),
         ):
             return await execute_block(
-                block=TestExecuteBlockCredentialRejection._block(exc),
+                block=TestExecuteBlockCredentialRejection._block(exc, output_first),
                 block_id="ayrshare-block-id",
                 input_data={},
                 user_id="u-1",
@@ -1584,6 +1607,70 @@ class TestExecuteBlockCredentialRejection:
         assert "Work Ayrshare key" in response.message
         # The picker must be offered again, or there is no way back.
         assert "credentials" in response.setup_info.user_readiness.missing_credentials
+
+    @staticmethod
+    def _rejected_401():
+        from backend.util.exceptions import BlockUnknownError
+        from backend.util.request import HTTPClientError
+
+        wrapped = BlockUnknownError("failed", "AyrsharePostBlock", "block-id")
+        wrapped.__cause__ = HTTPClientError("HTTP 401 Error", 401)
+        return wrapped
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_rejection_before_any_output_is_refunded(self):
+        """The provider refused the credential before doing any work, so the
+        reconnect card stays free: the debit taken before the run is given
+        back."""
+        from .models import SetupRequirementsResponse
+
+        credit = MagicMock(spend_credits=AsyncMock())
+        with (
+            patch(
+                "backend.copilot.tools.helpers.metered_expert_id",
+                AsyncMock(return_value="expert-1"),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.add_weekly_spend", AsyncMock()
+            ) as weekly_spend,
+        ):
+            response = await self._run(self._rejected_401(), cost=5, credit=credit)
+
+        assert isinstance(response, SetupRequirementsResponse)
+        charges = [c.kwargs for c in credit.spend_credits.await_args_list]
+        assert [c["cost"] for c in charges] == [5, -5]
+        assert charges[1]["metadata"].reason == "copilot_block_execution_refund"
+        # The expert's weekly spend is given back with the credits.
+        assert [c.args for c in weekly_spend.await_args_list] == [
+            ("expert-1", 5),
+            ("expert-1", -5),
+        ]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_rejected_platform_credential_keeps_the_charge(self):
+        """Only a credential of the user's own makes a free reconnect card; a
+        rejected platform-managed credential is not theirs to reconnect, so
+        the debit stands."""
+        credit = MagicMock(spend_credits=AsyncMock())
+        await self._run(
+            self._rejected_401(), cost=5, credit=credit, system_credential=True
+        )
+
+        assert [c.kwargs["cost"] for c in credit.spend_credits.await_args_list] == [5]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_rejection_after_output_keeps_the_charge(self):
+        """Once the block has produced output the provider has done paid work,
+        so a later rejection does not refund it."""
+        from .models import SetupRequirementsResponse
+
+        credit = MagicMock(spend_credits=AsyncMock())
+        response = await self._run(
+            self._rejected_401(), cost=5, credit=credit, output_first=True
+        )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert [c.kwargs["cost"] for c in credit.spend_credits.await_args_list] == [5]
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_scheduled_turn_gets_an_error_naming_the_rejected_credential(

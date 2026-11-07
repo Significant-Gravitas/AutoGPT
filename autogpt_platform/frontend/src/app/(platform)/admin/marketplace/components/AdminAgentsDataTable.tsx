@@ -1,7 +1,6 @@
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -69,9 +68,9 @@ export async function AdminAgentsDataTable({
           <TableBody>
             {listings.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center">
+                <td colSpan={7} className="px-2 py-10 text-center align-middle">
                   No submissions found
-                </TableCell>
+                </td>
               </TableRow>
             ) : (
               listings.map((listing) => {
