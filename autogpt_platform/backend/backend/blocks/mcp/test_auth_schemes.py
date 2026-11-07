@@ -9,7 +9,7 @@ import fastapi
 import httpx
 import pytest
 import pytest_asyncio
-from autogpt_libs.auth import get_user_id
+from autogpt_libs.auth import get_user_id, requires_live_session
 from pydantic import SecretStr
 
 from backend.api.features.mcp.routes import router
@@ -118,6 +118,7 @@ async def test_schema_optional_mcp_credentials_do_not_skip_execution(
 app = fastapi.FastAPI()
 app.include_router(router)
 app.dependency_overrides[get_user_id] = lambda: "test-user-id"
+app.dependency_overrides[requires_live_session] = lambda: {}
 # The paywall has its own tests, in backend/api/paywall_routes_test.py.
 app.dependency_overrides[enforce_payment_paywall] = lambda: None
 

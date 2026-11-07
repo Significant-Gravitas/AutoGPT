@@ -24,7 +24,7 @@ import fastapi
 import httpx
 import pytest
 import pytest_asyncio
-from autogpt_libs.auth import get_user_id
+from autogpt_libs.auth import get_user_id, requires_live_session
 
 from backend.api.features.mcp.routes import router
 from backend.copilot.rate_limit import enforce_payment_paywall
@@ -43,6 +43,7 @@ _AUTHORIZATION = f"Bearer {_TOKEN}"
 app = fastapi.FastAPI()
 app.include_router(router)
 app.dependency_overrides[get_user_id] = lambda: _USER_ID
+app.dependency_overrides[requires_live_session] = lambda: {}
 # The paywall has its own tests, in backend/api/paywall_routes_test.py.
 app.dependency_overrides[enforce_payment_paywall] = lambda: None
 
