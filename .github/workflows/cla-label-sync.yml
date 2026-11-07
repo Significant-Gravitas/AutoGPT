@@ -43,7 +43,8 @@ env:
   REMINDER_DAYS: 7        # Days before first reminder
   CLOSE_WARNING_DAYS: 23  # Days before "closing soon" warning
   CLOSE_DAYS: 30          # Days before auto-close
-  # Debounce before demoting cla:signed -> cla:pending. CLA-assistant
+  CLOSE_GRACE_DAYS: 7     # Min days a close warning stands before the close
+  # Debounce before demoting cla:signed -> cla:pending, and before a close. CLA-assistant
   # re-verifies per commit SHA, so an already-signed contributor's status can
   # transiently flip to pending/failure on repeated status events for the
   # same commit. Waiting this long and re-checking filters that noise while
@@ -100,11 +101,12 @@ jobs:
             const REMINDER_DAYS = parseInt(process.env.REMINDER_DAYS);
             const CLOSE_WARNING_DAYS = parseInt(process.env.CLOSE_WARNING_DAYS);
             const CLOSE_DAYS = parseInt(process.env.CLOSE_DAYS);
+            const CLOSE_GRACE_DAYS = parseInt(process.env.CLOSE_GRACE_DAYS);
             const DEMOTE_DEBOUNCE_SECONDS = Number(process.env.DEMOTE_DEBOUNCE_SECONDS);
-            
+
             // Validate timing configuration
-            if ([REMINDER_DAYS, CLOSE_WARNING_DAYS, CLOSE_DAYS].some(Number.isNaN)) {
-              core.setFailed('Invalid timing configuration — REMINDER_DAYS, CLOSE_WARNING_DAYS, and CLOSE_DAYS must be numeric.');
+            if ([REMINDER_DAYS, CLOSE_WARNING_DAYS, CLOSE_DAYS, CLOSE_GRACE_DAYS].some(Number.isNaN)) {
+              core.setFailed('Invalid timing configuration — REMINDER_DAYS, CLOSE_WARNING_DAYS, CLOSE_DAYS, and CLOSE_GRACE_DAYS must be numeric.');
               return;
             }
             if (!Number.isInteger(DEMOTE_DEBOUNCE_SECONDS) || DEMOTE_DEBOUNCE_SECONDS < 0) {
@@ -165,6 +167,11 @@ jobs:
             
             // Helper: Check if bot already commented with a specific marker (paginated)
             async function hasCommentWithMarker(prNumber, marker) {
+              return Boolean(await lastCommentWithMarker(prNumber, marker));
+            }
+
+            // Helper: The bot's newest comment carrying a specific marker, or undefined (paginated)
+            async function lastCommentWithMarker(prNumber, marker) {
               // Use paginate to fetch ALL comments, not just first 100
               const comments = await github.paginate(
                 github.rest.issues.listComments,
@@ -175,13 +182,46 @@ jobs:
                   per_page: 100
                 }
               );
-              
-              return comments.some(c => 
-                c.user?.type === 'Bot' && 
+
+              return comments.filter(c =>
+                c.user?.type === 'Bot' &&
                 c.body?.includes(marker)
-              );
+              ).at(-1);
             }
-            
+
+            // Helper: When a label was last added to a PR, or undefined (paginated)
+            async function lastLabeledAt(prNumber, labelName) {
+              const events = await github.paginate(
+                github.rest.issues.listEvents,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  per_page: 100
+                }
+              );
+              return events
+                .filter(e => e.event === 'labeled' && e.label?.name === labelName)
+                .map(e => e.created_at)
+                .sort()
+                .at(-1);
+            }
+
+            // Helper: Wait out a transient CLA-assistant flip, then re-read the PR (a push or close
+            // may have landed meanwhile) and its current head's CLA status; null once not open.
+            async function recheckAfterDebounce(prNumber) {
+              await new Promise(resolve => setTimeout(resolve, DEMOTE_DEBOUNCE_MS));
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              });
+              if (pr.state !== 'open') {
+                return null;
+              }
+              return { pr, claStatus: await getClaStatus(pr.head.sha) };
+            }
+
             // Helper: Days since a date
             function daysSince(dateString) {
               const date = new Date(dateString);
@@ -299,27 +339,17 @@ jobs:
                 // it's still demoted correctly below.
                 if (hasSigned && claStatus.found && !claStatus.passed) {
                   console.log(`PR #${prNumber}: was signed but now shows ${claStatus.state} — debouncing ${DEMOTE_DEBOUNCE_SECONDS}s before demoting`);
-                  await new Promise(resolve => setTimeout(resolve, DEMOTE_DEBOUNCE_MS));
+                  const refreshed = await recheckAfterDebounce(prNumber);
 
-                  // Re-fetch the PR — a new commit could have been pushed, or the
-                  // PR closed, while we were waiting. Evaluate the refreshed state
-                  // rather than the one captured before the delay.
-                  const { data: refreshedPr } = await github.rest.pulls.get({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    pull_number: prNumber
-                  });
-
-                  if (refreshedPr.state !== 'open') {
+                  if (!refreshed) {
                     console.log(`PR #${prNumber}: no longer open after debounce — skipping`);
                     continue;
                   }
 
-                  pr = refreshedPr;
-                  currentLabels = refreshedPr.labels.map(l => l.name);
+                  ({ pr, claStatus } = refreshed);
+                  currentLabels = pr.labels.map(l => l.name);
                   hasPending = currentLabels.includes(LABEL_PENDING);
                   hasSigned = currentLabels.includes(LABEL_SIGNED);
-                  claStatus = await getClaStatus(refreshedPr.head.sha);
                   console.log(`PR #${prNumber}: post-debounce CLA ${claStatus.passed ? 'passed' : 'still ' + claStatus.state}`);
                 }
 
@@ -425,12 +455,32 @@ jobs:
                     }
                   }
                   
-                  // ⚠️ Close warning at CLOSE_WARNING_DAYS
-                  if (claConfirmedUnsigned && prAgeDays >= CLOSE_WARNING_DAYS && prAgeDays < CLOSE_DAYS) {
-                    const hasCloseWarning = await hasCommentWithMarker(prNumber, CLOSE_WARNING_MARKER);
-                    
-                    if (!hasCloseWarning) {
-                      const daysRemaining = CLOSE_DAYS - prAgeDays;
+                  // ⚠️ Close warning, then 🚪 auto-close once that warning has stood CLOSE_GRACE_DAYS.
+                  // CLA-assistant can briefly report a signed author as pending, so no PR is closed unwarned.
+                  if (claConfirmedUnsigned && prAgeDays >= CLOSE_WARNING_DAYS) {
+                    const CLOSE_MARKER = '<!-- cla-auto-closed -->';
+                    const OVERRIDE_LABEL = 'cla: override';
+
+                    // Check for override label (maintainer wants to keep PR open)
+                    if (currentLabels.includes(OVERRIDE_LABEL)) {
+                      console.log(`PR #${prNumber}: Skipping close due to '${OVERRIDE_LABEL}' label`);
+                      continue;
+                    }
+                    if (await hasCommentWithMarker(prNumber, CLOSE_MARKER)) {
+                      console.log(`PR #${prNumber}: Already auto-closed previously, skipping (maintainer may have reopened)`);
+                      continue;
+                    }
+
+                    // A warning from before the PR last read signed was answered; it can't license a close.
+                    let closeWarning = await lastCommentWithMarker(prNumber, CLOSE_WARNING_MARKER);
+                    const lastSignedAt = closeWarning && await lastLabeledAt(prNumber, LABEL_SIGNED);
+                    if (lastSignedAt && new Date(lastSignedAt) > new Date(closeWarning.created_at)) {
+                      console.log(`PR #${prNumber}: close warning predates '${LABEL_SIGNED}' at ${lastSignedAt} — warning again`);
+                      closeWarning = undefined;
+                    }
+
+                    if (!closeWarning) {
+                      const daysRemaining = Math.max(CLOSE_DAYS - prAgeDays, CLOSE_GRACE_DAYS);
                       await github.rest.issues.createComment({
                         owner: context.repo.owner,
                         repo: context.repo.repo,
@@ -446,27 +496,18 @@ jobs:
             If you're unable to sign or have questions, please let us know — we're happy to help!`
                       });
                       console.log(`Posted close warning on PR #${prNumber}`);
-                    }
-                  }
-                  
-                  // 🚪 Auto-close after CLOSE_DAYS
-                  if (claConfirmedUnsigned && prAgeDays >= CLOSE_DAYS) {
-                    const CLOSE_MARKER = '<!-- cla-auto-closed -->';
-                    const OVERRIDE_LABEL = 'cla: override';
-                    
-                    // Check for override label (maintainer wants to keep PR open)
-                    if (currentLabels.includes(OVERRIDE_LABEL)) {
-                      console.log(`PR #${prNumber}: Skipping close due to '${OVERRIDE_LABEL}' label`);
-                    } else {
-                      // Check if we already posted a close comment
-                      const hasCloseComment = await hasCommentWithMarker(prNumber, CLOSE_MARKER);
-                      
-                      if (!hasCloseComment) {
-                        await github.rest.issues.createComment({
-                          owner: context.repo.owner,
-                          repo: context.repo.repo,
-                          issue_number: prNumber,
-                          body: `${CLOSE_MARKER}
+                    } else if (prAgeDays >= CLOSE_DAYS && daysSince(closeWarning.created_at) >= CLOSE_GRACE_DAYS) {
+                      const fresh = await recheckAfterDebounce(prNumber);
+                      if (!fresh?.claStatus.found || fresh.claStatus.passed) {
+                        console.log(`PR #${prNumber}: CLA re-read before closing shows ${fresh ? fresh.claStatus.state : 'a closed PR'} — not closing`);
+                        continue;
+                      }
+
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: prNumber,
+                        body: `${CLOSE_MARKER}
             
             👋 Closing this PR due to unsigned CLA after ${CLOSE_DAYS} days.
             
@@ -478,19 +519,16 @@ jobs:
             > **Maintainers:** To reopen and exempt from future auto-close, add the \`cla: override\` label before reopening. Without it, the PR will not be re-closed automatically (a reopened PR is treated as a maintainer decision).
 
             We appreciate your interest in AutoGPT and hope to see you back! 🚀`
-                        });
-                        
-                        await github.rest.pulls.update({
-                          owner: context.repo.owner,
-                          repo: context.repo.repo,
-                          pull_number: prNumber,
-                          state: 'closed'
-                        });
-                        
-                        console.log(`Closed PR #${prNumber} due to unsigned CLA`);
-                      } else {
-                        console.log(`PR #${prNumber}: Already auto-closed previously, skipping (maintainer may have reopened)`);
-                      }
+                      });
+                      
+                      await github.rest.pulls.update({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: prNumber,
+                        state: 'closed'
+                      });
+                      
+                      console.log(`Closed PR #${prNumber} due to unsigned CLA`);
                     }
                   }
                 }
