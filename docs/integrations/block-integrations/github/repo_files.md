@@ -102,7 +102,7 @@ If multiple entries exist at the path (e.g., a file and a symlink), the block se
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 | file_path | Path to the file in the repository | str | Yes |
-| branch | Branch to read from | str | No |
+| branch | Branch to read from; leave empty for the repository default branch | str | No |
 
 ### Outputs
 
@@ -142,7 +142,7 @@ The block raises an error if the path does not point to a directory. Only the im
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
 | folder_path | Path to the folder in the repository | str | Yes |
-| branch | Branch name to read from (defaults to main) | str | No |
+| branch | Branch to read from; leave empty for the repository default branch | str | No |
 
 ### Outputs
 

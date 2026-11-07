@@ -36,9 +36,9 @@ class GithubReadFileBlock(Block):
             placeholder="path/to/file",
         )
         branch: str = SchemaField(
-            description="Branch to read from",
+            description="Branch to read from; leave empty for the repository default branch",
             placeholder="branch_name",
-            default="main",
+            default="",
         )
 
     class Output(BlockSchemaOutput):
@@ -80,9 +80,10 @@ class GithubReadFileBlock(Block):
     ) -> tuple[str, int]:
         api = get_api(credentials)
         content_url = (
-            canonical_repo_url(repo_url)
-            + f"/contents/{quote(file_path, safe='')}?ref={quote(branch, safe='')}"
+            canonical_repo_url(repo_url) + f"/contents/{quote(file_path, safe='')}"
         )
+        if branch.strip():
+            content_url += f"?ref={quote(branch, safe='')}"
         response = await api.get(content_url)
         data = response.json()
 
@@ -130,9 +131,9 @@ class GithubReadFolderBlock(Block):
             placeholder="path/to/folder",
         )
         branch: str = SchemaField(
-            description="Branch name to read from (defaults to main)",
+            description="Branch to read from; leave empty for the repository default branch",
             placeholder="branch_name",
-            default="main",
+            default="",
         )
 
     class Output(BlockSchemaOutput):
@@ -197,9 +198,10 @@ class GithubReadFolderBlock(Block):
     ) -> tuple[list[Output.FileEntry], list[Output.DirEntry]]:
         api = get_api(credentials)
         contents_url = (
-            canonical_repo_url(repo_url)
-            + f"/contents/{quote(folder_path, safe='/')}?ref={quote(branch, safe='')}"
+            canonical_repo_url(repo_url) + f"/contents/{quote(folder_path, safe='/')}"
         )
+        if branch.strip():
+            contents_url += f"?ref={quote(branch, safe='')}"
         response = await api.get(contents_url)
         data = response.json()
 
