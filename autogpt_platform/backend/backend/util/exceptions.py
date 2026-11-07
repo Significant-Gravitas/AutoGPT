@@ -149,6 +149,11 @@ class GraphNotFoundError(NotFoundError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
 
+class GraphInUseError(Exception):
+    """The graph can't be permanently deleted because other users, or a store
+    listing, still reference it."""
+
+
 class NeedConfirmation(Exception):
     """The user must explicitly confirm that they want to proceed"""
 
@@ -308,6 +313,14 @@ class GraphValidationError(ValueError):
                 for node_id, errors in self.node_errors.items()
             ]
         )
+
+
+class GraphActivationError(ValueError):
+    """A graph cannot be activated, e.g. a required credential is missing,
+    revoked, or its OAuth token can no longer be refreshed.
+
+    Its message is written for the user; the API layer answers it with a 400.
+    """
 
 
 class InvalidInputError(ValueError):

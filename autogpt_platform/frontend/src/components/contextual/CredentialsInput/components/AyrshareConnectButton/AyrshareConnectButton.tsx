@@ -20,7 +20,8 @@ export function AyrshareConnectButton({ className }: Props) {
       type="button"
       onClick={connect}
       disabled={isLoading}
-      className={cn("h-fit w-full py-2", className)}
+      size="small"
+      className={cn("h-fit w-full", className)}
       loading={isLoading}
       leftIcon={<Icon icon={Key01Icon} size={16} />}
     >

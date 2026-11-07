@@ -42,7 +42,7 @@ export function SectionSidebar({ items, className }: Props) {
         className="mb-[16px] flex w-fit items-center gap-2 rounded-lg px-4 py-1 text-foreground-body transition-colors hover:text-foreground-base"
       >
         <Icon icon={ArrowLeft02Icon} size={16} />
-        <Text variant="body" as="span" className="font-medium">
+        <Text variant="body" as="span" weight="medium">
           Back
         </Text>
       </Link>

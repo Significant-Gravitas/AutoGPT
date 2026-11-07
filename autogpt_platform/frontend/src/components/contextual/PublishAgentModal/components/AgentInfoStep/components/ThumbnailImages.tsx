@@ -80,7 +80,7 @@ export function ThumbnailImages({
               aria-disabled={isUploading}
               data-testid="thumbnail-add-image-empty"
               className={cn(
-                "inline-flex h-[2.25rem] min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 rounded-full border border-foreground-body bg-transparent px-3 py-2 font-sans text-sm leading-snug font-medium whitespace-nowrap text-foreground-base transition-colors hover:border-foreground-body hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none",
+                "inline-flex h-[2.25rem] min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 rounded-full border border-foreground-body bg-transparent px-3 py-2 font-sans text-body leading-snug font-medium whitespace-nowrap text-foreground-base transition-colors hover:border-foreground-body hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none",
                 isUploading && "pointer-events-none opacity-60",
               )}
             >
@@ -93,7 +93,7 @@ export function ThumbnailImages({
                 className="hidden"
               />
               {isUploading ? (
-                <Icon icon={Loading03Icon} size={16} className="animate-spin" />
+                <Icon icon={Loading03Icon} size={16} spin />
               ) : (
                 <Icon icon={PlusSignIcon} size={16} />
               )}

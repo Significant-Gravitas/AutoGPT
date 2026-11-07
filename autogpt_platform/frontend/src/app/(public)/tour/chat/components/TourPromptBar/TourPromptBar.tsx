@@ -57,14 +57,14 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
         isDisabled && "cursor-default opacity-60",
       )}
     >
-      <span className="min-h-6 flex-1 truncate text-base text-foreground-body">
+      <span className="min-h-6 flex-1 truncate text-body-lg text-foreground-body">
         {visibleText}
         {prompt && !isTyped && (
           <span className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-surface-active align-middle" />
         )}
       </span>
       {!isDisabled && isTyped && (
-        <span className="hidden shrink-0 items-center gap-1 text-xs text-foreground-subtle sm:flex">
+        <span className="hidden shrink-0 items-center gap-1 text-caption text-foreground-subtle sm:flex">
           Press
           <kbd className="rounded border border-border-base bg-surface-muted px-1.5 py-0.5 font-sans text-caption-sm text-foreground-tertiary">
             Enter

@@ -59,15 +59,18 @@ export function ContentCardHeader({
 
 export function ContentCardTitle({
   children,
+  size = "default",
   className,
 }: {
   children: React.ReactNode;
+  size?: "default" | "small";
   className?: string;
 }) {
   return (
     <Text
-      variant="body-medium"
-      className={cn("truncate text-foreground-emphasis", className)}
+      variant={size === "small" ? "small-medium-tight" : "body-medium"}
+      tone="emphasis"
+      className={cn("truncate", className)}
     >
       {children}
     </Text>
@@ -84,10 +87,9 @@ export function ContentCardSubtitle({
   return (
     <Text
       variant="small"
-      className={cn(
-        "mt-0.5 truncate font-mono text-foreground-emphasis",
-        className,
-      )}
+      mono
+      tone="emphasis"
+      className={cn("mt-0.5 truncate", className)}
     >
       {children}
     </Text>
@@ -96,15 +98,18 @@ export function ContentCardSubtitle({
 
 export function ContentCardDescription({
   children,
+  size = "default",
   className,
 }: {
   children: React.ReactNode;
+  size?: "default" | "small";
   className?: string;
 }) {
   return (
     <Text
-      variant="body"
-      className={cn("mt-2 text-foreground-emphasis", className)}
+      variant={size === "small" ? "small-tight" : "body"}
+      tone="emphasis"
+      className={cn("mt-2", className)}
     >
       {children}
     </Text>
@@ -123,7 +128,7 @@ export function ContentMessage({
   className?: string;
 }) {
   return (
-    <Text variant="body" className={cn("text-foreground-emphasis", className)}>
+    <Text variant="body" tone="emphasis" className={className}>
       {children}
     </Text>
   );
@@ -137,7 +142,7 @@ export function ContentHint({
   className?: string;
 }) {
   return (
-    <Text variant="small" className={cn("text-foreground-tertiary", className)}>
+    <Text variant="small" tone="muted" className={className}>
       {children}
     </Text>
   );
@@ -157,7 +162,7 @@ export function ContentCodeBlock({
   return (
     <pre
       className={cn(
-        "rounded-lg border bg-surface-hover p-3 text-xs whitespace-pre-wrap text-foreground-emphasis",
+        "rounded-lg border bg-surface-hover p-3 text-caption whitespace-pre-wrap text-foreground-emphasis",
         className,
       )}
     >
@@ -182,7 +187,7 @@ export function ContentBadge({
       variant="small"
       as="span"
       className={cn(
-        "shrink-0 rounded-full border bg-muted px-2 py-0.5 text-caption-sm leading-inherit text-foreground-emphasis",
+        "shrink-0 rounded-full border bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-emphasis",
         className,
       )}
     >
@@ -204,7 +209,7 @@ export function ContentLink({
       variant="primary"
       isExternal
       href={href}
-      className={cn("shrink-0 text-xs text-brand", className)}
+      className={cn("shrink-0 text-caption text-brand", className)}
       {...rest}
     >
       {children}

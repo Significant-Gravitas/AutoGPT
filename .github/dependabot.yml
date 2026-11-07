@@ -186,7 +186,10 @@ updates:
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
-    directory: "/"
+    # "/" covers .github/workflows only; a composite action's pins need its folder.
+    directories:
+      - "/"
+      - ".github/actions/generate-prisma-client"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
