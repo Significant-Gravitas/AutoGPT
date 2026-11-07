@@ -68,7 +68,7 @@ jobs:
           POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
           curl -sSL https://install.python-poetry.org | POETRY_VERSION=$POETRY_VERSION python3 -
 
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6.1.0
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
