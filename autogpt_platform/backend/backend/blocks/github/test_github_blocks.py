@@ -1,9 +1,7 @@
 import asyncio
-import contextlib
 import copy
 import inspect
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest import mock
 from urllib.parse import urlparse
 
@@ -63,7 +61,6 @@ from backend.blocks.github.repo_files import GithubReadFileBlock, GithubReadFold
 from backend.blocks.github.reviews import GithubListPRReviewsBlock
 from backend.blocks.github.users import GithubGetUserInfoBlock
 from backend.data.execution import ExecutionContext
-from backend.util import request as request_module
 from backend.util.exceptions import BlockExecutionError
 
 # ── prepare_pr_api_url tests ──
@@ -709,14 +706,18 @@ class TestConvertCommentUrl:
 
 
 class TestConvertToApiUrlQuery:
-    @pytest.mark.parametrize("query", ["ref=dev", "ref=release%2Fv0.8"])
+    @pytest.mark.parametrize(
+        "query", ["ref=dev", "ref=release%2Fv0.8", "ref=feature%2Fzo%C3%AB"]
+    )
     def test_query_survives_str_input(self, query):
         assert (
             _convert_to_api_url(f"https://github.com/owner/repo/contents/x?{query}")
             == f"https://api.github.com/repos/owner/repo/contents/x?{query}"
         )
 
-    @pytest.mark.parametrize("query", ["ref=dev", "ref=release%2Fv0.8"])
+    @pytest.mark.parametrize(
+        "query", ["ref=dev", "ref=release%2Fv0.8", "ref=feature%2Fzo%C3%AB"]
+    )
     def test_query_survives_parsed_input(self, query):
         result = _convert_to_api_url(
             urlparse(f"https://github.com/owner/repo/contents/x?{query}")
@@ -725,52 +726,46 @@ class TestConvertToApiUrlQuery:
         assert result.path == "/repos/owner/repo/contents/x"
         assert result.query == query
 
+    def test_api_host_query_is_unchanged(self):
+        url = "https://api.github.com/repos/owner/repo/contents/x?ref=dev"
+        assert _convert_to_api_url(url) == url
+        parsed = urlparse(url)
+        assert _convert_to_api_url(parsed) is parsed
 
-def _requested_url(call, body: object) -> str:
-    """Run `call` through the real `Requests` stack; return the URL sent."""
-    urls: list[str] = []
-    response = mock.Mock(status=200, headers={}, reason="OK")
-    response.read = mock.AsyncMock(return_value=json.dumps(body).encode())
 
-    @contextlib.asynccontextmanager
-    async def fake_request(method, url, **kwargs):
-        urls.append(url)
-        yield response
-
-    @contextlib.asynccontextmanager
-    async def fake_session(**kwargs):
-        yield mock.Mock(request=fake_request)
-
-    with mock.patch.object(request_module.aiohttp, "ClientSession", fake_session):
-        asyncio.run(call())
-    assert len(urls) == 1
-    return urls[0]
+_READ_BRANCH_CASES = [
+    ("dev", "?ref=dev"),
+    ("release/v0.8", "?ref=release%2Fv0.8"),
+    ("feature/zoë", "?ref=feature%2Fzo%C3%AB"),
+    ("", ""),
+    ("  ", ""),
+]
 
 
 class TestReadBranchRef:
-    @pytest.mark.parametrize(
-        "branch, query", [("feature/x", "?ref=feature%2Fx"), ("", ""), ("  ", "")]
-    )
+    @pytest.mark.parametrize("branch, query", _READ_BRANCH_CASES)
     def test_read_file_ref(self, branch, query):
-        url = _requested_url(
+        _, sent = _via_requests(
             lambda: GithubReadFileBlock.read_file(
                 TEST_CREDENTIALS, "https://github.com/owner/repo", "a.md", branch
             ),
-            {"type": "file", "content": "eA==", "size": 1},
+            [{"type": "file", "content": "eA==", "size": 1}],
         )
-        assert url == f"https://api.github.com/repos/owner/repo/contents/a.md{query}"
+        assert [url for _, url, _ in sent] == [
+            f"https://api.github.com/repos/owner/repo/contents/a.md{query}"
+        ]
 
-    @pytest.mark.parametrize(
-        "branch, query", [("feature/x", "?ref=feature%2Fx"), ("", ""), ("  ", "")]
-    )
+    @pytest.mark.parametrize("branch, query", _READ_BRANCH_CASES)
     def test_read_folder_ref(self, branch, query):
-        url = _requested_url(
+        _, sent = _via_requests(
             lambda: GithubReadFolderBlock.read_folder(
                 TEST_CREDENTIALS, "https://github.com/owner/repo", "src", branch
             ),
-            [],
+            [[]],
         )
-        assert url == f"https://api.github.com/repos/owner/repo/contents/src{query}"
+        assert [url for _, url, _ in sent] == [
+            f"https://api.github.com/repos/owner/repo/contents/src{query}"
+        ]
 
     def test_branch_defaults_to_repository_default(self):
         for block in (GithubReadFileBlock, GithubReadFolderBlock):
@@ -1285,12 +1280,12 @@ class TestParseTimestamp:
 
     def test_zulu_suffix_is_understood(self):
         assert repo._parse_timestamp("2026-01-01T00:00:00Z") == datetime(
-            2026, 1, 1, tzinfo=timezone.utc
+            2026, 1, 1, tzinfo=UTC
         )
 
     def test_naive_timestamp_is_assumed_utc(self):
         assert repo._parse_timestamp("2026-01-01T00:00:00") == datetime(
-            2026, 1, 1, tzinfo=timezone.utc
+            2026, 1, 1, tzinfo=UTC
         )
 
 
