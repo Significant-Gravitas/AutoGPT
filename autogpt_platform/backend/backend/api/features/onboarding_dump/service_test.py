@@ -1334,6 +1334,63 @@ async def test_no_usable_speech_sends_back_no_text(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input_mode", [BrainDumpInputMode.voice, BrainDumpInputMode.typed]
+)
+async def test_an_insufficient_take_sends_back_otto_s_reply(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    transcribe: AsyncMock,
+    input_mode: BrainDumpInputMode,
+):
+    replied = JUDGED_UNUSABLE.model_copy(update={"reply": "No pressure. So tell me,"})
+
+    response = await _rejected_with(
+        dumps, quality_gate, transcribe, replied, input_mode, "I'd rather not."
+    )
+
+    assert response.otto_reply == "No pressure. So tell me,"
+    # The reply is for the screen only; the row keeps the verdict as before.
+    assert dumps.row is not None and dumps.row.errorReason == "judge_unusable"
+
+
+@pytest.mark.asyncio
+async def test_an_insufficient_take_without_a_reply_leaves_the_fixed_line(
+    dumps: DumpStore, quality_gate: AsyncMock, transcribe: AsyncMock
+):
+    response = await _rejected_with(
+        dumps,
+        quality_gate,
+        transcribe,
+        JUDGED_UNUSABLE,
+        BrainDumpInputMode.voice,
+        "Hello?",
+    )
+
+    assert response.otto_reply is None
+
+
+@pytest.mark.asyncio
+async def test_only_an_insufficient_reject_sends_a_reply(
+    dumps: DumpStore, quality_gate: AsyncMock, transcribe: AsyncMock
+):
+    # Nothing the person said can be answered on a no-words reject.
+    with_reply = DETERMINISTIC.model_copy(update={"reply": "Loud and clear!"})
+
+    response = await _rejected_with(
+        dumps,
+        quality_gate,
+        transcribe,
+        with_reply,
+        BrainDumpInputMode.voice,
+        "Thank you.",
+    )
+
+    assert response.error_code == "no_usable_speech"
+    assert response.otto_reply is None
+
+
+@pytest.mark.asyncio
 async def test_repeating_finalize_after_quality_rejection_does_not_rerun_the_gate(
     dumps: DumpStore, quality_gate: AsyncMock, storage_mocks: dict[str, AsyncMock]
 ):

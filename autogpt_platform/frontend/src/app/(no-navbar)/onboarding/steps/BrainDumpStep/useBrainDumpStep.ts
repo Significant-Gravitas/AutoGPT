@@ -277,6 +277,8 @@ export function useBrainDumpStep() {
             errorCode,
             heardText:
               response.status === 200 ? response.data.transcript_preview : null,
+            ottoReply:
+              response.status === 200 ? response.data.otto_reply : null,
           });
           setScreen("insufficient");
         } else fail(errorCode ?? null);
@@ -417,7 +419,13 @@ export function useBrainDumpStep() {
         // The typed text stays in the composer, so Write from the
         // not-enough screen reopens it with nothing lost.
         if (rejected) {
-          reply.show({ mode: "typed", errorCode, heardText: text });
+          reply.show({
+            mode: "typed",
+            errorCode,
+            heardText: text,
+            ottoReply:
+              response.status === 200 ? response.data.otto_reply : null,
+          });
           setScreen("insufficient");
         } else fail(errorCode ?? null);
         return;
@@ -619,6 +627,7 @@ export function useBrainDumpStep() {
     screen,
     insufficientMode: reply.mode,
     heardText: reply.heardText,
+    ottoReply: reply.ottoReply,
     isFollowUp: reply.isFollowUp,
     typingPlaceholder: reply.typingPlaceholder,
     submittedMode,

@@ -758,20 +758,25 @@ describe("useBrainDumpStep — insufficient content", () => {
 });
 
 describe("useBrainDumpStep — Otto replies", () => {
-  function rejected(code: string, preview?: string) {
+  function rejected(code: string, preview?: string, ottoReply?: string) {
     return {
       status: 200,
       data: {
         status: "failed",
         error_code: code,
         ...(preview === undefined ? {} : { transcript_preview: preview }),
+        ...(ottoReply === undefined ? {} : { otto_reply: ottoReply }),
       },
     };
   }
 
-  async function rejectVoiceTake(code: string, preview?: string) {
+  async function rejectVoiceTake(
+    code: string,
+    preview?: string,
+    ottoReply?: string,
+  ) {
     recorderState.recordingId = "rec-1";
-    finalizeBrainDump.mockResolvedValueOnce(rejected(code, preview));
+    finalizeBrainDump.mockResolvedValueOnce(rejected(code, preview, ottoReply));
     const view = await renderStep();
     await act(async () => {
       await view.result.current.handleDone();
@@ -779,8 +784,14 @@ describe("useBrainDumpStep — Otto replies", () => {
     return view;
   }
 
-  async function rejectTypedText(text: string, code = "insufficient_content") {
-    finalizeBrainDump.mockResolvedValueOnce(rejected(code));
+  async function rejectTypedText(
+    text: string,
+    code = "insufficient_content",
+    ottoReply?: string,
+  ) {
+    finalizeBrainDump.mockResolvedValueOnce(
+      rejected(code, undefined, ottoReply),
+    );
     const view = await renderStep();
     act(() => {
       view.result.current.showTyping();
@@ -816,6 +827,7 @@ describe("useBrainDumpStep — Otto replies", () => {
           mode: "voice",
           error_code: "insufficient_content",
           heard: true,
+          ai_reply: false,
           prompt_set: "Other",
         },
       ],
@@ -845,6 +857,7 @@ describe("useBrainDumpStep — Otto replies", () => {
             mode: "voice",
             error_code: code,
             heard: false,
+            ai_reply: false,
             prompt_set: "Other",
           },
         ],
@@ -867,10 +880,58 @@ describe("useBrainDumpStep — Otto replies", () => {
           mode: "typed",
           error_code: "no_usable_speech",
           heard: true,
+          ai_reply: false,
           prompt_set: "Marketing",
         },
       ],
     ]);
+  });
+
+  it("keeps Otto's reply to a voice take and says it had one", async () => {
+    const { result } = await rejectVoiceTake(
+      "insufficient_content",
+      "I don't want to do this.",
+      "No pressure at all. So tell me,",
+    );
+
+    expect(result.current.ottoReply).toBe("No pressure at all. So tell me,");
+    expect(shown()).toEqual([
+      [
+        "brain_dump_insufficient_shown",
+        {
+          mode: "voice",
+          error_code: "insufficient_content",
+          heard: true,
+          ai_reply: true,
+          prompt_set: "Other",
+        },
+      ],
+    ]);
+  });
+
+  it("keeps Otto's reply to typed text", async () => {
+    const { result } = await rejectTypedText(
+      "skip",
+      "insufficient_content",
+      "That's fine, but one small thing helps.",
+    );
+
+    expect(result.current.ottoReply).toBe(
+      "That's fine, but one small thing helps.",
+    );
+    expect(shown()[0]?.[1]).toMatchObject({ mode: "typed", ai_reply: true });
+  });
+
+  it("drops a reply when no words came through", async () => {
+    const { result } = await rejectVoiceTake(
+      "insufficient_content",
+      undefined,
+      "Loud and clear!",
+    );
+
+    expect(result.current.heardText).toBeNull();
+    expect(result.current.ottoReply).toBeNull();
+    expect(shown()[0]?.[1]).toMatchObject({ heard: false, ai_reply: false });
   });
 
   it("is not a follow-up until the person leaves the screen to talk or write", async () => {

@@ -27,12 +27,18 @@ export function heardTextOf(text: string | null | undefined) {
   return text?.trim() || null;
 }
 
+// Otto answers what was said when the gate's judge wrote him a reply; the
+// fixed lines cover a reply that is missing and a take with no words.
 export function ottoFirstLine(
   mode: InsufficientMode,
   heardText: string | null,
+  ottoReply: string | null = null,
 ) {
+  const heard = heardTextOf(heardText);
+  const written = heardTextOf(ottoReply);
+  if (heard && written) return written;
   if (mode === "typed") return FIRST_LINES.typed;
-  return heardTextOf(heardText) ? FIRST_LINES.heard : FIRST_LINES.silent;
+  return heard ? FIRST_LINES.heard : FIRST_LINES.silent;
 }
 
 export function actionLabels(mode: InsufficientMode) {

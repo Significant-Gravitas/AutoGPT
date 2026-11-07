@@ -87,6 +87,10 @@ class FinalizeResponse(BaseModel):
     transcript_preview: str | None = None
     """The transcript's start, on success and on an ``insufficient_content``
     reject; never on ``no_usable_speech``."""
+    otto_reply: str | None = None
+    """Otto's first line for the not-enough screen, written for what was said,
+    on an ``insufficient_content`` reject. ``None`` means the screen uses its
+    fixed line."""
     error_code: str | None = None
     error_reason: str | None = None
     """What decided a quality-gate rejection (``quality.QualityRejection``)."""

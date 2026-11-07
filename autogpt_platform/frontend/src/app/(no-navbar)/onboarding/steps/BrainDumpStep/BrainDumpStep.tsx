@@ -198,6 +198,7 @@ export function BrainDumpStep() {
               <InsufficientState
                 mode={dump.insufficientMode}
                 heardText={dump.heardText}
+                ottoReply={dump.ottoReply}
                 role={dump.role}
                 canRecord={!dump.isMicBlocked}
                 onTalk={dump.handleRestart}

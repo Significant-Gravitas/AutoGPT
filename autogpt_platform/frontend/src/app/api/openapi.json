@@ -26708,6 +26708,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Transcript Preview"
           },
+          "otto_reply": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Otto Reply"
+          },
           "error_code": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Code"

@@ -76,8 +76,9 @@ export const BrainDumpEvent = {
   BRAIN_DUMP_MIC_FAILED: "brain_dump_mic_failed",
   BRAIN_DUMP_TYPED_FALLBACK: "brain_dump_typed_fallback",
   // The "not enough" screen showed, after a voice or typed take, with the
-  // `mode`, the gate's `error_code`, whether "You" showed any text (`heard`)
-  // and the role's `prompt_set`. Talk, Write and a skip on that screen
+  // `mode`, the gate's `error_code`, whether "You" showed any text (`heard`),
+  // whether Otto's first line was written for it (`ai_reply`) and the role's
+  // `prompt_set`. Talk, Write and a skip on that screen
   // (Continue without it or Skip for now) send `from: "insufficient"` on
   // `brain_dump_restarted`, `brain_dump_typed_fallback` and
   // `brain_dump_skipped`, and a take or text completed after it sends

@@ -373,6 +373,7 @@ function finalizeReturns(response: {
   status: "completed" | "failed";
   error_code?: string;
   transcript_preview?: string;
+  otto_reply?: string;
 }) {
   const bodies: unknown[] = [];
   server.use(
@@ -1196,6 +1197,24 @@ describe("onboarding brain dump — insufficient content", () => {
     expect(recordingStoreState.parts).toHaveLength(1);
   });
 
+  it("answers what was said when the gate wrote Otto a reply", async () => {
+    finalizeReturns({
+      status: "failed",
+      error_code: "insufficient_content",
+      transcript_preview: "I don't want to do this.",
+      otto_reply: "No pressure at all. So tell me,",
+    });
+
+    await recordAndSend();
+
+    expect(
+      await screen.findByRole("heading", { name: OFF_YOUR_PLATE }),
+    ).toBeDefined();
+    expect(screen.getByText("I don't want to do this.")).toBeDefined();
+    expect(screen.getByText("No pressure at all. So tell me,")).toBeDefined();
+    expect(screen.queryByText("Loud and clear! So tell me,")).toBeNull();
+  });
+
   it("offers a retry of the same take when the quality check was unavailable", async () => {
     finalizeReturns({
       status: "failed",
@@ -1358,6 +1377,7 @@ describe("onboarding brain dump — insufficient content", () => {
         mode: "voice",
         error_code: "insufficient_content",
         heard: true,
+        ai_reply: false,
         prompt_set: "Engineering",
       },
     );

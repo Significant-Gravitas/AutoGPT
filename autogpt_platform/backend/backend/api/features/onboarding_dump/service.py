@@ -368,7 +368,7 @@ async def _quality_rejection(
     Shared by the voice and typed paths so the reject contract (log, mark
     failed, surface the error code and reason) cannot drift between them.
     An ``insufficient_content`` reject also sends back what was heard, so
-    the not-enough screen can show it. ``no_usable_speech`` never does: its
+    the not-enough screen can show it, and the judge's reply to it. ``no_usable_speech`` never does: its
     text is empty, symbols, a decoder loop or words the person never said.
     """
     logger.info(
@@ -377,17 +377,15 @@ async def _quality_rejection(
     )
     await db.mark_failed(user_id, recording_id, rejection.error_code, rejection.reason)
     heard = transcript.strip()[:TRANSCRIPT_PREVIEW_CHARS]
+    is_insufficient = rejection.error_code == quality.INSUFFICIENT_CONTENT
     return FinalizeResponse(
         status=BrainDumpStatus.failed,
         input_mode=input_mode,
         error_code=rejection.error_code,
         error_reason=rejection.reason,
         transcript_words=quality.count_words(transcript),
-        transcript_preview=(
-            heard or None
-            if rejection.error_code == quality.INSUFFICIENT_CONTENT
-            else None
-        ),
+        transcript_preview=(heard or None) if is_insufficient else None,
+        otto_reply=rejection.reply if is_insufficient else None,
     )
 
 

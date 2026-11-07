@@ -16,6 +16,7 @@ const QUESTION = "What do you want off your plate?";
 interface Overrides {
   mode?: "voice" | "typed";
   heardText?: string | null;
+  ottoReply?: string | null;
   role?: string;
   canRecord?: boolean;
 }
@@ -30,6 +31,7 @@ function renderScreen(overrides: Overrides = {}) {
           ? "Um, okay. Hi. Is this working?"
           : overrides.heardText
       }
+      ottoReply={overrides.ottoReply ?? null}
       role={overrides.role ?? "Founder/CEO"}
       canRecord={overrides.canRecord ?? true}
       {...handlers}
@@ -98,6 +100,41 @@ describe("InsufficientState — what Otto heard", () => {
       "Talk instead",
       "Continue without it",
     ]);
+  });
+
+  it.each([
+    { mode: "voice" as const, heardText: "I don't want to do this." },
+    { mode: "typed" as const, heardText: "skip" },
+  ])(
+    "answers what was said with the judge's reply ($mode)",
+    ({ mode, heardText }) => {
+      renderScreen({
+        mode,
+        heardText,
+        ottoReply: "No pressure at all. So tell me,",
+      });
+
+      expect(screen.getByText(heardText)).toBeDefined();
+      expect(screen.getByText("No pressure at all. So tell me,")).toBeDefined();
+      expect(screen.queryByText("Loud and clear! So tell me,")).toBeNull();
+      expect(
+        screen.queryByText("No problem. Let's start with an easy one."),
+      ).toBeNull();
+      expect(screen.getByRole("heading", { name: QUESTION })).toBeDefined();
+    },
+  );
+
+  it("keeps the fixed line when the reply is blank", () => {
+    renderScreen({ ottoReply: "   " });
+
+    expect(screen.getByText("Loud and clear! So tell me,")).toBeDefined();
+  });
+
+  it("never shows a reply when no words came through", () => {
+    renderScreen({ heardText: null, ottoReply: "Loud and clear!" });
+
+    expect(screen.queryByText("Loud and clear!")).toBeNull();
+    expect(screen.getByText("No words came through")).toBeDefined();
   });
 
   it.each([
