@@ -65,6 +65,15 @@ class EmailUrls(BaseModel):
     discord: str
 
 
+def otto_asset_url(assets: str) -> str:
+    """The neutral Otto hero, served from the same host as the other email art."""
+    asset_url = urlsplit(assets)
+    return (
+        f"{asset_url.scheme}://{asset_url.netloc}"
+        "/autogpt-characters/v1.1/otto/neutral-transparent/256.png"
+    )
+
+
 def build_urls(
     unsubscribe_link: str, volume: dict[str, str] | None = None
 ) -> EmailUrls:
@@ -135,11 +144,7 @@ def _build_context(
     # Hero art is hosted, not inline: Outlook does not render inline SVG, and
     # Gmail does not display data-URI images.
     context["assets"] = settings.config.email_asset_base_url.rstrip("/")
-    asset_url = urlsplit(context["assets"])
-    context["otto_asset_url"] = (
-        f"{asset_url.scheme}://{asset_url.netloc}"
-        "/autogpt-characters/v1.1/otto/neutral-transparent/256.png"
-    )
+    context["otto_asset_url"] = otto_asset_url(context["assets"])
     if "plan" in context:
         plan = context["plan"]
         plan["label"] = f"{plan['name']} · {plan['cycle']}"

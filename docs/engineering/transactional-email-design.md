@@ -9,7 +9,7 @@ payload; Postmark receives those bodies rather than a hosted template ID.
 | Family | Variants | Design and delivery |
 | --- | --- | --- |
 | Lifecycle | Welcome, payment failed, final notice, cancellation confirmed, cancellation reversed, ended (payment/cancellation) | Billing sender; contact reply-to; service footer; no unsubscribe |
-| Trial | Started, ending, canceled, resumed, converted, payment failed, ended | Same billing rules; neutral Otto; one plan/payment action |
+| Trial | Started, ending, ending while set not to renew (3 days and 1 day before), canceled, resumed, converted, payment failed, ended | Same billing rules; neutral Otto; one plan/payment action |
 | Briefing | Daily, weekly, monthly; quiet/standard; attention/no attention | Product sender; hello reply-to; signed cadence links; one-click unsubscribe |
 | Alert | Each cause, including coalesced alerts | Amber needs-you strip and primary attention card; secondary actions are text links |
 | Verdict | Approved; changes requested with/without notes | State eyebrow; reviewer feedback preserved and escaped; one marketplace action |
@@ -28,7 +28,10 @@ publish content or settings to MailerLite.
 `#6144DF` actions, ink `#171925`, white sheet and lavender paper. Facts stack on
 phones. At 600px and below, the paper has no side padding and the sheet has
 square corners; content keeps its 22px gutters. The sheet is fluid even when a
-client strips the stylesheet. Button links own their full padded surface,
+client strips the stylesheet. The card cell owns inline 22px side padding and
+centers a 464px content table, with a fixed-width Outlook wrapper. Content rows
+add no side padding. Fonts load through a separate link rather than an import
+inside the style block. Button links own their full padded surface,
 including when styles are removed. MSO-only rules transfer that padding to
 table cells for Outlook without doubling it. Inline font stacks preserve
 the fallback appearance in Outlook; action glyphs request text
@@ -39,6 +42,20 @@ feedback stay escaped, and customer-authored punctuation is preserved.
 Plan labels use a middle dot (`Pro · monthly`). Trial prices use the same
 formatted amount as lifecycle emails, with a currency code retained when the
 formatter has no currency symbol (`20.00 CAD / month`, `2,000 JPY / year`).
+
+Briefing amounts already represent dollars; neither the displayed amount nor
+the balance is divided again. Balance alerts use the same dollar unit. A trial
+conversion shows its actual conversion date, not the original trial end date.
+
+Payment-failure notices are queued only when the failed-payment handler reports
+that customer action is required. Wallet-settled, stale, replaced and processing
+invoices do not queue them. A missing retry timestamp is not proof of exhaustion:
+the final notice requires a current `unpaid` subscription. The latest invoice
+still requires action when Stripe marked it uncollectible after its last retry,
+unless a newer plan replaced its subscription. Canceled subscriptions
+use the existing plan-ended message. The final notice dates the failed event and
+links to the hosted invoice when available; it never presents the invoice's
+renewal date as a future pause date.
 
 One primary button is the default. Cancellation confirmation uses a billing
 text link. A Briefing without an attention item uses highlight/run-history text
@@ -111,6 +128,15 @@ the defaults here do not prove the effective production values. Before rollout:
   senders and the transactional Postmark stream.
 - Check that the new public Otto URL returns a PNG without authentication from
   the configured asset host before deploying the notification service.
+- Deploy the updated notification consumers before API producers: consumers
+  accept old final-notice payloads without mislabeling their renewal date, while
+  new producers can omit an unknown retry date and use the new last-attempt field.
+- Keep user notifications disabled until the asset and access-behavior changes
+  are deployed together. Confirm Stripe's final failed-payment action and its
+  own recovery emails before enabling the application emails; validate an actual
+  retry, wallet-covered invoice, unpaid subscription and canceled subscription.
+  The final notice is sent only when that action marks the subscription
+  `unpaid`; the invoice may be left past due or marked uncollectible.
 
 To verify the trial-ending reminder, follow the delivery path in order:
 
@@ -132,6 +158,20 @@ To verify the trial-ending reminder, follow the delivery path in order:
 5. Check Postmark activity in the configured transactional stream for the
    billing sender and subject beginning `Your AutoGPT trial ends on`, then check
    the delivery result for the affected recipient.
+
+A trial set to cancel at its end gets its own two reminders instead, each with
+Resume my trial as the action. The same `trial_will_end` event queues the
+three-day one (`trial_expiring`, subject `Your AutoGPT trial ends in 3 days`).
+The scheduler's hourly `send_trial_last_calls` pass queues the one-day one
+(`trial_last_call`, subject `Your AutoGPT access ends tomorrow`)
+while 18 to 25 hours of the trial are left. Neither goes to someone who
+canceled in the last day, since the cancellation notice they just received
+gives the same date and way back. Neither goes while another plan is live, since
+that plan keeps their access, and the three-day reminder only goes out with
+between two and a half and three and a half days left, so its subject stays
+accurate. The last-day claim fails closed on a Redis error, so an outage
+cannot resend it on every hourly run. Each is claimed once per trial end date, and
+a resume before delivery suppresses it.
 
 Stripe's [trial-ending webhook setting](https://docs.stripe.com/billing/subscriptions/trials)
 is separate from its [hosted reminder emails](https://docs.stripe.com/billing/subscriptions/trials/manage-trial-compliance),

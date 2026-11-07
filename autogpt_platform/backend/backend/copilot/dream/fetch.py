@@ -14,13 +14,25 @@ Caps (copied here so they live next to the code that enforces them):
 from __future__ import annotations
 
 import logging
+from collections.abc import Collection
 from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel, Field
 
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
+from backend.copilot.graphiti.recall import (
+    forgotten_facts_clause,
+    live_fact_predicate,
+    recallable_episode_predicate,
+)
+from backend.copilot.graphiti.recall_stamp import RecallStamp, recall_stamp_columns
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.hidden_rows import visible_to_model
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
+from backend.copilot.model import ChatMessage, ChatSessionInfo
 from backend.data.db_accessors import chat_db
+
+from .hidden_sessions import hidden_session_ids
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +52,9 @@ class EpisodeRow(BaseModel):
     created_at: str | None
 
 
-class FactRow(BaseModel):
-    uuid: str
+class FactRow(RecallStamp):
+    """An active fact and its recall stamps (all ``None``: never recalled)."""
+
     source: str | None
     target: str | None
     name: str | None
@@ -149,11 +162,17 @@ async def _fetch_recent_episodes(
     # which exceeds typical 14-day activity for any one user). The
     # ``window_start`` argument is kept for caller bookkeeping but the
     # Cypher itself just relies on the ORDER BY + LIMIT clamp.
+    #
+    # An episode the recall policy hides (redacted by a forget, or citing a
+    # forgotten fact) is skipped like a retracted fact: consolidating its
+    # text would re-derive the fact the user forgot.
     _ = window_start
     try:
         result = await driver.execute_query(
-            """
-            MATCH (n:Episodic {group_id: $g})
+            forgotten_facts_clause()
+            + f"""
+            MATCH (n:Episodic {{group_id: $g}})
+            WHERE {recallable_episode_predicate("n")}
             RETURN n.uuid AS uuid,
                    n.name AS name,
                    n.content AS content,
@@ -192,12 +211,13 @@ async def _fetch_active_facts(
     group_id: str,
     limit: int,
 ) -> list[FactRow]:
+    # Active facts only, by recall's own live test: tentative, superseded,
+    # contradicted, retracted and forgotten edges all fail it.
     try:
         result = await driver.execute_query(
-            """
-            MATCH (src:Entity)-[e:RELATES_TO {group_id: $g}]->(tgt:Entity)
-            WHERE (e.status IS NULL OR e.status = 'active')
-              AND (e.expired_at IS NULL)
+            f"""
+            MATCH (src:Entity)-[e:RELATES_TO {{group_id: $g}}]->(tgt:Entity)
+            WHERE {live_fact_predicate("e", include_tentative=False)}
             RETURN e.uuid AS uuid,
                    src.name AS source,
                    tgt.name AS target,
@@ -206,7 +226,8 @@ async def _fetch_active_facts(
                    e.scope AS scope,
                    e.confidence AS confidence,
                    e.status AS status,
-                   toString(e.created_at) AS created_at
+                   toString(e.created_at) AS created_at,
+                   {recall_stamp_columns("e")}
             ORDER BY e.created_at DESC
             LIMIT $limit
             """,
@@ -232,6 +253,9 @@ async def _fetch_active_facts(
             confidence=r.get("confidence"),
             status=r.get("status"),
             created_at=r.get("created_at"),
+            recall_count=r.get("recall_count"),
+            last_recalled_at=r.get("last_recalled_at"),
+            prev_recalled_at=r.get("prev_recalled_at"),
         )
         for r in rows
     ]
@@ -241,8 +265,14 @@ async def _fetch_recent_sessions(
     scope: MemoryScope,
     window_start: datetime,
     limit: int,
+    *,
+    hidden: Collection[str] | None = (),
 ) -> list[SessionRow]:
     """Pull the most recent N chat sessions and their first chunk of content.
+
+    A ``hidden`` session (``hidden_sessions.py``) is left out. ``None``
+    means that list could not be read; chat history is raw text a forget
+    never reaches, so then no session is read at all.
 
     Routes through ``chat_db()`` so the dream pass — which runs in the
     Scheduler subprocess — uses the DatabaseManager RPC when Prisma
@@ -258,6 +288,8 @@ async def _fetch_recent_sessions(
     clamp does the bounding.
     """
     _ = window_start
+    if hidden is None:
+        return []
     user_id = scope.owner_user_id
     try:
         if scope.expert_id is None:
@@ -275,48 +307,57 @@ async def _fetch_recent_sessions(
             exc_info=True,
         )
         return []
+    return [
+        await _session_row(session, user_id)
+        for session in sessions
+        if session.session_id not in hidden
+    ]
 
-    out: list[SessionRow] = []
-    for s in sessions:
-        # ``ChatSessionInfo`` exposes ``session_id`` (not ``id``) and
-        # carries no messages (it's a summary). Fetch the body lazily
-        # per-session via the paginated reader so the prompt has
-        # actual content. One round-trip per session is acceptable at
-        # limit=10; a bulk variant can replace this when chat_db
-        # gains one.
-        sid = s.session_id
-        messages: list = []
-        try:
-            paginated = await chat_db().get_chat_messages_paginated(
-                session_id=sid, limit=20, user_id=user_id
-            )
-            if paginated is not None:
-                messages = list(getattr(paginated, "messages", []) or [])
-        except Exception:
-            logger.debug(
-                "Failed to fetch messages for session %s — body left empty",
-                sid[:12],
-                exc_info=True,
-            )
-        body_parts: list[str] = []
-        running_len = 0
-        for m in messages:
-            line = f"{m.role}: {m.content or ''}"
-            running_len += len(line) + 1
-            body_parts.append(line)
-            if running_len >= MAX_SESSION_BODY_BYTES:
-                break
-        body = "\n".join(body_parts)[:MAX_SESSION_BODY_BYTES]
-        out.append(
-            SessionRow(
-                session_id=sid,
-                title=s.title,
-                created_at=getattr(s, "createdAt", None)
-                or getattr(s, "created_at", None),
-                body=body,
-            )
+
+async def _session_row(session: ChatSessionInfo, user_id: str) -> SessionRow:
+    """One session's title and the start of its messages.
+
+    ``ChatSessionInfo`` exposes ``session_id`` (not ``id``) and carries no
+    messages (it's a summary). Fetch the body lazily per-session via the
+    paginated reader so the prompt has actual content. One round-trip per
+    session is acceptable at limit=10; a bulk variant can replace this when
+    chat_db gains one.
+    """
+    sid = session.session_id
+    messages: list[ChatMessage] = []
+    try:
+        paginated = await chat_db().get_chat_messages_paginated(
+            session_id=sid, limit=20, user_id=user_id
         )
-    return out
+        if paginated is not None:
+            messages = visible_to_model(paginated.messages)
+    except Exception:
+        logger.debug(
+            "Failed to fetch messages for session %s — body left empty",
+            sid[:12],
+            exc_info=True,
+        )
+    return SessionRow(
+        session_id=sid,
+        title=session.title,
+        created_at=session.started_at,
+        body=_session_body(messages),
+    )
+
+
+def _session_body(messages: list[ChatMessage]) -> str:
+    """``role: content`` lines, cut to ``MAX_SESSION_BODY_BYTES``. The first
+    message is read without the memory block an older session stored in it
+    (``without_stored_first_turn_memory``)."""
+    body_parts: list[str] = []
+    running_len = 0
+    for m in without_stored_first_turn_memory(messages):
+        line = f"{m.role}: {m.content or ''}"
+        running_len += len(line) + 1
+        body_parts.append(line)
+        if running_len >= MAX_SESSION_BODY_BYTES:
+            break
+    return "\n".join(body_parts)[:MAX_SESSION_BODY_BYTES]
 
 
 async def gather_dream_input(
@@ -343,10 +384,13 @@ async def gather_dream_input(
             driver, group_id, window_start, max_episodes
         )
         facts = await _fetch_active_facts(driver, group_id, max_facts)
+        hidden = await hidden_session_ids(driver, group_id)
     finally:
         await driver.close()
 
-    sessions = await _fetch_recent_sessions(scope, window_start, max_sessions)
+    sessions = await _fetch_recent_sessions(
+        scope, window_start, max_sessions, hidden=hidden
+    )
 
     return DreamInput(
         user_id=scope.owner_user_id,

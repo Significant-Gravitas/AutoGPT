@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from backend.copilot.constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -281,38 +283,32 @@ class TestClassifyFinalFailure:
             retryable=False,
         )
 
-    def test_attempts_exhausted(self):
+    @pytest.mark.parametrize(
+        "attempts_exhausted, transient_exhausted, code, retryable",
+        [
+            pytest.param(
+                True, False, "all_attempts_exhausted", False, id="attempts_exhausted"
+            ),
+            pytest.param(
+                False, True, "transient_api_error", True, id="transient_exhausted"
+            ),
+            pytest.param(
+                False, False, "sdk_stream_error", False, id="stream_err_fallback"
+            ),
+        ],
+    )
+    def test_exhaustion_and_stream_error_codes(
+        self, attempts_exhausted, transient_exhausted, code, retryable
+    ):
         result = _classify_final_failure(
             _InterruptedAttempt(),
-            attempts_exhausted=True,
-            transient_exhausted=False,
-            stream_err=RuntimeError("x"),
-        )
-        assert result is not None
-        assert result.code == "all_attempts_exhausted"
-        assert result.retryable is False
-
-    def test_transient_exhausted(self):
-        result = _classify_final_failure(
-            _InterruptedAttempt(),
-            attempts_exhausted=False,
-            transient_exhausted=True,
-            stream_err=RuntimeError("x"),
-        )
-        assert result is not None
-        assert result.code == "transient_api_error"
-        assert result.retryable is True
-
-    def test_stream_err_fallback(self):
-        result = _classify_final_failure(
-            _InterruptedAttempt(),
-            attempts_exhausted=False,
-            transient_exhausted=False,
+            attempts_exhausted=attempts_exhausted,
+            transient_exhausted=transient_exhausted,
             stream_err=RuntimeError("some sdk error"),
         )
         assert result is not None
-        assert result.code == "sdk_stream_error"
-        assert result.retryable is False
+        assert result.code == code
+        assert result.retryable is retryable
 
     def test_returns_none_when_no_failure_recorded(self):
         assert (

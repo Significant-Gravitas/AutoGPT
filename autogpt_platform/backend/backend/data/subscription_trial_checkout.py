@@ -1,9 +1,14 @@
 """Card-only Checkout using the durable, server-selected trial offer."""
 
+import logging
+from typing import Any
+
 import stripe
 from prisma.enums import SubscriptionTier
+from prisma.errors import PrismaError
 from prisma.models import SubscriptionTrial
 
+from backend.data import experiments
 from backend.data.credit import (
     get_stripe_customer_id,
     get_subscription_price_id,
@@ -35,6 +40,12 @@ from backend.data.subscription_trial_config import (
 from backend.data.subscription_trial_eligibility import (
     verify_trial_eligibility as _verify_eligibility,
 )
+
+logger = logging.getLogger(__name__)
+
+# The arm of Experiment.TRIAL_CHECKOUT_NO_CHARGE_COPY that shows the line; any
+# other arm, or no enrolment, keeps today's page.
+NO_CHARGE_COPY_ARM = "no-charge-copy"
 
 
 async def confirm_trial_checkout(user_id: str) -> None:
@@ -145,9 +156,10 @@ async def _resume_checkout(trial: TrialState) -> str:
             trial.user_id, trial.customer_id, trial.offer, trial=trial, session=session
         )
     if session is None:
+        no_charge_copy = await _shows_no_charge_copy(trial.user_id)
         session = await stripe_call(
             stripe.checkout.Session.create_async,
-            **trial_checkout_params(trial),
+            **trial_checkout_params(trial, no_charge_copy=no_charge_copy),
             idempotency_key=f"trial-checkout-{trial.id}-{trial.checkout_attempt}",
         )
         await SubscriptionTrial.prisma().update_many(
@@ -214,7 +226,7 @@ async def _replace_expired_checkout(
     return await _resume_checkout(current)
 
 
-def trial_checkout_params(trial: TrialState) -> dict:
+def trial_checkout_params(trial: TrialState, *, no_charge_copy: bool) -> dict:
     metadata = {
         **trial.checkout_metadata,
         "user_id": trial.user_id,
@@ -224,7 +236,7 @@ def trial_checkout_params(trial: TrialState) -> dict:
         "trial_offer_version": trial.offer.version,
         "trial_checkout_attempt": str(trial.checkout_attempt),
     }
-    return {
+    params: dict[str, Any] = {
         "customer": trial.customer_id,
         "mode": "subscription",
         "line_items": [{"price": trial.offer.price_id, "quantity": 1}],
@@ -243,3 +255,33 @@ def trial_checkout_params(trial: TrialState) -> dict:
         "customer_update": {"address": "auto"},
         "metadata": metadata,
     }
+    if no_charge_copy:
+        params["custom_text"] = {
+            "after_submit": {"message": _no_charge_today(trial.offer.duration_days)}
+        }
+    return params
+
+
+async def _shows_no_charge_copy(user_id: str) -> bool:
+    # Assigned before the route sends checkout_started, so that event carries the arm.
+    try:
+        assignment = await experiments.assign(
+            user_id, experiments.Experiment.TRIAL_CHECKOUT_NO_CHARGE_COPY
+        )
+    except PrismaError:
+        # An experiment never blocks a trial: today's page, and nothing stored.
+        logger.warning(
+            f"Trial checkout experiment not assigned for user {user_id}", exc_info=True
+        )
+        return False
+    return assignment is not None and assignment.variant == NO_CHARGE_COPY_ARM
+
+
+def _no_charge_today(duration_days: int) -> str:
+    # No date: an open session can be completed up to a day after it is
+    # created, and Stripe already prints the live first-charge date above.
+    return (
+        f"No charge today. You're charged when your {duration_days}-day trial "
+        "ends. Cancel before then in Settings > Billing and you won't pay "
+        "anything."
+    )

@@ -232,14 +232,18 @@ describe("KeyValueList", () => {
     expect(screen.getByText("raw output")).toBeDefined();
   });
 
-  it("renders nothing for empty strings", () => {
-    const { container } = render(<KeyValueList value="   " />);
+  // An opened result is never a blank panel.
+  it.each([["   "], [{}], [[]], [null]])(
+    "says nothing was found for a blank %j",
+    (value) => {
+      render(<KeyValueList value={value} />);
 
-    expect(container.firstChild).toBeNull();
-  });
+      expect(screen.getByText("Nothing found.")).toBeDefined();
+    },
+  );
 
-  it("renders nothing for empty objects", () => {
-    const { container } = render(<KeyValueList value={{}} />);
+  it("renders nothing while there is no output yet", () => {
+    const { container } = render(<KeyValueList value={undefined} />);
 
     expect(container.firstChild).toBeNull();
   });

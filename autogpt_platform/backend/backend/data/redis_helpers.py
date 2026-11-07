@@ -25,6 +25,8 @@ this module can cover.
 from enum import IntEnum
 from typing import Any, cast
 
+from redis.crc import key_slot
+
 from backend.data.redis_client import AsyncRedisClient, RedisClient
 
 # ---------------------------------------------------------------------------
@@ -41,18 +43,35 @@ from backend.data.redis_client import AsyncRedisClient, RedisClient
 #   ARGV[2]  expected current value
 #   ARGV[3]  new value
 #   ARGV[4]  optional guard field which, when set and non-empty, must equal ARGV[5]
+#   KEYS[2]  optional companion string key (must share the hash's cluster slot)
+#   ARGV[6]  companion string value
+#   ARGV[7]  companion string TTL in seconds
+#   ARGV[8:] companion field/value pairs written only on a successful swap
 _HASH_CAS_LUA = """
 if redis.call('HGET', KEYS[1], ARGV[1]) ~= ARGV[2] then
     return 0
 end
-if #ARGV > 3 then
+if ARGV[4] and ARGV[4] ~= '' then
     local guard = redis.call('HGET', KEYS[1], ARGV[4])
     if guard and guard ~= '' and guard ~= ARGV[5] then
         return 0
     end
 end
+if #KEYS == 2 then
+    redis.call('SET', KEYS[2], ARGV[6], 'EX', ARGV[7])
+end
 redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
+for i = 8, #ARGV, 2 do
+    redis.call('HSET', KEYS[1], ARGV[i], ARGV[i + 1])
+end
 return 1
+"""
+
+_HASH_COMPARE_DELETE_LUA = """
+if redis.call('HGET', KEYS[1], ARGV[1]) ~= ARGV[2] then
+    return 0
+end
+return redis.call('DEL', KEYS[1])
 """
 
 # Push to a capped list only when a hash field currently matches the expected
@@ -83,6 +102,16 @@ else
     redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
 end
 return 1
+"""
+
+_POP_MATCHING_PREFIX_LUA = """
+local current = redis.call('LRANGE', KEYS[1], 0, #ARGV - 1)
+if #current ~= #ARGV then return {} end
+for i = 1, #ARGV do
+    if current[i] ~= ARGV[i] then return {} end
+end
+redis.call('LTRIM', KEYS[1], #ARGV, -1)
+return current
 """
 
 _GATED_CAPPED_RPUSH_LUA = """
@@ -438,10 +467,15 @@ async def hash_compare_and_set(
     expected: str,
     new: str,
     guard: tuple[str, str] | None = None,
+    updates: dict[str, str] | None = None,
+    record: tuple[str, str, int] | None = None,
 ) -> bool:
     """Atomically set ``HSET key field new`` iff current value == *expected*
     (and, with ``guard=(field, value)``, that field is unset, empty or value).
 
+    ``updates`` writes companion fields in the same atomic transition.
+    ``record=(key, value, ttl_seconds)`` writes an expiring string alongside it.
+    Its key must differ from the hash key and share its Redis Cluster slot.
     Returns ``True`` if the swap happened, ``False`` otherwise.
 
     Use this for idempotent state transitions (e.g. mark a task as
@@ -450,11 +484,50 @@ async def hash_compare_and_set(
     because the write is conditional on the read result — MULTI/EXEC
     cannot branch on intermediate replies.
     """
+    if updates and field in updates:
+        raise ValueError("Companion updates cannot replace the compared field")
+    if record and (record[0] == key or record[2] <= 0):
+        raise ValueError("Companion record requires a separate key and positive TTL")
+    if record and key_slot(key.encode()) != key_slot(record[0].encode()):
+        raise ValueError("Companion record must share the hash's Redis Cluster slot")
+    companions = [item for pair in (updates or {}).items() for item in pair]
+    keys = [key, record[0]] if record else [key]
     result = await cast(
         "Any",
-        redis.eval(_HASH_CAS_LUA, 1, key, field, expected, new, *(guard or ())),
+        redis.eval(
+            _HASH_CAS_LUA,
+            len(keys),
+            *keys,
+            field,
+            expected,
+            new,
+            *(guard or ("", "")),
+            record[1] if record else "",
+            str(record[2]) if record else "",
+            *companions,
+        ),
     )
     return int(result) == 1
+
+
+async def hash_compare_and_delete(
+    redis: AsyncRedisClient, key: str, field: str, *, expected: str
+) -> bool:
+    """Delete a hash atomically only while the named field still identifies its owner."""
+    result = await cast(
+        "Any", redis.eval(_HASH_COMPARE_DELETE_LUA, 1, key, field, expected)
+    )
+    return int(result) == 1
+
+
+async def pop_matching_list_prefix(
+    redis: AsyncRedisClient, key: str, expected: list[str]
+) -> list[str | bytes]:
+    """Pop a previously inspected prefix only if it still matches atomically."""
+    if not expected:
+        return []
+    result = await cast("Any", redis.eval(_POP_MATCHING_PREFIX_LUA, 1, key, *expected))
+    return list(result or [])
 
 
 async def string_compare_and_set(

@@ -726,3 +726,195 @@ Added with SECRT-3010 and measured on `dev` at `ede2df2ae`, before that change. 
 | `Dialog props:controlled,styling,children` | 328 |
 | `MenuProvider props:scope,children` | 302 |
 | `Primitive.div props:children` | 224 |
+
+## builder-type-field · baseline — median of 3 runs
+
+Added with SECRT-3012: `dev` app code at `8eb406275` on a similar 16 GB cloud sandbox, Chrome 141 (`--channel chrome`), 1 warm-up and 3 saved runs. On this code every keystroke re-renders `<Flow>` and the panels beside the canvas (`BuilderChatPanel`, `FloatingReviewsPanel`, `DraftRecoveryPopup`, `FloatingSafeModeToggle`): 20 renders each.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 120 | 120 – 120 | 0.0% |
+| total renders | 9,680 | 9,680 – 9,680 | 0.0% |
+| renders per commit | 80.7 | 80.7 – 80.7 | 0.0% |
+| max renders in one commit | 207 | 207 – 207 | 0.0% |
+| script time (ms) | 826 | 702 – 929 | 27.5% |
+| task time (ms) | 1,013 | 862 – 1,114 | 24.9% |
+| layout time (ms) | 16 | 14 – 17 | 16.1% |
+| style recalc time (ms) | 2 | 2 – 2 | 10.0% |
+| long tasks (≥ 50 ms) | 4 | 0 – 7 | 175.0% |
+| long task total (ms) | 257 | 0 – 500 | 194.2% |
+| heap used after GC (MB) | 82.1 | 82.0 – 82.1 | 0.2% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Primitive.div` | 440 |
+| `Tooltip` | 360 |
+| `TooltipContent` | 360 |
+| `TooltipProvider` | 340 |
+| `Presence` | 320 |
+| `HugeiconsIcon` | 300 |
+| `Icon` | 300 |
+| `SelectItem` | 280 |
+| `Popper` | 260 |
+| `PopperAnchor` | 260 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip props:children` | 360 |
+| `TooltipProvider props:children` | 340 |
+| `Presence props:children` | 320 |
+| `HugeiconsIcon parent-same-props<-Icon` | 280 |
+| `SelectItem props:onMouseDown,children` | 280 |
+| `Primitive.div props:children` | 260 |
+| `Primitive.div.Slot props:children` | 260 |
+| `Primitive.div.SlotClone props:children` | 260 |
+| `Popper props:children` | 220 |
+| `PopperAnchor props:children` | 220 |
+
+## builder-block-menu-search · baseline — median of 3 runs
+
+Added with SECRT-3012: `dev` app code at `8eb406275`, same machine and settings. Results come from the real backend's block search, so the counts depend on the blocks the backend has. On this code each new page of results re-renders every `Block` row already in the list (`Block parent-same-props<-InfiniteScroll`). One run in three loaded one page fewer within the window (1,461 renders).
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 64 | 59 – 64 | 7.8% |
+| total renders | 1,843 | 1,461 – 1,843 | 20.7% |
+| renders per commit | 28.8 | 24.8 – 28.8 | 14.0% |
+| max renders in one commit | 211 | 179 – 211 | 15.2% |
+| script time (ms) | 268 | 195 – 274 | 29.4% |
+| task time (ms) | 937 | 810 – 992 | 19.5% |
+| layout time (ms) | 11 | 9 – 13 | 28.8% |
+| style recalc time (ms) | 41 | 36 – 41 | 13.3% |
+| long tasks (≥ 50 ms) | 0 | 0 – 1 | 0.0% |
+| long task total (ms) | 0 | 0 – 78 | 0.0% |
+| heap used after GC (MB) | 84.1 | 83.6 – 85.3 | 2.0% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Button` | 302 |
+| `HugeiconsIcon` | 292 |
+| `Icon` | 292 |
+| `Block` | 256 |
+| `u0` | 120 |
+| `AnimatePresence` | 42 |
+| `FilterChip` | 35 |
+| `PopChild` | 35 |
+| `PopChildMeasure` | 35 |
+| `PresenceChild` | 35 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `HugeiconsIcon parent-same-props<-Icon` | 239 |
+| `Icon parent-same-props<-Button` | 218 |
+| `Block parent-same-props<-InfiniteScroll` | 208 |
+| `Button props:onDragStart,onClick,children` | 208 |
+| `u0 context` | 120 |
+| `Button mount` | 54 |
+| `HugeiconsIcon mount` | 53 |
+| `Icon mount` | 53 |
+| `Block mount` | 48 |
+| `AnimatePresence state#5` | 30 |
+
+## builder-load-graph · baseline — median of 3 runs
+
+Added with SECRT-3012: `dev` app code at `8eb406275`, same machine and settings. The window opens on the 1-node workflow and closes 2 s after the last of the 100 nodes is on the canvas. On this code the switch also shows the "Unsaved changes found" popup for the new workflow.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 71 | 71 – 74 | 4.2% |
+| total renders | 80,164 | 80,164 – 80,193 | 0.0% |
+| renders per commit | 1,129.1 | 1,083.7 – 1,129.1 | 4.0% |
+| max renders in one commit | 25,160 | 25,160 – 25,160 | 0.0% |
+| script time (ms) | 3,100 | 3,022 – 3,244 | 7.2% |
+| task time (ms) | 3,706 | 3,616 – 3,881 | 7.1% |
+| layout time (ms) | 51 | 48 – 52 | 7.8% |
+| style recalc time (ms) | 111 | 107 – 111 | 3.4% |
+| long tasks (≥ 50 ms) | 4 | 4 – 4 | 0.0% |
+| long task total (ms) | 3,062 | 2,989 – 3,202 | 7.0% |
+| heap used after GC (MB) | 105.0 | 104.8 – 108.1 | 3.1% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `TooltipProvider` | 3,700 |
+| `Text` | 3,370 |
+| `Tooltip` | 3,103 |
+| `TooltipContent` | 3,103 |
+| `Primitive.div` | 3,075 |
+| `HugeiconsIcon` | 3,017 |
+| `Icon` | 3,017 |
+| `Presence` | 2,825 |
+| `Popper` | 2,823 |
+| `PopperProvider` | 2,823 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `TooltipProvider props:children` | 2,120 |
+| `Presence props:children` | 2,044 |
+| `HugeiconsIcon parent-same-props<-Icon` | 1,706 |
+| `Primitive.div props:children` | 1,663 |
+| `Primitive.div.Slot props:children` | 1,663 |
+| `Primitive.div.SlotClone props:children` | 1,663 |
+| `Tooltip props:children` | 1,660 |
+| `PopperAnchor props:children` | 1,417 |
+| `Text mount` | 1,260 |
+| `Text props:children` | 1,154 |
+
+## copilot-open-long-thread · baseline — median of 3 runs
+
+Measured on `dev` at `a7fe56d05` (2026-10-20), before the transcript was windowed (SECRT-3011), with `--channel chrome`. Opening the 2,000-message chat mounts 924 rows in one commit; the longest task is about 2.5 s.
+
+| metric | median | range | spread |
+| --- | --- | --- | --- |
+| commits | 27 | 27 – 28 | 3.7% |
+| total renders | 59,027 | 59,025 – 59,042 | 0.0% |
+| renders per commit | 2,186.1 | 2,108.6 – 2,186.2 | 3.5% |
+| max renders in one commit | 38,844 | 38,844 – 38,844 | 0.0% |
+| script time (ms) | 2,546 | 2,537 – 2,708 | 6.7% |
+| task time (ms) | 3,337 | 3,240 – 3,387 | 4.4% |
+| layout time (ms) | 72 | 71 – 80 | 12.5% |
+| style recalc time (ms) | 209 | 194 – 230 | 16.9% |
+| long tasks (≥ 50 ms) | 8 | 8 – 8 | 0.0% |
+| long task total (ms) | 3,007 | 2,986 – 3,155 | 5.6% |
+| heap used after GC (MB) | 119.8 | 119.7 – 119.8 | 0.1% |
+
+**Top components (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip` | 3,337 |
+| `TooltipContent` | 3,337 |
+| `Streamdown` | 2,772 |
+| `Presence` | 2,303 |
+| `TooltipProvider` | 2,238 |
+| `Popper` | 2,235 |
+| `PopperAnchor` | 2,235 |
+| `PopperProvider` | 2,235 |
+| `Primitive.button` | 2,235 |
+| `Primitive.button.Slot` | 2,235 |
+
+**Top render causes (median renders)**
+
+| name | renders |
+| --- | --- |
+| `Tooltip mount` | 2,194 |
+| `TooltipContent mount` | 2,194 |
+| `Streamdown state#1` | 1,848 |
+| `Presence props:children` | 1,196 |
+| `Block mount` | 1,177 |
+| `Ie mount` | 1,177 |
+| `HugeiconsIcon mount` | 1,146 |
+| `Icon mount` | 1,146 |
+| `Primitive.div props:children` | 1,136 |
+| `Primitive.div.Slot props:children` | 1,136 |

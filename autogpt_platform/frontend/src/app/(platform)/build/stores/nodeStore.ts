@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import isEqual from "lodash/isEqual";
 import { NodeChange, XYPosition, applyNodeChanges } from "@xyflow/react";
 import { CustomNode } from "../components/FlowEditor/nodes/CustomNode/CustomNode";
 import { CustomEdge } from "../components/FlowEditor/edges/CustomEdge";
@@ -263,6 +264,13 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       edges: useEdgeStore.getState().edges,
     };
 
+    // A write that changes nothing would still hand every subscriber a new
+    // nodes array and re-render the canvas, and could never add an undo entry.
+    const changesSomething = prevState.nodes.some(
+      (n) => n.id === nodeId && !hasNodeData(n.data, data),
+    );
+    if (!changesSomething) return;
+
     set((state) => ({
       nodes: state.nodes.map((n) =>
         n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n,
@@ -288,9 +296,12 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   getShowAdvanced: (nodeId: string) =>
     get().nodeAdvancedStates[nodeId] || false,
   addNodes: (nodes: CustomNode[]) => {
-    nodes.forEach((node) => {
-      get().addNode(node);
-    });
+    // One write for the whole batch: a write per node made every subscriber
+    // run once per node while a saved workflow loads.
+    if (nodes.length === 0) return;
+    set((state) => ({
+      nodes: [...state.nodes, ...nodes],
+    }));
   },
   getHardCodedValues: (nodeId: string) => {
     return findNodeById(get().nodes, nodeId)?.data?.hardcodedValues || {};
@@ -583,6 +594,20 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     return mismatch?.newType;
   },
 }));
+
+/**
+ * Whether `data` already holds every value in `update`. A key the node does
+ * not have counts as a change even when its new value is `undefined`, because
+ * adding it still changes what the undo history compares.
+ */
+function hasNodeData(
+  data: CustomNode["data"],
+  update: Partial<CustomNode["data"]>,
+) {
+  return (Object.keys(update) as (keyof CustomNode["data"])[]).every(
+    (key) => Object.hasOwn(data, key) && isEqual(data[key], update[key]),
+  );
+}
 
 const nodeIndexes = new WeakMap<CustomNode[], Map<string, CustomNode>>();
 

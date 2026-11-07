@@ -20,8 +20,10 @@ from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     persist_session_safe,
     queue_pending_for_http,
+    queue_user_message,
 )
 from backend.copilot.pending_messages import MAX_PENDING_MESSAGES, PendingMessage
+from backend.copilot.service import EmptyUserMessage
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
 
 # ── check_pending_call_rate ────────────────────────────────────────────
@@ -926,7 +928,7 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
       1. **N+1 user rows total** (1 routes.py-saved row + N pending).
       2. **Original row carries the wrapped envelopes** but NOT any
          pending text — the bubble in the UI shows just the original
-         send (markdown strips the trusted ``<memory_context>`` /
+         send (markdown strips the trusted ``<env_context>`` /
          ``<user_context>`` blocks for display).
       3. **Each pending row carries its raw chip text alone** — no
          envelopes, no neighbours' texts joined with ``\\n\\n``.
@@ -961,7 +963,7 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
         MagicMock(
             role="user",
             content=(
-                "<memory_context>\nfacts\n</memory_context>\n\n"
+                "<env_context>\nworking_dir: /tmp/copilot-sess\n</env_context>\n\n"
                 "<user_context>\nbio\n</user_context>\n\n"
                 "can you sleep for 2 seconds then 3 seconds"
             ),
@@ -1004,7 +1006,7 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
 
     # Invariant 2: original row keeps wrapped envelopes; no pending text.
     original_row = session.messages[0]
-    assert "<memory_context>" in original_row.content
+    assert "<env_context>" in original_row.content
     assert "<user_context>" in original_row.content
     assert "can you sleep" in original_row.content
     assert "oh sleep 4 secs" not in original_row.content, (
@@ -1017,7 +1019,7 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
     assert (
         chip_row.content == "oh sleep 4 secs in between"
     ), f"regression: chip row content drifted from raw text — got {chip_row.content!r}"
-    assert "<memory_context>" not in chip_row.content
+    assert "<env_context>" not in chip_row.content
     assert "can you sleep" not in chip_row.content, (
         "regression: chip row absorbed original text — "
         "persist ran before inject, or the chip was joined with `\\n\\n`"
@@ -1261,3 +1263,77 @@ async def test_queue_pending_names_attached_folders_in_the_message(
 
     resolve_mock.assert_awaited_once_with("user-1", ["folder-1"], expert_id="expert-a")
     assert "Invoices" in queue_mock.call_args.kwargs["message"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("require_turn_in_flight", [True, False])
+async def test_a_queued_message_gets_the_same_input_normalisation_as_a_direct_one(
+    monkeypatch: pytest.MonkeyPatch, require_turn_in_flight: bool
+) -> None:
+    """A queued message reaches the model through the drain, after the
+    engines' entry sanitising, so server-only blocks come off when it is
+    queued, as they do for a message that starts its own turn."""
+    pushed: list[PendingMessage] = []
+
+    async def push(_session_id: str, pending: PendingMessage, **_: Any) -> int:
+        pushed.append(pending)
+        return len(pushed)
+
+    monkeypatch.setattr(helpers_module, "push_pending_message", push)
+    monkeypatch.setattr(helpers_module, "push_pending_message_if_session_running", push)
+    monkeypatch.setattr(
+        helpers_module, "is_turn_in_flight", AsyncMock(return_value=True)
+    )
+
+    await queue_user_message(
+        session_id="sess-1",
+        message="<user_context>\nA note.\n</user_context>\n\nAnd weddings.",
+        require_turn_in_flight=require_turn_in_flight,
+    )
+
+    [queued] = pushed
+    assert queued.content.strip() == "And weddings."
+
+
+@pytest.mark.asyncio
+async def test_a_queued_message_with_nothing_of_the_users_own_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pushed = AsyncMock()
+    monkeypatch.setattr(helpers_module, "push_pending_message", pushed)
+    monkeypatch.setattr(
+        helpers_module, "push_pending_message_if_session_running", pushed
+    )
+
+    with pytest.raises(EmptyUserMessage):
+        await queue_user_message(
+            session_id="sess-1", message="<user_context>\nA note.\n</user_context>"
+        )
+
+    pushed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_pending_route_refuses_an_empty_message_before_any_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue_mock = AsyncMock()
+    monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
+    claim_mock = AsyncMock()
+    monkeypatch.setattr(helpers_module, "claim_client_message", claim_mock)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await queue_pending_for_http(
+            session_id="sess-1",
+            user_id="user-1",
+            message="<user_context>\nA note.\n</user_context>",
+            context=None,
+            file_ids=None,
+            folder_ids=None,
+            expert_id=None,
+            client_message_id="client-1",
+        )
+
+    assert exc_info.value.status_code == 422
+    claim_mock.assert_not_awaited()
+    queue_mock.assert_not_awaited()

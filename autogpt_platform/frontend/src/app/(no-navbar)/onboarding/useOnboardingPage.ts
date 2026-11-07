@@ -6,12 +6,12 @@ import { environment } from "@/services/environment";
 import { useTrialCheckoutReturn } from "@/services/trials/useTrialCheckoutReturn";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { stepKey } from "./progress";
 import { Step, useOnboardingWizardStore } from "./store";
 import { onboardingStepKey, trackOnboardingStep } from "./tracking";
-import { stepKey } from "./progress";
-import { useWizardProgress } from "./useWizardProgress";
 import { useOnboardingLayout } from "./useOnboardingLayout";
 import { useOnboardingProfile } from "./useOnboardingProfile";
+import { useWizardProgress } from "./useWizardProgress";
 
 export function useOnboardingPage() {
   const router = useRouter();
@@ -28,8 +28,6 @@ export function useOnboardingPage() {
     isReady,
     isPaymentEnabled,
     isSelfHostConnectEnabled,
-    isBrainDumpEnabled,
-    isExpertTeamEnabled,
     paidConfirmation,
   } = useOnboardingLayout({
     userID: user?.id ?? null,
@@ -42,6 +40,7 @@ export function useOnboardingPage() {
     userID: user?.id ?? null,
     ready: isReady,
     steps,
+    hasPaywall: isPaymentEnabled,
   });
   const currentStep =
     isPaymentEnabled && !environment.isLocal()
@@ -145,8 +144,10 @@ export function useOnboardingPage() {
     handlePreparingComplete,
     isPaymentEnabled,
     isSelfHostConnectEnabled,
-    isBrainDumpEnabled,
-    isExpertTeamEnabled,
+    // The plan's team joins once nothing is left to pay for: the trial or
+    // plan is confirmed (which removes the paywall), or none is configured.
+    // Local development skips Stripe, so it hires straight away.
+    canHireTeam: !isPaymentEnabled || environment.isLocal(),
     steps,
     preparingStep,
     totalSteps,

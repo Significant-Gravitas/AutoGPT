@@ -17,7 +17,9 @@ from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.tools.helpers import (
     BlockPreparation,
+    _single_provider,
     check_hitl_review,
+    check_spend_approval,
     execute_block,
     get_block_provider,
     get_inputs_from_schema,
@@ -42,11 +44,15 @@ from backend.data.model import (
 )
 from backend.integrations.credentials_store import exa_credentials
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import BlockExecutionError, InsufficientBalanceError
 
 from ._test_data import make_session
 
 _USER = "test-user-helpers"
 _SESSION = "test-session-helpers"
+# Error-log markers for a run whose charge went wrong, the old one included,
+# so a test asserting none were logged also holds against older code.
+_CHARGE_LOGS = ("BILLING_LEAK", "SPEND_METERING_MISSED")
 
 
 class TestGetBlockProvider:
@@ -119,10 +125,13 @@ def _make_block(
 
     mock.input_schema = MagicMock()
     mock.input_schema.get_credentials_fields_info.return_value = {}
+    mock.input_schema.validate_data.return_value = None
+    mock.runs = 0
 
     async def _execute(
         input_data: dict, **kwargs: Any
     ) -> AsyncIterator[tuple[str, Any]]:
+        mock.runs += 1
         yield "result", "ok"
 
     mock.execute = _execute
@@ -173,9 +182,13 @@ def _patch_credit_db(
 @pytest.mark.asyncio(loop_scope="session")
 class TestExecuteBlockCreditCharging:
     async def test_charges_credits_when_cost_is_positive(self):
-        """Block with cost > 0 should call spend_credits after execution."""
+        """Block with cost > 0 is debited before it runs."""
         block = _make_block()
         credit_patch, mock_credit = _patch_credit_db(get_credits_return=100)
+        runs_at_debit: list[int] = []
+        mock_credit.spend_credits.side_effect = lambda **_: runs_at_debit.append(
+            block.runs
+        )
 
         with (
             _patch_workspace(),
@@ -202,11 +215,115 @@ class TestExecuteBlockCreditCharging:
         call_kwargs = mock_credit.spend_credits.call_args.kwargs
         assert call_kwargs["cost"] == 10
         assert call_kwargs["metadata"].reason == "copilot_block_execution"
+        assert runs_at_debit == [0]
+        assert block.runs == 1
+
+    async def test_prices_with_resolved_credentials_not_model_supplied(self):
+        """A credentials value the model wrote into input_data must not change
+        the price: the block runs with the resolved credential, so it is priced
+        (and charged) with that one."""
+        block = _make_block()
+        credit_patch, mock_credit = _patch_credit_db(get_credits_return=100)
+        resolved = CredentialsMetaInput(
+            id=exa_credentials.id,
+            provider=exa_credentials.provider,
+            type=exa_credentials.type,
+        )
+        creds_manager_cls = MagicMock()
+        creds_manager_cls.return_value.get = AsyncMock(return_value=exa_credentials)
+        priced: list[dict] = []
+
+        def _price(_block, input_data, **_kwargs):
+            priced.append(dict(input_data))
+            creds = input_data.get("credentials") or {}
+            return (10, {}) if creds.get("id") == exa_credentials.id else (0, {})
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            patch("backend.copilot.tools.helpers.block_usage_cost", side_effect=_price),
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                creds_manager_cls,
+            ),
+            credit_patch,
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={
+                    "text": "hello",
+                    "credentials": {"id": "stub", "provider": "exa", "type": "api_key"},
+                },
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-stub",
+                matched_credentials={"credentials": resolved},
+                dry_run=False,
+            )
+
+        assert isinstance(result, BlockOutputResponse)
+        assert priced and priced[0]["credentials"]["id"] == exa_credentials.id
+        mock_credit.spend_credits.assert_awaited_once()
+        assert mock_credit.spend_credits.call_args.kwargs["cost"] == 10
+
+    async def test_spend_approval_prices_with_resolved_credentials(self):
+        """The expert spend threshold is judged on what the run will cost, so a
+        credentials value the model wrote must not hide a paid block from it."""
+        resolved = CredentialsMetaInput(
+            id=exa_credentials.id,
+            provider=exa_credentials.provider,
+            type=exa_credentials.type,
+        )
+        prep = BlockPreparation(
+            block=_make_block(),
+            block_id="block-1",
+            input_data={
+                "text": "hello",
+                "credentials": {"id": "stub", "provider": "exa", "type": "api_key"},
+            },
+            matched_credentials={"credentials": resolved},
+            input_schema={},
+            credentials_fields={"credentials"},
+            required_non_credential_keys=set(),
+            provided_input_keys={"text"},
+            synthetic_graph_id=f"{COPILOT_SESSION_PREFIX}{_SESSION}",
+            synthetic_node_id=f"{COPILOT_NODE_PREFIX}block-1",
+        )
+
+        def _price(_block, input_data, **_kwargs):
+            creds = input_data.get("credentials") or {}
+            return (10, {}) if creds.get("id") == exa_credentials.id else (0, {})
+
+        approvals = MagicMock()
+        approvals.spend_approval_required = AsyncMock(return_value=None)
+        with (
+            patch("backend.copilot.tools.helpers.block_usage_cost", side_effect=_price),
+            patch(
+                "backend.copilot.tools.helpers.spend_approval_db",
+                return_value=approvals,
+            ),
+        ):
+            result = await check_spend_approval(
+                prep, _USER, make_session(_USER, expert_id="expert-a")
+            )
+
+        assert result is None
+        approvals.spend_approval_required.assert_awaited_once()
+        # The model's own value stays on the request; only the price follows
+        # the resolved credential.
+        assert prep.input_data["credentials"]["id"] == "stub"
 
     async def test_returns_error_when_insufficient_credits_before_exec(self):
-        """Pre-execution check should return ErrorResponse when balance < cost."""
+        """The atomic debit is the balance check: when it refuses, the block
+        never runs."""
         block = _make_block()
-        credit_patch, mock_credit = _patch_credit_db(get_credits_return=5)
+        credit_patch, mock_credit = _patch_credit_db(
+            get_credits_return=100,
+            spend_credits_side_effect=InsufficientBalanceError(
+                "Low balance", _USER, 5, 10
+            ),
+        )
 
         with (
             _patch_workspace(),
@@ -229,6 +346,8 @@ class TestExecuteBlockCreditCharging:
 
         assert isinstance(result, ErrorResponse)
         assert "Insufficient credits" in result.message
+        mock_credit.spend_credits.assert_awaited_once()
+        assert block.runs == 0
 
     async def test_no_charge_when_cost_is_zero(self):
         """Block with cost 0 should not call spend_credits."""
@@ -260,20 +379,96 @@ class TestExecuteBlockCreditCharging:
         mock_credit.get_credits.assert_not_awaited()
         mock_credit.spend_credits.assert_not_awaited()
 
-    async def test_returns_output_on_post_exec_insufficient_balance(self):
-        """If charging fails after execution, output is still returned (block already ran)."""
-        from backend.util.exceptions import InsufficientBalanceError
-
+    async def test_a_failed_debit_never_runs_the_block(self):
+        """A debit that fails for any reason stops the run: nothing runs
+        unpaid, so there is no billing leak to log."""
         block = _make_block()
         credit_patch, mock_credit = _patch_credit_db(
-            get_credits_return=15,
-            spend_credits_side_effect=InsufficientBalanceError(
-                "Low balance", _USER, 5, 10
-            ),
+            spend_credits_side_effect=RuntimeError("db down"),
         )
 
         with (
             _patch_workspace(),
+            _patch_user_db(),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(10, {}),
+            ),
+            patch("backend.copilot.tools.helpers.logger") as log,
+            credit_patch,
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-1",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert block.runs == 0
+        logged = [str(c.args[0]) for c in log.error.call_args_list if c.args]
+        assert not any(marker in line for line in logged for marker in _CHARGE_LOGS)
+
+    async def test_a_run_that_fails_after_the_debit_keeps_the_charge(self):
+        """A block that fails once it is running (it may already have called
+        its provider) keeps its charge."""
+        block = _make_block()
+        provider_calls: list[str] = []
+
+        async def _fail_after_provider(input_data: dict, **kwargs: Any):
+            provider_calls.append("called")
+            raise BlockExecutionError("provider error", block.name, "b")
+            yield  # pragma: no cover - makes this an async generator
+
+        block.execute = _fail_after_provider
+        credit_patch, mock_credit = _patch_credit_db()
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(10, {}),
+            ),
+            credit_patch,
+        ):
+            results = [
+                await execute_block(
+                    block=block,
+                    block_id="block-1",
+                    input_data={},
+                    user_id=_USER,
+                    session_id=_SESSION,
+                    node_exec_id=f"exec-{attempt}",
+                    matched_credentials={},
+                    dry_run=False,
+                )
+                for attempt in range(2)
+            ]
+
+        assert all(isinstance(r, ErrorResponse) for r in results)
+        assert len(provider_calls) == 2
+        assert [
+            c.kwargs["cost"] for c in mock_credit.spend_credits.await_args_list
+        ] == [
+            10,
+            10,
+        ]
+
+    async def test_invalid_input_is_refused_before_the_debit(self):
+        """Input the block would reject before any provider call is refused
+        without a charge."""
+        block = _make_block()
+        block.input_schema.validate_data.return_value = "'text' is required"
+        credit_patch, mock_credit = _patch_credit_db()
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
             patch(
                 "backend.copilot.tools.helpers.block_usage_cost",
                 return_value=(10, {}),
@@ -291,9 +486,79 @@ class TestExecuteBlockCreditCharging:
                 dry_run=False,
             )
 
-        # Block already executed (with side effects), so output is returned
-        assert isinstance(result, BlockOutputResponse)
-        assert result.success is True
+        assert isinstance(result, ErrorResponse)
+        assert "invalid input data" in result.message
+        mock_credit.spend_credits.assert_not_awaited()
+        assert block.runs == 0
+
+
+class _OneRunBalance:
+    """A wallet holding exactly one run's credits. ``spend_credits`` checks
+    and debits atomically, as the real store does."""
+
+    def __init__(self, balance: int):
+        self.balance = balance
+
+    async def spend_credits(self, *, user_id: str, cost: int, **_kwargs) -> int:
+        await asyncio.sleep(0)
+        if self.balance < cost:
+            raise InsufficientBalanceError("Low balance", user_id, self.balance, cost)
+        self.balance -= cost
+        return self.balance
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestRunsOnOneBalance:
+    async def test_a_balance_for_one_run_runs_the_block_once(self, caplog):
+        """Five runs on a balance covering one: the block runs once, the
+        other runs are refused before it starts, and no billing leak is
+        logged."""
+        runs = 5
+        wallet = _OneRunBalance(balance=10)
+        block = _make_block()
+        provider_calls: list[str] = []
+
+        async def _call_provider(input_data: dict, **kwargs: Any):
+            provider_calls.append("called")
+            yield "result", "ok"
+
+        block.execute = _call_provider
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(10, {}),
+            ),
+            patch("backend.copilot.tools.helpers.credit_db", return_value=wallet),
+            caplog.at_level("ERROR", logger="backend.copilot.tools.helpers"),
+        ):
+            results = await asyncio.gather(
+                *(
+                    execute_block(
+                        block=block,
+                        block_id="block-1",
+                        input_data={},
+                        user_id=_USER,
+                        session_id=_SESSION,
+                        node_exec_id=f"exec-{i}",
+                        matched_credentials={},
+                        dry_run=False,
+                    )
+                    for i in range(runs)
+                )
+            )
+
+        assert len(provider_calls) == 1
+        assert sum(isinstance(r, BlockOutputResponse) for r in results) == 1
+        refused = [r for r in results if isinstance(r, ErrorResponse)]
+        assert len(refused) == runs - 1
+        assert all("Insufficient credits" in r.message for r in refused)
+        assert wallet.balance == 0
+        assert not any(
+            marker in r.getMessage() for r in caplog.records for marker in _CHARGE_LOGS
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -824,8 +1089,8 @@ def _make_simple_block(
 
 
 def _patch_excluded(block_ids: set | None = None, block_types: set | None = None):
-    # ``prepare_block_execution`` imports these from ``block_meta`` inside the
-    # function, so the source module is the patch target.  They were read from
+    # ``block_run_refusal`` reads these off ``block_meta`` each time it runs,
+    # so the source module is the patch target.  They were read from
     # ``tools.find_block`` until that module went; ``create=True`` meant the
     # patch kept "working" against a name that was no longer there, and the
     # exclusions under test silently stopped being exercised.
@@ -1057,6 +1322,29 @@ async def test_check_hitl_reuses_existing_waiting_review() -> None:
 
     assert isinstance(result, ReviewRequiredResponse)
     assert result.review_id == "existing-review-42"
+
+
+@pytest.mark.asyncio
+async def test_check_hitl_does_not_reuse_a_review_whose_input_differs_in_type() -> None:
+    """Python's ``1 == True``, but the block receives ``true``: the waiting
+    review shows ``1``, so the call with ``true`` gets a review of its own."""
+    prep = _make_hitl_prep(input_data={"force": True}, needs_review=True)
+
+    existing = MagicMock()
+    existing.node_id = prep.synthetic_node_id
+    existing.status.value = "WAITING"
+    existing.payload = {"force": 1}
+    existing.node_exec_id = "existing-review-42"
+
+    mock_rdb = MagicMock()
+    mock_rdb.get_pending_reviews_for_chat_session = AsyncMock(return_value=[existing])
+
+    with patch("backend.copilot.tools.helpers.review_db", return_value=mock_rdb):
+        result = await check_hitl_review(prep, "user1", "hitl-sess")
+
+    assert isinstance(result, ReviewRequiredResponse)
+    assert result.review_id != "existing-review-42"
+    prep.block.is_block_exec_need_review.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -1542,11 +1830,16 @@ class TestExecuteBlockAutoCredentials:
         mock_lock.release.assert_awaited_once()
 
     async def test_auto_cred_locks_released_on_insufficient_credits(self):
-        """Early-return from the credit-balance check must still release
-        auto-cred locks (same r3135420231 surface, different trigger)."""
+        """Early-return from the refused debit must still release auto-cred
+        locks (same r3135420231 surface, different trigger)."""
         block = _make_block_with_auto_creds()
-        # balance < cost → early return ErrorResponse
-        credit_patch, _ = _patch_credit_db(get_credits_return=0)
+        # the debit refuses → early return ErrorResponse before the block runs
+        credit_patch, _ = _patch_credit_db(
+            get_credits_return=100,
+            spend_credits_side_effect=InsufficientBalanceError(
+                "Low balance", _USER, 0, 10
+            ),
+        )
         mock_creds = MagicMock(id="cred-id-123", provider="google")
         mock_lock = AsyncMock()
         creds_manager_cls = MagicMock()
@@ -1588,6 +1881,7 @@ class TestExecuteBlockAutoCredentials:
 
         assert isinstance(result, ErrorResponse)
         assert "Insufficient credits" in result.message
+        assert block.runs == 0
         mock_lock.release.assert_awaited_once()
 
 
@@ -2272,3 +2566,14 @@ async def test_scheduled_expert_turn_does_not_offer_a_credential_of_the_wrong_ty
     assert isinstance(result, ErrorResponse)
     assert "exa-oauth" not in result.message
     assert "connect exa" in result.message
+
+
+@pytest.mark.parametrize(
+    ("providers", "details"),
+    [({"github"}, {"provider": "github"}), (set(), None), ({"github", "slack"}, None)],
+    ids=["one", "none", "several"],
+)
+def test_a_failure_names_its_provider_only_when_there_is_one(providers, details):
+    """A scheduled chat's failure streak keys on it, and its card's Reconnect
+    opens it: with several to fix, neither could pick one."""
+    assert _single_provider(providers) == details

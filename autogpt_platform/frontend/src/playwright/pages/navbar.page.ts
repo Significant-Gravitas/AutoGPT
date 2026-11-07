@@ -1,7 +1,15 @@
 import { Page } from "@playwright/test";
 
+// Global navigation lives in the app sidebar; the account menu trigger sits in
+// its footer.
 export class NavBar {
   constructor(private page: Page) {}
+
+  private sidebarLink(name: string) {
+    return this.page
+      .locator('[data-sidebar="sidebar"]')
+      .getByRole("link", { name, exact: true });
+  }
 
   async clickProfileLink() {
     await this.page.getByTestId("profile-popout-menu-trigger").click();
@@ -9,7 +17,7 @@ export class NavBar {
   }
 
   async clickBuildLink() {
-    const link = this.page.getByTestId("navbar-link-build");
+    const link = this.sidebarLink("Build");
     await link.waitFor({ state: "visible", timeout: 15000 });
     await link.scrollIntoViewIfNeeded();
     await link.click();
@@ -17,7 +25,7 @@ export class NavBar {
   }
 
   async clickMarketplaceLink() {
-    await this.page.getByTestId("navbar-link-marketplace").click();
+    await this.sidebarLink("Marketplace").click();
   }
 
   async getUserMenuButton() {
