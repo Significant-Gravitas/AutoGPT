@@ -35,9 +35,12 @@ async def _session(user_id: str, expires_in: timedelta) -> str:
 async def test_only_an_unexpired_session_of_the_same_user_is_live(
     server: SpinTestServer,
 ):
-    owner = await _auth_user()
-    other = await _auth_user()
+    created: list[str] = []
     try:
+        owner = await _auth_user()
+        created.append(owner)
+        other = await _auth_user()
+        created.append(other)
         live = await _session(owner, timedelta(days=1))
         expired = await _session(owner, -timedelta(minutes=1))
         deleted = await _session(owner, timedelta(days=1))
@@ -49,4 +52,4 @@ async def test_only_an_unexpired_session_of_the_same_user_is_live(
         assert not await is_auth_session_live(live, other)
         assert not await is_auth_session_live(str(uuid4()), owner)
     finally:
-        await AuthUser.prisma().delete_many(where={"id": {"in": [owner, other]}})
+        await AuthUser.prisma().delete_many(where={"id": {"in": created}})
