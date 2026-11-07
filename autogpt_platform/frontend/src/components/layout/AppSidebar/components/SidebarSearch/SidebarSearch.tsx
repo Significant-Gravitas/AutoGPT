@@ -6,14 +6,15 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Search01Icon } from "@hugeicons/core-free-icons";
 
 export function SidebarSearch() {
   const openSearch = useGlobalSearchStore((state) => state.openSearch);
 
   return (
-    <Tooltip>
+    <Tooltip inheritDelay>
       <TooltipTrigger asChild>
         <button
           type="button"
@@ -23,11 +24,14 @@ export function SidebarSearch() {
         >
           <Icon
             icon={Search01Icon}
-            className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5 max-md:size-5"
+            tone="emphasis-soft"
+            className="size-4 group-data-[collapsible=icon]:size-4.5 max-md:size-5"
           />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="right">Search</TooltipContent>
+      <TooltipPortal>
+        <TooltipContent side="right">Search</TooltipContent>
+      </TooltipPortal>
     </Tooltip>
   );
 }

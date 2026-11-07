@@ -33,11 +33,7 @@ export function ConsentWithdrawalReload() {
 
 // No script runs on preferences consent, so taking it back leaves nothing to
 // shed; the Google tag gets that change as a Consent Mode update.
-const SCRIPT_CATEGORIES: ConsentCategory[] = [
-  "analytics",
-  "monitoring",
-  "advertising",
-];
+const SCRIPT_CATEGORIES: ConsentCategory[] = ["analytics", "advertising"];
 
 function wasWithdrawn(previous: ConsentState, next: ConsentState): boolean {
   return SCRIPT_CATEGORIES.some(

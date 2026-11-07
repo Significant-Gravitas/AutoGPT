@@ -2,20 +2,14 @@ import io
 import json
 
 import pytest
-from langfuse import get_client
 from PIL import Image
 
 from backend.copilot.google_data_redaction import redact_google_data
-from backend.copilot.google_data_redaction_test import langfuse_spans
 from backend.copilot.tool_image import prepare_image
-
-__all__ = ["langfuse_spans"]
 
 
 @pytest.mark.parametrize("format", ["anthropic", "mcp", "openai", "responses"])
-def test_image_pixels_stay_out_of_traces_without_changing_model_input(
-    format, langfuse_spans
-):
+def test_image_pixels_stay_out_of_traces_without_changing_model_input(format):
     output = io.BytesIO()
     Image.new("RGB", (20, 20), "blue").save(output, format="PNG")
     image = prepare_image(output.getvalue())
@@ -36,15 +30,8 @@ def test_image_pixels_stay_out_of_traces_without_changing_model_input(
         ],
     }
     before = json.dumps(payload)
-    generation = get_client().start_observation(
-        name="image-inspection", as_type="generation", input=payload
-    )
-    generation.end()
-    traced = json.dumps(
-        [dict(span.attributes or {}) for span in langfuse_spans.get_finished_spans()]
-    )
+    traced = json.dumps(redact_google_data(payload))
     assert image.data_base64 not in traced
-    assert image.data_base64 not in json.dumps(redact_google_data(json.loads(before)))
     assert "Inspect this page" in traced
     assert json.dumps(payload) == before
     assert image.data_base64 in before

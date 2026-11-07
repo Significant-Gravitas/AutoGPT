@@ -15,13 +15,14 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import AMQPChannelError, AMQPConnectionError
 from pika.spec import Basic, BasicProperties
-from prometheus_client import Gauge, start_http_server
+from prometheus_client import Counter, Gauge, start_http_server
 from pydantic import BaseModel, ValidationError
 
 import backend.data.llm_registry
 from backend.blocks import get_blocks
 from backend.copilot import after_turn, engine_switch, stream_registry
 from backend.copilot.executor.utils import schedule_turn
+from backend.copilot.turn_metrics import turns_counter
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.cluster_lock import ClusterLock
@@ -32,6 +33,7 @@ from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.retry import continuous_retry
 from backend.util.settings import Settings
 
+from .cli_warmup import start_cli_warmup
 from .processor import execute_copilot_turn, init_worker
 from .utils import (
     COPILOT_EXECUTION_QUEUE_NAME,
@@ -74,6 +76,16 @@ utilization_gauge = Gauge(
     "copilot_executor_utilization_ratio",
     "Ratio of active tasks to pool size",
 )
+# People's turns on the platform's engines, exported at 0 from the start.
+# Prometheus's increase() can't count a series' first sample, so a series
+# that first appears at 1 would hide the first turn of its kind after every
+# restart, and alerts that need a handful of failures would see one fewer.
+for _outcome in ("completed", "cancelled", "failed"):
+    for _engine in ("sdk", "baseline", "none"):
+        for _origin in ("chat", "scheduled", "spawned", "automation", "system"):
+            turns_counter.labels(
+                outcome=_outcome, engine=_engine, origin=_origin, load_test=""
+            )
 
 
 class CoPilotExecutor(AppProcess):
@@ -130,6 +142,7 @@ class CoPilotExecutor(AppProcess):
         )
 
         _load_catalog()
+        start_cli_warmup()
         # Load the block registry before taking turns. A turn's first tool call
         # loads it otherwise, and the collections over the grown heap stall every turn.
         load_started = time.monotonic()
@@ -371,6 +384,9 @@ class CoPilotExecutor(AppProcess):
             return
         if session_id not in self.active_tasks:
             logger.debug(f"Cancel received for {session_id} but not active")
+            return
+        if request.turn_id and self._active_turn_ids.get(session_id) != request.turn_id:
+            logger.info(f"Cancel for {session_id} names a turn that is not running")
             return
 
         _, cancel_event = self.active_tasks[session_id]

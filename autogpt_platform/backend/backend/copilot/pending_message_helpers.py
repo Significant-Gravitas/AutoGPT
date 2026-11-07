@@ -40,6 +40,7 @@ from backend.copilot.response_model import (
     StreamPendingDrained,
     StreamPendingDrainedMessage,
 )
+from backend.copilot.service import EmptyUserMessage, normalise_user_message
 from backend.copilot.stream_registry import get_session as get_active_session_meta
 from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.db_accessors import chat_db
@@ -165,9 +166,15 @@ async def queue_user_message(
     ``metadata`` lands on the user row the message is persisted as. It is
     for internal senders only (a session messaging another session); the
     HTTP path never passes it.
+
+    The text gets the same input normalisation as a message that starts a
+    turn: server-only blocks are stripped here, because a queued message
+    reaches the model through the drain, after the engines' own entry
+    sanitising has run. A message with nothing left once normalised raises
+    :class:`~backend.copilot.service.EmptyUserMessage` and queues nothing.
     """
     pending = PendingMessage(
-        content=message,
+        content=normalise_user_message(message),
         file_ids=file_ids or [],
         context=context,
         metadata=metadata or None,
@@ -241,9 +248,10 @@ async def queue_pending_for_http(
     is still being pushed waits for its outcome, and gets a 503 if that
     outlasts the wait.
 
-    Raises :class:`HTTPException` with status 429 if the rate cap is hit or
-    400 if an expert session attaches a file outside its scope; otherwise
-    returns the ``QueuePendingMessageResponse`` the handler can serialise 1:1.
+    Raises :class:`HTTPException` with status 429 if the rate cap is hit,
+    400 if an expert session attaches a file outside its scope, or 422 if the
+    message is empty once normalised; otherwise returns the
+    ``QueuePendingMessageResponse`` the handler can serialise 1:1.
     """
     sanitized_file_ids: list[str] | None = None
     if file_ids:
@@ -256,6 +264,11 @@ async def queue_pending_for_http(
             user_id, folder_ids, expert_id=expert_id
         )
         message += build_files_block([], folders)
+    # Refused before any claim or push, so a refused message changes nothing.
+    try:
+        message = normalise_user_message(message)
+    except EmptyUserMessage as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     # ``PendingMessageContext`` uses the default ``extra='ignore'`` so
     # unknown keys in the loose HTTP-level ``context`` dict are silently

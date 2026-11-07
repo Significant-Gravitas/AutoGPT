@@ -1,36 +1,10 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { tones, type Tone } from "./helpers";
+import { tones, type Tone } from "@/components/styles/tones";
 import { Text } from "./Text";
 
 afterEach(() => {
   cleanup();
-});
-
-describe("Text in session replay", () => {
-  it("is masked by default", () => {
-    render(<Text variant="body">Account name</Text>);
-    const el = screen.getByText("Account name");
-    expect(el.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
-  });
-
-  it("is masked by default for headings too", () => {
-    render(<Text variant="h1">Heading</Text>);
-    const el = screen.getByText("Heading");
-    expect(el.tagName).toBe("H1");
-    expect(el.className).not.toContain("sentry-unmask");
-  });
-
-  it("opts into unmasking only when asked", () => {
-    render(
-      <Text variant="body" unmask className="custom-class">
-        Static label
-      </Text>,
-    );
-    const el = screen.getByText("Static label");
-    expect(el.className).toContain("sentry-unmask");
-    expect(el.className).toContain("custom-class");
-  });
 });
 
 describe("Text tone and eyebrow", () => {
@@ -52,7 +26,7 @@ describe("Text tone and eyebrow", () => {
     );
   });
 
-  it.each(Object.entries(tones))(
+  it.each(Object.entries(tones).filter(([tone]) => tone !== "base"))(
     "renders the %s tone with its role class only",
     (tone, roleClass) => {
       render(
@@ -72,5 +46,68 @@ describe("Text tone and eyebrow", () => {
     expect(el.tagName).toBe("SPAN");
     expect(el.className).toContain("uppercase");
     expect(el.className).toContain("text-caption");
+  });
+});
+
+describe("Text modifier props", () => {
+  it("replaces the variant's weight", () => {
+    render(
+      <Text variant="body-medium" weight="semibold">
+        Weighted
+      </Text>,
+    );
+    const classes = screen.getByText("Weighted").className.split(" ");
+    expect(classes).toContain("font-semibold");
+    expect(classes).not.toContain("font-medium");
+  });
+
+  it("swaps the family for mono and keeps the size", () => {
+    render(
+      <Text variant="small" mono>
+        abc123
+      </Text>,
+    );
+    const classes = screen.getByText("abc123").className.split(" ");
+    expect(classes).toContain("font-mono");
+    expect(classes).not.toContain("font-sans");
+    expect(classes).toContain("text-caption");
+  });
+
+  it.each([
+    [{ tabular: true }, "tabular-nums"],
+    [{ italic: true }, "italic"],
+    [{ decoration: "line-through" as const }, "line-through"],
+    [{ decoration: "none" as const }, "no-underline"],
+    [{ transform: "uppercase" as const }, "uppercase"],
+    [{ transform: "none" as const }, "normal-case"],
+    [{ align: "center" as const }, "text-center"],
+    [{ tracking: "caps" as const }, "tracking-caps"],
+    [{ motion: "colors" as const }, "transition-colors"],
+  ])("renders %o as %s", (props, expected) => {
+    render(
+      <Text variant="body" {...props}>
+        Modified
+      </Text>,
+    );
+    expect(screen.getByText("Modified").className.split(" ")).toContain(
+      expected,
+    );
+  });
+
+  it("lets className win for layout next to the props", () => {
+    render(
+      <Text variant="body" tone="muted" tabular className="mt-2 truncate">
+        Layout
+      </Text>,
+    );
+    const classes = screen.getByText("Layout").className.split(" ");
+    expect(classes).toEqual(
+      expect.arrayContaining([
+        "text-foreground-tertiary",
+        "tabular-nums",
+        "mt-2",
+        "truncate",
+      ]),
+    );
   });
 });

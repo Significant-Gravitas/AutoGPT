@@ -1,6 +1,4 @@
 import asyncio
-import concurrent
-import concurrent.futures
 import inspect
 import logging
 import os
@@ -45,6 +43,7 @@ from backend.util import tracing
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, freeze_startup_heap
+from backend.util.request import HTTPServerError as RequestHTTPServerError
 from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
 from backend.util.service_auth import internal_auth_headers, require_internal_key
 from backend.util.settings import Config, get_service_name
@@ -134,7 +133,20 @@ def resolve_type_hints(func: Callable[..., Any]) -> dict[str, Any]:
 # AppService for IPC service based on HTTP request through FastAPI
 # --------------------------------------------------
 class BaseAppService(AppProcess, ABC):
-    shared_event_loop: asyncio.AbstractEventLoop
+    # Created by `run()`, so a service stopped before then has none.
+    _shared_event_loop: asyncio.AbstractEventLoop | None = None
+
+    @property
+    def shared_event_loop(self) -> asyncio.AbstractEventLoop:
+        if self._shared_event_loop is None:
+            raise AttributeError(
+                f"[{self.service_name}] has no event loop before run()"
+            )
+        return self._shared_event_loop
+
+    @shared_event_loop.setter
+    def shared_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._shared_event_loop = loop
 
     @classmethod
     @abstractmethod
@@ -199,9 +211,10 @@ class BaseAppService(AppProcess, ABC):
         # closed loop here means that thread is already gone (loop crash or
         # repeated cleanup) and there is nothing left to stop — scheduling
         # onto it would raise "Event loop is closed" mid-shutdown.
-        if not self.shared_event_loop.is_closed():
+        loop = self._shared_event_loop
+        if loop is not None and not loop.is_closed():
             try:
-                self.shared_event_loop.call_soon_threadsafe(self.shared_event_loop.stop)
+                loop.call_soon_threadsafe(loop.stop)
             except RuntimeError:
                 # The loop thread closed the loop between the check above and
                 # the scheduling call; equivalent to the is_closed() case.
@@ -229,6 +242,8 @@ class RemoteCallExtras(BaseModel):
 
 class RemoteCallError(BaseModel):
     type: str = "RemoteCallError"
+    # Matched only against exception classes the client has already loaded.
+    module: Optional[str] = None
     args: Optional[Tuple[Any, ...]] = None
     # Optional extras for exception types that carry structured attributes
     # beyond ``exc.args``. When set, the client-side handler uses these to
@@ -277,6 +292,10 @@ class HTTPServerError(Exception):
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
         super().__init__(f"HTTP {status_code}: {message}")
+
+
+class UnrebuiltServerError(HTTPServerError):
+    """A 5xx a method raised on purpose, whose class could not be rebuilt here."""
 
 
 EXCEPTION_MAPPING = {
@@ -348,6 +367,7 @@ class AppService(BaseAppService, ABC):
                 status_code=status_code,
                 content=RemoteCallError(
                     type=str(exc.__class__.__name__),
+                    module=exc.__class__.__module__,
                     args=exc.args or (str(exc),),
                     extras=extras,
                 ).model_dump(),
@@ -702,19 +722,7 @@ def get_service_client(
                 max_attempts=api_comm_retry,
                 max_wait=api_comm_max_wait,
                 context="Service communication",
-                exclude_exceptions=(
-                    # Don't retry these specific exceptions that won't be fixed by retrying
-                    ValueError,  # Invalid input/parameters
-                    DataError,  # Prisma data integrity errors (foreign key, unique constraints)
-                    UniqueViolationError,  # Unique constraint violations
-                    KeyError,  # Missing required data
-                    TypeError,  # Wrong data types
-                    AttributeError,  # Missing attributes
-                    asyncio.CancelledError,  # Task was cancelled
-                    concurrent.futures.CancelledError,  # Future was cancelled
-                    HTTPClientError,  # HTTP 4xx client errors - don't retry
-                ),
-                retry_anyway=(MissingRouteError,),
+                retry_if=lambda error: not _raised_on_purpose(type(error)),
                 also_stop=_MissingRouteDeadline(),
             )(fn)
 
@@ -840,10 +848,14 @@ def get_service_client(
                     error_response = RemoteCallError.model_validate(e.response.json())
                 except Exception:
                     pass
+                # FastAPI's own errors carry ``detail``; only a method's error names a type.
+                if error_response and "type" not in error_response.model_fields_set:
+                    error_response = None
 
-                # If we successfully parsed a mapped exception type, re-raise it
-                if error_response and error_response.type in EXCEPTION_MAPPING:
-                    exception_class = EXCEPTION_MAPPING[error_response.type]
+                exception_class = (
+                    _remote_error_class(error_response) if error_response else None
+                )
+                if error_response and exception_class:
                     args = error_response.args or [str(e)]
 
                     # Prisma DataError subclasses expect a dict `data` arg,
@@ -873,11 +885,22 @@ def get_service_client(
                         )
                         raise exception_class(msg, node_errors=node_errors)
 
-                    raise exception_class(*args)
+                    try:
+                        rebuilt = exception_class(*args)
+                    except Exception:
+                        logger.warning(
+                            f"Cannot rebuild {exception_class.__module__}."
+                            f"{exception_class.__name__} from its args over RPC; "
+                            f"its __init__ must accept exc.args"
+                        )
+                    else:
+                        raise rebuilt
+                    if 500 <= status_code < 600 and _raised_on_purpose(exception_class):
+                        raise UnrebuiltServerError(status_code, str(e))
 
-                # Otherwise categorize by HTTP status code. An unmapped 404 is
-                # FastAPI's own: the server has no such route.
-                if status_code == 404:
+                # Otherwise categorize by HTTP status code. A 404 without an error
+                # body is FastAPI's own: the server has no such route.
+                if status_code == 404 and error_response is None:
                     raise MissingRouteError(method_name, self.base_url)
                 if 400 <= status_code < 500:
                     # Client errors (4xx) - wrap to prevent retries
@@ -1026,6 +1049,50 @@ def get_service_client(
     client = cast(ASC, DynamicClient())
 
     return client
+
+
+# A backend error class not covered here is answered at once, never retried: a new
+# transient one (lost connection, lock, not ready yet) subclasses a base or joins this.
+RETRYABLE_SERVICE_ERRORS: tuple[type[BaseException], ...] = (
+    ConnectionError,
+    TimeoutError,
+    RuntimeError,
+    httpx.TransportError,
+    HTTPServerError,
+    MissingRouteError,
+    RequestHTTPServerError,
+    exceptions.DatabaseError,
+    exceptions.ExpertHireUnavailableError,
+    exceptions.RedisError,
+    exceptions.WebhookSetupUnavailableError,
+)
+
+
+def _raised_on_purpose(error_class: type[BaseException]) -> bool:
+    return issubclass(error_class, UnrebuiltServerError) or not issubclass(
+        error_class, RETRYABLE_SERVICE_ERRORS
+    )
+
+
+def _remote_error_class(remote: RemoteCallError) -> type[BaseException] | None:
+    return _loaded_backend_error_class(remote.module, remote.type) or (
+        EXCEPTION_MAPPING.get(remote.type)
+    )
+
+
+def _loaded_backend_error_class(
+    module: str | None, name: str
+) -> type[BaseException] | None:
+    """Never imports: a class the caller can catch is one it has already loaded."""
+    if not module or not module.startswith("backend."):
+        return None
+    pending: list[type[BaseException]] = [BaseException]
+    while pending:
+        cls = pending.pop()
+        if cls.__module__ == module and cls.__name__ == name:
+            return cls
+        pending.extend(type.__subclasses__(cls))
+    return None
 
 
 class _MissingRouteDeadline(stop_base):

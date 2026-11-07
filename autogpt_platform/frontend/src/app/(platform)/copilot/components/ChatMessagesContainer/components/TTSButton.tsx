@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageAction } from "@/components/ai-elements/message";
+import { MessageAction } from "@/components/organisms/Message/Message";
 import { StopIcon, VolumeHighIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useTTSButton } from "./useTTSButton";

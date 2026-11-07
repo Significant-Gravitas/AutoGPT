@@ -52,6 +52,16 @@ ACCESS_TOKEN_PREFIX = "agpt_xt_"
 REFRESH_TOKEN_PREFIX = "agpt_rt_"
 
 
+def is_access_token(credential: str) -> bool:
+    """Whether a credential is in the OAuth access-token format.
+
+    Such a value is only ever looked up as a token, never tried as an API key:
+    a key issued before `APIKeySmith` reserved the prefix can start the same
+    way, and trying every forged token as a key would cost a Scrypt hash each.
+    """
+    return credential.startswith(ACCESS_TOKEN_PREFIX)
+
+
 # ============================================================================
 # Exception Classes
 # ============================================================================
@@ -161,10 +171,6 @@ class OAuthAuthorizationCodeInfo(BaseModel):
     code_challenge_method: Optional[str] = None
     used_at: Optional[datetime] = None
 
-    @property
-    def is_used(self) -> bool:
-        return self.used_at is not None
-
     @staticmethod
     def from_db(code: PrismaOAuthAuthorizationCode):
         return OAuthAuthorizationCodeInfo(
@@ -228,10 +234,6 @@ class OAuthRefreshTokenInfo(BaseModel):
     expires_at: datetime
     application_id: str
     revoked_at: Optional[datetime] = None
-
-    @property
-    def is_revoked(self) -> bool:
-        return self.revoked_at is not None
 
     @staticmethod
     def from_db(token: PrismaOAuthRefreshToken):
@@ -434,11 +436,23 @@ async def consume_authorization_code(
         ):
             raise InvalidGrantError("PKCE verification failed")
 
-    # Mark code as used
-    await PrismaOAuthAuthorizationCode.prisma().update(
-        where={"code": code},
-        data={"usedAt": now},
+    # Atomically claim the code. The checks above run on a possibly stale read,
+    # so two concurrent redeems can both pass them; only the request whose
+    # conditional write flips usedAt from NULL may mint tokens. Everything is
+    # validated first so a request with a wrong redirect_uri or PKCE verifier
+    # cannot burn a code that belongs to the legitimate client.
+    claimed_at = datetime.now(timezone.utc)
+    claimed = await PrismaOAuthAuthorizationCode.prisma().update_many(
+        where={
+            "code": code,
+            "applicationId": application_id,
+            "usedAt": None,
+            "expiresAt": {"gt": claimed_at},
+        },
+        data={"usedAt": claimed_at},
     )
+    if claimed != 1:
+        raise InvalidGrantError("authorization code already used or expired")
 
     return auth_code.userId, [APIPermission(s) for s in auth_code.scopes]
 
@@ -515,6 +529,11 @@ async def validate_access_token(
         InvalidTokenError: If token is invalid, expired, or revoked
         InvalidClientError: If the client application is not marked as active
     """
+    if not is_access_token(token):
+        # Every access token carries the prefix, so this can't match one, and
+        # an API's rate limits count only the bearers that cost a lookup.
+        raise InvalidTokenError("access token not found")
+
     token_hash = _hash_token(token)
 
     # Direct lookup by hash

@@ -34,6 +34,7 @@ import os
 import re
 import shutil
 import tempfile
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.copilot.context import get_workspace_manager
@@ -537,10 +538,15 @@ async def close_browser_daemon(session_name: str) -> bool:
 
 
 async def close_browser_session(session_name: str, user_id: str | None = None) -> None:
-    """Shut down the local agent-browser daemon and clean up stored state.
+    """Clean up a deleted session's stored browser state, and close its
+    browser if this process runs one.
 
     Deletes ``._browser_state.json`` from workspace storage so cookies and
     other credentials do not linger after the session is deleted.
+
+    The daemon is closed only for a session in ``_touched_sessions``. For any
+    other session, ``close`` would start a daemon and launch Chromium just to
+    shut them down again.
 
     Best-effort: errors are logged but never raised.
     """
@@ -562,6 +568,8 @@ async def close_browser_session(session_name: str, user_id: str | None = None) -
                 exc_info=True,
             )
 
+    if session_name not in _touched_sessions:
+        return
     try:
         rc, _, stderr = await _run(session_name, "close", timeout=10)
         if rc != 0:
@@ -959,8 +967,7 @@ class BrowserScreenshotTool(BaseTool):
                 },
                 "filename": {
                     "type": "string",
-                    "default": "screenshot.png",
-                    "description": "Workspace filename (default: screenshot.png).",
+                    "description": "Workspace filename (default: a new unique name).",
                 },
             },
         }
@@ -978,7 +985,7 @@ class BrowserScreenshotTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         annotate: bool | str = True,
-        filename: str = "screenshot.png",
+        filename: str = "",
         **kwargs: Any,
     ) -> ToolResponseBase:
         """Capture a PNG screenshot and upload it to the workspace.
@@ -993,7 +1000,11 @@ class BrowserScreenshotTool(BaseTool):
             annotate = raw_annotate.strip().lower() in {"1", "true", "yes", "on"}
         else:
             annotate = bool(raw_annotate)
-        filename = filename.strip()
+        # A chat's workspace refuses a repeated path, so an unnamed capture gets its own.
+        filename = (
+            filename.strip()
+            or f"screenshot-{datetime.now(UTC):%Y%m%d-%H%M%S}-{os.urandom(3).hex()}.png"
+        )
         session_name = session.session_id
 
         # Restore browser state from cloud if this is a different pod
@@ -1040,8 +1051,11 @@ class BrowserScreenshotTool(BaseTool):
         )
 
         if not isinstance(write_resp, WorkspaceWriteResponse):
+            logger.warning(
+                f"[browser_screenshot] failed to save {filename}: {write_resp.message}"
+            )
             return ErrorResponse(
-                message="Screenshot taken but failed to save to workspace.",
+                message=f"Screenshot taken but failed to save to workspace: {write_resp.message}",
                 error="workspace_write_failed",
                 session_id=session_name,
             ).from_outside()

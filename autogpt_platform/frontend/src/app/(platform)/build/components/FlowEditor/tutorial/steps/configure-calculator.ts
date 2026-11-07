@@ -10,9 +10,9 @@ import { ICONS } from "../icons";
 import { banner } from "../styles";
 
 const getRequirementsHtml = () => `
-  <div id="requirements-box" class="mt-3 p-3 bg-amber-50 ring-1 ring-amber-200 rounded-2xl">
-    <p id="requirements-title" class="text-sm font-medium text-amber-600 m-0 mb-2">⚠️ Required to continue:</p>
-    <ul id="requirements-list" class="text-[0.8125rem] text-amber-600 m-0 pl-4 space-y-1">
+  <div id="requirements-box" class="mt-3 p-3 bg-warning-surface ring-1 ring-warning-border rounded-2xl">
+    <p id="requirements-title" class="text-body leading-5 font-medium text-warning-foreground m-0 mb-2">⚠️ Required to continue:</p>
+    <ul id="requirements-list" class="text-body-sm leading-inherit text-warning-foreground m-0 pl-4 space-y-1">
       <li id="req-a" class="flex items-center gap-2">
         <span class="req-icon">○</span> Enter a number in field <strong>A</strong> (e.g., 10)
       </li>
@@ -32,10 +32,10 @@ const updateToSuccessState = () => {
   const reqList = document.querySelector("#requirements-list");
 
   if (reqBox && reqTitle) {
-    reqBox.classList.remove("bg-amber-50", "ring-amber-200");
-    reqBox.classList.add("bg-green-50", "ring-green-200");
-    reqTitle.classList.remove("text-amber-600");
-    reqTitle.classList.add("text-green-600");
+    reqBox.classList.remove("bg-warning-surface", "ring-warning-border");
+    reqBox.classList.add("bg-success-surface", "ring-success/40");
+    reqTitle.classList.remove("text-warning-foreground");
+    reqTitle.classList.add("text-success");
     reqTitle.innerHTML = "🎉 Hurray! All values are completed!";
     if (reqList) {
       reqList.classList.add("hidden");
@@ -49,10 +49,10 @@ const updateToWarningState = () => {
   const reqList = document.querySelector("#requirements-list");
 
   if (reqBox && reqTitle) {
-    reqBox.classList.remove("bg-green-50", "ring-green-200");
-    reqBox.classList.add("bg-amber-50", "ring-amber-200");
-    reqTitle.classList.remove("text-green-600");
-    reqTitle.classList.add("text-amber-600");
+    reqBox.classList.remove("bg-success-surface", "ring-success/40");
+    reqBox.classList.add("bg-warning-surface", "ring-warning-border");
+    reqTitle.classList.remove("text-success");
+    reqTitle.classList.add("text-warning-foreground");
     reqTitle.innerHTML = "⚠️ Required to continue:";
     if (reqList) {
       reqList.classList.remove("hidden");
@@ -65,8 +65,8 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
     id: "enter-values",
     title: "Enter Values",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Now let's configure the block with actual values.</p>
+      <div class="text-body text-foreground-emphasis">
+        <p class="text-body font-normal text-foreground-emphasis m-0">Now let's configure the block with actual values.</p>
         ${getRequirementsHtml()}
         ${banner(ICONS.ClickIcon, "Fill in all the required fields above", "action")}
       </div>
@@ -121,16 +121,16 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
           const reqOpEl = document.querySelector("#req-op");
 
           if (reqAEl) {
-            reqAEl.classList.toggle("text-green-600", hasA);
-            reqAEl.classList.toggle("text-amber-600", !hasA);
+            reqAEl.classList.toggle("text-success", hasA);
+            reqAEl.classList.toggle("text-warning-foreground", !hasA);
           }
           if (reqBEl) {
-            reqBEl.classList.toggle("text-green-600", hasB);
-            reqBEl.classList.toggle("text-amber-600", !hasB);
+            reqBEl.classList.toggle("text-success", hasB);
+            reqBEl.classList.toggle("text-warning-foreground", !hasB);
           }
           if (reqOpEl) {
-            reqOpEl.classList.toggle("text-green-600", hasOp);
-            reqOpEl.classList.toggle("text-amber-600", !hasOp);
+            reqOpEl.classList.toggle("text-success", hasOp);
+            reqOpEl.classList.toggle("text-warning-foreground", !hasOp);
           }
 
           if (allComplete && !wasComplete) {
