@@ -143,6 +143,7 @@ async def test_output_moderation_clears_a_completed_output_node(user_and_graph):
     }
     node = await get_node_execution(node_exec_id)
     assert node is not None
+    assert node.input_data["name"] == "report"
     assert node.input_data["value"] == MSG
     assert dict(node.output_data) == {"output": [MSG]}
     [sent] = [call.args[0] for call in send.await_args_list]
@@ -153,6 +154,8 @@ async def test_output_moderation_clears_a_completed_output_node(user_and_graph):
         user_id, graph_exec_id, include_node_executions=True
     )
     assert run is not None
+    # Keyed on the declared name, whether reconstruct_run_outputs reads the
+    # input value (dev) or the yielded/cleared output pin (#15908).
     assert dict(run.outputs) == {"report": [MSG]}
     assert "flagged" not in run.model_dump_json()
 
