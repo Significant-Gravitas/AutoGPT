@@ -53,75 +53,39 @@ const colorMap: Record<
   }
 > = {
   blue: {
-    bg: "bg-blue-300",
-    border: "border-blue-300",
-    borderLight: "border-blue-200",
-    fill: "fill-blue-300",
-    stroke: "stroke-blue-400",
+    bg: "bg-[#93c5fd]",
+    border: "border-[#93c5fd]",
+    borderLight: "border-[#bfdbfe]",
+    fill: "fill-[#93c5fd]",
+    stroke: "stroke-[#60a5fa]",
   },
   purple: {
-    bg: "bg-purple-200",
-    border: "border-purple-200",
-    borderLight: "border-purple-200",
-    fill: "fill-purple-200",
-    stroke: "stroke-purple-400",
+    bg: "bg-[#c0a1fa]",
+    border: "border-[#c0a1fa]",
+    borderLight: "border-[#c0a1fa]",
+    fill: "fill-[#c0a1fa]",
+    stroke: "stroke-[#925cf7]",
   },
   emerald: {
-    bg: "bg-emerald-300",
-    border: "border-emerald-300",
-    borderLight: "border-emerald-200",
-    fill: "fill-emerald-300",
-    stroke: "stroke-emerald-400",
+    bg: "bg-[#6ee7b7]",
+    border: "border-[#6ee7b7]",
+    borderLight: "border-[#a7f3d0]",
+    fill: "fill-[#6ee7b7]",
+    stroke: "stroke-[#34d399]",
   },
   orange: {
-    bg: "bg-orange-200",
-    border: "border-orange-200",
-    borderLight: "border-orange-200",
-    fill: "fill-orange-200",
-    stroke: "stroke-orange-400",
+    bg: "bg-[#ffc88a]",
+    border: "border-[#ffc88a]",
+    borderLight: "border-[#ffc88a]",
+    fill: "fill-[#ffc88a]",
+    stroke: "stroke-[#fe9f33]",
   },
   pink: {
-    bg: "bg-pink-300",
-    border: "border-pink-300",
-    borderLight: "border-pink-200",
-    fill: "fill-pink-300",
-    stroke: "stroke-pink-400",
-  },
-};
-
-export const folderCardStyles: Record<
-  FolderColorName,
-  { bg: string; border: string; buttonBase: string; buttonHover: string }
-> = {
-  blue: {
-    bg: "bg-blue-50",
-    border: "border-blue-200",
-    buttonBase: "border-zinc-600 text-black",
-    buttonHover: "hover:bg-blue-200",
-  },
-  purple: {
-    bg: "bg-purple-50",
-    border: "border-purple-200",
-    buttonBase: "border-zinc-600 text-black ",
-    buttonHover: "hover:bg-purple-200",
-  },
-  emerald: {
-    bg: "bg-emerald-50",
-    border: "border-emerald-200",
-    buttonBase: "border-zinc-600 text-black",
-    buttonHover: "hover:bg-emerald-200",
-  },
-  orange: {
-    bg: "bg-orange-50",
-    border: "border-orange-200",
-    buttonBase: "border-zinc-600 text-black",
-    buttonHover: "hover:bg-orange-200",
-  },
-  pink: {
-    bg: "bg-pink-50",
-    border: "border-pink-200",
-    buttonBase: "border-zinc-600 text-black",
-    buttonHover: "hover:bg-pink-200",
+    bg: "bg-[#f284bb]",
+    border: "border-[#f284bb]",
+    borderLight: "border-[#f6abd0]",
+    fill: "fill-[#f284bb]",
+    stroke: "stroke-[#f06dad]",
   },
 };
 
@@ -138,18 +102,12 @@ export function FolderIcon({
 
   return (
     <div
-      className={`group relative cursor-pointer ${className}`}
-      style={{
-        width: 320 * scale,
-        height: 208 * scale,
-      }}
+      className={`group relative h-[calc(208px*var(--folder-scale))] w-[calc(320px*var(--folder-scale))] cursor-pointer ${className}`}
+      style={{ "--folder-scale": scale } as React.CSSProperties}
     >
-      <div
-        className="h-52 w-80 origin-top-left"
-        style={{ transform: `scale(${scale})`, perspective: "500px" }}
-      >
+      <div className="h-52 w-80 origin-top-left scale-[var(--folder-scale)] [perspective:500px]">
         <div
-          className={`folder-back relative mx-auto flex h-full w-[87.5%] justify-center overflow-visible rounded-3xl ${colors.bg} ${colors.border}`}
+          className={`relative mx-auto flex h-full w-[87.5%] justify-center overflow-visible rounded-3xl ${colors.bg} ${colors.border}`}
         >
           {[
             {
@@ -205,8 +163,7 @@ export function FolderIcon({
             rotateX: isOpen ? -15 : 0,
           }}
           transition={{ type: "spring", duration: 0.5, bounce: 0.25 }}
-          className="absolute inset-x-0 -bottom-px z-30 mx-auto flex h-44 w-[87.5%] origin-bottom items-end justify-center overflow-visible"
-          style={{ transformStyle: "preserve-3d" }}
+          className="absolute inset-x-0 -bottom-px z-30 mx-auto flex h-44 w-[87.5%] origin-bottom items-end justify-center overflow-visible [transform-style:preserve-3d]"
         >
           <svg
             className="h-auto w-full"
@@ -220,7 +177,7 @@ export function FolderIcon({
               d="M15.0423 0.500003C0.5 0.500009 0.5 14.2547 0.5 14.2547V92.5C0.5 101.337 7.66344 108.5 16.5 108.5H156.5C165.337 108.5 172.5 101.337 172.5 92.5V34.3302C172.5 25.4936 165.355 18.3302 156.519 18.3302H108.211C98.1341 18.3302 91.2921 5.57144 82.0156 1.63525C80.3338 0.921645 78.2634 0.500002 75.7187 0.500003H15.0423Z"
             />
           </svg>
-          <div className="absolute inset-0 flex items-center justify-center text-7xl">
+          <div className="absolute inset-0 flex items-center justify-center text-hero">
             {icon}
           </div>
         </motion.div>
@@ -237,16 +194,14 @@ function Page({ color = "blue" }: PageProps) {
   const colors = colorMap[color];
   return (
     <div
-      className={`h-full w-full rounded-xl border bg-white p-4 ${colors.borderLight}`}
+      className={`h-full w-full rounded-xl border bg-surface p-4 ${colors.borderLight}`}
     >
       <div className="flex flex-col gap-2">
-        <Text variant="h5" className="text-black">
-          agent.json
-        </Text>
+        <Text variant="h5">agent.json</Text>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex gap-2">
-            <div className="h-1.5 flex-1 rounded-full bg-neutral-100" />
-            <div className="h-1.5 flex-1 rounded-full bg-neutral-100" />
+            <div className="h-1.5 flex-1 rounded-full bg-surface-hover" />
+            <div className="h-1.5 flex-1 rounded-full bg-surface-hover" />
           </div>
         ))}
       </div>

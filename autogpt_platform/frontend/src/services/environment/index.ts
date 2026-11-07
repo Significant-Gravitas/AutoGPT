@@ -72,20 +72,8 @@ function getSentryEnvironment() {
   return override || getEnvironmentStr();
 }
 
-function getPreviewStealingDev() {
-  const branch = process.env.NEXT_PUBLIC_PREVIEW_STEALING_DEV || "";
-  const appEnv = getAppEnv();
-
-  if (
-    !branch ||
-    branch === "dev" ||
-    branch === "refs/heads/dev" ||
-    appEnv !== AppEnv.DEV
-  ) {
-    return null;
-  }
-
-  return branch;
+function getRevision() {
+  return process.env.NEXT_PUBLIC_REVISION?.trim() || "";
 }
 
 function getPostHogCredentials() {
@@ -95,8 +83,8 @@ function getPostHogCredentials() {
   };
 }
 
-function getLaunchDarklyClientId() {
-  return process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
+function getGAMeasurementID() {
+  return process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "";
 }
 
 function getGoogleAdsID() {
@@ -139,6 +127,10 @@ function isLocal() {
   return getBehaveAs() === BehaveAs.LOCAL;
 }
 
+function isGraphMemoryAvailable() {
+  return process.env.NEXT_PUBLIC_GRAPH_MEMORY !== "disabled";
+}
+
 function isServerSide() {
   return typeof window === "undefined";
 }
@@ -167,7 +159,7 @@ function isVercel() {
 // AutoGPT's own Sentry project. Only our hosted deployments (on Vercel) report
 // to it; a self-hosted build reports nowhere unless its operator sets their own
 // NEXT_PUBLIC_SENTRY_DSN, so no self-hoster sends us errors without opting in.
-const HOSTED_SENTRY_DSN =
+export const HOSTED_SENTRY_DSN =
   "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288";
 
 function getSentryDSN() {
@@ -179,13 +171,6 @@ function getSentryDSN() {
 
 function isSentryEnabled() {
   return Boolean(getSentryDSN());
-}
-
-function areFeatureFlagsEnabled() {
-  return (
-    process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true" &&
-    Boolean(process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID)
-  );
 }
 
 function isPostHogEnabled() {
@@ -204,9 +189,9 @@ export const environment = {
   getAGPTServerApiUrl,
   getAGPTServerBaseUrl,
   getAGPTWsServerUrl,
-  getPreviewStealingDev,
+  getRevision,
   getPostHogCredentials,
-  getLaunchDarklyClientId,
+  getGAMeasurementID,
   getGoogleAdsID,
   getGoogleAdsConversionLabels,
   getCookiebotCBID,
@@ -222,9 +207,9 @@ export const environment = {
   isProd,
   isCloud,
   isLocal,
+  isGraphMemoryAvailable,
   isVercel,
   isVercelPreview,
   isSentryEnabled,
   isPostHogEnabled,
-  areFeatureFlagsEnabled,
 };

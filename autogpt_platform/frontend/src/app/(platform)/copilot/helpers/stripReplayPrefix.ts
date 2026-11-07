@@ -31,6 +31,7 @@ import { deduplicateMessages } from "../helpers";
 export function stripReplayPrefix(raw: UIMessage[]): UIMessage[] {
   const deduped = withoutSeededCopies(deduplicateMessages(raw));
   const texts = deduped.map(concatText);
+  const matches = reuseReplayMatches(texts);
   const out: UIMessage[] = [];
 
   for (let i = 0; i < deduped.length; i++) {
@@ -40,7 +41,7 @@ export function stripReplayPrefix(raw: UIMessage[]): UIMessage[] {
       continue;
     }
 
-    const match = findLongestReplay(texts, i);
+    const match = (matches[i] ??= findLongestReplay(texts, i));
     if (match.drop) continue;
     if (match.stripLen === 0) {
       out.push(msg);
@@ -49,7 +50,8 @@ export function stripReplayPrefix(raw: UIMessage[]): UIMessage[] {
     const trimmed = stripLeadingTextChars(msg, match.stripLen);
     if (trimmed !== null) out.push(trimmed);
   }
-  return out;
+  // Same array back when nothing changed, so memos keyed on it hold.
+  return isSameList(out, raw) ? raw : out;
 }
 
 /**
@@ -62,7 +64,7 @@ export function stripReplayPrefix(raw: UIMessage[]): UIMessage[] {
  * second time. Only an exact copy of the whole bubble right before it goes.
  */
 function withoutSeededCopies(messages: UIMessage[]): UIMessage[] {
-  return messages.flatMap((message, i) => {
+  const kept = messages.flatMap((message, i) => {
     const previous = messages[i - 1];
     if (message.role !== "assistant" || previous?.role !== "assistant") {
       return [message];
@@ -78,6 +80,11 @@ function withoutSeededCopies(messages: UIMessage[]): UIMessage[] {
     const own = message.parts.slice(seeded.length);
     return own.length > 0 ? [{ ...message, parts: own }] : [];
   });
+  return isSameList(kept, messages) ? messages : kept;
+}
+
+function isSameList(a: UIMessage[], b: UIMessage[]): boolean {
+  return a.length === b.length && a.every((message, i) => message === b[i]);
 }
 
 // Cheap identity for a part: never serialises a tool's output, which can be
@@ -88,6 +95,33 @@ function partKey(part: UIMessage["parts"][number]): string {
   }
   if ("toolCallId" in part) return `${part.type}:${part.toolCallId}`;
   return JSON.stringify(part);
+}
+
+interface ReplayMatch {
+  drop: boolean;
+  stripLen: number;
+}
+
+let previousReplayScan: {
+  texts: string[];
+  matches: (ReplayMatch | undefined)[];
+} = { texts: [], matches: [] };
+
+/**
+ * The replay match of message `i` depends only on `texts[0..i]`. While a reply
+ * streams, only the newest message's text changes, so the matches of the
+ * longest text prefix shared with the previous call are carried over instead
+ * of re-running the pairwise scan over the whole conversation. The returned
+ * array is filled in by the caller and kept for the next call.
+ */
+function reuseReplayMatches(texts: string[]): (ReplayMatch | undefined)[] {
+  const previous = previousReplayScan;
+  const limit = Math.min(texts.length, previous.texts.length);
+  let shared = 0;
+  while (shared < limit && texts[shared] === previous.texts[shared]) shared++;
+  const matches = previous.matches.slice(0, shared);
+  previousReplayScan = { texts, matches };
+  return matches;
 }
 
 function concatText(msg: UIMessage): string {
@@ -101,10 +135,7 @@ function concatText(msg: UIMessage): string {
  * or `{ stripLen }` with the number of leading text chars to strip (0 =
  * keep as-is).
  */
-function findLongestReplay(
-  texts: string[],
-  i: number,
-): { drop: boolean; stripLen: number } {
+function findLongestReplay(texts: string[], i: number): ReplayMatch {
   const myText = texts[i];
   let stripLen = 0;
 

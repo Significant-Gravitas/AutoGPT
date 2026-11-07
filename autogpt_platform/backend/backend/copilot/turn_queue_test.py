@@ -8,6 +8,7 @@ for Prisma directly while still exercising the queue's branching.
 """
 
 import asyncio
+import logging
 import sys
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -20,6 +21,7 @@ from backend.copilot.gate import held
 from backend.copilot.model import ChatMessage as PydanticChatMessage
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.service import EmptyUserMessage
 from backend.copilot.tree import TreeRefusal, TurnEnvelope
 from backend.copilot.trial_cost_context import TrialCostContext
 
@@ -77,6 +79,14 @@ def _queued_row(session_id: str = "s1", title: str | None = "T") -> ChatSessionI
 
 # A queued child's stored envelope.
 _CHILD = {"tree_id": "t1", "depth": 1}
+
+
+@pytest.fixture(autouse=True)
+def no_tree_reopen(monkeypatch):
+    """Promotion of a background row reopens an expired tree through the
+    ledger and the user's ceiling, which the real-database handoff suite
+    covers; here the ledger is not the subject."""
+    monkeypatch.setattr(turn_queue, "reopen_closed_tree", AsyncMock())
 
 
 @pytest.fixture(autouse=True)
@@ -189,15 +199,85 @@ async def test_enqueue_turn_includes_default_transport_and_attribution() -> None
     }
 
 
+_WITH_BLOCK = "<user_context>\nA note.\n</user_context>\n\nhello"
+
+
 @pytest.mark.asyncio
-async def test_enqueue_turn_treats_duplicate_message_pk_as_already_queued() -> None:
+@pytest.mark.parametrize(
+    ("is_user_message", "stored"),
+    [(True, "hello"), (False, _WITH_BLOCK)],
+    ids=["user row", "other row"],
+)
+async def test_a_queued_message_is_stored_as_the_engines_will_read_it(
+    is_user_message: bool, stored: str
+) -> None:
+    """Promotion replays the stored row as the turn's message, and later turns
+    replay it as history, so a user row gets the same input normalisation as a
+    message that starts its own turn. Any other row is stored as given."""
     db = MagicMock()
     db.get_next_sequence = AsyncMock(return_value=1)
-    db.add_chat_message = AsyncMock(
-        side_effect=UniqueViolationError(
-            {"user_facing_error": {"message": "ChatMessage_pkey"}}
+    db.add_chat_message = AsyncMock(return_value=_pyd_message())
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            message=_WITH_BLOCK,
+            is_user_message=is_user_message,
         )
-    )
+
+    assert db.add_chat_message.call_args.kwargs["content"].strip() == stored
+
+
+@pytest.mark.asyncio
+async def test_a_queued_user_message_with_nothing_of_its_own_writes_no_row() -> None:
+    db = MagicMock()
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_message = AsyncMock(return_value=_pyd_message())
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        pytest.raises(EmptyUserMessage),
+    ):
+        await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            message="<user_context>\nA note.\n</user_context>",
+        )
+
+    db.add_chat_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_data",
+    [
+        {
+            "user_facing_error": {
+                "message": "Unique constraint failed on the fields: (`id`)",
+                "error_code": "P2002",
+                "meta": {"target": ["id"]},
+            }
+        },
+        # Through the database manager's RPC only the message survives.
+        {
+            "user_facing_error": {
+                "message": "Unique constraint failed on the fields: (`id`)"
+            }
+        },
+    ],
+    ids=["local", "rpc"],
+)
+async def test_enqueue_turn_treats_duplicate_message_pk_as_already_queued(
+    error_data: dict,
+) -> None:
+    db = MagicMock()
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_message = AsyncMock(side_effect=UniqueViolationError(error_data))
     db.update_chat_session_status = AsyncMock()
     invalidate = AsyncMock()
     with (
@@ -301,6 +381,88 @@ async def test_cancelling_a_queued_turn_returns_only_a_childs_node(
     else:
         release.assert_not_awaited()
         db.add_chat_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flipped", [True, False], ids=["cancelled", "not-queued"])
+async def test_a_queued_turn_cancelled_before_it_started_is_logged(
+    caplog: pytest.LogCaptureFixture, flipped: bool
+) -> None:
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=flipped)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={"envelope": _CHILD})
+    )
+    db.get_next_sequence = AsyncMock(return_value=2)
+    db.add_chat_message = AsyncMock()
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "release_turn", new=AsyncMock()),
+        caplog.at_level(logging.INFO, logger=turn_queue.logger.name),
+    ):
+        await turn_queue.cancel_queued_turn(user_id="u1", session_id="s1")
+
+    lines = [
+        r for r in caplog.records if "cancelled before it started" in r.getMessage()
+    ]
+    if flipped:
+        assert [(r.levelno, r.getMessage()) for r in lines] == [
+            (
+                logging.INFO,
+                "cancel_queued_turn: session=s1 user=u1 cancelled before it "
+                "started, spawned=True",
+            )
+        ]
+    else:
+        assert lines == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("started", [True, False], ids=["started", "refused"])
+async def test_a_queued_sub_session_that_starts_is_logged(
+    caplog: pytest.LogCaptureFixture, started: bool
+) -> None:
+    head = _queued_row("child")
+    head.metadata.delegated_by_session_id = "parent"
+    head.metadata.llm_auth_provider = "codex"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={"envelope": _CHILD})
+    )
+    dispatched = AsyncMock(
+        side_effect=None if started else TreeRefusal("This tree has closed.")
+    )
+    with (
+        patch.object(
+            turn_queue, "list_queued_sessions", new=AsyncMock(side_effect=[[head], []])
+        ),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "append_and_save_message", new=AsyncMock()),
+        patch.object(turn_queue, "release_turn", new=AsyncMock()),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
+        caplog.at_level(logging.INFO, logger=turn_queue.logger.name),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is started
+
+    lines = [r for r in caplog.records if "started queued" in r.getMessage()]
+    if started:
+        turn_id = dispatched.await_args.kwargs["turn_id"]
+        assert [(r.levelno, r.getMessage()) for r in lines] == [
+            (
+                logging.INFO,
+                f"dispatch_next_for_user: started queued session=child user=u1 "
+                f"turn={turn_id} sub_work=True",
+            )
+        ]
+    else:
+        assert lines == []
 
 
 @pytest.mark.asyncio
@@ -478,6 +640,7 @@ async def test_try_enqueue_turn_raises_when_at_inflight_cap() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("answer_kind", ["typed", "approval", "background"])
 @pytest.mark.parametrize(
     (
         "expert_id",
@@ -501,6 +664,7 @@ async def test_try_enqueue_turn_raises_when_at_inflight_cap() -> None:
 )
 async def test_promoted_turn_tracking_preserves_session_attribution(
     tracked_message: MagicMock,
+    answer_kind: str,
     expert_id: str | None,
     origin: str,
     source_platform: str | None,
@@ -517,7 +681,17 @@ async def test_promoted_turn_tracking_preserves_session_attribution(
     head.metadata.origin = origin
     head.metadata.source_platform = source_platform
     head.metadata.llm_auth_provider = "codex"
-    pending = _pyd_message(role=role)
+    metadata = {}
+    if answer_kind == "approval":
+        metadata = {"envelope": _CHILD, "held_calls_answered": True}
+    elif answer_kind == "background":
+        metadata = {
+            "envelope": _CHILD,
+            "background_task_id": "task",
+            "background_task_stage": "followup",
+            "turn_id": "wake",
+        }
+    pending = _pyd_message(role=role, metadata=metadata)
     db = MagicMock()
     db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
     db.update_chat_session_status = AsyncMock(return_value=True)
@@ -542,7 +716,7 @@ async def test_promoted_turn_tracking_preserves_session_attribution(
         else:
             assert await turn_queue.dispatch_next_for_user("u1") is claim
 
-    if expected_event:
+    if expected_event and answer_kind != "background":
         tracked_message.assert_called_once_with(
             user_id="u1",
             session_id="s1",
@@ -706,15 +880,79 @@ async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> Non
         ),
         # A tree that closed while it waited: no "your answer is kept" note.
         ({"envelope": _CHILD}, "This tree has closed.", "This tree has closed.", True),
+        (
+            {
+                "background_task_id": "task",
+                "background_task_stage": "followup",
+                "turn_id": "wake",
+                "envelope": _CHILD,
+            },
+            "This tree has closed.",
+            "This tree has closed.",
+            False,
+        ),
+        (
+            {held._WAKE_KEY: True, "envelope": _CHILD},
+            "This tree has closed.",
+            f"This tree has closed. {turn_queue.WAKE_LATER}",
+            False,
+        ),
+        (
+            {"background_task_id": "task", "background_task_stage": "followup"},
+            None,
+            "Otto couldn't start this background work because its saved limits are unavailable.",
+            False,
+        ),
+        (
+            {
+                "background_task_id": "task",
+                "background_task_stage": "child",
+                "envelope": {"depth": "deep"},
+                "envelope_tree_id": "t1",
+            },
+            None,
+            turn_queue.UNREADABLE_BACKGROUND,
+            False,
+        ),
+        (
+            {
+                "background_task_id": "task",
+                "background_task_stage": "child",
+                "envelope": None,
+                "envelope_tree_id": "t1",
+            },
+            None,
+            turn_queue.UNREADABLE_BACKGROUND,
+            False,
+        ),
+        (
+            {
+                "background_task_id": "task",
+                "background_task_stage": "followup",
+                "envelope": {"depth": "deep"},
+                "envelope_tree_id": "t1",
+            },
+            None,
+            turn_queue.UNREADABLE_BACKGROUND,
+            False,
+        ),
+        ({held._WAKE_KEY: True}, None, turn_queue.UNRECORDED_WAKE, False),
     ],
     ids=[
         "envelope-unreadable",
         "envelope-unreadable-tree-known",
         "permissions-unreadable",
         "tree-refused",
+        "background-followup-tree-refused",
+        "approval-tree-refused",
+        "background-limits-unreadable",
+        "background-child-envelope-invalid",
+        "background-child-envelope-null",
+        "background-followup-envelope-invalid",
+        "approval-limits-unreadable",
     ],
 )
-async def test_a_queued_child_that_may_not_start_is_closed_and_returns_its_node(
+async def test_a_refused_queued_turn_closes_and_returns_any_child_node(
     stored: dict, refusal: str | None, reason: str, released: bool
 ) -> None:
     head = _queued_row()
@@ -745,14 +983,16 @@ async def test_a_queued_child_that_may_not_start_is_closed_and_returns_its_node(
     ):
         assert await turn_queue.dispatch_next_for_user("u1") is False
 
-    assert posted.await_args.args[1].content == reason
-    db.update_chat_session_status.assert_awaited_once_with(
-        session_id="s1", expect_status="running", status="idle"
-    )
     if released:
         release.assert_awaited_once_with(TurnEnvelope.model_validate(_CHILD))
     else:
         release.assert_not_awaited()
+    assert posted.await_args.args[1].content == reason
+    if refusal is None:
+        dispatched.assert_not_awaited()
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="s1", expect_status="running", status="idle"
+    )
 
 
 @pytest.mark.asyncio
@@ -999,6 +1239,23 @@ async def test_dispatch_leaves_queued_when_user_paywalled() -> None:
         promoted = await turn_queue.dispatch_next_for_user("u1")
     assert promoted is False
     db.update_chat_session_status.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["platform", "codex", "microsoft_365_copilot"])
+async def test_a_banned_owner_is_refused_on_every_route(route) -> None:
+    """The scheduler and the queue both ask here, and a ban outranks the
+    route: a ChatGPT or Microsoft 365 turn costs us nothing but still runs."""
+    with (
+        patch.object(turn_queue, "is_user_banned", new=AsyncMock(return_value=True)),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "is_user_paywalled", new=AsyncMock(return_value=False)
+        ),
+    ):
+        refusal = await turn_queue.turn_refusal("u1", route)
+
+    assert refusal == turn_queue.TurnRefusal(reason="is banned", kind="banned")
 
 
 @pytest.mark.asyncio

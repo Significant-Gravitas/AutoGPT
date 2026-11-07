@@ -1,6 +1,16 @@
 from backend.data import db
 
 
+def background_task_db():
+    if db.is_connected():
+        from backend.copilot import background_task_db as store
+
+        return store
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def chat_db():
     if db.is_connected():
         from backend.copilot import db as _chat_db
@@ -25,6 +35,23 @@ def experts_db():
         experts_db = get_database_manager_async_client()
 
     return experts_db
+
+
+def expert_check_db():
+    if db.is_connected():
+        from backend.api.features.experts import experts_db as _expert_check_db
+
+        expert_check_db = _expert_check_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        # One attempt: a database manager from before check_private_expert
+        # answers at once that it has no such route, where the retrying
+        # client would wait up to five minutes for its replacement. The
+        # executor's expert check then reads the expert another way.
+        expert_check_db = get_database_manager_async_client(should_retry=False)
+
+    return expert_check_db
 
 
 def spend_approval_db():
@@ -142,6 +169,19 @@ def user_db():
         user_db = get_database_manager_async_client()
 
     return user_db
+
+
+def memory_schedule_db():
+    if db.is_connected():
+        from backend.data import memory_schedule as _memory_schedule_db
+
+        memory_schedule_db = _memory_schedule_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        memory_schedule_db = get_database_manager_async_client()
+
+    return memory_schedule_db
 
 
 def understanding_db():
@@ -387,6 +427,22 @@ def bot_installs_db():
     return bot_installs_db
 
 
+def dream_db():
+    if db.is_connected():
+        from backend.data import dream_pass as _dream_db
+
+        dream_db = _dream_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        # The dream record is written under a short deadline that already
+        # covers retrying (copilot/dream/store.py); a retrying client would
+        # only keep going on a request the deadline has given up on.
+        dream_db = get_database_manager_async_client(should_retry=False)
+
+    return dream_db
+
+
 def pro_activation_db():
     if db.is_connected():
         from backend.data import pro_activation
@@ -409,3 +465,16 @@ def posthog_lifecycle_db():
         posthog_lifecycle_db = get_database_manager_async_client(should_retry=False)
 
     return posthog_lifecycle_db
+
+
+def scheduled_chats_db():
+    if db.is_connected():
+        from backend.copilot.scheduled_chats import forget as _scheduled_chats_db
+
+        scheduled_chats_db = _scheduled_chats_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        scheduled_chats_db = get_database_manager_async_client()
+
+    return scheduled_chats_db

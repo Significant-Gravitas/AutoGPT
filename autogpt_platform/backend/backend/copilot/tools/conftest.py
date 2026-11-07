@@ -1,6 +1,6 @@
 """Local conftest for copilot/tools tests.
 
-Overrides the session-scoped `server` and `graph_cleanup` autouse fixtures from
+Overrides the session-scoped `server` fixture from
 backend/conftest.py so that integration tests in this directory do not trigger
 the full SpinTestServer startup (which requires Postgres + RabbitMQ).
 """
@@ -15,12 +15,6 @@ import pytest_asyncio
 async def server():  # type: ignore[override]
     """No-op server stub — tools tests don't need the full backend."""
     return None
-
-
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def graph_cleanup():  # type: ignore[override]
-    """No-op graph cleanup stub."""
-    yield
 
 
 @pytest.fixture(autouse=True)
@@ -46,6 +40,18 @@ def stub_user_lookup_in_helpers(monkeypatch):
     client.get_user_by_id = AsyncMock(return_value=user)
     stub = MagicMock(return_value=client)
     monkeypatch.setattr("backend.copilot.tools.helpers.user_db", stub)
+
+
+@pytest.fixture(autouse=True)
+def stub_background_task_store(monkeypatch):
+    """``get_sub_session_result`` asks the background-task store whether a sub
+    is a background child. Without a connected Prisma client that accessor is
+    the DatabaseManager RPC client, whose connection retries would stall every
+    sub-session test; the real-database handoff suite covers the store."""
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result.background_task_db",
+        lambda: MagicMock(background_child_result=AsyncMock(return_value=None)),
+    )
 
 
 @pytest.fixture(autouse=True)

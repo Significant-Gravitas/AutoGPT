@@ -79,21 +79,22 @@ const mockSetInitialPrompt = vi.fn((value: string | null) => {
 });
 
 vi.mock("@/app/(platform)/copilot/store", () => ({
-  useCopilotUIStore: () => ({
-    copilotLlmModel: mockCopilotLlmModel,
-    setCopilotLlmModel: mockSetCopilotLlmModel,
-    copilotLlmAuth: {
-      authProvider: mockCopilotLlmAuthProvider,
-      credentialId: null,
-    },
-    setCopilotLlmAuth: vi.fn(),
-    isDryRun: false,
-    setIsDryRun: vi.fn(),
-    initialPrompt: mockInitialPrompt,
-    setInitialPrompt: mockSetInitialPrompt,
-    sentMessageCount: 0,
-    notifyMessageSent: vi.fn(),
-  }),
+  useCopilotUIStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      copilotLlmModel: mockCopilotLlmModel,
+      setCopilotLlmModel: mockSetCopilotLlmModel,
+      copilotLlmAuth: {
+        authProvider: mockCopilotLlmAuthProvider,
+        credentialId: null,
+      },
+      setCopilotLlmAuth: vi.fn(),
+      isDryRun: false,
+      setIsDryRun: vi.fn(),
+      initialPrompt: mockInitialPrompt,
+      setInitialPrompt: mockSetInitialPrompt,
+      sentMessageCount: 0,
+      notifyMessageSent: vi.fn(),
+    }),
 }));
 
 let mockFlagValue = false;
@@ -119,9 +120,12 @@ const voiceDismiss = vi.fn();
 let mockTranscriptionError: string | null = null;
 let mockHasFailedRecording = false;
 let mockIsTranscribing = false;
+// Real for the focus tests: the hook focuses the composer too.
+let mockRealVoiceRecording = false;
 
-vi.mock("../useVoiceRecording", () => ({
-  useVoiceRecording: () => ({
+vi.mock("../useVoiceRecording", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../useVoiceRecording")>();
+  const stub = () => ({
     isRecording: false,
     isTranscribing: mockIsTranscribing,
     transcriptionError: mockTranscriptionError,
@@ -135,10 +139,14 @@ vi.mock("../useVoiceRecording", () => ({
     showMicButton: false,
     isInputDisabled: false,
     audioStream: null,
-  }),
-}));
+  });
+  return {
+    useVoiceRecording: (args: Parameters<typeof real.useVoiceRecording>[0]) =>
+      (mockRealVoiceRecording ? real.useVoiceRecording : stub)(args),
+  };
+});
 
-vi.mock("@/components/ai-elements/prompt-input", () => ({
+vi.mock("@/components/organisms/PromptInput/PromptInput", () => ({
   PromptInputSubmit: ({
     disabled,
     status,
@@ -207,7 +215,12 @@ vi.mock("../components/ComposerPlusMenu", () => ({
     extraItems = [],
   }: {
     onClearGuidedPrompt?: () => void;
-    extraItems?: { key: string; label: string; onSelect: () => void }[];
+    extraItems?: {
+      key: string;
+      label: string;
+      onSelect: () => void;
+      disabled?: boolean;
+    }[];
   }) => (
     <>
       <button
@@ -220,6 +233,7 @@ vi.mock("../components/ComposerPlusMenu", () => ({
           key={item.key}
           type="button"
           role="menuitem"
+          disabled={item.disabled}
           onClick={item.onSelect}
         >
           {item.label}
@@ -265,6 +279,7 @@ afterEach(() => {
   mockTranscriptionError = null;
   mockHasFailedRecording = false;
   mockIsTranscribing = false;
+  mockRealVoiceRecording = false;
 });
 
 describe("ChatInput composer row", () => {
@@ -276,6 +291,110 @@ describe("ChatInput composer row", () => {
     ).map((addon) => addon.getAttribute("data-align"));
 
     expect(aligns).toEqual(["inline-start", "inline-end"]);
+  });
+
+  it("leaves focus in a menu the user opened while it was still loading", () => {
+    // Home re-enables the composer once it has loaded; a profile menu opened
+    // before then lost focus to it, and Radix closes a popover on focus-out.
+    const { rerender } = render(
+      <>
+        <div role="dialog" aria-label="Profile menu">
+          <button type="button">Show me around</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </>,
+    );
+    const menuItem = screen.getByRole("button", { name: "Show me around" });
+    menuItem.focus();
+
+    rerender(
+      <>
+        <div role="dialog" aria-label="Profile menu">
+          <button type="button">Show me around</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </>,
+    );
+
+    expect(document.activeElement).toBe(menuItem);
+  });
+
+  it.each([
+    { draft: "no draft", initialPrompt: null },
+    { draft: "a prompt from the link", initialPrompt: "Teach me a new skill" },
+  ])(
+    "leaves focus in a menu that was already open when it mounted, with $draft",
+    ({ initialPrompt }) => {
+      // Home mounts its composer only once the greeting has loaded.
+      mockRealVoiceRecording = true;
+      mockInitialPrompt = initialPrompt;
+      const { rerender } = render(
+        <>
+          <div role="dialog" aria-label="Profile menu">
+            <button type="button">Show me around</button>
+          </div>
+          {/* Holds the composer's slot, so the rerender keeps the menu mounted. */}
+          {null}
+        </>,
+      );
+      const menuItem = screen.getByRole("button", { name: "Show me around" });
+      menuItem.focus();
+
+      rerender(
+        <>
+          <div role="dialog" aria-label="Profile menu">
+            <button type="button">Show me around</button>
+          </div>
+          <ChatInput onSend={mockOnSend} sessionId="session-1" />
+        </>,
+      );
+
+      expect(document.activeElement).toBe(menuItem);
+    },
+  );
+
+  it("takes focus from a dialog that is on its way out", () => {
+    // A sheet closing (picking a chat in the phone's sidebar) stays mounted
+    // through its exit animation, with focus still inside it.
+    const { rerender } = render(
+      <>
+        <div role="dialog" aria-label="Sidebar" data-state="closed">
+          <button type="button">A chat</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </>,
+    );
+    screen.getByRole("button", { name: "A chat", hidden: true }).focus();
+
+    rerender(
+      <>
+        <div role="dialog" aria-label="Sidebar" data-state="closed">
+          <button type="button">A chat</button>
+        </div>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </>,
+    );
+
+    expect(document.activeElement).toBe(screen.getByTestId("textarea"));
+  });
+
+  it("still takes focus inside the dialog it lives in", () => {
+    const { rerender } = render(
+      <div role="dialog" aria-label="Expert chat">
+        <button type="button">Close</button>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" disabled />
+      </div>,
+    );
+    screen.getByRole("button", { name: "Close" }).focus();
+
+    rerender(
+      <div role="dialog" aria-label="Expert chat">
+        <button type="button">Close</button>
+        <ChatInput onSend={mockOnSend} sessionId="session-1" />
+      </div>,
+    );
+
+    expect(document.activeElement).toBe(screen.getByTestId("textarea"));
   });
 
   it("focuses the message box when the addon gutter is clicked", () => {
@@ -337,6 +456,98 @@ describe("ChatInput token devtool entry", () => {
     render(<ChatInput onSend={mockOnSend} sessionId={null} />);
 
     expect(screen.queryByRole("menuitem", { name: "Token usage" })).toBeNull();
+  });
+});
+
+describe("ChatInput + menu entries", () => {
+  it("starts voice mode from the + menu, not the overflow panel", () => {
+    const onStart = vi.fn();
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceMode={{ onStart }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Voice mode" }));
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("composer-overflow-button")).toBeNull();
+  });
+
+  it("keeps Voice mode out of the menu when the flag is off", () => {
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByRole("menuitem", { name: "Voice mode" })).toBeNull();
+  });
+
+  it("disables Voice mode while it cannot start", () => {
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceMode={{ onStart: vi.fn(), disabled: true }}
+      />,
+    );
+
+    const item = screen.getByRole("menuitem", {
+      name: "Voice mode",
+    }) as HTMLButtonElement;
+    expect(item.disabled).toBe(true);
+  });
+
+  it("opens Model and connection in a dialog, even with nothing to choose", async () => {
+    // The mocked lone connection has one model behind both tiers, which is
+    // the case where the old anchored sheet rendered nothing at all.
+    render(<ChatInput onSend={mockOnSend} />);
+
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Model and connection" }),
+    );
+
+    expect(await screen.findByText("AutoGPT Platform")).toBeDefined();
+  });
+
+  it.each([
+    { isStreaming: true },
+    { stacked: true },
+    { variant: "compact" as const },
+  ])(
+    "keeps the model dialog closed after hiding its control: %o",
+    async (props) => {
+      const { rerender } = render(<ChatInput onSend={mockOnSend} hasSession />);
+
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "Model and connection" }),
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Model and connection" }),
+      ).toBeDefined();
+
+      rerender(<ChatInput onSend={mockOnSend} hasSession {...props} />);
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      rerender(<ChatInput onSend={mockOnSend} hasSession />);
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "Model and connection" }),
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Model and connection" }),
+      ).toBeDefined();
+    },
+  );
+
+  it("opens Token usage in a dialog", async () => {
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByText("Context window")).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Token usage" }));
+
+    expect(await screen.findByText("Context window")).toBeDefined();
   });
 });
 
@@ -635,6 +846,23 @@ describe("ChatInput dry-run toggle", () => {
 });
 
 describe("ChatInput guided prompt prefill", () => {
+  it("prefills a guided prompt without opening the keyboard on touch devices", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaQueryList);
+    try {
+      mockInitialPrompt = NEW_SKILL_PROMPT;
+      render(<ChatInput onSend={mockOnSend} />);
+      const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+      await waitFor(() => expect(textarea.value).toBe(NEW_SKILL_PROMPT));
+      expect(document.activeElement).not.toBe(textarea);
+    } finally {
+      matchMedia.mockRestore();
+    }
+  });
+
   it("prefills the composer and focuses it when an initial prompt arrives after mount", async () => {
     const { rerender } = render(<ChatInput onSend={mockOnSend} />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;

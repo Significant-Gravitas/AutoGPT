@@ -163,3 +163,29 @@ class TestChoiceButtonCallback:
             await view.children[1].callback(interaction)
 
         on_message.assert_awaited_once()
+
+
+class TestContextFromInteraction:
+    def test_a_click_in_a_thread_keeps_the_location(self):
+        thread = MagicMock(spec=discord.Thread)
+        thread.id = 333
+        thread.name = "Bug triage"
+        thread.parent_id = 222
+        thread.parent = MagicMock(spec=discord.TextChannel)
+        thread.parent.name = "eng-general"
+        interaction = MagicMock()
+        interaction.channel_id = 333
+        interaction.channel = thread
+        interaction.guild_id = 111
+        interaction.guild = MagicMock(spec=discord.Guild)
+        interaction.guild.name = "SG"
+        interaction.user.id = 7
+        interaction.user.display_name = "Bently"
+        ctx = choice_ui._context_from_interaction(interaction, "yes")
+        assert ctx is not None
+        assert ctx.channel_type == "thread"
+        assert ctx.server_name == "SG"
+        assert ctx.channel_name == "eng-general"
+        assert ctx.public_channel_id == "222"
+        assert ctx.public_thread_id == "333"
+        assert ctx.post_channel_id == "333"

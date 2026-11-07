@@ -15,7 +15,9 @@ from backend.api.features.billing.client_country import ClientCountry
 from backend.api.model import RequestTopUp
 from backend.data.checkout_audience import schedule_checkout_opened
 from backend.data.credit import (
+    MAX_TOP_UP_AMOUNT,
     AutoTopUpConfig,
+    CardDeclinedError,
     InvoiceListItem,
     RefundRequest,
     TransactionHistory,
@@ -138,18 +140,44 @@ async def configure_user_auto_top_up(
         raise HTTPException(
             status_code=422, detail="Amount must be greater than or equal to threshold"
         )
+    if max(request.amount, request.threshold) > MAX_TOP_UP_AMOUNT:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Amount and threshold must be at most ${MAX_TOP_UP_AMOUNT // 100:,}",
+        )
 
     credit_model = await get_credit_model(user_id, ctx.org_id)
     current_balance = await credit_model.get_credits(user_id)
 
     try:
-        if current_balance < request.threshold:
+        # An amount of 0 turns auto top-up off: nothing to charge or check.
+        if request.amount and current_balance < request.threshold:
             await credit_model.top_up_credits(user_id, request.amount)
-        else:
+        elif request.amount:
             await credit_model.top_up_credits(user_id, 0)
     except NotImplementedError as e:
         raise HTTPException(
             status_code=501, detail="Auto top-up is not available in this context"
+        ) from e
+    except CardDeclinedError as e:
+        # The card's answer, not a fault on our side: 402 with Stripe's reason,
+        # as the subscription upgrade route does. Nothing was charged or saved,
+        # and _top_up_credits has already logged each declined card.
+        if e.needs_authentication:
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    f"{e} Your bank wants to approve each charge, which automatic"
+                    " top-ups can't do. Your auto top-up settings were not saved;"
+                    " please add a different card or contact support."
+                ),
+            ) from e
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"{e} Your auto top-up settings were not saved; please update"
+                " your payment method and try again."
+            ),
         ) from e
     except ValueError as e:
         known_messages = (

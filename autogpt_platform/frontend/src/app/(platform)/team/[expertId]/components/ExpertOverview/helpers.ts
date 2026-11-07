@@ -4,7 +4,8 @@ import { format, parseISO } from "date-fns";
 export const OVERVIEW_WINDOW_DAYS = 30;
 
 // Categorical slots 1 and 2 of the dataviz reference palette, validated as a
-// pair on the light surface (normal-vision ΔE 33.6, CVD ΔE 24.7).
+// pair on the light surface (normal-vision ΔE 33.6, CVD ΔE 24.7). Hex, as
+// recharts writes them as SVG attributes (ds-colour-exempt.json).
 export const SERIES_COLORS = {
   sessions: "#2a78d6",
   runs: "#eb6834",

@@ -3,7 +3,13 @@ from typing import cast
 import tweepy
 from tweepy.client import Response
 
-from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchemaOutput
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockEffect,
+    BlockOutput,
+    BlockSchemaOutput,
+)
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -35,7 +41,7 @@ class TwitterSearchSpacesBlock(Block):
 
     class Input(SpaceExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["spaces.read", "users.read", "tweet.read", "offline.access"]
+            ["space.read", "users.read", "tweet.read", "offline.access"]
         )
 
         query: str = SchemaField(
@@ -105,6 +111,7 @@ class TwitterSearchSpacesBlock(Block):
                     None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

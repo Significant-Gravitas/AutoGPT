@@ -7,6 +7,8 @@ import {
   type TurnPause,
 } from "../turnPause";
 import { toolDisplayName } from "./toolDisplay";
+import { backgroundNotice } from "./backgroundSubtasks";
+import { getStandaloneBubbleMetadata } from "./standaloneMessages";
 import {
   WORKSPACE_FOLDER_PART_TYPE,
   type WorkspaceFolderPartData,
@@ -21,6 +23,10 @@ export interface TurnStats {
    *  "Queued" badge anchors on this row whenever the OWNING session's
    *  ``chat_status === "queued"`` (checked at render time). */
   isLatestUserMessage?: boolean;
+  /** The ``<session>-seq-N`` id a reload gives this bubble, once its rows are
+   *  saved. A live turn's bubble is keyed by the turn instead, and a rating
+   *  has to name the saved row. */
+  savedMessageId?: string | null;
 }
 
 export type TurnStatsMap = Map<string, TurnStats>;
@@ -35,14 +41,6 @@ interface SessionChatMessage {
   duration_ms: number | null;
   created_at: string | null;
   metadata: Record<string, unknown> | null;
-}
-
-function getRunMetadata(metadata: unknown): Record<string, unknown> | null {
-  return metadata &&
-    typeof metadata === "object" &&
-    (metadata as Record<string, unknown>).kind === "expert_run"
-    ? (metadata as Record<string, unknown>)
-    : null;
 }
 
 function coerceSessionChatMessages(
@@ -440,10 +438,11 @@ export function convertChatSessionMessagesToUiMessages(
     // contributing a reasoning part to the surrounding assistant bubble —
     // the consecutive-assistant merge below then folds them into the same
     // UIMessage as the text that follows.
+    const notice = backgroundNotice(msg.metadata);
     const uiRole: "user" | "assistant" =
-      msg.role === "reasoning" ? "assistant" : msg.role;
+      msg.role === "reasoning" || notice ? "assistant" : msg.role;
 
-    const parts = buildRowParts(msg, {
+    const parts = buildRowParts(notice ? { ...msg, content: notice } : msg, {
       toolOutputsByCallId,
       fileUrlBuilder,
       unanswered: options?.isComplete ? "completed" : "input-available",
@@ -460,10 +459,11 @@ export function convertChatSessionMessagesToUiMessages(
     // be keyed ``-seq-5``, and a cross-page assistant at seq=7 would fail
     // the ``firstSeq === lastSeq + 1`` check (7 !== 5+1) and split into two
     // bubbles instead of joining the ongoing turn.
-    // A run-post carries structured ``metadata`` the thread renders as a
-    // WorkCard. Keep it as its own bubble — never fold it into a neighbouring
-    // assistant turn (either direction), or the card loses its identity.
-    const runMetadata = getRunMetadata(msg.metadata);
+    // A run-post or a skipped-run note carries structured ``metadata`` the
+    // thread renders as a card. Keep it as its own bubble — never fold it
+    // into a neighbouring assistant turn (either direction), or the card
+    // loses its identity.
+    const standaloneMetadata = getStandaloneBubbleMetadata(msg.metadata);
     // The still-running turn opens its own bubble even when it follows an
     // assistant row: merging it into the completed answer above would make
     // the resume path (which replays that turn alone) drop both.
@@ -472,11 +472,12 @@ export function convertChatSessionMessagesToUiMessages(
     const prevUI = uiMessages[uiMessages.length - 1];
     if (
       uiRole === "assistant" &&
+      !notice &&
       !opensActiveTurn &&
       prevUI &&
       prevUI.role === "assistant" &&
-      !getRunMetadata(prevUI.metadata) &&
-      !runMetadata
+      !getStandaloneBubbleMetadata(prevUI.metadata) &&
+      !standaloneMetadata
     ) {
       prevUI.parts.push(...parts);
       const oldId = prevUI.id;
@@ -717,6 +718,26 @@ export function createTurnLogRenderer(
     memo = next;
     return messages;
   };
+}
+
+/**
+ * The id a reload gives each assistant bubble of a turn: its last saved row's
+ * sequence, as ``convertChatSessionMessagesToUiMessages`` keys a merged bubble.
+ */
+export function savedTurnBubbleIds(
+  sessionId: string,
+  log: TurnLog,
+): Map<string, string> {
+  const ids = new Map<string, string>();
+  for (const group of groupTurnRows(log)) {
+    if (group.role !== "assistant") continue;
+    const sequence = group.rows
+      .map((i) => log.rows[i].sequence)
+      .findLast((s): s is number => s !== null);
+    if (sequence !== undefined)
+      ids.set(group.key, `${sessionId}-seq-${sequence}`);
+  }
+  return ids;
 }
 
 interface TurnGroup {

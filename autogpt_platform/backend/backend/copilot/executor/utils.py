@@ -9,22 +9,25 @@
 import logging
 import time
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 from backend.copilot.active_turns import (
     ConcurrentTurnLimitError,
+    SessionNotIdle,
     TurnSlot,
     acquire_turn_slot,
     get_delegated_turn_limit,
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
+from backend.copilot.ai_spans import current_span_id
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_current_envelope
 from backend.copilot.credential_selection import CredentialPins
+from backend.copilot.llm_attribution import turn_trace_id
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tree import (
     SpawnRequest,
@@ -38,6 +41,7 @@ from backend.copilot.tree import (
     root_envelope,
 )
 from backend.copilot.trial_cost_context import TrialCostContext, capture_cost_context
+from backend.data.db_accessors import chat_db
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util import tracing
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
@@ -273,6 +277,10 @@ class ScheduledTurnOrigin(BaseModel):
     schedule_id: str | None = None
     routine_id: str | None = None
     cron: str | None = None
+    # A scheduled chat its owner set up, or a chat's own turn resumed or
+    # sent at its budget reset. Both alert; only a scheduled chat has a
+    # failure streak to count toward.
+    purpose: Literal["followup", "resume", "send"] = "followup"
 
 
 class CoPilotExecutionEntry(BaseModel):
@@ -382,9 +390,21 @@ class CancelCoPilotEvent(BaseModel):
 
     session_id: str
     """Session ID to cancel"""
+    turn_id: str | None = None
+    """Only this turn; a stop that names none takes whichever the session runs."""
 
 
 # ============ Queue Publishing Helpers ============ #
+
+
+class TurnPublishUnconfirmed(Exception):
+    """Publishing a turn raised, so the broker may hold it or not.
+
+    A publish can fail after the broker took the message (a lost confirm),
+    so unlike any failure before it, this one does not prove the turn was
+    never sent. A caller deciding whether to send a task again must treat it
+    as possibly running. The original error is the ``__cause__``.
+    """
 
 
 async def enqueue_copilot_turn(
@@ -433,7 +453,6 @@ async def enqueue_copilot_turn(
         is_user_message: Whether the message is from the user (vs system/assistant)
         context: Optional context for the message (e.g., {url: str, content: str})
         file_ids: Optional workspace file IDs attached to the user's message
-        mode: Otto mode override ('fast' or 'extended_thinking'). None = server default.
         model: Per-request model tier ('standard' or 'advanced'). None = server default.
         permissions: Capability filter inherited from a parent run (sub-Otto).
             None = no filter.
@@ -472,11 +491,16 @@ async def enqueue_copilot_turn(
     )
 
     queue_client = await get_async_copilot_queue()
-    await queue_client.publish_message(
-        routing_key=COPILOT_EXECUTION_ROUTING_KEY,
-        message=entry.model_dump_json(),
-        exchange=COPILOT_EXECUTION_EXCHANGE,
-    )
+    try:
+        await queue_client.publish_message(
+            routing_key=COPILOT_EXECUTION_ROUTING_KEY,
+            message=entry.model_dump_json(),
+            exchange=COPILOT_EXECUTION_EXCHANGE,
+        )
+    except Exception as e:
+        raise TurnPublishUnconfirmed(
+            f"The turn's publish raised; it may or may not be queued: {e}"
+        ) from e
 
 
 async def schedule_turn(
@@ -521,6 +545,8 @@ async def schedule_turn(
 
     Atomicity guarantees:
 
+    * If another turn already owns the session, :class:`SessionNotIdle`
+      is raised without changing its durable turn ID or Redis stream.
     * If the user is at the configured concurrent-turn cap,
       :class:`ConcurrentTurnLimitError` is raised before any side-effects
       (no stream registry write, no queue publish). Caller maps to HTTP 429.
@@ -543,15 +569,17 @@ async def schedule_turn(
     with 5 running + 10 queued can't slip a 16th task through this
     path; ``acquire_turn_slot`` only sees the running pool.
     """
-    if user_id:
-        from backend.copilot.turn_queue import count_inflight_turns
+    from backend.copilot.turn_queue import count_inflight_turns
 
+    if user_id:
         inflight_cap = get_inflight_turn_limit()
         if await count_inflight_turns(user_id) >= inflight_cap:
             raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
 
     capacity = get_delegated_turn_limit() if delegated else get_inflight_turn_limit()
     async with acquire_turn_slot(user_id, session_id, capacity=capacity) as slot:
+        if user_id and not slot.admitted:
+            raise SessionNotIdle(session_id)
         await dispatch_turn(
             slot,
             session_id=session_id,
@@ -642,6 +670,8 @@ async def dispatch_turn(
     # COPILOT_CONSUMER_TIMEOUT_SECONDS constant) → top-level circular.
     from backend.copilot import stream_registry
 
+    if user_id and not slot.admitted:
+        raise SessionNotIdle(session_id)
     admitted_here = envelope is None
     trace_headers = None if admitted_here and not root else {}
     if envelope is None:
@@ -665,11 +695,19 @@ async def dispatch_turn(
     # Exception`` would miss); the ``committed`` flag distinguishes the
     # happy path from any failure / cancellation.
     committed = False
+    registration_started = False
     try:
         # Inside the try on purpose: the admit above already incremented the
         # tree's node count, so anything that can raise between there and the
         # finally must be covered by ``release_turn``.
         permissions = _narrow_permissions(permissions, envelope)
+        if user_id and not await chat_db().record_chat_session_turn(
+            session_id, user_id, turn_id
+        ):
+            # Stop already released this slot; rollback must not release its successor.
+            slot.keep()
+            raise RuntimeError("The turn is no longer running.")
+        registration_started = True
         await stream_registry.create_session(
             session_id=session_id,
             user_id=user_id,
@@ -706,9 +744,19 @@ async def dispatch_turn(
     finally:
         if not committed:
             if admitted_here:
-                await release_turn(envelope)
+                try:
+                    await release_turn(envelope)
+                except BaseException:
+                    # Same rule as the meta cleanup below: never mask the
+                    # original error, and never skip the rest of the cleanup.
+                    logger.exception(
+                        f"dispatch_turn: tree release failed for session={session_id}"
+                    )
             try:
-                await stream_registry.delete_session_meta(session_id)
+                if registration_started:
+                    await stream_registry.delete_session_meta(
+                        session_id, turn_id=turn_id
+                    )
             except BaseException:
                 # Already in a failure path — log + swallow so the
                 # original exception/cancellation isn't masked.
@@ -802,8 +850,15 @@ async def _admitted_turn_envelope(
     if spawner is None:
         envelope = root_envelope(turn_id, session_id=session_id)
     else:
+        # Same rule as the Sentry trace: a child derived from the caller's
+        # context joins the caller's PostHog trace, under its running tool.
         envelope = derive_child_envelope(
             spawner, spawn or SpawnRequest(), spawner_permissions=permissions
+        ).model_copy(
+            update={
+                "ai_trace_id": turn_trace_id(),
+                "ai_parent_span_id": current_span_id(),
+            }
         )
     await admit_turn(envelope, user_id=user_id)
     return envelope
@@ -812,14 +867,15 @@ async def _admitted_turn_envelope(
 def _narrow_permissions(
     permissions: CopilotPermissions | None, envelope: TurnEnvelope
 ) -> CopilotPermissions | None:
-    """The envelope's tool set as the turn's whitelist, keeping any block
-    filter the caller passed. Hides the tools from the model; the refusal
+    """The envelope's tool set as the turn's whitelist, keeping any block and
+    provider filter the caller passed. Hides the tools from the model; the refusal
     itself lives in ``BaseTool.execute``."""
     narrowed = envelope.as_permissions()
     if narrowed is None:
         return permissions
     if permissions is None:
         return narrowed
+    providers, providers_exclude = permissions.flattened_providers()
     # The caller's ``_parent`` is dropped on purpose: it belongs to the
     # spawner's turn, and the envelope is already the narrower bound.
     #
@@ -832,6 +888,10 @@ def _narrow_permissions(
         tools_exclude=narrowed.tools_exclude,
         blocks=permissions.blocks,
         blocks_exclude=permissions.blocks_exclude,
+        # The effective ceiling, parents included: this instance crosses the
+        # queue, where ``_parent`` does not.
+        providers=providers,
+        providers_exclude=providers_exclude,
     )
 
 
@@ -873,6 +933,8 @@ async def schedule_chat_turn(
     ``require_fresh_slot`` applies the same rule to a new message: when
     another turn already holds the session, return ``None`` before anything
     is saved. ``dedupe_content`` is passed to :func:`append_and_save_message`.
+    A new HTTP send that loses the slot raises :class:`SessionNotIdle` before
+    persistence, allowing the caller to refuse it without accepting its client ID.
 
     Raises :class:`backend.copilot.active_turns.ConcurrentTurnLimitError`
     when the user is at the configured cap. Caller maps that to HTTP 429.
@@ -905,6 +967,20 @@ async def schedule_chat_turn(
     async with acquire_turn_slot(user_id, session_id) as slot:
         if (message_already_persisted or require_fresh_slot) and not slot.admitted:
             return None
+        if user_id and not slot.admitted:
+            # Two sends of one text racing past the in-flight check: the
+            # second only refreshed the first's slot, so it rides that turn,
+            # as the save below would collapse it. Any other text is refused
+            # before it is saved, so the client keeps its message and its id.
+            if (
+                message
+                and not message_already_persisted
+                and await _repeats_trailing_message(
+                    session_id, message, is_user_message
+                )
+            ):
+                return None
+            raise SessionNotIdle(session_id)
         is_duplicate = False
         if message and not message_already_persisted:
             chat_message = ChatMessage(
@@ -913,9 +989,13 @@ async def schedule_chat_turn(
                 content=message,
                 metadata=message_metadata,
             )
+            # A refreshed slot means a turn already runs for this chat, so the
+            # same text again is a double send, whatever id it carries.
             is_duplicate = (
                 await append_and_save_message(
-                    session_id, chat_message, dedupe_content=dedupe_content
+                    session_id,
+                    chat_message,
+                    dedupe_content=dedupe_content or not slot.admitted,
                 )
             ) is None
             if not is_duplicate and is_user_message:
@@ -953,15 +1033,43 @@ async def schedule_chat_turn(
         return turn_id
 
 
-async def enqueue_cancel_task(session_id: str) -> None:
+async def _repeats_trailing_message(
+    session_id: str, message: str, is_user_message: bool
+) -> bool:
+    """Whether ``message`` is the text the chat's current turn already holds.
+
+    Read under the lock the save takes, so a double send that lost the slot
+    race sees the row the winning send wrote rather than a stale cache.
+    """
+    from backend.copilot.model import (
+        _get_session_from_db,
+        _get_session_lock,
+        get_chat_session,
+        is_message_duplicate,
+    )
+
+    async with _get_session_lock(session_id) as locked:
+        session = (
+            await get_chat_session(session_id)
+            if locked
+            else await _get_session_from_db(session_id)
+        )
+    return session is not None and is_message_duplicate(
+        session.messages, "user" if is_user_message else "assistant", message
+    )
+
+
+async def enqueue_cancel_task(session_id: str, turn_id: str | None = None) -> None:
     """Publish a cancel request for a running CoPilot session.
 
     Sends a ``CancelCoPilotEvent`` to the FANOUT exchange so all executor
-    pods receive the cancellation signal.
+    pods receive the cancellation signal. ``turn_id`` binds the stop to that
+    turn: a scheduler stopping expired work must not catch the newer turn a
+    user started in the same chat meanwhile.
     """
     from backend.util.clients import get_async_copilot_queue
 
-    event = CancelCoPilotEvent(session_id=session_id)
+    event = CancelCoPilotEvent(session_id=session_id, turn_id=turn_id)
     queue_client = await get_async_copilot_queue()
     await queue_client.publish_message(
         routing_key="",  # FANOUT ignores routing key
