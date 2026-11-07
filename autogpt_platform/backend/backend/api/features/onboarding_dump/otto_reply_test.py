@@ -12,6 +12,11 @@ from backend.api.features.onboarding_dump import otto_reply
         ("  Loud and clear!\n  So tell me, ", "Loud and clear! So tell me,"),
         ('"Hi there! Nice to meet you."', "Hi there! Nice to meet you."),
         ("“One small task is plenty.”", "One small task is plenty."),
+        ("'Hi there.'", "Hi there."),
+        # Quotes that don't wrap the whole reply are its own, and stay whole.
+        ('I hear you loud and "clear"', 'I hear you loud and "clear"'),
+        ('"Hello!" Nice to meet you.', '"Hello!" Nice to meet you.'),
+        ("'Course, no pressure.", "'Course, no pressure."),
     ],
 )
 def test_a_usable_reply_is_tidied(raw: str, shown: str):
@@ -27,6 +32,12 @@ def test_a_usable_reply_is_tidied(raw: str, shown: str):
         "",
         "   ",
         '""',
+        # No words: the prompt's own placeholder, punctuation or an emoji.
+        "...",
+        '"..."',
+        "…",
+        "-",
+        "😀",
         # The screen's own question follows; a second one reads as a form.
         "What do you do for work?",
         "x" * (otto_reply.MAX_REPLY_CHARS + 1),

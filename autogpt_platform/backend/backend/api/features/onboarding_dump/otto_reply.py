@@ -57,18 +57,32 @@ REPLY_JSON_SHAPE = '{{"usable": false, "reply": "..."}}'
 MAX_REPLY_CHARS = 100
 
 _WHITESPACE = re.compile(r"\s+")
-_WRAPPING_QUOTES = "\"'“”‘’"
+_QUOTE_PAIRS = {'"': '"', "'": "'", "“": "”", "‘": "’"}
 
 
 def clean_reply(value: object) -> str | None:
     """The judge's ``reply``, tidied, or ``None`` when it can't be shown.
 
-    A question mark is refused, not stripped: the screen's own question
+    A reply with no letters is refused: it is the prompt's ``"..."``
+    placeholder copied back, or punctuation, never something to say. A
+    question mark is refused, not stripped: the screen's own question
     follows, and two questions in a row read as a form, not a chat.
     """
     if not isinstance(value, str):
         return None
-    reply = _WHITESPACE.sub(" ", value).strip().strip(_WRAPPING_QUOTES).strip()
-    if not reply or len(reply) > MAX_REPLY_CHARS or "?" in reply:
+    reply = _unwrap(_WHITESPACE.sub(" ", value).strip())
+    if (
+        not any(ch.isalpha() for ch in reply)
+        or len(reply) > MAX_REPLY_CHARS
+        or "?" in reply
+    ):
         return None
+    return reply
+
+
+def _unwrap(reply: str) -> str:
+    """``reply`` without one pair of quotes around the whole of it. A quote
+    at one end only belongs to the reply ('loud and "clear"') and stays."""
+    if len(reply) >= 2 and _QUOTE_PAIRS.get(reply[0]) == reply[-1]:
+        return reply[1:-1].strip()
     return reply
