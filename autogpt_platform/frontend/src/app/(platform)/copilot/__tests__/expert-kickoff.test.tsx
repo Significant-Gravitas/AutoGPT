@@ -27,10 +27,6 @@ import { useChatSession } from "../useChatSession";
 import { useExpertKickoff } from "../useExpertKickoff";
 import { useSendMessage } from "../useSendMessage";
 
-const flagState = vi.hoisted(() => ({
-  values: { "hire-experts": true } as Record<string, boolean>,
-}));
-
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -38,7 +34,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flagState.values[flag] ?? false,
+    useGetFlag: () => false,
   };
 });
 
@@ -64,7 +60,6 @@ function latestKickoffAttemptToken(messages: UIMessage[]) {
 beforeEach(() => {
   server.resetHandlers();
   sendSpy.mockReset();
-  flagState.values = { "hire-experts": true };
   window.localStorage.clear();
   useCopilotUIStore.setState({ adoptedExpertThreads: new Set<string>() });
   useCopilotStreamStore.getState().resetAll();

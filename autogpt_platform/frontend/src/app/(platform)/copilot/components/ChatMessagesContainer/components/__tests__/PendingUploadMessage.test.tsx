@@ -1,4 +1,9 @@
-import { cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   PENDING_UPLOAD_MESSAGE_ID,
@@ -54,6 +59,51 @@ describe("PendingUploadMessage", () => {
     expect(screen.getByTestId("thinking-indicator").textContent).toBe(
       "Uploading 3 files…",
     );
+  });
+
+  it("shows a picked image as a picture while it uploads", () => {
+    const photo = new File(["jpg"], "photo.jpg", { type: "image/jpeg" });
+    render(
+      <PendingUploadMessage
+        pendingSend={{
+          text: "",
+          attachments: [
+            {
+              name: "photo.jpg",
+              mediaType: "image/jpeg",
+              isUploading: true,
+              file: photo,
+            },
+          ],
+        }}
+      />,
+    );
+
+    const image = screen.getByRole("img", { name: "photo.jpg" });
+    expect(image.getAttribute("src")).toMatch(/^blob:/);
+  });
+
+  it("shows the card when an image fails to load", () => {
+    render(
+      <PendingUploadMessage
+        pendingSend={{
+          text: "",
+          attachments: [
+            {
+              name: "shot.png",
+              mediaType: "image/png",
+              isUploading: false,
+              url: "/api/proxy/api/workspace/files/file-2/download",
+            },
+          ],
+        }}
+      />,
+    );
+
+    fireEvent.error(screen.getByRole("img", { name: "shot.png" }));
+
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText("shot.png")).toBeDefined();
   });
 
   it("carries the message id the tail spacer measures", () => {

@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useBlockMenuStore } from "../stores/blockMenuStore";
 import { DefaultStateType } from "../components/NewControlPanel/NewBlockMenu/types";
-import { SearchEntryFilterAnyOfItem } from "@/app/api/__generated__/models/searchEntryFilterAnyOfItem";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
-import { SearchResponseItemsItem } from "@/app/api/__generated__/models/searchResponseItemsItem";
+import { SearchResponse } from "@/app/api/__generated__/models/searchResponse";
 
 beforeEach(() => {
   useBlockMenuStore.setState({
@@ -88,15 +87,13 @@ describe("blockMenuStore", () => {
 
   describe("filters", () => {
     it("adds a filter", () => {
-      useBlockMenuStore.getState().addFilter(SearchEntryFilterAnyOfItem.blocks);
+      useBlockMenuStore.getState().addFilter("blocks");
       expect(useBlockMenuStore.getState().filters).toEqual(["blocks"]);
     });
 
     it("adds multiple filters", () => {
-      useBlockMenuStore.getState().addFilter(SearchEntryFilterAnyOfItem.blocks);
-      useBlockMenuStore
-        .getState()
-        .addFilter(SearchEntryFilterAnyOfItem.integrations);
+      useBlockMenuStore.getState().addFilter("blocks");
+      useBlockMenuStore.getState().addFilter("integrations");
       expect(useBlockMenuStore.getState().filters).toEqual([
         "blocks",
         "integrations",
@@ -104,23 +101,16 @@ describe("blockMenuStore", () => {
     });
 
     it("removes a filter", () => {
-      useBlockMenuStore.getState().addFilter(SearchEntryFilterAnyOfItem.blocks);
-      useBlockMenuStore
-        .getState()
-        .addFilter(SearchEntryFilterAnyOfItem.integrations);
-      useBlockMenuStore
-        .getState()
-        .removeFilter(SearchEntryFilterAnyOfItem.blocks);
+      useBlockMenuStore.getState().addFilter("blocks");
+      useBlockMenuStore.getState().addFilter("integrations");
+      useBlockMenuStore.getState().removeFilter("blocks");
       expect(useBlockMenuStore.getState().filters).toEqual(["integrations"]);
     });
 
     it("sets filters directly", () => {
       useBlockMenuStore
         .getState()
-        .setFilters([
-          SearchEntryFilterAnyOfItem.my_agents,
-          SearchEntryFilterAnyOfItem.marketplace_agents,
-        ]);
+        .setFilters(["my_agents", "marketplace_agents"]);
       expect(useBlockMenuStore.getState().filters).toEqual([
         "my_agents",
         "marketplace_agents",
@@ -128,10 +118,8 @@ describe("blockMenuStore", () => {
     });
 
     it("removing a non-existent filter is a no-op", () => {
-      useBlockMenuStore.getState().addFilter(SearchEntryFilterAnyOfItem.blocks);
-      useBlockMenuStore
-        .getState()
-        .removeFilter(SearchEntryFilterAnyOfItem.integrations);
+      useBlockMenuStore.getState().addFilter("blocks");
+      useBlockMenuStore.getState().removeFilter("integrations");
       expect(useBlockMenuStore.getState().filters).toEqual(["blocks"]);
     });
   });
@@ -157,7 +145,7 @@ describe("blockMenuStore", () => {
 
   describe("setCreatorsList", () => {
     it("extracts creators from store_agent items", () => {
-      const items: SearchResponseItemsItem[] = [
+      const items: SearchResponse["items"][number][] = [
         {
           slug: "agent-1",
           agent_name: "Agent 1",
@@ -183,14 +171,14 @@ describe("blockMenuStore", () => {
           agent_name: "A1",
           creator: "alice",
         } as StoreAgent,
-      ] as SearchResponseItemsItem[];
+      ] as SearchResponse["items"][number][];
       const items2 = [
         {
           slug: "a2",
           agent_name: "A2",
           creator: "alice",
         } as StoreAgent,
-      ] as SearchResponseItemsItem[];
+      ] as SearchResponse["items"][number][];
 
       useBlockMenuStore.getState().setCreatorsList(items1);
       useBlockMenuStore.getState().setCreatorsList(items2);
@@ -221,7 +209,7 @@ describe("blockMenuStore", () => {
       useBlockMenuStore.getState().setSearchId("id-1");
       useBlockMenuStore.getState().setDefaultState(DefaultStateType.ALL_BLOCKS);
       useBlockMenuStore.getState().setIntegration("slack");
-      useBlockMenuStore.getState().addFilter(SearchEntryFilterAnyOfItem.blocks);
+      useBlockMenuStore.getState().addFilter("blocks");
       useBlockMenuStore.getState().addCreator("alice");
 
       useBlockMenuStore.getState().reset();
@@ -234,7 +222,7 @@ describe("blockMenuStore", () => {
     });
 
     it("does not clear filters or creators", () => {
-      useBlockMenuStore.getState().addFilter(SearchEntryFilterAnyOfItem.blocks);
+      useBlockMenuStore.getState().addFilter("blocks");
       useBlockMenuStore.getState().addCreator("alice");
 
       useBlockMenuStore.getState().reset();

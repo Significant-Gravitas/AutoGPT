@@ -10,13 +10,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from prisma.actions import ScheduledChatStreakActions
+from prisma.enums import AlertCause, AlertConditionStatus
 from prisma.errors import UniqueViolationError
-from prisma.models import ChatMessage, ExpertRoutine, ScheduledChatStreak, User
+from prisma.models import (
+    AlertCondition,
+    ChatMessage,
+    ExpertRoutine,
+    ScheduledChatStreak,
+    User,
+)
 
 from backend.api.features.experts import routines
 from backend.copilot import db as copilot_db
-from backend.copilot.scheduled_chats import service
+from backend.copilot.scheduled_chats import forget, reconnect, service
 from backend.copilot.scheduled_chats.outcomes import RunFailure, RunOutcome
+from backend.copilot.scheduled_chats.reconnect import resume_after_reconnect
 from backend.copilot.scheduled_chats.service import (
     ScheduledRun,
     list_paused_scheduled_chats,
@@ -254,6 +263,11 @@ async def test_switching_a_paused_routine_off_forgets_its_streak(
 
         assert await list_paused_scheduled_chats(user_id) == []
         assert not await resume_scheduled_chat(user_id, routine.id)
+        # Nor is its owner emailed about a routine they switched off.
+        alert = await AlertCondition.prisma().find_first(
+            where={"userId": user_id, "causeKey": f"scheduled_chat:{routine.id}"}
+        )
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
     finally:
         await _cleanup(user_id)
 
@@ -455,6 +469,9 @@ async def test_a_good_run_that_read_the_streak_before_the_pause_keeps_it(
             await record_scheduled_run(_run(user_id, session_id, RunOutcome()))
 
         assert len(await list_paused_scheduled_chats(user_id)) == 1
+        # And its alert: withdrawn only with the streak.
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.PENDING
     finally:
         await _cleanup(user_id)
 
@@ -510,6 +527,58 @@ async def test_a_chat_resumed_some_other_way_starts_over(
         await record_scheduled_run(_run(user_id, session_id, RunOutcome()))
 
         assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
+        # The run that worked is the fix, so the pause alert is withdrawn too.
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_chat_resumed_some_other_way_that_runs_idle_is_not_called_paused(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """Its next run only repeated that Discord needs connecting. The chat runs
+    again, so neither the Scheduled page nor its alert may call it paused."""
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        scheduler.get_execution_schedules.return_value = [MagicMock(id="sched-1")]
+
+        await record_scheduled_run(_run(user_id, session_id, RunOutcome(idle=True)))
+
+        assert await list_paused_scheduled_chats(user_id) == []
+        row = await ScheduledChatStreak.prisma().find_first(where={"userId": user_id})
+        assert row is not None and row.failures == 1 and row.pausedAt is None
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_pause_whose_card_failed_has_its_alert_withdrawn_when_it_ends(
+    server: SpinTestServer, scheduler: MagicMock, mocker
+):
+    """The pause raised its alert, but its card didn't post, so the streak
+    reads as never told. Resumed some other way, the run that ends it must
+    still withdraw the alert."""
+    mocker.patch(f"{_SERVICE}.post_notice", side_effect=RuntimeError("db"))
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        row = await ScheduledChatStreak.prisma().find_first(where={"userId": user_id})
+        assert row is not None and row.pausedAt is not None and row.notifiedAt is None
+        scheduler.get_execution_schedules.return_value = [MagicMock(id="sched-1")]
+
+        await record_scheduled_run(_run(user_id, session_id, RunOutcome()))
+
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
     finally:
         await _cleanup(user_id)
 
@@ -554,6 +623,210 @@ async def test_resume_restarts_the_jobs_clears_the_streak_and_says_so(
         assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
         headlines = [n.metadata["headline"] for n in await _notes(session_id)]
         assert headlines[-1] == "Resumed “Discord monitor”"
+    finally:
+        await _cleanup(user_id)
+
+
+async def _alert(user_id: str) -> AlertCondition | None:
+    return await AlertCondition.prisma().find_first(
+        where={"userId": user_id, "causeKey": "scheduled_chat:sched-1"}
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_chat_resumed_as_its_pause_raises_the_alert_is_left_without_one(
+    server: SpinTestServer, scheduler: MagicMock, mocker
+):
+    """The owner resumes from the paused list between the pause's row and its
+    alert: the resume's withdrawal finds nothing yet, and the alert must not
+    outlive the pause."""
+    raise_paused = service.alerts.raise_paused
+    user_id, session_id = await _owner()
+
+    async def resumed_first(*args, **kwargs):
+        assert await resume_scheduled_chat(user_id, "sched-1")
+        await raise_paused(*args, **kwargs)
+
+    mocker.patch.object(service.alerts, "raise_paused", new=resumed_first)
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_pause_is_told_even_when_its_alert_cannot_be_checked(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """The check after the alert is only a guard: failing, it must not keep
+    the card from the chat, which has no next run to try again on."""
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(2):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        failing = AsyncMock(side_effect=RuntimeError("db blip"))
+        with patch.object(ScheduledChatStreakActions, "count", failing):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        failing.assert_awaited_once()
+
+        headlines = [n.metadata["headline"] for n in await _notes(session_id)]
+        assert headlines[-1].startswith("Paused: ")
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.PENDING
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_pause_raises_the_alert_and_resume_resolves_it(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """The alert engine turns it into the email (where user email is on) or
+    the Briefing card; resuming cancels a send still in its debounce."""
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+
+        alert = await _alert(user_id)
+        assert alert is not None
+        assert alert.cause == AlertCause.PAUSED_FAILURES
+        assert alert.status == AlertConditionStatus.PENDING
+        assert alert.data["agent"] == "Discord monitor"
+        assert alert.data["step"] == "Discord connection"
+
+        assert await resume_scheduled_chat(user_id, "sched-1")
+
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reconnecting_the_provider_resumes_what_it_paused(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        # Another chat only told about Twitter, and one about Discord's twin.
+        twitter = RunOutcome(failure=_TWITTER, whole_run=False)
+        for _ in range(3):
+            await record_scheduled_run(
+                _run(user_id, session_id, twitter, schedule_key="briefing")
+            )
+
+        await resume_after_reconnect(user_id, "discord")
+
+        scheduler.resume_schedule.assert_awaited_once_with("sched-1", user_id=user_id)
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
+        keys = {
+            row.scheduleKey
+            for row in await ScheduledChatStreak.prisma().find_many(
+                where={"userId": user_id}
+            )
+        }
+        assert keys == {"briefing"}
+
+        await resume_after_reconnect(user_id, "twitter")
+
+        assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_chat_paused_while_a_reconnect_reads_it_is_resumed(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """The reconnect read the chat as only told, while a run still failing
+    on the old connection went on to pause it. Deleting from that stale read
+    would leave its jobs paused with nothing to list or resume them."""
+    user_id, session_id = await _owner()
+    try:
+        told = RunOutcome(failure=_DISCORD, whole_run=False)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, told))
+        read = await ScheduledChatStreak.prisma().find_first(where={"userId": user_id})
+        assert read is not None and read.pausedAt is None
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        assert len(await list_paused_scheduled_chats(user_id)) == 1
+
+        await reconnect._clear(user_id, read)
+
+        scheduler.resume_schedule.assert_awaited_once_with("sched-1", user_id=user_id)
+        assert await list_paused_scheduled_chats(user_id) == []
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_two_resumes_at_once_both_say_it_resumed(
+    server: SpinTestServer, scheduler: MagicMock, mocker
+):
+    """Reconnecting from the card resumes the chat twice at once: once from
+    the connect, once from the card. Both read the row before either clears
+    it; both say it resumed, and the chat gets one note."""
+    both_read_the_row = asyncio.Event()
+    waiting: list[str] = []
+
+    async def resume_jobs(user_id: str, schedule_ids: list[str]) -> None:
+        waiting.append(user_id)
+        if len(waiting) == 2:
+            both_read_the_row.set()
+        await both_read_the_row.wait()
+
+    mocker.patch(f"{_SERVICE}.resume_jobs", side_effect=resume_jobs)
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+
+        results = await asyncio.gather(
+            resume_scheduled_chat(user_id, "sched-1"),
+            resume_scheduled_chat(user_id, "sched-1"),
+        )
+
+        assert results == [True, True]
+        assert await list_paused_scheduled_chats(user_id) == []
+        headlines = [n.metadata["headline"] for n in await _notes(session_id)]
+        assert headlines.count("Resumed \u201cDiscord monitor\u201d") == 1
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_one_chat_that_cannot_resume_does_not_hold_up_the_rest(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for key in ("first", "second"):
+            for _ in range(3):
+                await record_scheduled_run(
+                    _run(user_id, session_id, failed, schedule_key=key, schedule_id=key)
+                )
+        scheduler.resume_schedule.side_effect = [RuntimeError("scheduler down"), True]
+
+        await resume_after_reconnect(user_id, "discord")
+
+        assert scheduler.resume_schedule.await_count == 2
+        assert len(await list_paused_scheduled_chats(user_id)) == 1
     finally:
         await _cleanup(user_id)
 
@@ -683,11 +956,17 @@ async def test_a_deleted_chat_leaves_no_paused_ghost(
             await record_scheduled_run(_run(user_id, session_id, failed))
             await record_scheduled_run(_run(other_id, other_session, failed))
 
-        await service.forget_scheduled_chat(user_id, "sched-1")
+        await forget.forget_scheduled_chat(user_id, "sched-1")
 
         assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
         assert await list_paused_scheduled_chats(user_id) == []
         assert await resume_scheduled_chat(user_id, "sched-1") is False
+        # Nor does its alert email about a chat that is gone.
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
+        other_alert = await _alert(other_id)
+        assert other_alert is not None
+        assert other_alert.status == AlertConditionStatus.PENDING
         # Only the owner's own chat goes.
         [left] = await list_paused_scheduled_chats(other_id)
         # A follow-up, which the paused list can delete.
@@ -709,7 +988,7 @@ async def test_forgetting_a_routines_id_leaves_its_pause_alone(
         for job in ("job-a", "job-b", "job-a"):
             await record_scheduled_run(_routine_run(user_id, session_id, routine, job))
 
-        await service.forget_scheduled_chat(user_id, routine.id)
+        await forget.forget_scheduled_chat(user_id, routine.id)
 
         paused = await list_paused_scheduled_chats(user_id)
         assert [p.schedule_key for p in paused] == [routine.id]
@@ -741,7 +1020,7 @@ async def test_a_key_naming_someone_elses_routine_is_a_follow_up(
         [paused] = await list_paused_scheduled_chats(user_id)
         assert paused.routine is False
 
-        await service.forget_scheduled_chat(user_id, foreign.id)
+        await forget.forget_scheduled_chat(user_id, foreign.id)
 
         assert await list_paused_scheduled_chats(user_id) == []
     finally:

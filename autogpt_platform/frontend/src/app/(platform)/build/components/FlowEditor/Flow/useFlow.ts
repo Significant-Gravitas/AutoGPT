@@ -12,7 +12,8 @@ import { useNodeStore } from "../../../stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";
 import { convertNodesPlusBlockInfoIntoCustomNodes } from "../../helper";
 import { useEdgeStore } from "../../../stores/edgeStore";
-import { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
+import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import type { GraphExecutionWithNodes } from "@/app/api/__generated__/models/graphExecutionWithNodes";
 import { useGraphStore } from "../../../stores/graphStore";
 import { useReactFlow } from "@xyflow/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
@@ -78,7 +79,7 @@ export const useFlow = () => {
   const { data: executionDetails, dataUpdatedAt: executionDetailsUpdatedAt } =
     useGetV1GetExecutionDetails(flowID || "", flowExecutionID || "", {
       query: {
-        select: (res) => res.data as GetV1GetExecutionDetails200,
+        select: (res) => res.data as GraphExecution | GraphExecutionWithNodes,
         enabled: !!flowID && !!flowExecutionID,
         // Poll every second while the graph is running until the server
         // acknowledges the WebSocket subscription (race condition on fast

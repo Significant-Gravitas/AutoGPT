@@ -28,7 +28,9 @@ def test_tool_display_roundtrips_redis_and_sse():
 
 
 @pytest.fixture(autouse=True)
-def _clear_listener_sessions():
+def _clear_listener_sessions(mocker):
+    mocker.patch("backend.copilot.gate.held.wake", new=AsyncMock())
+    mocker.patch.object(stream_registry._notification_bus, "publish", new=AsyncMock())
     stream_registry._listener_sessions.clear()
     yield
     stream_registry._listener_sessions.clear()
@@ -906,6 +908,38 @@ class TestCompletionOnRealRedis:
         assert closed is False
         assert session is not None and session.status == "running"
         publish.assert_not_awaited()
+
+    async def test_a_turn_frees_its_locks_before_its_slot(self, session_id):
+        """A turn admitted into the freed slot must not meet this turn's lock on
+        another pod, which would drop it unrun."""
+        await stream_registry.create_session(session_id, "u1", "", "", turn_id="a")
+        redis = await redis_client.get_redis_async()
+        await redis.set(get_session_lock_key(session_id), "pod-a")
+        await redis.set(f"{STREAM_LOCK_PREFIX}{session_id}", "a")
+        held_at_release: list[int] = []
+
+        async def release(_user_id: str, sid: str) -> None:
+            held_at_release.append(
+                await redis.exists(
+                    get_session_lock_key(sid), f"{STREAM_LOCK_PREFIX}{sid}"
+                )
+            )
+
+        with (
+            patch.object(stream_registry, "release_turn_slot", new=release),
+            patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+            patch.object(
+                stream_registry.chat_db(),
+                "set_turn_duration",
+                new=AsyncMock(),
+                create=True,
+            ),
+            patch.object(stream_registry, "dispatch_next_for_user", new=AsyncMock()),
+            patch("backend.copilot.gate.held.wake", new=AsyncMock()),
+        ):
+            await stream_registry.mark_session_completed(session_id, turn_id="a")
+
+        assert held_at_release == [0]
 
     async def test_a_turn_still_completes_itself(self, session_id):
         await stream_registry.create_session(session_id, None, "", "", turn_id="a")

@@ -143,3 +143,29 @@ def test_a_run_after_a_resume_the_streak_did_not_see_starts_over():
     assert step.streak is not None
     assert step.streak.failures == 1 and not step.streak.paused
     assert step.ended_notified
+
+
+def test_an_idle_run_after_a_resume_the_streak_did_not_see_starts_over():
+    """Resumed some other way and still not connected, the monitor only
+    repeats that from history. Its pause is over, so it is counted afresh,
+    and the third such run pauses it again."""
+    paused = Streak(
+        failure=_DISCORD, failures=3, whole_run_failures=3, notified=True, paused=True
+    )
+
+    steps = _drive([_IDLE, _IDLE, _IDLE], paused)
+
+    assert steps[0].ended_notified
+    first = steps[0].streak
+    assert first is not None and first.failures == 1 and not first.paused
+    assert [s.pause for s in steps] == [False, False, True]
+
+
+def test_an_idle_run_after_a_resume_ends_a_streak_it_does_not_continue():
+    paused = Streak(
+        failure=_BUDGET, failures=3, whole_run_failures=3, notified=True, paused=True
+    )
+
+    step = advance(paused, _IDLE)
+
+    assert step.streak is None and step.ended_notified

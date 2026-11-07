@@ -22,6 +22,7 @@ from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_pending_cache import PENDING_CHANGES
 from backend.util.logging import configure_logging
+from backend.util.platform_payment import settings as platform_payment_settings
 from backend.util.tracing import traces_sampler
 
 load_dotenv()
@@ -138,6 +139,24 @@ def no_force_all_flags(monkeypatch: pytest.MonkeyPatch):
     flag-off test. Tests that want the switch on set it themselves."""
     monkeypatch.delenv("FORCE_ALL_FLAGS", raising=False)
     monkeypatch.delenv("NEXT_PUBLIC_FORCE_ALL_FLAGS", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def platform_payment_off(set_platform_payment):
+    """Payment is off unless a test turns it on, whatever this machine's ``.env`` sets."""
+    set_platform_payment(False)
+
+
+@pytest.fixture
+def set_platform_payment(monkeypatch: pytest.MonkeyPatch):
+    """Turn ``ENABLE_PLATFORM_PAYMENT`` on or off for one test."""
+
+    def set_payment(enabled: bool) -> None:
+        monkeypatch.setattr(
+            platform_payment_settings.config, "enable_platform_payment", enabled
+        )
+
+    return set_payment
 
 
 @pytest.fixture(autouse=True)
@@ -301,6 +320,7 @@ async def _delete_test_graphs(
 ) -> None:
     from prisma.models import (
         AgentGraph,
+        AgentGraphExecution,
         AgentNodeExecutionInputOutput,
         AgentPreset,
         LibraryAgent,
@@ -308,12 +328,16 @@ async def _delete_test_graphs(
     )
 
     graph_ids = [graph_id for graph_id, _ in created_graphs]
-    # Listing versions, presets and every user's library entries hold the graph
-    # (onDelete: Restrict), so they go first. Deleting a listing cascades to
-    # its versions and their reviews; a preset's saved inputs would only be
-    # orphaned, so they are deleted with it.
+    # The delete route refuses (409) while a store listing or another user's
+    # library entry, preset or run references the graph, so those go first.
+    # Deleting a listing cascades to its versions and their reviews; a
+    # preset's saved inputs would only be orphaned, so they are deleted with
+    # it. The owner's own library entries are left for the route to delete.
     await StoreListing.prisma().delete_many(where={"id": {"in": listing_ids}})
-    await LibraryAgent.prisma().delete_many(where={"agentGraphId": {"in": graph_ids}})
+    for graph_id, user_id in created_graphs:
+        others: dict = {"agentGraphId": graph_id, "userId": {"not": user_id}}
+        await LibraryAgent.prisma().delete_many(where=others)
+        await AgentGraphExecution.prisma().delete_many(where=others)
     presets = await AgentPreset.prisma().find_many(
         where={"agentGraphId": {"in": graph_ids}}
     )

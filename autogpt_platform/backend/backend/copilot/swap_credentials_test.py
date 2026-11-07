@@ -4,10 +4,12 @@ import contextlib
 import importlib.util
 import re
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
+from backend.copilot import integration_creds
 from backend.copilot.integration_creds import ProviderTokenUnavailable
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.swap_credentials import (
@@ -17,10 +19,19 @@ from backend.copilot.swap_credentials import (
     get_swap_bindings,
     resolve_swap_credential,
 )
+from backend.data.model import APIKeyCredentials
 from backend.util import e2b_network
+from backend.util.exceptions import ExpertNotFoundError
 
 _M = "backend.copilot.swap_credentials"
-_GITHUB_HOSTS = ["github.com", "api.github.com", "uploads.github.com"]
+_GITHUB_HOSTS = [
+    "github.com",
+    "api.github.com",
+    "uploads.github.com",
+    "raw.githubusercontent.com",
+    "gist.github.com",
+]
+_GITHUB_CONTENT = [".githubusercontent.com"]
 
 
 _BOX = "box-0123456789abcdef"
@@ -49,7 +60,9 @@ def _token(tokens, granted=("cred-a",)):
     """*tokens*: credential id to token (a string is every id's token), and
     the ids granted to sandbox sb-1."""
 
-    async def token(user_id, name, credential_id=None, strict=False, lock=False):
+    async def token(
+        user_id, name, credential_id=None, *, allowed_ids, strict=False, lock=False
+    ):
         assert lock, "the swap service refreshes under the manager's lock"
         assert strict, "a failed lookup must reach the proxy as an outage"
         if isinstance(tokens, dict):
@@ -68,7 +81,7 @@ def _token(tokens, granted=("cred-a",)):
 
 @pytest.mark.asyncio
 async def test_bindings_carry_hosts_and_no_values():
-    assert await get_swap_bindings() == {"github": _GITHUB_HOSTS}
+    assert await get_swap_bindings() == {"github": _GITHUB_HOSTS + _GITHUB_CONTENT}
 
 
 @pytest.mark.asyncio
@@ -82,7 +95,12 @@ async def test_a_bound_host_gets_the_credential_granted_to_the_box(host):
         allowed_hosts=_GITHUB_HOSTS,
     )
     lookup.assert_awaited_once_with(
-        "user-1", "github", credential_id="cred-a", strict=True, lock=True
+        "user-1",
+        "github",
+        credential_id="cred-a",
+        allowed_ids=None,
+        strict=True,
+        lock=True,
     )
 
 
@@ -93,7 +111,8 @@ async def test_a_bound_host_gets_the_credential_granted_to_the_box(host):
         "evil.test",
         "api.github.com.evil.test",
         "notgithub.com",
-        "raw.githubusercontent.com",  # serves GitHub content, takes no token
+        "githubusercontent.com.evil.test",
+        "codeload.github.com",  # archives only: binary, nothing to scrub
         "",
     ],
 )
@@ -142,7 +161,9 @@ async def test_one_failing_account_does_not_take_down_the_boxs_others():
     """A revoked account left granted to the box is never swapped in, so it
     has no value to scrub: the box's healthy account still resolves."""
 
-    async def token(user_id, name, credential_id=None, strict=False, lock=False):
+    async def token(
+        user_id, name, credential_id=None, *, allowed_ids, strict=False, lock=False
+    ):
         if credential_id == "cred-a":
             raise ProviderTokenUnavailable("github")
         return "ghp_b"
@@ -192,8 +213,81 @@ async def test_only_what_was_granted_to_the_box_resolves():
     assert credential.values == {"cred-b": "ghp_b"}
     # Only the granted credential is looked up, not every stored one.
     lookup.assert_awaited_once_with(
-        "user-1", "github", credential_id="cred-b", strict=True, lock=True
+        "user-1",
+        "github",
+        credential_id="cred-b",
+        allowed_ids=None,
+        strict=True,
+        lock=True,
     )
+
+
+@pytest.fixture
+def stored_a_and_b():
+    """The real lookup over user-1's GitHub accounts A and B on box sb-1."""
+    stored = [
+        APIKeyCredentials(
+            id=f"cred-{x}", provider="github", api_key=SecretStr(f"ghp_{x}"), title=x
+        )
+        for x in "ab"
+    ]
+    manager = MagicMock()
+    manager.store.get_creds_by_provider = AsyncMock(return_value=stored)
+    experts = MagicMock()
+    experts.expert_allowed_credential_ids = AsyncMock(return_value=["cred-a"])
+    caches = (
+        integration_creds._token_cache,
+        integration_creds._null_cache,
+        integration_creds._credential_id_cache,
+    )
+    for cache in caches:
+        cache.clear()
+    with (
+        patch(f"{_M}.granted_to_box", AsyncMock(return_value={"cred-a", "cred-b"})),
+        patch.object(integration_creds, "_manager", manager),
+        patch.object(integration_creds, "_ensure_cache_invalidation_listener"),
+        patch.object(integration_creds, "experts_db", return_value=experts),
+    ):
+        yield experts
+    for cache in caches:
+        cache.clear()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "owner, values, reads",
+    [
+        ("expert:e-1", {"cred-a": "ghp_a"}, 1),
+        ("session:s-1", {"cred-a": "ghp_a", "cred-b": "ghp_b"}, 0),
+    ],
+    ids=["expert box", "chat box"],
+)
+async def test_an_experts_box_resolves_only_what_the_expert_is_granted(
+    live_box, stored_a_and_b, owner, values, reads
+):
+    """An expert's box resolves only what its expert is granted; a chat's box,
+    everything granted to the box."""
+    live_box["owner"] = owner
+    credential = await resolve_swap_credential("user-1", "github", "github.com", _BOX)
+    assert credential is not None
+    assert credential.values == values
+    assert stored_a_and_b.expert_allowed_credential_ids.await_count == reads
+    if reads:
+        stored_a_and_b.expert_allowed_credential_ids.assert_awaited_with(
+            "user-1", "e-1"
+        )
+
+
+@pytest.mark.asyncio
+async def test_an_expert_whose_grants_cannot_be_read_is_an_outage(
+    live_box, stored_a_and_b
+):
+    live_box["owner"] = "expert:e-1"
+    stored_a_and_b.expert_allowed_credential_ids.side_effect = ExpertNotFoundError(
+        "e-1"
+    )
+    with pytest.raises(ExpertNotFoundError):
+        await resolve_swap_credential("user-1", "github", "github.com", _BOX)
 
 
 @pytest.mark.asyncio
@@ -232,12 +326,84 @@ async def test_only_a_live_box_of_the_users_that_swaps_gets_a_value(record):
     lookup.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "host",
+    [
+        "objects.githubusercontent.com",
+        "gist.githubusercontent.com",
+        "media.githubusercontent.com",
+    ],
+)
+async def test_a_content_host_gets_the_values_to_scrub_but_may_not_be_sent_them(
+    host,
+):
+    """What a user committed or pasted comes back from these; the proxy needs
+    the values to scrub it, and must never swap one into a request there."""
+    with _token("ghp_real"):
+        credential = await resolve_swap_credential("user-1", "github", host, _BOX)
+    assert credential is not None
+    assert credential.values["cred-a"] == "ghp_real"
+    assert credential.allowed_hosts == _GITHUB_HOSTS
+    assert not _host_is_bound(host, credential.allowed_hosts)
+
+
+_HOSTNAME = re.compile(r"\.?[a-z0-9-]+(\.[a-z0-9-]+)+")
+
+
 def test_every_provider_says_where_its_token_may_go():
     """A new provider must decide this; an empty list means never swapped."""
     for slug, entry in SUPPORTED_PROVIDERS.items():
         assert isinstance(entry["swap_hosts"], list), slug
-        for host in entry["swap_hosts"]:
-            assert host == host.lower() and "/" not in host and "*" not in host, host
+        assert isinstance(entry["content_hosts"], list), slug
+        for host in [*entry["swap_hosts"], *entry["content_hosts"]]:
+            # Names or a leading-dot suffix, as ``host_in_list`` reads them:
+            # no scheme, port, path, wildcard or bare address.
+            assert _HOSTNAME.fullmatch(host), (slug, host)
+            assert not host.replace(".", "").isdigit(), (slug, host)
+        # A content host takes no token: in both lists it would take one.
+        overlap = [
+            h
+            for h in entry["content_hosts"]
+            if _host_is_bound(h.lstrip("."), entry["swap_hosts"])
+        ]
+        assert overlap == [], slug
+
+
+def test_no_host_is_bound_to_two_providers():
+    """A host names one provider's credential; two would make the proxy fetch
+    and scrub both, and leave which one a request meant to the box.  Compared
+    as bindings, not strings: ``.example.com`` binds ``api.example.com``."""
+    for slug, entry in SUPPORTED_PROVIDERS.items():
+        for host in [*entry["swap_hosts"], *entry["content_hosts"]]:
+            for other, other_entry in SUPPORTED_PROVIDERS.items():
+                if other == slug:
+                    continue
+                other_hosts = [
+                    *other_entry["swap_hosts"],
+                    *other_entry["content_hosts"],
+                ]
+                assert not _host_is_bound(host.lstrip("."), other_hosts), (
+                    host,
+                    slug,
+                    other,
+                )
+
+
+@pytest.mark.asyncio
+async def test_a_provider_that_swaps_nothing_still_has_its_content_hosts_scrubbed():
+    """An empty ``swap_hosts`` means the token is never swapped in, not that
+    its content hosts may pass unread."""
+    entry = {
+        "name": "Files",
+        "env_vars": [],
+        "default_scopes": [],
+        "swap_hosts": [],
+        "content_hosts": [".files.example.com"],
+    }
+    with patch.dict(SUPPORTED_PROVIDERS, {"files": entry}):
+        bindings = await get_swap_bindings()
+    assert bindings["files"] == [".files.example.com"]
 
 
 def test_minted_usernames_are_what_the_proxy_accepts():
@@ -289,3 +455,36 @@ def test_the_proxys_own_copy_agrees_on_every_host():
     spec.loader.exec_module(swap)
     for host, entries, _ in HOST_BINDING_TABLE:
         assert swap.host_in_list(host, entries) is _host_is_bound(host, entries), host
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "host",
+    # A private repo's raw file with ``Authorization: token``; git over HTTPS
+    # to a gist with Basic.
+    ["raw.githubusercontent.com", "gist.github.com"],
+)
+async def test_the_github_content_hosts_that_take_the_token_may_be_sent_it(host):
+    with _token("ghp_real"):
+        credential = await resolve_swap_credential("user-1", "github", host, _BOX)
+    assert credential is not None
+    assert _host_is_bound(host, credential.allowed_hosts)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "providers, sendable",
+    [(None, True), (["github"], True), ([], False), (["linear"], False)],
+    ids=["no ceiling", "github allowed", "none allowed", "github outside"],
+)
+async def test_a_provider_outside_the_boxs_ceiling_is_scrubbed_never_sent(
+    live_box, providers, sendable
+):
+    live_box["providers"] = providers
+    with _token("ghp_real"):
+        credential = await resolve_swap_credential(
+            "user-1", "github", "api.github.com", _BOX
+        )
+    assert credential is not None
+    assert credential.values["cred-a"] == "ghp_real"
+    assert credential.allowed_hosts == (_GITHUB_HOSTS if sendable else [])
