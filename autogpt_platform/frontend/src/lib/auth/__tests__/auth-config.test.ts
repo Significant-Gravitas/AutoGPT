@@ -380,6 +380,7 @@ describe("change email", () => {
       to: "old@example.com",
       type: "change_email",
       url: "https://app/approve?token=t",
+      newEmail: "new@example.com",
     });
   });
 

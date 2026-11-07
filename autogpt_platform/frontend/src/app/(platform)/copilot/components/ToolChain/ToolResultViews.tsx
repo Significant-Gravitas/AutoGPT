@@ -160,12 +160,7 @@ export function Terminal({ row }: RowProps) {
         </pre>
       )}
       {typeof exitCode === "number" && exitCode !== 0 && (
-        <p
-          // oxlint-disable-next-line design-system/no-raw-colors -- on the dark terminal; error #EF4444 drops the exit code to 3.3:1
-          className="mt-1.5 text-red-400"
-        >
-          exit {exitCode}
-        </p>
+        <p className="mt-1.5 text-error-inverse">exit {exitCode}</p>
       )}
     </div>
   );
