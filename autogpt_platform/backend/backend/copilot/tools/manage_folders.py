@@ -606,7 +606,10 @@ class MoveAgentsToFolderTool(BaseTool):
 
         if not moved:
             return ErrorResponse(
-                message="No workflows were moved.",
+                message=(
+                    "No workflows were moved. Check that the IDs belong to "
+                    "workflows in your library."
+                ),
                 error="no_agents_moved",
                 session_id=session_id,
             )

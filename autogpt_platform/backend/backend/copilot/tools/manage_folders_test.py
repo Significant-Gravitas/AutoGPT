@@ -470,6 +470,8 @@ async def test_move_agents_none_moved_returns_error(move_agents_tool, session):
 
     assert isinstance(result, ErrorResponse)
     assert result.error == "no_agents_moved"
+    assert result.message.startswith("No workflows were moved.")
+    assert "IDs belong to workflows in your library" in result.message
     assert "Moved" not in result.message
 
 
