@@ -1,4 +1,5 @@
 import re
+from itertools import groupby
 
 from gravitasml.parser import Parser
 from gravitasml.token import Token, tokenize
@@ -12,7 +13,7 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 
-MAX_XML_SIZE = 10 * 1024 * 1024
+MAX_XML_SIZE = 1024 * 1024
 MAX_XML_TAG_LENGTH = 4_096
 MAX_XML_DEPTH = 256
 
@@ -60,6 +61,30 @@ def _protect_backslashes(xml: str) -> tuple[str, str | None]:
     if sentinel is None:
         raise ValueError("XML input uses every private-use character.")
     return xml.replace("\\", sentinel), sentinel
+
+
+def _tag_name(raw: str) -> str:
+    name = raw.strip()
+    if not name:
+        raise ValueError("Empty XML tag.")
+    if "/" in name:
+        raise ValueError(f"Invalid XML tag name: <{name}>")
+    return name
+
+
+def _merge_text_runs(tokens: list[Token]) -> list[Token]:
+    """Join text that only comments separate, so each element's text reaches
+    the parser as one value."""
+    merged: list[Token] = []
+    for is_text, run in groupby(tokens, key=lambda token: token.type == "TEXT"):
+        run_tokens = list(run)
+        if not is_text or len(run_tokens) == 1:
+            merged.extend(run_tokens)
+            continue
+        first = run_tokens[0]
+        text = "".join(token.value for token in run_tokens)
+        merged.append(Token("TEXT", text, first.line_num, first.column))
+    return merged
 
 
 def _mixed_content_error(tag: str) -> str:
@@ -187,18 +212,19 @@ class XMLParserBlock(Block):
             if "=" in tag or '"' in tag or "'" in tag:
                 raise ValueError(f"XML attributes are not supported: <{tag}>")
 
+            # Each tag is written back as "<name>" or "</name>".
             pieces.append(xml[position:tag_start])
             if tag.startswith("/"):
                 depth -= 1
                 if depth < 0:
                     raise ValueError("Unexpected closing tag in XML input.")
-                pieces.append(xml[tag_start : tag_end + 1])
+                pieces.append(f"</{_tag_name(tag[1:])}>")
             elif tag.endswith("/"):
                 if depth + 1 > MAX_XML_DEPTH:
                     raise ValueError(
                         f"XML nesting exceeds the maximum depth of {MAX_XML_DEPTH}."
                     )
-                name = tag[:-1].strip()
+                name = _tag_name(tag[:-1])
                 pieces.append(f"<{name}></{name}>")
             else:
                 depth += 1
@@ -206,15 +232,14 @@ class XMLParserBlock(Block):
                     raise ValueError(
                         f"XML nesting exceeds the maximum depth of {MAX_XML_DEPTH}."
                     )
-                pieces.append(xml[tag_start : tag_end + 1])
+                pieces.append(f"<{_tag_name(tag)}>")
 
             position = tag_end + 1
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        if len(input_data.input_xml) > MAX_XML_SIZE:
-            raise ValueError(
-                f"XML too large: {len(input_data.input_xml)} bytes > {MAX_XML_SIZE} bytes"
-            )
+        size = len(input_data.input_xml.encode("utf-8"))
+        if size > MAX_XML_SIZE:
+            raise ValueError(f"XML too large: {size} bytes > {MAX_XML_SIZE} bytes")
 
         try:
             xml = self._normalize_tokenizer_input(input_data.input_xml)
@@ -229,7 +254,7 @@ class XMLParserBlock(Block):
                 if token.type == "TEXT":
                     token.value = _XML_ENTITY_RE.sub(_decode_xml_entity, token.value)
 
-            parser = Parser(tokens)
+            parser = Parser(_merge_text_runs(tokens))
             parsed_result = parser.parse()
             yield "parsed_xml", parsed_result
         except ValueError as val_e:

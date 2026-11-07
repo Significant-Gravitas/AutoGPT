@@ -87,7 +87,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
         </div>
 
         {request.connected ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-foreground-tertiary">
+          <span className="flex shrink-0 items-center gap-1.5 text-body font-medium text-foreground-tertiary">
             <Icon icon={CheckmarkCircle02Icon} size={16} />
             Connected
           </span>
@@ -115,7 +115,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
       </div>
 
       {request.error && !request.connected && (
-        <div className="mx-4 mb-3 rounded-xl border border-error/30 bg-error-surface px-3 py-2 text-sm text-error-foreground">
+        <div className="mx-4 mb-3 rounded-xl border border-error/30 bg-error-surface px-3 py-2 text-body text-error-foreground">
           {request.error}
         </div>
       )}
@@ -128,8 +128,8 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
             disabled={request.loading}
             nameSuffix={request.service}
             className="grid gap-1"
-            labelClassName="text-xs font-medium text-foreground-body"
-            selectClassName="rounded-xl bg-surface-muted px-3 py-2 text-sm text-foreground-emphasis ring-1 ring-separator"
+            labelClassName="text-caption font-medium text-foreground-body"
+            selectClassName="rounded-xl bg-surface-muted px-3 py-2 text-body text-foreground-emphasis ring-1 ring-separator"
           />
           <Text variant="small-tight" tone="muted" id={hintId}>
             {mcpAuthTokenHint(authScheme)}
@@ -155,7 +155,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
                 token.trim() &&
                 submitCredential()
               }
-              className="flex-1 rounded-2xl bg-surface-muted px-3 py-2 text-sm text-foreground-emphasis ring-1 ring-separator transition-shadow placeholder:text-foreground-subtle focus:ring-border-strong focus:outline-none"
+              className="flex-1 rounded-2xl bg-surface-muted px-3 py-2 text-body text-foreground-emphasis ring-1 ring-separator transition-shadow placeholder:text-foreground-subtle focus:ring-border-strong focus:outline-none"
             />
             <Button
               variant="secondary"
@@ -171,7 +171,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
               id={errorId}
               role="alert"
               aria-live="polite"
-              className="text-xs text-error-foreground"
+              className="text-caption text-error-foreground"
             >
               {validationError}
             </p>

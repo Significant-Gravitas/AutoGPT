@@ -8,10 +8,17 @@ import re
 import subprocess
 from pathlib import Path
 
+from moviepy.video.io.ffmpeg_reader import ffmpeg_parse_infos
+from moviepy.video.io.VideoFileClip import VideoFileClip
+
 from backend.data.execution import ExecutionContext
+from backend.util.exceptions import BlockExecutionError
 from backend.util.file import MediaFileType, store_media_file
 
 logger = logging.getLogger(__name__)
+
+# Largest decoded frame (width * height) the video blocks will open: 4K UHD.
+MAX_VIDEO_FRAME_PIXELS = 3840 * 2160
 
 # Known operation tags added by video blocks
 _VIDEO_OPS = (
@@ -132,6 +139,37 @@ def strip_chapters_inplace(video_path: str) -> None:
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+def check_video_frame_size(video_path: str, *, block_name: str, block_id: str) -> None:
+    """Raise if any video stream's frame (width x height, from the header) is over MAX_VIDEO_FRAME_PIXELS."""
+    infos = ffmpeg_parse_infos(video_path)
+    sizes = [
+        stream["size"]
+        for input_file in infos.get("inputs", [])
+        for stream in input_file.get("streams", [])
+        if stream.get("stream_type") == "video" and stream.get("size")
+    ]
+    if not sizes:
+        return
+    width, height = max(sizes, key=lambda size: size[0] * size[1])
+    if width * height > MAX_VIDEO_FRAME_PIXELS:
+        raise BlockExecutionError(
+            message=(
+                f"Video frame size {width}x{height} is over the limit of "
+                f"{MAX_VIDEO_FRAME_PIXELS:,} pixels per frame (width x height)"
+            ),
+            block_name=block_name,
+            block_id=block_id,
+        )
+
+
+def open_video_clip(
+    video_path: str, *, block_name: str, block_id: str
+) -> VideoFileClip:
+    """Check the frame size, then open the video. Every video block opens videos through this."""
+    check_video_frame_size(video_path, block_name=block_name, block_id=block_id)
+    return VideoFileClip(video_path)
 
 
 class VideoMediaStorage:

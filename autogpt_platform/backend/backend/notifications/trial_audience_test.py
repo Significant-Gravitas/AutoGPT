@@ -81,9 +81,10 @@ def _state(trial: TrialState, kind: str) -> tuple[TrialState, dict]:
             "trial_checkout_attempt": str(trial.checkout_attempt),
         },
     }
-    if kind == "canceled":
+    if kind in ("canceled", "expiring", "last_call"):
         raw["cancel_at_period_end"] = True
-    elif kind == "converted":
+        trial = trial.model_copy(update={"cancel_at_period_end": True})
+    if kind == "converted":
         raw["status"] = "active"
         trial = trial.model_copy(
             update={
@@ -98,13 +99,19 @@ def _state(trial: TrialState, kind: str) -> tuple[TrialState, dict]:
     return trial, raw
 
 
-def _stripe(raw: dict, others: tuple[str, ...] = ()) -> AsyncMock:
+def _stripe(
+    raw: dict, others: tuple[str, ...] = (), others_cancel_at: int | None = None
+) -> AsyncMock:
     """The live subscription, on a customer whose only other live
-    subscriptions are `others` (none by default)."""
+    subscriptions are `others` (none by default), each set to end at
+    `others_cancel_at` (never by default)."""
 
     async def call(fn, *args, **kwargs):
         if fn == notices.stripe.Subscription.list_async:
-            data = [SimpleNamespace(id=sub_id) for sub_id in others]
+            data = [
+                SimpleNamespace(id=sub_id, cancel_at=others_cancel_at)
+                for sub_id in others
+            ]
             return SimpleNamespace(data=data, has_more=False)
         return raw
 
@@ -179,14 +186,18 @@ async def _notify(
         ("ended", [AudienceAction.REMOVE_TRIAL]),
         ("payment_failed", [AudienceAction.REMOVE_TRIAL]),
         ("ending", []),
+        # Already out of the group since the cancellation.
+        ("expiring", []),
+        ("last_call", []),
     ],
 )
 async def test_each_trial_transition_moves_the_trial_group(
     trial, lifecycle_resync, kind, actions
 ):
     trial, raw = _state(trial, kind)
-    if kind == "ending":
-        raw["trial_end"] = int((datetime.now(UTC) + timedelta(days=1)).timestamp())
+    if kind in ("ending", "expiring", "last_call"):
+        days = 1 if kind != "expiring" else 3
+        raw["trial_end"] = int((datetime.now(UTC) + timedelta(days=days)).timestamp())
     got, notice, _ = await _notify(trial, raw, kind)
     assert got == actions
     notice.assert_awaited_once()

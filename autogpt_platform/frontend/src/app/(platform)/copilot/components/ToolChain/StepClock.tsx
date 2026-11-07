@@ -52,7 +52,7 @@ export function StepClock({ stepKey }: Props) {
   return (
     <span
       aria-hidden
-      className="shrink-0 font-mono text-xs text-foreground-subtle tabular-nums"
+      className="shrink-0 font-mono text-caption text-foreground-subtle tabular-nums"
     >
       {formatElapsed(elapsedSeconds)}
     </span>

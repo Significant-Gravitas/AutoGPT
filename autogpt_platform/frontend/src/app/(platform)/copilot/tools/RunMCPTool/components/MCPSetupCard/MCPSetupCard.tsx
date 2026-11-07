@@ -442,7 +442,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     // owns the error display.
     return (
       <div className="mt-2 grid gap-2">
-        <div className="rounded-lg border border-success/40 bg-success-surface px-3 py-2 text-sm text-success-foreground">
+        <div className="rounded-lg border border-success/40 bg-success-surface px-3 py-2 text-body text-success-foreground">
           Connected to {service}.{" "}
           <button
             type="button"
@@ -463,7 +463,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
       {rejection && <CredentialRejectionNotice rejection={rejection} />}
 
-      <div className="rounded-2xl border bg-background p-4">
+      <div className="rounded-2xl border bg-canvas p-4">
         {grantableId ? (
           <Button
             variant="primary"
@@ -488,7 +488,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           <div
             role="alert"
             aria-live="polite"
-            className="mt-2 rounded-lg border border-error/30 bg-error-surface px-3 py-2 text-sm text-error-foreground"
+            className="mt-2 rounded-lg border border-error/30 bg-error-surface px-3 py-2 text-body text-error-foreground"
           >
             {error ?? grantError}
           </div>
@@ -502,8 +502,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               disabled={loading}
               nameSuffix={service}
               className="grid gap-1"
-              labelClassName="text-xs font-medium text-foreground-body"
-              selectClassName="rounded border bg-background px-2 py-1.5 text-sm"
+              labelClassName="text-caption font-medium text-foreground-body"
+              selectClassName="rounded border bg-canvas px-2 py-1.5 text-body"
             />
             <Text
               variant="small-medium-tight"
@@ -531,7 +531,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                 onKeyDown={(e) =>
                   isKey(e, "Enter") && !loading && handleManualToken()
                 }
-                className="flex-1 rounded border px-2 py-1 text-sm"
+                className="flex-1 rounded border px-2 py-1 text-body"
               />
               <Button
                 variant="secondary"
