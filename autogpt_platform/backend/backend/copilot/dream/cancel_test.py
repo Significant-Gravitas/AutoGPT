@@ -182,6 +182,17 @@ class TestCancelDreamPass:
         assert update.error == "cancelled: by_admin"
         assert "Alice runs Atlas" in caplog.text
 
+    async def test_an_admin_reason_cannot_forge_log_lines(self, db, caplog):
+        with caplog.at_level(logging.INFO, logger=cancel.logger.name):
+            await cancel_dream_pass(
+                "p1", user_id="u1", reason="requested\nERROR forged\x1b[31m"
+            )
+
+        assert len(caplog.records) == 1
+        message = caplog.records[0].getMessage()
+        assert "\n" not in message and "\x1b" not in message
+        assert r"\nERROR forged\u001b" in message
+
     @pytest.mark.parametrize(
         "stalled",
         [lambda db: db.update_dream_pass, lambda db: db.get_dream_pass_for_user],

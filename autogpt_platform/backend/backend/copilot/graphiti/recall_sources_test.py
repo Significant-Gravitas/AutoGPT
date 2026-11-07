@@ -163,17 +163,78 @@ class TestTheWalk:
 
 class TestTheBound:
     @pytest.mark.asyncio
+    async def test_a_converging_frontier_at_the_depth_limit_is_finished(self) -> None:
+        chain = {f"d{i}": fact(facts=(f"d{i + 1}",)) for i in range(CASCADE_MAX_ROUNDS)}
+        chain[f"d{CASCADE_MAX_ROUNDS}"] = fact(facts=("d1",))
+        driver = sources(chain)
+
+        walk = await _walk(driver, ["d0"])
+
+        assert walk.reached == {}
+        assert not walk.unfinished
+
+    @pytest.mark.asyncio
+    async def test_a_terminal_source_in_the_trailing_read_is_found(self) -> None:
+        chain = {f"d{i}": fact(facts=(f"d{i + 1}",)) for i in range(CASCADE_MAX_ROUNDS)}
+        chain[f"d{CASCADE_MAX_ROUNDS}"] = fact(facts=("forgotten",))
+        driver = sources({**chain, "forgotten": fact(forgotten=True)})
+
+        walk = await _walk(driver, ["d0"])
+
+        assert walk.reached == {"d0": Reach(root="forgotten", hard=False)}
+        assert not walk.unfinished
+
+    @pytest.mark.asyncio
+    async def test_a_hidden_episode_in_the_trailing_read_is_found(self) -> None:
+        chain = {f"d{i}": fact(facts=(f"d{i + 1}",)) for i in range(CASCADE_MAX_ROUNDS)}
+        chain[f"d{CASCADE_MAX_ROUNDS}"] = fact(episodes=("hidden",))
+        driver = sources(chain, {"hidden": episode(hidden=True)})
+
+        walk = await _walk(driver, ["d0"])
+
+        assert walk.reached == {"d0": Reach(root="hidden", hard=False)}
+        assert not walk.unfinished
+
+    @pytest.mark.asyncio
+    async def test_a_walkable_source_past_the_limit_naming_read_facts_is_finished(
+        self,
+    ) -> None:
+        """The trailing read finds ``d11`` walkable, but every fact it names
+        was read: nothing is left, so the walk converged."""
+        depth = CASCADE_MAX_ROUNDS + 1
+        chain = {f"d{i}": fact(facts=(f"d{i + 1}",)) for i in range(depth)}
+        chain[f"d{depth}"] = fact(facts=("d1",))
+        driver = sources(chain)
+
+        walk = await _walk(driver, ["d0"])
+
+        assert (walk.reached, walk.unfinished) == ({}, False)
+
+    @pytest.mark.asyncio
+    async def test_a_hidden_episode_past_the_limit_is_found(self) -> None:
+        """Its episodes are terminal, so a converged walk reads them too."""
+        depth = CASCADE_MAX_ROUNDS + 1
+        chain = {f"d{i}": fact(facts=(f"d{i + 1}",)) for i in range(depth)}
+        chain[f"d{depth}"] = fact(facts=("d1",), episodes=("hidden",))
+        driver = sources(chain, {"hidden": episode(hidden=True)})
+
+        walk = await _walk(driver, ["d0"])
+
+        assert walk.reached == {"d0": Reach(root="hidden", hard=False)}
+        assert not walk.unfinished
+
+    @pytest.mark.asyncio
     async def test_a_chain_deeper_than_the_cascades_rounds_is_unfinished(
         self,
     ) -> None:
-        depth = CASCADE_MAX_ROUNDS + 1
+        depth = CASCADE_MAX_ROUNDS + 2
         chain = {f"d{i}": fact(facts=(f"d{i + 1}",)) for i in range(depth)}
         driver = sources({**chain, f"d{depth}": fact(forgotten=True)})
 
         walk = await _walk(driver, ["d0"])
 
         assert (walk.reached, walk.unfinished) == ({}, True)
-        assert len(reads(driver, recall_sources.FACT_STATES_QUERY)) == 1 + (
+        assert len(reads(driver, recall_sources.FACT_STATES_QUERY)) == 2 + (
             CASCADE_MAX_ROUNDS
         )
 

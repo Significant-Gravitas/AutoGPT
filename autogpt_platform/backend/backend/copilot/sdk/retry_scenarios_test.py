@@ -67,6 +67,7 @@ from backend.copilot.response_model import (
     StreamToolOutputAvailable,
 )
 from backend.copilot.sdk.compaction import CompactionStats
+from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
 from backend.copilot.sdk.service import _RestoreResult, stream_chat_completion_sdk
 from backend.copilot.stream_checkpoint import turn_checkpoint
 from backend.copilot.stream_drift.recording import saving_into
@@ -86,7 +87,6 @@ from .service import (
     _MAX_STREAM_ATTEMPTS,
     _build_query_message,
     _fetch_graphiti_context,
-    _maybe_prepend_skills_update,
     _reduce_context,
     _seed_transcript,
 )
@@ -1062,10 +1062,6 @@ def _make_sdk_patches(
         (f"{_SVC}._make_sdk_cwd", dict(return_value="/tmp/test-sdk-cwd")),
         ("os.makedirs", {}),
         (
-            f"{_SVC}.propagate_attributes",
-            dict(return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock())),
-        ),
-        (
             f"{_SVC}._build_system_prompt",
             dict(new_callable=AsyncMock, return_value=("system prompt", None)),
         ),
@@ -1093,6 +1089,10 @@ def _make_sdk_patches(
             dict(new_callable=AsyncMock, return_value=compacted_transcript),
         ),
         (f"{_SVC}.ClaudeSDKClient", dict(side_effect=client_side_effect)),
+        (
+            f"{_SVC}.require_verbatim_prompts_cli",
+            dict(return_value="/opt/claude/claude"),
+        ),
         (f"{_SVC}.create_copilot_mcp_server", dict(return_value=MagicMock())),
         (f"{_SVC}.create_security_hooks", dict(return_value=MagicMock())),
         (f"{_SVC}.get_copilot_tool_names", dict(return_value=[])),
@@ -1126,7 +1126,6 @@ def _make_sdk_patches(
                 thinking_standard_model="anthropic/claude-sonnet-4-6",
             ),
         ),
-        (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
         (
             "backend.copilot.gate.held.answered",
             dict(new_callable=AsyncMock, return_value=[]),
@@ -1254,11 +1253,8 @@ class TestFollowUpWarmContextCallSite:
         queries: list[str],
         *,
         fail_first: bool = False,
-        sent_at: list[float] | None = None,
     ):
-        """Client factory recording every query sent (and, into ``sent_at``,
-        when); with ``fail_first`` the first attempt is rejected as too long
-        before streaming."""
+        """Record queries; optionally reject the first as too long."""
         attempts = [0]
 
         def _factory(*args, **kwargs):
@@ -1267,8 +1263,6 @@ class TestFollowUpWarmContextCallSite:
 
             async def _query(prompt, session_id=None):
                 queries.append(prompt)
-                if sent_at is not None:
-                    sent_at.append(asyncio.get_running_loop().time())
                 if fail_first and attempt == 1:
                     raise Exception("prompt is too long (context_length_exceeded)")
 
@@ -1405,16 +1399,8 @@ class TestFollowUpWarmContextCallSite:
         assert len(queries) == 1 and "Alice works on Atlas" in queries[0]
 
     @staticmethod
-    def _graph(search, ready_at: list[float]) -> list[tuple[str, dict]]:
-        """The real refresh over a stubbed graph read, a 300 ms join grace,
-        and a clock on the moment the query is ready (the last step before
-        the join)."""
-
-        async def _ready(*args, **kwargs):
-            query = await _maybe_prepend_skills_update(*args, **kwargs)
-            ready_at.append(asyncio.get_running_loop().time())
-            return query
-
+    def _graph(search) -> list[tuple[str, dict]]:
+        """Run the real refresh over a stubbed graph with a 300 ms grace."""
         ctx = "backend.copilot.graphiti.context"
         return [
             (
@@ -1428,41 +1414,47 @@ class TestFollowUpWarmContextCallSite:
                 f"{ctx}.recheck",
                 dict(new=AsyncMock(side_effect=lambda _s, edges, eps: (edges, eps))),
             ),
-            (f"{_SVC}._maybe_prepend_skills_update", dict(new=_ready)),
         ]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "forced", [False, True], ids=["started-early", "forced-by-compaction"]
     )
-    async def test_a_hung_search_adds_at_most_the_join_grace(self, forced, caplog):
-        """The bound on time-to-first-token: once the query is ready the turn
-        waits at most ``warm_context_refresh_join_grace_ms`` for the refresh,
-        whether it started before the query build (a substantive message) or
-        at the join (a short message a compaction forces). A search that
-        never answers costs the turn the grace, is cancelled and logged, and
-        the query goes out without a block."""
+    async def test_a_hung_search_is_cancelled_and_the_query_is_sent(
+        self, forced, caplog
+    ):
+        """A hung search is cancelled at the join and omitted from the query.
+
+        Check the real join's task rather than timing the whole turn: later
+        CLI reads and runner pauses also delay client.query.
+        """
         caplog.set_level(logging.INFO, logger=context_refresh.__name__)
         prior = self._big_prior() if forced else None
-        ready_at: list[float] = []
-        sent_at: list[float] = []
         queries: list[str] = []
 
         async def _never_answers(*_args, **_kwargs):
             await asyncio.Event().wait()
 
-        await self._run(
-            self._session("go on" if forced else "restart the executor", prior=prior),
-            context_refresh.refresh_warm_context,
-            self._clients(queries, sent_at=sent_at),
-            extra=[
-                *(self._compacting(prior) if prior else []),
-                *self._graph(_never_answers, ready_at),
-            ],
-        )
+        with patch.object(
+            context_refresh, "join_refresh", wraps=context_refresh.join_refresh
+        ) as join:
+            await asyncio.wait_for(
+                self._run(
+                    self._session(
+                        "go on" if forced else "restart the executor", prior=prior
+                    ),
+                    context_refresh.refresh_warm_context,
+                    self._clients(queries),
+                    extra=[
+                        *(self._compacting(prior) if prior else []),
+                        *self._graph(_never_answers),
+                    ],
+                ),
+                timeout=10,
+            )
 
-        waited = sent_at[0] - ready_at[0]
-        assert 0.25 <= waited <= 0.3 + 0.25, f"the turn waited {waited:.3f}s"
+        join.assert_awaited_once()
+        assert join.call_args.args[0].task.cancelled()
         assert len(queries) == 1 and "temporal_context" not in queries[0]
         late = [r for r in caplog.records if "refresh late, skipped" in r.message]
         assert len(late) == 1 and late[0].levelno == logging.INFO
@@ -1483,18 +1475,15 @@ class TestFollowUpWarmContextCallSite:
             valid_at=datetime(2025, 1, 1, tzinfo=UTC),
             attributes={"status": "active"},
         )
-        ready_at: list[float] = []
-        sent_at: list[float] = []
         queries: list[str] = []
 
         await self._run(
             self._session("restart the executor"),
             context_refresh.refresh_warm_context,
-            self._clients(queries, sent_at=sent_at),
-            extra=self._graph(AsyncMock(return_value=[edge]), ready_at),
+            self._clients(queries),
+            extra=self._graph(AsyncMock(return_value=[edge])),
         )
 
-        assert sent_at[0] - ready_at[0] < 0.3
         assert len(queries) == 1 and "the executor runs on k3s" in queries[0]
         assert INJECTED_MEMORY_MARKER in queries[0]
         assert "refresh late" not in caplog.text
@@ -2437,6 +2426,94 @@ class TestStreamChatCompletionRetryIntegration:
         errors = [e for e in events if isinstance(e, StreamError)]
         assert not errors, f"Unexpected StreamError: {errors}"
         assert any(isinstance(e, StreamStart) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_every_attempt_hands_the_cli_text_as_text(self):
+        """A chat message must reach the model as written, so the first
+        attempt and the retry's copy of the options both turn the CLI's
+        command parser off and ask for prompts to be delivered verbatim."""
+        session = self._make_session()
+        # The session already holds the message the turn is for, as it does
+        # in production by the time the turn starts.
+        session.messages[-1].content = "/compact"
+        result_msg = self._make_result_message()
+        attempt_options: list = []
+
+        def _client_factory(*args, **kwargs):
+            attempt_options.append(kwargs["options"])
+            if len(attempt_options) == 1:
+                return self._make_client_mock(raises_on_enter=True)
+            return self._make_client_mock(result_message=result_msg)
+
+        transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=transcript,
+            compacted_transcript=_build_transcript(
+                [("user", "[summary]"), ("assistant", "summary reply")]
+            ),
+            client_side_effect=_client_factory,
+        )
+
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for _ in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="/compact",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                pass
+
+        assert len(attempt_options) == 2
+        for options in attempt_options:
+            assert DISABLE_SLASH_COMMANDS_FLAG in options.extra_args
+            assert options.extra_args[DISABLE_SLASH_COMMANDS_FLAG] is None
+            assert options.verbatim_prompts is True
+            assert options.cli_path == "/opt/claude/claude"
+
+    @pytest.mark.asyncio
+    async def test_turn_stops_before_the_cli_starts_when_it_is_too_old(self):
+        """An older CLI ignores ``verbatim_prompts`` without an error, so the
+        turn fails before any CLI process starts."""
+        session = self._make_session()
+        clients: list = []
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=_build_transcript(
+                [("user", "prior question"), ("assistant", "prior answer")]
+            ),
+            compacted_transcript=None,
+            client_side_effect=lambda *a, **kw: clients.append(kw),
+        )
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            check = stack.enter_context(
+                patch(
+                    f"{_SVC}.require_verbatim_prompts_cli",
+                    side_effect=RuntimeError("The Claude Code CLI is too old"),
+                )
+            )
+            with pytest.raises(RuntimeError, match="too old"):
+                async for event in stream_chat_completion_sdk(
+                    session_id="test-session-id",
+                    message="hello",
+                    is_user_message=True,
+                    user_id="test-user",
+                    session=session,
+                ):
+                    events.append(event)
+
+        check.assert_called_once()
+        assert clients == []
+        errors = [e for e in events if isinstance(e, StreamError)]
+        assert [e.errorText for e in errors] == ["The Claude Code CLI is too old"]
 
     @pytest.mark.asyncio
     async def test_all_attempts_exhausted_yields_stream_error(self):
@@ -3383,6 +3460,80 @@ class TestStreamChatCompletionRetryIntegration:
         ]
         assert len(queries) == 1, "a refused auto-continue must not query again"
         drain.assert_awaited_once()  # the turn-start drain only
+
+    @pytest.mark.asyncio
+    async def test_a_load_test_accounts_queued_messages_stay_on_the_scripted_model(
+        self,
+    ):
+        """A load-test account's turn talks to the scripted model
+        (``backend/copilot/load_test.py``), and the continuation that answers
+        what the user queued during it is handed the same stand-in, so
+        neither query gets the deployment's provider."""
+        from backend.copilot.pending_messages import PendingMessage
+
+        session = self._make_session()
+        result_msg = self._make_result_message()
+
+        def _client_factory(*args, **kwargs):
+            return self._make_client_mock(result_message=result_msg)
+
+        drains: list[int] = []
+
+        async def _drain(*args, **kwargs):
+            # Queued after the turn-start drain: the auto-continue picks it up.
+            drains.append(1)
+            if len(drains) == 2:
+                return [PendingMessage(content="and one more thing")]
+            return []
+
+        continuation: dict = {}
+
+        async def _continuation(**kwargs):
+            # The recursive call the auto-continue makes, looked up on the
+            # module; the turn it would run is covered by the tests above.
+            continuation.update(kwargs)
+            return
+            yield
+
+        stand_in = "http://scripted-model:4010/api/v1"
+        env = MagicMock(return_value={})
+        patches = [
+            p
+            for p in _make_sdk_patches(
+                session,
+                original_transcript=_build_transcript(
+                    [("user", "prior question"), ("assistant", "prior answer")]
+                ),
+                compacted_transcript=None,
+                client_side_effect=_client_factory,
+            )
+            if p[0] not in {f"{_SVC}.build_sdk_env", f"{_SVC}.drain_pending_safe"}
+        ]
+
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch(f"{_SVC}.build_sdk_env", new=env))
+            stack.enter_context(patch(f"{_SVC}.drain_pending_safe", new=_drain))
+            stack.enter_context(
+                patch(f"{_SVC}.stream_chat_completion_sdk", new=_continuation)
+            )
+            async for _ in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+                stand_in_model_url=stand_in,
+            ):
+                pass
+
+        assert env.call_args.kwargs["stand_in_model_url"] == stand_in
+        assert continuation, "the queued message should start a continuation"
+        assert continuation["stand_in_model_url"] == stand_in
+        assert [m.content for m in continuation["continued_pending"]] == [
+            "and one more thing"
+        ]
 
 
 # ---------------------------------------------------------------------------

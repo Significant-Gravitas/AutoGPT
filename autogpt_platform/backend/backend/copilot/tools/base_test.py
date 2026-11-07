@@ -1,8 +1,8 @@
 """Tests for BaseTool large-output persistence in execute()."""
 
-import base64
 import json
 import re
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,6 +19,7 @@ from backend.copilot.google_data_redaction import (
 )
 from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.model import ChatSession
+from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.base import (
     _DIGEST_PREVIEW_CHARS,
     _DIGEST_THRESHOLD,
@@ -41,6 +42,11 @@ from backend.copilot.tools.workspace_files import (
     ReadWorkspaceFileTool,
     WorkspaceFileContentResponse,
 )
+from backend.copilot.trial_reads import shared_trial_read, trial_reads_shared
+from backend.copilot.usage_activation import get_ready_usage_state
+from backend.data.pro_activation import UsageActivationState
+from backend.data.subscription_trial import TrialState
+from backend.data.workspace import WorkspaceFile
 
 
 class _HugeOutputTool(BaseTool):
@@ -135,7 +141,9 @@ class TestPersistAndSummarize:
 
         assert 'workspace_path="tool-outputs/tc-123.json">' in result
         assert "format=" not in result
-        assert "to read any section. To process the file" in result
+        assert "to read any section." in result
+        assert "continue from the returned end offset" in result
+        assert "To process the file" in result
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +173,7 @@ class TestBaseToolExecuteLargeOutput:
         tool = _HugeOutputTool(output_size=_LARGE_OUTPUT_THRESHOLD + 10_000)
         session = MagicMock()
         session.session_id = "s-1"
+        session.external_caller = False
 
         mock_workspace = MagicMock()
         mock_workspace.id = "ws-1"
@@ -184,6 +193,90 @@ class TestBaseToolExecuteLargeOutput:
         assert "<tool-output-truncated" in str(result.output)
         assert "read_workspace_file" in str(result.output)
         mock_manager.write_file.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("size", [55_000, 75_000, 200_000])
+    async def test_output_the_cli_would_spill_reaches_the_workspace(self, size):
+        """The Claude CLI moves any result over 50,000 chars to a host folder
+        bash_exec can't open (SECRT-3181). The workspace copy has to come
+        first, and the preview the model gets has to stay under that line."""
+        tool = _HugeOutputTool(output_size=size)
+        session = MagicMock()
+        session.session_id = "s-1"
+        session.external_caller = False
+        manager = AsyncMock()
+        db_patch, mgr_patch = _workspace_patches(manager)
+
+        with db_patch, mgr_patch:
+            result = await tool.execute("user-1", session, "tc-spill")
+
+        manager.write_file.assert_awaited_once()
+        assert "save_to_path" in str(result.output)
+        assert len(str(result.output)) < 50_000
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("size", [_LARGE_OUTPUT_THRESHOLD + 10_000, 200_000])
+    async def test_an_external_callers_large_output_is_not_persisted(self, size):
+        """An MCP client can't follow a preview to its copy; each one was a
+        scanned write into the caller's workspace, counted against its quota."""
+        tool = _HugeOutputTool(output_size=size)
+        session = MagicMock()
+        session.session_id = "s-1"
+        session.external_caller = True
+
+        with patch(
+            "backend.copilot.tools.base._persist_and_summarize",
+            new_callable=AsyncMock,
+        ) as persist_mock:
+            result = await tool.execute("user-1", session, "tc-mcp")
+
+        persist_mock.assert_not_awaited()
+        assert "<tool-output-truncated" not in str(result.output)
+        # Past what a result keeps, the cut says so.
+        assert ("omitted" in str(result.output)) == (size > 100_000)
+
+    @pytest.mark.asyncio
+    async def test_a_non_ascii_window_reaches_the_model_as_text_in_one_result(self):
+        """Read back at the length a persisted preview asks for, a non-ASCII window
+        came back as base64, which a large enough window pushed past the persistence
+        threshold, so the model got ``<binary, ~N bytes>`` and none of the text."""
+        text = "日本語のテキスト" * 10_000
+        raw = text.encode()
+        now = datetime.now(UTC)
+        reader = AsyncMock()
+        reader.get_file_info = AsyncMock(
+            return_value=WorkspaceFile(
+                id="f-1",
+                workspace_id="ws-1",
+                created_at=now,
+                updated_at=now,
+                name="tc-1.json",
+                path="/tool-outputs/tc-1.json",
+                storage_path="local://tc-1.json",
+                mime_type="application/json",
+                size_bytes=len(raw),
+            )
+        )
+        reader.read_file_head_by_id = AsyncMock(side_effect=lambda _id, n: raw[:n])
+        writer = AsyncMock()
+        session = MagicMock(session_id="s-1", external_caller=False)
+        db_patch, mgr_patch = _workspace_patches(writer)
+
+        with (
+            db_patch,
+            mgr_patch,
+            patch(
+                "backend.copilot.tools.workspace_files.get_workspace_manager",
+                AsyncMock(return_value=reader),
+            ),
+        ):
+            result = await ReadWorkspaceFileTool().execute(
+                "user-1", session, "tc-window", file_id="f-1", offset=0, length=50_000
+            )
+
+        writer.write_file.assert_not_awaited()
+        # The internal per-read cap is 30,000 bytes: 10,000 three-byte characters.
+        assert json.loads(str(result.output))["content"] == text[:10_000]
 
     @pytest.mark.asyncio
     async def test_no_persistence_without_user_id(self):
@@ -304,7 +397,7 @@ class _RetrievalTool(ReadWorkspaceFileTool):
             name="tc-digest.json",
             path="tool-outputs/tc-digest.json",
             mime_type="text/plain",
-            content_base64=base64.b64encode(self._text.encode()).decode(),
+            content=self._text,
             message=f"Read chars 0-{len(self._text)} of {len(self._text):,} total",
         )
 
@@ -326,6 +419,7 @@ async def _execute_with_flag(tool, flag_on: bool, manager=None):
     assert flag_on
     session = MagicMock()
     session.session_id = "s-1"
+    session.external_caller = False
     db_patch, mgr_patch = _workspace_patches(manager or AsyncMock())
     with db_patch, mgr_patch:
         return await tool.execute("user-1", session, "tc-digest")
@@ -352,6 +446,7 @@ class TestDigestThreshold:
         # And the way back names the tool and its arguments.
         assert 'read_workspace_file(path="tool-outputs/tc-digest.json"' in output
         assert "offset=<offset>, length=<length>" in output
+        assert "continue from the returned end offset" in output
         # Without this the model reads the outline as a prefix of the output.
         assert "not a literal prefix" in output
         # A flat length= wider than the file turns one "narrow" read into a
@@ -385,12 +480,12 @@ class TestDigestThreshold:
 
     @pytest.mark.asyncio
     async def test_a_retrieved_window_is_never_digested(self):
-        """The way back must fit through the door: base64 pushes any window
-        over ~5.8K past the trigger, and digesting it returns base64, not text."""
+        """The way back must fit through the door: a window past the trigger,
+        digested, would come back as an outline of itself, not its text."""
         text = "R" * (_DIGEST_THRESHOLD * 2)
         result = await _execute_with_flag(_RetrievalTool(text), flag_on=True)
         payload = json.loads(str(result.output))
-        assert base64.b64decode(payload["content_base64"]).decode() == text
+        assert payload["content"] == text
 
     @pytest.mark.asyncio
     async def test_the_outline_summarizes_binary_fields_instead_of_quoting_them(self):
@@ -481,9 +576,21 @@ class TestOutline:
         most of the file is a read the model must never be offered."""
         data = {"tag": "x", "record": {f"k{i}": {"v": "v" * 200} for i in range(10)}}
         body, outline = _outline_of(data, 900)
-        assert "record={…10 keys}" in outline  # spans the file: no window
         widest = max(int(m) for m in re.findall(r"@\d+\+(\d+)", outline))
         assert widest * 4 // 3 < len(body)
+
+    def test_an_oversized_node_gets_its_first_chunk(self):
+        """A node too big to quote whole used to carry no window at all, which
+        left the model nothing to read it back with."""
+        data = {"tag": "x", "record": {f"k{i}": {"v": "v" * 200} for i in range(10)}}
+        body, parsed, offsets = _index_json(json.dumps(data))
+        outline = _outline(parsed, offsets, 900)
+        node_start, node_length = offsets["$.record"]
+        window = re.search(r"record=\{…10 keys @(\d+)\+(\d+)\}", outline)
+        assert window, outline
+        cap = len(body) * 3 // 4
+        assert node_length > cap, "the fixture's node must be oversized"
+        assert (int(window[1]), int(window[2])) == (node_start, cap)
 
     def test_a_single_long_string_still_says_something(self):
         """Structure alone leaves the budget unspent, so the scalar cap widens."""
@@ -588,6 +695,39 @@ class TestEnvelopeEnforcement:
         finally:
             set_execution_context(None, None, envelope=None)
         assert tool.ran is True
+
+
+class TestRefusalStatus:
+    """Chat's engines hand the model a refusal as the tool's result, while an
+    MCP client reads it from the call's status."""
+
+    @pytest.mark.parametrize("external_caller", [False, True])
+    @pytest.mark.asyncio
+    async def test_a_refusal_fails_the_call_only_for_an_external_caller(
+        self, external_caller: bool
+    ):
+        class _Refuses(BaseTool):
+            @property
+            def name(self) -> str:
+                return "refusing_tool"
+
+            @property
+            def description(self) -> str:
+                return "refuses"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                return ErrorResponse(message="No", session_id=session.session_id)
+
+        session = ChatSession.new("u1", dry_run=False, origin="automation")
+        session.external_caller = external_caller
+
+        output = await _Refuses().execute("u1", session, "call-1")
+
+        assert output.success is not external_caller
 
 
 class TestGateEnforcement:
@@ -721,6 +861,67 @@ class TestGateEnforcement:
                 return ErrorResponse(message="ran", session_id=session.session_id)
 
         return _Recorder()
+
+
+class TestTrialReads:
+    @pytest.mark.asyncio
+    async def test_a_tool_reads_the_trial_as_it_is_when_the_tool_runs(self):
+        """A turn's setup shares one trial read; a tool run inside that block
+        reads the trial again, so it acts on the trial as it is now."""
+        at_the_start = MagicMock(spec=TrialState)
+        when_the_tool_ran = MagicMock(spec=TrialState)
+        read = AsyncMock(side_effect=[at_the_start, when_the_tool_ran])
+        seen: list[TrialState | None] = []
+
+        class _ReadsTheTrial(_HugeOutputTool):
+            async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+                seen.append(await shared_trial_read(user_id, read))
+                return await super()._execute(user_id, session, **kwargs)
+
+        session = MagicMock()
+        session.session_id = "s-1"
+        with trial_reads_shared():
+            assert await shared_trial_read("user-1", read) is at_the_start
+            await _ReadsTheTrial(output_size=10).execute("user-1", session, "tc-trial")
+
+        assert seen == [when_the_tool_ran]
+
+    @pytest.mark.asyncio
+    async def test_a_tool_reads_the_usage_state_as_it_is_when_the_tool_runs(self):
+        """A turn's setup shares one usage-state read; a tool run inside that
+        block reads it again, so a plan change mid-turn reaches the tool."""
+        at_the_start = UsageActivationState(
+            user_id="user-1", tier=SubscriptionTier.TRIAL, ready=True
+        )
+        when_the_tool_ran = UsageActivationState(
+            user_id="user-1", tier=SubscriptionTier.PRO, ready=True
+        )
+        usage_db = MagicMock()
+        usage_db.get_usage_activation_state = AsyncMock(
+            side_effect=[at_the_start, when_the_tool_ran]
+        )
+        seen: list[UsageActivationState] = []
+
+        class _ReadsTheUsageState(_HugeOutputTool):
+            async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+                seen.append(await get_ready_usage_state(user_id))
+                return await super()._execute(user_id, session, **kwargs)
+
+        session = MagicMock()
+        session.session_id = "s-1"
+        with (
+            patch(
+                "backend.copilot.usage_activation.pro_activation_db",
+                return_value=usage_db,
+            ),
+            trial_reads_shared(),
+        ):
+            assert await get_ready_usage_state("user-1") is at_the_start
+            await _ReadsTheUsageState(output_size=10).execute(
+                "user-1", session, "tc-usage"
+            )
+
+        assert seen == [when_the_tool_ran]
 
 
 class TestPostHogToolSpans:

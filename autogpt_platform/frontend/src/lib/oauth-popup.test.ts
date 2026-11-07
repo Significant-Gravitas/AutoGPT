@@ -509,3 +509,314 @@ describe("preOpenedWindow option", () => {
     );
   });
 });
+
+describe("same-origin device flow with cross-tab delivery", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 204 })),
+    );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  test.each([false, true])(
+    "closing the device window cancels once (fallback=%s)",
+    async (fallback) => {
+      const popup = makePopupStub();
+      setupPopup(popup);
+      const { promise, cleanup } = openOAuthPopup(
+        "/api/proxy/api/integrations/codex/device-login/login",
+        {
+          stateToken: "device-state",
+          preOpenedWindow: fallback ? null : (popup as unknown as Window),
+          sameOriginFlow: true,
+          useCrossOriginListeners: true,
+          cancelUrl:
+            "/api/proxy/api/integrations/codex/device-login/login/cancel",
+        },
+      );
+      const resolved = vi.fn();
+      const rejected = vi.fn();
+      promise.then(resolved, rejected);
+      popup.closed = true;
+
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(rejected).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(resolved).not.toHaveBeenCalled();
+      expect(rejected).toHaveBeenCalledExactlyOnceWith(
+        new Error(OAUTH_ERROR_WINDOW_CLOSED),
+      );
+      expect(fetch).toHaveBeenCalledExactlyOnceWith(
+        new URL(
+          "/api/proxy/api/integrations/codex/device-login/login/cancel",
+          window.location.origin,
+        ).href,
+        { method: "POST", credentials: "same-origin", keepalive: true },
+      );
+      cleanup.abort();
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  test.each([false, true])(
+    "stored success wins over window close (fallback=%s)",
+    async (fallback) => {
+      const popup = makePopupStub();
+      setupPopup(popup);
+      const { promise } = openOAuthPopup(
+        "/api/proxy/api/integrations/codex/device-login/login",
+        {
+          stateToken: "device-state",
+          preOpenedWindow: fallback ? null : (popup as unknown as Window),
+          sameOriginFlow: true,
+          useCrossOriginListeners: true,
+          cancelUrl:
+            "/api/proxy/api/integrations/codex/device-login/login/cancel",
+        },
+      );
+      localStorage.setItem(
+        "oauth_popup_result_device-state",
+        JSON.stringify({
+          message_type: "oauth_popup_result",
+          success: true,
+          code: "login",
+          state: "device-state",
+        }),
+      );
+      popup.closed = true;
+      await vi.advanceTimersByTimeAsync(500);
+
+      await expect(promise).resolves.toEqual({
+        code: "login",
+        state: "device-state",
+      });
+      expect(fetch).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  test.each([false, true])(
+    "accepts a callback between the storage and close tasks (fallback=%s)",
+    async (fallback) => {
+      const popup = makePopupStub();
+      setupPopup(popup);
+      const intervals = vi.spyOn(globalThis, "setInterval");
+      const { promise, cleanup } = openOAuthPopup("/api/codex/device-login", {
+        stateToken: "device-state",
+        preOpenedWindow: fallback ? null : (popup as unknown as Window),
+        sameOriginFlow: true,
+        useCrossOriginListeners: true,
+        cancelUrl: "/api/codex/device-login/cancel",
+      });
+      const outcome = promise.then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      );
+      const [storagePoll, closePoll] = intervals.mock.calls.map(
+        ([callback]) => callback as () => void,
+      );
+      storagePoll();
+      localStorage.setItem(
+        "oauth_popup_result_device-state",
+        JSON.stringify({
+          message_type: "oauth_popup_result",
+          success: true,
+          code: "login",
+          state: "device-state",
+        }),
+      );
+      popup.closed = true;
+      closePoll();
+
+      expect(await outcome).toEqual({
+        value: { code: "login", state: "device-state" },
+      });
+      expect(cleanup.signal.reason).toBe("completed");
+      expect(fetch).not.toHaveBeenCalled();
+      expect(
+        localStorage.getItem("oauth_popup_result_device-state"),
+      ).toBeNull();
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  test.each([
+    "not-json",
+    "null",
+    JSON.stringify({
+      message_type: "oauth_popup_result",
+      success: true,
+      code: "login",
+      state: "another-state",
+    }),
+    JSON.stringify({
+      message_type: "unexpected-result",
+      success: true,
+      code: "login",
+      state: "device-state",
+    }),
+  ])(
+    "invalid stored callback does not prevent cancellation: %s",
+    async (stored) => {
+      const popup = makePopupStub();
+      setupPopup(popup);
+      const intervals = vi.spyOn(globalThis, "setInterval");
+      const { promise, cleanup } = openOAuthPopup("/api/codex/device-login", {
+        stateToken: "device-state",
+        preOpenedWindow: popup as unknown as Window,
+        sameOriginFlow: true,
+        useCrossOriginListeners: true,
+        cancelUrl: "/api/codex/device-login/cancel",
+      });
+      const outcome = promise.catch((error: unknown) => error);
+      const [storagePoll, closePoll] = intervals.mock.calls.map(
+        ([callback]) => callback as () => void,
+      );
+      storagePoll();
+      localStorage.setItem("oauth_popup_result_device-state", stored);
+      popup.closed = true;
+      closePoll();
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(await outcome).toEqual(new Error(OAUTH_ERROR_WINDOW_CLOSED));
+      expect(cleanup.signal.reason).toBe("popup_closed");
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  test("keeps BroadcastChannel delivery for the local device flow", async () => {
+    const popup = makePopupStub();
+    setupPopup(popup);
+    let receive: ((event: { data: unknown }) => void) | null = null;
+    const close = vi.fn();
+    vi.stubGlobal(
+      "BroadcastChannel",
+      class {
+        close = close;
+        set onmessage(handler: (event: { data: unknown }) => void) {
+          receive = handler;
+        }
+      },
+    );
+    const { promise } = openOAuthPopup(
+      "/api/proxy/api/integrations/codex/device-login/login",
+      {
+        stateToken: "device-state",
+        sameOriginFlow: true,
+        useCrossOriginListeners: true,
+      },
+    );
+    expect(receive).not.toBeNull();
+    receive!({
+      data: {
+        message_type: "oauth_popup_result",
+        success: true,
+        code: "login",
+        state: "device-state",
+      },
+    });
+
+    await expect(promise).resolves.toEqual({
+      code: "login",
+      state: "device-state",
+    });
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test.each([
+    { fallback: false, channel: "postMessage" },
+    { fallback: true, channel: "postMessage" },
+    { fallback: false, channel: "BroadcastChannel" },
+    { fallback: true, channel: "BroadcastChannel" },
+  ])(
+    "allows queued $channel success after close without storage (fallback=$fallback)",
+    async ({ fallback, channel }) => {
+      const popup = makePopupStub();
+      setupPopup(popup);
+      let receive: ((event: { data: unknown }) => void) | null = null;
+      vi.stubGlobal(
+        "BroadcastChannel",
+        class {
+          close = vi.fn();
+          set onmessage(handler: (event: { data: unknown }) => void) {
+            receive = handler;
+          }
+        },
+      );
+      const { promise, cleanup } = openOAuthPopup("/api/codex/device-login", {
+        stateToken: "device-state",
+        preOpenedWindow: fallback ? null : (popup as unknown as Window),
+        sameOriginFlow: true,
+        useCrossOriginListeners: true,
+        cancelUrl: "/api/codex/device-login/cancel",
+      });
+      const outcome = promise.then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      );
+      vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new DOMException("Storage unavailable", "QuotaExceededError");
+      });
+      popup.closed = true;
+      await vi.advanceTimersByTimeAsync(500);
+      const data = {
+        message_type: "oauth_popup_result",
+        success: true,
+        code: "login",
+        state: "device-state",
+      };
+      if (channel === "postMessage") {
+        window.dispatchEvent(new MessageEvent("message", { data }));
+      } else {
+        expect(receive).not.toBeNull();
+        receive!({ data });
+      }
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(await outcome).toEqual({
+        value: { code: "login", state: "device-state" },
+      });
+      expect(cleanup.signal.reason).toBe("completed");
+      expect(fetch).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  test.each([
+    { login: "https://provider.example/oauth", sameOriginFlow: true },
+    { login: "https://[invalid", sameOriginFlow: true },
+    { login: "/api/oauth/redirect", sameOriginFlow: false },
+  ])(
+    "does not infer a same-origin lifetime from the initial URL: $login",
+    async (options) => {
+      const popup = makePopupStub();
+      setupPopup(popup);
+      const { promise, cleanup } = openOAuthPopup(options.login, {
+        stateToken: "device-state",
+        sameOriginFlow: options.sameOriginFlow,
+        useCrossOriginListeners: true,
+      });
+      const rejected = vi.fn();
+      promise.catch(rejected);
+      popup.closed = true;
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(rejected).not.toHaveBeenCalled();
+      cleanup.abort();
+      await promise.catch(() => {});
+    },
+  );
+});

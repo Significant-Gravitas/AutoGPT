@@ -14,24 +14,9 @@ export function FilesEmptyState() {
   return (
     <PanelEmptyState
       tiles={[
-        <Icon
-          key="image"
-          icon={Image01Icon}
-          size={22}
-          className="text-sky-500"
-        />,
-        <Icon
-          key="table"
-          icon={Table01Icon}
-          size={22}
-          className="text-emerald-500"
-        />,
-        <Icon
-          key="doc"
-          icon={File02Icon}
-          size={22}
-          className="text-violet-500"
-        />,
+        <Icon key="image" icon={Image01Icon} size={22} className="text-sky" />,
+        <Icon key="table" icon={Table01Icon} size={22} tone="success" />,
+        <Icon key="doc" icon={File02Icon} size={22} tone="brand" />,
       ]}
       title="No files yet"
       description="Files you attach and documents Otto creates in this chat will show up here."

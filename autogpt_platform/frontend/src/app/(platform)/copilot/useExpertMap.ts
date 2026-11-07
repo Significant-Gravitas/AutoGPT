@@ -83,7 +83,9 @@ export function useExpertMap() {
 
   // Memoized on purpose: the identities read out of this map are passed as
   // props (`expertIdentity`) down the whole chat tree, so rebuilding it every
-  // render would hand every consumer a fresh object identity each time.
+  // render would hand every consumer a fresh object identity each time. Kept
+  // with the compiler on: `activeExpertIds` is an effect dependency of the
+  // recipient picker, which writes the URL when it runs.
   const expertCollections = useMemo(() => {
     const experts = expertsQuery.data;
     if (!experts)
@@ -125,10 +127,15 @@ export function useExpertMap() {
       : EMPTY_IDS,
     isLoadingExperts: expertsQuery.isFetching,
     hasExpertsErrored: expertsQuery.isError && !expertsQuery.isFetching,
+    // The last read failed, and stays so while a retry is in flight.
+    isExpertsError: expertsQuery.isError,
     // Settled = success OR error. resolveExpertIdentity keys off this so an
     // errored roster fetch fails closed (read-only) instead of open.
     hasExpertsSettled:
       !expertsQuery.isFetching &&
       (expertsQuery.isSuccess || expertsQuery.isError),
+    // The roster has answered once (a background refetch keeps it true):
+    // until then nobody can be told apart from "not on the team".
+    hasExpertsLoaded: expertsQuery.isSuccess || expertsQuery.isError,
   };
 }

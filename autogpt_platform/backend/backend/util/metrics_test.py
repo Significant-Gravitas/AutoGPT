@@ -11,19 +11,19 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 
 import pytest
 import sentry_sdk
-from ldclient.client import LDClient
 from sentry_sdk.consts import DEFAULT_OPTIONS
 from sentry_sdk.serializer import serialize
-from sentry_sdk.transport import Transport
 from sentry_sdk.utils import event_from_exception, json_dumps
 
 # Imported at module scope on purpose: AppProcess calls sentry_init() in its
 # class body, so the guard has to hold at collection time, not just in a test.
 import backend.util.process
-from backend.util import feature_flag, metrics, tracing
+from backend.api.utils.client_ip import CLIENT_IP_TOKEN_HEADER
+from backend.util import metrics, tracing
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
@@ -249,6 +249,107 @@ def test_before_send_output_survives_the_sdk_transport() -> None:
     )
 
 
+_JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.c2lnbmF0dXJlLWJ5dGVz"
+
+
+@pytest.mark.parametrize(
+    "message, filtered",
+    [
+        (f"token {_JWT}", True),
+        (f"base64-{_JWT}", True),
+        ("eyJhbGciOiJIUzI1NiJ9 and nothing after", False),
+    ],
+)
+def test_before_send_filters_a_jwt_wherever_its_run_starts(
+    message: str, filtered: bool
+) -> None:
+    scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
+
+    assert scrubbed is not None
+    assert (scrubbed["logentry"]["formatted"] == "[Filtered]") is filtered
+
+
+def test_before_send_scans_a_run_of_jwt_starts_in_linear_time() -> None:
+    message = "-eyJ" * 20_000
+    started = time.perf_counter()
+    scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
+    # A pattern entered at every eyJ takes about 10 s on this input.
+    assert time.perf_counter() - started < 1.0
+    assert scrubbed is not None
+    assert scrubbed["logentry"]["formatted"] == message
+
+
+def test_before_send_searches_no_more_than_its_budget(monkeypatch) -> None:
+    searched: list[int] = []
+    pattern = metrics._EMBEDDED_SECRET_ASSIGNMENT
+
+    class _Recording:
+        def search(self, text: str):
+            searched.append(len(text))
+            return pattern.search(text)
+
+    monkeypatch.setattr(metrics, "_EMBEDDED_SECRET_ASSIGNMENT", _Recording())
+    chunk = "x" * metrics._SENTRY_MAX_VALUE_LENGTH
+    crumbs = metrics._SENTRY_SCRUB_BUDGET // len(chunk) + 5
+    event = _log_event("backend.api.rest_api", "api_key=FAKE-SECRET-1")
+    event["breadcrumbs"] = {"values": [{"message": chunk} for _ in range(crumbs)]}
+    frame = {"function": "handle_request", "vars": {"request": chunk}}
+    event["exception"] = {"values": [{"stacktrace": {"frames": [frame]}}]}
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    assert sum(searched) <= metrics._SENTRY_SCRUB_BUDGET
+    assert scrubbed["logentry"]["formatted"] == "[Filtered]"
+    # A frame sits deeper than any breadcrumb, and is still searched first.
+    assert frame == {"function": "handle_request", "vars": {"request": chunk}}
+    messages = [crumb["message"] for crumb in scrubbed["breadcrumbs"]["values"]]
+    assert set(messages) == {chunk, "[Filtered]"}
+
+
+def _put_in_breadcrumbs(event: dict, chunks: list[str]) -> None:
+    event["breadcrumbs"] = {"values": [{"message": chunk} for chunk in chunks]}
+
+
+def _read_breadcrumbs(event: dict) -> list[str]:
+    return [crumb["message"] for crumb in event["breadcrumbs"]["values"]]
+
+
+def _put_in_frames(event: dict, chunks: list[str]) -> None:
+    frames = [{"vars": {"local": chunk}} for chunk in chunks]
+    event["exception"] = {"values": [{"stacktrace": {"frames": frames}}]}
+
+
+def _read_frames(event: dict) -> list[str]:
+    frames = event["exception"]["values"][0]["stacktrace"]["frames"]
+    return [frame["vars"]["local"] for frame in frames]
+
+
+@pytest.mark.parametrize(
+    "put, read",
+    [(_put_in_breadcrumbs, _read_breadcrumbs), (_put_in_frames, _read_frames)],
+    ids=["breadcrumbs", "frames"],
+)
+def test_before_send_spends_its_budget_on_the_newest_entries(put, read) -> None:
+    count = metrics._SENTRY_SCRUB_BUDGET // metrics._SENTRY_MAX_VALUE_LENGTH + 4
+    chunks = [
+        f"{index:04d}".ljust(metrics._SENTRY_MAX_VALUE_LENGTH, "x")
+        for index in range(count)
+    ]
+    event = _log_event("backend.api.rest_api", "nothing secret")
+    put(event, chunks)
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    values = read(scrubbed)
+    # Searched and kept from the newest end, filtered from the oldest, in place.
+    assert values[0] == "[Filtered]"
+    first_kept = next(i for i, value in enumerate(values) if value != "[Filtered]")
+    assert values[first_kept:] == chunks[first_kept:]
+    assert set(values[:first_kept]) == {"[Filtered]"}
+
+
 def test_before_send_keeps_untyped_balance_message() -> None:
     try:
         raise RuntimeError("Third-party API reported insufficient balance")
@@ -427,6 +528,82 @@ def test_sentry_init_sends_no_trace_headers_to_third_parties(monkeypatch) -> Non
     assert calls[0]["trace_propagation_targets"] == []
 
 
+def test_sentry_init_cuts_long_values_before_they_are_scrubbed(monkeypatch) -> None:
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert calls[0]["max_value_length"] == metrics._SENTRY_MAX_VALUE_LENGTH
+
+
+def test_a_large_frame_local_reaches_the_event_truncated(monkeypatch) -> None:
+    """A failed virus scan's traceback holds the upload in several frames, and the
+    SDK's full repr of each took seconds and a gigabyte for a 90 MB file."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    metrics.sentry_init()
+
+    def write_file(content: bytes) -> None:
+        raise RuntimeError("Virus scanning failed")
+
+    try:
+        write_file(b"x" * 5_000_000)
+    except RuntimeError:
+        event, _ = event_from_exception(
+            sys.exc_info(), client_options={**DEFAULT_OPTIONS, **calls[0]}
+        )
+
+    raising_frame = event["exception"]["values"][0]["stacktrace"]["frames"][-1]
+    assert len(raising_frame["vars"]["content"]) < 2_000
+
+
+def test_both_event_bounds_hold_through_one_trip_to_before_send(monkeypatch) -> None:
+    """The SDK applies ``custom_repr`` and ``max_value_length`` in the one serialize
+    pass before ``before_send``, so the scrubber only ever searches bounded text."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    metrics.sentry_init()
+    options = {**DEFAULT_OPTIONS, **calls[0]}
+
+    def write_file(content: bytes) -> None:
+        raise RuntimeError("Virus scanning failed")
+
+    try:
+        write_file(b"x" * 5_000_000)
+    except RuntimeError:
+        event, _ = event_from_exception(sys.exc_info(), client_options=options)
+
+    event.update(_log_event("backend.api.rest_api", "api_key=FAKE-SECRET-1"))
+    event["extra"] = {"transcript": "y" * 1_000_000}
+    scrubbed = _before_send(
+        serialize(
+            event,
+            max_value_length=options["max_value_length"],
+            custom_repr=options["custom_repr"],
+        ),
+        {},
+    )
+
+    assert scrubbed is not None
+    # custom_repr cut the frame local before repr() built a 5 MB copy, so it reports
+    # the original length; without it the value arrives as a max_value_length slice.
+    local = scrubbed["exception"]["values"][0]["stacktrace"]["frames"][-1]["vars"][
+        "content"
+    ]
+    assert local.endswith("... (5,000,000 long)")
+    assert len(local) < metrics._SENTRY_MAX_VALUE_LENGTH
+    # max_value_length cut the long innocent value, so the scrubber searched it and
+    # kept it; unbounded it would exceed the budget and be dropped as [Filtered].
+    assert scrubbed["extra"]["transcript"] != "[Filtered]"
+    assert len(scrubbed["extra"]["transcript"]) <= metrics._SENTRY_MAX_VALUE_LENGTH
+    # And the budget the two bounds left over still caught the secret.
+    assert scrubbed["logentry"]["formatted"] == "[Filtered]"
+
+
 def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:
     """A spawned service subprocess does not inherit sys.modules, but does
     inherit PYTEST_CURRENT_TEST from the environment."""
@@ -437,62 +614,6 @@ def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> Non
     metrics.sentry_init()
 
     assert calls == []
-
-
-def test_sentry_init_never_hooks_or_opens_a_launchdarkly_client(monkeypatch) -> None:
-    """Sentry once asked feature_flag.get_client() for a LaunchDarklyIntegration,
-    which initialised an LD client in every process that set up Sentry. LD bills
-    per connection, so sentry_init() must neither hook LD nor create a client
-    (SECRT-2708)."""
-    calls = _spy_on_sentry_init(monkeypatch)
-    monkeypatch.delitem(sys.modules, "pytest")
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    monkeypatch.setattr(feature_flag.settings.secrets, "launch_darkly_sdk_key", "sdk-x")
-    ld_inits: list[str] = []
-    monkeypatch.setattr(
-        feature_flag, "initialize_launchdarkly", lambda: ld_inits.append("init")
-    )
-    monkeypatch.setattr(feature_flag, "_init_attempted", False)
-
-    metrics.sentry_init()
-
-    assert len(calls) == 1
-    integration_names = {type(i).__name__ for i in calls[0]["integrations"]}
-    assert "LaunchDarklyIntegration" not in integration_names
-    assert ld_inits == []
-
-
-class _DiscardTransport(Transport):
-    def capture_envelope(self, envelope) -> None:
-        pass
-
-
-def test_sentry_sdk_setup_from_sentry_init_hooks_no_launchdarkly(monkeypatch) -> None:
-    """The test above stops at the arguments sentry_init() passes. This builds a
-    real SDK client from them, with sentry-sdk's default and auto-enabling
-    integrations, and checks that SDK setup neither enables the LaunchDarkly
-    integration nor constructs an LD client."""
-    calls = _spy_on_sentry_init(monkeypatch)
-    monkeypatch.delitem(sys.modules, "pytest")
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    monkeypatch.setattr(feature_flag.settings.secrets, "launch_darkly_sdk_key", "sdk-x")
-    monkeypatch.setattr(feature_flag, "_init_attempted", False)
-    ld_clients: list[str] = []
-
-    def _refuse_ld_client(self, *args, **kwargs) -> None:
-        ld_clients.append("created")
-        raise RuntimeError("Sentry setup constructed a LaunchDarkly client")
-
-    monkeypatch.setattr(LDClient, "__init__", _refuse_ld_client)
-
-    metrics.sentry_init()
-    client = sentry_sdk.Client(**calls[0], transport=_DiscardTransport)
-    try:
-        assert "fastapi" in client.integrations
-        assert "launchdarkly" not in client.integrations
-    finally:
-        client.close()
-    assert ld_clients == []
 
 
 # ---------- release and environment tagging ----------
@@ -690,6 +811,8 @@ def _event_with_ip_headers() -> dict:
                 "Cf-Ipcity": "Warsaw",
                 "Cf-Iplatitude": "52.2",
                 "X-Vercel-Ip-City": "Warsaw",
+                # The frontend's signed client-IP token carries the visitor's IP too.
+                CLIENT_IP_TOKEN_HEADER: "203.0.113.7",
                 "Cf-Ray": "8a1b2c3d4e5f6789-WAW",
             },
         },

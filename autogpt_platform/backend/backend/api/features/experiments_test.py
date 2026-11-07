@@ -8,7 +8,7 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 
-from backend.data.experiments import ExperimentAssignment
+from backend.data.experiments import Experiment, ExperimentAssignment
 
 from .experiments import router as experiments_router
 
@@ -36,44 +36,33 @@ def _assignment(variant: str = "yearly-pro") -> ExperimentAssignment:
     )
 
 
-def test_record_assignment(mocker: pytest_mock.MockFixture, test_user_id: str) -> None:
-    record = mocker.patch(
-        "backend.api.features.experiments.experiments_db.record_assignment",
+def test_get_assignment_assigns_for_the_caller(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    assign = mocker.patch(
+        "backend.api.features.experiments.experiments_db.assign",
         new_callable=AsyncMock,
         return_value=_assignment(),
     )
 
-    response = client.post(
-        "/assignments",
-        json={
-            "experiment_key": "subscription-pricing-page-initial-state",
-            "variant": "yearly-pro",
-        },
-    )
+    response = client.get("/assignments/subscription-pricing-page-initial-state")
 
     assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["variant"] == "yearly-pro"
-    assert body["experiment_key"] == "subscription-pricing-page-initial-state"
-    record.assert_awaited_once_with(
-        user_id=test_user_id,
-        experiment_key="subscription-pricing-page-initial-state",
-        variant="yearly-pro",
-        source="posthog",
+    assert response.json()["variant"] == "yearly-pro"
+    assign.assert_awaited_once_with(test_user_id, Experiment.SUBSCRIPTION_PRICING)
+
+
+def test_get_assignment_refuses_a_flag_that_is_not_a_declared_experiment(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    assign = mocker.patch(
+        "backend.api.features.experiments.experiments_db.assign", new_callable=AsyncMock
     )
 
+    response = client.get("/assignments/copilot-model-routing")
 
-def test_record_assignment_rejects_unknown_source() -> None:
-    response = client.post(
-        "/assignments",
-        json={"experiment_key": "k", "variant": "v", "source": "guess"},
-    )
     assert response.status_code == 422
-
-
-def test_record_assignment_rejects_empty_variant() -> None:
-    response = client.post("/assignments", json={"experiment_key": "k", "variant": ""})
-    assert response.status_code == 422
+    assign.assert_not_awaited()
 
 
 def test_list_assignments(mocker: pytest_mock.MockFixture, test_user_id: str) -> None:

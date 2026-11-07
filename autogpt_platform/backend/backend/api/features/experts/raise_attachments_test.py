@@ -37,6 +37,12 @@ async def _marketplace_install_race(existing: object | None):
             raise_attachments, "transaction", _transaction_losing_the_insert()
         ),
         patch.object(
+            raise_attachments,
+            "resolve_default_tenancy",
+            new_callable=AsyncMock,
+            return_value=("org-1", "team-1"),
+        ),
+        patch.object(
             raise_attachments.library_db,
             "is_store_listing_version_available_for_install",
             new_callable=AsyncMock,
@@ -47,27 +53,35 @@ async def _marketplace_install_race(existing: object | None):
             "add_store_agent_to_library_in_transaction",
             new_callable=AsyncMock,
             return_value=SimpleNamespace(id="library-agent-1"),
-        ),
+        ) as add_to_library,
         patch.object(
             prisma.models.ExpertWorkflow, "prisma", return_value=workflow_client
         ),
     ):
-        yield workflow_client
+        yield workflow_client, add_to_library
 
 
 async def test_install_marketplace_workflow_accepts_concurrent_winner():
     winner = SimpleNamespace(id="workflow-1")
 
-    async with _marketplace_install_race(winner) as workflow_client:
+    async with _marketplace_install_race(winner) as (workflow_client, add):
         await raise_attachments.install_marketplace_workflow(
             "user-1", "expert-1", "slv-1"
         )
 
     workflow_client.find_first.assert_awaited_once()
+    # The tenancy is resolved before the transaction, so it has to be handed in.
+    assert (
+        add.await_args.kwargs["organization_id"],
+        add.await_args.kwargs["team_id"],
+    ) == (
+        "org-1",
+        "team-1",
+    )
 
 
 async def test_install_marketplace_workflow_reraises_race_without_winner():
-    async with _marketplace_install_race(None) as workflow_client:
+    async with _marketplace_install_race(None) as (workflow_client, _):
         with pytest.raises(prisma.errors.UniqueViolationError):
             await raise_attachments.install_marketplace_workflow(
                 "user-1", "expert-1", "slv-1"

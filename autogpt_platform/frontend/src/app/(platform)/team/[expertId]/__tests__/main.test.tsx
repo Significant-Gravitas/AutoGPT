@@ -1226,7 +1226,7 @@ describe("ExpertDetailPage", () => {
     expect(within(panel).getByPlaceholderText("Message Maria…")).toBeDefined();
     expect(
       within(panel)
-        .getByRole("link", { name: "Open in Copilot" })
+        .getByRole("link", { name: "Open in Chat" })
         .getAttribute("href"),
     ).toBe("/copilot?expertId=expert-maria&new=1");
     expect(listedSessions).toBe(0);
