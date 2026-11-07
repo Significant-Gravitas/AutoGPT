@@ -34,14 +34,13 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from apscheduler.triggers.cron import CronTrigger
-
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tools.session_context import is_followups_feature_enabled
 from backend.copilot.tracking import track_chat_outcome
 from backend.data.db_accessors import user_db
 from backend.util.clients import get_scheduler_client
+from backend.util.cron import validate_cron
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .base import BaseTool
@@ -186,7 +185,7 @@ class ScheduleFollowupTool(BaseTool):
                 message=(
                     "Scheduled followups are currently disabled for this "
                     "user. Re-enable the ``copilot-scheduled-followups`` "
-                    "LaunchDarkly flag to use ``schedule_followup``."
+                    "feature flag to use ``schedule_followup``."
                 ),
                 error="feature_disabled",
                 session_id=current_session_id,
@@ -255,13 +254,11 @@ class ScheduleFollowupTool(BaseTool):
             )
             user_timezone = get_user_timezone_or_utc(None)
 
-        # Pre-validate cron locally — CronTrigger.from_crontab raises ValueError
-        # on the scheduler service, which crosses the RPC boundary as a generic
-        # RemoteError and won't match `except ValueError` below. Validating
-        # here gives the model a clean, actionable error message.
+        # Pre-validate cron locally: the scheduler's ValueError crosses the RPC
+        # boundary as a generic RemoteError and won't match `except ValueError`.
         if cron is not None:
             try:
-                CronTrigger.from_crontab(cron, timezone=user_timezone)
+                validate_cron(cron, user_timezone)
             except ValueError as e:
                 return ErrorResponse(
                     message=f"Invalid cron expression: {e}",

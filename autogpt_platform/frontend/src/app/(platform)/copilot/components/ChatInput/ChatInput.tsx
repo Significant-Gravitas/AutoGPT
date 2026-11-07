@@ -10,6 +10,7 @@ import {
   InputGroup,
   InputGroupAddon,
 } from "@/components/molecules/InputGroup/InputGroup";
+import { containsLikelySecret } from "@/lib/secret-detection";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
@@ -41,11 +42,13 @@ import {
 } from "./components/ComposerPlusMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
+import { MentionConnectDialog } from "./components/MentionConnectDialog";
 import { MentionDropdown } from "./components/MentionDropdown";
 import { ConnectionPickerDialog } from "./components/ConnectionPicker/ConnectionPickerDialog";
 import { NoAIConnectionNotice } from "./components/NoAIConnectionNotice/NoAIConnectionNotice";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
+import { SecretPasteNotice } from "./components/SecretPasteNotice";
 import { StopButton } from "./components/StopButton";
 import { TranscriptionErrorBar } from "./components/TranscriptionErrorBar";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
@@ -132,6 +135,9 @@ interface Props {
   expertId?: string | null;
   /** Names that expert in the picker's filter row. */
   expertName?: string | null;
+  /** Who the message goes to, named in the secret warning: the expert, or
+   *  Otto when unset. */
+  assistantName?: string | null;
   /** Attachments stay open during a reply, and a message with attachments
    *  goes to `onSend`, which must hold it until the reply ends. */
   canAttachWhileStreaming?: boolean;
@@ -171,14 +177,15 @@ export const ChatInput = memo(function ChatInput({
   variant = "default",
   expertId = null,
   expertName = null,
+  assistantName = null,
   canAttachWhileStreaming = false,
   atReset,
 }: Props) {
   const isDryRun = useCopilotUIStore((s) => s.isDryRun);
   const setIsDryRun = useCopilotUIStore((s) => s.setIsDryRun);
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
-  // Fast/Thinking control it was created for is gone. Renaming it means an
-  // LaunchDarkly change, so it is left until the combined picker restructures
+  // Fast/Thinking control it was created for is gone. Renaming it means a
+  // PostHog change, so it is left until the combined picker restructures
   // these controls anyway. Splitting it now would need two new flags and would
   // hide both survivors until someone created them.
   const showAdvancedComposerControls = useGetFlag(Flag.CHAT_MODE_OPTION);
@@ -442,6 +449,7 @@ export const ChatInput = memo(function ChatInput({
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
       {mentions.isOpen && (
         <MentionDropdown
+          trigger={mentions.trigger}
           options={mentions.options}
           showFiles={mentions.showFiles}
           hasIntegrations={mentions.hasIntegrations}
@@ -459,19 +467,17 @@ export const ChatInput = memo(function ChatInput({
           keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
         className={cn(
-          // TODO(tokens): no exact role for shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)]
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- the pill composer's 2rem radius and two-layer lift; no radius or shadow token has them
           "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-border-base shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
           // Card composer: a hairline border and a shallow drop instead of
           // the pill's deep shadow, so it reads as a surface the text sits on.
           stacked &&
-            // TODO(tokens): no exact role for shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)]
-            "gap-3 !rounded-3xl border-border-base px-3.5 pb-3.5 pt-3 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
+            // oxlint-disable-next-line design-system/no-arbitrary-values -- the card composer's shallow two-layer drop; no shadow token has it
+            "gap-3 !rounded-3xl border-border-base px-3.5 pt-3 pb-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
           isCompact &&
-            // TODO(tokens): no exact role for shadow-[0_1px_2px_rgba(0,0,0,0.04)]; no fitting role for has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-            "!rounded-xl border-border-base shadow-[0_1px_2px_rgba(0,0,0,0.04)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-400",
+            "!rounded-xl border-border-base shadow-message-table has-[[data-slot=input-group-control]:focus-visible]:border-foreground-subtle",
           isRecording &&
-            // TODO(tokens): no exact role for border-red-400, ring-red-400, has-[[data-slot=input-group-control]:focus-visible]:border-red-400, has-[[data-slot=input-group-control]:focus-visible]:ring-red-400
-            "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
+            "border-error ring-1 ring-error has-[[data-slot=input-group-control]:focus-visible]:border-error has-[[data-slot=input-group-control]:focus-visible]:ring-error",
         )}
       >
         {voiceBar}
@@ -495,6 +501,11 @@ export const ChatInput = memo(function ChatInput({
         {atReset && hasAttachments && (
           <AtResetFilesNotice className={stacked ? undefined : "mt-1.5"} />
         )}
+        <SecretPasteNotice
+          visible={containsLikelySecret(value)}
+          assistantName={assistantName ?? "Otto"}
+          className={stacked ? undefined : "mt-1.5"}
+        />
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
@@ -529,7 +540,7 @@ export const ChatInput = memo(function ChatInput({
                 stacked
                   ? cn(
                       CARD_ICON_BUTTON_CLASS,
-                      "[&[aria-expanded=true]_svg]:rotate-45 [&_svg]:transition-transform [&_svg]:duration-200",
+                      "[&_svg]:transition-transform [&_svg]:duration-200 [&[aria-expanded=true]_svg]:rotate-45",
                     )
                   : iconButtonClass
               }
@@ -679,6 +690,13 @@ export const ChatInput = memo(function ChatInput({
           expertName={expertName}
         />
       )}
+      <MentionConnectDialog
+        request={mentions.connectRequest}
+        expertId={expertId}
+        expertName={expertName}
+        onCancel={mentions.cancelConnect}
+        onConnected={mentions.resumeAfterConnect}
+      />
     </form>
   );
 });

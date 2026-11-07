@@ -1,9 +1,9 @@
-import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 // An absolute path: Next.js resolves plugin names from the project folder, but
 // Storybook's postcss-loader does not.
-const tailwind3Compat = fileURLToPath(
-  new URL("./postcss.tailwind3-compat.cjs", import.meta.url),
+const tailwind3Compat = createRequire(import.meta.url).resolve(
+  "./postcss.tailwind3-compat.cjs",
 );
 
 /** @type {import('postcss-load-config').Config} */

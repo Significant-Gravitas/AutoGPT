@@ -17,6 +17,7 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 from backend.util.request import HTTPClientError
+from backend.util.user_regex import compile_user_regex
 
 from ._api import get_api
 from ._auth import (
@@ -29,11 +30,18 @@ from ._auth import (
 
 logger = logging.getLogger(__name__)
 
-# Compiling the search pattern isn't covered by the timeout, and the timeout
-# is shared by every line searched in one run.
-SEARCH_PATTERN_MAX_LENGTH = 10_000
+# The search timeout is shared by every line searched in one run.
 SEARCH_TIMEOUT_SECONDS = 5.0
 SEARCH_TIMED_OUT = "Searching the CI logs timed out."
+
+# GitHub check-run conclusions that count as a pass. Everything else that is
+# completed (failure, timed_out, action_required, cancelled, stale,
+# startup_failure, or a missing conclusion) counts as a failure.
+PASSING_CONCLUSIONS = frozenset({"success", "neutral", "skipped"})
+
+
+def _is_passing(run: dict) -> bool:
+    return run.get("conclusion") in PASSING_CONCLUSIONS
 
 
 def _is_not_found(error: HTTPClientError) -> bool:
@@ -396,11 +404,9 @@ class GithubGetCIResultsBlock(Block):
             all_completed = all(run["status"] == "completed" for run in check_runs)
             if all_completed:
                 yield "overall_status", "completed"
-                # Determine overall conclusion
-                has_failure = any(
-                    run["conclusion"] in ["failure", "timed_out", "action_required"]
-                    for run in check_runs
-                )
+                # Allow-list: any other completed conclusion (cancelled, stale,
+                # startup_failure, action_required, ...) is not a pass.
+                has_failure = any(not _is_passing(run) for run in check_runs)
                 if has_failure:
                     yield "overall_conclusion", "failure"
                 else:
@@ -411,9 +417,11 @@ class GithubGetCIResultsBlock(Block):
 
         # Count checks
         total = len(check_runs)
-        passed = sum(1 for run in check_runs if run.get("conclusion") == "success")
+        passed = sum(1 for run in check_runs if _is_passing(run))
         failed = sum(
-            1 for run in check_runs if run.get("conclusion") in ["failure", "timed_out"]
+            1
+            for run in check_runs
+            if run.get("status") == "completed" and not _is_passing(run)
         )
 
         yield "total_checks", total
@@ -433,13 +441,8 @@ class GithubGetCIResultsBlock(Block):
 
 
 def _compile_search_pattern(pattern: str) -> regex.Pattern[str]:
-    if len(pattern) > SEARCH_PATTERN_MAX_LENGTH:
-        raise ValueError(
-            f"Search pattern is too large to evaluate safely "
-            f"({len(pattern)} characters; maximum {SEARCH_PATTERN_MAX_LENGTH})."
-        )
     try:
-        return regex.compile(pattern, regex.IGNORECASE | regex.MULTILINE)
+        return compile_user_regex(pattern, regex.IGNORECASE | regex.MULTILINE)
     except regex.error as error:
         raise ValueError(f"Invalid search pattern: {error}") from error
 

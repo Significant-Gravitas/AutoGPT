@@ -1,8 +1,5 @@
 "use client";
 
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// text-amber-600 #D97706.
-
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AgentInfo } from "@/app/(platform)/marketplace/components/AgentInfo/AgentInfo";
@@ -60,7 +57,7 @@ export default function AdminPreviewPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground">Loading preview...</p>
+        <p className="text-foreground-tertiary">Loading preview...</p>
       </div>
     );
   }
@@ -68,10 +65,10 @@ export default function AdminPreviewPage() {
   if (error || !data) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <p className="text-destructive">{error || "Preview not found"}</p>
+        <p className="text-error">{error || "Preview not found"}</p>
         <button
           onClick={() => router.back()}
-          className="text-muted-foreground underline"
+          className="text-foreground-tertiary underline"
         >
           Go back
         </button>
@@ -90,21 +87,21 @@ export default function AdminPreviewPage() {
       <div className="mb-6 flex items-center justify-between">
         <button
           onClick={() => router.back()}
-          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+          className="flex items-center gap-2 text-body text-foreground-tertiary hover:text-foreground-base"
         >
           <Icon icon={ArrowLeft02Icon} size={16} />
           Back to Admin Marketplace
         </button>
 
         <div className="flex items-center gap-3">
-          <span className="rounded-md bg-warning/20 px-3 py-1 text-sm font-medium text-amber-600">
+          <span className="rounded-md bg-warning/20 px-3 py-1 text-body font-medium text-warning-foreground">
             Admin Preview
             {!data.has_approved_version && " — Pending Approval"}
           </span>
           <button
             onClick={handleAddToLibrary}
             disabled={isAddingToLibrary}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded-md bg-action px-4 py-2 text-body font-medium text-action-foreground hover:bg-action/90 disabled:opacity-50"
           >
             {isAddingToLibrary ? "Adding..." : "Add to My Library"}
           </button>
@@ -132,8 +129,8 @@ export default function AdminPreviewPage() {
           {allMedia.length > 0 ? (
             <AgentImages images={allMedia} />
           ) : (
-            <div className="flex h-64 items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25">
-              <p className="text-muted-foreground">
+            <div className="flex h-64 items-center justify-center rounded-lg border-2 border-dashed border-foreground-tertiary/25">
+              <p className="text-foreground-tertiary">
                 No images or videos submitted
               </p>
             </div>
@@ -145,27 +142,27 @@ export default function AdminPreviewPage() {
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {data.instructions && (
           <div className="rounded-lg border p-4">
-            <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+            <h3 className="mb-2 text-body font-semibold text-foreground-tertiary">
               Instructions
             </h3>
-            <p className="whitespace-pre-wrap text-sm">{data.instructions}</p>
+            <p className="text-body whitespace-pre-wrap">{data.instructions}</p>
           </div>
         )}
         {data.recommended_schedule_cron && (
           <div className="rounded-lg border p-4">
-            <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+            <h3 className="mb-2 text-body font-semibold text-foreground-tertiary">
               Recommended Schedule
             </h3>
-            <code className="rounded bg-muted px-2 py-1 text-sm">
+            <code className="rounded bg-surface-hover px-2 py-1 text-body">
               {data.recommended_schedule_cron}
             </code>
           </div>
         )}
         <div className="rounded-lg border p-4">
-          <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+          <h3 className="mb-2 text-body font-semibold text-foreground-tertiary">
             Slug
           </h3>
-          <code className="rounded bg-muted px-2 py-1 text-sm">
+          <code className="rounded bg-surface-hover px-2 py-1 text-body">
             {data.slug}
           </code>
         </div>

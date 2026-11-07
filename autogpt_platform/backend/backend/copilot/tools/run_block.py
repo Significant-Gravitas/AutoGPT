@@ -118,6 +118,7 @@ class RunBlockTool(BaseTool):
         validate_only: bool = False,
         gate_approved: bool = False,
         gate_decided: bool = False,
+        refs_resolved: bool = False,
         **kwargs,  # dry_run is intentionally not accepted; read from session.dry_run
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
@@ -131,6 +132,8 @@ class RunBlockTool(BaseTool):
                 irreversible-action pause would ask the same question twice.
             gate_decided: The chat's approval gate reached a verdict on this
                 call; with unified approvals on, its yes is the block's review.
+            refs_resolved: The input's file references were resolved before
+                the gate reviewed the call, so it runs as reviewed.
 
         Returns:
             BlockOutputResponse: Block execution outputs
@@ -172,6 +175,7 @@ class RunBlockTool(BaseTool):
             session_id=session_id,
             dry_run=dry_run,
             validate_only=validate_only,
+            refs_resolved=refs_resolved,
         )
         if isinstance(prep_or_err, ToolResponseBase):
             return prep_or_err
@@ -318,17 +322,23 @@ _SCHEMA_MAP_KEYS = frozenset(
 )
 
 
-def _strip_presentation_annotations(node: Any) -> Any:
-    """Return *node* with the builder-UI annotation keys removed, recursively."""
+def _strip_presentation_annotations(node: Any, name: str | None = None) -> Any:
+    """Return *node* without the annotations the model cannot act on.
+
+    *name* is the property the node is filed under, when there is one — a title
+    that only re-cases that name is dropped too.
+    """
     if isinstance(node, dict):
         cleaned: dict[str, Any] = {}
         for key, value in node.items():
             if key in _PRESENTATION_ONLY_KEYS:
                 continue
+            if key == "title" and name is not None and value == _derived_title(name):
+                continue
             if key in _SCHEMA_MAP_KEYS and isinstance(value, dict):
                 cleaned[key] = {
-                    name: _strip_presentation_annotations(sub)
-                    for name, sub in value.items()
+                    sub_name: _strip_presentation_annotations(sub, sub_name)
+                    for sub_name, sub in value.items()
                 }
             else:
                 cleaned[key] = _strip_presentation_annotations(value)
@@ -336,6 +346,15 @@ def _strip_presentation_annotations(node: Any) -> Any:
     if isinstance(node, list):
         return [_strip_presentation_annotations(item) for item in node]
     return node
+
+
+def _derived_title(property_name: str) -> str:
+    """The label BlockDetailsCard renders when a property carries no title.
+
+    Must stay in step with ``deriveFieldTitle`` in that component: a title this
+    reproduces is dropped, so any drift changes what the card displays.
+    """
+    return " ".join(w[:1].upper() + w[1:] for w in property_name.split("_"))
 
 
 def _strip_credentials_from_schema(

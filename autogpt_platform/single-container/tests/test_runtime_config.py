@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 MODULE_PATH = Path(__file__).parents[1] / "runtime_config.py"
@@ -77,13 +78,11 @@ class RuntimeConfigTest(unittest.TestCase):
                     "VAPID_PUBLIC_KEY",
                 },
             )
-            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            if os.name != "nt":
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
     def test_first_boot_honors_explicit_values(self) -> None:
-        vapid_private = base64.urlsafe_b64encode(b"p" * 32).rstrip(b"=").decode()
-        vapid_public = (
-            base64.urlsafe_b64encode(b"\x04" + b"q" * 64).rstrip(b"=").decode()
-        )
+        vapid_private, vapid_public = _matching_vapid_pair()
         environment = {
             "POSTGRES_PASSWORD": "p" * 40,
             "RABBITMQ_DEFAULT_USER": "self_hosted",
@@ -130,9 +129,103 @@ class RuntimeConfigTest(unittest.TestCase):
                 runtime_config.ensure_runtime_config(path, {})
 
         self.assertIn(("fsync", False), events)
-        self.assertIn(("fsync", True), events)
         self.assertLess(events.index(("fsync", False)), events.index(("replace",)))
-        self.assertLess(events.index(("replace",)), events.index(("fsync", True)))
+        if os.name == "nt":
+            self.assertNotIn(("fsync", True), events)
+        else:
+            self.assertIn(("fsync", True), events)
+            self.assertLess(events.index(("replace",)), events.index(("fsync", True)))
+
+    def test_first_boot_and_reopen_with_windows_apis(self) -> None:
+        def refuse_directories(target: Path, flags: int, mode: int = 0o777) -> int:
+            if os.path.isdir(target):
+                raise PermissionError(13, "Permission denied", str(target))
+            return os.open(target, flags, mode)
+
+        for fchmod_available in (False, True):
+            windows_os = SimpleNamespace(**vars(os))
+            windows_os.name = "nt"
+            windows_os.open = refuse_directories
+            windows_os.fsync = mock.Mock(wraps=os.fsync)
+            windows_os.replace = mock.Mock(wraps=os.replace)
+            windows_os.fchmod = mock.Mock()
+            if not fchmod_available:
+                del windows_os.fchmod
+
+            with (
+                self.subTest(fchmod_available=fchmod_available),
+                tempfile.TemporaryDirectory() as directory,
+                mock.patch.object(runtime_config, "os", windows_os),
+            ):
+                path = Path(directory) / "runtime.env"
+                with self.assertRaisesRegex(ValueError, "POSTGRES_PASSWORD"):
+                    runtime_config.ensure_runtime_config(
+                        path, {"POSTGRES_PASSWORD": "too-short"}
+                    )
+                self.assertEqual(list(Path(directory).iterdir()), [])
+
+                first = runtime_config.ensure_runtime_config(path, {})
+                before = path.read_bytes()
+                self.assertEqual(first, runtime_config.ensure_runtime_config(path, {}))
+                self.assertEqual(path.read_bytes(), before)
+                windows_os.fsync.assert_called_once()
+                windows_os.replace.assert_called_once()
+                if fchmod_available:
+                    windows_os.fchmod.assert_called_once_with(mock.ANY, 0o600)
+
+                with self.assertRaisesRegex(ValueError, "persisted on first boot"):
+                    runtime_config.ensure_runtime_config(
+                        path, {"POSTGRES_PASSWORD": first["POSTGRES_PASSWORD"] + "x"}
+                    )
+                self.assertEqual(path.read_bytes(), before)
+                self.assertEqual(list(Path(directory).iterdir()), [path])
+
+    def test_failed_write_keeps_existing_config_and_removes_temporary_file(
+        self,
+    ) -> None:
+        for operation in ("fsync", "replace"):
+            with (
+                self.subTest(operation=operation),
+                tempfile.TemporaryDirectory() as root,
+            ):
+                path = Path(root) / "runtime.env"
+                _write_version_1_config(path)
+                before = path.read_bytes()
+                with (
+                    mock.patch.object(
+                        runtime_config.os, operation, side_effect=OSError("test")
+                    ),
+                    self.assertRaisesRegex(OSError, "test"),
+                ):
+                    runtime_config.ensure_runtime_config(path, {})
+                self.assertEqual(path.read_bytes(), before)
+                self.assertEqual(list(Path(root).iterdir()), [path])
+
+    @unittest.skipIf(os.name == "nt", "directory fsync requires POSIX")
+    def test_directory_fsync_failure_closes_descriptor_and_keeps_replaced_file(
+        self,
+    ) -> None:
+        real_fsync = os.fsync
+        directory_descriptors: list[int] = []
+
+        def fail_directory_fsync(descriptor: int) -> None:
+            if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+                directory_descriptors.append(descriptor)
+                raise OSError("test")
+            real_fsync(descriptor)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            with (
+                mock.patch.object(runtime_config.os, "fsync", fail_directory_fsync),
+                mock.patch.object(runtime_config.os, "close", wraps=os.close) as close,
+                self.assertRaisesRegex(OSError, "test"),
+            ):
+                runtime_config.ensure_runtime_config(path, {})
+            self.assertEqual(len(directory_descriptors), 1)
+            close.assert_called_once_with(directory_descriptors[0])
+            runtime_config.ensure_runtime_config(path, {})
+            self.assertEqual(list(Path(directory).iterdir()), [path])
 
     def test_first_boot_closes_descriptor_when_fdopen_fails(self) -> None:
         real_close = runtime_config.os.close
@@ -207,6 +300,154 @@ class RuntimeConfigTest(unittest.TestCase):
                     Path(directory) / "runtime.env", environment
                 )
 
+    def test_rejects_an_environment_pair_whose_keys_do_not_match(self) -> None:
+        """Subscriptions would be taken under one key and pushes signed with
+        another, which every push service rejects, so the pair is refused
+        where a half-set one is. A private key that is not a P-256 scalar
+        is left for validation to name."""
+        private, _ = _matching_vapid_pair()
+        other_public = (
+            base64.urlsafe_b64encode(b"\x04" + b"q" * 64).rstrip(b"=").decode()
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            self.assertRaisesRegex(ValueError, "not the public key of"),
+        ):
+            runtime_config.ensure_runtime_config(
+                Path(directory) / "runtime.env",
+                {"VAPID_PRIVATE_KEY": private, "VAPID_PUBLIC_KEY": other_public},
+            )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            self.assertRaisesRegex(ValueError, "exactly 32 bytes"),
+        ):
+            runtime_config.ensure_runtime_config(
+                Path(directory) / "runtime.env",
+                {"VAPID_PRIVATE_KEY": "p" * 40, "VAPID_PUBLIC_KEY": other_public},
+            )
+
+    def test_rejects_a_private_key_outside_the_curve_order(self) -> None:
+        """Thirty-two bytes spelling zero, or the curve order or more, are no
+        private key: no public key derives from them, so the pair check has
+        nothing to say, and validation refuses them. The largest scalar
+        there is, with its own public key, is a pair like any other."""
+        public = runtime_config._base64url(b"\x04" + b"q" * 64)
+        for scalar in (0, runtime_config._P256_N, 2**256 - 1):
+            private = runtime_config._base64url(scalar.to_bytes(32, "big"))
+            with (
+                self.subTest(scalar=hex(scalar)),
+                tempfile.TemporaryDirectory() as directory,
+                self.assertRaisesRegex(ValueError, "P-256 private scalar"),
+            ):
+                runtime_config.ensure_runtime_config(
+                    Path(directory) / "runtime.env",
+                    {"VAPID_PRIVATE_KEY": private, "VAPID_PUBLIC_KEY": public},
+                )
+        largest = runtime_config._P256_N - 1
+        private = runtime_config._base64url(largest.to_bytes(32, "big"))
+        public = runtime_config._base64url(runtime_config._p256_public_point(largest))
+        with tempfile.TemporaryDirectory() as directory:
+            values = runtime_config.ensure_runtime_config(
+                Path(directory) / "runtime.env",
+                {"VAPID_PRIVATE_KEY": private, "VAPID_PUBLIC_KEY": public},
+            )
+        self.assertEqual(
+            (values["VAPID_PRIVATE_KEY"], values["VAPID_PUBLIC_KEY"]), (private, public)
+        )
+
+    def test_a_published_pair_in_the_environment_does_not_stop_the_next_boot(
+        self,
+    ) -> None:
+        """The first boot replaces the published pair, and the environment it
+        came from is passed in unchanged on every later boot, which must take
+        the pair persisted then rather than refuse to start."""
+        environment = {
+            "VAPID_PRIVATE_KEY": "pretend-shipped-private",
+            "VAPID_PUBLIC_KEY": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            runtime_config._vapid_key_digest(value) for value in environment.values()
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+        ):
+            path = Path(directory) / "runtime.env"
+
+            first = runtime_config.ensure_runtime_config(path, environment)
+            second = runtime_config.ensure_runtime_config(path, environment)
+
+        self.assertEqual(second, first)
+        self.assertNotIn(first["VAPID_PRIVATE_KEY"], environment.values())
+        self.assertNotIn(first["VAPID_PUBLIC_KEY"], environment.values())
+
+    def test_rejects_a_pair_with_only_one_published_key(self) -> None:
+        """Replacing the published half would drop the other, which the next
+        boot would then read as a changed value and refuse, so the pair is
+        refused at once, whichever half is the published one."""
+        private, public = _matching_vapid_pair()
+        published = {
+            "VAPID_PRIVATE_KEY": "pretend-shipped-private",
+            "VAPID_PUBLIC_KEY": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            runtime_config._vapid_key_digest(value) for value in published.values()
+        )
+        cases = [
+            {**published, "VAPID_PUBLIC_KEY": public},
+            {**published, "VAPID_PRIVATE_KEY": private},
+        ]
+        for environment in cases:
+            with (
+                self.subTest(environment=environment),
+                tempfile.TemporaryDirectory() as directory,
+                mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+                self.assertRaisesRegex(ValueError, "one is the published key"),
+            ):
+                runtime_config.ensure_runtime_config(
+                    Path(directory) / "runtime.env", environment
+                )
+
+    def test_a_persisted_published_pair_is_replaced_on_the_next_boot(self) -> None:
+        """An earlier release persisted whatever pair the environment gave it,
+        the published one included, and the backend sends no push with that
+        pair. The next boot replaces it the way a first boot would today: with
+        the environment's own pair, or a generated one, saved for the boots
+        after it."""
+        published = {
+            "VAPID_PRIVATE_KEY": "pretend-shipped-private",
+            "VAPID_PUBLIC_KEY": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            runtime_config._vapid_key_digest(value) for value in published.values()
+        )
+        theirs = dict(zip(runtime_config.VAPID_KEY_SETTINGS, _matching_vapid_pair()))
+        for environment in ({}, theirs):
+            with (
+                self.subTest(environment=environment),
+                tempfile.TemporaryDirectory() as directory,
+                mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+            ):
+                path = Path(directory) / "runtime.env"
+                runtime_config.ensure_runtime_config(path, {})
+                content = path.read_text(encoding="ascii")
+                for name, value in published.items():
+                    content = _replace_config_value(content, name, value)
+                path.write_text(content, encoding="ascii")
+
+                replaced = runtime_config.ensure_runtime_config(path, environment)
+                again = runtime_config.ensure_runtime_config(path, environment)
+
+                self.assertEqual(again, replaced)
+                self.assertNotIn(replaced["VAPID_PRIVATE_KEY"], published.values())
+                self.assertNotIn(replaced["VAPID_PUBLIC_KEY"], published.values())
+                for name, value in environment.items():
+                    self.assertEqual(replaced[name], value)
+                self.assertEqual(
+                    runtime_config._read_config(path)["VAPID_PRIVATE_KEY"],
+                    replaced["VAPID_PRIVATE_KEY"],
+                )
+
     def test_rejects_corrupt_existing_config(self) -> None:
         invalid_vapid_public = (
             base64.urlsafe_b64encode(b"\x03" + b"q" * 64).rstrip(b"=").decode()
@@ -277,7 +518,8 @@ class RuntimeConfigTest(unittest.TestCase):
             self.assertEqual(
                 {**upgraded, "AUTOGPT_RUNTIME_CONFIG_VERSION": "1"}, original
             )
-            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            if os.name != "nt":
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
             again = runtime_config.ensure_runtime_config(path, {})
             self.assertEqual(again["INTERNAL_API_KEY"], key)
             self.assertEqual(again["AUTOGPT_RUNTIME_CONFIG_VERSION"], "2")
@@ -556,6 +798,7 @@ class FillEnvSecretsTest(unittest.TestCase):
                 keys.append(path.read_text(encoding="utf-8"))
             self.assertNotEqual(keys[0], keys[1])
 
+    @unittest.skipIf(os.name == "nt", "POSIX file modes are unavailable on Windows")
     def test_generated_file_becomes_owner_only(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / ".env"
@@ -565,6 +808,349 @@ class FillEnvSecretsTest(unittest.TestCase):
             runtime_config.fill_env_blanks(path)
 
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    def test_fills_a_blank_vapid_pair_from_one_generated_key(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text("VAPID_PRIVATE_KEY=\nVAPID_PUBLIC_KEY=\n", encoding="utf-8")
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY"])
+            values = _env_values(path)
+            private = _base64url_decode(values["VAPID_PRIVATE_KEY"])
+            public = _base64url_decode(values["VAPID_PUBLIC_KEY"])
+            self.assertEqual(len(private), 32)
+            self.assertEqual(len(public), 65)
+            # The public key written is the one for the private key written.
+            self.assertEqual(
+                public,
+                runtime_config._p256_public_point(int.from_bytes(private, "big")),
+            )
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+    def test_a_vapid_pair_the_operator_set_is_kept(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text(
+                "VAPID_PRIVATE_KEY=their-private\nVAPID_PUBLIC_KEY=their-public\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+            values = _env_values(path)
+            self.assertEqual(values["VAPID_PRIVATE_KEY"], "their-private")
+            self.assertEqual(values["VAPID_PUBLIC_KEY"], "their-public")
+
+    def test_a_half_set_vapid_pair_is_refused_not_half_filled(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text(
+                "VAPID_PRIVATE_KEY=their-private\nVAPID_PUBLIC_KEY=\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "must be set together"):
+                runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(_env_values(path)["VAPID_PUBLIC_KEY"], "")
+
+    def test_a_bare_name_vapid_line_counts_as_set(self) -> None:
+        """A name alone on a line takes the environment's value when the
+        stack starts, so it is a set key, not a blank one: beside a blank
+        key it is refused as a half-set pair rather than paired with a
+        generated key, and two bare names are left to Compose."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            half = "VAPID_PRIVATE_KEY\nVAPID_PUBLIC_KEY=\n"
+            path.write_text(half, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "must be set together"):
+                runtime_config.fill_env_blanks(path)
+            self.assertEqual(path.read_text(encoding="utf-8"), half)
+
+            both = "VAPID_PRIVATE_KEY\nVAPID_PUBLIC_KEY\n"
+            path.write_text(both, encoding="utf-8")
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+            self.assertEqual(path.read_text(encoding="utf-8"), both)
+
+    def test_a_pair_whose_keys_do_not_belong_together_is_refused(self) -> None:
+        """Browsers would subscribe under the public key and the backend sign
+        with a private key it isn't from, which every push service rejects,
+        so the pair is named rather than kept, in any spelling, and the file
+        is left as it was. A private key that isn't a raw scalar is the
+        backend's to load (py-vapid reads a DER key too), and a `$NAME`
+        reference is Compose's to fill in when the stack starts."""
+        private, public = _matching_vapid_pair()
+        other_public = runtime_config._base64url(b"\x04" + b"q" * 64)
+        zero = runtime_config._base64url(bytes(32))
+        refused = {
+            "another key's public key": (private, other_public, "not the public key"),
+            "the same, padded": (
+                private + "=",
+                other_public + "=",
+                "not the public key",
+            ),
+            "a zero scalar": (zero, public, "not a P-256 private key"),
+        }
+        for label, (private_value, public_value, message) in refused.items():
+            text = _vapid_env(private_value, public_value)
+            with self.subTest(label), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / ".env"
+                path.write_text(text, encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, message):
+                    runtime_config.fill_env_blanks(path)
+                self.assertEqual(path.read_text(encoding="utf-8"), text)
+        kept = {
+            "the pair, padded": (private + "=", public + "="),
+            "a DER-shaped private key": (
+                runtime_config._base64url(b"\x30" + b"d" * 120),
+                public,
+            ),
+            "a reference for the public key": (private, "${PUSH_PUBLIC}"),
+            "a reference for the private key": ("${PUSH_PRIVATE}", other_public),
+        }
+        for label, (private_value, public_value) in kept.items():
+            text = _vapid_env(private_value, public_value)
+            with self.subTest(label), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / ".env"
+                path.write_text(text, encoding="utf-8")
+                self.assertEqual(runtime_config.fill_env_blanks(path), [])
+                self.assertEqual(path.read_text(encoding="utf-8"), text)
+
+    def test_a_published_vapid_pair_is_replaced(self) -> None:
+        """The pair signs nothing that is stored, so like a service password a
+        published one is replaced rather than kept (the backend refuses to
+        send pushes with it either way)."""
+        published = {
+            "private": "pretend-shipped-private",
+            "public": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            runtime_config._vapid_key_digest(value) for value in published.values()
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+        ):
+            path = Path(directory) / ".env"
+            path.write_text(
+                f"VAPID_PRIVATE_KEY={published['private']}\n"
+                f"VAPID_PUBLIC_KEY={published['public']}\n",
+                encoding="utf-8",
+            )
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY"])
+            values = _env_values(path)
+            self.assertNotIn(values["VAPID_PRIVATE_KEY"], published.values())
+            self.assertNotIn(values["VAPID_PUBLIC_KEY"], published.values())
+            private = _base64url_decode(values["VAPID_PRIVATE_KEY"])
+            self.assertEqual(
+                _base64url_decode(values["VAPID_PUBLIC_KEY"]),
+                runtime_config._p256_public_point(int.from_bytes(private, "big")),
+            )
+
+    def test_every_spelling_of_the_published_key_counts_as_published(self) -> None:
+        """py-vapid drops newlines, restores Base64 padding and takes the
+        standard alphabet, and a decoder ignores the unused bits of the last
+        character, so each of these decodes to the published bytes."""
+        raw = bytes(range(0xE0, 0x100))  # Base64url with both `-` and `_` in it.
+        published = runtime_config._base64url(raw)
+        digests = frozenset({runtime_config._vapid_key_digest(published)})
+        spellings = {
+            "as published": published,
+            "padded": f"{published}=",
+            "wrapped": f"{published[:8]}\n{published[8:]}",
+            "standard alphabet": base64.b64encode(raw).decode(),
+            "other unused bits": _with_other_unused_bits(published),
+        }
+        with mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests):
+            for name, spelling in spellings.items():
+                with self.subTest(spelling=name):
+                    self.assertEqual(_base64url_decode("".join(spelling.split())), raw)
+                    self.assertTrue(runtime_config._is_published_vapid_key(spelling))
+            self.assertFalse(
+                runtime_config._is_published_vapid_key(
+                    runtime_config._base64url(bytes(32))
+                )
+            )
+            self.assertFalse(runtime_config._is_published_vapid_key("their-private"))
+            self.assertFalse(runtime_config._is_published_vapid_key(""))
+            self.assertFalse(runtime_config._is_published_vapid_key("=\n"))
+
+    def test_a_vapid_pair_absent_from_an_older_env_is_appended(self) -> None:
+        """A backend/.env copied before the pair existed gets one, like a
+        password .env.default declared later, rather than inheriting the
+        blank .env.default lines and running with push disabled."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "backend"
+            root.mkdir()
+            (root / ".env.default").write_text(
+                "VAPID_PRIVATE_KEY=\nVAPID_PUBLIC_KEY=\n", encoding="utf-8"
+            )
+            path = root / ".env"
+            path.write_text("OPENAI_API_KEY=sk-theirs\n", encoding="utf-8")
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY"])
+            values = _env_values(path)
+            self.assertEqual(values["OPENAI_API_KEY"], "sk-theirs")
+            private = _base64url_decode(values["VAPID_PRIVATE_KEY"])
+            self.assertEqual(
+                _base64url_decode(values["VAPID_PUBLIC_KEY"]),
+                runtime_config._p256_public_point(int.from_bytes(private, "big")),
+            )
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+    def test_a_published_frontend_public_key_is_cleared(self) -> None:
+        """The app takes NEXT_PUBLIC_VAPID_PUBLIC_KEY over the backend's key,
+        so the published one left in frontend/.env would keep browsers
+        subscribing under a pair the backend no longer signs with. Blank, the
+        app fetches the backend's key; any other value is the operator's."""
+        published = "pretend-shipped-public"
+        digests = frozenset({runtime_config._vapid_key_digest(published)})
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+        ):
+            root = Path(directory) / "frontend"
+            root.mkdir()
+            path = root / ".env"
+            path.write_text(
+                f'NEXT_PUBLIC_VAPID_PUBLIC_KEY="{published}"\n'
+                "NEXT_PUBLIC_OTHER=kept\n",
+                encoding="utf-8",
+            )
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["NEXT_PUBLIC_VAPID_PUBLIC_KEY"])
+            values = _env_values(path)
+            self.assertEqual(values["NEXT_PUBLIC_VAPID_PUBLIC_KEY"], "")
+            self.assertEqual(values["NEXT_PUBLIC_OTHER"], "kept")
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+            for value in ("", "their-public"):
+                with self.subTest(value=value):
+                    path.write_text(
+                        f"NEXT_PUBLIC_VAPID_PUBLIC_KEY={value}\n", encoding="utf-8"
+                    )
+                    self.assertEqual(runtime_config.fill_env_blanks(path), [])
+                    self.assertEqual(
+                        _env_values(path)["NEXT_PUBLIC_VAPID_PUBLIC_KEY"], value
+                    )
+
+    def test_published_vapid_pair_in_the_environment_is_regenerated(self) -> None:
+        """The single-container first boot takes the pair from the environment,
+        unless it is the published one."""
+        environment = {
+            "VAPID_PRIVATE_KEY": "pretend-shipped-private",
+            "VAPID_PUBLIC_KEY": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            runtime_config._vapid_key_digest(value) for value in environment.values()
+        )
+        with mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests):
+            private, public = runtime_config._configured_or_generated_vapid(environment)
+
+        self.assertNotIn(private, environment.values())
+        self.assertEqual(len(_base64url_decode(private)), 32)
+        self.assertEqual(len(_base64url_decode(public)), 65)
+        kept = {
+            "VAPID_PRIVATE_KEY": "their-private",
+            "VAPID_PUBLIC_KEY": "their-public",
+        }
+        self.assertEqual(
+            runtime_config._configured_or_generated_vapid(kept),
+            ("their-private", "their-public"),
+        )
+
+    def test_p256_public_point_matches_the_rfc_6979_test_vector(self) -> None:
+        """RFC 6979 appendix A.2.5: the P-256 key pair every implementation
+        agrees on, so the interpreter-only arithmetic is checked against a
+        published answer, not against itself."""
+        private = 0xC9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721
+        expected = (
+            b"\x04"
+            + (
+                0x60FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6
+            ).to_bytes(32, "big")
+            + (
+                0x7903FE1008B8BC99A41AE9E95628BC64F2F1B20C2D7E9F5177A3C294D4462299
+            ).to_bytes(32, "big")
+        )
+
+        self.assertEqual(runtime_config._p256_public_point(private), expected)
+
+    def test_key_generation_needs_no_cryptography_package(self) -> None:
+        """`make init-env` runs under the system interpreter, which has no
+        `cryptography`: the pair is then made with the interpreter alone.
+
+        The package is blocked under every name on the import path, since an
+        already loaded subpackage is found in sys.modules before its blocked
+        parent is consulted; and the scalar comes from a patched draw, so a
+        pair the package made would fail the check."""
+        # RFC 6979 appendix A.2.5 again, so the point is a published answer.
+        scalar = 0xC9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721
+        blocked = {
+            name: None
+            for name in (
+                "cryptography",
+                "cryptography.hazmat",
+                "cryptography.hazmat.primitives",
+                "cryptography.hazmat.primitives.asymmetric",
+                "cryptography.hazmat.primitives.asymmetric.ec",
+            )
+        }
+        with (
+            mock.patch.dict(sys.modules, blocked),
+            mock.patch.object(
+                runtime_config.secrets, "randbelow", return_value=scalar - 1
+            ),
+        ):
+            private, public = runtime_config._generate_p256_keypair()
+
+        self.assertEqual(int.from_bytes(private, "big"), scalar)
+        self.assertEqual(public, runtime_config._p256_public_point(scalar))
+
+    def test_interpreter_only_p256_agrees_with_cryptography(self) -> None:
+        try:
+            from cryptography.hazmat.primitives.asymmetric import ec
+        except ImportError:
+            self.skipTest("cryptography is not installed in this interpreter")
+
+        private, public = runtime_config._generate_p256_keypair()
+        scalar = int.from_bytes(private, "big")
+        point = ec.derive_private_key(scalar, ec.SECP256R1()).public_key()
+        numbers = point.public_numbers()
+
+        self.assertEqual(
+            public,
+            b"\x04" + numbers.x.to_bytes(32, "big") + numbers.y.to_bytes(32, "big"),
+        )
+        self.assertEqual(runtime_config._p256_public_point(scalar), public)
+
+    def test_the_canonical_spelling_and_its_digest_are_pinned(self) -> None:
+        """The published digests are of canonical spellings, so a change to
+        what counts as canonical would stop them matching, with every mocked
+        test still green. These literals hold the form still; the backend's
+        copy of the canonicalisation pins the same ones."""
+        raw = bytes(range(0xE0, 0x100))
+        canonical = (
+            "4OHi4-Tl5ufo6err7O3u7_Dx8vP09fb3-Pn6-_z9_v8"  # pragma: allowlist secret
+        )
+        digest = "d90bad97384181273203dd0f8cc30e16a817bef7a51b026eb6bf0a7fcba3312a"  # pragma: allowlist secret
+        for spelling in (
+            canonical,
+            canonical + "=",
+            base64.b64encode(raw).decode(),
+            canonical[:10] + "\n" + canonical[10:],
+        ):
+            self.assertEqual(runtime_config._canonical_vapid_key(spelling), canonical)
+        self.assertEqual(runtime_config._vapid_key_digest(canonical), digest)
 
     def test_published_digests_match_the_backend_startup_check(self) -> None:
         """The backend warns about the same published passwords this replaces."""
@@ -584,6 +1170,20 @@ class FillEnvSecretsTest(unittest.TestCase):
 
         digests = ast.literal_eval(assignment.value)
         self.assertEqual(digests, set(runtime_config.PUBLISHED_CREDENTIAL_DIGESTS))
+        vapid = next(
+            node
+            for node in ast.walk(ast.parse(guard))
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name)
+                and target.id == "_RETIRED_VAPID_PRIVATE_KEY_DIGESTS"
+                for target in node.targets
+            )
+        )
+        # The key the push sender refuses is one `fill-env` replaces.
+        self.assertTrue(
+            ast.literal_eval(vapid.value) <= set(runtime_config.PUBLISHED_VAPID_DIGESTS)
+        )
         self.assertTrue(digests)
         self.assertTrue(
             all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in digests)
@@ -623,10 +1223,17 @@ class FillEnvSecretsTest(unittest.TestCase):
                 for relative_path in runtime_config.BLANK_IN_ENV_DEFAULT
             }
             for relative_path, names in runtime_config.BLANK_IN_ENV_DEFAULT.items():
-                # Blank is only safe if setup can actually fill it back in.
+                # Blank is only safe if setup can actually fill it back in. The
+                # frontend's copy of the push key is the one exception: blank,
+                # the app fetches the backend's key, so setup leaves it blank.
+                fillable = [
+                    name
+                    for name in names
+                    if name != runtime_config.FRONTEND_VAPID_PUBLIC_KEY
+                ]
                 self.assertEqual(
                     sorted(runtime_config.fill_env_blanks(env_files[relative_path])),
-                    sorted(names),
+                    sorted(fillable),
                 )
 
 
@@ -1402,6 +2009,10 @@ class FillEnvServicePasswordsTest(unittest.TestCase):
         ]
 
 
+def _base64url_decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
 def _copy_env_default(platform_root: Path, root: Path, relative_path: str) -> Path:
     env_path = root / relative_path.replace(".env.default", ".env")
     env_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1470,6 +2081,28 @@ def _write_config_lines(path: Path, values: dict[str, str]) -> None:
     lines += [f"{name}={value}" for name, value in values.items()]
     path.write_text("\n".join(lines) + "\n", encoding="ascii")
     path.chmod(0o600)
+
+
+_BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+
+def _matching_vapid_pair() -> tuple[str, str]:
+    """A fixed P-256 private key and the public key that belongs to it, in
+    the Base64url form the settings take."""
+    private = b"p" * 32
+    public = runtime_config._p256_public_point(int.from_bytes(private, "big"))
+    return runtime_config._base64url(private), runtime_config._base64url(public)
+
+
+def _vapid_env(private: str, public: str) -> str:
+    return f"VAPID_PRIVATE_KEY={private}\nVAPID_PUBLIC_KEY={public}\n"
+
+
+def _with_other_unused_bits(key: str) -> str:
+    """`key` with the lowest bit of its last character flipped: for 32 bytes
+    that bit is one of the two the decoder ignores, so the bytes are the same."""
+    last = _BASE64URL_ALPHABET.index(key[-1]) ^ 1
+    return key[:-1] + _BASE64URL_ALPHABET[last]
 
 
 def _replace_config_value(content: str, name: str, value: str) -> str:

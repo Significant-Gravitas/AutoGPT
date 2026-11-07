@@ -1,4 +1,6 @@
-import type { Breadcrumb, Event, init } from "@sentry/nextjs";
+import type { Breadcrumb, Event } from "@sentry/nextjs";
+
+type SentrySpan = NonNullable<Event["spans"]>[number];
 
 // The backend's marker and rule (backend/util/url_redaction.py): every query
 // value is masked and its key kept, and so is every credential path segment.
@@ -18,9 +20,6 @@ export function redactURL(url: string): string {
 export function redactURLsInText(text: string): string {
   return redactPath(text.replace(QUERY_IN_TEXT, redactQuery));
 }
-
-type SentryOptions = NonNullable<Parameters<typeof init>[0]>;
-type SentrySpan = Parameters<NonNullable<SentryOptions["beforeSendSpan"]>>[0];
 
 /**
  * An event carries its page as `request.url`, the page before it as Referer,
@@ -73,16 +72,27 @@ const URL_ATTRIBUTES = new Set([
 
 function redactAttributeURLs(attributes: Record<string, unknown>) {
   for (const [name, value] of Object.entries(attributes)) {
-    if (typeof value !== "string") continue;
-    if (name.startsWith(HEADER_ATTRIBUTE_PREFIX)) {
-      attributes[name] = redactHeader(name, value);
-    } else if (QUERY_ATTRIBUTES.has(name)) {
-      // The semantic conventions give a query or fragment without its ? or #.
-      attributes[name] = redactQuery(value);
-    } else if (URL_ATTRIBUTES.has(name)) {
-      attributes[name] = redactURL(value);
+    const redact = getAttributeRedactor(name);
+    if (!redact) continue;
+    if (typeof value === "string") {
+      attributes[name] = redact(value);
+    } else if (Array.isArray(value)) {
+      // A header attribute holds one entry per value the header was sent with.
+      attributes[name] = value.map((item) =>
+        typeof item === "string" ? redact(item) : item,
+      );
     }
   }
+}
+
+function getAttributeRedactor(name: string) {
+  if (name.startsWith(HEADER_ATTRIBUTE_PREFIX)) {
+    return (value: string) => redactHeader(name, value);
+  }
+  // The semantic conventions give a query or fragment without its ? or #.
+  if (QUERY_ATTRIBUTES.has(name)) return redactQuery;
+  if (URL_ATTRIBUTES.has(name)) return redactURL;
+  return null;
 }
 
 function redactRequestURLs(request: Event["request"]) {

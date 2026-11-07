@@ -86,15 +86,22 @@ afterAll(() => server.close());
 
 function trackOpenRequests() {
   const fetch = globalThis.fetch;
-  globalThis.fetch = (...args: Parameters<typeof fetch>) => {
-    const request = fetch(...args);
-    openRequests.add(request);
-    request.then(
-      () => openRequests.delete(request),
-      () => openRequests.delete(request),
-    );
-    return request;
-  };
+  // MSW installs its fetch as a non-writable property, so redefine it rather
+  // than assign; not vi.stubGlobal, which tests' vi.unstubAllGlobals() undoes.
+  Object.defineProperty(globalThis, "fetch", {
+    value: (...args: Parameters<typeof fetch>) => {
+      const request = fetch(...args);
+      openRequests.add(request);
+      request.then(
+        () => openRequests.delete(request),
+        () => openRequests.delete(request),
+      );
+      return request;
+    },
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
 }
 
 // cleanup() runs pending mount effects whose requests start a few ticks later,

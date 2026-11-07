@@ -5,8 +5,12 @@ import pytest
 from prisma.enums import ReviewStatus
 from pytest_mock import MockerFixture
 
+from backend.blocks import get_blocks
+from backend.blocks._base import BlockSchema
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.google._drive import GoogleDriveFile
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
+from backend.blocks.mcp.block import MCPToolBlock
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
 from backend.data.execution import (
     ExecutionContext,
@@ -14,6 +18,7 @@ from backend.data.execution import (
     ExecutionTrigger,
     GraphExecutionWithNodes,
 )
+from backend.data.graph import GraphSettings, Node
 from backend.data.model import User
 from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
@@ -24,6 +29,7 @@ from backend.executor.utils import (
     _is_optional_picker,
     add_graph_execution,
     is_credential_validation_error_message,
+    validate_exec,
 )
 from backend.util.mock import MockObject
 
@@ -1379,7 +1385,7 @@ async def test_validate_node_input_credentials_auto_creds_valid(
     mock_store = mocker.MagicMock()
     mock_creds = mocker.MagicMock()
     mock_creds.id = "valid-cred-id"
-    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=mock_creds)
+    mock_store.get_all_creds = mocker.AsyncMock(return_value=[mock_creds])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1434,7 +1440,7 @@ async def test_validate_node_input_credentials_auto_creds_missing(
 
     # Mock the credentials store to return None (cred not found for this user)
     mock_store = mocker.MagicMock()
-    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=None)
+    mock_store.get_all_creds = mocker.AsyncMock(return_value=[])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1514,14 +1520,9 @@ async def test_validate_node_input_credentials_both_regular_and_auto(
     mock_auto_creds = mocker.MagicMock()
     mock_auto_creds.id = "auto-cred-id"
 
-    def get_creds_side_effect(user_id, cred_id):
-        if cred_id == "regular-cred-id":
-            return mock_regular_creds
-        elif cred_id == "auto-cred-id":
-            return mock_auto_creds
-        return None
-
-    mock_store.get_creds_by_id = mocker.AsyncMock(side_effect=get_creds_side_effect)
+    mock_store.get_all_creds = mocker.AsyncMock(
+        return_value=[mock_regular_creds, mock_auto_creds]
+    )
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1573,7 +1574,7 @@ async def test_validate_node_input_credentials_auto_creds_optional_missing(
     mock_graph.nodes = [mock_node]
 
     mock_store = mocker.MagicMock()
-    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=None)
+    mock_store.get_all_creds = mocker.AsyncMock(return_value=[])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1939,6 +1940,46 @@ async def test_validate_node_input_credentials_linked_picker_is_not_checked(
 
     assert mock_node.id not in errors
     assert mock_node.id not in nodes_to_skip
+
+
+class _CountedLinks(list):
+    """A graph's links that count how many are read."""
+
+    reads = 0
+
+    def __iter__(self):
+        for link in super().__iter__():
+            _CountedLinks.reads += 1
+            yield link
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_reads_each_link_once(
+    mocker: MockerFixture,
+):
+    """Whether a picker is fed by a link is looked up in an index built
+    from the graph's links once."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    count = 300
+    nodes = []
+    for i in range(count):
+        node = _picker_node(mocker, None, annotation=GoogleDriveFile)
+        node.id = f"node-{i}"
+        nodes.append(node)
+    links = _CountedLinks(
+        mocker.MagicMock(sink_id=node.id, sink_name="spreadsheet") for node in nodes
+    )
+    mock_graph = mocker.MagicMock(nodes=nodes, links=links)
+    _CountedLinks.reads = 0
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph, user_id="some-user", nodes_input_masks=None
+    )
+
+    assert not errors
+    assert not nodes_to_skip
+    assert _CountedLinks.reads <= count
 
 
 @pytest.mark.asyncio
@@ -2468,6 +2509,71 @@ async def test_autopilot_execution_keeps_explicit_tenancy(mocker: MockerFixture)
     assert create_kwargs["team_id"] == "shared-team"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "owner, supplied, expected",
+    [
+        ("test-user-id", False, True),  # the runner's own personal org
+        (None, True, False),  # a team org, whatever the caller supplied
+    ],
+)
+async def test_the_ledger_a_run_bills_is_decided_when_it_is_queued(
+    mocker: MockerFixture, _orgs_are_not_personal, owner, supplied, expected
+):
+    """Billing reads the pin set when the run was queued."""
+    from backend.data.execution import ExecutionContext
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(
+        mocker, org_id="org-1", team_id="team-1"
+    )
+    _orgs_are_not_personal.return_value.get_personal_org_owner.return_value = owner
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="test-user-id",
+        execution_context=ExecutionContext(bills_own_wallet=supplied),
+        organization_id="org-1",
+        team_id="team-1",
+    )
+
+    _orgs_are_not_personal.return_value.get_personal_org_owner.assert_awaited_once_with(
+        "org-1"
+    )
+    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
+        "execution_context"
+    ]
+    assert context.bills_own_wallet is expected
+
+
+@pytest.mark.asyncio
+async def test_a_run_in_another_users_personal_org_is_not_queued(
+    mocker: MockerFixture, _orgs_are_not_personal
+):
+    from backend.util.exceptions import InsufficientBalanceError
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(
+        mocker, org_id="org-1", team_id="team-1"
+    )
+    queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
+    _orgs_are_not_personal.return_value.get_personal_org_owner.return_value = (
+        "someone-else"
+    )
+
+    with pytest.raises(InsufficientBalanceError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="test-user-id",
+            organization_id="org-1",
+            team_id="team-1",
+        )
+
+    queue.assert_not_called()
+    assert (
+        mock_edb.update_graph_execution_stats.await_args.kwargs["status"]
+        == ExecutionStatus.FAILED
+    )
+
+
 def _runner_is_not_in_the_given_org(mocker: MockerFixture):
     return mocker.patch(
         "backend.executor.utils.resolve_member_tenancy",
@@ -2500,6 +2606,54 @@ async def test_a_run_given_an_org_the_user_isnt_in_goes_to_their_own(
         "execution_context"
     ]
     assert (context.organization_id, context.team_id) == ("runner-org", "runner-team")
+
+
+@pytest.mark.asyncio
+async def test_a_triggered_run_moves_to_the_runners_org_with_its_nested_inputs(
+    mocker: MockerFixture,
+):
+    """A delivery to a preset tagged with an org its owner isn't in runs in the
+    owner's own, and the trigger still gets only its config and the payload."""
+    import backend.executor.utils as executor_utils
+    from backend.api.features.integrations.router import _execute_webhook_preset_trigger
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    membership = _runner_is_not_in_the_given_org(mocker)
+    trigger_node = mocker.MagicMock(id="abc123-0")
+    trigger_node.block.is_triggered_by_event_type.return_value = True
+    mocker.patch(
+        "backend.api.features.integrations.router.get_graph",
+        new=mocker.AsyncMock(
+            return_value=mocker.MagicMock(webhook_input_node=trigger_node)
+        ),
+    )
+    preset = mocker.MagicMock(
+        id="preset-1",
+        is_active=True,
+        user_id="runner",
+        graph_id="g",
+        graph_version=1,
+        expert_id=None,
+        organization_id="other-org",
+        team_id="other-team",
+        credentials={},
+        inputs={"topic": "news", "_node_input_mask_abc123": {"repo": "o/r"}},
+    )
+    webhook = mocker.MagicMock(id="wh-1", user_id="runner")
+
+    await _execute_webhook_preset_trigger(preset, webhook, "wh-1", "push", {"event": 1})
+
+    membership.assert_awaited_once_with("runner", "other-org", "other-team")
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert (create_kwargs["organization_id"], create_kwargs["team_id"]) == (
+        "runner-org",
+        "runner-team",
+    )
+    validate = executor_utils.validate_and_construct_node_execution_input
+    assert validate.call_args.kwargs["graph_inputs"] == {"topic": "news"}
+    assert validate.call_args.kwargs["nodes_input_masks"] == {
+        "abc123-0": {"repo": "o/r", "payload": {"event": 1}}
+    }
 
 
 @pytest.mark.asyncio
@@ -3412,6 +3566,159 @@ async def test_resume_of_a_subgraph_follows_the_chat_of_the_run_that_nested_it(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "parent_origin, expected",
+    [("interactive", True), (None, True), ("automation", False), ("gone", True)],
+)
+async def test_resume_of_a_run_a_sub_session_started_follows_the_chat_it_came_from(
+    mocker: MockerFixture, parent_origin, expected: bool
+):
+    """A sub-session is opened as an automation whatever chat delegated to it;
+    the run it started pauses when that chat would have."""
+    from backend.copilot.model import ChatSessionMetadata
+    from backend.data.execution import ExecutionContext
+
+    graph_exec, _, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.trigger_source = ExecutionTrigger.COPILOT.value
+    graph_exec.trigger_ref = "sub-session"
+    sessions = {
+        "sub-session": ChatSessionMetadata(
+            origin="automation", delegated_by_session_id="parent-chat"
+        ),
+    }
+    if parent_origin != "gone":
+        sessions["parent-chat"] = ChatSessionMetadata(origin=parent_origin)
+
+    async def metadata(session_id):
+        found = sessions.get(session_id)
+        return None if found is None else mocker.MagicMock(metadata=found)
+
+    chat_store = mocker.MagicMock(
+        get_chat_session_metadata=mocker.AsyncMock(side_effect=metadata)
+    )
+    mocker.patch("backend.executor.utils.chat_db", return_value=chat_store)
+    mocker.patch("backend.copilot.model.chat_db", return_value=chat_store)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(sensitive_action_safe_mode=False),
+    )
+
+    assert captured["execution_context"].sensitive_action_safe_mode is expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "parent_sensitive, parent_hitl", [(True, False), (False, True), (True, True)]
+)
+async def test_resume_of_a_subgraph_keeps_the_safe_modes_of_the_run_that_nested_it(
+    mocker: MockerFixture, parent_sensitive: bool, parent_hitl: bool
+):
+    """A resumed sub-graph keeps the safe modes of the run that nested it."""
+    from backend.data.execution import ExecutionContext
+
+    graph_exec, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.trigger_source = ExecutionTrigger.SUBGRAPH.value
+    graph_exec.trigger_ref = "parent-exec"
+    execution_store.get_graph_execution_meta = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            graph_id="parent-graph",
+            graph_version=2,
+            trigger_source=ExecutionTrigger.MANUAL.value,
+            trigger_ref=None,
+        )
+    )
+
+    async def settings(user_id, graph_id, graph_version):
+        if graph_id == "parent-graph":
+            return GraphSettings(
+                human_in_the_loop_safe_mode=parent_hitl,
+                sensitive_action_safe_mode=parent_sensitive,
+            )
+        return GraphSettings(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        )
+
+    mocker.patch("backend.executor.utils.graph_db").get_graph_settings = (
+        mocker.AsyncMock(side_effect=settings)
+    )
+
+    # As review resume builds it: from the sub-graph's own settings.
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        ),
+    )
+
+    context = captured["execution_context"]
+    assert context.sensitive_action_safe_mode is parent_sensitive
+    assert context.human_in_the_loop_safe_mode is parent_hitl
+    assert context.graph_sensitive_action_safe_mode is parent_sensitive
+
+
+@pytest.mark.asyncio
+async def test_resume_of_a_subgraph_whose_parent_is_gone_keeps_both_safe_modes(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    graph_exec, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.trigger_source = ExecutionTrigger.SUBGRAPH.value
+    graph_exec.trigger_ref = "deleted-parent"
+    execution_store.get_graph_execution_meta = mocker.AsyncMock(return_value=None)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        ),
+    )
+
+    context = captured["execution_context"]
+    assert context.human_in_the_loop_safe_mode is True
+    assert context.sensitive_action_safe_mode is True
+
+
+@pytest.mark.asyncio
+async def test_resume_of_a_top_level_run_keeps_its_own_safe_modes(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    _, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    execution_store.get_graph_execution_meta = mocker.AsyncMock()
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        ),
+    )
+
+    context = captured["execution_context"]
+    assert context.human_in_the_loop_safe_mode is False
+    assert context.sensitive_action_safe_mode is False
+    execution_store.get_graph_execution_meta.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("gone", ["chat", "parent"])
 async def test_resume_pauses_when_the_originating_chat_or_parent_is_gone(
     mocker: MockerFixture, gone: str
@@ -3820,3 +4127,43 @@ async def test_a_resumed_sub_graph_whose_parent_is_gone_names_no_chat(
     context = captured["execution_context"]
     assert context.approval_chat_id is None
     assert context.sensitive_action_safe_mode is True
+
+
+@pytest.mark.parametrize(
+    "block_cls, schema_key, values_key",
+    [
+        (MCPToolBlock, "tool_input_schema", "tool_arguments"),
+        (AgentExecutorBlock, "input_schema", "inputs"),
+    ],
+)
+def test_validate_exec_ignores_a_schema_among_a_blocks_dynamic_inputs(
+    block_cls: type, schema_key: str, values_key: str
+):
+    """validate_exec flattens the dynamic inputs into plain values, so one named
+    like the block's schema field must not be used to check the others."""
+    dynamic_inputs = {
+        schema_key: {"properties": {"x": {"type": "string", "pattern": "^b$"}}},
+        values_key: {"x": "a"},
+    }
+    node = Node(block_id=block_cls().id, input_default={values_key: dynamic_inputs})
+
+    data, _ = validate_exec(node, {})
+
+    assert data == dynamic_inputs
+
+
+def test_only_reviewed_blocks_override_the_input_check():
+    """get_mismatch_error and validate_data check a block's inputs against its class
+    schema; a block overriding either is reviewed and named here."""
+    overriders = {
+        (block_cls.__name__, hook)
+        for block_cls in get_blocks().values()
+        for hook in ("get_mismatch_error", "validate_data")
+        if getattr(block_cls().input_schema, hook).__func__
+        is not getattr(BlockSchema, hook).__func__
+    }
+    assert overriders == {
+        ("AgentExecutorBlock", "get_mismatch_error"),
+        ("MCPToolBlock", "get_mismatch_error"),
+        ("PerplexityBlock", "validate_data"),
+    }

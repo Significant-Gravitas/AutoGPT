@@ -10,6 +10,7 @@ fields each provider exposes.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import socket
 from contextlib import contextmanager
@@ -1045,6 +1046,80 @@ class TestOllama:
             {"role": "user", "content": "consolidate these transcripts"},
         ]
         assert captured["stream"] is False
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_base64_images_before_constructing_client(self):
+        with _patched_ollama_dispatch({}) as (_, ctor), pytest.raises(
+            ValueError, match="base64-encoded image data"
+        ):
+            await call_provider(
+                provider="ollama",
+                model="llava",
+                api_key="",
+                messages=[
+                    {"role": "user", "content": "describe", "images": [__file__]}
+                ],
+                max_tokens=10,
+            )
+
+        ctor.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_decodes_base64_images_before_calling_sdk(self):
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llava",
+                api_key="",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "describe",
+                        "images": ["aW1hZ2UtYnl0ZXM="],
+                    }
+                ],
+                max_tokens=10,
+            )
+
+        assert captured["messages"][0]["images"] == [b"image-bytes"]
+
+    @pytest.mark.asyncio
+    async def test_accepts_line_wrapped_base64_images(self):
+        image = bytes(range(256)) * 2
+        wrapped = base64.encodebytes(image).decode()
+        assert "\n" in wrapped
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llava",
+                api_key="",
+                messages=[{"role": "user", "content": "describe", "images": [wrapped]}],
+                max_tokens=10,
+            )
+
+        assert captured["messages"][0]["images"] == [image]
+
+    @pytest.mark.asyncio
+    async def test_accepts_tuple_of_base64_images(self):
+        captured: dict = {}
+        with _patched_ollama_dispatch(captured):
+            await call_provider(
+                provider="ollama",
+                model="llava",
+                api_key="",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "describe",
+                        "images": ("aW1hZ2UtYnl0ZXM=",),
+                    }
+                ],
+                max_tokens=10,
+            )
+
+        assert captured["messages"][0]["images"] == [b"image-bytes"]
 
     @pytest.mark.asyncio
     async def test_force_json_output_requests_json_format(self):
@@ -2645,8 +2720,8 @@ class TestCallProviderStream:
     @pytest.mark.asyncio
     async def test_uses_provided_client_directly(self):
         """When a ``client`` is passed, the helper does NOT construct a
-        new one — preserves the chat layer's module-cached
-        Langfuse-wrapped client + its pooled HTTP connections."""
+        new one — preserves the chat layer's module-cached client + its
+        pooled HTTP connections."""
         from backend.util.llm.providers import call_provider_stream
 
         sentinel_stream = MagicMock(name="async_stream")
@@ -2672,8 +2747,7 @@ class TestCallProviderStream:
     @pytest.mark.asyncio
     async def test_builds_client_via_factory_when_not_provided(self):
         """When no ``client`` is passed, the helper instantiates one
-        via ``client_factory(base_url, api_key)``. The chat layer uses
-        this branch to inject ``LangfuseAsyncOpenAI`` as the factory."""
+        via ``client_factory(base_url, api_key)``."""
         from backend.util.llm.providers import call_provider_stream
 
         captured: dict[str, object] = {}

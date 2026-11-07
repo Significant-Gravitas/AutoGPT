@@ -2,7 +2,7 @@ import { parseSpecialMarkers } from "../../../helpers/messageMarkers";
 import { describe, expect, it } from "vitest";
 import {
   WORKSPACE_FILE_PATTERN,
-  extractReviewTarget,
+  extractReviewTargets,
   extractWorkspaceArtifacts,
   filePartToArtifactRef,
   getLatestCompactionPhase,
@@ -471,7 +471,7 @@ describe("getLatestCompactionStats", () => {
   });
 });
 
-describe("extractReviewTarget", () => {
+describe("extractReviewTargets", () => {
   function toolOutput(output: unknown) {
     return {
       id: `m-${Math.random()}`,
@@ -490,7 +490,7 @@ describe("extractReviewTarget", () => {
 
   it("returns a run still in flight with its graph, so a later pause shows in the chat", () => {
     expect(
-      extractReviewTarget([
+      extractReviewTargets([
         toolOutput({
           execution_id: "exec-running",
           graph_id: "graph-1",
@@ -498,48 +498,59 @@ describe("extractReviewTarget", () => {
         }),
       ]),
     ).toEqual({
-      kind: "graph",
-      graphExecId: "exec-running",
-      graphId: "graph-1",
+      chat: false,
+      runs: [{ graphExecId: "exec-running", graphId: "graph-1" }],
     });
   });
 
   it("returns the chat for an action the gate parked, and not for a refusal", () => {
     expect(
-      extractReviewTarget([
+      extractReviewTargets([
         toolOutput({ type: "approval_required", review_id: "gate-1" }),
       ]),
-    ).toEqual({ kind: "chat" });
+    ).toEqual({ chat: true, runs: [] });
     expect(
-      extractReviewTarget([toolOutput({ type: "approval_required" })]),
-    ).toBeNull();
+      extractReviewTargets([toolOutput({ type: "approval_required" })]),
+    ).toEqual({ chat: false, runs: [] });
   });
 
   it("ignores a run that already finished", () => {
     expect(
-      extractReviewTarget([
+      extractReviewTargets([
         toolOutput({ execution_id: "exec-done", status: "COMPLETED" }),
       ]),
-    ).toBeNull();
+    ).toEqual({ chat: false, runs: [] });
   });
 
-  it("prefers a newer in-flight run over an earlier run that paused", () => {
+  it("keeps every run that paused, beside a newer one in flight", () => {
     expect(
-      extractReviewTarget([
+      extractReviewTargets([
         toolOutput({ execution_id: "exec-a", status: "REVIEW" }),
+        toolOutput({ execution_id: "exec-b", status: "REVIEW" }),
         toolOutput(
-          JSON.stringify({ execution_id: "exec-b", status: "QUEUED" }),
+          JSON.stringify({ execution_id: "exec-c", status: "QUEUED" }),
         ),
+      ]).runs.map((run) => run.graphExecId),
+    ).toEqual(["exec-c", "exec-b", "exec-a"]);
+  });
+
+  it("watches only the newest run in flight, and a paused run behind a chat review", () => {
+    expect(
+      extractReviewTargets([
+        toolOutput({ execution_id: "exec-a", status: "RUNNING" }),
+        toolOutput({ execution_id: "exec-b", status: "REVIEW" }),
+        toolOutput({ execution_id: "exec-c", status: "RUNNING" }),
+        toolOutput({ type: "review_required", review_id: "r1" }),
       ]),
-    ).toMatchObject({ kind: "graph", graphExecId: "exec-b" });
+    ).toEqual({ chat: true, runs: [{ graphExecId: "exec-b" }] });
   });
 
   it("prefers a newer in-flight run over an earlier block review", () => {
     expect(
-      extractReviewTarget([
+      extractReviewTargets([
         toolOutput({ type: "review_required", review_id: "r1" }),
         toolOutput({ execution_id: "exec-b", status: "QUEUED" }),
       ]),
-    ).toMatchObject({ kind: "graph", graphExecId: "exec-b" });
+    ).toEqual({ chat: false, runs: [{ graphExecId: "exec-b" }] });
   });
 });

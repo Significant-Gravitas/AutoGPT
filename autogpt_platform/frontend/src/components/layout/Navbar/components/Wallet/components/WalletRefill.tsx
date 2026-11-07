@@ -87,7 +87,8 @@ export function WalletRefill() {
       <Text
         variant="small-medium-tight"
         as="p"
-        className="mx-0 mt-4 text-accent-strong"
+        tone="accent"
+        className="mx-0 mt-4"
       >
         Add credits to your balance
       </Text>
@@ -97,7 +98,7 @@ export function WalletRefill() {
       <TabsLine
         variant="pill"
         defaultValue="top-up"
-        className="mb-6 mt-4 flex w-full flex-col items-center"
+        className="mt-4 mb-6 flex w-full flex-col items-center"
       >
         <TabsLineList className="mx-auto">
           <TabsLineTrigger value="top-up">One-time top up</TabsLineTrigger>

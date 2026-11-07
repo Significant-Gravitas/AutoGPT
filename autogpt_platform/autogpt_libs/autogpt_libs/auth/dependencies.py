@@ -411,20 +411,25 @@ async def get_request_context(
 
     # --- 2. org_id ------------------------------------------------------------
     org_id = request.headers.get(ORG_HEADER_NAME, "").strip() or None
+    org_member = None
 
     if org_id is None:
         # Fall back to the user's personal org (an org where the user is the
-        # sole owner, typically created at sign-up).
+        # sole owner, typically created at sign-up). The row found is the
+        # user's membership of that org, so step 3 validates it as it is
+        # rather than reading the same row again.
         personal_org = await prisma.orgmember.find_first(
             where={
                 "userId": user_id,
                 "isOwner": True,
                 "Org": {"isPersonal": True, "deletedAt": None},
             },
+            include={"Org": True},
             order={"createdAt": "asc"},
         )
         if personal_org is not None:
             org_id = personal_org.orgId
+            org_member = personal_org
         else:
             # Self-heal: bootstrap the personal org. Sign-up and the startup
             # backfill cover normal accounts, but users created outside
@@ -461,12 +466,13 @@ async def get_request_context(
                 )
 
     # --- 3. validate OrgMember ------------------------------------------------
-    org_member = await prisma.orgmember.find_unique(
-        where={
-            "orgId_userId": {"orgId": org_id, "userId": user_id},
-        },
-        include={"Org": True},
-    )
+    if org_member is None:
+        org_member = await prisma.orgmember.find_unique(
+            where={
+                "orgId_userId": {"orgId": org_id, "userId": user_id},
+            },
+            include={"Org": True},
+        )
     if org_member is None or org_member.status != "ACTIVE":
         raise fastapi.HTTPException(
             status_code=403,
