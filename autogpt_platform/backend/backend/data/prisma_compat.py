@@ -2,11 +2,11 @@
 
 Pinned prisma 0.15.0 is the last release (upstream is archived; see
 https://github.com/RobertCraigie/prisma-client-py/issues/1070).
-``handle_response_errors`` calls ``.get`` on ``user_facing_error`` and on
-``meta``. The engine serializes some codes (P1017 "Server has closed the
-connection") with ``meta: null``, and ``user_facing_error`` can also be null.
-The upstream guard catches only ``KeyError``/``TypeError``, so an
-``AttributeError`` escapes instead of the intended ``DataError``.
+The query engine serializes P1017 ("Server has closed the connection") as a
+``user_facing_error`` object with ``meta: null``. ``handle_response_errors``
+then calls ``.get`` on that null ``meta``. The upstream guard catches only
+``KeyError``/``TypeError``, so an ``AttributeError`` escapes instead of the
+intended ``DataError``.
 """
 
 import logging
