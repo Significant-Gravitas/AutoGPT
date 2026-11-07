@@ -233,12 +233,15 @@ class TestGetProviderToken:
         )
 
         with patch("backend.copilot.integration_creds._manager", mock_manager):
-            assert await get_provider_token(_USER, _PROVIDER) == "live-key"
+            assert (
+                await get_provider_token(_USER, _PROVIDER, allowed_ids=None)
+                == "live-key"
+            )
 
         _token_cache.clear()
         mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[expired])
         with patch("backend.copilot.integration_creds._manager", mock_manager):
-            assert await get_provider_token(_USER, _PROVIDER) is None
+            assert await get_provider_token(_USER, _PROVIDER, allowed_ids=None) is None
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth2_preferred_over_api_key(self):

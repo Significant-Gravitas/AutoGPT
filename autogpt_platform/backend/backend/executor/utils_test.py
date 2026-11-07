@@ -4261,7 +4261,7 @@ async def test_validate_node_input_credentials_rejects_expired_api_key(
         expires_at=None if offset is None else now + offset,
     )
     store = mocker.MagicMock()
-    store.get_creds_by_id = mocker.AsyncMock(return_value=key)
+    store.get_all_creds = mocker.AsyncMock(return_value=[key])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=store,

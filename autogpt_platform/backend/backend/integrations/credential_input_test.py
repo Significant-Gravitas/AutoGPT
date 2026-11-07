@@ -129,3 +129,35 @@ def test_api_key_future_or_no_expiry_kept(expires_at: int | None):
     normalize_user_supplied_credentials(creds)
 
     assert creds.expires_at == expires_at
+
+
+def test_padded_api_key_with_past_expiry_is_rejected_for_expiry():
+    """#15730 then #16234: a padded key is stripped, then a past expiry is refused."""
+    creds = APIKeyCredentials(
+        provider="openai",
+        api_key=SecretStr("  sk-padded  "),
+        expires_at=int(time.time()) - 60,
+    )
+
+    with pytest.raises(
+        InvalidCredentialInputError, match="Expiry must be in the future"
+    ):
+        normalize_user_supplied_credentials(creds)
+
+    assert creds.api_key.get_secret_value() == "sk-padded"
+
+
+def test_padded_api_key_with_future_expiry_is_stripped_and_kept():
+    expires_at = int(time.time()) + 86400
+    creds = APIKeyCredentials(
+        provider="openai",
+        api_key=SecretStr("  sk-padded  "),
+        title="  K  ",
+        expires_at=expires_at,
+    )
+
+    normalize_user_supplied_credentials(creds)
+
+    assert creds.api_key.get_secret_value() == "sk-padded"
+    assert creds.title == "K"
+    assert creds.expires_at == expires_at
