@@ -13,6 +13,7 @@ import pytest
 import pytest_asyncio
 from prisma.enums import AgentExecutionStatus
 from prisma.models import AgentGraph, AgentGraphExecution, User
+from prisma.types import AgentGraphExecutionCreateInput
 
 from backend.data import db
 from backend.data import diagnostics as diag
@@ -48,7 +49,7 @@ async def _execution(
     created_at: datetime | None = None,
 ) -> AgentGraphExecution:
     user_id, graph_id = graph
-    data: dict = {
+    data: AgentGraphExecutionCreateInput = {
         "agentGraphId": graph_id,
         "agentGraphVersion": 1,
         "userId": user_id,
@@ -57,7 +58,7 @@ async def _execution(
     }
     if created_at:
         data["createdAt"] = created_at
-    return await AgentGraphExecution.prisma().create(data=data)  # type: ignore[arg-type]
+    return await AgentGraphExecution.prisma().create(data=data)
 
 
 async def _summary() -> diag.ExecutionDiagnosticsSummary:
@@ -99,6 +100,19 @@ async def test_old_failure_with_fresh_updated_at_is_not_recent(graph):
     assert old.id in listed_48h
     assert old.endedAt is not None
     assert listed_48h[old.id].failed_at == old.endedAt
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_old_completion_with_fresh_updated_at_is_not_recent(graph):
+    now = datetime.now(timezone.utc)
+    before_summary = await _summary()
+
+    await _execution(graph, AgentExecutionStatus.COMPLETED, now - timedelta(hours=30))
+    await _execution(graph, AgentExecutionStatus.COMPLETED, now)
+
+    summary = await _summary()
+    assert summary.completed_1h - before_summary.completed_1h == 1
+    assert summary.completed_24h - before_summary.completed_24h == 1
 
 
 async def _assert_failed_with_ended_at(execution_id: str) -> None:
