@@ -28,6 +28,10 @@ from backend.integrations.codex.models import (
     CodexRateLimitWindow,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.oauth.refresh_failure import (
+    CredentialsNeedReconnectError,
+    ReconnectRequired,
+)
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -713,6 +717,14 @@ def _expired_credentials() -> OAuth2Credentials:
     )
 
 
+def _reconnect_error() -> CredentialsNeedReconnectError:
+    return CredentialsNeedReconnectError(
+        "codex",
+        "codex-credential",
+        ReconnectRequired(error_code="invalid_grant", status_code=400),
+    )
+
+
 def _manager_with_stored_row(
     mocker, credentials: OAuth2Credentials
 ) -> tuple[IntegrationCredentialsManager, dict[str, OAuth2Credentials], AsyncMock]:
@@ -758,6 +770,7 @@ def _manager_with_stored_row(
     "refresh_error",
     [
         CodexAuthError("ChatGPT refused to refresh the credential (HTTP 401)"),
+        _reconnect_error(),
         ValueError("Access to blocked or private IP address"),
         OSError("network unreachable"),
     ],
@@ -786,20 +799,29 @@ async def test_revoke_deletes_expired_codex_credential_without_refreshing(
 @pytest.mark.asyncio
 async def test_revoke_raises_instead_of_reporting_success_for_missing_row(mocker):
     credentials = _expired_credentials()
-    manager, rows, lock = _manager_with_stored_row(mocker, credentials)
+    manager, rows, _lock = _manager_with_stored_row(mocker, credentials)
     rows.clear()
 
     with pytest.raises(ValueError):
         await revoke_codex_credentials(manager, TEST_USER_ID, credentials.id)
 
 
-def test_codex_delete_removes_expired_credential_whose_refresh_fails(mocker):
+@pytest.mark.parametrize(
+    "refresh_error",
+    [
+        CodexAuthError("refresh refused"),
+        _reconnect_error(),
+    ],
+)
+def test_codex_delete_removes_expired_credential_whose_refresh_fails(
+    mocker, refresh_error
+):
     credentials = _expired_credentials()
-    manager, rows, lock = _manager_with_stored_row(mocker, credentials)
+    manager, rows, _lock = _manager_with_stored_row(mocker, credentials)
     mocker.patch.object(
         manager,
         "refresh_if_needed",
-        AsyncMock(side_effect=CodexAuthError("refresh refused")),
+        AsyncMock(side_effect=refresh_error),
     )
     with (
         patch("backend.api.features.integrations.router.creds_manager", manager),
@@ -869,6 +891,27 @@ def test_codex_status_routes_report_expired_connection_as_conflict(route):
 
     assert response.status_code == 409
     assert response.json() == {"detail": "ChatGPT connection expired; reconnect it"}
+    get_transport.assert_not_called()
+
+
+@pytest.mark.parametrize("route", ["account", "rate-limits"])
+def test_codex_status_routes_report_reconnect_required_as_conflict(route):
+    with (
+        patch(
+            "backend.api.features.integrations.codex.codex_credentials_manager"
+        ) as manager,
+        patch(
+            "backend.api.features.integrations.codex._get_codex_transport"
+        ) as get_transport,
+    ):
+        manager.acquire_lease = AsyncMock(side_effect=_reconnect_error())
+        manager.exists = AsyncMock(return_value=True)
+
+        response = client.get(f"/codex/credentials/codex-credential/{route}")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "ChatGPT connection expired; reconnect it"}
+    assert "invalid_grant" not in response.text
     get_transport.assert_not_called()
 
 

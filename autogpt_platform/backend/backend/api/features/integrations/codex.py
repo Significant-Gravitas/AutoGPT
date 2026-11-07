@@ -24,6 +24,7 @@ from backend.integrations.codex.models import (
 )
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.oauth.refresh_failure import CredentialsNeedReconnectError
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -214,7 +215,7 @@ async def _acquire_codex_lease(
         if not await codex_credentials_manager.exists(user_id, credential_id):
             raise _credential_not_found() from None
         _log_acquisition_failure(error)
-        if isinstance(error, CodexAuthError):
+        if isinstance(error, (CodexAuthError, CredentialsNeedReconnectError)):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="ChatGPT connection expired; reconnect it",
