@@ -3,6 +3,8 @@ import hashlib
 import os
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from backend.util import secrets_guard
 from backend.util.secrets_guard import check_secrets
@@ -21,11 +23,32 @@ def _settings(encryption_key: str, unsubscribe_key: str = "fresh-unsubscribe-key
     settings = Settings()
     settings.secrets.encryption_key = encryption_key
     settings.secrets.unsubscribe_secret_key = unsubscribe_key
+    # A developer's backend/.env may still hold the retired pair, whose
+    # warning would otherwise count against the one these tests expect.
+    settings.secrets.vapid_private_key = ""
     return settings
 
 
 def _fresh_key() -> str:
     return base64.urlsafe_b64encode(os.urandom(32)).decode()
+
+
+def _vapid_digest(value: str) -> str:
+    """The digest the guard registers for a Web Push key: of its canonical
+    spelling, which every other spelling of the same bytes is reduced to."""
+    return hashlib.sha256(
+        secrets_guard._canonical_vapid_key(value).encode()
+    ).hexdigest()
+
+
+_BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+
+def _with_other_unused_bits(key: str) -> str:
+    """`key` with the lowest bit of its last character flipped: for 32 bytes
+    that bit is one of the two the decoder ignores, so the bytes are the same."""
+    last = _BASE64URL_ALPHABET.index(key[-1]) ^ 1
+    return key[:-1] + _BASE64URL_ALPHABET[last]
 
 
 def test_generated_secrets_pass():
@@ -70,6 +93,110 @@ def test_guard_covers_every_secret_that_env_default_used_to_ship():
     for digests in secrets_guard._RETIRED_DIGESTS.values():
         assert digests, "a name with no digests silently disables the guard"
         assert all(len(digest) == 64 for digest in digests)
+
+
+def test_published_vapid_key_warns_and_still_starts(monkeypatch, caplog):
+    """Nothing stored depends on the Web Push pair, so the backend starts and
+    says how to replace it; the push sender is what refuses the key."""
+    published = _fresh_key().rstrip("=")
+    monkeypatch.setattr(
+        secrets_guard,
+        "_RETIRED_VAPID_PRIVATE_KEY_DIGESTS",
+        {_vapid_digest(published)},
+    )
+    settings = _settings(_fresh_key())
+    settings.secrets.vapid_private_key = published
+
+    check_secrets(settings)
+
+    warnings = [
+        r.getMessage() for r in caplog.records if "VAPID_PRIVATE_KEY" in r.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert "make init-env" in warnings[0]
+    assert secrets_guard.vapid_private_key_is_published(published)
+    # py-vapid reads a padded, wrapped or standard-alphabet key as the same
+    # key, and a decoder ignores the last character's unused bits.
+    raw = base64.urlsafe_b64decode(f"{published}=")
+    for spelling in (
+        f"{published}=",
+        f"{published[:8]}\n{published[8:]}",
+        base64.b64encode(raw).decode(),
+        _with_other_unused_bits(published),
+    ):
+        assert base64.urlsafe_b64decode("".join(spelling.split()) + "=") == raw
+        assert secrets_guard.vapid_private_key_is_published(spelling)
+    assert not secrets_guard.vapid_private_key_is_published("")
+    assert not secrets_guard.vapid_private_key_is_published("=\n")
+    assert not secrets_guard.vapid_private_key_is_published(_fresh_key())
+
+
+def test_a_der_encoding_of_the_published_vapid_key_is_the_published_key(
+    monkeypatch,
+):
+    """py-vapid reads a key that is not 32 bytes as DER, so the published
+    scalar in that form would sign pushes too. A DER key holding another
+    scalar, or bytes of that length that are no key, is not it."""
+    published = _fresh_key().rstrip("=")
+    monkeypatch.setattr(
+        secrets_guard,
+        "_RETIRED_VAPID_PRIVATE_KEY_DIGESTS",
+        {_vapid_digest(published)},
+    )
+    assert secrets_guard.vapid_private_key_is_published(_der_spelling(published))
+    assert not secrets_guard.vapid_private_key_is_published(_der_spelling(_fresh_key()))
+    assert not secrets_guard.vapid_private_key_is_published(
+        base64.urlsafe_b64encode(b"d" * 121).decode()
+    )
+
+
+def _der_spelling(raw_key: str) -> str:
+    """`raw_key`, the Base64url of a 32-byte scalar, as the Base64url of that
+    scalar's PKCS#8 DER encoding."""
+    compact = raw_key.rstrip("=")
+    scalar = int.from_bytes(
+        base64.urlsafe_b64decode(compact + "=" * (-len(compact) % 4)), "big"
+    )
+    der = ec.derive_private_key(scalar, ec.SECP256R1()).private_bytes(
+        serialization.Encoding.DER,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    return base64.urlsafe_b64encode(der).rstrip(b"=").decode()
+
+
+def test_a_generated_vapid_key_does_not_warn(caplog):
+    settings = _settings(_fresh_key())
+    settings.secrets.vapid_private_key = _fresh_key()
+
+    check_secrets(settings)
+
+    assert "VAPID_PRIVATE_KEY" not in caplog.text
+
+
+def test_the_canonical_spelling_and_its_digest_are_pinned():
+    """The literals the single-container test pins: the two copies of the
+    canonicalisation have to keep agreeing, and the registered digests are
+    of this form."""
+    raw = bytes(range(0xE0, 0x100))
+    canonical = (
+        "4OHi4-Tl5ufo6err7O3u7_Dx8vP09fb3-Pn6-_z9_v8"  # pragma: allowlist secret
+    )
+    digest = "d90bad97384181273203dd0f8cc30e16a817bef7a51b026eb6bf0a7fcba3312a"  # pragma: allowlist secret
+    for spelling in (
+        canonical,
+        canonical + "=",
+        base64.b64encode(raw).decode(),
+        canonical[:10] + "\n" + canonical[10:],
+    ):
+        assert secrets_guard._canonical_vapid_key(spelling) == canonical
+    assert _vapid_digest(canonical) == digest
+
+
+def test_the_published_vapid_key_digest_is_registered():
+    digests = secrets_guard._RETIRED_VAPID_PRIVATE_KEY_DIGESTS
+    assert digests, "an empty set silently disables the refusal"
+    assert all(len(digest) == 64 for digest in digests)
 
 
 def _database_url(monkeypatch, settings, password):

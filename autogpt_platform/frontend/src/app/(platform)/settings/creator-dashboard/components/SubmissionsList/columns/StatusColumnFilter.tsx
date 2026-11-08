@@ -47,7 +47,7 @@ export function StatusColumnFilter({ value, onChange }: Props) {
                   )}
                 >
                   <span
-                    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${visual.pillClass}`}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-caption font-medium ${visual.pillClass}`}
                   >
                     {option.label}
                   </span>

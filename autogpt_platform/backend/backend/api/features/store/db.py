@@ -212,13 +212,15 @@ async def _fallback_store_agent_search(
         elif sorted_by == StoreAgentsSortOptions.UPDATED_AT:
             order_by.append({"updated_at": "desc"})
 
-        db_agents = await prisma.models.StoreAgent.prisma().find_many(
-            where=where_clause,
-            order=order_by,
-            skip=(page - 1) * page_size,
-            take=page_size,
+        db_agents, total = await asyncio.gather(
+            prisma.models.StoreAgent.prisma().find_many(
+                where=where_clause,
+                order=order_by,
+                skip=(page - 1) * page_size,
+                take=page_size,
+            ),
+            prisma.models.StoreAgent.prisma().count(where=where_clause),
         )
-        total = await prisma.models.StoreAgent.prisma().count(where=where_clause)
         return [store_model.StoreAgent.from_db(a) for a in db_agents], total
 
     # Text search using ad-hoc tsvector on StoreAgent view fields
@@ -411,6 +413,8 @@ async def get_available_graph(
         graph.clear_auto_credentials()
         return graph
 
+    except NotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
         raise DatabaseError("Failed to fetch workflow") from e
@@ -571,12 +575,6 @@ async def get_store_creators(
         if not isinstance(page_size, int) or page_size < 1 or page_size > 100:
             raise DatabaseError("Invalid page size")
 
-        # Get total count for pagination using sanitized where clause
-        total = await prisma.models.Creator.prisma().count(
-            where=prisma.types.CreatorWhereInput(**where)
-        )
-        total_pages = (total + page_size - 1) // page_size
-
         # Add pagination with validated parameters
         skip = (page - 1) * page_size
         take = page_size
@@ -595,13 +593,19 @@ async def get_store_creators(
             )
         )
 
-        # Execute query with sanitized parameters
-        creators = await prisma.models.Creator.prisma().find_many(
-            where=prisma.types.CreatorWhereInput(**where),
-            skip=skip,
-            take=take,
-            order=order,
+        # The total for pagination and the page, both from the sanitized where
+        total, creators = await asyncio.gather(
+            prisma.models.Creator.prisma().count(
+                where=prisma.types.CreatorWhereInput(**where)
+            ),
+            prisma.models.Creator.prisma().find_many(
+                where=prisma.types.CreatorWhereInput(**where),
+                skip=skip,
+                take=take,
+                order=order,
+            ),
         )
+        total_pages = (total + page_size - 1) // page_size
 
         # Convert to response model
         creator_models = [
@@ -1455,15 +1459,16 @@ async def get_my_agents(
         else:
             order = [{"updatedAt": "desc"}]
 
-        library_agents = await prisma.models.LibraryAgent.prisma().find_many(
-            where=search_filter,
-            order=order,
-            skip=(page - 1) * page_size,
-            take=page_size,
-            include={"AgentGraph": True},
+        library_agents, total = await asyncio.gather(
+            prisma.models.LibraryAgent.prisma().find_many(
+                where=search_filter,
+                order=order,
+                skip=(page - 1) * page_size,
+                take=page_size,
+                include={"AgentGraph": True},
+            ),
+            prisma.models.LibraryAgent.prisma().count(where=search_filter),
         )
-
-        total = await prisma.models.LibraryAgent.prisma().count(where=search_filter)
         total_pages = (total + page_size - 1) // page_size
 
         my_agents = [
@@ -1537,8 +1542,14 @@ async def review_store_submission(
     external_comments: str,
     internal_comments: str,
     reviewer_id: str,
+    *,
+    notify_creator: bool = True,
 ) -> store_model.StoreSubmissionAdminView:
-    """Review a store listing submission as an admin."""
+    """Review a store listing submission as an admin.
+
+    ``notify_creator=False`` records the verdict without queueing the creator's
+    verdict email, for listings whose creator is synthetic (the preview seed).
+    """
     try:
         submission = await prisma.models.StoreListingVersion.prisma().find_unique(
             where={"id": store_listing_version_id},
@@ -1560,6 +1571,7 @@ async def review_store_submission(
 
         # If approving, update the listing to indicate it has an approved version
         if is_approved:
+            sub_graphs = await get_sub_graphs(submission.AgentGraph)
             async with transaction() as tx:
                 # Handle sub-agent approvals in transaction
                 await asyncio.gather(
@@ -1571,7 +1583,7 @@ async def review_store_submission(
                             submission.agentGraphVersion,
                             creator_user_id,
                         )
-                        for sub_graph in await get_sub_graphs(submission.AgentGraph)
+                        for sub_graph in sub_graphs
                     ]
                 )
 
@@ -1681,16 +1693,17 @@ async def review_store_submission(
         if is_approved:
             reviewed_submission = await _publish_approved_media(reviewed_submission)
 
-        try:
-            await _send_submission_review_notification(
-                creator_user_id,
-                is_approved,
-                external_comments,
-                reviewed_submission,
-            )
-        except Exception as e:
-            logger.error(f"Failed to send email notification for agent review: {e}")
-            # Don't fail the review process if email sending fails
+        if notify_creator:
+            try:
+                await _send_submission_review_notification(
+                    creator_user_id,
+                    is_approved,
+                    external_comments,
+                    reviewed_submission,
+                )
+            except Exception as e:
+                logger.error(f"Failed to send email notification for agent review: {e}")
+                # Don't fail the review process if email sending fails
 
         return store_model.StoreSubmissionAdminView.from_listing_version(
             reviewed_submission

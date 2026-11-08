@@ -209,13 +209,13 @@ async def test_two_moves_racing_into_each_other_cannot_build_a_cycle(
     both_checking = asyncio.Event()
     entered = 0
 
-    async def gated(workspace_id: str, folder_id: str) -> list[str]:
+    async def gated(tx, workspace_id: str, folder_id: str) -> list[str]:
         nonlocal entered
         entered += 1
         mine = entered
         if mine > 1:
             both_checking.set()
-        chain = await real_ancestors(workspace_id, folder_id)
+        chain = await real_ancestors(tx, workspace_id, folder_id)
         if mine == 1:
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(both_checking.wait(), timeout=2)
