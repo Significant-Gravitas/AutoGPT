@@ -236,6 +236,20 @@ async def test_list_library_agents_search_matches_snapshot_and_graph(mocker):
     "kwargs, expected_and",
     [
         ({}, None),
+        # An explicitly empty allow-list still restricts (to nothing), unlike
+        # an omitted one.
+        (
+            {"library_agent_ids": []},
+            [{"OR": [{"id": {"in": []}}, {"agentGraphId": {"in": []}}]}],
+        ),
+        (
+            {"graph_ids": []},
+            [{"OR": [{"id": {"in": []}}, {"agentGraphId": {"in": []}}]}],
+        ),
+        (
+            {"library_agent_ids": [], "graph_ids": []},
+            [{"OR": [{"id": {"in": []}}, {"agentGraphId": {"in": []}}]}],
+        ),
         (
             {"library_agent_ids": ["lib-1"], "graph_ids": ["graph-2"]},
             [

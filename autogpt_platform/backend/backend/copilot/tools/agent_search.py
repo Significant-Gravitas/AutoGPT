@@ -160,7 +160,9 @@ async def _search_library(
         if is_uuid(query):
             logger.info(f"Query looks like UUID, trying direct lookup: {query}")
             agent = await _get_library_agent_by_id(user_id, query, tenant)
-            if agent:
+            # An agent outside the allow-list must not stand in for the
+            # allowed listing below, or the allowed matches would be skipped.
+            if agent and _in_allow_list(agent, library_agent_ids, graph_ids):
                 agents.append(agent)
 
         if not agents:
@@ -257,6 +259,19 @@ async def _search_library(
         agents=agents,
         count=len(agents),
         session_id=session_id,
+    )
+
+
+def _in_allow_list(
+    agent: AgentInfo,
+    library_agent_ids: list[str] | None,
+    graph_ids: list[str] | None,
+) -> bool:
+    """Whether *agent* passes the optional id allow-list (no list: all pass)."""
+    if library_agent_ids is None and graph_ids is None:
+        return True
+    return agent.id in (library_agent_ids or []) or (
+        agent.graph_id is not None and agent.graph_id in (graph_ids or [])
     )
 
 

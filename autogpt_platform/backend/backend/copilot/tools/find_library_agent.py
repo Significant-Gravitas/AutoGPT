@@ -233,8 +233,8 @@ class FindLibraryAgentTool(BaseTool):
             candidates = (
                 scoped.agents if isinstance(scoped, AgentsFoundResponse) else []
             )
-        # The scoped query's UUID shortcut looks an agent up by id without the
-        # scope, so the filter still runs on what comes back.
+        # The scope is already in the query; filtering again keeps the
+        # runnable set exact if any lookup path returns an agent outside it.
         return [
             agent
             for agent in candidates
