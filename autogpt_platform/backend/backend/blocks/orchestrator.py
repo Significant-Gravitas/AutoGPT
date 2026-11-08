@@ -45,7 +45,7 @@ from backend.util import json
 from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.llm.prompt_refusal import PromptRefusedError
-from backend.util.prompt import MAIN_OBJECTIVE_PREFIX
+from backend.util.prompt import MAIN_OBJECTIVE_PREFIX, estimate_token_count
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.tool_call_loop import (
     LLMLoopResponse,
@@ -949,6 +949,7 @@ class OrchestratorBlock(Block):
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
             parallel_tool_calls=input_data.multiple_tool_calls,
+            on_abandoned=self.merge_stats,
         )
 
         # Track LLM usage stats per call
@@ -1802,6 +1803,10 @@ class OrchestratorBlock(Block):
         total_prompt_tokens = 0
         total_completion_tokens = 0
         total_cost_usd: float | None = None
+        # A query cut off before its ResultMessage reports no usage at all.
+        query_sent = False
+        got_result = False
+        cancelled = False
 
         sdk_error: Exception | None = None
         try:
@@ -1849,17 +1854,15 @@ class OrchestratorBlock(Block):
             # We must NOT cancel __anext__() mid-flight — doing so corrupts
             # the SDK's internal anyio memory stream (same pattern as
             # copilot/sdk/service.py:_iter_sdk_messages).  Every fetch task
-            # runs in one shared context: once configure_claude_agent_sdk()
-            # has wrapped the client, langsmith's tracing wrapper keeps the
-            # conversation run in a ContextVar set during the first fetch,
-            # and a fresh context per task would drop every later reply's
-            # span from the trace.
+            # runs in one shared context, so a ContextVar set while fetching
+            # one message is still set for the next.
 
             _HEARTBEAT_INTERVAL = 10.0  # seconds
             options.cli_path = await asyncio.to_thread(
                 require_verbatim_prompts_cli, options.cli_path
             )
             async with ClaudeSDKClient(options=launch_options(options)) as client:
+                query_sent = True
                 await send_user_text(client, user_message)
 
                 msg_iter = client.receive_response().__aiter__()
@@ -1959,6 +1962,7 @@ class OrchestratorBlock(Block):
                                     }
                                 )
                         elif isinstance(sdk_msg, ResultMessage):
+                            got_result = True
                             if sdk_msg.usage:
                                 total_prompt_tokens += getattr(
                                     sdk_msg.usage, "input_tokens", 0
@@ -1978,6 +1982,9 @@ class OrchestratorBlock(Block):
         except InsufficientBalanceError:
             # IBE must propagate — see class docstring. The `finally`
             # block below still runs and records partial token usage.
+            raise
+        except asyncio.CancelledError:
+            cancelled = True
             raise
         except Exception as e:
             # Surface OTHER SDK errors as user-visible output instead
@@ -2002,6 +2009,14 @@ class OrchestratorBlock(Block):
                         output_token_count=total_completion_tokens,
                         llm_call_count=1,
                         provider_cost=total_cost_usd,
+                    )
+                )
+            # A cancel after the query went out leaves no usage to read, so
+            # the prompt's estimated input tokens stand in for it.
+            if query_sent and not got_result and cancelled:
+                self.merge_stats(
+                    llm.abandoned_call_stats(
+                        estimate_token_count(prompt, model=input_data.model.value)
                     )
                 )
             # Clean up execution-specific working directory.
@@ -2094,8 +2109,8 @@ class OrchestratorBlock(Block):
             )
             prompt.extend(tool_output)
 
-        values = input_data.prompt_values
-        if values:
+        if input_data.prompt_values:
+            values = llm.strip_prompt_value_keys(input_data.prompt_values)
             input_data.prompt = await llm.fmt.format_string(input_data.prompt, values)
             input_data.sys_prompt = await llm.fmt.format_string(
                 input_data.sys_prompt, values

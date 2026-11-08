@@ -60,14 +60,17 @@ async def test_a_skip_after_picking_a_role_is_offered_that_roles_team(user_id: s
 
     assert response.ready
     assert response.team is not None
-    assert [expert.name for expert in response.team.experts] == ["Maya"]
+    # Maya for the role, then Max, so the team is as full as the roster
+    # allows.
+    assert [expert.name for expert in response.team.experts] == ["Maya", "Max"]
 
 
 async def test_the_team_job_gets_the_role_picked_in_the_wizard(
     user_id: str, mocker: MockerFixture
 ):
     await _pick_role(user_id, "Sales/BD")
-    mocker.patch.object(service, "_run_completion", new=AsyncMock(return_value=True))
+    mocker.patch.object(service, "_run_greeting", new=AsyncMock(return_value=True))
+    mocker.patch.object(service, "_run_understanding", new=AsyncMock())
     mocker.patch.object(service, "_run_provider_recommendations", new=AsyncMock())
     pick_team = mocker.patch.object(
         recommend_experts,

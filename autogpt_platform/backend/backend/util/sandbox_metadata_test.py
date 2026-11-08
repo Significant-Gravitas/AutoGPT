@@ -169,3 +169,11 @@ class TestOwnedByUser:
         assert not owned_by_user(
             {"service": "pr-reviewer", "autogpt_user": _USER}, _USER
         )
+
+    def test_asked_for_a_kind_only_a_box_of_that_kind_is_owned(self):
+        code = SandboxMetadata.for_block(_context(), "code", _BLOCK).as_e2b()
+        claude = SandboxMetadata.for_block(_context(), "claude_code", _BLOCK).as_e2b()
+        assert owned_by_user(code, _USER, kind="code")
+        assert not owned_by_user(claude, _USER, kind="code")
+        # Without a kind, the user alone decides, as before.
+        assert owned_by_user(claude, _USER)

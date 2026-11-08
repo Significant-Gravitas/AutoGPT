@@ -11,23 +11,20 @@ whole file to the browser:
 * text-like files      -> first N bytes (partial read, no full download)
 
 Image/PDF/Office thumbnails are cached in Redis keyed by file checksum so
-repeat views and re-renders are free. All CPU-bound work runs in a thread so
-the event loop is never blocked.
+repeat views and re-renders are free. Every render of a file's bytes runs in a
+short-lived child process with a time and memory limit (see ``preview_render``),
+so neither the event loop nor its thread pool waits on one.
 """
 
 import asyncio
 import base64
-import io
 import logging
-import math
-import zipfile
-from typing import Awaitable, Callable, Optional, cast
+from typing import Awaitable, Callable
 
 import fastapi
-import pypdfium2
 from fastapi.responses import Response
-from PIL import Image
 
+from backend.api.features.workspace import preview_render
 from backend.data.redis_client import get_redis_async
 from backend.data.workspace import WorkspaceFile
 from backend.util.workspace_storage import get_workspace_storage
@@ -35,20 +32,10 @@ from backend.util.workspace_storage import get_workspace_storage
 logger = logging.getLogger(__name__)
 
 PREVIEW_CACHE_TTL = 86_400  # 1 day
-WEBP_QUALITY = 80
-# A preview is a small thumbnail, so rasterising a source larger than this spends
-# memory and CPU for no visible gain. Every renderer stays within this budget:
-# images decline a source above it, PDFs pick a render scale from the page size.
-MAX_RENDER_PIXELS = 50_000_000
-# Thumbnails rasterise in worker threads; cap how many run at once so a burst of
-# large previews can't hold many full-resolution bitmaps in memory together and
-# slow every other request on the process.
+# Each thumbnail renders in its own child process; cap how many run at once so a
+# burst of large previews can't hold many full-resolution bitmaps in memory
+# together.
 MAX_CONCURRENT_RENDERS = 4
-# Upper bound on the render scale. A PDF page with a sub-pixel side has that
-# side rounded up to a whole pixel, so without a scale ceiling the other side
-# could still rasterise well past the pixel budget.
-MAX_RENDER_SCALE = 3
-_MIN_RENDER_SCALE = 0.01
 CACHE_HEADERS = {"Cache-Control": "private, max-age=86400"}
 # A text preview is always served as plain text.
 TEXT_PREVIEW_HEADERS = {
@@ -90,11 +77,6 @@ _TEXT_EXTENSIONS = frozenset({"md", "markdown", "mdx"})
 # Office files are often stored with a wrong MIME (text/plain,
 # application/octet-stream), so the extension wins over the stored MIME.
 _OFFICE_EXTENSIONS = frozenset({"pptx", "docx", "xlsx"})
-_EMBEDDED_THUMBNAILS = (
-    "docprops/thumbnail.jpeg",
-    "docprops/thumbnail.jpg",
-    "docprops/thumbnail.png",
-)
 
 
 async def build_preview_response(
@@ -170,40 +152,32 @@ def _render_semaphore() -> asyncio.Semaphore:
 
 
 async def _image_thumbnail(file: WorkspaceFile, width: int) -> bytes:
-    async def render() -> bytes:
-        async with _render_semaphore():
-            content = await _retrieve(file)
-            return await _to_thread_webp(_resize_webp, content, width)
-
-    return await _cached(file, "img", width, render)
+    return await _cached(
+        file, "img", width, _render(file, preview_render.image_thumbnail, width)
+    )
 
 
 async def _pdf_thumbnail(file: WorkspaceFile, width: int) -> bytes:
-    async def render() -> bytes:
-        async with _render_semaphore():
-            content = await _retrieve(file)
-            return await _to_thread_webp(_pdfium_first_page, content, width)
-
-    return await _cached(file, "pdf", width, render)
+    return await _cached(
+        file, "pdf", width, _render(file, preview_render.pdf_thumbnail, width)
+    )
 
 
 async def _office_thumbnail(file: WorkspaceFile, width: int) -> bytes:
+    return await _cached(
+        file, "office", width, _render(file, preview_render.office_thumbnail, width)
+    )
+
+
+def _render(
+    file: WorkspaceFile, renderer: preview_render.Renderer, width: int
+) -> Callable[[], Awaitable[bytes]]:
     async def render() -> bytes:
         async with _render_semaphore():
             content = await _retrieve(file)
-            try:
-                raw = await asyncio.to_thread(_extract_zip_thumbnail, content)
-            except Exception as e:
-                raise fastapi.HTTPException(
-                    status_code=415, detail="Cannot render preview"
-                ) from e
-            if raw is None:
-                raise fastapi.HTTPException(
-                    status_code=415, detail="No embedded thumbnail"
-                )
-            return await _to_thread_webp(_resize_webp, raw, width)
+            return await _render_in_child(renderer, content, width)
 
-    return await _cached(file, "office", width, render)
+    return render
 
 
 async def _text_preview(file: WorkspaceFile, max_bytes: int) -> bytes:
@@ -216,13 +190,21 @@ async def _retrieve(file: WorkspaceFile) -> bytes:
     return await storage.retrieve(file.storage_path)
 
 
-async def _to_thread_webp(fn: Callable[..., bytes], *args) -> bytes:
-    """Run a sync renderer in a thread, mapping any failure to a 415."""
+async def _render_in_child(
+    renderer: preview_render.Renderer, content: bytes, width: int
+) -> bytes:
+    """Run a renderer in a child process, mapping each outcome to a response."""
     try:
-        return await asyncio.to_thread(fn, *args)
-    except fastapi.HTTPException:
-        raise
-    except Exception as e:
+        return await preview_render.render_in_child(renderer, content, width)
+    except preview_render.PreviewTooLarge as e:
+        raise fastapi.HTTPException(
+            status_code=413, detail="File too large to preview"
+        ) from e
+    except preview_render.NoEmbeddedThumbnail as e:
+        raise fastapi.HTTPException(
+            status_code=415, detail="No embedded thumbnail"
+        ) from e
+    except preview_render.RenderFailed as e:
         raise fastapi.HTTPException(
             status_code=415, detail="Cannot render preview"
         ) from e
@@ -254,89 +236,3 @@ async def _cached(
         except Exception as e:
             logger.warning(f"Preview cache write failed for {file.id}: {e}")
     return content
-
-
-# ---------------------------------------------------------------------------
-# Sync helpers (run in a thread)
-# ---------------------------------------------------------------------------
-
-
-def _resize_webp(content: bytes, width: int) -> bytes:
-    Image.MAX_IMAGE_PIXELS = MAX_RENDER_PIXELS
-    try:
-        with Image.open(io.BytesIO(content)) as img:
-            _ensure_within_render_budget(img.size)
-            # Image.open positions at the first frame, so animated GIFs/WebP
-            # already render their frame 0 without an explicit seek.
-            if img.mode not in ("RGB", "RGBA", "L"):
-                img = img.convert("RGB")
-            img.thumbnail((width, width * 4), Image.Resampling.LANCZOS)
-            out = io.BytesIO()
-            img.save(out, format="WEBP", quality=WEBP_QUALITY, method=4)
-            return out.getvalue()
-    except Image.DecompressionBombError as e:
-        # Pillow raises this above 2x the pixel limit, before the size check
-        # above runs; treat it as the same over-budget case, not a 415.
-        raise fastapi.HTTPException(
-            status_code=413, detail="File too large to preview"
-        ) from e
-
-
-def _ensure_within_render_budget(size: tuple[int, int]) -> None:
-    source_width, source_height = size
-    if source_width * source_height > MAX_RENDER_PIXELS:
-        raise fastapi.HTTPException(status_code=413, detail="File too large to preview")
-
-
-def _pdfium_first_page(content: bytes, width: int) -> bytes:
-    pdf = pypdfium2.PdfDocument(content)
-    try:
-        page = pdf[0]
-        page_width, page_height = page.get_width(), page.get_height()
-        scale = _render_scale(page_width, page_height, width)
-        # A page can declare dimensions so large that even the minimum scale
-        # exceeds the budget; pypdfium2 rounds each side up, so check the bitmap
-        # it would allocate rather than the scaled area, and decline if over.
-        _ensure_within_render_budget(
-            (math.ceil(page_width * scale), math.ceil(page_height * scale))
-        )
-        # pypdfium2's ``scale`` is documented as a float but defaults to ``1``,
-        # so the inferred type is ``int``; a sub-unit scale is what shrinks a
-        # large page to thumbnail size.
-        render_page = cast("Callable[..., pypdfium2.PdfBitmap]", page.render)
-        bitmap = render_page(scale=scale)
-        image = bitmap.to_pil()
-        out = io.BytesIO()
-        if image.mode not in ("RGB", "L"):
-            image = image.convert("RGB")
-        image.thumbnail((width, width * 4), Image.Resampling.LANCZOS)
-        image.save(out, format="WEBP", quality=WEBP_QUALITY, method=4)
-        return out.getvalue()
-    finally:
-        pdf.close()
-
-
-def _render_scale(page_width: float, page_height: float, target_width: int) -> float:
-    """Render scale that reaches ~target_width while staying within the budget.
-
-    Rendering a large page at a fixed scale produces a proportionally large
-    bitmap; scaling from the page's own size keeps the output near thumbnail
-    size whatever the page dimensions. A fixed upper bound also caps the scale,
-    so a page with a sub-pixel side (which the renderer rounds up to one pixel)
-    cannot rasterise past the budget on its other side.
-    """
-    if page_width <= 0 or page_height <= 0:
-        return 1.0
-    to_target_width = target_width / page_width
-    within_budget = (MAX_RENDER_PIXELS / (page_width * page_height)) ** 0.5
-    return max(min(to_target_width, within_budget, MAX_RENDER_SCALE), _MIN_RENDER_SCALE)
-
-
-def _extract_zip_thumbnail(content: bytes) -> Optional[bytes]:
-    """Return the embedded ``docProps/thumbnail.*`` image from an openxml file."""
-    with zipfile.ZipFile(io.BytesIO(content)) as archive:
-        names = {name.lower(): name for name in archive.namelist()}
-        for candidate in _EMBEDDED_THUMBNAILS:
-            if candidate in names:
-                return archive.read(names[candidate])
-    return None

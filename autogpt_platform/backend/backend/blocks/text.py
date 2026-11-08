@@ -17,14 +17,15 @@ from backend.data.model import SchemaField
 from backend.util import json, text
 from backend.util.file import get_exec_file_path, store_media_file
 from backend.util.type import MediaFileType
+from backend.util.user_regex import compile_user_regex
 
 formatter = text.TextFormatter()
 
-MAX_REGEX_PATTERN_LENGTH = 10_000
 MAX_REGEX_TEXT_LENGTH = 1_000_000
 REGEX_TIMEOUT_SECONDS = 1.0
 MAX_MATCHES = 1000  # Maximum number of matches to prevent memory exhaustion
 MAX_MATCH_LENGTH = 10_000  # Maximum length per match
+MAX_TEXT_OUTPUT_LENGTH = 10_000_000  # Maximum characters a text block may output
 
 
 class MatchTextPatternBlock(Block):
@@ -76,13 +77,6 @@ class MatchTextPatternBlock(Block):
         else:
             text = json.dumps(input_data.text)
 
-        if len(input_data.match) > MAX_REGEX_PATTERN_LENGTH:
-            raise ValueError(
-                f"Regex pattern is too large to evaluate safely "
-                f"({len(input_data.match)} characters; "
-                f"maximum {MAX_REGEX_PATTERN_LENGTH})."
-            )
-
         if len(text) > MAX_REGEX_TEXT_LENGTH:
             raise ValueError(
                 f"Text is too large to match safely ({len(text)} characters; "
@@ -90,8 +84,8 @@ class MatchTextPatternBlock(Block):
             )
 
         try:
-            matched = regex.search(
-                input_data.match, text, flags=flags, timeout=REGEX_TIMEOUT_SECONDS
+            matched = compile_user_regex(input_data.match, flags).search(
+                text, timeout=REGEX_TIMEOUT_SECONDS
             )
         except TimeoutError as error:
             raise ValueError("Regex evaluation timed out.") from error
@@ -193,18 +187,13 @@ class ExtractTextInformationBlock(Block):
             txt = txt[:MAX_REGEX_TEXT_LENGTH]
 
         try:
-            # Compiling a pattern isn't covered by the timeout below
-            if len(input_data.pattern) > MAX_REGEX_PATTERN_LENGTH:
-                raise ValueError("Regex pattern is too large to evaluate safely.")
-
+            pattern = compile_user_regex(input_data.pattern, flags)
             matches = []
             match_count = 0
 
             # Every pattern runs with a timeout, which covers the whole
             # iteration; a timeout ends up in the empty result below
-            for match in regex.finditer(
-                input_data.pattern, txt, flags=flags, timeout=REGEX_TIMEOUT_SECONDS
-            ):
+            for match in pattern.finditer(txt, timeout=REGEX_TIMEOUT_SECONDS):
                 if input_data.group <= len(match.groups()):
                     match_text = match.group(input_data.group)
                     # Limit match length to prevent memory exhaustion
@@ -226,6 +215,9 @@ class ExtractTextInformationBlock(Block):
 
             yield "matched_results", matches
             yield "matched_count", len(matches)
+        except ValueError:
+            # A pattern too large to evaluate is an error, never "no match".
+            raise
         except Exception:
             # Return empty results on any regex error
             yield "negative", input_data.text
@@ -315,8 +307,12 @@ class CombineTextsBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        combined_text = input_data.delimiter.join(input_data.input)
-        yield "output", combined_text
+        texts, delimiter = input_data.input, input_data.delimiter
+        _check_output_length(
+            "Combined text",
+            sum(len(t) for t in texts) + max(len(texts) - 1, 0) * len(delimiter),
+        )
+        yield "output", delimiter.join(texts)
 
 
 class TextSplitBlock(Block):
@@ -386,7 +382,11 @@ class TextReplaceBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        yield "output", input_data.text.replace(input_data.old, input_data.new)
+        text, old, new = input_data.text, input_data.old, input_data.new
+        _check_output_length(
+            "Replaced text", len(text) + text.count(old) * (len(new) - len(old))
+        )
+        yield "output", text.replace(old, new)
 
 
 class FileReadBlock(Block):
@@ -517,3 +517,11 @@ class FileReadBlock(Block):
                 yield "content", chunk
         else:
             yield "content", ""
+
+
+def _check_output_length(label: str, length: int) -> None:
+    if length > MAX_TEXT_OUTPUT_LENGTH:
+        raise ValueError(
+            f"{label} would be {length:,} characters, over the limit of "
+            f"{MAX_TEXT_OUTPUT_LENGTH:,} characters."
+        )

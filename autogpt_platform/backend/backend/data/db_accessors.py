@@ -1,6 +1,16 @@
 from backend.data import db
 
 
+def background_task_db():
+    if db.is_connected():
+        from backend.copilot import background_task_db as store
+
+        return store
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def chat_db():
     if db.is_connected():
         from backend.copilot import db as _chat_db
@@ -25,6 +35,23 @@ def experts_db():
         experts_db = get_database_manager_async_client()
 
     return experts_db
+
+
+def expert_check_db():
+    if db.is_connected():
+        from backend.api.features.experts import experts_db as _expert_check_db
+
+        expert_check_db = _expert_check_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        # One attempt: a database manager from before check_private_expert
+        # answers at once that it has no such route, where the retrying
+        # client would wait up to five minutes for its replacement. The
+        # executor's expert check then reads the expert another way.
+        expert_check_db = get_database_manager_async_client(should_retry=False)
+
+    return expert_check_db
 
 
 def spend_approval_db():
