@@ -119,6 +119,7 @@ class FindLibraryAgentTool(BaseTool):
         goal_summary: str = "",
         **kwargs,
     ) -> ToolResponseBase:
+        """Search the library, narrowed to installed workflows for an expert."""
         if user_id and (direct_id := agent_id.strip()):
             scope_error = await require_installed_workflow(
                 user_id,
@@ -254,6 +255,7 @@ class FindLibraryAgentTool(BaseTool):
         goal_summary: str,
         scope: ExpertWorkflowScope | None = None,
     ) -> ToolResponseBase:
+        """Run the library search; *scope* limits it to those workflows."""
         tenant = external_tenant(session)
         if for_creation:
             # No ``or query`` fallback: the gate only accepts non-empty

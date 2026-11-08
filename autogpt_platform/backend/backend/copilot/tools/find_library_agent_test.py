@@ -609,6 +609,7 @@ async def test_expert_search_finds_an_installed_workflow_beyond_the_first_page(
     scope = ExpertWorkflowScope(expert_id="expert-a", graph_ids=["graph-lib-59"])
 
     async def list_library_agents(**kwargs):
+        """Paginate like the real query: allow-list first, then page_size."""
         allowed = library
         if kwargs.get("graph_ids") is not None:
             allowed = [a for a in library if a.graph_id in kwargs["graph_ids"]]

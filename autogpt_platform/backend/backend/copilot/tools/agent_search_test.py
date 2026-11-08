@@ -194,6 +194,7 @@ class TestLibraryUUIDLookup:
     async def test_uuid_lookup_respects_the_allow_list(
         self, graph_ids, expected_ids, lists
     ):
+        """A UUID match outside the allow-list must not replace the listing."""
         looked_up = self._make_mock_library_agent()
         installed = self._make_mock_library_agent("graph-installed")
         installed.id = "lib-installed"
