@@ -16,7 +16,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from backend.api.features.experts.models import ExpertRoutine
+from backend.api.features.experts.models import MAX_ROUTINE_CRONS, ExpertRoutine
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.data.activity_event import ActivityEventDraft
@@ -175,6 +175,7 @@ class ScheduleRoutineTool(BaseTool):
                 "crons": {
                     "type": "array",
                     "items": {"type": "string"},
+                    "maxItems": MAX_ROUTINE_CRONS,
                     "description": (
                         "Repeating work: 5-field crons in the user's timezone, "
                         "one per fire time. Minute 'H' means any minute in "

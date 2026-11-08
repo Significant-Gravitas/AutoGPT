@@ -38,6 +38,7 @@ import { useIsMobile } from "../../useIsMobile";
 import { ComposerPanelTab } from "./components/ComposerPanelTab";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
+import { useFollowOverwrittenArtifact } from "./useFollowOverwrittenArtifact";
 import { useOpenPendingOnboarding } from "./useOpenPendingOnboarding";
 import { VoiceModeBar } from "../../voice/components/VoiceModeBar";
 import { VoiceModeButton } from "../../voice/components/VoiceModeButton";
@@ -201,6 +202,7 @@ export const ChatContainer = ({
     messages,
     isLoadingSession,
   });
+  useFollowOverwrittenArtifact(messages);
   // isStreaming controls the stop-button UI and routes submits to the queue
   // endpoint — the input itself must NOT be disabled during streaming so users
   // can type and queue their next message. ``isUserStopping`` force-flips

@@ -53,6 +53,7 @@ bot/
 ├── config.py           # Shared (platform-agnostic) config
 ├── handler.py          # Orchestrator: routing, linking, attachment ingestion, batching
 ├── turn_stream.py      # Streaming one batched turn: chunked sends, artifacts, renames
+├── setup_card_dedupe.py # Posting the same setup card to a conversation once per window
 ├── prompt.py           # Prompt + thread-name assembly
 ├── attachments.py      # Attachment upload + failure notes
 ├── command_core.py     # Shared /setup + /unlink + DM-link policy (adapters render it)

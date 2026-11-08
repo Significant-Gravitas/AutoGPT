@@ -184,6 +184,8 @@ class TestOrgDbCreateOrg:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.execute_raw = AsyncMock()
+        self.prisma.orgmember.count = AsyncMock(return_value=0)
         self.prisma.organization.find_unique = AsyncMock(return_value=None)
         self.prisma.organizationalias.find_unique = AsyncMock(return_value=None)
         self.prisma.organization.create = AsyncMock(return_value=_make_org())
@@ -470,6 +472,9 @@ class TestOrgDbConvertOrg:
                 id="new-personal-org", isPersonal=True, slug="myorg-personal-1"
             ),
         )
+        self.forget_owner = mocker.patch(
+            "backend.api.features.orgs.db.forget_personal_org_owner"
+        )
 
     @pytest.mark.asyncio
     async def test_convert_personal_to_team_org(self):
@@ -489,12 +494,12 @@ class TestOrgDbConvertOrg:
 
         await convert_personal_org(ORG_ID, USER_ID)
 
-        # Should have flipped isPersonal on the old org
-        update_calls = self.prisma.organization.update.call_args_list
-        assert any(c[1]["data"].get("isPersonal") is False for c in update_calls)
-        # Should have spawned a new personal org for the user via the helper
+        # The old org is flipped inside the new org's transaction, not here.
+        self.prisma.organization.update.assert_not_called()
         self.create_personal_org.assert_awaited_once()
         assert self.create_personal_org.await_args.args[0] == USER_ID
+        assert self.create_personal_org.await_args.kwargs["replaces_org_id"] == ORG_ID
+        self.forget_owner.assert_called_once_with(ORG_ID)
 
     @pytest.mark.asyncio
     async def test_convert_already_team_org_raises(self):
@@ -514,7 +519,13 @@ class TestOrgDbMembers:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.execute_raw = AsyncMock()
+        self.prisma.orgmember.count = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.db.transaction",
+            _fake_transaction(self.prisma),
+        )
 
     @pytest.mark.asyncio
     async def test_add_member_auto_joins_default_workspace(self):
@@ -878,7 +889,13 @@ class TestWorkspaceDbCreate:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.execute_raw = AsyncMock()
+        self.prisma.team.count = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.team_db.transaction",
+            _fake_transaction(self.prisma),
+        )
 
     @pytest.mark.asyncio
     async def test_create_team_creator_becomes_admin(self):
@@ -1223,8 +1240,14 @@ class TestInvitationAcceptance:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.execute_raw = AsyncMock()
+        self.prisma.orgmember.count = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.db.transaction",
+            _fake_transaction(self.prisma),
+        )
 
     def _make_invitation(
         self,
@@ -2203,6 +2226,9 @@ class TestConversionSpawnsNewPersonalOrg:
                 id="new-personal", isPersonal=True, slug="acme-personal-1"
             ),
         )
+        self.forget_owner = mocker.patch(
+            "backend.api.features.orgs.db.forget_personal_org_owner"
+        )
 
     @pytest.mark.asyncio
     async def test_convert_creates_new_personal_org(self):
@@ -2216,12 +2242,9 @@ class TestConversionSpawnsNewPersonalOrg:
 
         await convert_personal_org(ORG_ID, USER_ID)
 
-        # Old org should have isPersonal flipped
-        update_calls = self.prisma.organization.update.call_args_list
-        assert any(c[1]["data"].get("isPersonal") is False for c in update_calls)
-        # New personal org should be spawned for the user via the helper
         self.create_personal_org.assert_awaited_once()
         assert self.create_personal_org.await_args.args[0] == USER_ID
+        assert self.create_personal_org.await_args.kwargs["replaces_org_id"] == ORG_ID
 
     @pytest.mark.asyncio
     async def test_convert_delegates_new_org_creation_to_shared_helper(self):
@@ -2254,8 +2277,8 @@ class TestConversionSpawnsNewPersonalOrg:
         assert result.is_personal is False
 
     @pytest.mark.asyncio
-    async def test_convert_rolls_back_on_failure(self):
-        """If new personal org creation fails, isPersonal should be restored."""
+    async def test_a_failed_conversion_never_writes_the_old_org(self):
+        """A failed conversion writes nothing to the old org."""
         from backend.api.features.orgs.db import convert_personal_org
 
         personal_org = _make_org(isPersonal=True, slug="acme")
@@ -2266,13 +2289,8 @@ class TestConversionSpawnsNewPersonalOrg:
         with pytest.raises(RuntimeError, match="DB connection lost"):
             await convert_personal_org(ORG_ID, USER_ID)
 
-        # Should have rolled back isPersonal
-        rollback_calls = [
-            c
-            for c in self.prisma.organization.update.call_args_list
-            if c[1]["data"].get("isPersonal") is True
-        ]
-        assert len(rollback_calls) == 1
+        self.prisma.organization.update.assert_not_called()
+        self.forget_owner.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_convert_already_team_org_fails(self):
@@ -2772,6 +2790,9 @@ class TestPRReviewBugs:
     @pytest.fixture(autouse=True)
     def setup(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.execute_raw = AsyncMock()
+        self.prisma.orgmember.count = AsyncMock(return_value=0)
+        self.prisma.team.count = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
         mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)

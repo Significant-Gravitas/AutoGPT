@@ -719,8 +719,6 @@ async def add_chat_messages_batch(
                         data["llmAuthProvider"] = msg["llm_auth_provider"]
                     if msg.get("llm_credential_id") is not None:
                         data["llmCredentialId"] = msg["llm_credential_id"]
-                    if msg.get("langfuse_trace_id") is not None:
-                        data["langfuseTraceId"] = msg["langfuse_trace_id"]
                     if msg.get("trace_id") is not None:
                         data["traceId"] = msg["trace_id"]
 
@@ -1402,7 +1400,6 @@ async def update_chat_message_stamps(
     routing_source: str | None,
     llm_auth_provider: str | None = None,
     llm_credential_id: str | None = None,
-    langfuse_trace_id: str | None = None,
     trace_id: str | None = None,
 ) -> bool:
     """Back-fill the execution stamps on an already-persisted message row.
@@ -1425,8 +1422,6 @@ async def update_chat_message_stamps(
         data["llmAuthProvider"] = llm_auth_provider
     if llm_credential_id is not None:
         data["llmCredentialId"] = llm_credential_id
-    if langfuse_trace_id is not None:
-        data["langfuseTraceId"] = langfuse_trace_id
     if trace_id is not None:
         data["traceId"] = trace_id
     result = await PrismaChatMessage.prisma().update(
@@ -1599,6 +1594,8 @@ async def admit_chat_session_turn(
 
     The count precedes the flip inside one per-user lock, and relies on READ
     COMMITTED (Postgres's default) to see every flip committed before the lock.
+    The read, the count and the flip are one statement after the lock, so the
+    admit costs two round trips besides its begin and commit.
     """
     async with db.transaction() as tx:
         # execute_raw, not query_raw: pg_advisory_xact_lock returns void.
@@ -1606,26 +1603,81 @@ async def admit_chat_session_turn(
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             f"copilot-turns:{user_id}",
         )
-        sessions = PrismaChatSession.prisma(tx)
-        current = await sessions.find_unique(where={"id": session_id})
-        if (
-            current is None
-            or current.userId != user_id
-            or current.chatStatus != expect_status
-        ):
-            return "busy"
-        running = await sessions.count(
-            where={"userId": user_id, "chatStatus": CHAT_STATUS_RUNNING}
+        # Its own statement, never folded into the lock's: a statement's
+        # snapshot is taken when it starts, so only one that starts once the
+        # lock is held sees the admits committed while it waited.
+        rows = await db.query_raw_with_schema(
+            _ADMIT_TURN_QUERY,
+            session_id,
+            user_id,
+            expect_status,
+            CHAT_STATUS_RUNNING,
+            capacity,
+            client=tx,
         )
-        if running >= capacity:
-            return "full"
-        # Conditional: a transition outside this lock (a cancel) may have
-        # moved the row since it was read.
-        updated = await sessions.update_many(
-            where={"id": session_id, "userId": user_id, "chatStatus": expect_status},
-            data={"chatStatus": CHAT_STATUS_RUNNING},
+    row = rows[0]
+    if row["status"] != expect_status:
+        return "busy"
+    if row["running"] >= capacity:
+        return "full"
+    # The flip re-checks the status: a transition outside this lock (a cancel)
+    # may have moved the row since the statement's snapshot.
+    return "admitted" if row["flipped"] else "busy"
+
+
+# The session's status (NULL when it isn't the user's), the user's running
+# count and the conditional flip, read and written against one snapshot.
+# statement_timestamp(), not NOW() or CURRENT_TIMESTAMP: both are when the
+# transaction began, before the lock wait, and a running row stamped that far
+# back can look like an orphan to the stale-slot releases
+# (``active_turns.ORPHAN_RUNNING_RESET_SECONDS``). The flip also drops the
+# previous turn's recorded identity, so a newly admitted slot never inherits
+# its cleanup.
+_ADMIT_TURN_QUERY = """
+WITH session_row AS (
+    SELECT "chatStatus"::text AS status
+    FROM {schema_prefix}"ChatSession"
+    WHERE "id" = $1 AND "userId" = $2
+), running AS (
+    SELECT COUNT(*)::int AS count
+    FROM {schema_prefix}"ChatSession"
+    WHERE "userId" = $2 AND "chatStatus" = $4::{schema_prefix}"ChatSessionStatus"
+), flipped AS (
+    UPDATE {schema_prefix}"ChatSession"
+    SET "chatStatus" = $4::{schema_prefix}"ChatSessionStatus",
+        "updatedAt" = statement_timestamp(),
+        "metadata" = COALESCE("metadata", '{{}}'::jsonb) - '_active_turn_id'
+    WHERE "id" = $1 AND "userId" = $2
+        AND "chatStatus" = $3::{schema_prefix}"ChatSessionStatus"
+        AND (SELECT count FROM running) < $5
+    RETURNING "id"
+)
+SELECT
+    (SELECT status FROM session_row) AS status,
+    (SELECT count FROM running) AS running,
+    EXISTS (SELECT 1 FROM flipped) AS flipped
+"""
+
+
+async def record_chat_session_turn(session_id: str, user_id: str, turn_id: str) -> bool:
+    """Persist the dispatched turn's identity independently of Redis stream TTLs.
+
+    Admission clears the identity, so one admission records one turn: a
+    dispatcher that stalled until orphan recovery freed its slot finds the
+    successor's identity in place and refuses itself instead of overwriting it.
+    """
+    return bool(
+        await db.execute_raw_with_schema(
+            """UPDATE {schema_prefix}"ChatSession" SET metadata=
+            COALESCE(metadata,'{{}}'::jsonb) || jsonb_build_object('_active_turn_id',$3::text),
+            "updatedAt"=CURRENT_TIMESTAMP
+            WHERE id=$1 AND "userId"=$2 AND "chatStatus"='running'
+              AND metadata->>'_active_turn_id' IS NULL """,
+            session_id,
+            user_id,
+            turn_id,
         )
-    return "admitted" if updated else "busy"
+    )
 
 
 async def update_chat_session_status(

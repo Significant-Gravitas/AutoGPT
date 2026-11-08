@@ -319,8 +319,7 @@ export function CronScheduler({
             <Label>On</Label>
             <Button
               variant="compact-outline"
-              size="compact"
-              className="h-8 px-2 py-1"
+              size="compact-sm"
               onClick={() => {
                 if (selectedWeekDays.length === weekDays.length) {
                   setSelectedWeekDays([]);
@@ -337,8 +336,7 @@ export function CronScheduler({
             </Button>
             <Button
               variant="compact-outline"
-              size="compact"
-              className="h-8 px-2 py-1"
+              size="compact-sm"
               onClick={() => setSelectedWeekDays([1, 2, 3, 4, 5])}
             >
               <Text variant="small-medium-tight" as="span" tone="inherit">
@@ -347,8 +345,7 @@ export function CronScheduler({
             </Button>
             <Button
               variant="compact-outline"
-              size="compact"
-              className="h-8 px-2 py-1"
+              size="compact-sm"
               onClick={() => setSelectedWeekDays([0, 6])}
             >
               <Text variant="small-medium-tight" as="span" tone="inherit">
@@ -365,8 +362,8 @@ export function CronScheduler({
                     ? "compact-primary"
                     : "compact-outline"
                 }
-                size="compact"
-                className="h-10 w-10 p-0"
+                size="compact-icon"
+                className="h-10 w-10"
                 onClick={() => {
                   setSelectedWeekDays((prev) =>
                     prev.includes(day.value)
@@ -443,8 +440,8 @@ export function CronScheduler({
                       ? "compact-primary"
                       : "compact-outline"
                   }
-                  size="compact"
-                  className="h-10 w-10 p-0"
+                  size="compact-icon"
+                  className="h-10 w-10"
                   onClick={() => {
                     setSelectedMonthDays((prev) =>
                       prev.includes(i + 1)
@@ -471,8 +468,7 @@ export function CronScheduler({
           <div className="flex gap-2">
             <Button
               variant="compact-outline"
-              size="compact"
-              className="h-8 px-2 py-1"
+              size="compact-sm"
               onClick={() => {
                 if (selectedMonths.length === months.length) {
                   setSelectedMonths([]);
@@ -502,7 +498,7 @@ export function CronScheduler({
                       : "compact-outline"
                   }
                   size="compact"
-                  className="px-2 py-1"
+                  className="px-2"
                   onClick={() => {
                     setSelectedMonths((prev) =>
                       prev.includes(monthNumber)

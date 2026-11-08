@@ -60,7 +60,8 @@ export function AgentTeam({ dashboard, className }: Props) {
             variant="small-medium"
             as="span"
             tone="muted"
-            className="transition-colors group-hover:text-foreground-strong"
+            motion="colors"
+            className="group-hover:text-foreground-strong"
           >
             {team.total > LISTED_EXPERTS
               ? `View all ${team.total} experts`
