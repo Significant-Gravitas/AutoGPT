@@ -18,7 +18,13 @@ async def test_run_once_does_not_sleep(monkeypatch, has_entries, polling_rate):
         "link": "https://example.com/article",
         "published_parsed": published.timetuple(),
     }
-    parse_feed = AsyncMock(return_value={"entries": [entry] if has_entries else []})
+    undated = {
+        "title": "No date",
+        "link": "https://example.com/undated",
+    }
+    parse_feed = AsyncMock(
+        return_value={"entries": [entry, undated] if has_entries else []}
+    )
     sleep = AsyncMock()
     monkeypatch.setattr(block, "parse_feed", parse_feed)
     monkeypatch.setattr("backend.blocks.rss.asyncio.sleep", sleep)
