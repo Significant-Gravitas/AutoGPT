@@ -112,6 +112,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
       ? output.sub_session_id
       : null,
     isSubTool && typeof output?.status === "string" ? output.status : null,
+    isSubTool && typeof output?.background_task_id === "string",
   );
   // "unknown" means the poll died, not that the teammate finished — the row
   // only has a running label and a done label, and claiming a result landed

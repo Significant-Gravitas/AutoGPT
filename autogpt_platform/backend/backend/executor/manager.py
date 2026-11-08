@@ -27,7 +27,7 @@ from backend.copilot.rate_limit import platform_spend_refusal
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.db_accessors import experts_db
-from backend.data.dynamic_fields import parse_execution_output
+from backend.data.dynamic_fields import parse_execution_output, sanitize_pin_name
 from backend.data.execution import (
     ExecutionContext,
     ExecutionQueue,
@@ -64,6 +64,7 @@ from backend.integrations.credentials_store import (
     provider_matches,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.oauth.refresh_failure import CredentialsNeedReconnectError
 from backend.monitoring.instrumentation import record_graph_run_completion
 from backend.util import json, product_analytics, tracing
 from backend.util.clients import (
@@ -79,6 +80,7 @@ from backend.util.decorator import (
     time_measured,
 )
 from backend.util.exceptions import (
+    BlockInputError,
     GraphNotFoundError,
     InsufficientBalanceError,
     ModerationError,
@@ -120,6 +122,7 @@ from .simulator import (
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_EXCHANGE,
+    GRAPH_EXECUTION_DELAY_ROUTING_KEY,
     GRAPH_EXECUTION_EXCHANGE,
     GRAPH_EXECUTION_QUEUE_NAME,
     GRAPH_EXECUTION_ROUTING_KEY,
@@ -127,6 +130,7 @@ from .utils import (
     NODE_UNWIND_GRACE_SECONDS,
     CancelExecutionEvent,
     ExecutionOutputEntry,
+    InputMismatchError,
     LogMetadata,
     NodeExecutionProgress,
     create_execution_queue_config,
@@ -343,6 +347,67 @@ async def _finish_despite_cancel(work: Awaitable[T]) -> T:
         raise
 
 
+def _drop_unused_credentials(node: Node, inputs: BlockInput) -> BlockInput:
+    """Remove optional credential metadata that the selected discriminator does
+    not use before schema validation. Empty or stale objects would otherwise
+    fail their nested credential schema before the executor can ignore them.
+    Returns the values it removed."""
+    dropped: BlockInput = {}
+    input_schema = getattr(node.block, "input_schema", None)
+    if input_schema is None:  # an unknown block; validation reports it
+        return dropped
+    input_model = cast(type[BlockSchema], input_schema)
+    required_fields = input_model.get_required_fields()
+    for field_name, field_info in input_model.get_credentials_fields_info().items():
+        if not field_info.discriminator or field_name in required_fields:
+            continue
+        discriminator_value = inputs.get(
+            field_info.discriminator,
+            node.input_default.get(field_info.discriminator),
+        )
+        try:
+            unused = not field_info.requires_credentials(discriminator_value)
+        except TypeError:  # an unhashable linked value: validation reports it
+            continue
+        if unused:
+            if field_name in inputs:
+                dropped[field_name] = inputs[field_name]
+            inputs[field_name] = None
+    return dropped
+
+
+def _validate_queued_input(
+    node: Node, data: BlockInput, dry_run: bool, resolve_input: bool = True
+) -> tuple[BlockInput | None, str, str | None]:
+    """Validate a node's input as `execute_node` will: returns the data to
+    queue, the message, and the input error the node is queued to fail with.
+    Missing input returns no data, so the node keeps waiting. Credentials the
+    node doesn't use are dropped only to validate: the queued data keeps them,
+    since a static link passes them on to the node's other executions."""
+    present = set(data)
+    dropped = _drop_unused_credentials(node, data)
+    added = set(data) - present
+    # A linked pin that hasn't arrived yet stays absent, so the node waits.
+    for name in added & {link.sink_name for link in node.input_links}:
+        del data[name]
+    input_error = None
+    try:
+        valid, msg = validate_exec(
+            node,
+            data,
+            resolve_input=resolve_input,
+            dry_run=dry_run,
+            raise_on_mismatch=True,
+        )
+    except InputMismatchError as e:
+        valid, msg, input_error = e.data, str(e), str(e)
+    if valid is not None:
+        for name in added:
+            valid.pop(name, None)
+        valid.update(dropped)
+    return valid, msg, input_error
+
+
 async def execute_node(
     node: Node,
     data: NodeExecutionEntry,
@@ -389,25 +454,23 @@ async def execute_node(
 
     input_model = cast(type[BlockSchema], node_block.input_schema)
     credential_fields_info = input_model.get_credentials_fields_info()
-    required_credential_fields = set(input_model.get_required_fields())
+    _drop_unused_credentials(node, data.inputs)
 
-    # Remove optional credential metadata that the selected discriminator does
-    # not use before schema validation. Empty or stale objects would otherwise
-    # fail their nested credential schema before the executor can ignore them.
-    for field_name, field_info in credential_fields_info.items():
-        if not field_info.discriminator or field_name in required_credential_fields:
-            continue
-        discriminator_value = data.inputs.get(
-            field_info.discriminator,
-            node.input_default.get(field_info.discriminator),
+    # Sanity check: validate the execution input. A value the node can't use
+    # is raised, not yielded, so the node ends FAILED with the input error.
+    try:
+        input_data, error = validate_exec(
+            node,
+            data.inputs,
+            resolve_input=False,
+            dry_run=execution_context.dry_run,
+            raise_on_mismatch=True,
         )
-        if not field_info.requires_credentials(discriminator_value):
-            data.inputs[field_name] = None
-
-    # Sanity check: validate the execution input.
-    input_data, error = validate_exec(
-        node, data.inputs, resolve_input=False, dry_run=execution_context.dry_run
-    )
+    except InputMismatchError as e:
+        log_metadata.warning(f"Failing node, input it can't use: {e}")
+        raise BlockInputError(
+            message=str(e), block_name=node_block.name, block_id=node_block.id
+        ) from e
     if input_data is None:
         log_metadata.warning(f"Skip execution, input validation error: {error}")
         yield "error", error
@@ -439,6 +502,13 @@ async def execute_node(
         for key in tool_props:
             if key in input_data:
                 merged_args[key] = input_data[key]
+        # A link into `tool_arguments` beats a saved value, unless the tool declares
+        # its own; without one, this is the saved dict the Orchestrator re-enqueues.
+        if "tool_arguments" not in tool_props and any(
+            sanitize_pin_name(link.sink_name) == "tool_arguments"
+            for link in node.input_links
+        ):
+            merged_args.update(input_data.get("tool_arguments") or {})
         _mcp_data.tool_arguments = merged_args
         input_data = _mcp_data.model_dump()
     data.inputs = input_data
@@ -746,7 +816,11 @@ async def _enqueue_next_nodes(
     execution_context: ExecutionContext,
 ) -> list[NodeExecutionEntry]:
     async def add_enqueued_execution(
-        node_exec_id: str, node_id: str, block_id: str, data: BlockInput
+        node_exec_id: str,
+        node_id: str,
+        block_id: str,
+        data: BlockInput,
+        input_error: str | None = None,
     ) -> NodeExecutionEntry:
         await async_update_node_execution_status(
             db_client=db_client,
@@ -766,6 +840,7 @@ async def _enqueue_next_nodes(
             execution_context=execution_context,
             queued_at=datetime.now(timezone.utc),
             queued_by="node_output",
+            input_error=input_error,
         )
 
     async def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
@@ -825,8 +900,8 @@ async def _enqueue_next_nodes(
                 next_node_input.update(node_input_mask)
 
             # Validate the input data for the next node.
-            next_node_input, validation_msg = validate_exec(
-                next_node, next_node_input, dry_run=execution_context.dry_run
+            next_node_input, validation_msg, input_error = _validate_queued_input(
+                next_node, next_node_input, execution_context.dry_run
             )
             suffix = f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
 
@@ -843,6 +918,7 @@ async def _enqueue_next_nodes(
                     node_id=next_node_id,
                     block_id=next_node.block_id,
                     data=next_node_input,
+                    input_error=input_error,
                 )
             )
 
@@ -872,8 +948,8 @@ async def _enqueue_next_nodes(
                 if node_input_mask:
                     idata.update(node_input_mask)
 
-                idata, msg = validate_exec(
-                    next_node, idata, dry_run=execution_context.dry_run
+                idata, msg, ierror = _validate_queued_input(
+                    next_node, idata, execution_context.dry_run
                 )
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
                 if not idata:
@@ -886,6 +962,7 @@ async def _enqueue_next_nodes(
                         node_id=next_node_id,
                         block_id=next_node.block_id,
                         data=idata,
+                        input_error=ierror,
                     )
                 )
             return enqueued_executions
@@ -1065,7 +1142,11 @@ class ExecutionProcessor:
                     block=node.block,
                     db_client=db_client,
                 )
-            if not node_exec.execution_context.dry_run:
+            # A node queued to fail on its input was never charged.
+            if (
+                not node_exec.execution_context.dry_run
+                and node_exec.input_error is None
+            ):
                 reconciled_delta, _ = await billing.charge_reconciled_usage(
                     node_exec=node_exec,
                     stats=execution_stats,
@@ -1202,8 +1283,11 @@ class ExecutionProcessor:
         except BaseException as e:
             stats.error = e
 
-            if isinstance(e, ValueError):
-                # Avoid user error being marked as an actual error.
+            if isinstance(e, (ValueError, CredentialsNeedReconnectError)):
+                # Avoid user error being marked as an actual error. A
+                # credential the provider refused for good was reported once
+                # when refused; until the user reconnects it, each run fails
+                # here without contacting the provider.
                 log_metadata.info(
                     f"Expected failure on node execution {node_exec.node_exec_id}: {type(e).__name__} - {e}"
                 )
@@ -1470,6 +1554,7 @@ class ExecutionProcessor:
             # ------------------------------------------------------------
             # Pre‑populate queue ---------------------------------------
             # ------------------------------------------------------------
+            rebuilt_nodes: dict[str, Node] = {}
             for node_exec in db_client.get_node_executions(
                 graph_exec.graph_exec_id,
                 statuses=[
@@ -1489,6 +1574,26 @@ class ExecutionProcessor:
                 # no caller requeues a TERMINATED run.
                 if node_exec.status in BILLED_REDISPATCH_STATUSES:
                     node_entry.redispatched_from = node_exec.status
+                # The in-memory input-error marker is lost on a restart, so a
+                # node queued to fail would be charged (QUEUED) or refunded a
+                # charge it never paid (RUNNING); derive it again. A failed
+                # lookup fails the run before anything is charged, as the
+                # charge itself would.
+                if (
+                    node_exec.status
+                    in (ExecutionStatus.QUEUED, ExecutionStatus.RUNNING)
+                    and not graph_exec.execution_context.dry_run
+                ):
+                    if node_entry.node_id not in rebuilt_nodes:
+                        rebuilt_nodes[node_entry.node_id] = db_client.get_node(
+                            node_entry.node_id
+                        )
+                    _, _, node_entry.input_error = _validate_queued_input(
+                        rebuilt_nodes[node_entry.node_id],
+                        dict(node_entry.inputs),
+                        dry_run=False,
+                        resolve_input=False,
+                    )
                 node_entry.queued_at = node_exec.queue_time
                 node_entry.queued_by = "graph_start"
                 execution_queue.add(node_entry)
@@ -1524,14 +1629,18 @@ class ExecutionProcessor:
                     f"for node {queued_node_exec.node_id}",
                 )
 
-                # Charge usage (may raise) — skipped for dry runs and for
-                # REVIEW/RUNNING re-dispatches that were already charged.
+                # Charge usage (may raise) — skipped for dry runs, for
+                # REVIEW/RUNNING re-dispatches that were already charged, and
+                # for a node queued only to fail on an input it can't use.
                 try:
                     if queued_node_exec.redispatched_from is not None:
                         queued_node_exec.pre_flight_charge = (
                             billing.redispatch_reconcile_baseline(queued_node_exec)
                         )
-                    elif not graph_exec.execution_context.dry_run:
+                    elif (
+                        not graph_exec.execution_context.dry_run
+                        and queued_node_exec.input_error is None
+                    ):
                         (
                             cost,
                             remaining_balance,
@@ -1850,10 +1959,14 @@ class ExecutionProcessor:
 
 
 class ExecutionManager(AppProcess):
+    shutdown_poll_seconds = 5
+
     def __init__(self):
         super().__init__()
         self.pool_size = settings.config.num_graph_workers
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
+        # Owner of each active top-level run, for the per-user worker share.
+        self._root_run_owners: dict[str, str] = {}
         self.executor_id = str(uuid.uuid4())
 
         self._executor = None
@@ -2068,44 +2181,58 @@ class ExecutionManager(AppProcess):
         delivery_tag = method.delivery_tag
 
         @func_retry
-        def _ack_message(reject: bool, requeue: bool):
+        def _ack_message(reject: bool, requeue: bool, delay: bool = False):
             """
             Acknowledge or reject the message based on execution status.
 
             Args:
                 reject: Whether to reject the message
                 requeue: Whether to requeue the message
+                delay: Whether to hold the requeued message in the delay queue
             """
 
             # Connection can be lost, so always get a fresh channel
             channel = self.run_client.get_channel()
-            if reject:
-                if requeue and settings.config.requeue_by_republishing:
-                    # Send rejected message to back of queue using republishing
-                    def _republish_to_back():
-                        try:
-                            # First republish to back of queue
-                            self.run_client.publish_message(
-                                routing_key=GRAPH_EXECUTION_ROUTING_KEY,
-                                message=body.decode(),  # publish_message expects string, not bytes
-                                exchange=GRAPH_EXECUTION_EXCHANGE,
-                            )
-                            # Then reject without requeue (message already republished)
-                            channel.basic_nack(delivery_tag, requeue=False)
-                            logger.info("Message requeued to back of queue")
-                        except Exception as e:
-                            logger.error(
-                                f"[{self.service_name}] Failed to requeue message to back: {e}"
-                            )
-                            # Fall back to traditional requeue on failure
-                            channel.basic_nack(delivery_tag, requeue=True)
 
-                    channel.connection.add_callback_threadsafe(_republish_to_back)
-                else:
-                    # Traditional requeue (goes to front) or no requeue
-                    channel.connection.add_callback_threadsafe(
-                        lambda: channel.basic_nack(delivery_tag, requeue=requeue)
+            def _republish(routing_key: str, expiration: str | None):
+                try:
+                    # First republish, so the delivery can be dropped
+                    self.run_client.publish_message(
+                        routing_key=routing_key,
+                        message=body.decode(),  # publish_message expects string, not bytes
+                        exchange=GRAPH_EXECUTION_EXCHANGE,
+                        properties=BasicProperties(
+                            delivery_mode=2, expiration=expiration
+                        ),
                     )
+                    # Then reject without requeue (message already republished)
+                    channel.basic_nack(delivery_tag, requeue=False)
+                    logger.info(f"Message requeued via {routing_key}")
+                except Exception as e:
+                    logger.error(
+                        f"[{self.service_name}] Failed to requeue message "
+                        f"via {routing_key}: {e}"
+                    )
+                    # Fall back to traditional requeue on failure
+                    channel.basic_nack(delivery_tag, requeue=True)
+
+            if reject and requeue and delay:
+                # Via the delay queue, which holds the message for this long
+                # and then dead-letters it back onto the run queue.
+                ttl_ms = str(settings.config.graph_run_requeue_delay_seconds * 1000)
+                channel.connection.add_callback_threadsafe(
+                    lambda: _republish(GRAPH_EXECUTION_DELAY_ROUTING_KEY, ttl_ms)
+                )
+            elif reject and requeue and settings.config.requeue_by_republishing:
+                # Send rejected message to back of queue using republishing
+                channel.connection.add_callback_threadsafe(
+                    lambda: _republish(GRAPH_EXECUTION_ROUTING_KEY, None)
+                )
+            elif reject:
+                # Traditional requeue (goes to front) or no requeue
+                channel.connection.add_callback_threadsafe(
+                    lambda: channel.basic_nack(delivery_tag, requeue=requeue)
+                )
             else:
                 channel.connection.add_callback_threadsafe(
                     lambda: channel.basic_ack(delivery_tag)
@@ -2146,6 +2273,15 @@ class ExecutionManager(AppProcess):
             + (f", parent={parent_exec_id}" if parent_exec_id else "")
         )
 
+        is_root_run = root_exec_id is None or root_exec_id == graph_exec_id
+        if is_root_run and not self._has_worker_share_for(user_id):
+            logger.info(
+                f"[{self.service_name}] User {user_id} holds its share of workers; "
+                f"requeueing {graph_exec_id}"
+            )
+            _ack_message(reject=True, requeue=True, delay=True)
+            return
+
         # Check if root execution is already terminated (prevents orphaned child executions)
         if root_exec_id and root_exec_id != graph_exec_id:
             parent_exec = get_db_client().get_graph_execution_meta(
@@ -2182,7 +2318,7 @@ class ExecutionManager(AppProcess):
                     f"[{self.service_name}] Rate limit exceeded for user {user_id} on graph {graph_id}: "
                     f"{current_running_count}/{settings.config.max_concurrent_graph_executions_per_user} running executions"
                 )
-                _ack_message(reject=True, requeue=True)
+                _ack_message(reject=True, requeue=True, delay=True)
                 return
 
         except Exception as e:
@@ -2234,6 +2370,8 @@ class ExecutionManager(AppProcess):
                 execute_graph, graph_exec_entry, cancel_event, cluster_lock
             )
             self.active_graph_runs[graph_exec_id] = (future, cancel_event)
+            if is_root_run:
+                self._root_run_owners[graph_exec_id] = user_id
         except Exception as e:
             logger.warning(
                 f"[{self.service_name}] Failed to setup execution for {graph_exec_id}: {type(e).__name__}: {e}"
@@ -2275,16 +2413,28 @@ class ExecutionManager(AppProcess):
     def _cleanup_completed_runs(self) -> list[str]:
         """Remove completed futures from active_graph_runs and update metrics"""
         completed_runs = []
-        for graph_exec_id, (future, _) in self.active_graph_runs.items():
+        # Runs' done-callbacks call this from worker threads, so walk a copy.
+        for graph_exec_id, (future, _) in list(self.active_graph_runs.items()):
             if future.done():
                 completed_runs.append(graph_exec_id)
 
         for geid in completed_runs:
             logger.info(f"[{self.service_name}] ✅ Cleaned up completed run {geid}")
             self.active_graph_runs.pop(geid, None)
+            self._root_run_owners.pop(geid, None)
 
         self._update_prompt_metrics()
         return completed_runs
+
+    def _has_worker_share_for(self, user_id: str) -> bool:
+        """Whether *user_id* may start another top-level run on this executor."""
+        # Kept below the pool, so one account can never hold every worker.
+        share = max(
+            1, min(settings.config.max_graph_workers_per_user, self.pool_size - 1)
+        )
+        # Counted on a snapshot: a run's done-callback can drop an owner mid-count.
+        held = list(self._root_run_owners.values()).count(user_id)
+        return held < share
 
     def _update_prompt_metrics(self):
         active_count = len(self.active_graph_runs)
@@ -2330,40 +2480,46 @@ class ExecutionManager(AppProcess):
                 f"{prefix} ⚠️ Error signaling consumer to stop: {type(e)} {e}"
             )
 
-        # Wait for active executions to complete
-        if self.active_graph_runs:
-            logger.info(
-                f"{prefix} ⏳ Waiting for {len(self.active_graph_runs)} active executions to complete..."
-            )
-
-            max_wait = GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
-            wait_interval = 5
-            waited = 0
-
-            while waited < max_wait:
-                self._cleanup_completed_runs()
-                if not self.active_graph_runs:
-                    logger.info(f"{prefix} ✅ All active executions completed")
-                    break
-                else:
-                    ids = [k.split("-")[0] for k in self.active_graph_runs.keys()]
-                    logger.info(
-                        f"{prefix} ⏳ Still waiting for {len(self.active_graph_runs)} executions: {ids}"
-                    )
-
-                    for graph_exec_id in self.active_graph_runs:
-                        if lock := self._execution_locks.get(graph_exec_id):
-                            lock.refresh()
-
-                time.sleep(wait_interval)
-                waited += wait_interval
-
+        # Wait for active executions to complete. Runs finish under this loop and
+        # their done-callbacks pop them from the map, so every walk is over a copy.
+        try:
             if self.active_graph_runs:
-                logger.warning(
-                    f"{prefix} ⚠️ {len(self.active_graph_runs)} executions still running after {max_wait}s"
+                logger.info(
+                    f"{prefix} ⏳ Waiting for {len(self.active_graph_runs)} active executions to complete..."
                 )
-            else:
-                logger.info(f"{prefix} ✅ All executions completed gracefully")
+
+                max_wait = GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
+                wait_interval = self.shutdown_poll_seconds
+                waited = 0
+
+                while waited < max_wait:
+                    self._cleanup_completed_runs()
+                    if not self.active_graph_runs:
+                        logger.info(f"{prefix} ✅ All active executions completed")
+                        break
+                    else:
+                        ids = [k.split("-")[0] for k in list(self.active_graph_runs)]
+                        logger.info(
+                            f"{prefix} ⏳ Still waiting for {len(ids)} executions: {ids}"
+                        )
+
+                        for graph_exec_id in list(self.active_graph_runs):
+                            if lock := self._execution_locks.get(graph_exec_id):
+                                lock.refresh()
+
+                    time.sleep(wait_interval)
+                    waited += wait_interval
+
+                if self.active_graph_runs:
+                    logger.warning(
+                        f"{prefix} ⚠️ {len(self.active_graph_runs)} executions still running after {max_wait}s"
+                    )
+                else:
+                    logger.info(f"{prefix} ✅ All executions completed gracefully")
+        except Exception:
+            # The steps below release this pod's locks and messages; skipping them
+            # leaves the runs held by a pod that is about to exit.
+            logger.exception(f"{prefix} ⚠️ Stopped waiting for active executions")
 
         # Shutdown the executor
         try:
@@ -2374,7 +2530,7 @@ class ExecutionManager(AppProcess):
 
         # Release remaining execution locks
         try:
-            for lock in self._execution_locks.values():
+            for lock in list(self._execution_locks.values()):
                 lock.release()
             self._execution_locks.clear()
             logger.info(f"{prefix} ✅ Released execution locks")

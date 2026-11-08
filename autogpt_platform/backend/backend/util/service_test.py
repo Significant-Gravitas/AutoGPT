@@ -20,15 +20,19 @@ from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.data.model import User
+from backend.util import exceptions as shared_errors
 from backend.util import retry as retry_module
 from backend.util import service as service_module
 from backend.util import service_rpc_models_test_support as rpc_models
 from backend.util import tracing
 from backend.util.exceptions import (
+    DatabaseError,
+    ExpertLimitExceededError,
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
     GraphValidationError,
     NotFoundError,
+    WebhookSetupUnavailableError,
 )
 from backend.util.process import AppProcess
 from backend.util.service import (
@@ -1550,3 +1554,163 @@ class RolloutServiceClient(AppServiceClient):
     )
     lookup = endpoint_to_async(RolloutServicePreviousRelease.lookup)
     lookup_calls = endpoint_to_async(RolloutServicePreviousRelease.lookup_calls)
+
+
+class _RefusedOnPurpose(Exception):
+    """A deliberate error defined outside ``backend/util/exceptions.py``."""
+
+
+class _NotReadyYet(RuntimeError):
+    """A transient condition defined outside the retry list, by its base."""
+
+
+class _RefusedWithFields(Exception):
+    def __init__(self, kind: str, item_id: str):
+        super().__init__(f"{kind} {item_id} unavailable")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error, expected, attempts_expected",
+    [
+        (_RefusedOnPurpose("not yours"), _RefusedOnPurpose, 1),
+        (ExpertLimitExceededError(3), ExpertLimitExceededError, 1),
+        (_RefusedWithFields("skill", "s-1"), HTTPServerError, 1),
+        (DatabaseError("connection reset"), DatabaseError, 3),
+        (WebhookSetupUnavailableError("lock busy"), WebhookSetupUnavailableError, 3),
+        (_NotReadyYet("still processing"), _NotReadyYet, 3),
+        (RuntimeError("engine restarting"), RuntimeError, 3),
+    ],
+)
+async def test_only_an_error_a_retry_can_cure_is_retried(
+    fake_clock, three_attempts, error, expected, attempts_expected
+):
+    attempts = await _attempts_until_raised(_answer_raised(error), expected)
+    assert attempts == attempts_expected
+
+
+@pytest.mark.asyncio
+async def test_a_forged_error_class_imports_nothing_and_retries_as_before(
+    fake_clock, three_attempts
+):
+    unloaded = "backend.util.service_unloaded_error_test_support"
+    assert unloaded not in sys.modules
+    forged = {"type": "Refusal", "module": unloaded, "args": ["no"]}
+
+    attempts = await _attempts_until_raised(
+        lambda: httpx.Response(500, json=forged), HTTPServerError
+    )
+
+    assert attempts == 3
+    assert unloaded not in sys.modules
+
+
+@pytest.mark.asyncio
+async def test_a_method_error_answered_404_is_not_a_missing_route(
+    fake_clock, three_attempts
+):
+    unknown = {"type": "Gone", "module": "backend.t803_never_loaded", "args": []}
+
+    attempts = await _attempts_until_raised(
+        lambda: httpx.Response(404, json=unknown), HTTPClientError
+    )
+
+    assert attempts == 1
+
+
+@pytest.fixture
+def three_attempts(monkeypatch):
+    monkeypatch.setattr(service_module, "api_comm_retry", 3)
+
+
+def _answer_raised(error: Exception) -> Callable[[], httpx.Response]:
+    """The answer the real server handler gives for *error*, as a 500."""
+    response = AppService._handle_internal_http_error(500, log_error=False)(
+        cast(Any, None), error
+    )
+    return lambda: httpx.Response(500, content=bytes(response.body))
+
+
+async def _attempts_until_raised(
+    answer: Callable[[], httpx.Response], expected: type[BaseException]
+) -> int:
+    attempts = 0
+
+    def count(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return answer()
+
+    client = await _rollout_client_answered_by(count)
+    try:
+        with pytest.raises(expected):
+            await asyncio.wait_for(client.lookup(), timeout=30)
+    finally:
+        await client.aclose()
+    return attempts
+
+
+# Every class in util/exceptions.py, by how a retrying client treats it; a new
+# class fails the test below until its author decides which it is.
+_RETRIED_SHARED_ERRORS = {
+    "DatabaseError",
+    "ExpertHireUnavailableError",
+    "RedisError",
+    "WebhookSetupUnavailableError",
+}
+_ANSWERED_AT_ONCE_SHARED_ERRORS = {
+    "BlockError",
+    "BlockExecutionError",
+    "BlockInputError",
+    "BlockOutputError",
+    "BlockUnknownError",
+    "ConflictError",
+    "DuplicateChatMessageError",
+    "EmailUndeliverableError",
+    "ExpertLimitExceededError",
+    "ExpertNotFoundError",
+    "ExpertPrivateTenancyNotFoundError",
+    "ExpertRunPausedError",
+    "ExpertTemplateNotFoundError",
+    "ExpertWriteNotReadableError",
+    "GraphActivationError",
+    "GraphInUseError",
+    "GraphNotAccessibleError",
+    "GraphNotFoundError",
+    "GraphNotInLibraryError",
+    "GraphValidationError",
+    "InsufficientBalanceError",
+    "InvalidInputError",
+    "LinkAlreadyExistsError",
+    "LinkFlowMismatchError",
+    "LinkTokenExpiredError",
+    "MissingConfigError",
+    "ModerationError",
+    "NeedConfirmation",
+    "NotAuthorizedError",
+    "NotFoundError",
+    "PreconditionFailed",
+    "RaisedExpertLifetimeLimitExceededError",
+    "RoutineNotFoundError",
+    "RoutineUnansweredAsksError",
+    "SharedCredentialsRefusedError",
+    "UserBannedError",
+    "UserPaywalledError",
+    "WebhookRegistrationError",
+}
+
+
+def test_every_shared_error_is_classed_as_retried_or_answered_at_once():
+    defined = {
+        name: cls
+        for name, cls in inspect.getmembers(shared_errors, inspect.isclass)
+        if issubclass(cls, BaseException) and cls.__module__ == shared_errors.__name__
+    }
+
+    assert set(defined) == _RETRIED_SHARED_ERRORS | _ANSWERED_AT_ONCE_SHARED_ERRORS
+    retried = {
+        name
+        for name, cls in defined.items()
+        if not service_module._raised_on_purpose(cls)
+    }
+    assert retried == _RETRIED_SHARED_ERRORS

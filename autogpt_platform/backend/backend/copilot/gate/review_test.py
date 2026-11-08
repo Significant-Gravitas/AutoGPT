@@ -8,6 +8,7 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.blocks.airtable.schema import AirtableCreateTableBlock
+from backend.blocks.github.repo import GithubCreateRepositoryBlock
 from backend.blocks.google.gmail import GmailSendBlock
 from backend.copilot.gate.headline import gated_tools, headline_for
 from backend.copilot.gate.policy import (
@@ -21,6 +22,7 @@ from backend.copilot.gate.policy import (
 from backend.copilot.gate.review import (
     find_decision,
     node_id_for,
+    payload_headline,
     review_id_for,
     review_payload,
 )
@@ -335,6 +337,27 @@ def test_the_preview_shows_what_the_defaults_will_create():
             "fields": [{"name": "Name", "kind": "Text", "detail": ""}],
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "inputs, headline",
+    [
+        ({"name": "otter-notes"}, "Create a public GitHub repository: “otter-notes”"),
+        (
+            {"name": "otter-notes", "private": True},
+            "Create a private GitHub repository: “otter-notes”",
+        ),
+    ],
+    ids=["private left out", "private"],
+)
+def test_the_card_says_whether_a_new_repository_is_public(inputs, headline):
+    block = GithubCreateRepositoryBlock()
+    payload = review_payload(
+        "run_capability",
+        {"id": block.id, "input": inputs},
+        block_subject(block, inputs, priced=False),
+    )
+    assert payload_headline(payload) == headline
 
 
 def test_a_block_with_nothing_to_preview_keeps_its_run_headline():

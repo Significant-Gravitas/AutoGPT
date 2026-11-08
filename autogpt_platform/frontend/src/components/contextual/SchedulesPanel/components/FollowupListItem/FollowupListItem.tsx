@@ -51,8 +51,7 @@ export function FollowupListItem({ followup }: Props) {
         <Icon
           icon={Comment01Icon}
           size={18}
-          // oxlint-disable-next-line design-system/no-raw-colors -- orange/yellow hue kept; warning-foreground would be a hue change (deferred visual change)
-          className="text-yellow-700"
+          className="text-yellow-foreground"
         />
       </div>
       <div className="flex min-w-0 flex-col gap-1">
