@@ -1,3 +1,4 @@
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import * as Sentry from "@sentry/nextjs";
 import {
   getGetV2ListMySubmissionsQueryKey,
@@ -148,6 +149,7 @@ export const useEditAgentForm = ({
         throw new Error("Failed to update submission");
       }
     } catch (error) {
+      if (toastIfPlanRequired(error, "Publishing needs an active plan")) return;
       Sentry.captureException(error);
       toast({
         title: "Edit Workflow Error",

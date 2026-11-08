@@ -13,6 +13,10 @@ const all: RouteHandlers = {
   graph: handler,
   libraryAgents: handler,
   executions: handler,
+  libraryAgent: handler,
+  graphExecutions: handler,
+  graphSchedules: handler,
+  libraryPresets: handler,
 };
 
 function nameOf(url: string, handlers: RouteHandlers = all) {
@@ -43,6 +47,20 @@ describe("matchRoute", () => {
     const base = "http://localhost:3000/api/proxy/api/graphs/g1";
     expect(nameOf(`${base}/executions/e1`)).toBe("graphExecution");
     expect(nameOf(`${base}?version=1`)).toBe("graph");
+  });
+
+  it("tells a workflow's runs, schedules and presets apart from one run", () => {
+    const base = "http://localhost:3000/api/proxy/api";
+    expect(nameOf(`${base}/graphs/g1/executions?page=1&page_size=20`)).toBe(
+      "graphExecutions",
+    );
+    expect(nameOf(`${base}/graphs/g1/executions/e1`)).toBe("graphExecution");
+    expect(nameOf(`${base}/graphs/g1/schedules`)).toBe("graphSchedules");
+    expect(nameOf(`${base}/library/presets?graph_id=g1`)).toBe(
+      "libraryPresets",
+    );
+    expect(nameOf(`${base}/library/agents/a1`)).toBe("libraryAgent");
+    expect(nameOf(`${base}/library/agents?page_size=20`)).toBe("libraryAgents");
   });
 
   it("leaves pages, other endpoints and unhandled routes alone", () => {

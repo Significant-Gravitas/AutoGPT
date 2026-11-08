@@ -104,20 +104,22 @@ function JSONViewer({ data }: { data: any }) {
 
   const renderValue = (value: any, key: string = ""): React.ReactNode => {
     if (value === null)
-      return <span className="text-muted-foreground">null</span>;
+      return <span className="text-foreground-tertiary">null</span>;
     if (value === undefined)
-      return <span className="text-muted-foreground">undefined</span>;
+      return <span className="text-foreground-tertiary">undefined</span>;
 
     if (typeof value === "boolean") {
-      return <span className="text-blue-600">{value.toString()}</span>;
+      return <span className="text-info-foreground">{value.toString()}</span>;
     }
 
     if (typeof value === "number") {
-      return <span className="text-green-600">{value}</span>;
+      return <span className="text-success">{value}</span>;
     }
 
     if (typeof value === "string") {
-      return <span className="text-orange-600">&quot;{value}&quot;</span>;
+      return (
+        <span className="text-orange-foreground">&quot;{value}&quot;</span>
+      );
     }
 
     if (Array.isArray(value)) {
@@ -125,29 +127,31 @@ function JSONViewer({ data }: { data: any }) {
       const itemCount = value.length;
 
       if (itemCount === 0) {
-        return <span className="text-muted-foreground">[]</span>;
+        return <span className="text-foreground-tertiary">[]</span>;
       }
 
       return (
         <div className="inline-block">
           <button
             onClick={() => toggleCollapse(key)}
-            className="inline-flex items-center rounded px-1 hover:bg-muted"
+            className="inline-flex items-center rounded px-1 hover:bg-surface-hover"
           >
             {isCollapsed ? (
               <Icon icon={ArrowRight01Icon} className="size-3" />
             ) : (
               <Icon icon={ArrowDown01Icon} className="size-3" />
             )}
-            <span className="ml-1 text-muted-foreground">
+            <span className="ml-1 text-foreground-tertiary">
               Array({itemCount})
             </span>
           </button>
           {!isCollapsed && (
-            <div className="ml-4 mt-1">
+            <div className="mt-1 ml-4">
               {value.map((item, index) => (
                 <div key={index} className="flex">
-                  <span className="mr-2 text-muted-foreground">{index}:</span>
+                  <span className="mr-2 text-foreground-tertiary">
+                    {index}:
+                  </span>
                   {renderValue(item, `${key}[${index}]`)}
                 </div>
               ))}
@@ -162,27 +166,27 @@ function JSONViewer({ data }: { data: any }) {
       const keys = Object.keys(value);
 
       if (keys.length === 0) {
-        return <span className="text-muted-foreground">{"{}"}</span>;
+        return <span className="text-foreground-tertiary">{"{}"}</span>;
       }
 
       return (
         <div className="inline-block">
           <button
             onClick={() => toggleCollapse(key)}
-            className="inline-flex items-center rounded px-1 hover:bg-muted"
+            className="inline-flex items-center rounded px-1 hover:bg-surface-hover"
           >
             {isCollapsed ? (
               <Icon icon={ArrowRight01Icon} className="size-3" />
             ) : (
               <Icon icon={ArrowDown01Icon} className="size-3" />
             )}
-            <span className="ml-1 text-muted-foreground">Object</span>
+            <span className="ml-1 text-foreground-tertiary">Object</span>
           </button>
           {!isCollapsed && (
-            <div className="ml-4 mt-1">
+            <div className="mt-1 ml-4">
               {keys.map((objKey) => (
                 <div key={objKey} className="flex">
-                  <span className="mr-2 text-purple-600">
+                  <span className="mr-2 text-brand-hover">
                     &quot;{objKey}&quot;:
                   </span>
                   {renderValue(value[objKey], `${key}.${objKey}`)}
@@ -194,11 +198,11 @@ function JSONViewer({ data }: { data: any }) {
       );
     }
 
-    return <span className="text-muted-foreground">{String(value)}</span>;
+    return <span className="text-foreground-tertiary">{String(value)}</span>;
   };
 
   return (
-    <div className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-sm">
+    <div className="overflow-x-auto rounded-md bg-surface-hover p-3 font-mono text-body">
       {renderValue(data, "root")}
     </div>
   );

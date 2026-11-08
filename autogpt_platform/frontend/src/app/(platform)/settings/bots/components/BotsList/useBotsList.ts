@@ -34,7 +34,7 @@ export function useBotsList() {
 
   const allPlatforms = data?.status === 200 ? data.data : [];
   // Only an explicit false hides a platform, so a missing flag key (or a
-  // LaunchDarkly outage) fails open to visible.
+  // flag service outage) fails open to visible.
   const platforms = allPlatforms.filter(
     (platform) => visibility[platform.platform.toLowerCase()] !== false,
   );

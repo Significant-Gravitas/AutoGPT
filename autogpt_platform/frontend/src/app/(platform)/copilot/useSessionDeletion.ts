@@ -18,8 +18,8 @@ import {
  * hides the chat while the mutation is pending. On success it is dropped from
  * the cached list; on error the chat shows again and a toast is shown.
  *
- * Consumed by `ChatSidebar`, `MobileDrawer` and `RecentChats` so each can
- * render its own `DeleteChatDialog` without duplicating the mutation wiring.
+ * Consumed by the app sidebar's recent-chats list so it can render its own
+ * `DeleteChatDialog` without duplicating the mutation wiring.
  */
 export function useSessionDeletion() {
   const queryClient = useQueryClient();
@@ -27,7 +27,8 @@ export function useSessionDeletion() {
     sessionId: parseAsString,
     expertId: parseAsString,
   });
-  const { sessionToDelete, setSessionToDelete } = useCopilotUIStore();
+  const sessionToDelete = useCopilotUIStore((s) => s.sessionToDelete);
+  const setSessionToDelete = useCopilotUIStore((s) => s.setSessionToDelete);
 
   const { mutate: deleteSession, isPending: isDeleting } =
     useDeleteV2DeleteSession({

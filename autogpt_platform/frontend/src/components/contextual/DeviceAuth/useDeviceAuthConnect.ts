@@ -1,5 +1,6 @@
 "use client";
 
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -12,6 +13,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsProviderName } from "@/lib/autogpt-server-api/types";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
+import { getMicrosoftSetupReason } from "@/lib/microsoft-setup";
 
 interface Args {
   provider: string;
@@ -21,13 +23,23 @@ interface Args {
    * which of the provider's credentials is the new one.
    */
   onSuccess: (credentials?: CredentialsMetaResponse) => void;
+  scopes?: string[];
+  /** Adds the scopes to this connection; another account is then refused. */
+  credentialID?: string;
+  onError?: (error: unknown) => void;
 }
 
 type Phase = "idle" | "awaiting_user" | "polling" | "done" | "error";
 
 const MAX_CONSECUTIVE_POLL_FAILURES = 3;
 
-export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
+export function useDeviceAuthConnect({
+  provider,
+  onSuccess,
+  scopes,
+  credentialID,
+  onError,
+}: Args) {
   const queryClient = useQueryClient();
   const credentialsActions = useContext(CredentialsActionsContext);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -109,6 +121,16 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
         if (status === "denied" || status === "expired") {
           setPhase("error");
           stopPolling();
+          if (onError) {
+            onError(
+              new Error(
+                status === "denied"
+                  ? "access_denied"
+                  : "The sign-in code expired. Please try again.",
+              ),
+            );
+            return;
+          }
           toast({
             title:
               status === "denied"
@@ -130,6 +152,12 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
         );
       } catch (error) {
         if (isUnmountedRef.current || runId !== runIdRef.current) return;
+        if (onError && getMicrosoftSetupReason(error)) {
+          setPhase("error");
+          stopPolling();
+          onError(error);
+          return;
+        }
 
         // The device code is still valid at the provider for the rest of the
         // window, so a wifi switch or a proxy 502 should not force the user to
@@ -145,6 +173,10 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
 
         setPhase("error");
         stopPolling();
+        if (onError) {
+          onError(error);
+          return;
+        }
         toast({
           title: "Device auth polling failed",
           description:
@@ -153,7 +185,14 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
         });
       }
     },
-    [provider, onSuccess, queryClient, stopPolling, credentialsActions],
+    [
+      provider,
+      onSuccess,
+      queryClient,
+      stopPolling,
+      credentialsActions,
+      onError,
+    ],
   );
 
   async function connect() {
@@ -165,7 +204,10 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
     consecutiveFailuresRef.current = 0;
     setPhase("awaiting_user");
     try {
-      const response = await postV1InitiateDeviceCodeOauthFlow(provider);
+      const response = await postV1InitiateDeviceCodeOauthFlow(provider, {
+        ...(scopes?.length ? { scopes: scopes.join(",") } : {}),
+        ...(credentialID ? { credential_id: credentialID } : {}),
+      });
 
       if (isUnmountedRef.current || runId !== runIdRef.current) return;
 
@@ -191,6 +233,14 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
     } catch (error) {
       if (isUnmountedRef.current || runId !== runIdRef.current) return;
       setPhase("error");
+      if (
+        toastIfPlanRequired(error, "Connecting a service needs an active plan")
+      )
+        return;
+      if (onError) {
+        onError(error);
+        return;
+      }
       toast({
         title: "Device auth initiation failed",
         description:

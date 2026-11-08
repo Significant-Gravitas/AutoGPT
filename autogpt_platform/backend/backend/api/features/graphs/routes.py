@@ -27,7 +27,7 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_deactivate,
 )
 from backend.monitoring.instrumentation import record_graph_operation
-from backend.util.exceptions import GraphValidationError
+from backend.util.exceptions import GraphInUseError, GraphValidationError
 
 # Every route here is authenticated by the router and tagged "graphs" at the
 # mount; execute_graph adds Depends(enforce_payment_paywall) on top.
@@ -42,14 +42,14 @@ async def list_graphs(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> Sequence[graph_db.GraphMeta]:
-    paginated_result = await graph_db.list_graphs_paginated(
+    graphs, _ = await graph_db.list_graphs_paginated(
         user_id=user_id,
         page=1,
         page_size=250,
         filter_by="active",
         organization_id=ctx.org_id,
     )
-    return paginated_result.graphs
+    return graphs
 
 
 @router.get(
@@ -77,7 +77,10 @@ async def get_graph(
     )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
-    return graph
+    # Teammates and library members can read a graph they don't own; what
+    # they get never carries the owner's stored secrets, trigger subscription
+    # or identity, whatever `for_export` says.
+    return _shared_if_not_owner(graph, user_id)
 
 
 @router.get(
@@ -90,14 +93,27 @@ async def get_graph_all_versions(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> Sequence[graph_db.GraphModel]:
     graphs = await graph_db.get_graph_all_versions(
-        graph_id, user_id=user_id, organization_id=ctx.org_id
+        graph_id,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        include_subgraphs=True,  # needed to construct full credentials input schema
     )
     if not graphs:
         raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
-    return graphs
+    return [_shared_if_not_owner(graph, user_id) for graph in graphs]
+
+
+def _shared_if_not_owner(
+    graph: graph_db.GraphModel, user_id: str
+) -> graph_db.GraphModel:
+    # An export comes back with its owner blanked, so an owner's own export
+    # takes the `shared_copy` branch too. That is harmless only as long as
+    # `shared_copy` removes nothing an export keeps.
+    return graph if graph.user_id == user_id else graph.shared_copy()
 
 
 @router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/graphs",
     summary="Create new graph",
 )
@@ -138,19 +154,35 @@ async def delete_graph(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> DeleteGraphResponse:
-    if active_version := await graph_db.get_graph(
-        graph_id=graph_id, version=None, user_id=user_id
+    # A caller who owns no version of the graph gets what they always got:
+    # nothing deleted, no conflict, and no hint whether the graph exists.
+    if not await graph_db.user_owns_graph(
+        graph_id, user_id=user_id, organization_id=ctx.org_id
     ):
-        await on_graph_deactivate(active_version, user_id=user_id)
+        return {"version_counts": 0}
 
-    return {
-        "version_counts": await graph_db.delete_graph(
+    try:
+        # Refuse before touching anything, so a rejected delete leaves the
+        # graph's triggers, schedules and webhooks running.
+        await graph_db.assert_graph_deletable(graph_id, user_id)
+
+        if active_version := await graph_db.get_graph(
+            graph_id=graph_id, version=None, user_id=user_id
+        ):
+            await on_graph_deactivate(active_version, user_id=user_id)
+            await library_db.cleanup_graph_for_permanent_delete(graph_id, user_id)
+
+        version_counts = await graph_db.delete_graph_permanently(
             graph_id, user_id=user_id, organization_id=ctx.org_id
         )
-    }
+    except GraphInUseError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+
+    return {"version_counts": version_counts}
 
 
 @router.put(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/graphs/{graph_id}",
     summary="Update graph version",
 )
@@ -167,12 +199,17 @@ async def update_graph(
     if not existing_versions:
         raise HTTPException(404, detail=f"Workflow #{graph_id} not found")
 
-    graph.version = max(g.version for g in existing_versions) + 1
+    latest_version = max(g.version for g in existing_versions)
+    graph.version = latest_version + 1
     current_active_version = next((v for v in existing_versions if v.is_active), None)
 
+    requested_graph = graph
     graph = graph_db.make_graph_model(graph, user_id)
     submitted_node_ids = graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
     _validate_graph_to_save(graph, submitted_node_ids)
+
+    if await graph_db.graph_owner_id(graph_id) != user_id:
+        return await _save_as_fork(requested_graph, latest_version, user_id, ctx)
 
     # If this new version is going to be active, validate node credentials
     # BEFORE persisting so a credential issue can't leave a half-saved version
@@ -192,8 +229,8 @@ async def update_graph(
 
     skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = []
     if new_graph_version.is_active:
-        await library_db.update_library_agent_version_and_settings(
-            user_id, new_graph_version
+        await library_db.update_agent_version_in_library(
+            user_id, new_graph_version.id, new_graph_version.version
         )
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=user_id
@@ -224,6 +261,7 @@ async def update_graph(
 
 
 @router.put(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/graphs/{graph_id}/versions/active",
     summary="Set active graph version",
 )
@@ -261,8 +299,8 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    await library_db.update_library_agent_version_and_settings(
-        user_id, new_active_graph
+    await library_db.update_agent_version_in_library(
+        user_id, new_active_graph.id, new_active_graph.version
     )
 
     if current_active_graph and current_active_graph.version != new_active_version:
@@ -377,6 +415,27 @@ async def execute_graph(
     except Exception:
         record_graph_operation(operation="execute", status="error")
         raise
+
+
+async def _save_as_fork(
+    graph: graph_db.Graph,
+    forked_from_version: int,
+    user_id: str,
+    ctx: RequestContext,
+) -> UpdateGraphResponse:
+    """A graph ID belonging to somebody else is saved as the caller's own copy."""
+    fork, _ = await library_db.fork_graph_in_library(
+        graph,
+        user_id,
+        forked_from_version=forked_from_version,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+    )
+    fork_with_subgraphs = await graph_db.get_graph(
+        fork.id, fork.version, user_id=user_id, include_subgraphs=True
+    )
+    assert fork_with_subgraphs
+    return UpdateGraphResponse(graph=fork_with_subgraphs, skipped_webhook_presets=[])
 
 
 def _validate_graph_to_save(

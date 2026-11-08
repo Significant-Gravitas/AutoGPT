@@ -13,11 +13,13 @@ from backend.util.exceptions import (
     WebhookRegistrationError,
     WebhookSetupUnavailableError,
 )
+from backend.util.models import MAX_PAGE
 
 from .. import db
 from .. import model as models
 from ..triggers import (
     delete_preset_with_webhook_cleanup,
+    refuse_direct_run,
     setup_triggered_preset,
     update_triggered_preset,
 )
@@ -35,8 +37,8 @@ router = APIRouter(
 )
 async def list_presets(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1),
+    page: int = Query(default=1, ge=1, le=MAX_PAGE),
+    page_size: int = Query(default=10, ge=1, le=db.MAX_PRESETS_PER_PAGE),
     graph_id: Optional[str] = Query(
         description="Allows to filter presets by a specific agent graph"
     ),
@@ -94,6 +96,7 @@ async def get_preset(
 
 @router.post(
     "/presets",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Create a new preset",
     description="Create a new preset for the current user.",
 )
@@ -127,7 +130,7 @@ async def create_preset(
     return await db.create_preset_from_graph_execution(user_id, preset)
 
 
-@router.post("/presets/setup-trigger")
+@router.post("/presets/setup-trigger", dependencies=[Depends(enforce_payment_paywall)])
 async def setup_trigger(
     params: models.TriggeredPresetSetupRequest = Body(),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
@@ -144,6 +147,7 @@ async def setup_trigger(
             name=params.name,
             description=params.description,
             trigger_config=params.trigger_config,
+            constant_inputs=params.constant_inputs,
             agent_credentials=params.agent_credentials,
             # Graph-match attribution is resolved by the caller (mirroring
             # create_preset above): setup_triggered_preset itself never
@@ -169,6 +173,7 @@ async def setup_trigger(
 
 @router.patch(
     "/presets/{preset_id}",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Update an existing preset",
     description="Update an existing preset by its ID.",
 )
@@ -275,6 +280,7 @@ async def execute_preset(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Preset #{preset_id} not found",
         )
+    refuse_direct_run(preset)
 
     # Merge input overrides with preset inputs
     merged_node_input = preset.inputs | inputs

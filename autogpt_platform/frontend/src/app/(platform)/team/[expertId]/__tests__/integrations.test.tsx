@@ -53,17 +53,6 @@ vi.mock("framer-motion", async (importActual) => {
   return { ...actual, useReducedMotion: () => true };
 });
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: () => ({ enabled: true, ready: true }),
-  };
-});
-
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: vi.fn(),

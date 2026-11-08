@@ -10,17 +10,21 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.copilot.dream.llm import (
-    CompletionUsage,
-    DreamLLMError,
-    StructuredCompletion,
-)
+from backend.copilot.inference.complete import StructuredCompletion
+from backend.copilot.inference.context import InferenceUsage, RouteDecision
 from backend.copilot.tools.skills import ParsedSkill
+from backend.copilot.trial_cost_context import (
+    TrialCostContext,
+    capture_cost_context,
+    restore_cost_context,
+)
+from backend.data.pro_activation import UsageActivationState
 from backend.data.skill_learning import canonical_revision
 
-from . import dispositions, nightly, publish
+from . import dispositions, nightly, publish, reviewer
 from ._fake_store import FakeLearningStore
 from .contract import (
     Eligibility,
@@ -32,6 +36,7 @@ from .contract import (
     register_source_adapter,
 )
 from .prompts import LearningProposal
+from .reviewer import DreamLLMError
 
 USER = "user-1"
 EXPERT = "expert-1"
@@ -103,8 +108,13 @@ def _proposal(**overrides) -> LearningProposal:
 def _completion(proposal: LearningProposal) -> StructuredCompletion[LearningProposal]:
     return StructuredCompletion(
         value=proposal,
-        usage=CompletionUsage(
-            model="test-model", input_tokens=10, output_tokens=5, cost_usd=0.001
+        usage=InferenceUsage(
+            model="test-model",
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            cost_source="provider",
+            payer="platform_allowance",
         ),
     )
 
@@ -295,6 +305,99 @@ async def test_provider_error_is_retryable_and_keeps_the_cursor(
         USER, source.id, "4", nightly.POLICY_VERSION
     )
     assert ledger.disposition == "applied" and ledger.attempts == 2
+
+
+def _trial_then_paid(usage_snapshot) -> dict[str, UsageActivationState]:
+    """The account is in its trial until the test converts it: the usage
+    state then reads a paid generation."""
+    states = {
+        "now": UsageActivationState(
+            user_id=USER,
+            trial_id="trial-original",
+            tier=SubscriptionTier.NO_TIER,
+            ready=True,
+        )
+    }
+    usage_snapshot.side_effect = lambda user_id: states["now"]
+    return states
+
+
+def _convert(states: dict[str, UsageActivationState]) -> None:
+    states["now"] = UsageActivationState(
+        user_id=USER, generation="paid-1", tier=SubscriptionTier.PRO, ready=True
+    )
+
+
+@pytest.fixture
+def charges(monkeypatch, boundaries) -> list[TrialCostContext]:
+    """The real review accounting, its cost row replaced by the attribution
+    the charge would be made under (what ``record_cost_usage`` captures)."""
+    seen: list[TrialCostContext] = []
+
+    async def observe(**kwargs):
+        seen.append(await capture_cost_context(kwargs["user_id"]))
+
+    monkeypatch.setattr(nightly, "record_review_cost", reviewer.record_review_cost)
+    monkeypatch.setattr(dispositions, "record_review_cost", reviewer.record_review_cost)
+    monkeypatch.setattr(reviewer, "resolve_route", Mock(return_value=_ROUTE))
+    monkeypatch.setattr(
+        "backend.copilot.inference.record.persist_and_record_usage", observe
+    )
+    return seen
+
+
+_ROUTE = RouteDecision(
+    engine="provider_sync",
+    auth_provider="platform",
+    provider="open_router",
+    model="test-model",
+    payer="platform_allowance",
+    execution_path="sync_baseline",
+    cost_log_provider="open_router",
+    reason="test",
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("review_outcome", ["answered", "unparseable"])
+async def test_a_conversion_during_a_review_leaves_its_charge_on_the_trial(
+    fake_store, adapter, boundaries, charges, usage_snapshot, review_outcome
+):
+    """The account converts while the reviewer answers: the review's spend
+    is still the trial's, whether the answer was used or failed to parse
+    after the provider billed it."""
+    await _source(fake_store)
+    states = _trial_then_paid(usage_snapshot)
+    completion = _completion(_proposal())
+
+    async def answer_after_converting(*_args, **_kwargs):
+        _convert(states)
+        if review_outcome == "unparseable":
+            raise DreamLLMError("unparseable answer", usage=completion.usage)
+        return completion
+
+    boundaries["review"].side_effect = answer_after_converting
+
+    await _run()
+
+    assert [(c.trial_id, c.generation) for c in charges] == [("trial-original", None)]
+
+
+@pytest.mark.asyncio
+async def test_a_run_inside_a_chats_attribution_keeps_it(
+    fake_store, adapter, boundaries, charges, usage_snapshot
+):
+    """A run started inside another usage context for the same account (a
+    chat's "learn this") charges under that one and captures none of its
+    own."""
+    await _source(fake_store)
+    outer = TrialCostContext(user_id=USER, trial_id="trial-chat", generation=None)
+
+    with restore_cost_context(USER, outer):
+        await _run()
+
+    assert charges == [outer]
+    usage_snapshot.assert_not_awaited()
 
 
 @pytest.mark.asyncio

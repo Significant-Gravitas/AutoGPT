@@ -156,50 +156,8 @@ class VisualMediaType(str, Enum):
 logger = logging.getLogger(__name__)
 
 
-class AIShortformVideoCreatorBlock(Block):
-    """Creates a short‑form text‑to‑video clip using stock or AI imagery."""
-
-    class Input(BlockSchemaInput):
-        credentials: CredentialsMetaInput[
-            Literal[ProviderName.REVID], Literal["api_key"]
-        ] = CredentialsField(
-            description="The revid.ai integration can be used with "
-            "any API key with sufficient permissions for the blocks it is used on.",
-        )
-        script: str = SchemaField(
-            description="""1. Use short and punctuated sentences\n\n2. Use linebreaks to create a new clip\n\n3. Text outside of brackets is spoken by the AI, and [text between brackets] will be used to guide the visual generation. For example, [close-up of a cat] will show a close-up of a cat.""",
-            placeholder="[close-up of a cat] Meow!",
-        )
-        ratio: str = SchemaField(
-            description="Aspect ratio of the video", default="9 / 16"
-        )
-        resolution: str = SchemaField(
-            description="Resolution of the video", default="720p"
-        )
-        frame_rate: int = SchemaField(description="Frame rate of the video", default=60)
-        generation_preset: GenerationPreset = SchemaField(
-            description="Generation preset for visual style - only affects AI-generated visuals",
-            default=GenerationPreset.LEONARDO,
-            placeholder=GenerationPreset.LEONARDO,
-        )
-        background_music: AudioTrack = SchemaField(
-            description="Background music track",
-            default=AudioTrack.HIGHWAY_NOCTURNE,
-            placeholder=AudioTrack.HIGHWAY_NOCTURNE,
-        )
-        voice: Voice = SchemaField(
-            description="AI voice to use for narration",
-            default=Voice.LILY,
-            placeholder=Voice.LILY,
-        )
-        video_style: VisualMediaType = SchemaField(
-            description="Type of visual media to use for the video",
-            default=VisualMediaType.STOCK_VIDEOS,
-            placeholder=VisualMediaType.STOCK_VIDEOS,
-        )
-
-    class Output(BlockSchemaOutput):
-        video_url: str = SchemaField(description="The URL of the created video")
+class RevidVideoBlockBase(Block):
+    """Revid API calls shared by the video blocks; their `test_mock`s patch these by name."""
 
     async def create_webhook(self) -> tuple[str, str]:
         """Create a new webhook URL for receiving notifications."""
@@ -256,6 +214,52 @@ class AIShortformVideoCreatorBlock(Block):
             block_name=self.name,
             block_id=self.id,
         )
+
+
+class AIShortformVideoCreatorBlock(RevidVideoBlockBase):
+    """Creates a short‑form text‑to‑video clip using stock or AI imagery."""
+
+    class Input(BlockSchemaInput):
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.REVID], Literal["api_key"]
+        ] = CredentialsField(
+            description="The revid.ai integration can be used with "
+            "any API key with sufficient permissions for the blocks it is used on.",
+        )
+        script: str = SchemaField(
+            description="""1. Use short and punctuated sentences\n\n2. Use linebreaks to create a new clip\n\n3. Text outside of brackets is spoken by the AI, and [text between brackets] will be used to guide the visual generation. For example, [close-up of a cat] will show a close-up of a cat.""",
+            placeholder="[close-up of a cat] Meow!",
+        )
+        ratio: str = SchemaField(
+            description="Aspect ratio of the video", default="9 / 16"
+        )
+        resolution: str = SchemaField(
+            description="Resolution of the video", default="720p"
+        )
+        frame_rate: int = SchemaField(description="Frame rate of the video", default=60)
+        generation_preset: GenerationPreset = SchemaField(
+            description="Generation preset for visual style - only affects AI-generated visuals",
+            default=GenerationPreset.LEONARDO,
+            placeholder=GenerationPreset.LEONARDO,
+        )
+        background_music: AudioTrack = SchemaField(
+            description="Background music track",
+            default=AudioTrack.HIGHWAY_NOCTURNE,
+            placeholder=AudioTrack.HIGHWAY_NOCTURNE,
+        )
+        voice: Voice = SchemaField(
+            description="AI voice to use for narration",
+            default=Voice.LILY,
+            placeholder=Voice.LILY,
+        )
+        video_style: VisualMediaType = SchemaField(
+            description="Type of visual media to use for the video",
+            default=VisualMediaType.STOCK_VIDEOS,
+            placeholder=VisualMediaType.STOCK_VIDEOS,
+        )
+
+    class Output(BlockSchemaOutput):
+        video_url: str = SchemaField(description="The URL of the created video")
 
     def __init__(self):
         super().__init__(
@@ -363,7 +367,7 @@ class AIShortformVideoCreatorBlock(Block):
             yield "video_url", stored_url
 
 
-class AIAdMakerVideoCreatorBlock(Block):
+class AIAdMakerVideoCreatorBlock(RevidVideoBlockBase):
     """Generates a 30‑second vertical AI advert using optional user‑supplied imagery."""
 
     class Input(BlockSchemaInput):
@@ -396,62 +400,6 @@ class AIAdMakerVideoCreatorBlock(Block):
 
     class Output(BlockSchemaOutput):
         video_url: str = SchemaField(description="URL of the finished advert")
-
-    async def create_webhook(self) -> tuple[str, str]:
-        """Create a new webhook URL for receiving notifications."""
-        url = "https://webhook.site/token"
-        headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        response = await Requests().post(url, headers=headers)
-        webhook_data = response.json()
-        return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
-
-    async def create_video(self, api_key: SecretStr, payload: dict) -> dict:
-        """Create a video using the Revid API."""
-        url = "https://www.revid.ai/api/public/v2/render"
-        headers = {"key": api_key.get_secret_value()}
-        response = await Requests().post(url, json=payload, headers=headers)
-        logger.debug(
-            f"API Response Status Code: {response.status}, Content: {response.text}"
-        )
-        return response.json()
-
-    async def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
-        """Check the status of a video creation job."""
-        url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
-        headers = {"key": api_key.get_secret_value()}
-        response = await Requests().get(url, headers=headers)
-        return response.json()
-
-    async def wait_for_video(
-        self,
-        api_key: SecretStr,
-        pid: str,
-        max_wait_time: int = 1000,
-    ) -> str:
-        """Wait for video creation to complete and return the video URL."""
-        start_time = time.time()
-        while time.time() - start_time < max_wait_time:
-            status = await self.check_video_status(api_key, pid)
-            logger.debug(f"Video status: {status}")
-
-            if status.get("status") == "ready" and "videoUrl" in status:
-                return status["videoUrl"]
-            elif status.get("status") == "error":
-                error_message = status.get("error", "Unknown error occurred")
-                logger.error(f"Video creation failed: {error_message}")
-                raise ValueError(f"Video creation failed: {error_message}")
-            elif status.get("status") in ["FAILED", "CANCELED"]:
-                logger.error(f"Video creation failed: {status.get('message')}")
-                raise ValueError(f"Video creation failed: {status.get('message')}")
-
-            await asyncio.sleep(10)
-
-        logger.error("Video creation timed out")
-        raise BlockExecutionError(
-            message="Video creation timed out",
-            block_name=self.name,
-            block_id=self.id,
-        )
 
     def __init__(self):
         super().__init__(
@@ -571,7 +519,7 @@ class AIAdMakerVideoCreatorBlock(Block):
         yield "video_url", stored_url
 
 
-class AIScreenshotToVideoAdBlock(Block):
+class AIScreenshotToVideoAdBlock(RevidVideoBlockBase):
     """Creates an advert where the supplied screenshot is narrated by an AI avatar."""
 
     class Input(BlockSchemaInput):
@@ -594,62 +542,6 @@ class AIScreenshotToVideoAdBlock(Block):
 
     class Output(BlockSchemaOutput):
         video_url: str = SchemaField(description="Rendered video URL")
-
-    async def create_webhook(self) -> tuple[str, str]:
-        """Create a new webhook URL for receiving notifications."""
-        url = "https://webhook.site/token"
-        headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        response = await Requests().post(url, headers=headers)
-        webhook_data = response.json()
-        return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
-
-    async def create_video(self, api_key: SecretStr, payload: dict) -> dict:
-        """Create a video using the Revid API."""
-        url = "https://www.revid.ai/api/public/v2/render"
-        headers = {"key": api_key.get_secret_value()}
-        response = await Requests().post(url, json=payload, headers=headers)
-        logger.debug(
-            f"API Response Status Code: {response.status}, Content: {response.text}"
-        )
-        return response.json()
-
-    async def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
-        """Check the status of a video creation job."""
-        url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
-        headers = {"key": api_key.get_secret_value()}
-        response = await Requests().get(url, headers=headers)
-        return response.json()
-
-    async def wait_for_video(
-        self,
-        api_key: SecretStr,
-        pid: str,
-        max_wait_time: int = 1000,
-    ) -> str:
-        """Wait for video creation to complete and return the video URL."""
-        start_time = time.time()
-        while time.time() - start_time < max_wait_time:
-            status = await self.check_video_status(api_key, pid)
-            logger.debug(f"Video status: {status}")
-
-            if status.get("status") == "ready" and "videoUrl" in status:
-                return status["videoUrl"]
-            elif status.get("status") == "error":
-                error_message = status.get("error", "Unknown error occurred")
-                logger.error(f"Video creation failed: {error_message}")
-                raise ValueError(f"Video creation failed: {error_message}")
-            elif status.get("status") in ["FAILED", "CANCELED"]:
-                logger.error(f"Video creation failed: {status.get('message')}")
-                raise ValueError(f"Video creation failed: {status.get('message')}")
-
-            await asyncio.sleep(10)
-
-        logger.error("Video creation timed out")
-        raise BlockExecutionError(
-            message="Video creation timed out",
-            block_name=self.name,
-            block_id=self.id,
-        )
 
     def __init__(self):
         super().__init__(

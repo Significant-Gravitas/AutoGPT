@@ -127,7 +127,7 @@ class TranscriptBuilder:
         )
         self._last_uuid = msg_uuid
 
-    def append_tool_result(self, tool_use_id: str, content: str) -> None:
+    def append_tool_result(self, tool_use_id: str, content: str | list[dict]) -> None:
         """Append a tool result as a user entry (one per tool call)."""
         self.append_user(
             content=[

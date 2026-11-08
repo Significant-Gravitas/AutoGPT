@@ -5,7 +5,10 @@ test here is checking that data which must NOT cross the public link
 genuinely does not.
 """
 
+import json
 from datetime import datetime, timezone
+
+import pytest
 
 from backend.copilot.model import ChatMessage as ChatMessageDomain
 from backend.copilot.sharing.models import _redact_secret_keys, sanitize_chat_message
@@ -324,3 +327,28 @@ class TestSanitizeChatMessage:
                 },
             }
         }
+
+    @pytest.mark.parametrize("key", ["X-Api-Key", "Api-Keys", "api key", "api.key"])
+    def test_redacts_secret_keys_spelled_as_headers(self, key):
+        headers = {key: "sk-test", "Accept": "*/*"}
+        call = _msg(
+            role="assistant",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "function": {"name": "fetch", "arguments": {"headers": headers}},
+                }
+            ],
+        )
+        result = _msg(role="tool", content=json.dumps({"request_headers": headers}))
+
+        sanitized_call = sanitize_chat_message(call)
+        sanitized_result = sanitize_chat_message(result)
+
+        expected = {key: "[redacted]", "Accept": "*/*"}
+        assert sanitized_call.tool_calls is not None
+        assert (
+            sanitized_call.tool_calls[0]["function"]["arguments"]["headers"] == expected
+        )
+        assert sanitized_result.content is not None
+        assert json.loads(sanitized_result.content)["request_headers"] == expected

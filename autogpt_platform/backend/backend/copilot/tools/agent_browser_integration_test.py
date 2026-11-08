@@ -21,22 +21,30 @@ Two test tiers:
 """
 
 import concurrent.futures
+import http.server
+import json
 import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import pytest
 
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.agent_browser import BrowserActTool, BrowserNavigateTool
+from backend.copilot.tools.agent_browser import (
+    BrowserActTool,
+    BrowserNavigateTool,
+    _run,
+)
 from backend.copilot.tools.models import (
     BrowserActResponse,
     BrowserNavigateResponse,
     ErrorResponse,
 )
+from backend.util import egress_proxy
 
 pytestmark = pytest.mark.skipif(
     shutil.which("agent-browser") is None,
@@ -349,3 +357,189 @@ async def test_tool_act_missing_target(_close_tool_session):
     )
     assert isinstance(resp, ErrorResponse)
     assert resp.error == "missing_target"
+
+
+# ---------------------------------------------------------------------------
+# Network egress through the real browser
+#
+# One loopback server plays both parts: "entry.test", which the egress proxy
+# is told is public, and an internal service reached as 127.0.0.1/localhost,
+# which the proxy must refuse. Requests are driven through _run, so they skip
+# browser_navigate's up-front URL check and only the proxy stands in the way.
+#
+# These run only where agent-browser is installed, never in CI, so they are
+# excluded from coverage.
+# ---------------------------------------------------------------------------
+
+_EGRESS_SESSION = "integration-egress-session"
+
+
+class _SiteHandler(http.server.BaseHTTPRequestHandler):  # pragma: no cover
+    server: "_Site"
+
+    def do_GET(self) -> None:
+        internal = f"http://127.0.0.1:{self.server.server_port}/internal"
+        self.server.hits.append(self.path)
+        if self.path.startswith("/internal"):
+            body = "<title>internal</title>"
+        elif self.path == "/redirect":
+            self.send_response(302)
+            self.send_header("Location", f"{internal}/redirect")
+            self.end_headers()
+            return
+        else:
+            body = (
+                "<title>entry</title>"
+                f'<img src="{internal}/img">'
+                f'<a id="link" href="{internal}/link">internal link</a>'
+                f'<script>fetch("{internal}/fetch")</script>'
+            )
+        payload = body.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, *args) -> None:
+        pass
+
+
+class _Site(http.server.ThreadingHTTPServer):  # pragma: no cover
+    hits: list[str]
+
+    def entry(self, path: str) -> str:
+        return f"http://entry.test:{self.server_port}{path}"
+
+    @property
+    def internal_hits(self) -> list[str]:
+        return [path for path in self.hits if path.startswith("/internal")]
+
+
+@pytest.fixture
+async def site(monkeypatch):  # pragma: no cover
+    real_policy = egress_proxy.public_addresses
+
+    async def policy(host: str) -> list[str]:
+        if host == "entry.test":
+            return ["127.0.0.1"]
+        return await real_policy(host)
+
+    monkeypatch.setattr(egress_proxy, "public_addresses", policy)
+    server = _Site(("127.0.0.1", 0), _SiteHandler)
+    server.hits = []
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield server
+    await _run(_EGRESS_SESSION, "close", timeout=10)
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.mark.asyncio
+async def test_browser_reaches_public_pages_but_not_their_internal_requests(
+    site,
+):  # pragma: no cover
+    rc, _, stderr = await _run(_EGRESS_SESSION, "open", site.entry("/page"))
+    assert rc == 0, stderr
+    await _run(_EGRESS_SESSION, "wait", "--load", "networkidle")
+    _, title, _ = await _run(_EGRESS_SESSION, "get", "title")
+
+    assert title.strip() == "entry"
+    assert site.internal_hits == []
+
+
+@pytest.mark.asyncio
+async def test_browser_does_not_follow_a_redirect_to_loopback(site):  # pragma: no cover
+    await _run(_EGRESS_SESSION, "open", site.entry("/redirect"))
+
+    assert "/redirect" in site.hits
+    assert site.internal_hits == []
+
+
+@pytest.mark.asyncio
+async def test_browser_does_not_follow_a_link_to_loopback(site):  # pragma: no cover
+    rc, _, stderr = await _run(_EGRESS_SESSION, "open", site.entry("/page"))
+    assert rc == 0, stderr
+    rc, _, stderr = await _run(_EGRESS_SESSION, "click", "#link")
+    assert rc == 0, stderr
+    await _run(_EGRESS_SESSION, "wait", "--load", "load")
+
+    assert site.internal_hits == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost"])
+async def test_browser_cannot_open_loopback_directly(site, host):  # pragma: no cover
+    await _run(
+        _EGRESS_SESSION, "open", f"http://{host}:{site.server_port}/internal/direct"
+    )
+
+    assert site.internal_hits == []
+
+
+# Gathers ICE candidates from the page and from a popup, which gets a WebRTC
+# constructor of its own. The STUN server is unreachable on purpose: without
+# the image's WebRTC policy Chromium still gathers host candidates, which means
+# it opened UDP sockets the egress proxy cannot see.
+_GATHER_ICE = """(async () => {
+  const gather = (Peer) => new Promise((resolve) => {
+    const found = [];
+    const pc = new Peer({iceServers: [{urls: "stun:127.0.0.1:9"}]});
+    pc.createDataChannel("probe");
+    pc.onicecandidate = (e) => e.candidate ? found.push(e.candidate.candidate)
+                                           : resolve(found);
+    pc.createOffer().then((offer) => pc.setLocalDescription(offer));
+    setTimeout(() => resolve(found), 5000);
+  });
+  const popup = window.open("about:blank");
+  const found = [
+    ...(await gather(window.RTCPeerConnection)),
+    ...(await gather(popup.RTCPeerConnection)),
+  ];
+  popup.close();
+  return JSON.stringify(found);
+})()"""
+
+
+@pytest.mark.asyncio
+async def test_browser_ignores_agent_browser_config_files(
+    site, tmp_path, monkeypatch
+):  # pragma: no cover
+    # agent-browser would otherwise merge in ./agent-browser.json from its
+    # working directory; such a file could load an extension that rewrites the
+    # proxy. userAgent is a harmless way to see whether it was read.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "agent-browser.json").write_text('{"userAgent": "PLANTED"}')
+
+    rc, _, stderr = await _run(_EGRESS_SESSION, "open", site.entry("/page"))
+    assert rc == 0, stderr
+    _, user_agent, _ = await _run(_EGRESS_SESSION, "eval", "navigator.userAgent")
+
+    assert "PLANTED" not in user_agent
+
+
+@pytest.mark.asyncio
+async def test_browser_ignores_agent_browser_environment(
+    site, monkeypatch
+):  # pragma: no cover
+    # With this set, agent-browser would attach to whatever answers there
+    # instead of launching Chromium with the proxy. Nothing listens on port 9,
+    # so the page only opens if the variable never reached agent-browser.
+    monkeypatch.setenv("AGENT_BROWSER_CDP", "http://127.0.0.1:9")
+
+    rc, _, stderr = await _run(_EGRESS_SESSION, "open", site.entry("/page"))
+    assert rc == 0, stderr
+    _, title, _ = await _run(_EGRESS_SESSION, "get", "title")
+
+    assert title.strip() == "entry"
+
+
+@pytest.mark.asyncio
+async def test_browser_webrtc_sends_no_udp_around_the_proxy(site):  # pragma: no cover
+    rc, _, stderr = await _run(_EGRESS_SESSION, "open", site.entry("/page"))
+    assert rc == 0, stderr
+
+    rc, out, stderr = await _run(_EGRESS_SESSION, "eval", _GATHER_ICE)
+    assert rc == 0, stderr
+
+    assert json.loads(json.loads(out)) == []

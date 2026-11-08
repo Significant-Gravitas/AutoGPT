@@ -1,3 +1,4 @@
+import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
 import type { FileUIPart, UIMessage } from "ai";
@@ -141,6 +142,7 @@ export function describePendingUpload(
           name: part.filename ?? "file",
           mediaType: part.mediaType,
           isUploading: false,
+          url: part.url,
         },
   );
   const local: PendingUploadAttachment[] = message.files.map((file) => ({
@@ -148,6 +150,7 @@ export function describePendingUpload(
     mediaType: file.type || "application/octet-stream",
     sizeBytes: file.size,
     isUploading: true,
+    file,
   }));
   return { text: message.text, attachments: [...stored, ...local] };
 }
@@ -164,9 +167,11 @@ async function uploadFiles(
         return {
           file_id: data.file_id,
           name: data.name || file.name,
-          mime_type: data.mime_type || "application/octet-stream",
+          mime_type: data.mime_type || file.type || "application/octet-stream",
         } as UploadedFile;
       } catch (err) {
+        // The send's own failure toast says a plan is needed.
+        if (isPaywallError(err)) throw err;
         console.error("File upload failed:", err);
         toast({
           title: "File upload failed",
@@ -177,6 +182,11 @@ async function uploadFiles(
       }
     }),
   );
+  const paywalled = results.find(
+    (r): r is PromiseRejectedResult =>
+      r.status === "rejected" && isPaywallError(r.reason),
+  );
+  if (paywalled) throw paywalled.reason;
   return results
     .filter(
       (r): r is PromiseFulfilledResult<UploadedFile> =>
