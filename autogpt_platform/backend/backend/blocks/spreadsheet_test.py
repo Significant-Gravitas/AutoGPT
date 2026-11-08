@@ -278,6 +278,20 @@ async def test_skip_rows_past_the_end_yields_no_rows():
 
 
 @pytest.mark.asyncio
+async def test_skip_rows_exactly_to_eof_yields_no_rows():
+    rows = await read_rows(contents="a,b\n1,2", skip_rows=1)
+
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_header_only_csv_yields_no_rows():
+    rows = await read_rows(contents="a,b")
+
+    assert rows == []
+
+
+@pytest.mark.asyncio
 async def test_header_only_blank_input_yields_no_rows():
     rows = await read_rows(contents="\n")
 
@@ -285,10 +299,23 @@ async def test_header_only_blank_input_yields_no_rows():
 
 
 @pytest.mark.asyncio
+async def test_empty_contents_is_rejected():
+    with pytest.raises(ValueError, match="contents"):
+        await read_rows(contents="")
+
+
+@pytest.mark.asyncio
 async def test_row_longer_than_header_keeps_extra_values():
     rows = await read_rows(contents="a,b\n1,2,3\n4,5")
 
     assert rows == [{"a": "1", "b": "2", "column_3": "3"}, {"a": "4", "b": "5"}]
+
+
+@pytest.mark.asyncio
+async def test_extra_column_name_does_not_collide_with_header():
+    rows = await read_rows(contents="a,column_3\n1,2,3")
+
+    assert rows == [{"a": "1", "column_3": "2", "column_3_2": "3"}]
 
 
 # --- #15270: duplicate headers overwrite, blank lines become {} -----------
@@ -299,6 +326,13 @@ async def test_duplicate_and_blank_header_names_do_not_overwrite():
     rows = await read_rows(contents="a,a,,a\n1,2,3,4")
 
     assert rows == [{"a": "1", "a_2": "2", "column_3": "3", "a_3": "4"}]
+
+
+@pytest.mark.asyncio
+async def test_existing_suffix_is_kept_when_a_later_header_repeats():
+    rows = await read_rows(contents="a,a_2,a\n1,2,3")
+
+    assert rows == [{"a": "1", "a_2": "2", "a_3": "3"}]
 
 
 @pytest.mark.asyncio
@@ -373,6 +407,14 @@ async def test_excel_duplicate_and_blank_headers_match_csv():
 
     assert rows == await read_rows(contents="a,a,,b\n1,2,3,4")
     assert rows == [{"a": "1", "a_2": "2", "column_3": "3", "b": "4"}]
+
+
+@pytest.mark.asyncio
+async def test_excel_keeps_existing_suffix_when_a_later_header_repeats():
+    rows = await read_sheet_rows([["a", "a_2", "a"], [1, 2, 3]])
+
+    assert rows == await read_rows(contents="a,a_2,a\n1,2,3")
+    assert rows == [{"a": "1", "a_2": "2", "a_3": "3"}]
 
 
 @pytest.mark.asyncio
