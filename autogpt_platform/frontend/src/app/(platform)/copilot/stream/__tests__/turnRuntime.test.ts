@@ -9,15 +9,20 @@ import {
   type Mock,
 } from "vitest";
 
+import { CopilotAuthError } from "../../helpers";
 import { createTailRenderer } from "../renderTail";
 import {
   ANOMALY_TOAST,
+  ChatUnavailableError,
   LIVENESS_MS,
+  MessageTooLongError,
   ROTATE_AFTER_MS,
+  SendRefusedError,
   TurnRuntime,
   type RuntimeDeps,
   type RuntimeSnapshot,
 } from "../turnRuntime";
+import { tailEndSequence } from "../turnTail";
 import { fakeBackend, type FakeBackend } from "./fakeBackend";
 import { loadRecordedTurn } from "./recordedTurns";
 
@@ -33,6 +38,7 @@ let backend: FakeBackend;
 let runtime: TurnRuntime;
 let toast: Mock<RuntimeDeps["toast"]>;
 let report: Mock<RuntimeDeps["report"]>;
+let tokenFailures = 0;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -40,9 +46,16 @@ beforeEach(() => {
   backend = fakeBackend(toolTurn);
   toast = vi.fn<RuntimeDeps["toast"]>();
   report = vi.fn<RuntimeDeps["report"]>();
+  tokenFailures = 0;
   runtime = new TurnRuntime("session-1", {
     baseUrl: () => "http://backend.test",
-    headers: async () => ({}),
+    headers: async () => {
+      if (tokenFailures > 0) {
+        tokenFailures -= 1;
+        throw new CopilotAuthError();
+      }
+      return {};
+    },
     fetch: backend.fetch,
     fetchSession: async () => backend.view(),
     toast,
@@ -152,6 +165,72 @@ describe("§1.7 — every disconnect cause is expected but one", () => {
     await advance(60_000);
     expect(backend.connections).toHaveLength(1);
     expect(snapshot().stopped).toBe(true);
+  });
+
+  it("an approval answered after a stop follows the turn it starts", async () => {
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(0);
+    runtime.stop();
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    runtime.followBackendTurn();
+    await advance(2_000);
+    expect(snapshot().phase).toBe("live");
+    expect(snapshot().stopped).toBe(false);
+  });
+
+  it("an approval answered while a stopped send's turn still runs is followed after it", async () => {
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(0);
+    runtime.stop();
+    // The cancel came before the turn existed, so it runs on.
+    backend.publish(FIRST_BLOCK_DONE);
+    let approvalStarted = false;
+    runtime.bind({}, async () => {
+      const view = backend.view();
+      if (!approvalStarted || view.active_stream) return view;
+      return {
+        ...view,
+        chat_status: "running",
+        active_stream: { turn_id: "approval-turn", checkpoint: null },
+      };
+    });
+    runtime.followBackendTurn();
+    await advance(1_000);
+    backend.publish();
+    // The approval's turn starts once that turn has released the session.
+    await advance(700);
+    approvalStarted = true;
+    await advance(5_000);
+    expect(
+      backend.requests.some(
+        (r) => r.url.searchParams.get("turn") === "approval-turn",
+      ),
+    ).toBe(true);
+  });
+
+  it("an approval answered while a stopped turn drains is followed once it has", async () => {
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    runtime.stop();
+    let approvalStarted = false;
+    runtime.bind({}, async () => {
+      const view = backend.view();
+      if (!approvalStarted) return view;
+      return {
+        ...view,
+        chat_status: "running",
+        active_stream: { turn_id: "approval-turn", checkpoint: null },
+      };
+    });
+    runtime.followBackendTurn();
+    await advance(1_200);
+    approvalStarted = true;
+    await advance(5_000);
+    expect(
+      backend.requests.some(
+        (r) => r.url.searchParams.get("turn") === "approval-turn",
+      ),
+    ).toBe(true);
   });
 
   it("a connection silent for 30 s is replaced without a toast", async () => {
@@ -456,6 +535,25 @@ describe("recovery", () => {
     expect(most).toBe(1);
   });
 
+  it("a send queued behind another tab's running turn is not drawn above that turn", async () => {
+    // Another tab's turn runs; this tab has not read the session since.
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    backend.respond(({ method }) =>
+      method === "POST" ? "follow-up-queued" : "stream",
+    );
+    void runtime.send({ text: "And what about example.org?" }, undefined);
+    await advance(2_000);
+
+    expect(backend.connections.at(-1)?.url.searchParams.get("turn")).toBe(
+      backend.turnId,
+    );
+    // The other tab's prompt (row 0) stays history above the followed turn.
+    expect(snapshot().ownedFrom).toBe(1);
+    expect(textsOf(render())).toEqual([FIRST_TEXT]);
+    expect(snapshot().error).toBeNull();
+  });
+
   it("stops reading the session once its queued turn is cancelled", async () => {
     backend.queueNextTurn();
     void runtime.send({ text: PROMPT }, undefined);
@@ -465,6 +563,394 @@ describe("recovery", () => {
 
     const views = vi.spyOn(backend, "view");
     await advance(60_000);
+    expect(views).not.toHaveBeenCalled();
+  });
+});
+
+describe("after a lost send, what the user is told follows the server", () => {
+  it("shows a lost send's answer without a lingering notice when the first reads on return fail", async () => {
+    loseSendWhileHidden();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(60_000);
+    backend.beginRunning();
+    backend.publish();
+    viewsFailFirst(2);
+    setVisibility("visible");
+    await advance(30_000);
+
+    expect(snapshot().notice).toBeNull();
+    expect(snapshot().error).toBeNull();
+    expect(textsOf(render()).join("")).toBe(
+      `${PROMPT}${FIRST_TEXT}${SECOND_TEXT}`,
+    );
+  });
+
+  it("still reports a send that never reached the server when the first reads on return fail", async () => {
+    loseSendWhileHidden();
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(60_000);
+    viewsFailFirst(2);
+    setVisibility("visible");
+    await advance(30_000);
+
+    expect(snapshot().error?.message).toBe("Failed to fetch");
+    expect(snapshot().notice).toBeNull();
+  });
+
+  it("reports no error when another read attaches the lost send's turn first", async () => {
+    backend.respond(({ method }) =>
+      method === "POST" ? "network-error" : "stream",
+    );
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    runtime.bind({}, async () => {
+      await held;
+      return backend.view();
+    });
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(0);
+    // The page's own read lands while the recovery's first read is in flight.
+    runtime.observe(backend.view());
+    release();
+    await advance(10_000);
+    expect(snapshot().error).toBeNull();
+    expect(snapshot().phase).toBe("live");
+
+    backend.publish();
+    await advance(5_000);
+    expect(snapshot().error).toBeNull();
+    expect(snapshot().phase).toBe("finished");
+  });
+
+  it("clears a failed send's error once a turn the server started is followed", async () => {
+    backend.respond(({ method }) =>
+      method === "POST" ? "network-error" : "stream",
+    );
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    expect(snapshot().error?.message).toBe("Failed to fetch");
+
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    runtime.followBackendTurn();
+    await advance(2_000);
+    expect(snapshot().phase).toBe("live");
+    expect(snapshot().error).toBeNull();
+  });
+
+  it("stops reading the session once the lost send's prompt has landed and nothing runs", async () => {
+    backend.respond(({ method }) =>
+      method === "POST" ? "network-error" : "stream",
+    );
+    backend.beginRunning();
+    backend.publish();
+    const views = vi.spyOn(backend, "view");
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+
+    expect(views).toHaveBeenCalledTimes(1);
+    expect(snapshot().error).toBeNull();
+  });
+
+  it("keeps reading while the session runs a landed prompt whose turn has not registered yet", async () => {
+    backend.respond(({ method }) =>
+      method === "POST" ? "network-error" : "stream",
+    );
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    // The slot is claimed and the prompt written before the turn's stream exists.
+    let reads = 0;
+    runtime.bind({}, async () => {
+      reads += 1;
+      const view = backend.view();
+      return reads <= 2
+        ? { ...view, active_stream: null, chat_status: "running" }
+        : view;
+    });
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(5_000);
+
+    expect(backend.connections.at(-1)?.url.searchParams.get("turn")).toBe(
+      backend.turnId,
+    );
+    expect(snapshot().phase).toBe("live");
+  });
+
+  it("shows the offline notice while a send waits for the network", async () => {
+    const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    backend.respond(({ method }) =>
+      method === "POST" ? "network-error" : "stream",
+    );
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(10_000);
+    expect(snapshot().notice).toBe("offline");
+    expect(snapshot().error).toBeNull();
+
+    online.mockReturnValue(true);
+    window.dispatchEvent(new Event("online"));
+    await advance(10_000);
+    expect(snapshot().notice).toBeNull();
+    expect(snapshot().error?.message).toBe("Failed to fetch");
+  });
+});
+
+describe("refusals no retry can change", () => {
+  it("a send while signed out reports the sign-in error after one retry, and stops", async () => {
+    const onError = vi.fn();
+    signOut(() => true, onError);
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(120_000);
+
+    expect(snapshot().error).toBeInstanceOf(CopilotAuthError);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(snapshot().notice).toBeNull();
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("a send whose token fails once goes out a second later", async () => {
+    tokenFailsFirst(1);
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(500);
+    expect(backend.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+
+    await advance(1_000);
+    backend.publish(FIRST_BLOCK_DONE);
+    await advance(100);
+    expect(backend.requests.filter((r) => r.method === "POST")).toHaveLength(1);
+    expect(snapshot().error).toBeNull();
+    expect(snapshot().phase).toBe("live");
+  });
+
+  it("a resume whose token fails once resumes", async () => {
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    tokenFailsFirst(1);
+    backend.connections[0].fail();
+    await advance(2_000);
+
+    expect(snapshot().error).toBeNull();
+    expect(backend.connections.at(-1)?.url.searchParams.get("turn")).toBe(
+      backend.turnId,
+    );
+  });
+
+  it("a second send while a send waits out its token retry opens no second request", async () => {
+    tokenFailsFirst(1);
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(500);
+    void runtime.send({ text: "And example.org?" }, undefined);
+    await advance(1_000);
+    backend.publish(FIRST_BLOCK_DONE);
+    await advance(100);
+
+    expect(backend.requests.filter((r) => r.method === "POST")).toHaveLength(1);
+    expect(backend.connections.some((c) => c.aborted)).toBe(false);
+    expect(snapshot().error).toBeNull();
+    expect(snapshot().phase).toBe("live");
+  });
+
+  it("a stop while a send waits out its token retry sends nothing after", async () => {
+    tokenFailsFirst(1);
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(500);
+    runtime.stop();
+    await advance(5_000);
+
+    expect(backend.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+    expect(snapshot().error).toBeNull();
+  });
+
+  it("signed out mid-turn ends the turn with the sign-in error, without the connection toast", async () => {
+    let signedOut = false;
+    signOut(() => signedOut);
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    signedOut = true;
+    backend.connections[0].fail();
+    await advance(180_000);
+
+    expect(snapshot().error).toBeInstanceOf(CopilotAuthError);
+    expect(snapshot().phase).toBe("failed");
+    expect(snapshot().notice).toBeNull();
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("a resume refused twice with 401 ends the turn with the sign-in error", async () => {
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    backend.respond(() => ({ status: 401, body: { detail: "Unauthorized" } }));
+    backend.connections[0].fail();
+    await advance(180_000);
+
+    expect(backend.requests.filter((r) => r.method === "GET")).toHaveLength(2);
+    expect(snapshot().error).toBeInstanceOf(CopilotAuthError);
+    expect(snapshot().phase).toBe("failed");
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("a resume refused once with 401 resumes on a fresh token", async () => {
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    let refusals = 0;
+    backend.respond(() =>
+      refusals++ === 0
+        ? { status: 401, body: { detail: "Unauthorized" } }
+        : "stream",
+    );
+    backend.connections[0].fail();
+    await advance(1_000);
+    backend.publish();
+    await advance(1_000);
+
+    expect(backend.requests.filter((r) => r.method === "GET")).toHaveLength(2);
+    expect(snapshot().phase).toBe("finished");
+    expect(snapshot().error).toBeNull();
+  });
+
+  it("a resume refused 403 twice ends with the refusal, not the sign-in error", async () => {
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    backend.respond(() => ({ status: 403, body: { detail: "Forbidden" } }));
+    backend.connections[0].fail();
+    await advance(180_000);
+
+    expect(backend.requests.filter((r) => r.method === "GET")).toHaveLength(2);
+    expect(snapshot().error).toEqual(
+      new SendRefusedError('{"detail":"Forbidden"}', 403),
+    );
+    expect(snapshot().error).not.toBeInstanceOf(CopilotAuthError);
+    expect(report).toHaveBeenCalledWith(
+      "refused",
+      expect.objectContaining({ status: 403 }),
+    );
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("reports a send refused with a 4xx the app never provokes, with its status", async () => {
+    backend.respond(() => ({
+      status: 422,
+      body: { detail: "Message too long" },
+    }));
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(1_000);
+
+    expect(report).toHaveBeenCalledWith("refused", {
+      status: 422,
+      body: { detail: "Message too long" },
+    });
+    expect(snapshot().error).toEqual(
+      new SendRefusedError('{"detail":"Message too long"}', 422),
+    );
+  });
+
+  it("a message over the server's length limit is its own refusal, not reported", async () => {
+    // FastAPI's 422 for StreamChatRequest.message over max_length=64_000.
+    backend.respond(() => ({
+      status: 422,
+      body: {
+        detail: [
+          {
+            type: "string_too_long",
+            loc: ["body", "message"],
+            msg: "String should have at most 64000 characters",
+          },
+        ],
+      },
+    }));
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(1_000);
+
+    expect(snapshot().error).toBeInstanceOf(MessageTooLongError);
+    expect(report).not.toHaveBeenCalled();
+  });
+
+  it.each([401, 402, 404, 429])(
+    "does not report a send refused %i, which the user's state explains",
+    async (status) => {
+      backend.respond(() => ({ status, body: { detail: "refused" } }));
+      void runtime.send({ text: PROMPT }, undefined);
+      await advance(1_000);
+
+      expect(report).not.toHaveBeenCalled();
+    },
+  );
+
+  it("a resume refused 404 ends the turn: the chat is gone", async () => {
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    backend.respond(() => ({ status: 404, body: { detail: "Not found" } }));
+    backend.connections[0].fail();
+    await advance(180_000);
+
+    expect(backend.requests.filter((r) => r.method === "GET")).toHaveLength(1);
+    expect(snapshot().error).toBeInstanceOf(ChatUnavailableError);
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("a send refused by a proxy's HTML page reads as plain language", async () => {
+    backend.respond(() => ({
+      status: 502,
+      body: "<html><head><title>502 Server Error</title></head></html>",
+    }));
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(1_000);
+
+    expect(snapshot().error).toEqual(
+      new SendRefusedError("Couldn't reach the server (HTTP 502).", 502),
+    );
+    expect(snapshot().error).toBeInstanceOf(SendRefusedError);
+  });
+});
+
+describe("a return to the tab", () => {
+  it("after more than 30 s away, follows a turn started elsewhere meanwhile", async () => {
+    runtime.observe(backend.view());
+    setVisibility("hidden");
+    await advance(60_000);
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    setVisibility("visible");
+    await advance(1_000);
+
+    expect(backend.connections.at(-1)?.url.searchParams.get("turn")).toBe(
+      backend.turnId,
+    );
+    expect(snapshot().phase).toBe("live");
+  });
+
+  it("when the first read on return fails, reads again and follows the turn", async () => {
+    runtime.observe(backend.view());
+    setVisibility("hidden");
+    await advance(60_000);
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    let reads = 0;
+    runtime.bind({}, async () => (reads++ === 0 ? null : backend.view()));
+    setVisibility("visible");
+    await advance(3_000);
+
+    expect(reads).toBe(2);
+    expect(snapshot().phase).toBe("live");
+  });
+
+  it("stops re-reading after three failed retries", async () => {
+    runtime.observe(backend.view());
+    setVisibility("hidden");
+    await advance(60_000);
+    let reads = 0;
+    runtime.bind({}, async () => {
+      reads += 1;
+      return null;
+    });
+    setVisibility("visible");
+    await advance(120_000);
+
+    expect(reads).toBe(4);
+  });
+
+  it("within 30 s, reads nothing", async () => {
+    runtime.observe(backend.view());
+    setVisibility("hidden");
+    await advance(10_000);
+    const views = vi.spyOn(backend, "view");
+    setVisibility("visible");
+    await advance(1_000);
     expect(views).not.toHaveBeenCalled();
   });
 });
@@ -626,6 +1112,16 @@ describe("the end-of-turn reconcile", () => {
     expect(report).not.toHaveBeenCalled();
   });
 
+  it("reports the end-of-turn check as still settling until it is done", async () => {
+    await sendAndPublish(toolTurn.sse.length);
+    expect(snapshot().phase).toBe("finished");
+    expect(snapshot().probing).toBe(true);
+
+    await advance(5_000);
+
+    expect(snapshot().probing).toBe(false);
+  });
+
   it("replaces a row that differs under its own key, and reports it", async () => {
     await sendAndPublish(toolTurn.sse.length - 1);
     const before = render();
@@ -644,10 +1140,267 @@ describe("the end-of-turn reconcile", () => {
     expect(textsOf(render())).toEqual([PROMPT, `${FIRST_TEXT}It says Other.`]);
     expect(report).toHaveBeenCalledWith(
       "finish",
-      expect.objectContaining({ diffs: [{ index: 2, fields: ["content"] }] }),
+      expect.objectContaining({ diffs: ["2: content"] }),
     );
   });
+
+  it("keeps the reply of a turn longer than the session window rateable", async () => {
+    await sendAndPublish(toolTurn.sse.length - 1);
+    backend.publish();
+    // The session read returns a window that starts inside the turn.
+    vi.spyOn(backend, "view").mockImplementation(() => ({
+      messages: toolTurn.rows
+        .map((row, sequence) => ({ ...row, sequence }))
+        .slice(2),
+      has_more_messages: true,
+      active_stream: null,
+    }));
+    await advance(1_000);
+
+    const turn = turnSegment();
+    expect(turn.reconciled).toBe(false);
+    expect(turn.lastReplySequence).toBe(3);
+    const { stats } = renderTail(snapshot());
+    expect(stats.get(turn.key)?.savedMessageId).toBe("session-1-seq-3");
+
+    // A later window holds none of the turn's replies: the id stays.
+    runtime.observe({
+      messages: [{ role: "user", content: "Another question", sequence: 4 }],
+      has_more_messages: true,
+      active_stream: null,
+    });
+    await advance(0);
+    expect(turnSegment().lastReplySequence).toBe(3);
+  });
 });
+
+describe("recovered terminal errors", () => {
+  function recovered(
+    turnId = backend.turnId,
+    errorText = "provider unavailable",
+  ) {
+    return `data: ${JSON.stringify({ type: "data-turn-error", data: { turnId, errorText }, transient: true })}\n\n`;
+  }
+
+  it.each(["absent", "matching", "different", "missing_reply"] as const)(
+    "reports only real drift with a %s persisted error marker",
+    async (persistedMarker) => {
+      await sendAndPublish(toolTurn.sse.length - 1);
+      backend.stopWithoutFinish();
+      vi.spyOn(backend, "view").mockImplementation(() => {
+        const marker = turnSegment().recoveredError;
+        return {
+          messages: [
+            ...(persistedMarker === "missing_reply"
+              ? toolTurn.rows.slice(0, -1)
+              : toolTurn.rows
+            ).map((row, sequence) => ({ ...row, sequence })),
+            ...((persistedMarker === "matching" ||
+              persistedMarker === "different") &&
+            marker
+              ? [
+                  {
+                    role: "assistant",
+                    content:
+                      persistedMarker === "matching"
+                        ? marker.content
+                        : "different",
+                    sequence: toolTurn.rows.length,
+                  },
+                ]
+              : []),
+          ],
+          has_more_messages: false,
+          active_stream: null,
+        };
+      });
+      backend.connections[0].send(recovered());
+      await advance(1_000);
+
+      expect(turnSegment().reconciled).toBe(true);
+      if (
+        persistedMarker === "different" ||
+        persistedMarker === "missing_reply"
+      ) {
+        expect(report).toHaveBeenCalledWith(
+          "finish",
+          expect.objectContaining({
+            diffs: [
+              persistedMarker === "different" ? "3: content" : "2: missing",
+            ],
+          }),
+        );
+      } else {
+        expect(report).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "fails a resumed turn once, stored finish=%s",
+    async (finish) => {
+      const onError = vi.fn();
+      const onTurnEnd = vi.fn();
+      runtime.bind({ onError, onTurnEnd }, async () => backend.view());
+      await sendAndPublish(FIRST_BLOCK_DONE);
+      backend.connections[0].fail();
+      await advance(3_000);
+      const connection = backend.connections.at(-1)!;
+      expect(connection.method).toBe("GET");
+      expect(connection.url.searchParams.get("after")).toBe("9-0");
+      backend.stopWithoutFinish();
+      connection.send(
+        recovered() +
+          recovered() +
+          'data: {"type":"error","errorText":"provider unavailable"}\n\n' +
+          (finish
+            ? `id: ${backend.turnId}:999-0\ndata: {"type":"finish"}\n\n`
+            : "") +
+          "data: [DONE]\n\n",
+      );
+      connection.cut();
+      await advance(1_000);
+      expect(snapshot().phase).toBe("failed");
+      expect(turnSegment().log.cursor).toBe("9-0");
+      expect(
+        turnSegment().log.rows.filter((row) =>
+          row.content.includes("provider unavailable"),
+        ),
+      ).toHaveLength(1);
+      expect(onError).toHaveBeenCalledOnce();
+      expect(onTurnEnd).toHaveBeenCalledOnce();
+      expect(backend.connections).toHaveLength(2);
+      expect(toast).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([false, true])(
+    "keeps a first-frame failure after database reconciliation, persisted marker=%s",
+    async (persistedMarker) => {
+      const onError = vi.fn();
+      runtime.bind({ onError }, async () => backend.view());
+      void runtime.send({ text: PROMPT }, undefined);
+      await advance(0);
+      backend.connections[0].send(recovered());
+      await advance(0);
+      expect(turnSegment().log.turnId).toBe(backend.turnId);
+      expect(turnSegment().log.cursor).toBeNull();
+      expect(snapshot().phase).toBe("failed");
+      const errorRow = turnSegment().log.rows.at(-1)!;
+      const view = {
+        messages: [
+          { role: "user", content: PROMPT, sequence: 0 },
+          { role: "assistant", content: "Saved partial reply", sequence: 1 },
+          ...(persistedMarker
+            ? [{ role: "assistant", content: errorRow.content, sequence: 2 }]
+            : []),
+        ],
+        has_more_messages: false,
+        active_stream: null,
+        chat_status: "idle",
+      };
+      runtime.observe(view);
+      runtime.observe(view);
+      await advance(0);
+      expect(turnSegment().reconciled).toBe(true);
+      expect(turnSegment().log.rows.map((row) => row.content)).toEqual([
+        "Saved partial reply",
+        errorRow.content,
+      ]);
+      expect(turnSegment().log.cursor).toBeNull();
+      expect(turnSegment().log.rows.at(-1)?.sequence).toBe(
+        persistedMarker ? 2 : null,
+      );
+      expect(onError).toHaveBeenCalledOnce();
+      expect(tailEndSequence([turnSegment()])).toBe(persistedMarker ? 2 : 1);
+    },
+  );
+
+  it.each([
+    null,
+    {},
+    { turnId: "other", errorText: "wrong turn" },
+    { turnId: "", errorText: "empty" },
+    { turnId: "t", errorText: 1 },
+  ])("ignores malformed or unrelated recovery %j", async (data) => {
+    const onError = vi.fn();
+    runtime.bind({ onError }, async () => backend.view());
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    backend.connections[0].send(
+      `data: ${JSON.stringify({ type: "data-turn-error", data, transient: true })}\n\n`,
+    );
+    await advance(100);
+    expect(snapshot().phase).toBe("live");
+    expect(onError).not.toHaveBeenCalled();
+    expect(turnSegment().log.cursor).toBe("9-0");
+  });
+
+  it("keeps untagged transport errors resumable", async () => {
+    const onError = vi.fn();
+    runtime.bind({ onError }, async () => backend.view());
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    backend.connections[0].send(
+      'data: {"type":"error","errorText":"connection interrupted"}\n\ndata: {"type":"finish"}\n\ndata: [DONE]\n\n',
+    );
+    backend.connections[0].cut();
+    await advance(1_000);
+    expect(backend.connections).toHaveLength(2);
+    expect(backend.connections[1].url.searchParams.get("after")).toBe("9-0");
+    expect(onError).not.toHaveBeenCalled();
+    expect(snapshot().phase).toBe("resuming");
+    backend.publish(1);
+    await advance(100);
+    expect(snapshot().phase).toBe("live");
+  });
+
+  it("does not replace explicit Stop with a queued recovered error", async () => {
+    const onError = vi.fn();
+    runtime.bind({ onError }, async () => backend.view());
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    backend.connections[0].send(recovered());
+    runtime.stop();
+    await advance(1_000);
+    expect(snapshot().stopped).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
+    expect(textsOf(render()).at(-1)).toContain("Operation cancelled");
+  });
+});
+
+function loseSendWhileHidden() {
+  backend.respond(({ method }) =>
+    method === "POST" ? "network-error" : "stream",
+  );
+  setVisibility("hidden");
+}
+
+function viewsFailFirst(count: number) {
+  let failed = 0;
+  runtime.bind({}, async () => (failed++ < count ? null : backend.view()));
+}
+
+// Signed out: no token for any request, and the session read is refused too.
+function signOut(isSignedOut: () => boolean, onError = vi.fn()) {
+  runtime.dispose();
+  runtime = new TurnRuntime("session-1", {
+    baseUrl: () => "http://backend.test",
+    headers: async () => {
+      if (isSignedOut()) throw new CopilotAuthError();
+      return {};
+    },
+    fetch: backend.fetch,
+    fetchSession: async () => backend.view(),
+    toast,
+    report,
+  });
+  runtime.bind({ onError }, async () =>
+    isSignedOut() ? null : backend.view(),
+  );
+}
+
+// The token action fails the next `count` times, then hands out tokens again.
+function tokenFailsFirst(count: number) {
+  tokenFailures = count;
+}
 
 async function sendAndPublish(count: number) {
   void runtime.send({ text: PROMPT }, undefined);

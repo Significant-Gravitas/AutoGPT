@@ -283,7 +283,7 @@ async def test_sdk_dispatch_failure_counts_against_the_inner_tool(_sdk_context):
     wrapper = _make_truncating_wrapper(_never, "run_capability", required_args=["id"])
 
     with _dispatch_of(tool), patch(
-        "backend.copilot.sdk.tool_adapter.truncate",
+        "backend.copilot.sdk.tool_adapter.truncate_mcp_result",
         side_effect=lambda r, _: {**r, "isError": True},
     ):
         for _ in range(3):

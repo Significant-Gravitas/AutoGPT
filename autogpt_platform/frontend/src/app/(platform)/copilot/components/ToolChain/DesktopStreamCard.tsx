@@ -1,5 +1,6 @@
 "use client";
 
+import { useStableCallback } from "@/hooks/useStableCallback";
 import {
   DesktopStreamPreview,
   isDesktopStream,
@@ -37,11 +38,13 @@ export function DesktopStreamCard({ stream, readOnly = false }: Props) {
   const ref = asStreamRef(stream);
   const sandboxId = ref?.sandbox_id;
   const url = ref?.url;
-  useEffect(() => {
+  const registerStream = useStableCallback(() => {
     // The mobile sheet has no computer face: remember the desktop, open nothing.
     if (ref && !readOnly) registerComputerStream(ref, { show: !isMobile });
-    // Re-register only when the stream itself changes, not on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+  // Re-register only when the stream itself changes, not on every render.
+  useEffect(() => {
+    registerStream();
   }, [sandboxId, url, readOnly, isMobile]);
   if (!isDesktopStream(stream)) return null;
   return <DesktopStreamPreview value={stream} ownerView={!readOnly} />;

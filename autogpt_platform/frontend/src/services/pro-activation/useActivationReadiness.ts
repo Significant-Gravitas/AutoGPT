@@ -1,0 +1,78 @@
+import { useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import type { ActivationResponse } from "@/app/api/__generated__/models/activationResponse";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { refreshActivation } from "./refreshActivation";
+import { safeReturnTo } from "./helpers";
+import { storeConsent } from "./storage";
+
+export function useActivationReadiness(
+  userID: string | undefined,
+  setOpen: (open: boolean) => void,
+  setError: (error: string) => void,
+) {
+  const client = useQueryClient();
+  const router = useRouter();
+  const [readyPlan, setReadyPlan] = useState<"PRO" | "MAX" | null>(null);
+  const [isReady, setReady] = useState(false);
+  const [hasFreshUsage, setFreshUsage] = useState(false);
+  const [isRefreshing, setRefreshing] = useState(false);
+  const finishing = useRef(false);
+  async function finish(response: ActivationResponse, notify: boolean) {
+    if (!userID || finishing.current) return;
+    finishing.current = true;
+    setRefreshing(true);
+    try {
+      const plan = await refreshActivation(
+        client,
+        userID,
+        response.terms?.plan,
+      );
+      if (useAuthStore.getState().user?.id !== userID) return;
+      if (notify) {
+        setReady(true);
+        setReadyPlan(plan);
+        setFreshUsage(
+          response.usage_reset === true && !!response.activation_id,
+        );
+      }
+      storeConsent(userID, null);
+      if (notify) {
+        setOpen(true);
+        const returnTo = safeReturnTo(
+          response.return_to ?? "/settings/billing",
+        );
+        if (
+          returnTo !==
+          `${window.location.pathname}${window.location.search}${window.location.hash}`
+        )
+          router.replace(returnTo);
+      }
+    } catch {
+      finishing.current = false;
+      if (useAuthStore.getState().user?.id === userID) {
+        setOpen(true);
+        setError(
+          "Your payment is confirmed. We’re refreshing your plan and usage before you continue.",
+        );
+      }
+    } finally {
+      finishing.current = false;
+      setRefreshing(false);
+    }
+  }
+  function clearReadiness() {
+    setReady(false);
+    setReadyPlan(null);
+    setFreshUsage(false);
+  }
+  return {
+    isReady,
+    readyPlan,
+    hasFreshUsage,
+    isRefreshing,
+    finish,
+    clearReadiness,
+  };
+}

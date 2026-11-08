@@ -1,5 +1,6 @@
 """Tests for subscription tier API endpoints."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
@@ -10,7 +11,13 @@ import stripe
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import SubscriptionTier
 
+from backend.data.credit import PendingChangeUnknown
+from backend.data.pro_activation import UsageActivationState
+from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
+from backend.util.testing import Rendezvous
+
 from .billing.credits_rate_limit import enforce_subscription_status_rate_limit
+from .billing.subscriptions import routes as subscription_routes
 from .billing.subscriptions.routes import _validate_checkout_redirect_url, router
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
@@ -99,6 +106,17 @@ def _stub_cancel_pending_trial(mocker: pytest_mock.MockFixture) -> None:
 
 
 @pytest.fixture(autouse=True)
+def scheduler_client(mocker: pytest_mock.MockFixture) -> Mock:
+    """No schedules by default, so the NO_TIER reads here never reach a scheduler."""
+    client = Mock()
+    client.get_execution_schedules = AsyncMock(return_value=[])
+    mocker.patch.object(
+        subscription_routes, "get_scheduler_client", return_value=client
+    )
+    return client
+
+
+@pytest.fixture(autouse=True)
 def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
     """Keep analytics off the network and let tests assert the event."""
     return mocker.patch(
@@ -135,6 +153,20 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     helpers.  Individual tests can override via their own mocker.patch call.
     """
 
+    async def activation_state(user_id: str) -> UsageActivationState:
+        user = await subscription_routes.get_user_by_id(user_id)
+        return UsageActivationState(
+            user_id=user_id,
+            generation=None,
+            trial_id=None,
+            tier=user.subscription_tier or SubscriptionTier.NO_TIER,
+            ready=True,
+        )
+
+    mocker.patch.object(
+        subscription_routes, "get_usage_activation_state", side_effect=activation_state
+    )
+
     async def default_price_id(
         tier: SubscriptionTier, billing_cycle: str = "monthly"
     ) -> str | None:
@@ -146,13 +178,19 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
         "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=default_price_id,
     )
+    mocker.patch.object(
+        subscription_routes,
+        "_get_stripe_price_amount",
+        new_callable=AsyncMock,
+        return_value=0,
+    )
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.get_proration_credit_cents",
         new_callable=AsyncMock,
         return_value=0,
     )
     # Default tier-multiplier resolver to the backend defaults so the endpoint
-    # never reaches LaunchDarkly during tests.  Individual tests override for
+    # never reaches PostHog during tests.  Individual tests override for
     # LD-override scenarios. get_tier_multipliers returns a string-keyed dict
     # (per its docstring) so we mirror that shape here — passing the
     # enum-keyed _DEFAULT_TIER_MULTIPLIERS directly would silently mismatch
@@ -178,20 +216,6 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
         "backend.api.features.billing.subscriptions.routes.get_active_subscription_period_end",
         new_callable=AsyncMock,
         return_value=1_900_000_000,
-    )
-
-
-def _patch_payment_flag(
-    mocker: pytest_mock.MockFixture,
-    *,
-    enabled: bool = True,
-    authoritative: bool = True,
-) -> Mock:
-    """Stub the single ENABLE_PLATFORM_PAYMENT read in update_subscription_tier."""
-    return mocker.patch(
-        "backend.api.features.billing.subscriptions.routes.evaluate_feature_flag",
-        new_callable=AsyncMock,
-        return_value=(enabled, authoritative),
     )
 
 
@@ -230,6 +254,61 @@ def test_validate_checkout_redirect_url(
         subscriptions_mod.settings.config, "frontend_base_url", TEST_FRONTEND_ORIGIN
     )
     assert _validate_checkout_redirect_url(url) is expected
+
+
+def test_subscription_status_reads_ready_tier_over_stale_user_cache(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch.object(
+        subscription_routes,
+        "get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=Mock(subscription_tier=SubscriptionTier.TRIAL),
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "get_usage_activation_state",
+        new_callable=AsyncMock,
+        return_value=UsageActivationState(
+            user_id=TEST_USER_ID,
+            generation="activation",
+            trial_id=None,
+            tier=SubscriptionTier.PRO,
+            ready=True,
+        ),
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "_get_stripe_price_amount",
+        new_callable=AsyncMock,
+        return_value=1999,
+    )
+    response = client.get("/credits/subscription")
+    assert response.status_code == 200
+    assert response.json()["tier"] == "PRO"
+
+
+def test_subscription_status_does_not_report_ready_during_activation(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch.object(subscription_routes, "get_user_by_id", new_callable=AsyncMock)
+    mocker.patch.object(
+        subscription_routes,
+        "get_usage_activation_state",
+        new_callable=AsyncMock,
+        return_value=UsageActivationState(
+            user_id=TEST_USER_ID,
+            generation=None,
+            trial_id=None,
+            tier=SubscriptionTier.PRO,
+            ready=False,
+        ),
+    )
+    response = client.get("/credits/subscription")
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "3"
 
 
 def test_get_subscription_status_pro(
@@ -301,11 +380,73 @@ def test_get_subscription_status_pro(
     assert data["tier_multipliers"]["BUSINESS"] == 60.0
 
 
+def test_subscription_status_reads_its_independent_parts_side_by_side(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Multipliers, billing cycle, period end and the pending change each wait
+    for none of the others; only the proration needs the cycle's cost."""
+    meeting = Rendezvous(4)
+    mocker.patch.object(
+        subscription_routes,
+        "get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=Mock(subscription_tier=SubscriptionTier.PRO),
+    )
+    amounts = {"price_pro": 1999, "price_pro_yearly": 19990, "price_max": 4999}
+
+    async def price_amount(price_id: str) -> int:
+        return amounts.get(price_id, 0)
+
+    mocker.patch.object(
+        subscription_routes, "_get_stripe_price_amount", side_effect=price_amount
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "get_tier_multipliers",
+        side_effect=meeting.returning({"PRO": 2.0, "MAX": 5.0}),
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "get_user_billing_cycle",
+        side_effect=meeting.returning("yearly"),
+    )
+    mocker.patch.object(
+        subscription_routes,
+        "get_active_subscription_period_end",
+        side_effect=meeting.returning(1_900_000_000),
+    )
+    pending_at = datetime(2030, 1, 1, tzinfo=UTC)
+    mocker.patch.object(
+        subscription_routes,
+        "get_pending_subscription_change",
+        side_effect=meeting.returning((SubscriptionTier.MAX, pending_at, "monthly")),
+    )
+    proration = mocker.patch.object(
+        subscription_routes,
+        "get_proration_credit_cents",
+        new_callable=AsyncMock,
+        return_value=321,
+    )
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["billing_cycle"] == "yearly"
+    assert data["monthly_cost"] == 19990
+    assert data["tier_multipliers"]["PRO"] == 2.0
+    assert data["current_period_end"] == 1_900_000_000
+    assert data["pending_tier"] == "MAX"
+    assert data["proration_credit_cents"] == 321
+    proration.assert_awaited_once_with(TEST_USER_ID, 19990)
+
+
 def test_get_subscription_status_tier_multipliers_ld_override(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """A LaunchDarkly-overridden tier multiplier flows through the response."""
+    """A PostHog-overridden tier multiplier flows through the response."""
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
@@ -376,6 +517,93 @@ def test_get_subscription_status_defaults_to_no_tier(
     assert data["proration_credit_cents"] == 0
 
 
+def test_no_tier_counts_only_workflow_schedules_as_paused(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    scheduler_client: Mock,
+) -> None:
+    """A scheduled chat explains a lapsed plan in its own chat, so it adds nothing."""
+    _patch_user_tier(mocker, SubscriptionTier.NO_TIER)
+    scheduler_client.get_execution_schedules.return_value = [
+        _workflow_schedule("wf-1"),
+        _workflow_schedule("wf-2"),
+        _chat_schedule("chat-1"),
+    ]
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["paused_workflow_schedules"] == 2
+    scheduler_client.get_execution_schedules.assert_awaited_once_with(
+        user_id=TEST_USER_ID
+    )
+
+
+def test_paying_tier_reads_no_schedules(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    scheduler_client: Mock,
+) -> None:
+    """Schedules run for a paying user, so nothing is paused and no read is spent."""
+    _patch_user_tier(mocker, SubscriptionTier.PRO)
+    scheduler_client.get_execution_schedules.return_value = [_workflow_schedule("wf-1")]
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["paused_workflow_schedules"] == 0
+    scheduler_client.get_execution_schedules.assert_not_awaited()
+
+
+def test_a_failed_schedule_read_still_serves_the_status(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    scheduler_client: Mock,
+) -> None:
+    """The paywall reads this route to show its plans, so the count fails soft."""
+    _patch_user_tier(mocker, SubscriptionTier.NO_TIER)
+    scheduler_client.get_execution_schedules.side_effect = ConnectionError("down")
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["paused_workflow_schedules"] == 0
+
+
+def _patch_user_tier(mocker: pytest_mock.MockFixture, tier: SubscriptionTier) -> None:
+    user = Mock()
+    user.subscription_tier = tier
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=user,
+    )
+
+
+def _workflow_schedule(job_id: str) -> GraphExecutionJobInfo:
+    return GraphExecutionJobInfo(
+        id=job_id,
+        name="Daily digest",
+        next_run_time="2026-10-25T09:00:00+00:00",
+        user_id=TEST_USER_ID,
+        graph_id="graph",
+        graph_version=1,
+        cron="0 9 * * *",
+        input_data={},
+    )
+
+
+def _chat_schedule(job_id: str) -> CopilotTurnJobInfo:
+    return CopilotTurnJobInfo(
+        id=job_id,
+        name="Follow up on the invoice",
+        next_run_time="2026-10-25T09:00:00+00:00",
+        user_id=TEST_USER_ID,
+        cron="0 9 * * *",
+        message="ping",
+    )
+
+
 def test_get_subscription_status_stripe_error_falls_back_to_zero(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
@@ -425,68 +653,7 @@ def test_get_subscription_status_stripe_error_falls_back_to_zero(
     assert data["tier_costs"]["PRO"] == 0
 
 
-def test_update_subscription_tier_no_tier_no_payment(
-    client: fastapi.testclient.TestClient,
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    """POST /credits/subscription to NO_TIER (cancel) when payment disabled skips Stripe."""
-    mock_user = Mock()
-    mock_user.subscription_tier = SubscriptionTier.PRO
-
-    mocker.patch(
-        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
-        new_callable=AsyncMock,
-        return_value=mock_user,
-    )
-    _patch_payment_flag(mocker, enabled=False)
-    mock_set_tier = mocker.patch(
-        "backend.api.features.billing.subscriptions.routes.set_subscription_tier",
-        new_callable=AsyncMock,
-    )
-
-    response = client.post("/credits/subscription", json={"tier": "NO_TIER"})
-
-    assert response.status_code == 200
-    assert response.json()["url"] == ""
-    mock_set_tier.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.NO_TIER)
-
-
-def test_update_subscription_tier_no_tier_unreadable_flag_keeps_tier(
-    client: fastapi.testclient.TestClient,
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    """A payment flag that could not be evaluated must not drop the user's tier.
-
-    An unreadable flag yields False exactly like a genuine "payment off", so
-    the DB flip would strip entitlement from a user Stripe keeps billing.
-    """
-    mock_user = Mock()
-    mock_user.subscription_tier = SubscriptionTier.PRO
-
-    mocker.patch(
-        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
-        new_callable=AsyncMock,
-        return_value=mock_user,
-    )
-    _patch_payment_flag(mocker, enabled=False, authoritative=False)
-    mock_set_tier = mocker.patch(
-        "backend.api.features.billing.subscriptions.routes.set_subscription_tier",
-        new_callable=AsyncMock,
-    )
-    mock_cancel = mocker.patch(
-        "backend.api.features.billing.subscriptions.routes.cancel_stripe_subscription",
-        new_callable=AsyncMock,
-    )
-
-    response = client.post("/credits/subscription", json={"tier": "NO_TIER"})
-
-    assert response.status_code == 502
-    assert "contact support" in response.json()["detail"].lower()
-    mock_set_tier.assert_not_awaited()
-    mock_cancel.assert_not_awaited()
-
-
-def test_update_subscription_tier_paid_beta_user(
+def test_update_subscription_tier_paid_tier_with_payment_off(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -499,7 +666,6 @@ def test_update_subscription_tier_paid_beta_user(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker, enabled=False)
 
     response = client.post("/credits/subscription", json={"tier": "PRO"})
 
@@ -510,6 +676,7 @@ def test_update_subscription_tier_paid_beta_user(
 def test_update_subscription_tier_paid_requires_urls(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """POST /credits/subscription for paid tier without success/cancel URLs returns 422."""
     mock_user = Mock()
@@ -520,7 +687,7 @@ def test_update_subscription_tier_paid_requires_urls(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -535,6 +702,7 @@ def test_update_subscription_tier_paid_requires_urls(
 def test_update_subscription_tier_currency_mismatch_returns_422(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """Stripe rejects a SubscriptionSchedule whose phases mix currencies (e.g.
     GBP-checkout sub trying to schedule a USD-only target Price). The handler
@@ -549,7 +717,7 @@ def test_update_subscription_tier_currency_mismatch_returns_422(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         side_effect=stripe.InvalidRequestError(
@@ -577,6 +745,7 @@ def test_update_subscription_tier_currency_mismatch_returns_422(
 def test_update_subscription_tier_non_currency_invalid_request_returns_502(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """Locks the contract that *only* currency-mismatch InvalidRequestErrors
     translate to 422 — every other Stripe InvalidRequestError must still
@@ -590,7 +759,7 @@ def test_update_subscription_tier_non_currency_invalid_request_returns_502(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         side_effect=stripe.InvalidRequestError(
@@ -615,6 +784,7 @@ def test_update_subscription_tier_non_currency_invalid_request_returns_502(
 def test_update_subscription_tier_creates_checkout(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """POST /credits/subscription creates Stripe Checkout Session for paid upgrade."""
     mock_user = Mock()
@@ -625,7 +795,7 @@ def test_update_subscription_tier_creates_checkout(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -654,6 +824,7 @@ def test_update_subscription_tier_checkout_sends_checkout_started(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
     track_checkout_started: AsyncMock,
+    set_platform_payment,
 ) -> None:
     """A created Checkout Session is reported with its plan and surface."""
     mock_user = Mock()
@@ -663,7 +834,7 @@ def test_update_subscription_tier_checkout_sends_checkout_started(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -700,6 +871,7 @@ def test_update_subscription_tier_failed_checkout_sends_no_checkout_started(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
     track_checkout_started: AsyncMock,
+    set_platform_payment,
 ) -> None:
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.NO_TIER
@@ -708,7 +880,7 @@ def test_update_subscription_tier_failed_checkout_sends_no_checkout_started(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -736,6 +908,7 @@ def test_update_subscription_tier_failed_checkout_sends_no_checkout_started(
 def test_update_subscription_tier_forwards_datafast_headers(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """DataFast attribution headers are forwarded to create_subscription_checkout."""
     mock_user = Mock()
@@ -746,7 +919,7 @@ def test_update_subscription_tier_forwards_datafast_headers(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -779,6 +952,7 @@ def test_update_subscription_tier_forwards_datafast_headers(
 def test_update_subscription_tier_forwards_yearly_billing_cycle(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """billing_cycle=yearly is forwarded to modify + checkout helpers and the
     target_price_id lookup so the 422 fail-closed branch fires correctly when
@@ -791,7 +965,7 @@ def test_update_subscription_tier_forwards_yearly_billing_cycle(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     modify_mock = mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -831,6 +1005,7 @@ def test_update_subscription_tier_forwards_yearly_billing_cycle(
 def test_update_subscription_tier_yearly_unconfigured_returns_422(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """When yearly price is not configured for the tier, the route fails closed
     with a 422 instead of silently using the monthly price."""
@@ -842,7 +1017,7 @@ def test_update_subscription_tier_yearly_unconfigured_returns_422(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes._get_stripe_price_amount",
         new_callable=AsyncMock,
@@ -880,6 +1055,7 @@ def test_update_subscription_tier_yearly_unconfigured_returns_422(
 def test_update_subscription_tier_creates_checkout_with_yearly_billing(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """When no active sub, create_subscription_checkout receives billing_cycle=yearly."""
     mock_user = Mock()
@@ -890,7 +1066,7 @@ def test_update_subscription_tier_creates_checkout_with_yearly_billing(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes._get_stripe_price_amount",
         new_callable=AsyncMock,
@@ -935,6 +1111,7 @@ def test_update_subscription_tier_creates_checkout_with_yearly_billing(
 def test_update_subscription_tier_rejects_open_redirect(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """POST /credits/subscription rejects success/cancel URLs outside the frontend origin."""
     mock_user = Mock()
@@ -945,7 +1122,7 @@ def test_update_subscription_tier_rejects_open_redirect(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -1003,6 +1180,7 @@ def test_update_subscription_tier_enterprise_blocked(
 def test_update_subscription_tier_same_tier_releases_pending_change(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """POST /credits/subscription for the user's current tier releases any pending change.
 
@@ -1029,7 +1207,7 @@ def test_update_subscription_tier_same_tier_releases_pending_change(
         "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
     )
-    feature_mock = _patch_payment_flag(mocker)
+    set_platform_payment(True)
 
     response = client.post(
         "/credits/subscription",
@@ -1046,8 +1224,6 @@ def test_update_subscription_tier_same_tier_releases_pending_change(
     assert data["url"] == ""
     release_mock.assert_awaited_once_with(TEST_USER_ID)
     checkout_mock.assert_not_awaited()
-    # Same-tier branch short-circuits before the payment-flag check.
-    feature_mock.assert_not_awaited()
 
 
 def test_update_subscription_tier_same_tier_no_pending_change_returns_status(
@@ -1127,14 +1303,18 @@ def test_update_subscription_tier_same_tier_stripe_error_returns_502(
     assert "contact support" in response.json()["detail"].lower()
 
 
-def test_update_subscription_tier_no_tier_with_payment_schedules_cancel_and_does_not_update_db(
+@pytest.mark.parametrize("payment_enabled", [True, False])
+def test_update_subscription_tier_no_tier_schedules_cancel_and_does_not_update_db(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
+    payment_enabled: bool,
 ) -> None:
     """Cancelling to NO_TIER schedules Stripe cancellation at period end.
 
     The DB tier must NOT be updated immediately — the customer.subscription.deleted
-    webhook fires at period end and downgrades to NO_TIER then.
+    webhook fires at period end and downgrades to NO_TIER then. With payment off
+    too: a subscription from when it was on still bills until cancelled.
     """
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
@@ -1152,7 +1332,7 @@ def test_update_subscription_tier_no_tier_with_payment_schedules_cancel_and_does
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(payment_enabled)
 
     response = client.post("/credits/subscription", json={"tier": "NO_TIER"})
 
@@ -1161,9 +1341,12 @@ def test_update_subscription_tier_no_tier_with_payment_schedules_cancel_and_does
     mock_set_tier.assert_not_awaited()
 
 
+@pytest.mark.parametrize("payment_enabled", [True, False])
 def test_update_subscription_tier_no_tier_cancel_failure_returns_502(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
+    payment_enabled: bool,
 ) -> None:
     """Cancelling to NO_TIER returns 502 with a generic error (no Stripe detail leakage)."""
     mock_user = Mock()
@@ -1180,7 +1363,7 @@ def test_update_subscription_tier_no_tier_cancel_failure_returns_502(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(payment_enabled)
 
     response = client.post("/credits/subscription", json={"tier": "NO_TIER"})
 
@@ -1291,9 +1474,64 @@ def test_stripe_webhook_dispatches_invoice_payment_failed(
     failure_mock.assert_awaited_once_with(invoice_obj)
 
 
+@pytest.mark.parametrize(
+    "event_type", ["invoice.payment_succeeded", "invoice_payment.paid"]
+)
+def test_stripe_webhook_paid_invoice_reconciles_the_wallet_payment_first(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    event_type: str,
+) -> None:
+    """Both paid events settle or refund an unfinished wallet payment before
+    the success handler, whose credit grant reads the settled state."""
+    invoice_obj = {"id": "in_test", "customer": "cus_test", "amount_paid": 1999}
+    data_object = (
+        invoice_obj
+        if event_type == "invoice.payment_succeeded"
+        else {"object": "invoice_payment", "invoice": "in_test"}
+    )
+    event = {"type": event_type, "data": {"object": data_object}}
+    mocker.patch.object(
+        stripe.Invoice, "retrieve_async", AsyncMock(return_value=invoice_obj)
+    )
+
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.stripe.Webhook.construct_event",
+        return_value=event,
+    )
+    calls = Mock()
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.reconcile_wallet_payment_on_paid_invoice",
+        new=AsyncMock(side_effect=lambda inv: calls("refund", inv)),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.handle_subscription_payment_success",
+        new=AsyncMock(side_effect=lambda inv: calls("success", inv)),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.on_trial_invoice",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=abc"},
+    )
+
+    assert response.status_code == 200
+    assert [c.args[0] for c in calls.call_args_list] == ["refund", "success"]
+    calls.assert_any_call("refund", invoice_obj)
+
+
 def test_update_subscription_tier_paid_to_paid_modifies_subscription(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """POST /credits/subscription modifies existing subscription for paid→paid changes."""
     mock_user = Mock()
@@ -1316,7 +1554,7 @@ def test_update_subscription_tier_paid_to_paid_modifies_subscription(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     modify_mock = mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -1347,6 +1585,7 @@ def test_update_subscription_tier_paid_to_paid_modifies_subscription(
 def test_update_subscription_tier_max_checkout(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """POST /credits/subscription from PRO→MAX modifies the existing subscription."""
     mock_user = Mock()
@@ -1357,7 +1596,7 @@ def test_update_subscription_tier_max_checkout(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     modify_mock = mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -1386,6 +1625,7 @@ def test_update_subscription_tier_max_checkout(
 def test_update_subscription_tier_no_active_sub_falls_through_to_checkout(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """Any tier change from a user with no active Stripe sub goes through Checkout.
 
@@ -1402,7 +1642,7 @@ def test_update_subscription_tier_no_active_sub_falls_through_to_checkout(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     modify_mock = mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -1438,6 +1678,7 @@ def test_update_subscription_tier_no_active_sub_falls_through_to_checkout(
 def test_update_subscription_tier_priced_basic_no_sub_falls_through_to_checkout(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """Once stripe-price-id-basic is configured, a BASIC user without an active sub
     must hit Stripe Checkout rather than being silently set_subscription_tier'd."""
@@ -1463,7 +1704,7 @@ def test_update_subscription_tier_priced_basic_no_sub_falls_through_to_checkout(
         "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=mock_price_id,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     modify_mock = mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -1503,6 +1744,7 @@ def test_update_subscription_tier_priced_basic_no_sub_falls_through_to_checkout(
 def test_update_subscription_tier_target_without_ld_price_returns_422(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """Paid target with no LD-configured Stripe price must fail fast with 422.
 
@@ -1528,7 +1770,7 @@ def test_update_subscription_tier_target_without_ld_price_returns_422(
         "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=mock_price_id,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     checkout_mock = mocker.patch(
         "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
         new_callable=AsyncMock,
@@ -1556,6 +1798,7 @@ def test_update_subscription_tier_target_without_ld_price_returns_422(
 def test_update_subscription_tier_pro_to_max_card_declined_returns_402(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """Pro→Max upgrade where Stripe raises CardError must return HTTP 402.
 
@@ -1572,7 +1815,7 @@ def test_update_subscription_tier_pro_to_max_card_declined_returns_402(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     modify_mock = mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -1598,6 +1841,7 @@ def test_update_subscription_tier_pro_to_max_card_declined_returns_402(
 def test_update_subscription_tier_pro_to_max_authentication_required_returns_402(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """SCA-required cards raise CardError(code='authentication_required'). The
     handler must surface a different message than the plain decline path so EU
@@ -1610,7 +1854,7 @@ def test_update_subscription_tier_pro_to_max_authentication_required_returns_402
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -1641,6 +1885,7 @@ def test_update_subscription_tier_pro_to_max_authentication_required_returns_402
 def test_update_subscription_tier_pro_to_max_subscription_payment_intent_requires_action_returns_402(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """Subscription.modify under error_if_incomplete raises CardError with
     code='subscription_payment_intent_requires_action' (not the raw
@@ -1655,7 +1900,7 @@ def test_update_subscription_tier_pro_to_max_subscription_payment_intent_require
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -1694,6 +1939,7 @@ def test_update_subscription_tier_pro_to_max_documented_authentication_codes_ret
     mocker: pytest_mock.MockFixture,
     code: str,
     decline_code: str | None,
+    set_platform_payment,
 ) -> None:
     """Stripe documents invoice_payment_intent_requires_action, and
     authentication_required as a card_declined decline code, for a payment the
@@ -1706,7 +1952,7 @@ def test_update_subscription_tier_pro_to_max_documented_authentication_codes_ret
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -1737,6 +1983,7 @@ def test_update_subscription_tier_pro_to_max_documented_authentication_codes_ret
 def test_update_subscription_tier_pro_to_max_no_payment_method_returns_402(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """Customer with no default payment method: error_if_incomplete makes Stripe
     raise InvalidRequestError (not CardError). The handler must map that to 402
@@ -1749,7 +1996,7 @@ def test_update_subscription_tier_pro_to_max_no_payment_method_returns_402(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -1779,6 +2026,7 @@ def test_update_subscription_tier_pro_to_max_no_payment_method_returns_402(
 def test_update_subscription_tier_paid_to_paid_stripe_error_returns_502(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """POST /credits/subscription returns 502 when Stripe modification fails."""
     mock_user = Mock()
@@ -1801,7 +2049,7 @@ def test_update_subscription_tier_paid_to_paid_stripe_error_returns_502(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -1820,9 +2068,12 @@ def test_update_subscription_tier_paid_to_paid_stripe_error_returns_502(
     assert response.status_code == 502
 
 
+@pytest.mark.parametrize("payment_enabled", [True, False])
 def test_update_subscription_tier_no_tier_no_stripe_subscription(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
+    payment_enabled: bool,
 ) -> None:
     """Cancelling to NO_TIER when no Stripe subscription exists updates DB tier directly.
 
@@ -1839,7 +2090,7 @@ def test_update_subscription_tier_no_tier_no_stripe_subscription(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(payment_enabled)
     # Simulate no active Stripe subscriptions — returns False
     cancel_mock = mocker.patch(
         "backend.api.features.billing.subscriptions.routes.cancel_stripe_subscription",
@@ -1943,9 +2194,51 @@ def test_get_subscription_status_no_pending_tier(
     assert data["pending_tier_effective_at"] is None
 
 
+@pytest.mark.parametrize(
+    "error",
+    [stripe.StripeError("rate limited"), PendingChangeUnknown("no price ids")],
+    ids=["stripe", "price-lookup"],
+)
+def test_get_subscription_status_reads_a_failed_pending_change_as_none(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    error: Exception,
+) -> None:
+    """A pending change that can't be resolved leaves the status without one
+    instead of failing it, and the failure is logged."""
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=Mock(subscription_tier=SubscriptionTier.PRO),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_proration_credit_cents",
+        new_callable=AsyncMock,
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_pending_subscription_change",
+        new_callable=AsyncMock,
+        side_effect=error,
+    )
+    logged = mocker.spy(subscription_routes.logger, "exception")
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["pending_tier"] is None
+    logged.assert_called_once()
+
+
 def test_update_subscription_tier_downgrade_paid_to_paid_schedules(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """A BUSINESS→PRO downgrade request dispatches to modify_stripe_subscription_for_tier."""
     mock_user = Mock()
@@ -1968,7 +2261,7 @@ def test_update_subscription_tier_downgrade_paid_to_paid_schedules(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     modify_mock = mocker.patch(
         "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -2192,6 +2485,7 @@ def test_get_subscription_status_yearly_user_both_cycles_uses_yearly_cost(
 def test_update_subscription_tier_same_tier_cycle_change_routes_to_modify(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """A monthly Pro user posting {tier:'PRO', billing_cycle:'yearly'} must
     NOT short-circuit through release_pending_subscription_schedule — that
@@ -2214,7 +2508,7 @@ def test_update_subscription_tier_same_tier_cycle_change_routes_to_modify(
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         side_effect=price_lookup,
@@ -2297,6 +2591,7 @@ def test_update_subscription_tier_same_tier_same_cycle_still_releases_pending(
 def test_update_subscription_tier_same_tier_no_stripe_sub_falls_through_to_checkout(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
+    set_platform_payment,
 ) -> None:
     """Admin-granted tier (DB tier set, no active Stripe subscription) posting
     their *current* tier must fall through to the Checkout flow, not short-
@@ -2317,7 +2612,7 @@ def test_update_subscription_tier_same_tier_no_stripe_sub_falls_through_to_check
         new_callable=AsyncMock,
         return_value=None,
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     release_mock = mocker.patch(
         "backend.api.features.billing.subscriptions.routes.release_pending_subscription_schedule",
         new_callable=AsyncMock,

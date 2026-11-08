@@ -2,6 +2,7 @@
 
 import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
+import { usePaymentRecovery } from "@/services/usageExperience/usePaymentRecovery";
 
 import { isPaidTier, readTier } from "./helpers";
 import { getCancelPendingOffer } from "./TrialPlanChoices/helpers";
@@ -11,6 +12,7 @@ export function useSubscriptionTab(isPlanCheckoutReturn: boolean) {
   const { data: trial, isLoading } = useTrialStatus();
   const tier = useGetSubscriptionStatus({ query: { select: readTier } });
   const { isConfirmingPlan } = usePlanCheckoutReturn(isPlanCheckoutReturn);
+  const { paymentFailed, payment } = usePaymentRecovery(tier.data);
   // An ended trial that a paid plan replaced is history, not the plan; it
   // waits for the tier so it never flashes above the plan card.
   const isEndedTrial = Boolean(trial && !trial.eligible && !trial.active);
@@ -27,9 +29,16 @@ export function useSubscriptionTab(isPlanCheckoutReturn: boolean) {
   const cancelPendingOffer = getCancelPendingOffer(trial);
 
   return {
+    isLoading,
+    paymentFailed,
+    payment,
+    hasPlanChoices: Boolean(cancelPendingOffer),
     showPlan:
-      !isLoading && (!trial?.active || trial.converted || isSupersededTrial),
-    showTrialCard: !(isEndedTrial && isReplaced) && !isSupersededTrial,
+      !paymentFailed &&
+      !isLoading &&
+      (!trial?.active || trial.converted || isSupersededTrial),
+    showTrialCard:
+      !paymentFailed && !(isEndedTrial && isReplaced) && !isSupersededTrial,
     planChoicesOffer: isConfirmingPlan ? null : cancelPendingOffer,
     isConfirmingPlan: Boolean(cancelPendingOffer) && isConfirmingPlan,
   };

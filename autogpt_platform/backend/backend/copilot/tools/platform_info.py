@@ -3,8 +3,11 @@
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import get_user_tier
+from backend.util.platform_payment import is_platform_payment_enabled
 
 from .base import BaseTool
 from .models import ErrorResponse, PlatformInfoResponse, ToolResponseBase
@@ -28,6 +31,10 @@ class PlatformInfoTool(BaseTool):
     @property
     def name(self) -> str:
         return "get_platform_info"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_CREDITS]
 
     @property
     def description(self) -> str:
@@ -81,14 +88,9 @@ class PlatformInfoTool(BaseTool):
                 session_id=session_id,
             )
 
-        # When billing is disabled (self-hosted, beta cohort), skip tier
-        # lookup and report open access — there is no billing page to manage.
-        from backend.util.feature_flag import Flag, is_feature_enabled
-
-        billing_enabled = await is_feature_enabled(
-            Flag.ENABLE_PLATFORM_PAYMENT, user_id
-        )
-        if not billing_enabled:
+        # A deployment without payment has no billing page to manage, so skip
+        # the tier lookup and report open access.
+        if not is_platform_payment_enabled():
             return PlatformInfoResponse(
                 message=(
                     "Billing is not enabled on this deployment. "

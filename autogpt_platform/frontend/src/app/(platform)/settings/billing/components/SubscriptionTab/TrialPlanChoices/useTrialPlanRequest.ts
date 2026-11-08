@@ -13,11 +13,6 @@ import { getGetTrialsGetTrialStatusQueryKey } from "@/app/api/__generated__/endp
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
-import {
-  centsToUSD,
-  getSubscriptionValue,
-  trackAdsConversionBeforeNavigation,
-} from "@/services/analytics/google-ads";
 
 import { readTier } from "../helpers";
 import {
@@ -26,6 +21,12 @@ import {
   type PlanChoiceDetails,
 } from "./helpers";
 
+export interface PaymentPage {
+  ownerID: string;
+  plan: PlanChoiceDetails;
+  url: string;
+}
+
 export function useTrialPlanRequest(offer: TrialOfferResponse) {
   const userID = useAuthStore((state) => state.user?.id);
   const queryClient = useQueryClient();
@@ -33,15 +34,14 @@ export function useTrialPlanRequest(offer: TrialOfferResponse) {
   const [requestedTier, setRequestedTier] = useState<
     PlanChoiceDetails["tier"] | null
   >(null);
+  const [paymentPage, setPaymentPage] = useState<PaymentPage | null>(null);
 
   async function requestPlan(plan: PlanChoiceDetails) {
-    if (!userID || requestedTier) return false;
+    if (!userID || requestedTier) return;
     setRequestedTier(plan.tier);
     try {
-      return await submitPlan(plan, userID);
+      await submitPlan(plan, userID);
     } finally {
-      // Cleared after a Checkout hand-off too: a page restored from the
-      // back-forward cache would otherwise keep both plans disabled.
       setRequestedTier(null);
     }
   }
@@ -56,22 +56,23 @@ export function useTrialPlanRequest(offer: TrialOfferResponse) {
           description: "Review your current plan below.",
         });
         await refreshBilling();
-        return false;
+        return;
       }
       const response = await updateTier({
         data: buildPlanRequest(plan, offer.billing_cycle),
       });
-      if (useAuthStore.getState().user?.id !== requestUserID) return false;
-      const url = response.status === 200 ? response.data.url : undefined;
-      if (url) {
-        await leaveForCheckout(plan, url);
-        return true;
+      if (useAuthStore.getState().user?.id !== requestUserID) return;
+      const data = response.status === 200 ? response.data : undefined;
+      // The bank wants to confirm the charge: nothing changes until the
+      // customer pays on Stripe's page.
+      if (data?.url) {
+        setPaymentPage({ ownerID: requestUserID, plan, url: data.url });
+        return;
       }
-      const tier = response.status === 200 ? response.data.tier : undefined;
-      toast(describePlanResult(plan, tier));
+      toast(describePlanResult(plan, data?.tier));
       await refreshBilling();
     } catch (error) {
-      if (useAuthStore.getState().user?.id !== requestUserID) return false;
+      if (useAuthStore.getState().user?.id !== requestUserID) return;
       // A toast, not an inline alert: the refresh below usually unmounts these
       // choices (the trial was resumed or ended elsewhere).
       toast({
@@ -82,7 +83,6 @@ export function useTrialPlanRequest(offer: TrialOfferResponse) {
       });
       await refreshBilling();
     }
-    return false;
   }
 
   async function isStillOnTrial() {
@@ -103,17 +103,14 @@ export function useTrialPlanRequest(offer: TrialOfferResponse) {
     );
   }
 
-  async function leaveForCheckout(plan: PlanChoiceDetails, url: string) {
-    await trackAdsConversionBeforeNavigation("begin_checkout", {
-      value:
-        centsToUSD(plan.cents) ??
-        getSubscriptionValue(plan.tier, offer.billing_cycle),
-    });
-    window.location.assign(url);
-  }
-
   return {
     requestedTier,
     requestPlan,
+    paymentPage: paymentPage?.ownerID === userID ? paymentPage : null,
+    closePaymentPage: () => {
+      setPaymentPage(null);
+      // The customer may have paid in the other tab.
+      void refreshBilling();
+    },
   };
 }

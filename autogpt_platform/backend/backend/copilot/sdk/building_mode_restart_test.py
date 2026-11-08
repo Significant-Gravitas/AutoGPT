@@ -9,10 +9,22 @@ blocks without results and leave the CLI session file unresumable.
 from unittest.mock import MagicMock
 
 import pytest
+from claude_agent_sdk import ClaudeAgentOptions
 
+from backend.copilot.expert_check import remember_expert_check, sharing_expert_checks
+from backend.copilot.expert_check_test import CHECK
+from backend.copilot.expert_context import (
+    EXPERT_SESSION_MISSING_MESSAGE,
+    ExpertSessionUnavailableError,
+)
 from backend.copilot.model import ChatSession
+from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
 
-from .service import _graphiti_ingest_allowed, _ready_for_building_mode_restart
+from .service import (
+    _apply_building_mode_restart,
+    _graphiti_ingest_allowed,
+    _ready_for_building_mode_restart,
+)
 
 
 def _session(*, requested: bool = True, guide_loaded: bool = False) -> ChatSession:
@@ -82,6 +94,7 @@ class TestApplyBuildingModeRestart:
         auto_mode_supplement: str = "",
         use_e2b: bool = False,
         expert_id: str | None = None,
+        sdk_options: ClaudeAgentOptions | MagicMock | None = None,
     ):
         from backend.copilot.sdk.service import (
             _BUILDING_MODE_CONTINUATION,
@@ -97,11 +110,10 @@ class TestApplyBuildingModeRestart:
         state = self._state(
             prior_emitted=prior_emitted, thinking_reprompted=thinking_reprompted
         )
-        sdk_options = MagicMock()
         status = await _apply_building_mode_restart(
             session=session,
             state=state,
-            sdk_options=sdk_options,
+            sdk_options=sdk_options or MagicMock(),
             base_system_prompt="BASE",
             delegation_supplement=delegation_supplement,
             oversight_supplement=oversight_supplement,
@@ -127,6 +139,15 @@ class TestApplyBuildingModeRestart:
         assert state.resume_file == "sess-1"
         assert state.query_message == continuation
         assert "building mode" in status.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_the_continuation_gets_no_warm_context_block(self, mocker):
+        """The continuation is not the turn's query: a transient retry after
+        the restart resends it as it is, with no follow-up warm context
+        appended to it (``_resend_with_fresh_warm_context``)."""
+        _, state, _, _ = await self._run(mocker)
+
+        assert state.warm_context_base is None
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("supplement", ["delegation", "oversight"])
@@ -245,6 +266,19 @@ class TestApplyBuildingModeRestart:
         assert state.query_message == _BUILDING_MODE_CONTINUATION
 
     @pytest.mark.asyncio
+    async def test_relaunch_keeps_cli_text_as_text(self, mocker):
+        """The relaunch runs the rest of the user's turn, so its text must
+        still reach the model as written after it."""
+        options = ClaudeAgentOptions(
+            extra_args={DISABLE_SLASH_COMMANDS_FLAG: None}, verbatim_prompts=True
+        )
+        _, state, _, _ = await self._run(mocker, sdk_options=options)
+
+        assert state.options is not options
+        assert DISABLE_SLASH_COMMANDS_FLAG in state.options.extra_args
+        assert state.options.verbatim_prompts is True
+
+    @pytest.mark.asyncio
     async def test_adapter_carry_over(self, mocker):
         _, state, _, _ = await self._run(
             mocker, prior_emitted=True, thinking_reprompted=True
@@ -303,4 +337,80 @@ class TestApplyBuildingModeRestart:
             user_id="user-1",
             message="private prompt",
             is_user_message=True,
+        )
+
+    async def _relaunch_in_a_turn_that_checked_its_expert(
+        self, mocker, store: MagicMock
+    ):
+        """Relaunch an expert session's attempt inside a turn whose executor
+        checked the expert before the engine started, as a real turn does."""
+        mocker.patch(
+            "backend.copilot.sdk.service.build_builder_system_prompt_suffix",
+            new=mocker.AsyncMock(return_value="<building_guide>GUIDE</building_guide>"),
+        )
+        mocker.patch("backend.copilot.expert_context.experts_db", return_value=store)
+        session = _session(requested=True, guide_loaded=False)
+        session.expert_id = "expert-1"
+        session.organization_id = CHECK.organization_id
+        session.team_id = CHECK.team_id
+        state = self._state(prior_emitted=False, thinking_reprompted=False)
+        with sharing_expert_checks():
+            remember_expert_check("user-1", "expert-1", CHECK)
+            await _apply_building_mode_restart(
+                session=session,
+                state=state,
+                sdk_options=MagicMock(),
+                base_system_prompt="BASE",
+                delegation_supplement="",
+                oversight_supplement="",
+                team_building_supplement="",
+                graphiti_supplement="",
+                auto_mode_supplement="",
+                use_e2b=False,
+                session_id="sess-1",
+                message_id="msg-1",
+                log_prefix="[test]",
+            )
+        return state
+
+    @pytest.mark.asyncio
+    async def test_a_relaunch_refuses_an_expert_archived_after_the_turn_checked_it(
+        self, mocker
+    ):
+        """The relaunch comes after the turn's own work, by when the user may
+        have archived the expert. It reads the expert again rather than use
+        the check the turn made before its engine started."""
+        store = MagicMock()
+        store.get_expert = mocker.AsyncMock(
+            return_value=CHECK.expert.model_copy(update={"is_archived": True})
+        )
+        store.resolve_private_expert_tenancy = mocker.AsyncMock(
+            return_value=(CHECK.organization_id, CHECK.team_id)
+        )
+
+        with pytest.raises(ExpertSessionUnavailableError) as refused:
+            await self._relaunch_in_a_turn_that_checked_its_expert(mocker, store)
+
+        assert str(refused.value) == EXPERT_SESSION_MISSING_MESSAGE
+        store.get_expert.assert_awaited_once_with(
+            "user-1", "expert-1", include_workflows=False
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_relaunch_builds_its_identity_from_a_fresh_read(self, mocker):
+        store = MagicMock()
+        store.get_expert = mocker.AsyncMock(
+            return_value=CHECK.expert.model_copy(update={"name": "Maria Lopez"})
+        )
+        store.resolve_private_expert_tenancy = mocker.AsyncMock(
+            return_value=(CHECK.organization_id, CHECK.team_id)
+        )
+
+        state = await self._relaunch_in_a_turn_that_checked_its_expert(mocker, store)
+
+        prompt = state.options.system_prompt
+        text = prompt if isinstance(prompt, str) else prompt["append"]
+        assert "For this session you are Maria Lopez" in text
+        store.resolve_private_expert_tenancy.assert_awaited_once_with(
+            "user-1", "expert-1"
         )

@@ -8,14 +8,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from "@/components/__legacy__/ui/dialog";
+} from "@/components/molecules/Dialog/components/DialogPrimitives";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 import {
   getV2GetUserRateLimit,
   postV2ResetUserRateLimitUsage,
 } from "@/app/api/__generated__/endpoints/admin/admin";
-import { RateLimitDisplay } from "../../rate-limits/components/RateLimitDisplay";
+import { RateLimitDisplay } from "./RateLimitDisplay";
 import { GaugeIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -114,7 +114,7 @@ export function RateLimitModal({
           </DialogHeader>
 
           {isLoading && (
-            <div className="py-8 text-center text-gray-500">
+            <div className="py-8 text-center text-foreground-tertiary">
               Loading rate limits...
             </div>
           )}
@@ -128,7 +128,7 @@ export function RateLimitModal({
           )}
 
           {!isLoading && !rateLimitData && (
-            <div className="py-8 text-center text-gray-500">
+            <div className="py-8 text-center text-foreground-tertiary">
               No rate limit data available for this user.
             </div>
           )}

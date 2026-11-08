@@ -36,16 +36,19 @@ export function NeedsYou({ dashboard, className }: Props) {
       icon={AlertCircleIcon}
       title="Needs you"
       badge={
-        <Text
-          variant="small-medium"
-          as="span"
-          tone="secondary"
-          role="status"
-          aria-label={`${pendingCount} ${pendingCount === 1 ? "item needs" : "items need"} your attention`}
-          className="rounded-md bg-zinc-100 px-1.5 py-0.5 tabular-nums"
-        >
-          {pendingCount}
-        </Text>
+        <span className="rounded-md bg-surface-hover px-1.5 py-0.5">
+          <Text
+            variant="small-medium"
+            as="span"
+            role="status"
+            aria-label={`${pendingCount} ${pendingCount === 1 ? "item needs" : "items need"} your attention`}
+            tone="secondary"
+            tabular
+            className="block"
+          >
+            {pendingCount}
+          </Text>
+        </span>
       }
       meta={
         hasFilters ? (
@@ -58,7 +61,7 @@ export function NeedsYou({ dashboard, className }: Props) {
         ) : null
       }
     >
-      <div className="divide-y divide-zinc-100">
+      <div className="divide-y divide-separator">
         {visibleRows.map(({ item, receipt }) =>
           isHeldCall(item) ? (
             <HeldCall

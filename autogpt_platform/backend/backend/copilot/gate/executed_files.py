@@ -29,7 +29,8 @@ class _Options(BaseModel):
     flags: frozenset[str] = frozenset()
     # Take the next word as their value.
     valued: frozenset[str] = frozenset()
-    # The code is in the command itself: no file on disk runs.
+    # No file on disk runs: the code is in the command itself, or the option
+    # prints a version or help and exits.
     inline: frozenset[str] = frozenset()
     # Read the code from stdin, so the words after the options are its arguments.
     stdin: frozenset[str] = frozenset()
@@ -61,7 +62,7 @@ _SHELL = _opts(
     flags="-a -b -e -f -h -i -k -l -m -n -p -r -t -u -v -x -B -C -E -H -P -T "
     "--login --norc --noprofile --posix --restricted --verbose --noediting",
     valued="-o +o -O +O --rcfile --init-file",
-    inline="-c",
+    inline="-c --version --help",
     stdin="-s",
 )
 _NODE = _opts(
@@ -72,7 +73,7 @@ _NODE = _opts(
     valued="-r --require --import --loader --experimental-loader --inspect-port "
     "--title --env-file --conditions -C --input-type --tsconfig -P --project -O "
     "--compiler-options --dir --cwd",
-    inline="-e --eval -p --print -i --interactive",
+    inline="-e --eval -p --print -i --interactive -v --version -h --help",
     stdin="-",
 )
 _INTERPRETERS = {
@@ -83,13 +84,13 @@ _INTERPRETERS = {
     "python": _opts(
         flags="-b -B -d -E -I -i -O -OO -P -q -s -S -u -v -x",
         valued="-W -X --check-hash-based-pycs",
-        inline="-c -m",
+        inline="-c -m -V -h --version --help",
         stdin="-",
     ),
     "ruby": _opts(
         flags="-a -c -d -l -n -p -s -v -w -W -y --verbose",
         valued="-r -I -C -E -F",
-        inline="-e",
+        inline="-e -h --version --help",
         stdin="-",
     ),
     "perl": _opts(

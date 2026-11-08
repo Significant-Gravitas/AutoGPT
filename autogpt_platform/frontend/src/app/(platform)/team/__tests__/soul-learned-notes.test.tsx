@@ -17,30 +17,8 @@ import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
-
-const { memoryFlagMock } = vi.hoisted(() => ({
-  memoryFlagMock: vi.fn(() => true),
-}));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) =>
-      flag === "graphiti-memory"
-        ? memoryFlagMock()
-        : actual.useGetFlag(flag as never),
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? { enabled: true, ready: true }
-        : actual.useFlagStatus(flag as never),
-  };
-});
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -94,8 +72,10 @@ async function openSoulDrawer() {
   return user;
 }
 
+afterEach(() => vi.unstubAllEnvs());
+
 beforeEach(() => {
-  memoryFlagMock.mockReturnValue(true);
+  vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", undefined);
   server.use(
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     getListExpertPodsMockHandler([]),
@@ -106,43 +86,47 @@ beforeEach(() => {
 });
 
 describe("Soul drawer — what I've learned", () => {
-  test("lists the expert's own memories, newest first, with a link to the rest", async () => {
-    const factRequests: string[] = [];
-    server.use(
-      getListMyExpertMemoryFactsMockHandler(async (info) => {
-        factRequests.push(String(info.params.expertId));
-        return {
-          expert_id: "expert-maria",
-          items: [
-            makeFact(),
-            makeFact({
-              uuid: "edge-2",
-              fact: "Emberline ships to the EU only",
-              created_at: "2026-08-16T00:00:00Z",
-            }),
-          ],
-        };
-      }),
-    );
+  test.each([undefined, "enabled"])(
+    "lists the expert's memories with capability %s",
+    async (capability) => {
+      vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", capability);
+      const factRequests: string[] = [];
+      server.use(
+        getListMyExpertMemoryFactsMockHandler(async (info) => {
+          factRequests.push(String(info.params.expertId));
+          return {
+            expert_id: "expert-maria",
+            items: [
+              makeFact(),
+              makeFact({
+                uuid: "edge-2",
+                fact: "Emberline ships to the EU only",
+                created_at: "2026-08-16T00:00:00Z",
+              }),
+            ],
+          };
+        }),
+      );
 
-    await openSoulDrawer();
+      await openSoulDrawer();
 
-    expect(
-      await screen.findByText("Q4 campaign brief is due Friday"),
-    ).toBeDefined();
-    expect(screen.getByText("Emberline ships to the EU only")).toBeDefined();
-    expect(screen.queryByText(/Nothing recorded yet/)).toBeNull();
+      expect(
+        await screen.findByText("Q4 campaign brief is due Friday"),
+      ).toBeDefined();
+      expect(screen.getByText("Emberline ships to the EU only")).toBeDefined();
+      expect(screen.queryByText(/Nothing recorded yet/)).toBeNull();
 
-    // Scoped to this expert, and only this expert.
-    expect(factRequests).toEqual(["expert-maria"]);
+      // Scoped to this expert, and only this expert.
+      expect(factRequests).toEqual(["expert-maria"]);
 
-    const seeAll = screen.getByRole("link", {
-      name: "See all in memory settings",
-    });
-    expect(seeAll.getAttribute("href")).toBe(
-      "/settings/memory?expert=expert-maria",
-    );
-  });
+      const seeAll = screen.getByRole("link", {
+        name: "See all in memory settings",
+      });
+      expect(seeAll.getAttribute("href")).toBe(
+        "/settings/memory?expert=expert-maria",
+      );
+    },
+  );
 
   test("keeps the empty state for an expert that has learned nothing", async () => {
     server.use(
@@ -224,8 +208,7 @@ describe("Soul drawer — what I've learned", () => {
     expect(screen.queryByText(/Nothing recorded yet/)).toBeNull();
   });
 
-  test("asks the memory API for nothing while the memory flag is off", async () => {
-    memoryFlagMock.mockReturnValue(false);
+  test("loads private memories only after opening the expert's Soul", async () => {
     let listCalls = 0;
     server.use(
       getListMyExpertMemoryFactsMockHandler(async () => {
@@ -234,13 +217,37 @@ describe("Soul drawer — what I've learned", () => {
       }),
     );
 
-    await openSoulDrawer();
+    const user = userEvent.setup();
+    render(<TeamPage />);
+    const editSoul = await screen.findByRole("button", { name: "Edit Soul" });
+    expect(listCalls).toBe(0);
+    await user.click(editSoul);
 
     expect(
-      await screen.findByText(
-        "Nothing recorded yet. What this expert learns will appear here.",
-      ),
+      await screen.findByText("Q4 campaign brief is due Friday"),
     ).toBeDefined();
-    expect(listCalls).toBe(0);
+    expect(listCalls).toBe(1);
   });
+});
+
+test("opening and reopening Soul never requests graph facts when disabled", async () => {
+  vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", "disabled");
+  const facts = vi.fn(() => ({ expert_id: maria.id, items: [makeFact()] }));
+  server.use(getListMyExpertMemoryFactsMockHandler200(facts));
+  const user = await openSoulDrawer();
+  expect(
+    await screen.findByLabelText("Identity and personality"),
+  ).toBeDefined();
+  expect(
+    screen.queryByRole("link", { name: "See all in memory settings" }),
+  ).toBeNull();
+  expect(
+    screen.queryByText("Couldn't load what this expert has learned."),
+  ).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Close Soul panel" }));
+  await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
+  expect(
+    await screen.findByLabelText("Identity and personality"),
+  ).toBeDefined();
+  expect(facts).not.toHaveBeenCalled();
 });

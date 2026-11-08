@@ -11,10 +11,17 @@ import { usePaymentMethodCard } from "../components/SubscriptionTab/PaymentMetho
 import { useYourPlanCard } from "../components/SubscriptionTab/YourPlanCard/useYourPlanCard";
 import SettingsBillingPage from "../page";
 
+// These cover the hosted billing UI, which self-hosted builds hide.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+  useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
+}));
+
 const posthog = vi.hoisted(() => ({
   __loaded: true,
   is_capturing: () => true,
-  capture: vi.fn(),
+  // posthog-js returns the event it takes, and nothing when it drops one.
+  capture: vi.fn((event: string) => ({ event })),
 }));
 vi.mock("posthog-js", () => ({ default: posthog }));
 

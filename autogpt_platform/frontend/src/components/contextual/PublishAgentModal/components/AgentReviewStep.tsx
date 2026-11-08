@@ -69,7 +69,7 @@ export function AgentReviewStep({
   return (
     <div
       aria-labelledby="modal-title"
-      className="relative flex flex-col items-center pb-4 pt-10"
+      className="relative flex flex-col items-center pt-10 pb-4"
     >
       <ReviewHero
         hero={hero}

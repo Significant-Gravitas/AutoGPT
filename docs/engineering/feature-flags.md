@@ -1,10 +1,110 @@
 # Feature flags
 
-Which vendor answers a flag read is set per deployment by `FEATURE_FLAG_BACKEND`:
-`launchdarkly` (the default), `posthog`, or `dual` — evaluate both, serve
-LaunchDarkly's answer, and log every disagreement. Call sites are unaffected by
-the choice; they read through `evaluate_feature_flag()` on the backend and
-`useGetFlag` / `useFlagStatus` on the frontend.
+Every flag is read from PostHog. LaunchDarkly was removed in October 2026
+(SECRT-2708), after Dev and Prod had served every flag from PostHog since 16
+October. Without `POSTHOG_API_KEY` every flag reads as its code default, which
+is what a self-hosted install and CI get. Call sites read through
+`evaluate_feature_flag()` on the backend and `useGetFlag` / `useFlagStatus` on
+the frontend.
+
+## Retired product rollout flags
+
+The following features are permanent product paths. The backend and browser no
+longer evaluate these keys, and their former `FORCE_FLAG_*` /
+`NEXT_PUBLIC_FORCE_FLAG_*` overrides have no effect:
+
+- `artifacts-page`
+- `hire-experts`
+- `skills-hub`
+- `onboarding-brain-dump`
+- `onboarding-expert-team`
+- `graphiti-memory`
+- `graphiti-communities-enabled`
+- `expert-spend-approval`
+- `ai-agent-execution-summary`
+
+The sidebar and search flags, `autogpt-new-layout` and `chat-search`, were
+retired separately. Authentication, ownership, user preferences, billing
+configuration and provider requirements still apply. Spend approval is bypassed
+when `ENABLE_CREDIT=false`. Dream passes, skill learning, voice mode, payments and
+other independent rollout controls retain their existing gates.
+
+Memory still requires FalkorDB and configured embedding/model endpoints. The
+standard compose and single-container stacks include FalkorDB; custom installs
+must provide it. Memory operations can fail when these services are unavailable;
+removing the rollout flags does not make missing services a supported no-op.
+Community rebuilds and execution summaries can perform model work.
+
+Retired provider definitions can remain during a rolling deployment for older
+releases. Removing code consumers does not delete the flags' PostHog
+configuration. Use the [Tuesday audit prompt](feature-flag-audit-prompt.md) to
+identify further retirement candidates.
+
+## One PostHog project per environment
+
+Dev and Prod each have their own PostHog project, and each project holds its
+own flags. A deployment reads its flags from the same project its analytics go
+to, the one `POSTHOG_API_KEY` names, and evaluates them locally with that
+project's Feature Flags Secure API Key in `POSTHOG_SECRET_KEY`. Where local
+evaluation can't decide a read, the SDK asks PostHog's `/flags` endpoint
+instead, unless the read is local-only, as a signed-out visitor's own read is.
+
+A flag the code reads but the project doesn't have is served its code default.
+The backend still asks `/flags` about it once, because PostHog answers some
+flags there that it leaves out of the definitions (one in its newer config
+format, for instance). Once `/flags` has had no answer either, the backend
+serves the default without asking again for five minutes, so the read costs no
+network round trip. Creating the flag takes effect at the next definitions
+poll, or within those five minutes for a flag the definitions leave out.
+
+| | Dev | Prod |
+|---|---|---|
+| PostHog project | [281733](https://eu.posthog.com/project/281733/feature_flags) | [117338](https://eu.posthog.com/project/117338/feature_flags) |
+| `POSTHOG_API_KEY`, `POSTHOG_SECRET_KEY` (backend) | Dev project's | Prod project's |
+| `NEXT_PUBLIC_POSTHOG_KEY` (Vercel) | Dev project's | Prod project's |
+
+PostHog has no environments within a project, so a flag both deployments read
+is defined in each project. The **Projects** tab on the
+[flag list](https://eu.posthog.com/project/281733/feature_flags?tab=projects)
+and on each flag's page shows a flag across both projects side by side.
+
+A flag is changed in that environment's PostHog project.
+
+**The browser.** The browser gets its flags from the backend's
+`GET /api/feature-flags`, which evaluates them through the same path as the
+backend's own reads, so the browser and the backend give one answer from one
+project. A Vercel preview gets the answer of the backend it calls, and a
+backend without PostHog answers `configured: false`, so the browser serves its
+own defaults and stops asking. The set of flags it serves is `FrontendFlag` in
+`backend/util/feature_flag/frontend.py`. Experiments work the same way:
+`useExperiment` fetches the user's stored arm from the backend's experiments
+API, so enrolment follows the backend's PostHog project and secret.
+`NEXT_PUBLIC_POSTHOG_KEY` only decides where the browser reports exposures.
+
+**What a read sends.** A signed-in read sends PostHog the person properties
+`role`, `email`, `email_domain` and `created_at` from the auth user row, and a
+caller that knows the visitor's country (the trial offer) adds `country`, the
+ISO code from the signed country token. These ride on the read only and are
+never stored on the person profile. `country` is our own property, not
+PostHog's `$geoip_country_code`: server-side reads get no GeoIP, so a rule on
+the country must target `country`.
+
+**The `environment` property.** Every PostHog flag read the backend makes, its
+own and the browser's, carries the person property `environment`: the
+backend's `APP_ENV` (`local`, `dev` or `prod`), the same value its analytics
+events carry. A release condition can use it in either project like any other
+person property. It is only an evaluation input, never stored on a person.
+
+**Splitting signed-out visitors.** A visitor who allowed analytics is bucketed
+under `visitor:<their PostHog id>`, but only by conditions their read can
+decide: a rollout percentage, `environment` and `is_anonymous`, with no email.
+A condition group on another person property or a cohort (the migrated
+"email in employees", for one) can't be decided for a visitor, so a visitor
+whom no decidable group matches gets the shared signed-out answer instead.
+"Employees OR 20%" is then all or nothing for visitors, whichever side the
+shared `anonymous` key lands on. For a real 20% of visitors, add
+`is_anonymous` is not `true` to the rollout group: the shared answer is then
+off, and only each visitor's own bucket turns the flag on.
 
 ## Sharing PostHog's flag definitions
 
@@ -32,14 +132,12 @@ Redis.
 | `POSTHOG_FLAG_DEFINITION_REFRESH_SECONDS` | `30` | How often the refresher fetches, and how often everyone else re-reads the shared copy. |
 | `POSTHOG_FLAG_DEFINITION_CACHE_TTL_SECONDS` | `600` | How long the shared copy stays readable after the last refresh. |
 
-None of them is read unless `FEATURE_FLAG_BACKEND` is `posthog` or `dual` **and**
-`POSTHOG_SECRET_KEY` is set — without that key the SDK evaluates over the
+None of them is read unless `POSTHOG_SECRET_KEY` is set — without that key the SDK evaluates over the
 wire and has no definitions to share.
 
 **Per environment.** Leave the defaults on `dev` and `prod`: both run several
 replicas against a shared Redis, which is what the cache is for. Local
-development and CI run `FEATURE_FLAG_BACKEND=launchdarkly`, so none of this is
-reached; set `POSTHOG_FLAG_DEFINITION_CACHE=memory` if you want to exercise
+development and CI have no PostHog keys, so none of this is reached; set `POSTHOG_FLAG_DEFINITION_CACHE=memory` if you want to exercise
 PostHog locally without Redis.
 
 ### What the refresher is
@@ -88,5 +186,6 @@ process, `cached` once per poll on each of the other N−1, and `empty` and
 | The refresher dies | Its lock expires and another process takes the job on its next poll. |
 | A definitions fetch fails | The definitions already in memory stay in use, and the refresher keeps writing that copy to the cache. |
 
-Nothing here can make a flag read wait on Redis or on PostHog: flag evaluation
-only ever reads the definitions already in the process.
+Nothing here can make a flag read wait on Redis: evaluation reads the
+definitions already in the process, and only a read they can't decide waits on
+PostHog's `/flags`.
