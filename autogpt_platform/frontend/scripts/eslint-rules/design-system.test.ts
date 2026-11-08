@@ -85,27 +85,173 @@ describe("colorAdvice", () => {
 });
 
 tester.run("no-raw-colors", rule("no-raw-colors"), {
-  valid: [jsx("bg-surface text-foreground-secondary border-border-base")],
+  valid: [
+    jsx("bg-surface text-foreground-secondary border-border-base"),
+    // The palette and hex colours are no-raw-palette-classes' and no-hex-colours'.
+    jsx("text-zinc-500"),
+    { code: `<path fill="#669CF6" />`, filename: FILE },
+  ],
   invalid: [
     {
-      ...jsx("text-zinc-500"),
+      code: `<path stroke="white" />`,
+      filename: FILE,
+      errors: [{ message: /^stroke="white" hardcodes a color/ }],
+    },
+  ],
+});
+
+tester.run("no-shadcn-alias-colours", rule("no-shadcn-alias-colours"), {
+  valid: [
+    jsx("bg-canvas text-foreground-tertiary border-border-base ring-focus"),
+    // Roles that start with a shadcn name are not one.
+    jsx("bg-accent-surface text-foreground-base border-border-strong"),
+    { code: `const note = "accent-foreground";`, filename: FILE },
+  ],
+  invalid: [
+    {
+      ...jsx("bg-muted hover:text-muted-foreground/70 [&_svg]:border-border"),
       errors: [
         {
           message:
-            /^"text-zinc-500" uses the raw Tailwind palette\. Use "text-foreground-tertiary" instead.*See docs\/engineering\/design-system\.md\.$/,
+            /^"bg-muted" is a shadcn colour name.*Use "bg-surface-hover"/,
+        },
+        {
+          message:
+            /^"hover:text-muted-foreground\/70" .*Use "hover:text-foreground-tertiary\/70"/,
+        },
+        {
+          message:
+            /^"\[&_svg\]:border-border" .*Use "\[&_svg\]:border-border-base"/,
+        },
+      ],
+    },
+    {
+      ...jsx("scrollbar-thin scrollbar-thumb-muted-foreground"),
+      errors: [
+        {
+          message:
+            /^"scrollbar-thumb-muted-foreground" .*Use "scrollbar-thumb-foreground-tertiary"/,
         },
       ],
     },
   ],
 });
 
-tester.run("no-arbitrary-values", rule("no-arbitrary-values"), {
-  valid: [jsx("bg-surface")],
+tester.run("no-raw-palette-classes", rule("no-raw-palette-classes"), {
+  valid: [
+    jsx("bg-orange/10 text-orange-foreground ring-sky/30"),
+    // ds-colour-exempt.json: a user-picked palette.
+    {
+      code: `const swatch = "bg-rose-300";`,
+      filename: "src/app/(platform)/raise/components/ColorStep/helpers.ts",
+    },
+    // ...or one class a file may keep.
+    {
+      code: `const dont = "text-blue-500";`,
+      filename: "src/components/overview.stories.tsx",
+    },
+  ],
   invalid: [
     {
-      ...jsx("bg-[#EFEFF0]"),
-      errors: [{ message: /hardcodes a colour\. Use "bg-surface-hover"/ }],
+      ...jsx("text-orange-600 md:bg-black/80 shadow-white"),
+      errors: [
+        {
+          message:
+            /^"text-orange-600" uses the raw Tailwind palette\. Use "text-orange-foreground" \(scripts\/ds\/palette-map\.json\)/,
+        },
+        { message: /^"md:bg-black\/80" .*Use "md:bg-scrim\/80"/ },
+        { message: /^"shadow-white" .*Use "shadow-surface"/ },
+      ],
     },
+    {
+      code: `const other = "text-emerald-300";`,
+      filename: "src/components/atoms/Text/Text.tsx",
+      errors: [{ message: /"text-emerald-300" uses the raw Tailwind palette/ }],
+    },
+  ],
+});
+
+tester.run("no-hex-colours", rule("no-hex-colours"), {
+  valid: [
+    {
+      code: `const colour = "rgb(var(--color-edge))"; const issue = "see PR #16483";`,
+      filename: FILE,
+    },
+    {
+      code: `const series = "#2a78d6";`,
+      filename:
+        "src/app/(platform)/team/[expertId]/components/ExpertOverview/helpers.ts",
+    },
+  ],
+  invalid: [
+    {
+      code: 'const a = { color: "#fff" }; const b = `border:1px solid #E4E4E7`;',
+      filename: FILE,
+      errors: [
+        { message: /^"#fff" hardcodes a colour/ },
+        { message: /^"#E4E4E7" hardcodes a colour/ },
+      ],
+    },
+    {
+      // `bg-[#123456]` and `[color:#fff]` are no-arbitrary-colour's; the
+      // same hex in the mask is still this rule's.
+      code: `<div className="bg-[#123456] [color:#fff] [mask:linear-gradient(#123456_0,#fff,#0000)]" />`,
+      filename: FILE,
+      errors: [
+        { message: /"#123456"/ },
+        { message: /"#fff"/ },
+        { message: /"#0000"/ },
+      ],
+    },
+  ],
+});
+
+tester.run("no-arbitrary-colour", rule("no-arbitrary-colour"), {
+  valid: [
+    jsx("bg-surface text-[13px] border-[1.5px] bg-[url(/a.png)]"),
+    // A role read through var(), and colours inside a shadow or gradient.
+    jsx(
+      "bg-[rgb(var(--color-surface))] shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-[linear-gradient(90deg,rgb(var(--color-surface-hover))_25%,transparent)]",
+    ),
+    // ds-colour-exempt.json: a user-picked palette, or one value a file may
+    // keep, in any case.
+    {
+      code: `const note = "bg-[#ffc88a]";`,
+      filename:
+        "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/StickyNoteBlock.tsx",
+    },
+    {
+      code: `const fallback = "bg-[#E2E8F0]";`,
+      filename:
+        "src/components/contextual/OutputRenderers/renderers/CodeRenderer.tsx",
+    },
+  ],
+  invalid: [
+    {
+      ...jsx(
+        "bg-[#EFEFF0] hover:text-[rgb(131,131,140)] border-[color:hsl(0_0%_50%)]/40 [color:#fff] ring-[oklch(0.7_0.1_200)]",
+      ),
+      errors: [
+        {
+          message:
+            /^"bg-\[#EFEFF0\]" hardcodes a colour\. Use "bg-surface-hover" instead/,
+        },
+        {
+          message:
+            /^"hover:text-\[rgb\(131,131,140\)\]" .*Use "hover:text-foreground-tertiary" or "hover:text-placeholder" instead/,
+        },
+        { message: /^"border-\[color:hsl\(0_0%_50%\)\]\/40" hardcodes/ },
+        { message: /^"ring-\[oklch\(0\.7_0\.1_200\)\]" hardcodes/ },
+        { message: /^"\[color:#fff\]" hardcodes a colour/ },
+      ],
+    },
+  ],
+});
+
+tester.run("no-arbitrary-values", rule("no-arbitrary-values"), {
+  // An arbitrary colour is no-arbitrary-colour's.
+  valid: [jsx("bg-surface"), jsx("bg-[#EFEFF0]")],
+  invalid: [
     {
       ...jsx("font-[600]"),
       errors: [{ message: /hardcodes a value\. Use "font-semibold"/ }],
@@ -373,7 +519,7 @@ describe("the ratchet, end to end", () => {
           path.join(FRONTEND_ROOT, "scripts/eslint-rules/design-system.mts"),
         ],
         rules: {
-          "design-system/no-raw-colors": "error",
+          "design-system/no-raw-palette-classes": "error",
           "design-system/no-dark-variant": "error",
           "design-system/baseline-outdated": "warn",
         },
@@ -381,7 +527,7 @@ describe("the ratchet, end to end", () => {
     );
     write(
       "src/Old.tsx",
-      `export const Old = () => <div className="text-zinc-500 dark:bg-black" />;\n`,
+      `export const Old = () => <div className="text-zinc-500 dark:bg-surface" />;\n`,
     );
     write(
       "src/Clean.tsx",
@@ -393,7 +539,10 @@ describe("the ratchet, end to end", () => {
 
   it("passes when every file is at its baseline", () => {
     const { status, output } = lint({
-      [key("src/Old.tsx")]: { "no-raw-colors": 1, "no-dark-variant": 1 },
+      [key("src/Old.tsx")]: {
+        "no-raw-palette-classes": 1,
+        "no-dark-variant": 1,
+      },
     });
     expect(output).not.toMatch(/design-system/);
     expect(status).toBe(0);
@@ -402,18 +551,18 @@ describe("the ratchet, end to end", () => {
   it("fails on a violation in a file the baseline does not list", () => {
     const { status, output } = lint({});
     expect(output).toMatch(
-      /Old\.tsx.*"text-zinc-500" uses the raw Tailwind palette\. Use "text-foreground-tertiary" instead/,
+      /Old\.tsx.*"text-zinc-500" uses the raw Tailwind palette\. Use "text-foreground-tertiary" \(scripts\/ds\/palette-map\.json\)/,
     );
-    expect(output).toMatch(/Old\.tsx.*"dark:bg-black" is a dark: class/);
+    expect(output).toMatch(/Old\.tsx.*"dark:bg-surface" is a dark: class/);
     expect(status).toBe(1);
   });
 
   it("fails when one rule's count goes over, and names only that rule", () => {
     const { status, output } = lint({
-      [key("src/Old.tsx")]: { "no-raw-colors": 1 },
+      [key("src/Old.tsx")]: { "no-raw-palette-classes": 1 },
     });
     expect(output).toMatch(/design-system\(no-dark-variant\)/);
-    expect(output).not.toMatch(/design-system\(no-raw-colors\)/);
+    expect(output).not.toMatch(/design-system\(no-raw-palette-classes\)/);
     expect(status).toBe(1);
   });
 
@@ -422,26 +571,29 @@ describe("the ratchet, end to end", () => {
       "src/Suppressed.tsx",
       [
         `export const A = () => <div className="text-zinc-500" />;`,
-        `// oxlint-disable-next-line design-system/no-raw-colors -- brand colour from the partner's spec`,
+        `// oxlint-disable-next-line design-system/no-raw-palette-classes -- brand colour from the partner's spec`,
         `export const B = () => <div className="text-rose-700" />;`,
-        `/* eslint-disable design-system/no-raw-colors -- third-party markup */`,
+        `/* eslint-disable design-system/no-raw-palette-classes -- third-party markup */`,
         `export const C = () => <div className="text-sky-500" />;`,
-        `/* eslint-enable design-system/no-raw-colors */`,
+        `/* eslint-enable design-system/no-raw-palette-classes */`,
         `// oxlint-disable-next-line design-system/no-dark-variant -- another rule`,
         `export const D = () => <div className="text-red-500" />;`,
         "",
       ].join("\n"),
     );
     const grandfathered = {
-      [key("src/Old.tsx")]: { "no-raw-colors": 1, "no-dark-variant": 1 },
+      [key("src/Old.tsx")]: {
+        "no-raw-palette-classes": 1,
+        "no-dark-variant": 1,
+      },
     };
     const atBaseline = lint({
       ...grandfathered,
-      [key("src/Suppressed.tsx")]: { "no-raw-colors": 2 },
+      [key("src/Suppressed.tsx")]: { "no-raw-palette-classes": 2 },
     });
     const overBaseline = lint({
       ...grandfathered,
-      [key("src/Suppressed.tsx")]: { "no-raw-colors": 1 },
+      [key("src/Suppressed.tsx")]: { "no-raw-palette-classes": 1 },
     });
     rmSync(path.join(root, "src/Suppressed.tsx"));
     expect(atBaseline.output).not.toMatch(/design-system/);
@@ -458,7 +610,7 @@ describe("the ratchet, end to end", () => {
       "src/Block.tsx",
       [
         `export const Z = () => <div className="text-sky-500" />;`,
-        `/* oxlint-disable design-system/no-dark-variant, design-system/no-raw-colors -- vendored markup */`,
+        `/* oxlint-disable design-system/no-dark-variant, design-system/no-raw-palette-classes -- vendored markup */`,
         `export const A = () => <div className="dark:block" />;`,
         `/* oxlint-enable design-system/no-dark-variant */`,
         `export const B = () => <div className="text-zinc-500 dark:hidden" />;`,
@@ -466,10 +618,16 @@ describe("the ratchet, end to end", () => {
       ].join("\n"),
     );
     const { status, output } = lint({
-      [key("src/Old.tsx")]: { "no-raw-colors": 1, "no-dark-variant": 1 },
+      [key("src/Old.tsx")]: {
+        "no-raw-palette-classes": 1,
+        "no-dark-variant": 1,
+      },
       // The grandfathered raw colour is text-sky-500, outside the block;
       // text-zinc-500 is still disabled and must not push the count over.
-      [key("src/Block.tsx")]: { "no-raw-colors": 1, "no-dark-variant": 1 },
+      [key("src/Block.tsx")]: {
+        "no-raw-palette-classes": 1,
+        "no-dark-variant": 1,
+      },
     });
     rmSync(path.join(root, "src/Block.tsx"));
     expect(output).not.toMatch(/design-system/);
@@ -480,24 +638,30 @@ describe("the ratchet, end to end", () => {
     write(
       "src/Nested.tsx",
       [
-        `/* oxlint-disable design-system/no-raw-colors -- outer: vendored markup */`,
+        `/* oxlint-disable design-system/no-raw-palette-classes -- outer: vendored markup */`,
         `export const A = () => <div className="text-zinc-500" />;`,
         `/* oxlint-disable design-system/no-dark-variant -- inner: vendored theme */`,
         `export const B = () => <div className="text-rose-700 dark:block" />;`,
         `/* oxlint-enable design-system/no-dark-variant */`,
         // The inner block closed first: dark: is back on, raw colours still off.
         `export const C = () => <div className="text-sky-500 dark:hidden" />;`,
-        `/* oxlint-enable design-system/no-raw-colors */`,
+        `/* oxlint-enable design-system/no-raw-palette-classes */`,
         `export const D = () => <div className="text-red-500 dark:flex" />;`,
         "",
       ].join("\n"),
     );
     const grandfathered = {
-      [key("src/Old.tsx")]: { "no-raw-colors": 1, "no-dark-variant": 1 },
+      [key("src/Old.tsx")]: {
+        "no-raw-palette-classes": 1,
+        "no-dark-variant": 1,
+      },
     };
     const atBaseline = lint({
       ...grandfathered,
-      [key("src/Nested.tsx")]: { "no-raw-colors": 1, "no-dark-variant": 2 },
+      [key("src/Nested.tsx")]: {
+        "no-raw-palette-classes": 1,
+        "no-dark-variant": 2,
+      },
     });
     const overBaseline = lint(grandfathered);
     rmSync(path.join(root, "src/Nested.tsx"));
@@ -516,12 +680,12 @@ describe("the ratchet, end to end", () => {
     write(
       "src/Overlap.tsx",
       [
-        `/* oxlint-disable design-system/no-raw-colors -- vendored markup */`,
+        `/* oxlint-disable design-system/no-raw-palette-classes -- vendored markup */`,
         `export const A = () => <div className="text-zinc-500" />;`,
         `/* oxlint-disable design-system/no-dark-variant -- vendored theme */`,
         `export const B = () => <div className="text-rose-700 dark:block" />;`,
         // The outer block closes first: raw colours are back on, dark: still off.
-        `/* oxlint-enable design-system/no-raw-colors */`,
+        `/* oxlint-enable design-system/no-raw-palette-classes */`,
         `export const C = () => <div className="text-sky-500 dark:hidden" />;`,
         `/* oxlint-enable design-system/no-dark-variant */`,
         `export const D = () => <div className="text-red-500 dark:flex" />;`,
@@ -529,7 +693,10 @@ describe("the ratchet, end to end", () => {
       ].join("\n"),
     );
     const { status, output } = lint({
-      [key("src/Old.tsx")]: { "no-raw-colors": 1, "no-dark-variant": 1 },
+      [key("src/Old.tsx")]: {
+        "no-raw-palette-classes": 1,
+        "no-dark-variant": 1,
+      },
     });
     rmSync(path.join(root, "src/Overlap.tsx"));
     expect(output).toMatch(/Overlap\.tsx.*"text-sky-500"/);
@@ -543,10 +710,13 @@ describe("the ratchet, end to end", () => {
 
   it("passes with a warning when a file has fewer than its baseline", () => {
     const { status, output } = lint({
-      [key("src/Old.tsx")]: { "no-raw-colors": 3, "no-dark-variant": 1 },
+      [key("src/Old.tsx")]: {
+        "no-raw-palette-classes": 3,
+        "no-dark-variant": 1,
+      },
     });
     expect(output).toMatch(
-      /Old\.tsx.*no-raw-colors 3 -> 1.*pnpm lint:ds-baseline.*design-system\(baseline-outdated\)/,
+      /Old\.tsx.*no-raw-palette-classes 3 -> 1.*pnpm lint:ds-baseline.*design-system\(baseline-outdated\)/,
     );
     expect(status).toBe(0);
   });

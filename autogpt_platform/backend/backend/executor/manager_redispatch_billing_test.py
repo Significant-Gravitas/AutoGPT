@@ -10,6 +10,7 @@ review, run it, or die mid-run the way the real one does.
 import asyncio
 import threading
 from collections.abc import Iterator
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,6 +19,7 @@ import pytest
 from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.helpers.review import HITLReviewHelper
+from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import (
     ExecutionContext,
@@ -142,8 +144,8 @@ def harness(processor: ExecutionProcessor):
     sync_db.get_node_executions.side_effect = lambda _id, statuses: (
         [row] if row.status in statuses else []
     )
-    sync_db.has_pending_reviews_for_graph_exec.side_effect = (
-        lambda _id: row.status == ExecutionStatus.REVIEW
+    sync_db.has_pending_reviews_for_graph_exec.side_effect = lambda _id: (
+        row.status == ExecutionStatus.REVIEW
     )
 
     async_db = MagicMock()
@@ -197,7 +199,9 @@ def harness(processor: ExecutionProcessor):
         def price(costs: list[BlockCost]) -> None:
             BLOCK_COSTS[StoreValueBlock] = costs
 
-        yield SimpleNamespace(wallet=wallet, row=row, dispatch=dispatch, price=price)
+        yield SimpleNamespace(
+            wallet=wallet, row=row, dispatch=dispatch, price=price, sync_db=sync_db
+        )
 
     if original_costs is None:
         BLOCK_COSTS.pop(StoreValueBlock, None)
@@ -241,6 +245,90 @@ def test_a_redelivery_after_a_pod_died_bills_the_block_once(harness, costs, bill
     harness.dispatch(_runs(harness.row))
 
     assert harness.wallet.total == billed, harness.wallet.spent
+
+
+def _fails_on_its_input(row: NodeRow):
+    """``execute_node`` rejects an input the block can't use before it runs."""
+
+    async def run(*, stats: NodeExecutionStats, **_):
+        row.status = ExecutionStatus.FAILED
+        stats.error = ValueError("Input `model` can't take the value")
+        return TimingInfo(cpu_time=0.0, wall_time=0.0), ExecutionStatus.FAILED
+
+    return run
+
+
+@contextmanager
+def _llm_row(harness, model: str, costs: list[BlockCost]):
+    """The row runs an LLM block given ``model``, priced at ``costs``."""
+    block = AITextGeneratorBlock()
+    harness.row.entry = harness.row.entry.model_copy(
+        update={
+            "block_id": block.id,
+            "inputs": {
+                "credentials": {"id": "c", "provider": "openai", "type": "api_key"},
+                "model": model,
+                "prompt": "hi",
+            },
+        }
+    )
+    harness.sync_db.get_node.return_value = Node(id="node-1", block_id=block.id)
+    original_costs = BLOCK_COSTS.get(AITextGeneratorBlock)
+    BLOCK_COSTS[AITextGeneratorBlock] = costs
+    try:
+        yield
+    finally:
+        if original_costs is None:
+            BLOCK_COSTS.pop(AITextGeneratorBlock, None)
+        else:
+            BLOCK_COSTS[AITextGeneratorBlock] = original_costs
+
+
+@pytest.mark.parametrize(
+    "model, block_run, billed",
+    [
+        pytest.param("not-a-model", _fails_on_its_input, 0, id="bad value"),
+        pytest.param("gpt-4o", _runs, PER_RUN_PRICE, id="usable value"),
+    ],
+)
+def test_a_node_queued_to_fail_on_its_input_is_not_billed_after_a_restart(
+    harness, model, block_run, billed
+):
+    """The node was queued only to fail on a value it can't use (SECRT-1258).
+    Its in-memory marker is gone after a restart, so the rebuilt queue derives
+    it again from the stored input."""
+    with _llm_row(harness, model, PER_RUN):
+        harness.dispatch(block_run(harness.row))
+
+    assert harness.wallet.total == billed, harness.wallet.spent
+
+
+@pytest.mark.parametrize(
+    "costs",
+    [
+        pytest.param(PER_RUN, id="per-run"),
+        pytest.param(USAGE_PRICED, id="usage-priced"),
+    ],
+)
+def test_a_node_failing_on_its_input_is_not_refunded_after_a_pod_died(harness, costs):
+    """It wrote RUNNING without being charged, so its redelivery must not
+    settle against a charge it never paid."""
+    harness.row.status = ExecutionStatus.RUNNING
+    with _llm_row(harness, "not-a-model", costs):
+        harness.dispatch(_fails_on_its_input(harness.row))
+
+    assert harness.wallet.total == 0, harness.wallet.spent
+
+
+def test_a_restart_that_cannot_recheck_the_input_bills_nothing(harness):
+    """Without the recheck the node can't be told apart from one queued to
+    fail, so the rebuilt run stops before charging it."""
+    harness.price(PER_RUN)
+    harness.sync_db.get_node.side_effect = ConnectionError("database unavailable")
+
+    assert isinstance(harness.dispatch(_runs(harness.row)), ConnectionError)
+    assert harness.row.status == ExecutionStatus.QUEUED
+    assert harness.wallet.total == 0, harness.wallet.spent
 
 
 async def test_a_parked_block_reports_a_completed_run_with_nothing_to_bill():

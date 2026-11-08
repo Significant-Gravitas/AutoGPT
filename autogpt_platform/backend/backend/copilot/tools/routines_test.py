@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.api.features.experts.models import ExpertRoutine
+from backend.api.features.experts.models import MAX_ROUTINE_CRONS, ExpertRoutine
 from backend.api.features.experts.routines import (
     RoutineNotFoundError,
     RoutineUnansweredAsksError,
@@ -515,3 +515,11 @@ async def test_omitting_the_mode_does_not_re_pin_a_routine_to_this_chat(experts)
         prompt="Reworded, nothing else.",
     )
     assert experts.enable_routine.await_args.kwargs["pinned_session_id"] is None
+
+
+def test_the_tool_tells_the_model_the_repeat_limit():
+    # The server refuses more than this; advertising it keeps the model from
+    # proposing a call that can only come back as an error.
+    crons = ScheduleRoutineTool().parameters["properties"]["crons"]
+
+    assert crons["maxItems"] == MAX_ROUTINE_CRONS
