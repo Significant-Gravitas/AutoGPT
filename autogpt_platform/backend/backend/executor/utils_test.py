@@ -3786,6 +3786,21 @@ async def test_subgraph_inherits_the_pause_through_its_context(
 # ============================================================================
 
 
+def test_queued_is_not_a_valid_source_for_queued():
+    """Admin recovery republishes a still-QUEUED row; it must not open
+    QUEUED → QUEUED for every caller."""
+    from backend.data.execution import VALID_STATUS_TRANSITIONS
+
+    assert (
+        ExecutionStatus.QUEUED not in VALID_STATUS_TRANSITIONS[ExecutionStatus.QUEUED]
+    )
+    assert VALID_STATUS_TRANSITIONS[ExecutionStatus.QUEUED] == [
+        ExecutionStatus.INCOMPLETE,
+        ExecutionStatus.TERMINATED,
+        ExecutionStatus.REVIEW,
+    ]
+
+
 @pytest.mark.asyncio
 async def test_admin_requeue_publishes_queued_execution_without_cas(
     mocker: MockerFixture,
@@ -3954,6 +3969,29 @@ async def test_non_admin_requeue_keeps_silent_skip_when_cas_fails(
     queue.publish_message.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_bypass_paywall_alone_does_not_skip_the_queued_cas(
+    mocker: MockerFixture,
+):
+    """bypass_paywall is billing. Without admin_requeue, a QUEUED row still
+    loses the CAS and must not be republished."""
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
+    )
+    execution_store.update_graph_execution_stats = mocker.AsyncMock(return_value=None)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+        bypass_paywall=True,
+    )
+
+    queue.publish_message.assert_not_called()
+    for call in execution_store.update_graph_execution_stats.await_args_list:
+        assert call.kwargs.get("status") == ExecutionStatus.QUEUED
+
+
 # ============================================================================
 # Resume path: identity (#15300) and run-time credential masks (#15266).
 # Uses a real GraphExecutionWithNodes and decodes the real published entry,
@@ -3984,7 +4022,9 @@ def _resumable_graph_exec(**overrides):
     return GraphExecutionWithNodes(**fields)
 
 
-async def _resume_and_capture_entry(mocker: MockerFixture, graph_exec, graph=None):
+async def _resume_and_capture_entry(
+    mocker: MockerFixture, graph_exec, graph=None, **add_kwargs
+):
     """Resume ``graph_exec`` with a review-resume style partial context and
     return the GraphExecutionEntry that was published to the queue."""
     from backend.data.execution import ExecutionContext, GraphExecutionEntry
@@ -4023,6 +4063,7 @@ async def _resume_and_capture_entry(mocker: MockerFixture, graph_exec, graph=Non
         user_id=graph_exec.user_id,
         graph_exec_id=graph_exec.id,
         execution_context=review_resume_ctx,
+        **add_kwargs,
     )
 
     queue.publish_message.assert_awaited_once()
@@ -4047,6 +4088,29 @@ async def test_resume_pins_execution_identity_from_the_row(mocker: MockerFixture
     assert ctx.sensitive_action_safe_mode is True
     assert ctx.workspace_id == "ws-1"
     assert ctx.organization_id == "org-row"
+    assert entry.admin_requeue is False
+
+
+@pytest.mark.asyncio
+async def test_admin_requeue_pins_execution_identity_from_the_row(
+    mocker: MockerFixture,
+):
+    """Merged #15324 identity pinning still applies on an admin republish."""
+    entry = await _resume_and_capture_entry(
+        mocker,
+        _resumable_graph_exec(status=ExecutionStatus.QUEUED),
+        admin_requeue=True,
+        bypass_paywall=True,
+    )
+
+    ctx = entry.execution_context
+    assert ctx.graph_exec_id == "exec-resume-real"
+    assert ctx.user_id == "row-user"
+    assert ctx.graph_id == "row-graph"
+    assert ctx.graph_version == 3
+    assert ctx.root_execution_id == "exec-resume-real"
+    assert ctx.organization_id == "org-row"
+    assert entry.admin_requeue is True
 
 
 def _github_creds():

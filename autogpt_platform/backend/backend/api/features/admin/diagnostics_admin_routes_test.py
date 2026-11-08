@@ -287,6 +287,38 @@ def test_requeue_bulk_counts_only_published_executions(
     assert data["requeued_count"] == 1
 
 
+def test_requeue_all_stuck_counts_only_published_executions(
+    mocker: pytest_mock.MockFixture,
+    admin_user_id: str,
+):
+    """#15282: requeue-all-stuck must not count a skipped publish as success."""
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.get_all_stuck_queued_execution_ids",
+        return_value=["exec-0", "exec-1"],
+    )
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.get_graph_executions",
+        return_value=[_queued_meta("exec-0"), _queued_meta("exec-1")],
+    )
+
+    async def fake_add(**kwargs):
+        assert kwargs["admin_requeue"] is True
+        if kwargs["graph_exec_id"] == "exec-1":
+            raise ExecutionNotRequeuedError("not requeued")
+
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.add_graph_execution",
+        side_effect=fake_add,
+    )
+
+    response = client.post("/admin/diagnostics/executions/requeue-all-stuck")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["requeued_count"] == 1
+
+
 def test_requeue_single_expert_workspace_unavailable_returns_503(
     mocker: pytest_mock.MockFixture,
     admin_user_id: str,
