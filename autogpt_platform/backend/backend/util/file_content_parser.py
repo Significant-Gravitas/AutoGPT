@@ -31,6 +31,7 @@ exception from the public API when ``strict=False``.
 
 import csv
 import io
+import itertools
 import json
 import logging
 import tomllib
@@ -285,20 +286,56 @@ def _parse_delimited(content: str, *, delimiter: str) -> Any:
     rows = [row for row in reader if _row_has_content(row)]
     if not rows:
         return content
-    # If the declared delimiter produces only single-column rows, try
-    # sniffing the actual delimiter — catches misidentified files (e.g.
-    # a tab-delimited file with a .csv extension).
+    # If the declared delimiter produces only single-column rows, try the
+    # other common delimiters — catches misidentified files (e.g. a
+    # tab-delimited file with a .csv extension).
     if len(rows[0]) == 1:
-        try:
-            dialect = csv.Sniffer().sniff(content[:8192])
-            if dialect.delimiter != delimiter:
-                reader = csv.reader(io.StringIO(content), dialect)
+        guessed = _guess_delimiter(content[:_DELIMITER_SAMPLE_CHARS], delimiter)
+        if guessed is not None:
+            try:
+                reader = csv.reader(io.StringIO(content), delimiter=guessed)
                 rows = [row for row in reader if _row_has_content(row)]
-        except csv.Error:
-            pass
+            except csv.Error:
+                pass
     if rows and len(rows[0]) >= 2:
         return rows
     return content
+
+
+# csv.Sniffer is not used to guess a delimiter: before CPython 3.13.15 its
+# regular expressions backtrack catastrophically on quote-heavy text
+# (gh-109638), and `re` holds the GIL while it matches, so a few KB of crafted
+# CSV stopped the whole process. Parsing a sample with csv.reader takes time
+# in proportion to the sample.
+_FALLBACK_DELIMITERS = (",", "\t", ";", "|")
+_DELIMITER_SAMPLE_CHARS = 8192
+_DELIMITER_SAMPLE_ROWS = 50
+
+
+def _guess_delimiter(sample: str, declared: str) -> str | None:
+    """The fallback delimiter that splits the sample's first row into at least
+    two fields and the most rows into that many, or None."""
+    best: tuple[int, int] = (0, 0)
+    guessed = None
+    for candidate in _FALLBACK_DELIMITERS:
+        if candidate == declared or candidate not in sample:
+            continue
+        reader = csv.reader(io.StringIO(sample), delimiter=candidate)
+        try:
+            rows = [
+                row
+                for row in itertools.islice(reader, _DELIMITER_SAMPLE_ROWS)
+                if _row_has_content(row)
+            ]
+        except csv.Error:
+            continue
+        if not rows or len(rows[0]) < 2:
+            continue
+        width = len(rows[0])
+        score = (sum(len(row) == width for row in rows), width)
+        if score > best:
+            best, guessed = score, candidate
+    return guessed
 
 
 def _row_has_content(row: list[str]) -> bool:
@@ -306,7 +343,7 @@ def _row_has_content(row: list[str]) -> bool:
 
     ``csv.reader`` never yields ``[]`` — truly blank lines yield ``[""]``.
     This predicate filters those out consistently across the initial read
-    and the sniffer-fallback re-read.
+    and the fallback-delimiter re-read.
     """
     return any(cell for cell in row)
 

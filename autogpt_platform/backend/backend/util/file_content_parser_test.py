@@ -3,6 +3,7 @@
 import io
 import json
 import struct
+import time
 import zipfile
 from unittest.mock import patch
 
@@ -671,22 +672,49 @@ class TestXlsxUnpackedSize:
 
 
 # ---------------------------------------------------------------------------
-# CSV sniffer fallback
+# Fallback delimiter
 # ---------------------------------------------------------------------------
 
 
-class TestCsvSnifferFallback:
+class TestFallbackDelimiter:
     def test_tab_delimited_with_csv_format(self):
-        """Tab-delimited content parsed as csv should use sniffer fallback."""
+        """Tab-delimited content parsed as csv uses the fallback delimiter."""
         content = "Name\tScore\nAlice\t90\nBob\t85"
         result = parse_file_content(content, "csv")
         assert result == [["Name", "Score"], ["Alice", "90"], ["Bob", "85"]]
 
-    def test_sniffer_failure_returns_content(self):
-        """When sniffer fails, single-column falls back to raw content."""
+    def test_no_fallback_delimiter_returns_content(self):
+        """Single-column content with no other delimiter stays raw content."""
         content = "Name\nAlice\nBob"
         result = parse_file_content(content, "csv")
         assert result == content
+
+    def test_semicolon_delimited_with_csv_format(self):
+        content = "Name;Score\nAlice;90\nBob;85"
+        result = parse_file_content(content, "csv")
+        assert result == [["Name", "Score"], ["Alice", "90"], ["Bob", "85"]]
+
+    def test_pipe_delimited_with_tsv_format(self):
+        content = "Name|Score\nAlice|90"
+        result = parse_file_content(content, "tsv")
+        assert result == [["Name", "Score"], ["Alice", "90"]]
+
+    def test_most_consistent_delimiter_wins(self):
+        # Both "," and ";" split the first row in two; only ";" splits the rest.
+        content = "a;b,c\n1;2\n3;4"
+        result = parse_file_content(content, "tsv")
+        assert result == [["a", "b,c"], ["1", "2"], ["3", "4"]]
+
+    @pytest.mark.parametrize("delimiter_in_sample", ["", ";"])
+    def test_quote_heavy_single_column_parses_quickly(self, delimiter_in_sample):
+        """csv.Sniffer took ten seconds on this 503-character shape before
+        CPython 3.13.15 (gh-109638), and hours at 8 KB; guessing by parsing
+        takes time in proportion to it."""
+        quotes = '"' * 240
+        content = f':\n{quotes}aa: {delimiter_in_sample}{quotes}a =d-] "f"\n[\r\n= "'
+        start = time.perf_counter()
+        parse_file_content(content, "csv")
+        assert time.perf_counter() - start < 1.0
 
 
 # ---------------------------------------------------------------------------
