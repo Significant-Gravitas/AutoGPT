@@ -40,16 +40,28 @@ async def search_agents(
     user_id: str | None = None,
     include_graph: bool = False,
     tenant: str | None = None,
+    library_agent_ids: list[str] | None = None,
+    graph_ids: list[str] | None = None,
 ) -> ToolResponseBase:
     """Search for agents in marketplace or user library.
 
     ``tenant`` confines library results to one organization (see
     ``external_scope``); None searches the whole library.
+    ``library_agent_ids`` / ``graph_ids`` confine library results to agents
+    matching either list, applied before the result limit.
     """
     if source == "marketplace":
         return await _search_marketplace(query, session_id)
     else:
-        return await _search_library(query, session_id, user_id, include_graph, tenant)
+        return await _search_library(
+            query,
+            session_id,
+            user_id,
+            include_graph,
+            tenant,
+            library_agent_ids=library_agent_ids,
+            graph_ids=graph_ids,
+        )
 
 
 async def _search_marketplace(query: str, session_id: str | None) -> ToolResponseBase:
@@ -120,6 +132,8 @@ async def _search_library(
     user_id: str | None,
     include_graph: bool = False,
     tenant: str | None = None,
+    library_agent_ids: list[str] | None = None,
+    graph_ids: list[str] | None = None,
 ) -> ToolResponseBase:
     """Search user's library agents by name/description.
 
@@ -167,6 +181,8 @@ async def _search_library(
                 # triggers from the listing without re-reading the full graph.
                 include_nodes=True,
                 organization_id=tenant,
+                library_agent_ids=library_agent_ids,
+                graph_ids=graph_ids,
             )
             for agent in results.agents:
                 agents.append(_library_agent_to_info(agent))

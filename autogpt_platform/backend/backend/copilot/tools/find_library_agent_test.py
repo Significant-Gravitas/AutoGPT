@@ -594,3 +594,110 @@ async def test_expert_search_names_the_library_agents_it_could_install(tool):
     # Capped, so a large library cannot crowd out the turn.
     assert '"Agent 11" (lib-11)' not in result.message
     assert "and 1 more" in result.message
+
+
+@pytest.mark.asyncio
+async def test_expert_search_finds_an_installed_workflow_beyond_the_first_page(
+    tool,
+):
+    """#14572: the scope used to be applied after the search was cut to one
+    page (50 to list all), so an installed workflow ranked behind a full page
+    of uninstalled agents read as "Found 0 installed workflows"."""
+    library = [
+        _mock_library_agent(f"lib-{i}", f"Agent {i}") for i in range(60)
+    ]  # graph ids are graph-lib-<i>; only the last one is installed
+    scope = ExpertWorkflowScope(expert_id="expert-a", graph_ids=["graph-lib-59"])
+
+    async def list_library_agents(**kwargs):
+        allowed = library
+        if kwargs.get("graph_ids") is not None:
+            allowed = [a for a in library if a.graph_id in kwargs["graph_ids"]]
+        return MagicMock(agents=allowed[: kwargs["page_size"]])
+
+    lib_db = MagicMock()
+    lib_db.list_library_agents = AsyncMock(side_effect=list_library_agents)
+    with (
+        patch(
+            "backend.copilot.tools.find_library_agent.session_workflow_scope",
+            AsyncMock(return_value=scope),
+        ),
+        patch("backend.copilot.tools.agent_search.library_db", return_value=lib_db),
+    ):
+        result = await tool._execute(
+            "owner", ChatSession.new("owner", dry_run=False, expert_id="expert-a")
+        )
+
+    assert isinstance(result, AgentsFoundResponse)
+    assert [a.id for a in result.agents] == ["lib-59"]
+    assert result.title == "Found 1 installed workflows"
+    # The unscoped page still names what the expert could install.
+    assert '"Agent 0" (lib-0)' in result.message
+
+
+@pytest.mark.asyncio
+async def test_expert_with_nothing_installed_skips_the_scoped_search(tool):
+    scope = ExpertWorkflowScope(expert_id="expert-a")
+    found = AgentsFoundResponse(
+        title="Found 1 agent",
+        message="Found 1 agent",
+        agents=[
+            AgentInfo(
+                id="lib-0",
+                graph_id="graph-0",
+                name="Agent 0",
+                description="",
+                source="library",
+            )
+        ],
+        count=1,
+    )
+    search = AsyncMock(return_value=found)
+    with (
+        patch(
+            "backend.copilot.tools.find_library_agent.session_workflow_scope",
+            AsyncMock(return_value=scope),
+        ),
+        patch.object(FindLibraryAgentTool, "_search", search),
+    ):
+        result = await tool._execute(
+            "owner", ChatSession.new("owner", dry_run=False, expert_id="expert-a")
+        )
+
+    assert isinstance(result, AgentsFoundResponse)
+    assert result.agents == []
+    assert '"Agent 0" (lib-0)' in result.message
+    search.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_expert_scoped_search_error_is_returned(tool):
+    scope = ExpertWorkflowScope(expert_id="expert-a", graph_ids=["graph-0"])
+    found = AgentsFoundResponse(
+        title="Found 1 agent",
+        message="Found 1 agent",
+        agents=[
+            AgentInfo(
+                id="lib-1",
+                graph_id="graph-1",
+                name="Agent 1",
+                description="",
+                source="library",
+            )
+        ],
+        count=1,
+    )
+    error = ErrorResponse(message="Failed to search library. Please try again.")
+    with (
+        patch(
+            "backend.copilot.tools.find_library_agent.session_workflow_scope",
+            AsyncMock(return_value=scope),
+        ),
+        patch.object(
+            FindLibraryAgentTool, "_search", AsyncMock(side_effect=[found, error])
+        ),
+    ):
+        result = await tool._execute(
+            "owner", ChatSession.new("owner", dry_run=False, expert_id="expert-a")
+        )
+
+    assert result is error
