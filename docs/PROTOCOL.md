@@ -970,10 +970,16 @@ Error codes:
 - `PATH_NOT_FOUND` — FILE_STAT/READ/DELETE on a path that doesn't exist (and `missing_ok: false`)
 - `PATH_NOT_EMPTY` — FILE_DELETE on a non-empty dir with `recursive: false`
 - `PATH_EXISTS` — FILE_MOVE with `overwrite: false` and dst exists
-- `COMMAND_TIMEOUT` — reserved for future strict-timeout transport; today
-  EXECUTE_COMMAND on timeout returns `COMMAND_RESULT` with `timed_out: true`
-  and `exit_code = -1` rather than an ERROR. Callers should branch on the
-  `timed_out` flag.
+- `COMMAND_TIMEOUT` — a `COMPUTER_TOOL_CALL` ran out of `timeout_seconds`
+  (`details.tool`, `details.timeout_seconds`). `details.started` says
+  whether anything ran: `false` when the call was still waiting for its
+  turn, so nothing reached the driver; `true` when the driver was running
+  it, so the shim stopped the driver, and what the call already did stays
+  done. Neither is retried automatically (see
+  [Idempotency](#idempotency)); the model decides, and may send a call that
+  didn't start again. `EXECUTE_COMMAND` doesn't use this code: on timeout it
+  returns `COMMAND_RESULT` with `timed_out: true` and `exit_code = -1`, so
+  callers branch on the `timed_out` flag.
 - `SHELL_NOT_AVAILABLE` — `shell` selector requested a shell not installed on this OS
 - `UNSUPPORTED_ARCH` — HELLO `arch` value not recognized
 - `CAPABILITY_NOT_GRANTED` — requested capability not in granted_capabilities
