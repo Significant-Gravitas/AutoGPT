@@ -3011,6 +3011,7 @@ def _mock_stream_queue_internals(
         mock_session = mocker.MagicMock()
         mock_session.id = "sess-1"
         mock_session.expert_id = None
+        mock_session.archived_at = None
         mocker.patch(
             "backend.api.features.chat.routes._validate_and_get_session",
             new_callable=AsyncMock,
@@ -5299,7 +5300,9 @@ def test_standard_tier_is_not_gated(
 
 
 def _session_like(expert_id: str | None):
-    return MagicMock(session_id="sess-1", user_id="u1", expert_id=expert_id)
+    return MagicMock(
+        session_id="sess-1", user_id="u1", expert_id=expert_id, archived_at=None
+    )
 
 
 def test_get_session_computer_uses_the_expert_owner_for_expert_chats(
