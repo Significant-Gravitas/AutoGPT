@@ -668,6 +668,41 @@ async def test_a_child_whose_detach_cannot_be_audited_keeps_serving(
 
 
 @pytest.mark.asyncio
+async def test_a_child_whose_detach_is_cancelled_while_audited_keeps_serving(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The control connection dropping while the idle detach was audited
+    cancelled the reaper there, leaving the child running and refusing
+    every request as being detached until control reconnected."""
+    daemon = _control_daemon(tmp_path)
+    child, started, sent = _idle_child(tmp_path)
+    session = asyncio.create_task(asyncio.sleep(60))
+    daemon._child_sessions["session-1"] = _ActiveChild(daemon=child, task=session)
+    stop = AsyncMock()
+    monkeypatch.setattr(daemon, "_stop_child_session", stop)
+    auditing = asyncio.Event()
+
+    async def audit_until_cancelled(op: str, **kwargs: Any) -> None:
+        auditing.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(daemon, "_write_control_audit", audit_until_cancelled)
+    reaper = asyncio.create_task(daemon._reap_idle_children())
+    try:
+        await asyncio.wait_for(auditing.wait(), timeout=30)
+        reaper.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await reaper
+        await child._on_frame(_ChildSocket(sent), _stat_request("/tmp/next"))
+        await asyncio.wait_for(asyncio.gather(*child._dispatch_tasks), timeout=30)
+    finally:
+        session.cancel()
+
+    stop.assert_not_awaited()
+    assert started == ["/tmp/next"]
+
+
+@pytest.mark.asyncio
 async def test_restore_restarts_child_when_root_binding_changes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

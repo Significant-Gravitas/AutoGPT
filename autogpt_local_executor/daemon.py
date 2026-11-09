@@ -1382,6 +1382,12 @@ class ShimDaemon:
                         session_id=session_id,
                         details={"idle_seconds": now_ts() - child._last_request_at},
                     )
+                except asyncio.CancelledError:
+                    # The control connection went (the reaper is cancelled
+                    # with it) before the detach: the child keeps serving
+                    # until the reconnect stops it.
+                    child._detaching = False
+                    raise
                 except Exception:
                     child._detaching = False
                     logger.exception(
