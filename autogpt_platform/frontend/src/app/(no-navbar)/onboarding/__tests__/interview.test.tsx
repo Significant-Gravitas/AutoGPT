@@ -2,7 +2,6 @@ import { resetCopilotChatRegistry } from "@/app/(platform)/copilot/copilotChatRe
 import { useCopilotStreamStore } from "@/app/(platform)/copilot/copilotStreamStore";
 import {
   getFinalizeBrainDumpMockHandler200,
-  getFinishOnboardingInterviewMockHandler200,
   getStartOnboardingInterviewMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import {
@@ -15,19 +14,24 @@ import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { server } from "@/mocks/mock-server";
 import {
   assistantTextChunks,
+  createStreamHold,
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
 import {
+  act,
   cleanup,
   render,
+  renderHook,
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse, ws } from "msw";
+import { http, HttpResponse, type JsonBodyType, ws } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OnboardingPage from "../page";
+import { useInterviewStep } from "../steps/InterviewStep/useInterviewStep";
 import { useOnboardingWizardStore } from "../store";
 import { makeProgress } from "./progress-fixture";
 
@@ -214,11 +218,26 @@ interface ServerInterview {
   activeTurn: string | null;
 }
 
+/** What one call to the finish route answers. */
+interface FinishAnswer {
+  status: number;
+  body?: JsonBodyType;
+  networkError?: boolean;
+}
+
+const HANDED_OFF: FinishAnswer = {
+  status: 200,
+  body: { status: "transcribed", input_mode: "typed" },
+};
+
 let serverInterview: ServerInterview;
 let streamBodies: string[];
+let pendingBodies: string[];
 let finishCalls: number;
+let finishAnswers: FinishAnswer[];
 let skipBodies: unknown[];
-let sessionReads: number;
+let stageReads: number;
+let replyHold: ReturnType<typeof createStreamHold> | null;
 
 function session(): SessionDetailResponse {
   return {
@@ -258,8 +277,11 @@ function interviewHandlers({
   stageAfterReply?: string;
 } = {}) {
   return [
-    getGetV2GetSessionMockHandler200(() => {
-      sessionReads += 1;
+    getGetV2GetSessionMockHandler200((info) => {
+      // The step reads the stage alone, one row, after each turn.
+      if (new URL(info.request.url).searchParams.get("limit") === "1") {
+        stageReads += 1;
+      }
       return session();
     }),
     getGetV2GetPendingMessagesMockHandler200({ messages: [], count: 0 }),
@@ -295,12 +317,27 @@ function interviewHandlers({
         };
         return streamSseResponse(assistantTextChunks(replyText), {
           abortSignal: request.signal,
+          hold: replyHold?.hold,
         });
       },
     ),
-    getFinishOnboardingInterviewMockHandler200(() => {
+    http.post(
+      `${BACKEND}/api/chat/sessions/${SESSION_ID}/messages/pending`,
+      async ({ request }) => {
+        pendingBodies.push(await request.clone().text());
+        return HttpResponse.json({
+          buffer_length: pendingBodies.length,
+          max_buffer_length: 10,
+          turn_in_flight: true,
+        });
+      },
+    ),
+    http.post("/api/proxy/api/onboarding/brain-dump/interview/finish", () => {
       finishCalls += 1;
-      return { status: "transcribed", input_mode: "typed" };
+      const answer = finishAnswers.shift() ?? HANDED_OFF;
+      if (answer.networkError) return HttpResponse.error();
+      if (answer.status === 200) serverInterview.stage = "handed_off";
+      return HttpResponse.json(answer.body ?? {}, { status: answer.status });
     }),
     getFinalizeBrainDumpMockHandler200(async (info) => {
       skipBodies.push(await info.request.json());
@@ -340,6 +377,23 @@ function expectPlanStep() {
   return waitFor(() => expect(screen.getByTestId("step-plan")).toBeDefined());
 }
 
+/** An interview Otto has wrapped up and closed, as start answers it. */
+function returnsClosed(stage: "closed" | "handed_off" = "closed") {
+  serverInterview = {
+    messages: [KICKOFF_ROW, GREETING_ROW, ANSWER_ROW, SUMMARY_ROW],
+    stage,
+    activeTurn: null,
+  };
+  startsWith({ session_id: SESSION_ID, turn_id: null, stage });
+  server.use(...interviewHandlers());
+}
+
+async function clickMeetYourTeam() {
+  await userEvent
+    .setup()
+    .click(await screen.findByRole("button", { name: "Meet your team" }));
+}
+
 const backendSocket = ws.link("ws://localhost:8001/ws");
 
 beforeEach(() => {
@@ -350,9 +404,12 @@ beforeEach(() => {
     activeTurn: null,
   };
   streamBodies = [];
+  pendingBodies = [];
   finishCalls = 0;
+  finishAnswers = [];
   skipBodies = [];
-  sessionReads = 0;
+  stageReads = 0;
+  replyHold = null;
   server.use(backendSocket.addEventListener("connection", () => {}));
   useAuthStore.setState({
     user: { id: USER_ID, email: "interview@example.com", user_metadata: {} },
@@ -372,6 +429,9 @@ afterEach(() => {
   cleanup();
   useAuthStore.setState({ user: null, hasLoadedUser: false });
 });
+
+const GOODBYE = "Thanks! Your team starts on the order emails first.";
+const NEXT_QUESTION = "Nice. Where does your week go?";
 
 describe("onboarding interview", () => {
   it("streams Otto's greeting first and takes the person's answer", async () => {
@@ -395,9 +455,7 @@ describe("onboarding interview", () => {
 
     await sendAnswer("I run a bakery with five staff.");
 
-    expect(
-      await screen.findByText("Nice. Where does your week go?"),
-    ).toBeDefined();
+    expect(await screen.findByText(NEXT_QUESTION)).toBeDefined();
     expect(streamBodies.join()).toContain("I run a bakery with five staff.");
   });
 
@@ -411,24 +469,27 @@ describe("onboarding interview", () => {
     startsWith({ session_id: SESSION_ID, turn_id: null, stage: null });
     server.use(
       ...interviewHandlers({
-        replyText: "Thanks! Your team starts on the order emails first.",
+        replyText: GOODBYE,
         // Otto's end signal closes the interview inside the goodbye turn.
         stageAfterReply: "closed",
       }),
     );
+    // The goodbye is written, and the turn has not ended yet.
+    replyHold = createStreamHold(5);
 
     render(<OnboardingPage />);
     await sendAnswer("Yes, that's right.");
 
+    expect(await screen.findByText(GOODBYE)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
+
+    replyHold.release();
     const meet = await screen.findByRole("button", { name: "Meet your team" });
-    expect(
-      await screen.findByText(
-        "Thanks! Your team starts on the order emails first.",
-        undefined,
-        { timeout: 8_000 },
-      ),
-    ).toBeDefined();
+
+    expect(screen.getByText(GOODBYE)).toBeDefined();
     expect(screen.queryByPlaceholderText("Type your answer…")).toBeNull();
+    // Skip is for an open interview.
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
 
     await userEvent.setup().click(meet);
 
@@ -438,15 +499,7 @@ describe("onboarding interview", () => {
   });
 
   it("shows Meet your team straight away for an interview already handed off", async () => {
-    serverInterview.messages = [
-      KICKOFF_ROW,
-      GREETING_ROW,
-      ANSWER_ROW,
-      SUMMARY_ROW,
-    ];
-    serverInterview.stage = "handed_off";
-    startsWith({ session_id: SESSION_ID, turn_id: null, stage: "handed_off" });
-    server.use(...interviewHandlers());
+    returnsClosed("handed_off");
 
     render(<OnboardingPage />);
 
@@ -457,10 +510,11 @@ describe("onboarding interview", () => {
     expect(await screen.findByText(SUMMARY)).toBeDefined();
   });
 
-  it("offers the finish button again once the stage reads after a turn find no end", async () => {
+  it("hides I'm done while Otto replies and offers it again once the turn ends with no close", async () => {
     serverInterview.messages = [KICKOFF_ROW, GREETING_ROW, ANSWER_ROW];
     startsWith({ session_id: SESSION_ID, turn_id: null, stage: null });
     server.use(...interviewHandlers());
+    replyHold = createStreamHold(5);
 
     render(<OnboardingPage />);
     expect(
@@ -468,19 +522,40 @@ describe("onboarding interview", () => {
     ).toBeDefined();
 
     await sendAnswer("Mostly answering order emails.");
-    expect(
-      await screen.findByText("Nice. Where does your week go?"),
-    ).toBeDefined();
-    const readsAfterTurn = sessionReads;
+    expect(await screen.findByText(NEXT_QUESTION)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "I'm done" })).toBeNull();
+    const readsBeforeTheTurnEnded = stageReads;
 
-    // The stage never moves: the button comes back when the reads stop, and
-    // the person can still type.
+    replyHold.release();
+
+    // Offered as soon as the turn is over, with no wait on the stage reads.
     expect(
       await screen.findByRole("button", { name: "I'm done" }),
     ).toBeDefined();
-    expect(sessionReads).toBeGreaterThan(readsAfterTurn);
+    // The stage is still read after the turn, and finds no end.
+    await waitFor(() =>
+      expect(stageReads).toBeGreaterThan(readsBeforeTheTurnEnded),
+    );
     expect(screen.getByPlaceholderText("Type your answer…")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
+  });
+
+  it("queues a message sent while Otto is still replying", async () => {
+    serverInterview.messages = [KICKOFF_ROW, GREETING_ROW];
+    startsWith({ session_id: SESSION_ID, turn_id: null, stage: null });
+    server.use(...interviewHandlers());
+    replyHold = createStreamHold(5);
+
+    render(<OnboardingPage />);
+    await sendAnswer("I run a bakery.");
+    expect(await screen.findByText(NEXT_QUESTION)).toBeDefined();
+
+    await sendAnswer("We have five staff.");
+
+    await waitFor(() => expect(pendingBodies).toHaveLength(1));
+    expect(pendingBodies[0]).toContain("We have five staff.");
+    expect(streamBodies).toHaveLength(1);
+    replyHold.release();
   });
 
   it("finishes with I'm done and moves on as path A", async () => {
@@ -508,15 +583,170 @@ describe("onboarding interview", () => {
     expect(screen.queryByRole("button", { name: "I'm done" })).toBeNull();
   });
 
-  it("moves on from an interview that is already over", async () => {
-    server.use(...interviewHandlers());
-    startFailsWith(409, { detail: "onboarding_interview_closed" });
+  it("returns to a finished interview as its transcript and the finish button, with nothing finished until the click", async () => {
+    returnsClosed();
 
     render(<OnboardingPage />);
 
+    expect(
+      await screen.findByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(await screen.findByText(SUMMARY)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+    expect(finishCalls).toBe(0);
+
+    await clickMeetYourTeam();
+
     await expectPlanStep();
     expect(finishCalls).toBe(1);
+  });
+
+  it("goes Back from the plan step to the finished interview, and Back again to the role step", async () => {
+    returnsClosed();
+    const user = userEvent.setup();
+
+    render(<OnboardingPage />);
+    await clickMeetYourTeam();
+    await expectPlanStep();
+
+    startsWith({ session_id: SESSION_ID, turn_id: null, stage: "handed_off" });
+    await user.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(await screen.findByText(SUMMARY)).toBeDefined();
+    expect(finishCalls).toBe(1);
+
+    await user.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(await screen.findByTestId("step-role")).toBeDefined();
+  });
+
+  it.each([["insufficient_content"], ["no_usable_speech"]])(
+    "moves on as path B, with no skipped take, when the judge rules %s",
+    async (code) => {
+      returnsClosed();
+      finishAnswers = [
+        {
+          status: 200,
+          body: { status: "failed", input_mode: "typed", error_code: code },
+        },
+      ];
+
+      render(<OnboardingPage />);
+      await clickMeetYourTeam();
+
+      await expectPlanStep();
+      expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
+      expect(skipBodies).toEqual([]);
+    },
+  );
+
+  it("moves on as path A when a newer take owns the row", async () => {
+    returnsClosed();
+    finishAnswers = [
+      {
+        status: 200,
+        body: {
+          status: "failed",
+          input_mode: "typed",
+          error_code: "superseded",
+        },
+      },
+    ];
+
+    render(<OnboardingPage />);
+    await clickMeetYourTeam();
+
+    await expectPlanStep();
     expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
+  });
+
+  it.each([["quality_check_unavailable"], ["something_else"], [null]])(
+    "stays with Try again when the pipeline never ruled (%s), and the next click finishes again",
+    async (code) => {
+      returnsClosed();
+      finishAnswers = [
+        {
+          status: 200,
+          body: { status: "failed", input_mode: "typed", error_code: code },
+        },
+        HANDED_OFF,
+      ];
+
+      render(<OnboardingPage />);
+      await clickMeetYourTeam();
+
+      expect(
+        await screen.findByText("That didn't go through. Try again."),
+      ).toBeDefined();
+      expect(screen.queryByTestId("step-plan")).toBeNull();
+      expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
+
+      await clickMeetYourTeam();
+
+      await expectPlanStep();
+      expect(finishCalls).toBe(2);
+      expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
+    },
+  );
+
+  it("says how long to wait when the finish is turned away by the budget", async () => {
+    returnsClosed();
+    finishAnswers = [
+      {
+        status: 429,
+        body: {
+          detail: {
+            message: "You have made several personalization attempts.",
+            retry_after_seconds: 1200,
+          },
+        },
+      },
+    ];
+
+    render(<OnboardingPage />);
+    await clickMeetYourTeam();
+
+    expect(
+      await screen.findByText(
+        "You've sent a lot of messages in a short time. Your progress is saved; try again in 20 minutes.",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(screen.queryByTestId("step-plan")).toBeNull();
+  });
+
+  it.each([
+    ["the service is down", { status: 503, body: { detail: "Unavailable" } }],
+    ["the request never gets an answer", { status: 0, networkError: true }],
+  ])("stays with Try again when %s", async (_name, answer: FinishAnswer) => {
+    returnsClosed();
+    finishAnswers = [answer];
+
+    render(<OnboardingPage />);
+    await clickMeetYourTeam();
+
+    expect(
+      await screen.findByText("That didn't go through. Try again."),
+    ).toBeDefined();
+    expect(screen.queryByTestId("step-plan")).toBeNull();
+  });
+
+  it("shows Try again when the start is refused with a 409", async () => {
+    server.use(...interviewHandlers());
+    startFailsWith(409, { detail: "turn_in_progress" });
+
+    render(<OnboardingPage />);
+
+    expect(
+      await screen.findByText("We couldn't start your interview. Try again."),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+    expect(finishCalls).toBe(0);
   });
 
   it("says how long to wait when the interview's turn budget is spent", async () => {
@@ -573,6 +803,31 @@ describe("onboarding interview", () => {
     );
     expect(finishCalls).toBe(0);
     expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBe("B");
+  });
+
+  it("does nothing on skip once the interview is over", async () => {
+    returnsClosed();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderHook(() => useInterviewStep(), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    });
+    await waitFor(() => expect(result.current.isOver).toBe(true));
+    const stepBefore = useOnboardingWizardStore.getState().currentStep;
+
+    await act(async () => {
+      await result.current.skip();
+    });
+
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(stepBefore);
+    expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
+    expect(skipBodies).toEqual([]);
+    expect(finishCalls).toBe(0);
   });
 
   it("shows Meet your team when a message is refused because the interview is over", async () => {

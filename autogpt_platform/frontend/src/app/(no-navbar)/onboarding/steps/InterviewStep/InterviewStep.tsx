@@ -12,11 +12,13 @@ export function InterviewStep() {
 
   return (
     <>
-      <SkipButton
-        isHidden={false}
-        isProcessing={interview.isLeaving}
-        onSkip={interview.skip}
-      />
+      {!interview.isOver && (
+        <SkipButton
+          isHidden={false}
+          isProcessing={interview.isLeaving}
+          onSkip={interview.skip}
+        />
+      )}
 
       <div className="flex w-full max-w-2xl flex-col items-center gap-6 px-4">
         <div className="flex flex-col items-center gap-2 text-center">
@@ -55,7 +57,7 @@ export function InterviewStep() {
             isOver={interview.isOver}
             canFinishEarly={interview.canFinishEarly}
             isLeaving={interview.isLeaving}
-            hasFinishFailed={interview.hasFinishFailed}
+            finishFailure={interview.finishFailure}
             onSend={interview.onSend}
             onStop={interview.stop}
             onFinish={interview.finish}

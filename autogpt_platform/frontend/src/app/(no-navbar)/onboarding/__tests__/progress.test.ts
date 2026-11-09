@@ -70,6 +70,54 @@ describe("semantic progress", () => {
       withBrainDump.painPoints,
     );
   });
+  it("resumes past the brain dump once the interview was done", () => {
+    const progress = readProgress(
+      makeProgress({
+        currentStep: "subscription",
+        completedSteps: ["team", "autopilot", "role", "interview"],
+      }),
+    );
+    const steps = buildStepLayout({ hasPaywall: true });
+
+    expect(resumeStep({ progress, steps })).toBe(steps.subscription);
+  });
+
+  it("resumes past the interview once the brain dump was done", () => {
+    const progress = readProgress(
+      makeProgress({
+        currentStep: "subscription",
+        completedSteps: ["team", "autopilot", "role", "painPoints"],
+      }),
+    );
+    const steps = buildStepLayout({ hasPaywall: true, hasInterview: true });
+
+    expect(resumeStep({ progress, steps })).toBe(steps.subscription);
+  });
+
+  it("resumes a draft saved on the interview on the brain dump when the layout has only that", () => {
+    const progress = readProgress(
+      makeProgress({
+        currentStep: "interview",
+        completedSteps: ["team", "autopilot", "role", "interview"],
+      }),
+    );
+    const steps = buildStepLayout({ hasPaywall: true });
+
+    expect(resumeStep({ progress, steps })).toBe(steps.painPoints);
+  });
+
+  it("resumes a draft saved on the brain dump on the interview when the layout has only that", () => {
+    const progress = readProgress(
+      makeProgress({
+        currentStep: "painPoints",
+        completedSteps: ["team", "autopilot", "role"],
+      }),
+    );
+    const steps = buildStepLayout({ hasPaywall: true, hasInterview: true });
+
+    expect(resumeStep({ progress, steps })).toBe(steps.interview);
+  });
+
   it("honors a previous-step URL without allowing an incomplete step to be skipped", () => {
     const progress = makeProgress({
       currentStep: "subscription",
