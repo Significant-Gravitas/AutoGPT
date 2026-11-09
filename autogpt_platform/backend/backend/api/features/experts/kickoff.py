@@ -12,12 +12,7 @@ second one.
 import logging
 
 from backend.api.features.experts.models import HireSurface
-from backend.copilot import turn_queue
-from backend.copilot.active_turns import (
-    ConcurrentTurnLimitError,
-    SessionNotIdle,
-    get_inflight_turn_limit,
-)
+from backend.copilot.active_turns import ConcurrentTurnLimitError, SessionNotIdle
 from backend.copilot.db import chat_message_has_assistant_reply
 from backend.copilot.executor.utils import schedule_chat_turn
 from backend.copilot.expert_kickoff import (
@@ -26,10 +21,13 @@ from backend.copilot.expert_kickoff import (
     expert_kickoff_metadata,
 )
 from backend.copilot.model import (
+    delete_chat_session,
+    get_chat_session,
     get_or_create_expert_kickoff_session,
     get_user_sessions,
 )
 from backend.copilot.session_permissions import resolve_session_permissions
+from backend.copilot.transports import resolve_default_chat_route
 
 logger = logging.getLogger(__name__)
 
@@ -78,12 +76,17 @@ async def _start(
     )
     if existing:
         return False
+    # The thread runs on the connection the user chose for chats nobody
+    # routed, the way a browser kickoff starts on the user's own choice.
+    llm_auth_provider, llm_credential_id = await resolve_default_chat_route(user_id)
     session = await get_or_create_expert_kickoff_session(
         user_id,
         expert_id,
         dry_run=False,
         organization_id=organization_id,
         team_id=team_id,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
     )
     session_id = session.session_id
     message_id = expert_kickoff_message_id(user_id, session_id, expert_id)
@@ -114,21 +117,12 @@ async def _start(
         # Another kickoff (a browser's) holds the session.
         return False
     except ConcurrentTurnLimitError:
-        # The owner is at the running cap: queue it the way the chat route
-        # queues a message, so the expert still introduces itself once a
-        # slot frees instead of leaving an empty thread behind.
-        await turn_queue.try_enqueue_turn(
-            user_id=user_id,
-            inflight_cap=get_inflight_turn_limit(),
-            session_id=session_id,
-            message=EXPERT_KICKOFF_PROMPT,
-            message_id=message_id,
-            message_metadata=message_metadata,
-            llm_auth_provider=session.metadata.llm_auth_provider,
-            llm_credential_id=session.metadata.llm_credential_id,
-            permissions=(
-                permissions.model_dump(exclude_none=True) if permissions else None
-            ),
-        )
-        return True
+        # The owner is at the running cap. Queuing would race the owner's own
+        # next message into this session, so leave no trace instead: drop the
+        # thread if it is still empty, and the expert introduces itself when
+        # it is first opened, as a browser hire does.
+        fresh = await get_chat_session(session_id, user_id)
+        if fresh is not None and not fresh.messages:
+            await delete_chat_session(session_id, user_id)
+        return False
     return turn_id is not None

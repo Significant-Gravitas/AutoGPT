@@ -57,9 +57,17 @@ def mocks(mocker: pytest_mock.MockerFixture) -> SimpleNamespace:
             new_callable=AsyncMock,
             return_value="turn-1",
         ),
-        enqueue=mocker.patch(
-            f"{_MODULE}.turn_queue.try_enqueue_turn", new_callable=AsyncMock
+        route=mocker.patch(
+            f"{_MODULE}.resolve_default_chat_route",
+            new_callable=AsyncMock,
+            return_value=("platform", None),
         ),
+        reload=mocker.patch(
+            f"{_MODULE}.get_chat_session",
+            new_callable=AsyncMock,
+            return_value=SimpleNamespace(messages=[]),
+        ),
+        delete=mocker.patch(f"{_MODULE}.delete_chat_session", new_callable=AsyncMock),
     )
 
 
@@ -76,6 +84,8 @@ async def test_kickoff_starts_the_hidden_turn_in_the_canonical_session(mocks):
         dry_run=False,
         organization_id="org-1",
         team_id="team-1",
+        llm_auth_provider="platform",
+        llm_credential_id=None,
     )
     sent = mocks.schedule.await_args.kwargs
     assert sent["session_id"] == "session-1"
@@ -92,6 +102,17 @@ async def test_kickoff_starts_the_hidden_turn_in_the_canonical_session(mocks):
     }
     assert sent["expert_id"] == "expert-1"
     assert sent["organization_id"] == "org-1"
+
+
+@pytest.mark.asyncio
+async def test_kickoff_runs_on_the_users_saved_chat_connection(mocks):
+    mocks.route.return_value = ("codex", "cred-codex")
+
+    await kickoff.start_expert_kickoff("user-1", "expert-1")
+
+    created = mocks.create.await_args.kwargs
+    assert created["llm_auth_provider"] == "codex"
+    assert created["llm_credential_id"] == "cred-codex"
 
 
 @pytest.mark.asyncio
@@ -120,21 +141,28 @@ async def test_kickoff_yields_to_a_turn_already_in_the_session(mocks):
 
     assert await kickoff.start_expert_kickoff("user-1", "expert-1") is False
 
-    mocks.enqueue.assert_not_awaited()
+    mocks.delete.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_kickoff_at_the_running_cap_is_queued(mocks):
+async def test_kickoff_at_the_running_cap_leaves_no_empty_thread(mocks):
+    """Queuing would race the owner's own next message into the session, so
+    the empty thread goes and the first open kicks the expert off instead."""
     mocks.schedule.side_effect = ConcurrentTurnLimitError("at cap")
 
-    assert await kickoff.start_expert_kickoff("user-1", "expert-1") is True
+    assert await kickoff.start_expert_kickoff("user-1", "expert-1") is False
 
-    queued = mocks.enqueue.await_args.kwargs
-    assert queued["session_id"] == "session-1"
-    assert queued["message"] == EXPERT_KICKOFF_PROMPT
-    assert queued["message_id"] == expert_kickoff_message_id(
-        "user-1", "session-1", "expert-1"
-    )
+    mocks.delete.assert_awaited_once_with("session-1", "user-1")
+
+
+@pytest.mark.asyncio
+async def test_kickoff_at_the_running_cap_keeps_a_thread_that_has_messages(mocks):
+    mocks.schedule.side_effect = ConcurrentTurnLimitError("at cap")
+    mocks.reload.return_value = SimpleNamespace(messages=[object()])
+
+    assert await kickoff.start_expert_kickoff("user-1", "expert-1") is False
+
+    mocks.delete.assert_not_awaited()
 
 
 @pytest.mark.asyncio
