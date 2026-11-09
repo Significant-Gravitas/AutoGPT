@@ -254,6 +254,12 @@ class CuaDriverBridge:
         """The running driver, if one has started."""
         return self._snapshot.info if self._snapshot is not None else None
 
+    @property
+    def last_snapshot(self) -> DriverSnapshot | None:
+        """What the driver offered when it last started, if it has: kept
+        while it restarts, since a start lists the same tools."""
+        return self._snapshot
+
     async def snapshot(self, *, deadline: float | None = None) -> DriverSnapshot:
         """What the driver offers, starting it if need be. With `deadline`
         (loop time), a start still running then raises CallNotStarted."""

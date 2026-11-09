@@ -301,7 +301,10 @@ through the same driver. The platform gives a new chat's session a few
 seconds to connect, so if another chat's call holds the driver for more
 than two of them, the new session goes ahead unchecked: the grants are the
 app's, checked when the shim started, and a busy driver is a working one.
-Its HELLO waits as briefly for the screen size, and leaves it out instead.
+Its HELLO waits as briefly for the screen size, and leaves it out instead,
+and as briefly for a driver that is starting again (after another chat's
+call overran, say), and then lists the tools the driver offered when it
+last ran, which its next start offers again.
 `autogpt-shim doctor` runs cua-driver's own
 `doctor`, starts the driver as the daemon does, reads the screen size, and on
 macOS reports both grants and, when one is missing, asks macOS to show its

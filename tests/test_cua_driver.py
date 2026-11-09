@@ -1810,6 +1810,37 @@ async def test_a_child_session_waits_only_briefly_for_a_busy_shared_driver(
         await parent._computer_handler.close()
 
 
+async def test_a_child_hello_waits_only_briefly_for_a_driver_starting_again(
+    tmp_path, fake_log, linux_with_display, monkeypatch
+) -> None:
+    """A new chat's HELLO waited, without a deadline, for the shared driver
+    to start again after another chat's call overran it, which can take a
+    minute; the platform undoes a chat whose session isn't up in about
+    eight seconds. It now goes on with the tools the driver last offered."""
+    from autogpt_local_executor import handlers
+
+    monkeypatch.setattr(handlers, "CHILD_DRIVER_WAIT_SECONDS", 0.2, raising=False)
+    parent = _daemon(tmp_path, session_id=None)
+    child = _daemon(tmp_path, session_id="child-1")
+    parent._computer_handler.share_with(child._computer_handler)
+    driver = parent._computer_handler.driver
+    await driver.snapshot()
+    await driver._stop_client()  # stopped to end another chat's call
+    await driver._lock.acquire()  # and starting again, slowly
+    building = asyncio.ensure_future(child._build_hello())
+    try:
+        done, _ = await asyncio.wait({building}, timeout=10)
+        assert building in done
+        hello = building.result()
+    finally:
+        building.cancel()
+        driver._lock.release()
+        await parent._computer_handler.close()
+
+    assert "computer_use" in hello.payload.capabilities
+    assert hello.payload.computer_use_tools == sorted(catalog.offered_tools(enable_clipboard=False))
+
+
 def _daemon(tmp_path: Path, **overrides: Any):
     from autogpt_local_executor.daemon import ShimDaemon
 

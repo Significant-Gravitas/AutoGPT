@@ -1458,6 +1458,24 @@ class ComputerUseHandler:
         driver (share_with)."""
         return not self._owns_driver
 
+    async def hello_snapshot(self) -> DriverSnapshot:
+        """What this session's HELLO advertises. A chat's session waits for
+        the shared driver at most CHILD_DRIVER_WAIT_SECONDS: after another
+        chat's call overran, the driver can take up to a minute to start
+        again, longer than the platform waits for the session. Past that it
+        goes on with what the driver offered when it last ran, which its
+        next start lists again."""
+        if not self.shares_a_driver:
+            return await self.driver.snapshot()
+        loop = asyncio.get_running_loop()
+        try:
+            return await self.driver.snapshot(deadline=loop.time() + CHILD_DRIVER_WAIT_SECONDS)
+        except CallNotStarted:
+            last = self.driver.last_snapshot
+            if last is None:
+                raise DriverUnavailable("cua-driver is still starting") from None
+            return last
+
     @property
     def driver(self) -> CuaDriverBridge:
         if self._driver is None:

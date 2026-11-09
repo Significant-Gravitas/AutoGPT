@@ -1091,7 +1091,7 @@ class ShimDaemon:
         if "computer_use" in caps:
             # Advertised only once cua-driver has started and listed its tools.
             try:
-                snapshot = await self._computer_handler.driver.snapshot()
+                snapshot = await self._computer_handler.hello_snapshot()
                 computer_use_driver = snapshot.info
                 computer_use_tools = sorted(tool["name"] for tool in snapshot.tools)
             except DriverUnavailable as exc:
