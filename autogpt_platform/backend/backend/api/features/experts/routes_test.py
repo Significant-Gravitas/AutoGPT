@@ -253,6 +253,73 @@ def _mock_templates_with_hub_skill(mocker: pytest_mock.MockerFixture) -> AsyncMo
 # ─── Hire ──────────────────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def mock_kickoff(mocker: pytest_mock.MockerFixture) -> AsyncMock:
+    return mocker.patch(
+        "backend.api.features.experts.routes.start_expert_kickoff",
+        new_callable=AsyncMock,
+    )
+
+
+@pytest.mark.parametrize("surface", [None, "copilot"])
+def test_hire_with_no_page_to_follow_sends_the_kickoff(
+    mocker: pytest_mock.MockerFixture,
+    mock_kickoff: AsyncMock,
+    test_user_id: str,
+    surface: str | None,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.hire_expert",
+        new_callable=AsyncMock,
+        return_value=HireResult(expert=_make_expert()),
+    )
+
+    response = client.post(
+        "/experts", json={"template_id": "template-1", "surface": surface}
+    )
+
+    assert response.status_code == 200
+    mock_kickoff.assert_awaited_once_with(
+        test_user_id, "expert-1", organization_id="test-org", team_id="test-team"
+    )
+
+
+@pytest.mark.parametrize("surface", ["expert_page", "onboarding"])
+def test_hire_from_a_page_leaves_the_kickoff_to_it(
+    mocker: pytest_mock.MockerFixture,
+    mock_kickoff: AsyncMock,
+    surface: str,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.hire_expert",
+        new_callable=AsyncMock,
+        return_value=HireResult(expert=_make_expert()),
+    )
+
+    response = client.post(
+        "/experts", json={"template_id": "template-1", "surface": surface}
+    )
+
+    assert response.status_code == 200
+    mock_kickoff.assert_not_awaited()
+
+
+def test_failed_hire_sends_no_kickoff(
+    mocker: pytest_mock.MockerFixture,
+    mock_kickoff: AsyncMock,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.hire_expert",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertLimitExceededError(20),
+    )
+
+    response = client.post("/experts", json={"template_id": "template-1"})
+
+    assert response.status_code == 409
+    mock_kickoff.assert_not_awaited()
+
+
 def test_hire_expert_returns_expert(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,

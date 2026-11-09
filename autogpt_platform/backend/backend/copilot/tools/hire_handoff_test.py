@@ -116,6 +116,7 @@ def _env(
     db.hire_expert = AsyncMock(return_value=SimpleNamespace(expert=hired))
     db.get_expert = AsyncMock(return_value=hired)
     db.list_experts = AsyncMock(return_value=[hired])
+    db.start_expert_kickoff = AsyncMock(return_value=True)
     fake_redis = _FakeRedis()
     redis = AsyncMock(return_value=fake_redis)
     turn = AsyncMock(
@@ -133,6 +134,7 @@ def _env(
         patch("backend.copilot.tools.hire_expert.experts_db", return_value=db),
         patch("backend.copilot.tools.expert_proposal.experts_db", return_value=db),
         patch("backend.copilot.tools.expert_delegation.experts_db", return_value=db),
+        patch("backend.copilot.tools.confirm_expert_change.experts_db", return_value=db),
         patch("backend.copilot.tools.hire_expert.get_redis_async", redis),
         patch("backend.copilot.tools.confirm_expert_change.get_redis_async", redis),
         patch(
@@ -228,6 +230,8 @@ class TestHireAndHandOffInOneApproval:
         env.db.hire_expert.assert_awaited_once_with(
             _USER, "tpl-james", "James", "copilot"
         )
+        # The task opens the new hire's thread; no greeting competes with it.
+        env.db.start_expert_kickoff.assert_not_awaited()
         # The task went to the new hire, in a thread this chat delegated.
         assert env.created == [
             {
@@ -275,6 +279,14 @@ class TestHireAndHandOffInOneApproval:
         assert isinstance(resp, ExpertChangeAppliedResponse)
         env.db.hire_expert.assert_awaited_once()
         env.turn.assert_not_called()
+        # No page follows a chat hire, so the server sends its kickoff, in the
+        # org this chat belongs to.
+        env.db.start_expert_kickoff.assert_awaited_once_with(
+            _USER,
+            "exp-james",
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+        )
         assert resp.handoff is None
         assert "hire only" in resp.message.lower()
         assert _TITLE in resp.message

@@ -10,6 +10,7 @@ confirmed is the "hire and start" one (see ``hire_handoff``).
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
@@ -106,6 +107,20 @@ class ConfirmExpertChangeTool(BaseTool):
             return proposal
         applied = await apply_proposal(user_id, session_id, proposal)
         task = proposal.handoff
+        if (
+            isinstance(applied, ExpertChangeAppliedResponse)
+            and applied.kind == "hire"
+            and not (task is not None and proposal.hand_off)
+        ):
+            # No page follows a chat hire into the new expert's thread, so
+            # the server sends its kickoff. A hand-off opens that thread with
+            # the task instead.
+            await experts_db().start_expert_kickoff(
+                user_id,
+                applied.expert.id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+            )
         if task is None or not isinstance(applied, ExpertChangeAppliedResponse):
             return applied
         if not proposal.hand_off:

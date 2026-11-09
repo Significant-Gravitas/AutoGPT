@@ -10,6 +10,10 @@ from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, onboarding, scheduling
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
+from backend.api.features.experts.kickoff import (
+    SERVER_KICKOFF_SURFACES,
+    start_expert_kickoff,
+)
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
@@ -48,6 +52,7 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.e2b_sandbox import SandboxOwner, kill_expert_sandbox
 from backend.copilot.tools.skills import SkillVersionConflictError, SkillWriteLockError
+from backend.util.background import spawn_background_task
 from backend.util.exceptions import NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -180,9 +185,12 @@ async def list_expert_templates(
 async def hire_expert(
     request: HireRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.get_request_context
+    ),
 ) -> HireResult:
     try:
-        return await experts_db.hire_expert(
+        result = await experts_db.hire_expert(
             user_id, request.template_id, request.name, request.surface
         )
     except experts_db.ExpertTemplateNotFoundError as e:
@@ -204,6 +212,20 @@ async def hire_expert(
             status_code=409,
             detail={"code": "active_expert_limit", "limit": e.limit},
         )
+    # The expert page and onboarding open the new expert's thread, which
+    # sends its kickoff. An API caller naming no surface lands nowhere, so
+    # the server sends it.
+    if request.surface in SERVER_KICKOFF_SURFACES:
+        spawn_background_task(
+            start_expert_kickoff(
+                user_id,
+                result.expert.id,
+                organization_id=ctx.org_id,
+                team_id=ctx.team_id,
+            ),
+            name=f"expert-kickoff-{result.expert.id}",
+        )
+    return result
 
 
 @router.post(
