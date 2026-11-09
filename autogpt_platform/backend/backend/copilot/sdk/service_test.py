@@ -306,6 +306,107 @@ class TestExecutorSetup:
         restore.assert_awaited_once()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "failure",
+        ["data_channel_timeout", "data_channel_mismatch", "restored_other_binding"],
+    )
+    async def test_a_setup_that_fails_after_restoring_detaches_the_session(
+        self, failure
+    ):
+        """RESTORE_SESSION has the computer attach the chat's session. A setup
+        that failed after it returned no executor and left the session
+        attached on the computer, where a turn's end would have detached it."""
+        chat_config = MagicMock(
+            local_pc_executor_oauth_client_id="autogpt-local-executor",
+        )
+        manager = MagicMock()
+        manager.get_hello_async = AsyncMock(return_value=None)
+        shim = LocalPCShim.__new__(LocalPCShim)
+        shim.machine_id = "machine-1"
+        shim.allowed_root = (
+            "/different-root" if failure == "data_channel_mismatch" else "/workspace"
+        )
+        presence = object()
+
+        async def _restore(_presence, binding):
+            if failure == "restored_other_binding":
+                return binding.model_copy(update={"revision": binding.revision + 1})
+            return binding
+
+        for_session = (
+            AsyncMock(side_effect=TimeoutError("no data channel"))
+            if failure == "data_channel_timeout"
+            else AsyncMock(return_value=shim)
+        )
+        with (
+            patch.object(shim, "kill", new_callable=AsyncMock),
+            patch(
+                "backend.copilot.sdk.service.is_feature_enabled",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "backend.copilot.sdk.service.get_shim_manager",
+                return_value=manager,
+            ),
+            patch(
+                "backend.copilot.sdk.service.get_machine_presence",
+                new_callable=AsyncMock,
+                return_value=presence,
+            ),
+            patch(
+                "backend.copilot.sdk.service.restore_machine_session",
+                new_callable=AsyncMock,
+                side_effect=_restore,
+            ),
+            patch(
+                "backend.copilot.sdk.service.detach_machine_session",
+                new_callable=AsyncMock,
+            ) as detach,
+            patch.object(LocalPCShim, "for_session", for_session),
+        ):
+            result = await _setup_local_pc_executor(
+                "session-1", "user-1", chat_config, self._local_target()
+            )
+
+        assert result is None
+        detach.assert_awaited_once_with(presence, "session-1")
+
+    @pytest.mark.asyncio
+    async def test_a_setup_that_fails_before_restoring_detaches_nothing(self):
+        chat_config = MagicMock(
+            local_pc_executor_oauth_client_id="autogpt-local-executor",
+        )
+        manager = MagicMock()
+        manager.get_hello_async = AsyncMock(return_value=None)
+        with (
+            patch(
+                "backend.copilot.sdk.service.is_feature_enabled",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "backend.copilot.sdk.service.get_shim_manager",
+                return_value=manager,
+            ),
+            patch(
+                "backend.copilot.sdk.service.get_machine_presence",
+                new_callable=AsyncMock,
+                side_effect=ConnectionError("machine offline"),
+            ),
+            patch(
+                "backend.copilot.sdk.service.detach_machine_session",
+                new_callable=AsyncMock,
+            ) as detach,
+        ):
+            result = await _setup_local_pc_executor(
+                "session-1", "user-1", chat_config, self._local_target()
+            )
+
+        assert result is None
+        detach.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_mismatched_data_channel_is_closed_before_restore(self):
         chat_config = MagicMock(
             local_pc_executor_oauth_client_id="autogpt-local-executor",

@@ -4848,6 +4848,9 @@ async def _setup_local_pc_executor(
         default=False,
     )
     if local_pc_enabled:
+        # Where RESTORE_SESSION asked the computer to attach this chat: a setup
+        # that fails after that detaches it again, as the end of a turn does.
+        restored_on = None
         try:
             manager = get_shim_manager()
             hello = await manager.get_hello_async(session_id)
@@ -4873,6 +4876,7 @@ async def _setup_local_pc_executor(
                     revision=execution_target.revision,
                     root_grant=execution_target.root_grant,
                 )
+                restored_on = presence
                 restored = await restore_machine_session(presence, binding)
                 if restored != binding:
                     raise ConnectionError(
@@ -4897,6 +4901,15 @@ async def _setup_local_pc_executor(
                 session_id[:12],
                 shim_err,
             )
+            if restored_on is not None:
+                try:
+                    await detach_machine_session(restored_on, session_id)
+                except Exception:
+                    logger.warning(
+                        "[LocalPC] [%s] Failed to detach the session after a failed setup",
+                        session_id[:12],
+                        exc_info=True,
+                    )
             return None
         logger.info(
             "[LocalPC] [%s] routed to shim (platform=%s arch=%s)",
