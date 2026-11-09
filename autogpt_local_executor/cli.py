@@ -815,6 +815,7 @@ def _audit_export(current: Path, output: Path | None) -> int:
     from .audit import (
         KEYCHAIN_AUDIT_KEY_USERNAME,
         _file_identity,
+        _lock_path,
         holding_log_lock,
         load_audit_key,
     )
@@ -856,6 +857,12 @@ def _audit_export(current: Path, output: Path | None) -> int:
         # The finished archive replaces `output`, so it must not be a log being exported.
         if any(_same_file(output, path) for path in (current, *files)):
             print(f"Refusing to write the export over an audit log: {output}")
+            return 2
+        # Nor the writers' lock: a writer that then opened the new file would
+        # take a lock the daemon, holding the old one, doesn't, and both
+        # would append.
+        if _same_file(output, _lock_path(current)):
+            print(f"Refusing to write the export over the audit log's lock: {output}")
             return 2
         # Nor named like a rotated log beside it, which verify-all would read.
         if _same_file(output.parent, current.parent) and output.name.startswith(current.name + "."):

@@ -935,6 +935,25 @@ async def test_export_refuses_to_write_over_an_audit_log(
     assert "audit log" in capsys.readouterr().out
 
 
+@pytest.mark.asyncio
+async def test_export_refuses_to_write_over_the_logs_lock(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """An export named after the writers' lock replaced it, so a writer that
+    opened the lock afterwards locked another file than the daemon held, and
+    both appended to the log."""
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    lock = tmp_path / ".audit.log.lock"
+    before = lock.stat()
+
+    assert cli._audit_export(writer.path, lock) == 2
+    assert lock.stat().st_ino == before.st_ino
+    assert lock.stat().st_size == before.st_size
+    assert "lock" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("line", [b"[]", b'"text"', b"42", b"null"])
 def test_a_record_that_is_not_an_object_is_a_parse_error(tmp_path: Path, line: bytes) -> None:
     path = tmp_path / "audit.log"
