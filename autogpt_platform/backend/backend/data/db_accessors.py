@@ -37,6 +37,19 @@ def experts_db():
     return experts_db
 
 
+def expert_kickoff_db():
+    if db.is_connected():
+        from backend.api.features.experts import kickoff as _kickoff
+
+        expert_kickoff_db = _kickoff
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        expert_kickoff_db = get_database_manager_async_client()
+
+    return expert_kickoff_db
+
+
 def expert_check_db():
     if db.is_connected():
         from backend.api.features.experts import experts_db as _expert_check_db

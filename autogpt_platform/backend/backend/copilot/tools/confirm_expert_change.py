@@ -11,7 +11,7 @@ import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
-from backend.data.db_accessors import experts_db
+from backend.data.db_accessors import expert_kickoff_db
 from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
@@ -132,7 +132,7 @@ async def _send_kickoff(user_id: str, expert_id: str, session: ChatSession) -> N
     Otto reports as a failed hire. The expert then introduces itself the
     first time it is opened, as before."""
     try:
-        await experts_db().start_expert_kickoff(
+        await expert_kickoff_db().start_expert_kickoff(
             user_id,
             expert_id,
             organization_id=session.organization_id,

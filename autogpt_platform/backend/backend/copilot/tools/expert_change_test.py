@@ -151,7 +151,7 @@ def _env(
         patch(f"{_RAISE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_UPDATE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_PROPOSAL_MODULE}.experts_db", MagicMock(return_value=db)),
-        patch(f"{_CONFIRM_MODULE}.experts_db", MagicMock(return_value=db)),
+        patch(f"{_CONFIRM_MODULE}.expert_kickoff_db", MagicMock(return_value=db)),
         patch(f"{_HIRE_MODULE}.get_redis_async", shared_redis),
         patch(f"{_RAISE_MODULE}.get_redis_async", shared_redis),
         patch(f"{_UPDATE_MODULE}.get_redis_async", shared_redis),
