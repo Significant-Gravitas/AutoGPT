@@ -11,7 +11,7 @@ import pytest_mock
 
 from backend.api.features.feedback_prompts import analytics
 from backend.copilot.capabilities.sources import EAGER_CORE
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, ChatSessionOrigin
 from backend.copilot.tools import TOOL_GROUPS, TOOL_REGISTRY
 from backend.copilot.tools import feedback_prompts as feedback_tools
 from backend.copilot.tools.feedback_prompts import FlagMistakeTool, RequestWorkCheckTool
@@ -122,6 +122,26 @@ async def test_a_failed_claim_is_a_refusal(
 
     assert (await _work_check(web_chat)).prompt_id is None
     shown.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("origin", "shows_card"),
+    [("interactive", True), (None, True), ("automation", False)],
+    ids=["interactive", "from-before-origin-existed", "automation"],
+)
+async def test_work_check_follows_the_chats_origin(
+    db: MagicMock,
+    shown: MagicMock,
+    web_chat: ChatSession,
+    origin: ChatSessionOrigin | None,
+    shows_card: bool,
+) -> None:
+    web_chat.metadata.origin = origin
+
+    result = await _work_check(web_chat)
+
+    assert (result.prompt_id is not None) is shows_card
+    assert db.claim_feedback_prompt.await_count == int(shows_card)
 
 
 @pytest.mark.parametrize("arrange", NO_CARD_CHATS)

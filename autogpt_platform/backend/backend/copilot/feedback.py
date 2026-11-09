@@ -42,6 +42,12 @@ REASONS_BY_SCORE_NAME: dict[FeedbackScoreName, frozenset[str]] = {
     "otto_mistake": REASONS_BY_KIND["otto_mistake"],
 }
 
+# Ratings from a feedback card. An admin acting as the user answers one without
+# leaving a trace, as with the card's ``FeedbackPrompt`` row.
+_CARD_SCORE_NAMES: frozenset[FeedbackScoreName] = frozenset(
+    {"work_check", "otto_mistake"}
+)
+
 MAX_FEEDBACK_COMMENT_CHARS = 2000
 MAX_FEEDBACK_REASON_CHARS = 64
 
@@ -78,11 +84,14 @@ async def record_message_feedback(
     *reason* is the option picked on a work check or mistake card.
 
     Returns ``None`` when the session is not the caller's or *message_id* is
-    not a reply in it.
+    not a reply in it. A card rating by an impersonating admin saves and sends
+    nothing and comes back with an empty id.
     """
     message = await _find_rated_message(user_id, session_id, message_id)
     if message is None:
         return None
+    if impersonated and score_name in _CARD_SCORE_NAMES:
+        return MessageFeedbackResponse(id="")
     feedback_id = await feedback_db.upsert_message_feedback(
         user_id=user_id,
         session_id=session_id,

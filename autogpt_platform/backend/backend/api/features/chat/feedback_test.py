@@ -362,6 +362,72 @@ def test_rating_by_an_impersonating_admin_is_marked(
     assert properties["impersonated"] is True
 
 
+def _rate_as_admin(target_user_id: str, score_name: str, score_value: int):
+    return client.post(
+        f"/sessions/{SESSION_ID}/feedback",
+        json={
+            "message_id": f"{SESSION_ID}-seq-7",
+            "score_name": score_name,
+            "score_value": score_value,
+        },
+        headers={"X-Act-As-User-Id": target_user_id},
+    )
+
+
+@pytest.mark.parametrize(
+    ("score_name", "score_value"), [("work_check", 2), ("otto_mistake", 0)]
+)
+def test_card_rating_by_an_impersonating_admin_saves_and_sends_nothing(
+    mocker: pytest_mock.MockerFixture,
+    mock_jwt_admin,
+    target_user_id: str,
+    upsert: AsyncMock,
+    posthog_capture: MagicMock,
+    score_name: str,
+    score_value: int,
+) -> None:
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+    _mock_message(mocker, _reply())
+
+    response = _rate_as_admin(target_user_id, score_name, score_value)
+
+    assert response.status_code == 200
+    assert response.json() == {"id": ""}
+    upsert.assert_not_awaited()
+    posthog_capture.assert_not_called()
+
+
+def test_card_rating_by_an_impersonating_admin_on_an_unknown_reply_is_not_found(
+    mocker: pytest_mock.MockerFixture,
+    mock_jwt_admin,
+    target_user_id: str,
+    upsert: AsyncMock,
+) -> None:
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+    _mock_message(mocker, None)
+
+    assert _rate_as_admin(target_user_id, "work_check", 2).status_code == 404
+    upsert.assert_not_awaited()
+
+
+def test_copy_by_an_impersonating_admin_is_still_saved_and_sent(
+    mocker: pytest_mock.MockerFixture,
+    mock_jwt_admin,
+    target_user_id: str,
+    upsert: AsyncMock,
+    posthog_capture: MagicMock,
+) -> None:
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+    _mock_message(mocker, _reply())
+
+    response = _rate_as_admin(target_user_id, "copy", 1)
+
+    assert response.status_code == 200
+    assert response.json() == {"id": FEEDBACK_ID}
+    upsert.assert_awaited_once()
+    posthog_capture.assert_called_once()
+
+
 def test_blank_comment_is_saved_as_none(
     mocker: pytest_mock.MockerFixture,
     upsert: AsyncMock,

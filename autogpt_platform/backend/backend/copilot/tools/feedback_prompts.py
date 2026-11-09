@@ -137,7 +137,8 @@ def _can_show_card(session: ChatSession) -> bool:
     metadata = session.metadata
     return (
         metadata.source_platform is None
-        and metadata.origin == "interactive"
+        # A row from before ``origin`` existed has None; those are web chats.
+        and metadata.origin != "automation"
         and metadata.delegated_by_session_id is None
     )
 
