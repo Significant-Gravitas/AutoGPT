@@ -157,6 +157,7 @@ def test_thumbs_down_is_saved(
         score_name="user-feedback",
         score_value=0,
         comment="It edited the wrong file",
+        reason=None,
     )
 
 
@@ -226,6 +227,14 @@ def test_database_failure_is_an_error_the_ui_can_show(
         {"score_name": "copy", "score_value": 0},
         {"comment": "x" * 2001},
         {"message_id": ""},
+        {"score_value": 3},
+        {"score_name": "work_check", "score_value": 3},
+        {"score_name": "otto_mistake", "score_value": 1},
+        {"score_name": "copy", "score_value": 2},
+        {"score_name": "work_check", "score_value": 1, "reason": "made_up"},
+        {"score_name": "otto_mistake", "score_value": 0, "reason": "missed_ask"},
+        {"reason": "wrong_facts"},
+        {"score_name": "copy", "score_value": 1, "reason": "wrong_facts"},
     ],
     ids=[
         "unknown-score-name",
@@ -235,6 +244,14 @@ def test_database_failure_is_an_error_the_ui_can_show(
         "copy-scored-zero",
         "comment-too-long",
         "empty-message-id",
+        "thumbs-scored-three",
+        "work-check-scored-three",
+        "mistake-scored-one",
+        "copy-scored-two",
+        "work-check-reason-from-another-list",
+        "mistake-reason-from-another-list",
+        "thumbs-with-reason",
+        "copy-with-reason",
     ],
 )
 def test_invalid_ratings_are_rejected(
@@ -249,6 +266,61 @@ def test_invalid_ratings_are_rejected(
     assert response.status_code == 422
     lookup.assert_not_awaited()
     upsert.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("score_name", "score_value"),
+    [
+        ("work_check", 0),
+        ("work_check", 1),
+        ("work_check", 2),
+        ("otto_mistake", 0),
+    ],
+)
+def test_card_ratings_save_their_score(
+    mocker: pytest_mock.MockerFixture,
+    upsert: AsyncMock,
+    score_name: str,
+    score_value: int,
+) -> None:
+    _mock_message(mocker, _reply())
+
+    response = _post(
+        {
+            "message_id": f"{SESSION_ID}-seq-7",
+            "score_name": score_name,
+            "score_value": score_value,
+        }
+    )
+
+    assert response.status_code == 200
+    assert upsert.await_args is not None
+    assert upsert.await_args.kwargs["score_name"] == score_name
+    assert upsert.await_args.kwargs["score_value"] == score_value
+
+
+def test_card_reason_is_saved_and_sent_to_posthog(
+    mocker: pytest_mock.MockerFixture,
+    upsert: AsyncMock,
+    posthog_capture: MagicMock,
+) -> None:
+    _mock_message(mocker, _reply())
+
+    response = _post(
+        {
+            "message_id": f"{SESSION_ID}-seq-7",
+            "score_name": "work_check",
+            "score_value": 0,
+            "reason": "too_slow",
+        }
+    )
+
+    assert response.status_code == 200
+    assert upsert.await_args is not None
+    assert upsert.await_args.kwargs["reason"] == "too_slow"
+    properties = posthog_capture.call_args.args[2]
+    assert properties["$ai_metric_name"] == "work_check"
+    assert properties["reason"] == "too_slow"
 
 
 def test_rating_is_sent_to_posthog_as_the_user(
