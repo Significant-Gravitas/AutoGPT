@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from backend.util.csv_delimiter import guess_delimiter
+from backend.util.csv_delimiter import _lines, guess_delimiter
 from backend.util.file_content_parser import parse_file_content
 
 
@@ -18,6 +18,23 @@ def test_pipe_file_declared_tsv_parses_into_rows():
     content = "Name|Score\nAlice|90"
     result = parse_file_content(content, "tsv")
     assert result == [["Name", "Score"], ["Alice", "90"]]
+
+
+def test_colon_file_declared_csv_parses_into_rows():
+    result = parse_file_content("Name:Score\nAlice:90", "csv")
+    assert result == [["Name", "Score"], ["Alice", "90"]]
+
+
+def test_quoted_field_spanning_lines_stays_one_field():
+    content = 'a;"multi\nline";c\n1;2;3'
+    result = parse_file_content(content, "csv")
+    assert result == [["a", "multi\nline", "c"], ["1", "2", "3"]]
+
+
+def test_lines_split_on_newline_only_and_keep_their_endings():
+    assert list(_lines("a\nb\r\nc\rd")) == ["a\n", "b\r\n", "c\rd"]
+    assert list(_lines("")) == []
+    assert list(_lines("end\n")) == ["end\n"]
 
 
 def test_declared_delimiter_is_not_a_candidate():

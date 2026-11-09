@@ -8,10 +8,12 @@ process. csv.reader takes time in proportion to what it reads.
 """
 
 import csv
-import io
 import itertools
+from collections.abc import Iterator
 
-_FALLBACK_DELIMITERS = (",", "\t", ";", "|")
+# In order of preference when two fit equally well. The Sniffer also tried a
+# space, which splits ordinary prose into columns, so it isn't a candidate.
+_FALLBACK_DELIMITERS = (",", "\t", ";", "|", ":")
 # Non-blank rows read per candidate. Like the Sniffer, a delimiter is only
 # taken when at least nine in ten of them agree on the number of fields.
 _SAMPLE_ROWS = 50
@@ -42,8 +44,20 @@ def guess_delimiter(content: str, declared: str) -> str | None:
 def _sample_rows(content: str, delimiter: str) -> list[list[str]]:
     """The first non-blank rows `delimiter` splits the content into, or none
     when csv.reader can't read it that way (a field over its size limit)."""
-    reader = csv.reader(io.StringIO(content), delimiter=delimiter)
+    reader = csv.reader(_lines(content), delimiter=delimiter)
     try:
         return list(itertools.islice((row for row in reader if any(row)), _SAMPLE_ROWS))
     except csv.Error:
         return []
+
+
+def _lines(content: str) -> Iterator[str]:
+    """The content's lines with their endings, split on "\\n" as io.StringIO
+    splits them, but sliced off one at a time, so reading the first rows
+    doesn't copy the whole text (StringIO keeps four bytes per character).
+    csv.reader joins a quoted field's lines back together itself."""
+    start = 0
+    while start < len(content):
+        end = content.find("\n", start) + 1 or len(content)
+        yield content[start:end]
+        start = end
