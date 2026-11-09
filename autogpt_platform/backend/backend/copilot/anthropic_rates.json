@@ -13,7 +13,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 5e-05,
       "output_cost_per_token_batches": 2.5e-05,
@@ -43,6 +42,7 @@
       "supports_sampling_params": false,
       "supports_tool_choice": true,
       "supports_vision": true,
+      "supports_web_search": true,
       "supports_xhigh_reasoning_effort": true,
       "thinking_always_on": true
     },
@@ -57,7 +57,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 5e-05,
       "output_cost_per_token_batches": 2.5e-05,
@@ -88,8 +87,12 @@
       "supports_sampling_params": false,
       "supports_tool_choice": true,
       "supports_vision": true,
+      "supports_web_search": true,
       "supports_xhigh_reasoning_effort": true,
       "thinking_always_on": true
+    },
+    "claude-fable-latest": {
+      "alias_of": "claude-fable-5-1"
     },
     "claude-haiku-4-5": {
       "cache_creation_input_token_cost": 1.25e-06,
@@ -102,7 +105,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 200000,
       "max_output_tokens": 64000,
-      "max_tokens": 64000,
       "mode": "chat",
       "output_cost_per_token": 5e-06,
       "output_cost_per_token_batches": 2.5e-06,
@@ -130,7 +132,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 200000,
       "max_output_tokens": 64000,
-      "max_tokens": 64000,
       "mode": "chat",
       "output_cost_per_token": 5e-06,
       "output_cost_per_token_batches": 2.5e-06,
@@ -144,33 +145,47 @@
       "supports_reasoning": true,
       "supports_response_schema": true,
       "supports_tool_choice": true,
-      "supports_vision": true
+      "supports_vision": true,
+      "supports_web_search": true
     },
     "claude-haiku-5-5": {
       "cache_creation_input_token_cost": 1.25e-07,
+      "cache_creation_input_token_cost_above_100k_tokens": 6.25e-07,
+      "cache_creation_input_token_cost_above_100k_tokens_batches": 3.125e-07,
       "cache_creation_input_token_cost_above_1hr": 2e-07,
+      "cache_creation_input_token_cost_above_1hr_above_100k_tokens": 1e-06,
       "cache_creation_input_token_cost_batches": 6.25e-08,
       "cache_read_input_token_cost": 1e-08,
+      "cache_read_input_token_cost_above_100k_tokens": 5e-08,
+      "cache_read_input_token_cost_above_100k_tokens_batches": 2.5e-08,
       "cache_read_input_token_cost_batches": 5e-09,
       "input_cost_per_token": 1e-07,
+      "input_cost_per_token_above_100k_tokens": 5e-07,
+      "input_cost_per_token_above_100k_tokens_batches": 2.5e-07,
       "input_cost_per_token_batches": 5e-08,
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 5e-07,
+      "output_cost_per_token_above_100k_tokens": 2.5e-06,
+      "output_cost_per_token_above_100k_tokens_batches": 1.25e-06,
       "output_cost_per_token_batches": 2.5e-07,
       "prompt_cache_min_tokens": 512,
       "provider_specific_entry": {
         "us": 1.1
+      },
+      "search_context_cost_per_query": {
+        "search_context_size_high": 0.01,
+        "search_context_size_low": 0.01,
+        "search_context_size_medium": 0.01
       },
       "source": "https://platform.claude.com/docs/en/models/haiku-5-5/overview",
       "supports_adaptive_thinking": true,
       "supports_anthropic_compaction": true,
       "supports_assistant_prefill": false,
       "supports_computer_use": true,
-      "supports_forced_tool_use": false,
+      "supports_forced_tool_use": true,
       "supports_function_calling": true,
       "supports_max_reasoning_effort": true,
       "supports_mid_conversation_system": true,
@@ -183,7 +198,13 @@
       "supports_sampling_params": false,
       "supports_tool_choice": true,
       "supports_vision": true,
-      "supports_xhigh_reasoning_effort": true
+      "supports_web_search": true,
+      "supports_xhigh_reasoning_effort": true,
+      "thinking_always_on": false,
+      "thinking_on_by_default": true
+    },
+    "claude-haiku-latest": {
+      "alias_of": "claude-haiku-5-5"
     },
     "claude-mythos-5": {
       "cache_creation_input_token_cost": 1.25e-05,
@@ -196,7 +217,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 5e-05,
       "output_cost_per_token_batches": 2.5e-05,
@@ -240,7 +260,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 5e-05,
       "output_cost_per_token_batches": 2.5e-05,
@@ -279,11 +298,11 @@
       "cache_creation_input_token_cost_above_1hr": 2e-05,
       "cache_read_input_token_cost": 1e-06,
       "deprecation_date": "2026-06-09",
+      "deprecation_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
       "input_cost_per_token": 1e-05,
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 5e-05,
       "prompt_cache_min_tokens": 512,
@@ -325,7 +344,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 200000,
       "max_output_tokens": 64000,
-      "max_tokens": 64000,
       "mode": "chat",
       "output_cost_per_token": 2.5e-05,
       "output_cost_per_token_batches": 1.25e-05,
@@ -360,7 +378,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 200000,
       "max_output_tokens": 64000,
-      "max_tokens": 64000,
       "mode": "chat",
       "output_cost_per_token": 2.5e-05,
       "output_cost_per_token_batches": 1.25e-05,
@@ -381,7 +398,8 @@
       "supports_response_schema": true,
       "supports_thinking_cache_preservation": true,
       "supports_tool_choice": true,
-      "supports_vision": true
+      "supports_vision": true,
+      "supports_web_search": true
     },
     "claude-opus-4-6": {
       "cache_creation_input_token_cost": 6.25e-06,
@@ -394,7 +412,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 2.5e-05,
       "output_cost_per_token_batches": 1.25e-05,
@@ -424,7 +441,8 @@
       "supports_speed": true,
       "supports_thinking_cache_preservation": true,
       "supports_tool_choice": true,
-      "supports_vision": true
+      "supports_vision": true,
+      "supports_web_search": true
     },
     "claude-opus-4-6-20260205": {
       "cache_creation_input_token_cost": 6.25e-06,
@@ -437,7 +455,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 2.5e-05,
       "output_cost_per_token_batches": 1.25e-05,
@@ -479,7 +496,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 2.5e-05,
       "output_cost_per_token_batches": 1.25e-05,
@@ -506,10 +522,10 @@
       "supports_reasoning": true,
       "supports_response_schema": true,
       "supports_sampling_params": false,
-      "supports_speed": true,
       "supports_thinking_cache_preservation": true,
       "supports_tool_choice": true,
       "supports_vision": true,
+      "supports_web_search": true,
       "supports_xhigh_reasoning_effort": true
     },
     "claude-opus-4-7-20260416": {
@@ -523,7 +539,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 2.5e-05,
       "output_cost_per_token_batches": 1.25e-05,
@@ -549,7 +564,6 @@
       "supports_reasoning": true,
       "supports_response_schema": true,
       "supports_sampling_params": false,
-      "supports_speed": true,
       "supports_thinking_cache_preservation": true,
       "supports_tool_choice": true,
       "supports_vision": true,
@@ -566,7 +580,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 2.5e-05,
       "output_cost_per_token_batches": 1.25e-05,
@@ -600,6 +613,7 @@
       "supports_thinking_cache_preservation": true,
       "supports_tool_choice": true,
       "supports_vision": true,
+      "supports_web_search": true,
       "supports_xhigh_reasoning_effort": true
     },
     "claude-opus-5": {
@@ -613,7 +627,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 2.5e-05,
       "output_cost_per_token_batches": 1.25e-05,
@@ -647,7 +660,9 @@
       "supports_thinking_cache_preservation": true,
       "supports_tool_choice": true,
       "supports_vision": true,
-      "supports_xhigh_reasoning_effort": true
+      "supports_web_search": true,
+      "supports_xhigh_reasoning_effort": true,
+      "thinking_on_by_default": true
     },
     "claude-opus-5-5": {
       "cache_creation_input_token_cost": 5e-06,
@@ -660,13 +675,13 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 2e-05,
       "output_cost_per_token_batches": 1e-05,
       "prompt_cache_min_tokens": 512,
       "provider_specific_entry": {
-        "fast": 2.0
+        "fast": 2,
+        "us": 1.1
       },
       "search_context_cost_per_query": {
         "search_context_size_high": 0.01,
@@ -693,32 +708,28 @@
       "supports_speed": true,
       "supports_tool_choice": true,
       "supports_vision": true,
+      "supports_web_search": true,
       "supports_xhigh_reasoning_effort": true,
       "thinking_always_on": true
+    },
+    "claude-opus-latest": {
+      "alias_of": "claude-opus-5-5"
     },
     "claude-sonnet-4-5": {
       "cache_creation_input_token_cost": 3.75e-06,
       "cache_creation_input_token_cost_above_1hr": 6e-06,
-      "cache_creation_input_token_cost_above_1hr_above_200k_tokens": 1.2e-05,
-      "cache_creation_input_token_cost_above_200k_tokens": 7.5e-06,
-      "cache_creation_input_token_cost_above_200k_tokens_batches": 3.75e-06,
       "cache_creation_input_token_cost_batches": 1.875e-06,
       "cache_read_input_token_cost": 3e-07,
-      "cache_read_input_token_cost_above_200k_tokens": 6e-07,
-      "cache_read_input_token_cost_above_200k_tokens_batches": 3e-07,
       "cache_read_input_token_cost_batches": 1.5e-07,
+      "deprecation_date": "2026-11-30",
+      "deprecation_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
       "input_cost_per_token": 3e-06,
-      "input_cost_per_token_above_200k_tokens": 6e-06,
-      "input_cost_per_token_above_200k_tokens_batches": 3e-06,
       "input_cost_per_token_batches": 1.5e-06,
       "litellm_provider": "anthropic",
-      "max_input_tokens": 1000000,
+      "max_input_tokens": 200000,
       "max_output_tokens": 64000,
-      "max_tokens": 64000,
       "mode": "chat",
       "output_cost_per_token": 1.5e-05,
-      "output_cost_per_token_above_200k_tokens": 2.25e-05,
-      "output_cost_per_token_above_200k_tokens_batches": 1.125e-05,
       "output_cost_per_token_batches": 7.5e-06,
       "prompt_cache_min_tokens": 1024,
       "search_context_cost_per_query": {
@@ -727,6 +738,7 @@
         "search_context_size_medium": 0.01
       },
       "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "successor_model": "claude-sonnet-5-5",
       "supports_assistant_prefill": true,
       "supports_computer_use": true,
       "supports_function_calling": true,
@@ -741,26 +753,18 @@
     "claude-sonnet-4-5-20250929": {
       "cache_creation_input_token_cost": 3.75e-06,
       "cache_creation_input_token_cost_above_1hr": 6e-06,
-      "cache_creation_input_token_cost_above_1hr_above_200k_tokens": 1.2e-05,
-      "cache_creation_input_token_cost_above_200k_tokens": 7.5e-06,
-      "cache_creation_input_token_cost_above_200k_tokens_batches": 3.75e-06,
       "cache_creation_input_token_cost_batches": 1.875e-06,
       "cache_read_input_token_cost": 3e-07,
-      "cache_read_input_token_cost_above_200k_tokens": 6e-07,
-      "cache_read_input_token_cost_above_200k_tokens_batches": 3e-07,
       "cache_read_input_token_cost_batches": 1.5e-07,
+      "deprecation_date": "2026-11-30",
+      "deprecation_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
       "input_cost_per_token": 3e-06,
-      "input_cost_per_token_above_200k_tokens": 6e-06,
-      "input_cost_per_token_above_200k_tokens_batches": 3e-06,
       "input_cost_per_token_batches": 1.5e-06,
       "litellm_provider": "anthropic",
-      "max_input_tokens": 1000000,
+      "max_input_tokens": 200000,
       "max_output_tokens": 64000,
-      "max_tokens": 64000,
       "mode": "chat",
       "output_cost_per_token": 1.5e-05,
-      "output_cost_per_token_above_200k_tokens": 2.25e-05,
-      "output_cost_per_token_above_200k_tokens_batches": 1.125e-05,
       "output_cost_per_token_batches": 7.5e-06,
       "prompt_cache_min_tokens": 1024,
       "search_context_cost_per_query": {
@@ -769,6 +773,7 @@
         "search_context_size_medium": 0.01
       },
       "source": "https://docs.anthropic.com/en/docs/about-claude/pricing",
+      "successor_model": "claude-sonnet-5-5",
       "supports_assistant_prefill": true,
       "supports_computer_use": true,
       "supports_function_calling": true,
@@ -788,18 +793,20 @@
       "cache_creation_input_token_cost_above_200k_tokens": 7.5e-06,
       "cache_read_input_token_cost": 3e-07,
       "cache_read_input_token_cost_above_200k_tokens": 6e-07,
+      "deprecation_date": "2027-04-08",
+      "deprecation_source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4-5.md",
       "input_cost_per_token": 3e-06,
       "input_cost_per_token_above_200k_tokens": 6e-06,
       "input_cost_per_token_batches": 1.5e-06,
       "litellm_provider": "bedrock",
       "max_input_tokens": 200000,
       "max_output_tokens": 64000,
-      "max_tokens": 64000,
       "mode": "chat",
       "output_cost_per_token": 1.5e-05,
       "output_cost_per_token_above_200k_tokens": 2.25e-05,
       "output_cost_per_token_batches": 7.5e-06,
       "prompt_cache_min_tokens": 1024,
+      "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4-5.md",
       "supports_assistant_prefill": true,
       "supports_computer_use": true,
       "supports_function_calling": true,
@@ -810,7 +817,11 @@
       "supports_response_schema": true,
       "supports_tool_choice": true,
       "supports_tool_search": true,
-      "supports_vision": true
+      "supports_vision": true,
+      "token_count_model": {
+        "litellm_provider": "bedrock",
+        "model": "anthropic.claude-sonnet-4-5-20250929-v1:0"
+      }
     },
     "claude-sonnet-4-6": {
       "cache_creation_input_token_cost": 3.75e-06,
@@ -823,7 +834,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 1.5e-05,
       "output_cost_per_token_batches": 7.5e-06,
@@ -839,7 +849,7 @@
       "source": "https://platform.claude.com/docs/en/about-claude/pricing",
       "supports_adaptive_thinking": true,
       "supports_anthropic_compaction": true,
-      "supports_assistant_prefill": true,
+      "supports_assistant_prefill": false,
       "supports_computer_use": true,
       "supports_function_calling": true,
       "supports_legacy_thinking": true,
@@ -852,7 +862,8 @@
       "supports_response_schema": true,
       "supports_thinking_cache_preservation": true,
       "supports_tool_choice": true,
-      "supports_vision": true
+      "supports_vision": true,
+      "supports_web_search": true
     },
     "claude-sonnet-5": {
       "cache_creation_input_token_cost": 2.5e-06,
@@ -865,7 +876,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 1e-05,
       "output_cost_per_token_batches": 5e-06,
@@ -896,7 +906,9 @@
       "supports_thinking_cache_preservation": true,
       "supports_tool_choice": true,
       "supports_vision": true,
-      "supports_xhigh_reasoning_effort": true
+      "supports_web_search": true,
+      "supports_xhigh_reasoning_effort": true,
+      "thinking_on_by_default": true
     },
     "claude-sonnet-5-5": {
       "cache_creation_input_token_cost": 2.5e-06,
@@ -909,7 +921,6 @@
       "litellm_provider": "anthropic",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
-      "max_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token": 1e-05,
       "output_cost_per_token_batches": 5e-06,
@@ -922,7 +933,7 @@
         "search_context_size_low": 0.01,
         "search_context_size_medium": 0.01
       },
-      "source": "https://platform.claude.com/docs/en/models/sonnet-5-5/overview",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
       "supports_adaptive_thinking": true,
       "supports_anthropic_compaction": true,
       "supports_assistant_prefill": false,
@@ -943,6 +954,9 @@
       "supports_web_search": true,
       "supports_xhigh_reasoning_effort": true,
       "thinking_always_on": true
+    },
+    "claude-sonnet-latest": {
+      "alias_of": "claude-sonnet-5-5"
     }
   }
 }
