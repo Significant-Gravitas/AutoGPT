@@ -8,8 +8,10 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from backend.api.features.experts import avatar_routes
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, onboarding, scheduling
+from backend.api.features.experts import reset as expert_reset
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
+from backend.api.features.experts.reset import ExpertResetResult
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
@@ -709,6 +711,32 @@ async def resume_expert_schedules(
     if expert is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
     return expert
+
+
+@router.post(
+    "/{expert_id}/reset",
+    operation_id="reset_expert",
+    responses={
+        404: {"description": "Expert not found"},
+        503: {"description": "The reset did not finish; it is safe to retry"},
+    },
+)
+async def reset_expert(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ExpertResetResult:
+    """Factory-reset a hired expert. Cannot be undone, unlike firing."""
+    try:
+        return await expert_reset.reset_expert(user_id, expert_id)
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        # Every step is safe to repeat, so trying again finishes the reset.
+        logger.exception(f"Reset of expert #{expert_id} failed")
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail="The expert couldn't be fully reset. Try again.",
+        ) from e
 
 
 @router.delete(

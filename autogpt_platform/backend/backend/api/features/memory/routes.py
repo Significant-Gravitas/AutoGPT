@@ -36,6 +36,7 @@ from backend.api.features.memory.models import (
     MemoryScopeOverview,
     MemoryUnderstanding,
 )
+from backend.copilot.graphiti.erase import erase_scope, is_missing_graph_error
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
 from backend.copilot.graphiti.memory_model import MemoryForgetFailureCode
 from backend.copilot.graphiti.recall import live_fact_predicate
@@ -59,16 +60,6 @@ _EXPERT_ID_PATH = Path(
 )
 _FACT_UUID_PATH = Path(min_length=1, max_length=128, description="Fact edge uuid")
 _LIMIT_QUERY = Query(ge=1, le=500)
-
-_MISSING_GRAPH_MARKERS = ("no such graph", "does not exist", "invalid graph")
-
-
-def _is_missing_graph_error(exc: BaseException) -> bool:
-    if not isinstance(exc, ResponseError):
-        return False
-    msg = str(exc).lower()
-    return any(marker in msg for marker in _MISSING_GRAPH_MARKERS)
-
 
 async def _resolve_scope(user_id: str, expert_id: str | None) -> MemoryScope:
     """Resolve the caller-owned memory scope for the request.
@@ -99,7 +90,7 @@ async def _count(driver: AutoGPTFalkorDriver, query: str) -> int:
         rows = result[0] if result else []
         return int(rows[0]["c"]) if rows else 0
     except ResponseError as exc:
-        if _is_missing_graph_error(exc):
+        if is_missing_graph_error(exc):
             return 0
         raise
 
@@ -176,7 +167,7 @@ async def _list_facts_impl(
         )
         rows = result[0] if result else []
     except ResponseError as exc:
-        if not _is_missing_graph_error(exc):
+        if not is_missing_graph_error(exc):
             raise
         rows = []
     finally:
@@ -268,20 +259,7 @@ async def forget_my_expert_memory_fact(
 
 async def _erase_scope_impl(user_id: str, expert_id: str | None) -> EraseMemoryResponse:
     scope = await _resolve_scope(user_id, expert_id)
-    driver = open_driver(scope)
-    deleted = 0
-    try:
-        deleted = await _count(driver, "MATCH (n) RETURN count(n) AS c")
-        if deleted:
-            await driver.execute_query("MATCH (n) DETACH DELETE n")
-    except ResponseError as exc:
-        # A missing-graph error here means the graph vanished between the
-        # count and the delete — the scope is gone either way, so keep the
-        # counted value instead of misreporting 0.
-        if not _is_missing_graph_error(exc):
-            raise
-    finally:
-        await driver.close()
+    deleted = await erase_scope(scope)
 
     logger.info(
         f"Memory erase: user {user_id[:12]} wiped scope "

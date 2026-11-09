@@ -41,6 +41,7 @@ from backend.api.features.experts.models import (
     VoiceSample,
     encode_voice_preferences,
 )
+from backend.api.features.experts import reset as expert_reset
 from backend.api.features.experts.roster import RosterError, load_roster
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
@@ -49,6 +50,8 @@ from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.api.features.store.skill_catalog_release import CatalogError, load_catalog
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
+from backend.copilot import db as copilot_db
+from backend.copilot import model as copilot_model
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.model import ChatSession, create_chat_session
 from backend.copilot.tools.models import ErrorResponse
@@ -7539,3 +7542,143 @@ async def _record_marketplace_step() -> None:
         ),
         return_exceptions=True,
     )
+
+
+# ─── Reset ────────────────────────────────────────────────────────────
+
+
+async def _hire_with_history(user_id: str) -> tuple[str, prisma.models.Expert, str]:
+    """A hire the owner has lived with: an edited soul, a routine of their
+    own beside the template's, and a first thread. Returns the expert id,
+    its template and the id of that thread."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    template = await prisma.models.Expert.prisma().update(
+        where={"id": template.id},
+        data={"boundaries": "Never invent statistics."},
+    )
+    assert template is not None
+    await prisma.models.ExpertRoutine.prisma().create(
+        data={
+            "expertId": template.id,
+            "key": "weekly-digest",
+            "title": "Weekly digest",
+            "prompt": "Summarise the week.",
+            "crons": ["0 9 * * 1"],
+        }
+    )
+    hired = await experts_db.hire_expert(user_id, template.id, None)
+    expert_id = hired.expert.id
+    await prisma.models.Expert.prisma().update(
+        where={"id": expert_id},
+        data={
+            "name": "My Maria",
+            "identity": "Remember the codeword HERON.",
+            "boundaries": "Edited by the owner.",
+        },
+    )
+    await prisma.models.ExpertRoutine.prisma().create(
+        data={
+            "expertId": expert_id,
+            "key": "owner-routine",
+            "title": "Owner routine",
+            "prompt": "Check the inbox.",
+            "crons": ["0 8 * * *"],
+            "source": prisma.enums.ExpertRoutineSource.OWNER,
+        }
+    )
+    kickoff = await copilot_model.get_or_create_expert_kickoff_session(
+        user_id, expert_id, dry_run=False
+    )
+    return expert_id, template, kickoff.session_id
+
+
+@pytest.fixture
+def reset_externals():
+    """The memory graph and the E2B volume live outside the test database."""
+    with (
+        patch.object(
+            expert_reset, "erase_scope", new=AsyncMock(return_value=12)
+        ) as erase,
+        patch.object(
+            expert_reset, "_erase_computer", new=AsyncMock(return_value=True)
+        ) as computer,
+    ):
+        yield SimpleNamespace(erase=erase, computer=computer)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_puts_a_hire_back_to_how_it_arrived(
+    server: SpinTestServer, test_user, reset_externals
+):
+    expert_id, template, _ = await _hire_with_history(test_user.id)
+
+    result = await expert_reset.reset_expert(test_user.id, expert_id)
+
+    assert result.model_dump() == {
+        "memory_nodes_erased": 12,
+        "computer_erased": True,
+        "soul_reset": True,
+        "routines_reset": 1,
+        "chats_archived": 1,
+    }
+    scope = reset_externals.erase.await_args.args[0]
+    assert (scope.owner_user_id, scope.expert_id) == (test_user.id, expert_id)
+    reset_externals.computer.assert_awaited_once_with(expert_id)
+
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert row.identity == template.identity
+    assert row.boundaries == "Never invent statistics."
+    # The user named it; the reset keeps the name.
+    assert row.name == "My Maria"
+
+    routines = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": expert_id}
+    )
+    assert [(r.key, r.enabledAt) for r in routines] == [("weekly-digest", None)]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_archives_the_chats_and_the_next_kickoff_starts_fresh(
+    server: SpinTestServer, test_user, reset_externals
+):
+    expert_id, _, old_thread = await _hire_with_history(test_user.id)
+
+    await expert_reset.reset_expert(test_user.id, expert_id)
+
+    old = await prisma.models.ChatSession.prisma().find_unique(
+        where={"id": old_thread}
+    )
+    assert old is not None and old.archivedAt is not None
+    listed = await copilot_db.get_user_chat_sessions(
+        test_user.id, expert_id=expert_id
+    )
+    assert listed == []
+    assert (
+        await copilot_db.get_user_session_count(test_user.id, expert_id=expert_id)
+        == 0
+    )
+    # The expert has no open thread, so it introduces itself again, in a new
+    # thread rather than the archived one its kickoff id used to name.
+    fresh = await copilot_model.get_or_create_expert_kickoff_session(
+        test_user.id, expert_id, dry_run=False
+    )
+    assert fresh.session_id != old_thread
+    assert fresh.archived_at is None
+    again = await copilot_model.get_or_create_expert_kickoff_session(
+        test_user.id, expert_id, dry_run=False
+    )
+    assert again.session_id == fresh.session_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_refuses_someone_elses_expert(
+    server: SpinTestServer, test_user, other_user, reset_externals
+):
+    expert_id, _, _ = await _hire_with_history(test_user.id)
+
+    with pytest.raises(NotFoundError):
+        await expert_reset.reset_expert(other_user.id, expert_id)
+
+    reset_externals.erase.assert_not_awaited()
+    reset_externals.computer.assert_not_awaited()

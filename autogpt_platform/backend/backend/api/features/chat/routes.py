@@ -295,6 +295,12 @@ async def _validate_and_get_session(
     return session
 
 
+def _refuse_archived_session(session: ChatSessionInfo) -> None:
+    """A reset expert's archived chat cannot be continued."""
+    if session.archived_at is not None:
+        raise NotFoundError(f"Session {session.session_id} not found.")
+
+
 async def _validate_session_expert_writable_by_user(
     session: ChatSessionInfo,
     user_id: str,
@@ -317,6 +323,7 @@ async def _validate_and_get_writable_session(
     user_id: str,
 ) -> ChatSessionInfo:
     session = await _validate_and_get_session(session_id, user_id)
+    _refuse_archived_session(session)
     await _validate_session_expert_writable_by_user(session, user_id)
     return session
 
@@ -1428,7 +1435,9 @@ async def get_session(
         user_id=user_id,
         organization_id=ctx.org_id,
     )
-    if page is None:
+    # A reset expert's chats are archived: kept, but no longer opened, even
+    # from an old link.
+    if page is None or page.session.archived_at is not None:
         raise NotFoundError(f"Session {session_id} not found.")
 
     messages = [

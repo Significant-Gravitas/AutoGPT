@@ -4792,6 +4792,39 @@ def test_get_session_reports_background_state_from_the_durable_record(
     assert data["background_pending"] is True
 
 
+def test_get_session_of_a_reset_experts_chat_is_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Resetting an expert archives its chats: an old link no longer opens
+    one, though the row is kept."""
+    page, _ = _make_paginated_messages(mocker)
+    page.session.archived_at = datetime.now(UTC)
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_reset_experts_chat_cannot_be_continued(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    archived = _make_session_info(expert_id="expert-1")
+    archived.archived_at = datetime.now(UTC)
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_session",
+        new=AsyncMock(return_value=archived),
+    )
+    owns = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
+        new=AsyncMock(return_value=True),
+    )
+
+    with pytest.raises(NotFoundError):
+        await chat_routes._validate_and_get_writable_session("sess-1", TEST_USER_ID)
+    owns.assert_not_awaited()
+
+
 def test_get_session_serves_history_for_an_archived_expert_session(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

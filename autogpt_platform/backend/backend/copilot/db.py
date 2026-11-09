@@ -800,6 +800,9 @@ def exclude_dream_sessions_sql(column: str = "metadata") -> str:
 
 _EXCLUDE_DREAM_SESSIONS_SQL = exclude_dream_sessions_sql()
 
+# A reset expert's chats are archived: kept, but out of every list.
+EXCLUDE_ARCHIVED_SESSIONS_SQL = '"archivedAt" IS NULL'
+
 
 async def get_user_chat_sessions(
     user_id: str,
@@ -841,7 +844,11 @@ async def get_user_chat_sessions(
         )
 
     params: list[Any] = [user_id]
-    conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    conditions = [
+        '"userId" = $1',
+        _EXCLUDE_DREAM_SESSIONS_SQL,
+        EXCLUDE_ARCHIVED_SESSIONS_SQL,
+    ]
     if organization_id is not None:
         params.append(organization_id)
         # Same carve-out as _own_org_scope: the owner's expert sessions are
@@ -896,7 +903,11 @@ async def get_user_session_count(
         raise ValueError("expert_id and autopilot_only are mutually exclusive")
 
     params: list[Any] = [user_id]
-    conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    conditions = [
+        '"userId" = $1',
+        _EXCLUDE_DREAM_SESSIONS_SQL,
+        EXCLUDE_ARCHIVED_SESSIONS_SQL,
+    ]
     if organization_id is not None:
         params.append(organization_id)
         # Keep in lockstep with get_user_chat_sessions so pagination totals
@@ -928,6 +939,8 @@ async def user_has_any_session(user_id: str) -> bool:
     rows = await db.query_raw_with_schema(
         'SELECT 1 FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
         + _EXCLUDE_DREAM_SESSIONS_SQL
+        + " AND "
+        + EXCLUDE_ARCHIVED_SESSIONS_SQL
         + " LIMIT 1",
         user_id,
     )
@@ -1014,6 +1027,8 @@ async def get_sessions_with_pending_question(
         f"SELECT {_PENDING_QUESTION_SESSION_COLUMNS} "
         'FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
         + _EXCLUDE_DREAM_SESSIONS_SQL
+        + " AND "
+        + EXCLUDE_ARCHIVED_SESSIONS_SQL
         # jsonb_typeof, not IS NOT NULL: a session created after this field
         # existed persists an explicit ``"pending_question": null``, which is a
         # JSON null — present as far as ``->`` is concerned.
@@ -1548,7 +1563,7 @@ async def list_recent_chat_sessions(
     the caller past rows it has already looked at, for the one filter that
     cannot move into the query (``task`` reads the metadata JSON).
     """
-    where: ChatSessionWhereInput = {"userId": user_id}
+    where: ChatSessionWhereInput = {"userId": user_id, "archivedAt": None}
     if expert_id:
         where["expertId"] = expert_id
     if status:

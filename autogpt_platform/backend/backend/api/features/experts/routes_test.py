@@ -39,6 +39,7 @@ from backend.api.features.experts.models import (
     RaiseAttachmentFailure,
     RaiseResult,
 )
+from backend.api.features.experts.reset import ExpertResetResult
 from backend.api.features.experts.routes import public_router, router
 from backend.api.features.store.skill_model import MarketplaceSkill
 from backend.api.rest_api import app as rest_app
@@ -1644,6 +1645,59 @@ def test_install_workflow_requires_exactly_one_source(
 
     assert response.status_code == 422
     mock_install.assert_not_awaited()
+
+
+# ─── Reset ─────────────────────────────────────────────────────────────
+
+
+def test_reset_expert_returns_what_it_did(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    done = ExpertResetResult(
+        memory_nodes_erased=4,
+        computer_erased=True,
+        soul_reset=True,
+        routines_reset=2,
+        chats_archived=3,
+    )
+    reset = mocker.patch(
+        "backend.api.features.experts.routes.expert_reset.reset_expert",
+        new_callable=AsyncMock,
+        return_value=done,
+    )
+
+    response = client.post("/experts/expert-1/reset")
+
+    assert response.status_code == 200
+    assert response.json() == done.model_dump()
+    reset.assert_awaited_once_with(test_user_id, "expert-1")
+
+
+def test_reset_of_an_expert_the_user_does_not_have_is_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.expert_reset.reset_expert",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("expert-1"),
+    )
+
+    assert client.post("/experts/expert-1/reset").status_code == 404
+
+
+def test_reset_that_did_not_finish_asks_for_a_retry(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.expert_reset.reset_expert",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("FalkorDB is down"),
+    )
+
+    response = client.post("/experts/expert-1/reset")
+
+    assert response.status_code == 503
+    assert "Try again" in response.json()["detail"]
 
 
 # ─── Archive + list ────────────────────────────────────────────────────
