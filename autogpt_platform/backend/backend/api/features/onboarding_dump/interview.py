@@ -32,10 +32,10 @@ import asyncio
 import logging
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
 
 from fastapi import BackgroundTasks, HTTPException
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
+from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.onboarding_dump import db as dump_db
 from backend.api.features.onboarding_dump import quality, service
@@ -157,8 +157,9 @@ async def enforce_onboarding_interview_allowance(user_id: str) -> None:
     await enforce_interview_turn_budget(user_id)
 
 
-@dataclass(frozen=True)
-class StartedInterview:
+class StartedInterview(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     session: ChatSession
     # Otto's first turn, when this call started it; None when the interview
     # was already under way and there was nothing to start.
@@ -415,9 +416,10 @@ async def hand_off_closed_interview(user_id: str, session_id: str) -> None:
         await close_onboarding_interview(user_id, session_id, reason="cap")
 
 
-@dataclass(frozen=True)
-class InterviewClosure:
+class InterviewClosure(BaseModel):
     """How a close left an interview."""
+
+    model_config = ConfigDict(frozen=True)
 
     # The person's arm of the ending experiment; None for anyone not
     # enrolled.

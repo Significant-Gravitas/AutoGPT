@@ -24,8 +24,9 @@ has ended (``onboarding_dump.interview``).
 import asyncio
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
+
+from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.expert_kickoff import is_hidden_chat_message
 from backend.copilot.onboarding_interview import InterviewEndReason
@@ -50,9 +51,10 @@ SCOPE_WINDOW = REQUESTS_IN_A_ROW_TO_CLOSE
 CLASSIFIER_TIMEOUT_SECONDS = 8.0
 
 
-@dataclass(frozen=True)
-class ScopedTurn:
+class ScopedTurn(BaseModel):
     """One of the person's turns, with the line of Otto's it answered."""
+
+    model_config = ConfigDict(frozen=True)
 
     otto: str
     user: str

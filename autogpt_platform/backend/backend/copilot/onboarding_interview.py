@@ -29,8 +29,9 @@ onboarding pipeline) lives in ``backend.api.features.onboarding_dump.interview``
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
+
+from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.constants import (
     COMPACTION_TOOL_NAME,
@@ -158,8 +159,7 @@ class InterviewTurnRefused(Exception):
         self.code = code
 
 
-@dataclass(frozen=True)
-class InterviewTurnPlan:
+class InterviewTurnPlan(BaseModel):
     """What the turn about to run is, in an interview capped at ``cap``.
 
     ``reply`` is the number of the reply that turn writes. The thresholds are
@@ -167,6 +167,8 @@ class InterviewTurnPlan:
     turns still reaches the wrap-up and the goodbye instead of stepping over
     them.
     """
+
+    model_config = ConfigDict(frozen=True)
 
     reply: int
     cap: int = INTERVIEW_TURN_CAP

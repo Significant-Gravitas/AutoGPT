@@ -2,12 +2,12 @@
 
 import asyncio
 import json
-from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from openai.types.chat import ChatCompletionChunk
+from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.onboarding_dump.interview import interview_transcript
 from backend.copilot import pending_message_helpers
@@ -65,8 +65,7 @@ def _text(content: Any) -> str:
     return str(content or "")
 
 
-@dataclass
-class Sent:
+class Sent(BaseModel):
     request: dict[str, Any]
 
     @property
@@ -408,8 +407,9 @@ def _round(
     return stream
 
 
-@dataclass
-class Turn:
+class Turn(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     provider: AsyncMock
     close: AsyncMock
     drain: AsyncMock
