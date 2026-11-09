@@ -295,6 +295,37 @@ describe("useCredits identity scope", () => {
     expect(routerPush).not.toHaveBeenCalled();
   });
 
+  test("does not open a stale billing portal after identity changes", async () => {
+    let releaseRequest: (() => void) | undefined;
+    routerPush.mockClear();
+    server.use(
+      http.get("/api/proxy/api/credits/manage", async () => {
+        await new Promise<void>((resolve) => {
+          releaseRequest = resolve;
+        });
+        return HttpResponse.json({ url: "https://billing.example/old-user" });
+      }),
+    );
+
+    const view = renderHook(
+      ({ identityKey }: Props) => useCredits({ identityKey }),
+      { initialProps: { identityKey: "user-a" } as Props },
+    );
+    let portal: Promise<void> | undefined;
+    act(() => {
+      portal = view.result.current.openBillingPortal();
+    });
+    await waitFor(() => expect(releaseRequest).toBeDefined());
+
+    view.rerender({ identityKey: "user-b" });
+    await act(async () => {
+      releaseRequest?.();
+      await portal;
+    });
+
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
   test("reports a stale auto-top-up update as ignored", async () => {
     let releaseRequest: (() => void) | undefined;
     let configReads = 0;

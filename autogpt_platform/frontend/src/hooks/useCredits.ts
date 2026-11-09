@@ -19,6 +19,17 @@ const EMPTY_TRANSACTION_HISTORY: TransactionHistory = {
 };
 const EMPTY_REFUND_REQUESTS: RefundRequest[] = [];
 
+interface IdentityScope {
+  identityKey: string | null;
+  token: symbol;
+}
+
+// A request belongs to the identity scope it started in; once the hook has
+// moved to another identity (or unmounted), its answer is dropped.
+function isStale(ref: { current: IdentityScope }, requestScope: symbol) {
+  return ref.current.token !== requestScope;
+}
+
 interface BillingState {
   identityScope: symbol;
   credits: number | null;
@@ -71,7 +82,7 @@ export default function useCredits({
   formatCredits: (credit: number | null) => string;
 } {
   const scopedIdentityKey = identityKey ?? null;
-  const identityScopeRef = useRef({
+  const identityScopeRef = useRef<IdentityScope>({
     identityKey: scopedIdentityKey,
     token: Symbol(),
   });
@@ -92,7 +103,7 @@ export default function useCredits({
       token: identityScope,
     };
     return () => {
-      if (identityScopeRef.current.token !== identityScope) return;
+      if (isStale(identityScopeRef, identityScope)) return;
       identityScopeRef.current = { identityKey: null, token: Symbol() };
     };
   }, [identityScope, scopedIdentityKey]);
@@ -122,10 +133,7 @@ export default function useCredits({
 
   const fetchCredits = useCallback(async () => {
     const requestScope = identityScope;
-    if (
-      scopedIdentityKey === null ||
-      identityScopeRef.current.token !== requestScope
-    ) {
+    if (scopedIdentityKey === null || isStale(identityScopeRef, requestScope)) {
       return;
     }
     const response = await api.getUserCredit();
@@ -143,10 +151,7 @@ export default function useCredits({
 
   const fetchAutoTopUpConfig = useCallback(async () => {
     const requestScope = identityScope;
-    if (
-      scopedIdentityKey === null ||
-      identityScopeRef.current.token !== requestScope
-    ) {
+    if (scopedIdentityKey === null || isStale(identityScopeRef, requestScope)) {
       return;
     }
     const response = await api.getAutoTopUpConfig();
@@ -168,14 +173,14 @@ export default function useCredits({
         throw new Error("Authentication required");
       }
       const requestScope = identityScope;
-      if (identityScopeRef.current.token !== requestScope) return false;
+      if (isStale(identityScopeRef, requestScope)) return false;
       try {
         await api.setAutoTopUpConfig({ amount, threshold });
       } catch (error) {
-        if (identityScopeRef.current.token !== requestScope) return false;
+        if (isStale(identityScopeRef, requestScope)) return false;
         throw error;
       }
-      if (identityScopeRef.current.token !== requestScope) return false;
+      if (isStale(identityScopeRef, requestScope)) return false;
       fetchAutoTopUpConfig();
       return true;
     },
@@ -191,15 +196,15 @@ export default function useCredits({
         throw new Error("Authentication required");
       }
       const requestScope = identityScope;
-      if (identityScopeRef.current.token !== requestScope) return false;
+      if (isStale(identityScopeRef, requestScope)) return false;
       let response: { checkout_url: string };
       try {
         response = await api.requestTopUp(credit_amount);
       } catch (error) {
-        if (identityScopeRef.current.token !== requestScope) return false;
+        if (isStale(identityScopeRef, requestScope)) return false;
         throw error;
       }
-      if (identityScopeRef.current.token !== requestScope) return false;
+      if (isStale(identityScopeRef, requestScope)) return false;
       if (!response.checkout_url) {
         throw new Error("Checkout didn't start. Please try again later.");
       }
@@ -214,15 +219,15 @@ export default function useCredits({
       throw new Error("Authentication required");
     }
     const requestScope = identityScope;
-    if (identityScopeRef.current.token !== requestScope) return;
+    if (isStale(identityScopeRef, requestScope)) return;
     let response: { url: string };
     try {
       response = await api.getUserPaymentPortalLink();
     } catch (error) {
-      if (identityScopeRef.current.token !== requestScope) return;
+      if (isStale(identityScopeRef, requestScope)) return;
       throw error;
     }
-    if (identityScopeRef.current.token !== requestScope) return;
+    if (isStale(identityScopeRef, requestScope)) return;
     router.push(response.url);
   }, [api, scopedIdentityKey, identityScope, router]);
 
@@ -232,14 +237,14 @@ export default function useCredits({
         throw new Error("Authentication required");
       }
       const requestScope = identityScope;
-      if (identityScopeRef.current.token !== requestScope) return null;
+      if (isStale(identityScopeRef, requestScope)) return null;
       try {
         const refundedAmount = await api.refundTopUp(transaction_key, reason);
-        if (identityScopeRef.current.token !== requestScope) return null;
+        if (isStale(identityScopeRef, requestScope)) return null;
         await fetchCredits();
-        if (identityScopeRef.current.token !== requestScope) return null;
+        if (isStale(identityScopeRef, requestScope)) return null;
         const response = await api.getTransactionHistory();
-        if (identityScopeRef.current.token !== requestScope) return null;
+        if (isStale(identityScopeRef, requestScope)) return null;
         setBillingState((current) =>
           current.identityScope === requestScope
             ? { ...current, transactionHistory: response }
@@ -247,7 +252,7 @@ export default function useCredits({
         );
         return refundedAmount;
       } catch (error) {
-        if (identityScopeRef.current.token !== requestScope) return null;
+        if (isStale(identityScopeRef, requestScope)) return null;
         throw error;
       }
     },
@@ -259,7 +264,7 @@ export default function useCredits({
       const requestScope = identityScope;
       if (
         scopedIdentityKey === null ||
-        identityScopeRef.current.token !== requestScope
+        isStale(identityScopeRef, requestScope)
       ) {
         return;
       }
@@ -298,10 +303,7 @@ export default function useCredits({
 
   const fetchRefundRequests = useCallback(async () => {
     const requestScope = identityScope;
-    if (
-      scopedIdentityKey === null ||
-      identityScopeRef.current.token !== requestScope
-    ) {
+    if (scopedIdentityKey === null || isStale(identityScopeRef, requestScope)) {
       return;
     }
     const response = await api.getRefundRequests();
