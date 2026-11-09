@@ -9,6 +9,11 @@ updates:
     target-branch: "dev"
     commit-message:
       prefix: "chore(local_executor/deps)"
+    # cua-driver is pinned to the release its tool catalog was reviewed
+    # against, and the shim refuses another minor; a bump follows the
+    # review in local_executor/docs/CUA_DRIVER.md ("Updating the driver").
+    ignore:
+      - dependency-name: "cua-driver"
     groups:
       dependencies:
         update-types:
