@@ -1187,16 +1187,16 @@ async def _baseline_llm_caller(
 
 
 def _refuse_after_question(
-    state: _BaselineStreamState, tool_call_id: str, tool_name: str
+    state: _BaselineStreamState, tool_call_id: str, tool_name: str, reason: str
 ) -> ToolCallResult:
-    """Refuse a call that starts after the turn asked the user a question."""
-    logger.info("[Baseline] Refusing %s: the turn asked a question", tool_name)
+    """Refuse a call that starts once the turn is closing (``turn_end``)."""
+    logger.info("[Baseline] Refusing %s: the turn is closing", tool_name)
     _emit(
         state,
         StreamToolOutputAvailable(
             toolCallId=tool_call_id,
             toolName=tool_name,
-            output=turn_end.ENDED_REFUSAL,
+            output=reason,
             success=False,
         ),
     )
@@ -1204,7 +1204,7 @@ def _refuse_after_question(
         ToolCallResult(
             tool_call_id=tool_call_id,
             tool_name=tool_name,
-            content=turn_end.ENDED_REFUSAL,
+            content=reason,
             is_error=True,
         )
     )
@@ -1232,8 +1232,8 @@ async def _baseline_tool_executor(
     tool_name = tool_call.name
     raw_args = tool_call.arguments or "{}"
 
-    if turn_end.refuses_calls(session.session_id):
-        return _refuse_after_question(state, tool_call_id, tool_name)
+    if ended := turn_end.refusal(session.session_id, tool_name):
+        return _refuse_after_question(state, tool_call_id, tool_name, ended)
 
     try:
         tool_args = orjson.loads(raw_args)

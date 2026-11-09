@@ -77,3 +77,26 @@ def test_the_question_runs_alone_after_the_calls_before_it():
 
     assert runs_alone(question)
     assert not runs_alone(search)
+
+
+@pytest.mark.asyncio
+async def test_after_a_started_task_only_more_tasks_run(session):
+    turn_end.request_wrap_up(session.session_id)
+    execute = AsyncMock(
+        return_value=StreamToolOutputAvailable(toolCallId="c1", output="ok")
+    )
+
+    search, _ = await _run(
+        LLMToolCall(id="c1", name="web_search", arguments='{"query":"x"}'),
+        session,
+        execute,
+    )
+    task, _ = await _run(
+        LLMToolCall(id="c2", name="start_task", arguments='{"title":"t","brief":"b"}'),
+        session,
+        execute,
+    )
+
+    assert search.is_error and search.content == turn_end.WRAP_UP_REFUSAL
+    assert not task.is_error
+    execute.assert_awaited_once()

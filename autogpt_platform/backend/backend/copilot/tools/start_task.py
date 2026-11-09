@@ -1,9 +1,10 @@
-"""StartTaskTool: hand a piece of work to a background worker and end the turn.
+"""StartTaskTool: hand a piece of work to a background worker and wrap up.
 
 Otto answers simple requests itself. Work that takes many steps ("fix this
 issue", "plan the marketing funnel") becomes a task: a record the user can
 follow, worked on by a background subtask in a chat of its own. This turn
-ends right after (``turn_end``), so the user can keep talking here; when the
+wraps up right after (``turn_end``): more tasks and one closing line, nothing
+else, so the user can keep talking here; when the
 worker finishes, this chat is woken to carry on with the result
 (``background_delivery``), which also settles the task's status.
 """
@@ -42,7 +43,8 @@ class StartTaskTool(BaseTool):
         return (
             "Start multi-step work as a task that runs in the background, so "
             "the user can keep chatting; its result comes back to this chat. "
-            "Use it for anything bigger than a quick answer. Ends your turn."
+            "Use it for anything bigger than a quick answer. After it, only "
+            "more start_task calls and one closing line."
         )
 
     @property
@@ -112,11 +114,12 @@ class StartTaskTool(BaseTool):
             )
 
         task = await _link_worker(task, background.child_session_id, user_id)
-        turn_end.request_end(session.session_id, refuse_later_calls=False)
+        turn_end.request_wrap_up(session.session_id)
         return TaskStartedResponse(
             message=(
                 f"Started '{task.title}' in the background. Tell the user in one "
-                "short line; the result comes back to this chat."
+                "short line; the result comes back to this chat. Do none of the "
+                "task here."
             ),
             task=TaskInfo.from_task(task),
             in_background=True,

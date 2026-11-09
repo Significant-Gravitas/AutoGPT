@@ -2,9 +2,9 @@
 
 The system prompt and tool list come from production (``eval/style``
 assembly: plain Otto with the SDK supplement, delegation and memory, plus
-the case's approval mode). The turn follows production's rules for ending:
-a valid question ends the turn and refuses every later call; a started task
-ends the turn after its step. Which questions may be asked is decided by the
+the case's approval mode). The turn follows production's rules for closing
+(``turn_end``): a valid question ends the turn and refuses every later call;
+after a started task only more tasks and a closing line may follow. Which questions may be asked is decided by the
 production rules (``tools/question_rules``). A simulated user answers
 questions from the case's answer sheet, in the persona's voice.
 """
@@ -24,7 +24,7 @@ from backend.copilot.prompting import approval_mode_supplement
 from backend.copilot.service import format_user_context_prefix
 from backend.copilot.tools import question_rules
 from backend.copilot.tools.ask_question import parse_questions
-from backend.copilot.turn_end import ENDED_REFUSAL
+from backend.copilot.turn_end import ENDED_REFUSAL, WRAP_UP_REFUSAL
 
 from .models import Case, Question, Run, ToolCall, TurnRecord, World
 from .simulator import Simulator
@@ -97,7 +97,7 @@ async def _turn(
             messages.append(
                 {"role": "tool", "tool_call_id": call.id, "content": result}
             )
-        if record.ended_by in ("question", "task_started"):
+        if record.ended_by == "question":
             break
     else:
         record.ended_by = "round_cap"
@@ -123,6 +123,11 @@ def _execute(
             ToolCall(name=name, arguments=args, refused=ENDED_REFUSAL)
         )
         return ENDED_REFUSAL
+    if record.ended_by == "task_started" and name != "start_task":
+        record.tool_calls.append(
+            ToolCall(name=name, arguments=args, refused=WRAP_UP_REFUSAL)
+        )
+        return WRAP_UP_REFUSAL
     if name == "ask_question":
         return _ask(args, mode, run, record)
     call, result = sim.call(name, args)

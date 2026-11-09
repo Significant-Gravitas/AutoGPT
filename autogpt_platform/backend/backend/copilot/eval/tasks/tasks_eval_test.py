@@ -168,20 +168,27 @@ async def test_a_question_ends_the_turn_and_refuses_the_calls_after_it():
 
 
 @pytest.mark.asyncio
-async def test_a_started_task_ends_the_turn_after_its_step():
+async def test_after_a_started_task_only_tasks_and_a_closing_line_follow():
     models = _models(
         _message(
-            "On it.",
+            "",
             [
                 ("start_task", {"title": "Plan funnel", "brief": "b"}),
                 ("start_task", {"title": "Fix bug", "brief": "b"}),
             ],
-        )
+        ),
+        _message("", [("web_search", {"query": "funnels"})]),
+        _message("Both are running; results land here."),
     )
 
     run = await run_case(_case(turns=[{"user": "plan it and fix it"}]), WORLD, models)
 
     (turn,) = run.turns
     assert turn.ended_by == "task_started"
-    assert [c.name for c in turn.tool_calls] == ["start_task", "start_task"]
-    assert turn.rounds == 1
+    assert [c.name for c in turn.tool_calls] == [
+        "start_task",
+        "start_task",
+        "web_search",
+    ]
+    assert turn.tool_calls[2].refused is not None
+    assert turn.reply == "Both are running; results land here."

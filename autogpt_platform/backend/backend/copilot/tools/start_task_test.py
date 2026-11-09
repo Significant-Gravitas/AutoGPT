@@ -59,7 +59,7 @@ def _background() -> MagicMock:
     return background
 
 
-async def test_starts_the_work_in_the_background_and_ends_the_turn(store, session):
+async def test_starts_the_work_in_the_background_and_wraps_up_the_turn(store, session):
     start = AsyncMock(return_value=_background())
     with patch("backend.copilot.tools.start_task.start_background_subtask", start):
         result = await StartTaskTool()._execute(
@@ -76,8 +76,9 @@ async def test_starts_the_work_in_the_background_and_ends_the_turn(store, sessio
     prompt = start.await_args.args[2]
     assert "Email + ads, Nov 20" in prompt and "task-1" in prompt
     store.attach_task_session.assert_awaited_once_with("task-1", "worker-chat", _USER)
-    assert turn_end.is_ending(session.session_id)
-    assert not turn_end.refuses_calls(session.session_id)
+    assert not turn_end.is_ending(session.session_id)
+    assert turn_end.refusal(session.session_id, "start_task") is None
+    assert turn_end.refusal(session.session_id, "web_search") is not None
 
 
 async def test_without_background_work_the_task_is_worked_on_here(store, session):
@@ -93,7 +94,7 @@ async def test_without_background_work_the_task_is_worked_on_here(store, session
     assert isinstance(result, TaskStartedResponse)
     assert not result.in_background
     assert "Work on it here now" in result.message
-    assert not turn_end.is_ending(session.session_id)
+    assert turn_end.refusal(session.session_id, "web_search") is None
 
 
 @pytest.mark.parametrize("brief", ["", "   "])
