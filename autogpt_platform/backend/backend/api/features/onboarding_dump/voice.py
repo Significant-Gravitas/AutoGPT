@@ -10,21 +10,29 @@ the relay trusts without a platform session. In order, it checks:
 - that the person's interview is not over: 409. A person has one interview,
   typed or spoken, found on their onboarding row: it is over once the typed
   interview is, or once a call's words became its take (naming that call);
-- that the person has no call live already: 409 naming the live call;
+- that the person has no call live already: 409 naming the live call. A
+  call whose pod died, or that ended without freeing the person's lock,
+  holds nobody back once it no longer runs (``locks.call_is_live``);
 - the platform's daily voice budget and its live-call ceiling: 503 with
   ``Retry-After``;
 - the person's own call allowance, on every tier: 429 with ``Retry-After``.
 
-The relay records the call on the person's onboarding row once the call
-starts, and its record in Redis for a day. Once it ends, the person's own
-routes read the call's state (:func:`call_status`, :func:`latest_call`),
-confirm its hand-off or hand it off again (:func:`finish_call`), and end a
-call of theirs live elsewhere (:func:`end_call`). Another person's call is
-404 on every one of them.
+Then it reads the person's arm of the voice ending experiment, which stores
+it on first read (``experiments.assign``), and the start token carries it to
+the relay, which reads no flags. The relay records the call on the person's
+onboarding row once the call starts, and its record in Redis for a day,
+with the arm on it for the hand-off, and makes its transcript of record once
+it ends. Then the person's own routes read the call's state
+(:func:`call_status`, :func:`latest_call`), which also starts the call's
+hand-off here once it is owed one (``voice_handoff``), confirm its hand-off
+or hand it off again (:func:`finish_call`), and end a call of theirs live
+elsewhere (:func:`end_call`). Another person's call is 404 on every one of
+them.
 """
 
 import asyncio
 import logging
+import time
 import uuid
 from collections.abc import Awaitable
 from datetime import UTC, datetime
@@ -33,7 +41,11 @@ from typing import TypeVar
 from fastapi import BackgroundTasks, HTTPException
 
 from backend.api.features.onboarding_dump import quality
-from backend.api.features.onboarding_dump.interview import call_that_took_the_interview
+from backend.api.features.onboarding_dump.interview import (
+    call_that_took_the_interview,
+    superseded_take,
+)
+from backend.api.features.onboarding_dump.interview_endings import assigned_ending
 from backend.api.features.onboarding_dump.models import (
     FinalizeResponse,
     VoiceCallCaps,
@@ -42,6 +54,12 @@ from backend.api.features.onboarding_dump.models import (
     VoiceCallStatusResponse,
 )
 from backend.api.features.onboarding_dump.rate_limit import enforce_voice_call_budget
+from backend.api.features.onboarding_dump.voice_handoff import (
+    HANDOFF_CLAIM_TTL_S,
+    hand_off_call,
+    owed,
+    settle_if_owed,
+)
 from backend.copilot.onboarding_interview import (
     INTERVIEW_CLOSED,
     find_onboarding_interview_session,
@@ -57,7 +75,6 @@ from backend.util.feature_flag import (
 from backend.util.settings import AppEnvironment, Settings
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.config import CAPS, TOKEN_TTL_S
-from backend.voice_relay.handoff import hand_off_call
 from backend.voice_relay.locks import CallRecord
 
 logger = logging.getLogger(__name__)
@@ -77,8 +94,6 @@ CALL_IN_PROGRESS = locks.CALL_IN_PROGRESS
 # the same call is handing them off.
 CALL_NOT_READY = "call_not_ready"
 NO_SUCH_CALL = "No such voice call"
-# How long a finish holds the call while it hands the words off.
-FINISH_CLAIM_TTL_S = 120
 # Answers on the words, which another hand-off of the same words would only
 # repeat: the person calls again or types instead.
 _VERDICTS = frozenset({quality.NO_USABLE_SPEECH, quality.INSUFFICIENT_CONTENT})
@@ -105,7 +120,7 @@ async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
         )
     await _refuse_if_interview_over(user_id)
     redis = await _bounded(get_redis_async())
-    live_call = await _bounded(locks.live_call_of(redis, user_id))
+    live_call = await _bounded(locks.live_call_holding(redis, user_id, time.time()))
     if live_call:
         raise HTTPException(
             status_code=409, detail={"code": CALL_IN_PROGRESS, "call_id": live_call}
@@ -113,11 +128,12 @@ async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
     await _refuse_past_platform_limits(redis)
     await enforce_voice_call_budget(user_id)
     leg = await _choose_leg(user_id)
+    ending = await assigned_ending(user_id, "voice")
     call_id = tokens.new_call_id()
     return VoiceCallStartResponse(
         call_id=call_id,
         relay_url=relay_url,
-        token=tokens.mint_start(user_id, call_id, leg.kind),
+        token=tokens.mint_start(user_id, call_id, leg.kind, ending=ending),
         expires_in=TOKEN_TTL_S,
         leg=leg,
         caps=VoiceCallCaps.model_validate(CAPS.as_message()),
@@ -218,14 +234,18 @@ def _unavailable(message: str, retry_after: int) -> HTTPException:
 
 
 async def call_status(user_id: str, call_id: str) -> VoiceCallStatusResponse:
-    """*call_id* as it stands, when it is *user_id*'s.
+    """*call_id* as it stands, when it is *user_id*'s. A call whose
+    transcript is made and whose hand-off is owed has the hand-off started
+    in the background, and reads ``handing_off`` until it answers.
 
     Raises:
         HTTPException: 404 for a call that is not theirs or has expired, 503
             while its record cannot be read.
     """
     redis = await _bounded(get_redis_async())
-    return _status_of(await _their_call(redis, user_id, call_id))
+    record = await _their_call(redis, user_id, call_id)
+    settle_if_owed(record)
+    return _status_of(record)
 
 
 async def latest_call(user_id: str) -> VoiceCallStatusResponse:
@@ -259,11 +279,14 @@ async def finish_call(
 
     A call that took the interview or that another take beat, one whose words
     the pipeline ruled on, or one whose transcript could not be made is
-    answered as it stands, so a second click costs nothing. A call waiting for
-    its confirm, one whose hand-off the pipeline never ruled on, or one cut
-    off with its words accepted hands its transcript of record off now, with
-    *corrections* after it as the person's own words, and its accepted take
-    becomes the interview's. The pipeline's jobs run after the response.
+    answered as it stands, so a second click costs nothing; so is a call the
+    person's typing superseded, answered ``superseded`` without the pipeline.
+    A call waiting for its confirm, one whose hand-off the pipeline never
+    ruled on, or one cut off with its words accepted hands its transcript of
+    record off now, with *corrections* after it as the person's own words,
+    and its accepted take becomes the interview's. The record is read again
+    once this finish holds the call, so a finish that ran meanwhile is
+    answered, never repeated. The pipeline's jobs run after the response.
 
     Raises:
         HTTPException: 404 for a call that is not theirs; 409
@@ -273,18 +296,23 @@ async def finish_call(
     """
     redis = await _bounded(get_redis_async())
     record = await _their_call(redis, user_id, call_id)
-    if record.hand_off is not None and _answered_as_it_stands(record):
-        return record.hand_off
-    if record.status not in (locks.TRANSCRIBED, locks.FAILED, locks.HANDED_OFF) or (
-        record.transcript_of_record is None
-    ):
-        raise HTTPException(status_code=409, detail={"code": CALL_NOT_READY})
+    answered = _answer_as_it_stands(record)
+    if answered is not None:
+        return answered
+    _refuse_unless_ready(record)
     holder = f"finish:{uuid.uuid4().hex}"
     if not await _bounded(
-        locks.claim_postcall(redis, call_id, holder, ttl_s=FINISH_CLAIM_TTL_S)
+        locks.claim_postcall(redis, call_id, holder, ttl_s=HANDOFF_CLAIM_TTL_S)
     ):
         raise HTTPException(status_code=409, detail={"code": CALL_NOT_READY})
     try:
+        # Another finish, or the call's job, may have answered since the read
+        # above, and the words are judged once.
+        record = await _their_call(redis, user_id, call_id)
+        answered = _answer_as_it_stands(record)
+        if answered is not None:
+            return answered
+        _refuse_unless_ready(record)
         closure = await hand_off_call(
             redis,
             record,
@@ -302,7 +330,9 @@ async def finish_call(
 async def end_call(user_id: str, call_id: str) -> None:
     """Ask the pod running *user_id*'s call *call_id* to end it, as
     ``superseded``: the person can no longer reach it from the device it is
-    on. A call that has ended already is left as it is.
+    on. A call that has ended already is left as it is. A call that no longer
+    runs (its pod died) frees the person's lock here, so they can call again
+    or type at once.
 
     Raises:
         HTTPException: 404 for a call that is not theirs, 503 while it cannot
@@ -318,18 +348,34 @@ async def end_call(user_id: str, call_id: str) -> None:
     if not theirs:
         raise HTTPException(status_code=404, detail=NO_SUCH_CALL)
     await _bounded(locks.request_end(redis, call_id))
+    if not await _bounded(locks.call_is_live(redis, call_id, time.time())):
+        await _bounded(locks.release_user_lock(redis, user_id, call_id))
 
 
-def _answered_as_it_stands(record: CallRecord) -> bool:
-    """Whether finishing *record*, a call with an answer, only repeats it."""
-    if record.transcript_of_record is None:
-        return True
-    if record.hand_off is not None and record.hand_off.error_code in _VERDICTS:
-        return True
-    if record.status == locks.HANDED_OFF:
+def _answer_as_it_stands(record: CallRecord) -> FinalizeResponse | None:
+    """The answer a finish of *record* only repeats, or None when the finish
+    has words to hand off."""
+    if record.interview == locks.INTERVIEW_SUPERSEDED:
+        return superseded_take()
+    stored = record.hand_off
+    if stored is None:
+        return None
+    if record.transcript_of_record is None or stored.error_code in _VERDICTS:
+        return stored
+    if record.status == locks.HANDED_OFF and (
         # A cut-off call's accepted take waits for the person's finish.
-        return record.took_interview or not record.accepted
-    return False
+        record.took_interview
+        or not record.accepted
+    ):
+        return stored
+    return None
+
+
+def _refuse_unless_ready(record: CallRecord) -> None:
+    if record.status not in (locks.TRANSCRIBED, locks.FAILED, locks.HANDED_OFF) or (
+        record.transcript_of_record is None
+    ):
+        raise HTTPException(status_code=409, detail={"code": CALL_NOT_READY})
 
 
 async def _their_call(
@@ -346,7 +392,8 @@ def _status_of(record: CallRecord) -> VoiceCallStatusResponse:
         call_id=record.call_id,
         # Written with the call's first record, so a record without one is
         # one whose fields could not be read: nothing is known to be running.
-        status=record.status or locks.ENDED,
+        status="handing_off" if owed(record) else record.status or locks.ENDED,
+        interview=record.interview,
         end_reason=record.end_reason,
         leg="livekit" if record.leg == "livekit" else "websocket",
         hand_off=record.hand_off,

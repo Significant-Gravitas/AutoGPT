@@ -346,16 +346,23 @@ class VoiceCallStartResponse(BaseModel):
 
 # A voice call's status, in the order a call moves through them: opening,
 # live, over, its transcript of record being made, made and waiting for the
-# person's confirm, and handed to the onboarding pipeline or failed.
+# person's confirm, its hand-off running, and handed to the onboarding
+# pipeline or failed. ``handing_off`` is never stored: the call routes report
+# it for a call whose transcript is made and whose hand-off is owed.
 VoiceCallStatus = Literal[
     "connecting",
     "live",
     "ended",
     "transcribing",
     "transcribed",
+    "handing_off",
     "handed_off",
     "failed",
 ]
+
+# Who owns the person's interview as far as a voice call goes: the call's
+# words took it, or what the person typed after the call superseded them.
+VoiceCallInterview = Literal["taken", "superseded"]
 
 
 class VoiceCallStatusResponse(BaseModel):
@@ -365,10 +372,16 @@ class VoiceCallStatusResponse(BaseModel):
     status: VoiceCallStatus
     """``connecting`` and ``live`` while the call runs; ``ended`` and
     ``transcribing`` while its transcript of record is made. Then
+    ``handing_off`` while the onboarding pipeline takes its words, or
     ``transcribed`` while the person's ending arm waits for their confirm;
-    ``handed_off`` once the call closed the interview, its words taken or
-    another take's kept (``hand_off`` says which); or ``failed``, with
-    ``hand_off`` saying why, while the interview stays open."""
+    ``handed_off`` once the pipeline took the call's words or another take
+    beat them (``hand_off`` says which); or ``failed``, with ``hand_off``
+    saying why, while the interview stays open."""
+    interview: VoiceCallInterview | None = None
+    """``taken`` once the call's words took the person's interview, which is
+    then over; ``superseded`` once the person typed into their interview
+    after the call ended, so the typed interview owns it; None while neither
+    has happened. Read before ``end_reason`` and ``status``."""
     end_reason: str | None = None
     """Why the call ended: ``finished`` once Otto said goodbye, the control
     that ended it (``wall_clock``, ``turn_cap``, ``idle``, ``scope``,

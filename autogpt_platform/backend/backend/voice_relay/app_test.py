@@ -1,6 +1,8 @@
 import asyncio
 import json
+import os
 import time
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import httpx
@@ -12,15 +14,20 @@ from backend.api.utils.cors import build_cors_params
 from backend.util.settings import AppEnvironment
 from backend.voice_relay import app as relay_app
 from backend.voice_relay import locks, tokens
-from backend.voice_relay.app import Relay, first_name_of
+from backend.voice_relay.app import Relay, RelayDeps, first_name_of
+from backend.voice_relay.config import CAPS, DEFAULT_DRAIN_S
 from backend.voice_relay.conftest import (
     ORIGIN,
+    MemoryRecordings,
     ScriptedTranscriber,
     running_relay,
+    silence,
     speech,
     until,
 )
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
+from backend.voice_relay.locks import TurnMark
+from backend.voice_relay.postcall import PostCall
 
 USER = "user-1"
 
@@ -555,7 +562,7 @@ async def test_a_start_whose_redis_never_answers_is_refused_and_frees_its_slot(
     assert await locks.live_call_of(redis, USER) is None
 
 
-async def test_a_call_is_handed_off_from_its_recording_once_it_ends(redis):
+async def test_a_calls_transcript_is_made_from_its_recording_once_it_ends(redis):
     vendor = FakeVendor(
         [
             Reply(text="Hi, what do you do?", audio_s=0.1),
@@ -573,15 +580,180 @@ async def test_a_call_is_handed_off_from_its_recording_once_it_ends(redis):
         ended = await read_until(ws, "ended")
         await running.postcalls_done()
 
-        [handed] = running.hand_offs.calls
         assert ended["reason"] == "finished"
-        assert handed.call_id == ready["call_id"]
-        assert handed.transcript_of_record == "I bake bread for three cafes."
-        assert handed.first_task == "Bake bread"
         assert transcriber.calls[0][1] == "Dana"
+        record = await locks.read_call(redis, ready["call_id"])
+        assert record is not None
+        assert record.status == locks.TRANSCRIBED
+        assert record.transcript_of_record == "I bake bread for three cafes."
+        assert record.first_task == "Bake bread"
+        assert record.hand_off is None
         # The recording went once its transcript was stored.
         assert running.recordings.stored
         assert running.recordings.objects == {}
-        assert await locks.postcall_pending(redis) == []
-        record = await locks.read_call(redis, ready["call_id"])
-        assert record is not None and record.status == locks.HANDED_OFF
+        # The relay is done with the call: the REST API hands it off.
+        assert await redis.get(locks.postcall_claim_key(ready["call_id"])) is None
+        assert await locks.postcall_pending(redis) == [ready["call_id"]]
+
+
+async def test_a_call_carries_the_arm_its_token_named_onto_its_record(redis):
+    call_id = tokens.new_call_id()
+    token = tokens.mint_start(USER, call_id, "websocket", ending="09-first-task")
+    async with running_relay(redis, FakeVendor([Reply(text="Hi")])) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps({"type": "start", "token": token}))
+        await read_until(ws, "ready")
+
+        record = await locks.read_call(redis, call_id)
+        assert record is not None
+        assert (record.uid, record.ending) == (USER, "09-first-task")
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+
+
+async def test_a_call_whose_pod_died_does_not_refuse_the_next_start(redis):
+    dead = tokens.new_call_id()
+    await locks.take_user_lock(redis, USER, dead)
+    await locks.register_live_call(
+        redis, dead, time.time() - locks.LIVE_CALL_STALE_S - 1
+    )
+    await locks.write_call_record(redis, dead, {"uid": USER, "status": "live"})
+    async with running_relay(redis, FakeVendor([Reply(text="Hi")])) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start()))
+        ready = await read_until(ws, "ready")
+
+        assert await locks.live_call_of(redis, USER) == ready["call_id"]
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+
+
+async def test_a_relay_that_cannot_record_a_call_is_not_ready(redis, tmp_path):
+    not_a_directory = tmp_path / "spool"
+    not_a_directory.write_text("")
+    async with (
+        running_relay(redis, FakeVendor()) as running,
+        httpx.AsyncClient(base_url=running.http) as http,
+    ):
+        assert running.relay.deps is not None
+        running.relay.deps.spool_dir = str(not_a_directory / "calls")
+        ready = await http.get("/readyz")
+    assert ready.status_code == 503
+    assert ready.json()["ready"] is False
+
+
+def _deps(redis, spool_dir, postcall: PostCall | None = None) -> RelayDeps:
+    async def get_redis():
+        return redis
+
+    async def nobody(user_id: str) -> str | None:
+        return None
+
+    async def record_call(user_id: str, call_id: str) -> None:
+        return None
+
+    return RelayDeps(
+        vendor=FakeVendor(),
+        classifier=None,
+        redis=get_redis,
+        account_name=nobody,
+        record_call=record_call,
+        live_model="gemini-3.8-live",
+        max_concurrent=25,
+        postcall=postcall
+        or PostCall(
+            redis=get_redis,
+            recordings=MemoryRecordings(),
+            transcriber=ScriptedTranscriber(),
+            first_name=nobody,
+            live_model="gemini-3.8-live",
+            pod="pod-a",
+        ),
+        spool_dir=str(spool_dir),
+    )
+
+
+async def test_a_relay_starting_deletes_the_spools_no_call_still_writes(
+    redis, tmp_path
+):
+    left = tmp_path / f"{'a' * 32}.pcm"
+    left.write_bytes(bytes(640))
+    long_ago = time.time() - (CAPS.max_call_s + DEFAULT_DRAIN_S) - 60
+    os.utime(left, (long_ago, long_ago))
+    writing = tmp_path / f"{'b' * 32}.pcm"
+    writing.write_bytes(bytes(640))
+    relay = Relay(
+        max_calls=1,
+        origins=build_cors_params([ORIGIN], AppEnvironment.LOCAL),
+        deps=_deps(redis, tmp_path),
+    )
+    app = relay_app.create_app(relay)
+
+    async with app.router.lifespan_context(app):
+        assert not left.exists()
+        assert writing.exists()
+
+
+async def test_post_call_jobs_give_up_their_claims_before_the_relay_closes_redis(
+    redis, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(relay_app, "SHUTDOWN_JOBS_S", 0.05)
+    transcribing = asyncio.Event()
+
+    class Hung:
+        async def __call__(self, wav: bytes, *, first_name: str | None):
+            transcribing.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+    async def get_redis():
+        return redis
+
+    postcall = PostCall(
+        redis=get_redis,
+        recordings=MemoryRecordings(),
+        transcriber=Hung(),
+        first_name=lambda user_id: asyncio.sleep(0, result=None),
+        live_model="gemini-3.8-live",
+        pod="pod-a",
+    )
+    call_id = tokens.new_call_id()
+    pcm = b"".join(silence(0.4) + speech(0.6) + silence(0.8))
+    await locks.write_call_record(
+        redis,
+        call_id,
+        {
+            "uid": USER,
+            "status": "ended",
+            "end_reason": "finished",
+            "turns": [
+                TurnMark(index=0, at=0).model_dump(),
+                TurnMark(index=1, at=len(pcm) // 2).model_dump(),
+            ],
+        },
+    )
+    claims_as_redis_closed: list[str | None] = []
+
+    @asynccontextmanager
+    async def setup():
+        try:
+            yield _deps(redis, tmp_path, postcall)
+        finally:
+            claims_as_redis_closed.append(
+                await redis.get(locks.postcall_claim_key(call_id))
+            )
+
+    relay = Relay(
+        max_calls=1, origins=build_cors_params([ORIGIN], AppEnvironment.LOCAL)
+    )
+    app = relay_app.create_app(relay, setup=setup)
+
+    async with app.router.lifespan_context(app):
+        assert await locks.claim_postcall(redis, call_id, "pod-a")
+        postcall._start(call_id, postcall.run(call_id, pcm=pcm))
+        await asyncio.wait_for(transcribing.wait(), timeout=5)
+        # The job never finishes its transcription.
+        assert postcall.jobs
+
+    assert claims_as_redis_closed == [None]
+    assert postcall.jobs == {}

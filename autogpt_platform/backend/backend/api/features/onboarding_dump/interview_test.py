@@ -6,6 +6,7 @@ pipeline tests use, so these assert what reaches the understanding and the
 three background jobs, not just that a function was called.
 """
 
+import time
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -242,6 +243,15 @@ class VoiceCalls:
     def took(self, call_id: str) -> None:
         """*call_id* is the person's latest, and it took their interview."""
         self.latest = self.taken = call_id
+
+    async def ended(self, call_id: str, status: str = "transcribing") -> None:
+        """*call_id* is the person's latest, ended, its record still there."""
+        self.latest = call_id
+        await locks.write_call_record(
+            self.redis,
+            call_id,
+            {"uid": USER_ID, "status": status, "end_reason": "finished"},
+        )
 
 
 def _take(code: str | None = None) -> FinalizeResponse:
@@ -1592,16 +1602,21 @@ async def test_a_kickoff_past_the_concurrent_turn_cap_is_a_429(
 async def test_a_voice_call_on_an_automatic_arm_is_handed_off_when_it_ends(
     dumps: DumpStore, ending: AsyncMock, voice_calls: VoiceCalls
 ):
-    ending.return_value = InterviewEnding.TEAM_REVEAL.value
     voice_calls.latest = "call-1"
     background = BackgroundTasks()
 
     closure = await interview.close_voice_interview(
-        USER_ID, "call-1", SAID, background, reason="confirmed"
+        USER_ID,
+        "call-1",
+        SAID,
+        background,
+        reason="confirmed",
+        ending=InterviewEnding.TEAM_REVEAL.value,
     )
     await background()
 
-    ending.assert_awaited_once_with(USER_ID, "voice")
+    # The arm comes with the call: the hand-off reads no flag.
+    ending.assert_not_awaited()
     assert closure.hand_off is not None
     assert dumps.row is not None
     assert dumps.row.recordingId == "interview-call-1"
@@ -1610,13 +1625,13 @@ async def test_a_voice_call_on_an_automatic_arm_is_handed_off_when_it_ends(
 
 @pytest.mark.asyncio
 async def test_a_voice_call_on_a_confirm_arm_waits_for_the_confirm(
-    dumps: DumpStore, ending: AsyncMock, voice_calls: VoiceCalls
+    dumps: DumpStore, voice_calls: VoiceCalls
 ):
-    ending.return_value = InterviewEnding.PROFILE_CARD.value
     voice_calls.latest = "call-1"
+    arm = InterviewEnding.PROFILE_CARD.value
 
     closure = await interview.close_voice_interview(
-        USER_ID, "call-1", SAID, BackgroundTasks(), reason="confirmed"
+        USER_ID, "call-1", SAID, BackgroundTasks(), reason="confirmed", ending=arm
     )
 
     assert closure.ending == InterviewEnding.PROFILE_CARD.value
@@ -1630,6 +1645,7 @@ async def test_a_voice_call_on_a_confirm_arm_waits_for_the_confirm(
         SAID,
         background,
         reason="confirmed",
+        ending=arm,
         confirmed=True,
         corrections="Eight staff.",
     )
@@ -1649,7 +1665,6 @@ async def test_a_voice_call_hands_off_the_persons_words_not_its_end_tools_task(
 ):
     """The task Otto's end tool carried stays on the call's record; the
     pipeline reads only what the person said, as for a typed interview."""
-    ending.return_value = InterviewEnding.TEAM_REVEAL.value
     voice_calls.latest = "call-1"
     background = BackgroundTasks()
 
@@ -1659,6 +1674,7 @@ async def test_a_voice_call_hands_off_the_persons_words_not_its_end_tools_task(
         SAID,
         background,
         reason="confirmed",
+        ending=InterviewEnding.TEAM_REVEAL.value,
         first_task="Responder correos de pedidos",
     )
     await background()
@@ -1679,7 +1695,6 @@ async def test_a_voice_confirm_hands_its_corrections_off_as_the_persons_words(
     voice_calls: VoiceCalls,
     arm: InterviewEnding,
 ):
-    ending.return_value = arm.value
     voice_calls.latest = "call-1"
     background = BackgroundTasks()
 
@@ -1689,6 +1704,7 @@ async def test_a_voice_confirm_hands_its_corrections_off_as_the_persons_words(
         SAID,
         background,
         reason="confirmed",
+        ending=arm.value,
         confirmed=True,
         corrections="Start with the invoices.",
         first_task="Responder correos de pedidos",
@@ -1700,24 +1716,27 @@ async def test_a_voice_confirm_hands_its_corrections_off_as_the_persons_words(
 
 @pytest.mark.asyncio
 async def test_a_voice_call_where_nothing_was_said_has_nothing_to_confirm(
-    dumps: DumpStore, ending: AsyncMock, voice_calls: VoiceCalls
+    dumps: DumpStore, voice_calls: VoiceCalls
 ):
-    ending.return_value = InterviewEnding.PROFILE_CARD.value
     voice_calls.latest = "call-1"
 
     closure = await interview.close_voice_interview(
-        USER_ID, "call-1", "  ", BackgroundTasks(), reason="idle"
+        USER_ID,
+        "call-1",
+        "  ",
+        BackgroundTasks(),
+        reason="idle",
+        ending=InterviewEnding.PROFILE_CARD.value,
     )
 
     assert closure.hand_off is not None
     assert closure.hand_off.error_code == quality.NO_USABLE_SPEECH
-    ending.assert_not_awaited()
     assert dumps.row is None
 
 
 @pytest.mark.asyncio
 async def test_a_voice_call_the_person_has_called_again_since_is_superseded(
-    dumps: DumpStore, ending: AsyncMock, voice_calls: VoiceCalls
+    dumps: DumpStore, voice_calls: VoiceCalls
 ):
     voice_calls.latest = "call-2"
 
@@ -1726,7 +1745,22 @@ async def test_a_voice_call_the_person_has_called_again_since_is_superseded(
     )
 
     assert closure.hand_off == _take(interview.SUPERSEDED)
-    ending.assert_not_awaited()
+    assert dumps.row is None
+
+
+@pytest.mark.asyncio
+async def test_a_voice_call_the_persons_typing_superseded_runs_no_pipeline(
+    dumps: DumpStore, quality_gate: AsyncMock, voice_calls: VoiceCalls
+):
+    await voice_calls.ended("call-1")
+    await locks.claim_interview(voice_calls.redis, "call-1", locks.INTERVIEW_SUPERSEDED)
+
+    closure = await interview.close_voice_interview(
+        USER_ID, "call-1", SAID, BackgroundTasks(), reason="confirmed", confirmed=True
+    )
+
+    assert closure.hand_off == _take(interview.SUPERSEDED)
+    quality_gate.assert_not_awaited()
     assert dumps.row is None
 
 
@@ -1943,3 +1977,122 @@ async def test_which_call_took_the_interview_is_read_from_the_onboarding_row(
 
     voice_calls.took("call-1")
     assert await interview.call_that_took_the_interview(USER_ID) == "call-1"
+
+
+# ---------- the person's typing after a call ended ----------
+
+
+@pytest.mark.asyncio
+async def test_the_first_message_after_a_call_ended_supersedes_the_call(
+    stored: StoredInterview, voice_calls: VoiceCalls
+):
+    await voice_calls.ended("call-1")
+
+    await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+
+    assert (
+        await locks.interview_of(voice_calls.redis, "call-1")
+        == locks.INTERVIEW_SUPERSEDED
+    )
+    # The next message finds it so and is admitted too.
+    await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+
+
+@pytest.mark.asyncio
+async def test_a_message_after_the_calls_words_took_the_interview_names_the_call(
+    stored: StoredInterview, voice_calls: VoiceCalls
+):
+    """The call's hand-off claimed the interview on its record a moment before
+    it wrote the onboarding row."""
+    await voice_calls.ended("call-1", status="handed_off")
+    await locks.claim_interview(voice_calls.redis, "call-1", locks.INTERVIEW_TAKEN)
+
+    with pytest.raises(HTTPException) as refused:
+        await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+
+    assert refused.value.status_code == 409
+    assert refused.value.detail == {"code": INTERVIEW_CLOSED, "call_id": "call-1"}
+
+
+@pytest.mark.asyncio
+async def test_a_message_while_the_call_is_live_supersedes_nothing(
+    stored: StoredInterview, voice_calls: VoiceCalls
+):
+    await voice_calls.ended("call-1", status="live")
+    await voice_calls.live("call-1")
+    await locks.register_live_call(voice_calls.redis, "call-1", time.time())
+
+    with pytest.raises(HTTPException) as refused:
+        await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+
+    assert refused.value.detail == {"code": "call_in_progress", "call_id": "call-1"}
+    assert await locks.interview_of(voice_calls.redis, "call-1") is None
+
+
+@pytest.mark.asyncio
+async def test_a_message_with_no_call_supersedes_nothing(
+    stored: StoredInterview, voice_calls: VoiceCalls
+):
+    await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+
+    assert await voice_calls.redis.keys("voice:call:*") == []
+
+
+@pytest.mark.asyncio
+async def test_a_message_after_a_call_whose_record_expired_writes_no_record(
+    stored: StoredInterview, voice_calls: VoiceCalls
+):
+    voice_calls.latest = "call-1"
+
+    await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+
+    assert not await voice_calls.redis.exists(locks.call_record_key("call-1"))
+
+
+@pytest.mark.asyncio
+async def test_the_typed_start_claims_nothing_over_an_ended_call(
+    opening: dict[str, MagicMock], allowance: AsyncMock, voice_calls: VoiceCalls
+):
+    """A greeting the person has only looked at does not outrank a complete
+    call."""
+    await voice_calls.ended("call-1")
+
+    started = await interview.start_onboarding_interview(USER_ID)
+
+    assert started.turn_id == "turn-1"
+    assert await locks.interview_of(voice_calls.redis, "call-1") is None
+
+
+@pytest.mark.asyncio
+async def test_the_typed_finish_after_a_call_ended_supersedes_the_call(
+    stored: StoredInterview, dumps: DumpStore, voice_calls: VoiceCalls
+):
+    await voice_calls.ended("call-1")
+
+    response, _ = await _finalize(stored.session.session_id)
+
+    assert response.status == BrainDumpStatus.transcribed
+    assert (
+        await locks.interview_of(voice_calls.redis, "call-1")
+        == locks.INTERVIEW_SUPERSEDED
+    )
+    assert dumps.row is not None
+    assert dumps.row.recordingId == f"interview-{stored.session.session_id}"
+
+
+@pytest.mark.asyncio
+async def test_a_call_whose_pod_died_holds_the_typed_interview_back_no_longer(
+    opening: dict[str, MagicMock], allowance: AsyncMock, voice_calls: VoiceCalls
+):
+    """Its lock outlives it, but its pod stopped refreshing it."""
+    await voice_calls.live("call-1")
+    await locks.register_live_call(
+        voice_calls.redis, "call-1", time.time() - locks.LIVE_CALL_STALE_S - 1
+    )
+    await locks.write_call_record(
+        voice_calls.redis, "call-1", {"uid": USER_ID, "status": "live"}
+    )
+
+    started = await interview.start_onboarding_interview(USER_ID)
+
+    assert started.turn_id == "turn-1"

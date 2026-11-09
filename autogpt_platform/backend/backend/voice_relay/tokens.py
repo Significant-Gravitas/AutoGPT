@@ -6,8 +6,10 @@ key, so the relay trusts the user a token names without ever seeing the
 platform session:
 
 - a start token, minted by the REST API's start route, names one user, one
-  call and its audio leg, lives ``TOKEN_TTL_S``, and is spent by the first
-  socket that presents it (:func:`spend`);
+  call, its audio leg and the person's arm of the voice ending experiment,
+  lives ``TOKEN_TTL_S``, and is spent by the first socket that presents it
+  (:func:`spend`). The relay reads no flags: the arm reaches the call's record
+  this way;
 - a resume ticket, which the relay hands the browser in ``ready``, lets the
   same user re-attach a new socket to the same live call until the call cap
   has passed.
@@ -45,6 +47,8 @@ MIN_KEY_CHARS = 32
 MAX_TOKEN_CHARS = 1_024
 MAX_USER_ID_CHARS = 128
 CALL_ID = re.compile(r"[0-9a-f]{32}")
+# An ending arm is a flag's variant key, such as ``02-profile-card``.
+ENDING = re.compile(r"[0-9a-z-]{1,64}")
 
 _START = "start"
 _RESUME = "resume"
@@ -61,6 +65,8 @@ class StartClaims(BaseModel):
     call_id: str
     leg: Leg
     expires_at: float
+    # The person's arm of the voice ending experiment; None when not enrolled.
+    ending: str | None = None
 
 
 class ResumeClaims(BaseModel):
@@ -92,20 +98,23 @@ def mint_start(
     call_id: str,
     leg: Leg,
     *,
+    ending: str | None = None,
     ttl_s: float = TOKEN_TTL_S,
     now: float | None = None,
 ) -> str:
-    """A start token for *user_id*'s call *call_id* on *leg*."""
+    """A start token for *user_id*'s call *call_id* on *leg*, carrying their
+    arm of the voice ending experiment, *ending*."""
     issued = time.time() if now is None else now
-    return _sign(
-        {
-            "kind": _START,
-            "uid": user_id,
-            "call_id": call_id,
-            "leg": leg,
-            "exp": issued + ttl_s,
-        }
-    )
+    claims: dict[str, object] = {
+        "kind": _START,
+        "uid": user_id,
+        "call_id": call_id,
+        "leg": leg,
+        "exp": issued + ttl_s,
+    }
+    if ending is not None:
+        claims["ending"] = ending
+    return _sign(claims)
 
 
 def mint_resume(
@@ -124,11 +133,17 @@ def verify_start(token: object, *, now: float | None = None) -> StartClaims:
     leg = claims.get("leg")
     if leg not in LEGS:
         raise TokenError("token_invalid")
+    ending = claims.get("ending")
+    if ending is not None and not (
+        isinstance(ending, str) and ENDING.fullmatch(ending)
+    ):
+        raise TokenError("token_invalid")
     return StartClaims(
         user_id=claims["uid"],
         call_id=claims["call_id"],
         leg=cast(Leg, leg),
         expires_at=claims["exp"],
+        ending=ending,
     )
 
 

@@ -1,25 +1,33 @@
 """The voice call routes: who may call and the start token it mints, then the
 call's state, its finish and ending it, each for the person's own call only."""
 
+import asyncio
 import time
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import fastapi
+import posthog.client
 import pytest
+import urllib3.connectionpool
 from fakeredis import FakeServer
 from fakeredis.aioredis import FakeRedis
 from httpx import ASGITransport, AsyncClient
+from posthog import Posthog
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus, SubscriptionTier
 from pytest_mock import MockerFixture
 
+import backend.util.feature_flag as ff
+import backend.util.feature_flag.posthog as ph
 from backend.api.features.onboarding_dump import (
     interview,
+    interview_endings,
     quality,
     rate_limit,
     routes,
     voice,
+    voice_handoff,
 )
 from backend.api.features.onboarding_dump.models import FinalizeResponse
 from backend.copilot.model import (
@@ -29,6 +37,7 @@ from backend.copilot.model import (
     ONBOARDING_INTERVIEW_KIND,
     ChatSession,
 )
+from backend.data.experiments import Experiment
 from backend.util.settings import AppEnvironment, BehaveAs
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.config import CAPS
@@ -85,6 +94,10 @@ def voice_on(mocker: MockerFixture, monkeypatch, redis) -> SimpleNamespace:
         latest=mocker.patch.object(
             voice, "get_onboarding_voice_call_id", AsyncMock(return_value=None)
         ),
+        # Not enrolled in the voice ending experiment.
+        ending=mocker.patch.object(
+            voice, "assigned_ending", AsyncMock(return_value=None)
+        ),
     )
 
 
@@ -127,6 +140,7 @@ async def test_a_start_names_its_call_socket_caps_and_a_token_the_relay_trusts(
     assert claims.user_id == test_user_id
     assert claims.call_id == body["call_id"]
     assert claims.leg == "websocket"
+    assert claims.ending is None
 
 
 async def test_a_second_start_while_a_call_is_live_is_refused_naming_it(
@@ -327,11 +341,16 @@ def hand_off(mocker: MockerFixture) -> AsyncMock:
     """The hand-off a finish runs: accepted, unless a test says otherwise."""
 
     async def accept(redis, record, background, **kwargs):
+        # The person's finish makes an accepted take the interview's.
         closure = interview.InterviewClosure(ending=None, hand_off=_take())
         await locks.write_call_record(
             redis,
             record.call_id,
-            {"status": locks.HANDED_OFF, "hand_off": _take().model_dump(mode="json")},
+            {
+                "status": locks.HANDED_OFF,
+                "hand_off": _take().model_dump(mode="json"),
+                "interview": locks.INTERVIEW_TAKEN,
+            },
         )
         return closure
 
@@ -388,7 +407,7 @@ async def test_a_reloaded_step_finds_the_persons_latest_call(
     voice_on.latest.assert_awaited_with(test_user_id)
 
 
-async def test_finishing_a_handed_off_call_again_answers_its_take(
+async def test_finishing_a_call_that_took_the_interview_answers_its_take(
     redis, test_user_id, hand_off: AsyncMock
 ):
     await _record(
@@ -397,6 +416,7 @@ async def test_finishing_a_handed_off_call_again_answers_its_take(
         status="handed_off",
         hand_off=_take().model_dump(mode="json"),
         transcript_of_record="I run a bakery.",
+        interview=locks.INTERVIEW_TAKEN,
     )
 
     response = await request("POST", f"/{CALL}/finish")
@@ -553,3 +573,171 @@ async def test_a_live_call_whose_record_was_lost_can_still_be_ended(
 async def test_ending_a_call_that_is_not_there_is_not_found(redis):
     assert (await request("POST", f"/{CALL}/end")).status_code == 404
     assert not await locks.end_requested(redis, CALL)
+
+
+# ---------- the arm a call carries ----------
+
+VOICE_ENDING = Experiment.ONBOARDING_INTERVIEW_ENDING_VOICE.value
+
+
+def _refuse_network(pool, method, url, *args, **kwargs):
+    raise urllib3.exceptions.ProtocolError(f"no network in tests: {method} {url}")
+
+
+@pytest.fixture
+def voice_ending_flag(mocker: MockerFixture, monkeypatch) -> dict:
+    """A real PostHog client holding the voice ending experiment, everyone on
+    the profile card, with no network; and the experiment table in memory."""
+    monkeypatch.setattr(
+        urllib3.connectionpool.HTTPConnectionPool, "urlopen", _refuse_network
+    )
+    client = Posthog(
+        "phc_test",
+        host="http://127.0.0.1:9",
+        secret_key="phx_test",
+        enable_local_evaluation=False,
+        send=False,
+        sync_mode=True,
+    )
+    client.feature_flags = [
+        {
+            "id": 1,
+            "key": VOICE_ENDING,
+            "active": True,
+            "filters": {
+                "groups": [{"properties": [], "rollout_percentage": 100}],
+                "multivariate": {
+                    "variants": [{"key": "02-profile-card", "rollout_percentage": 100}]
+                },
+            },
+        }
+    ]
+    mocker.patch.object(ph, "get_flag_client", return_value=client)
+    mocker.patch.object(posthog.client, "flags", side_effect=AssertionError)
+    mocker.patch.object(
+        ff,
+        "_fetch_user_context",
+        AsyncMock(side_effect=lambda user_id: ff._anonymous_context(user_id)),
+    )
+    rows: dict = {}
+
+    async def find_unique(where):
+        key = where["userId_experimentKey"]
+        return rows.get((key["userId"], key["experimentKey"]))
+
+    async def create(data):
+        row = SimpleNamespace(**data, createdAt=datetime.now(UTC))
+        rows[(row.userId, row.experimentKey)] = row
+        return row
+
+    table = mocker.patch("prisma.models.ExperimentAssignment.prisma")
+    table.return_value.find_unique = AsyncMock(side_effect=find_unique)
+    table.return_value.create = AsyncMock(side_effect=create)
+    return rows
+
+
+async def test_a_start_reads_the_persons_ending_arm_and_its_token_carries_it(
+    mocker: MockerFixture, voice_ending_flag: dict, test_user_id
+):
+    """The relay reads no flags, so the arm reaches the call this way."""
+    mocker.patch.object(voice, "assigned_ending", new=interview_endings.assigned_ending)
+
+    body = (await start()).json()
+
+    assert tokens.verify_start(body["token"]).ending == "02-profile-card"
+    # Stored on the first read: the arm the person saw stays theirs.
+    assert voice_ending_flag[(test_user_id, VOICE_ENDING)].variant == (
+        "02-profile-card"
+    )
+
+
+# ---------- a call that no longer runs ----------
+
+
+async def test_a_call_whose_pod_died_does_not_hold_the_next_start_back(
+    redis, test_user_id
+):
+    await locks.take_user_lock(redis, test_user_id, "a" * 32)
+    await locks.register_live_call(
+        redis, "a" * 32, time.time() - locks.LIVE_CALL_STALE_S - 1
+    )
+    await _record(redis, test_user_id, "a" * 32, status="live")
+
+    assert (await start()).status_code == 200
+
+
+async def test_ending_a_call_whose_pod_died_frees_the_persons_lock(redis, test_user_id):
+    await locks.take_user_lock(redis, test_user_id, CALL)
+    await locks.register_live_call(
+        redis, CALL, time.time() - locks.LIVE_CALL_STALE_S - 1
+    )
+    await _record(redis, test_user_id, status="live")
+
+    response = await request("POST", f"/{CALL}/end")
+
+    assert response.status_code == 202
+    assert await locks.live_call_of(redis, test_user_id) is None
+
+
+async def test_ending_a_running_call_leaves_its_lock_to_its_pod(redis, test_user_id):
+    await locks.take_user_lock(redis, test_user_id, CALL)
+    await locks.register_live_call(redis, CALL, time.time())
+    await _record(redis, test_user_id, status="live")
+
+    response = await request("POST", f"/{CALL}/end")
+
+    assert response.status_code == 202
+    assert await locks.end_requested(redis, CALL)
+    assert await locks.live_call_of(redis, test_user_id) == CALL
+
+
+async def test_a_calls_state_says_who_owns_the_interview(redis, test_user_id):
+    await _record(redis, test_user_id, status="transcribing", end_reason="finished")
+    assert (await request("GET", f"/{CALL}")).json()["interview"] is None
+
+    await locks.claim_interview(redis, CALL, locks.INTERVIEW_SUPERSEDED)
+
+    assert (await request("GET", f"/{CALL}")).json()["interview"] == "superseded"
+
+
+async def test_a_call_owed_its_hand_off_reads_handing_off_and_starts_it(
+    redis, test_user_id, mocker: MockerFixture
+):
+    hand_off = mocker.patch.object(
+        voice_handoff, "hand_off_owed", new=AsyncMock(return_value="handed_off")
+    )
+    await _record(
+        redis,
+        test_user_id,
+        status="transcribed",
+        transcript_of_record="I run a bakery.",
+        end_reason="finished",
+    )
+
+    body = (await request("GET", f"/{CALL}")).json()
+
+    assert body["status"] == "handing_off"
+    for _ in range(50):
+        if hand_off.await_count:
+            break
+        await asyncio.sleep(0.01)
+    hand_off.assert_awaited_once_with(CALL, trigger="status")
+
+
+async def test_a_confirm_arms_call_reads_transcribed_and_starts_nothing(
+    redis, test_user_id, mocker: MockerFixture
+):
+    hand_off = mocker.patch.object(voice_handoff, "hand_off_owed", new=AsyncMock())
+    await _record(
+        redis,
+        test_user_id,
+        status="transcribed",
+        transcript_of_record="I run a bakery.",
+        ending="02-profile-card",
+    )
+
+    body = (await request("GET", f"/{CALL}")).json()
+
+    assert body["status"] == "transcribed"
+    await asyncio.sleep(0.05)
+    hand_off.assert_not_awaited()

@@ -34,14 +34,18 @@ refused while a call of theirs is live, and is over once a call took the
 interview (:func:`refuse_while_a_call_holds_the_interview`). A call takes it
 when its words were accepted and the call ran to its close, or the person
 confirmed it; a call that was cut off leaves the interview open, for a later
-call or the typed interview to replace its take. A call whose hand-off
-another take beat is ``superseded``, and so is a typed interview closed after
-a call took the interview.
+call or the typed interview to replace its take. The take the person made
+last owns the interview: their first typed message after a call ended
+supersedes the call's words, unless they took the interview first
+(:func:`supersede_the_latest_call`). A call whose hand-off another take beat
+is ``superseded``, and so is a typed interview closed after a call took the
+interview.
 """
 
 import asyncio
 import logging
 import re
+import time
 from collections.abc import Sequence
 
 from fastapi import BackgroundTasks, HTTPException
@@ -261,7 +265,9 @@ async def refuse_while_a_call_holds_the_interview(user_id: str) -> None:
             shows; 503 while neither can be read.
     """
     try:
-        live = await locks.live_call_of(await get_redis_async(), user_id)
+        live = await locks.live_call_holding(
+            await get_redis_async(), user_id, time.time()
+        )
         taken_by = None if live else await call_that_took_the_interview(user_id)
     except Exception as exc:
         logger.warning(
@@ -285,7 +291,7 @@ async def call_that_took_the_interview(user_id: str) -> str | None:
 
     A call takes the interview when the pipeline accepted its words and the
     call ran to its close, or the person confirmed it; one that was cut off
-    leaves the interview open (``voice_relay.handoff``). The hand-off writes
+    leaves the interview open (``voice_handoff``). The hand-off writes
     that on the person's onboarding row, which outlives the call's record,
     and the row is what is read.
     """
@@ -319,11 +325,15 @@ async def admit_onboarding_interview_turn(
     message that rides a running turn, or a retransmit of one already taken,
     starts nothing and costs nothing.
 
+    A message admitted after the person's latest call ended supersedes that
+    call's words (:func:`supersede_the_latest_call`).
+
     Raises:
         HTTPException: 409 once the interview is over, 422 for a request an
             interview never takes (a non-user turn, an expert kickoff, files),
-            and whatever :func:`refuse_while_a_call_holds_the_interview`
-            raises while a voice call holds the interview.
+            and whatever :func:`refuse_while_a_call_holds_the_interview` and
+            :func:`supersede_the_latest_call` raise while a voice call holds
+            the interview.
     """
     full = await get_chat_session(session.session_id, user_id)
     if full is None:
@@ -349,7 +359,45 @@ async def admit_onboarding_interview_turn(
             )
         raise HTTPException(status_code=409, detail=refused.code) from refused
     await refuse_while_a_call_holds_the_interview(user_id)
+    await supersede_the_latest_call(user_id)
     return plan
+
+
+async def supersede_the_latest_call(user_id: str) -> None:
+    """Make the person's typing the newer take than their latest voice call,
+    once that call has ended: what they type now owns the interview, and the
+    call's hand-off, should it land later, is answered ``superseded``.
+
+    Claimed on the call's record (:func:`locks.claim_interview`), which the
+    call's hand-off claims too, so exactly one of the two wins. A call whose
+    record expired has no hand-off left to land. Called once no call of the
+    person's is live (:func:`refuse_while_a_call_holds_the_interview`), so the
+    latest call has ended; the typed start never calls it, since a greeting
+    the person has only looked at does not outrank a complete call.
+
+    Raises:
+        HTTPException: 409 ``onboarding_interview_closed`` naming the call
+            when its words took the interview first; 503 while the call
+            cannot be read.
+    """
+    try:
+        call_id = await get_onboarding_voice_call_id(user_id)
+        standing = (
+            None
+            if call_id is None
+            else await locks.claim_interview(
+                await get_redis_async(), call_id, locks.INTERVIEW_SUPERSEDED
+            )
+        )
+    except Exception as exc:
+        logger.warning(
+            f"Onboarding interview: voice calls unreadable: {type(exc).__name__}"
+        )
+        raise _voice_calls_unreadable() from exc
+    if standing == locks.INTERVIEW_TAKEN:
+        raise HTTPException(
+            status_code=409, detail={"code": INTERVIEW_CLOSED, "call_id": call_id}
+        )
 
 
 async def record_onboarding_interview_turn_started(
@@ -568,7 +616,7 @@ async def close_onboarding_interview(
         await update_session_interview_stage(
             session_id, user_id, INTERVIEW_STAGE_HANDED_OFF
         )
-        return InterviewClosure(ending=ending, hand_off=_superseded())
+        return InterviewClosure(ending=ending, hand_off=superseded_take())
     if ending is None:
         ending = await _stamp_ending(user_id, session_id, "text")
     if not (confirmed or hands_off_on_close(ending)):
@@ -606,20 +654,24 @@ def hand_off_is_final(response: FinalizeResponse) -> bool:
 
 
 def voice_hand_off_closes_interview(response: FinalizeResponse) -> bool:
-    """Whether a voice call's hand-off closes the person's interview.
+    """Whether a voice call's hand-off is over for the call, which is then
+    ``handed_off``.
 
-    It does for an accepted take, and for ``superseded``: another take owns
-    the interview and this one must never replace it. Unlike the typed
-    interview's, a verdict on the words leaves it open, since a new call is
-    new words; so does a hand-off the pipeline never ruled on, which the
-    call's finish route hands off again.
+    It is for an accepted take, which takes the person's interview when the
+    call ran to its close or the person confirmed it
+    (``voice_handoff``), and for ``superseded``: another take owns the
+    interview and this one must never replace it. Unlike the typed
+    interview's, a verdict on the words leaves the interview open, since a
+    new call is new words; so does a hand-off the pipeline never ruled on,
+    which the call's finish route hands off again.
     """
     return (
         response.status != BrainDumpStatus.failed or response.error_code == SUPERSEDED
     )
 
 
-def _superseded() -> FinalizeResponse:
+def superseded_take() -> FinalizeResponse:
+    """The answer for a take another take beat: it never replaces the row."""
     return FinalizeResponse(
         status=BrainDumpStatus.failed,
         input_mode=BrainDumpInputMode.typed,
@@ -644,40 +696,44 @@ async def close_voice_interview(
     background_tasks: BackgroundTasks,
     *,
     reason: InterviewEndReason,
+    ending: str | None = None,
     confirmed: bool = False,
     corrections: str | None = None,
     first_task: str | None = None,
 ) -> InterviewClosure:
-    """The voice interview's hand-off: what the voice relay calls once a
-    call's transcript of record is made, and what the call's finish route
-    calls for a confirm or a retry.
+    """The voice interview's hand-off: what the REST API runs once the relay
+    has made a call's transcript of record (``voice_handoff``), and what the
+    call's finish route runs for a confirm or a retry.
 
     *transcript* is the person's side of the call's transcript of record, one
     turn per line, and *call_id* names the take it becomes: each call is a
     take of its own, so a later call replaces an earlier one's take as any
-    re-take does. The person's arm of the voice ending experiment, read here,
+    re-take does. The person's arm of the voice ending experiment, *ending*,
     decides when: an automatic arm, or no enrolment, hands the words to the
     onboarding pipeline now; an arm that ends on a confirm leaves that to the
     confirm, which calls this again with *confirmed* and any *corrections*
     made on its screen. Until then the call's record keeps the transcript.
+    The arm is read by the call's start route, where flags are read, and
+    comes with the call's record.
     *first_task* is the task the call's end tool carried; the hand-off goes on
     the person's own words, as the typed interview's does, and the call's
     record keeps the task.
 
     A call whose interview another take already owns is answered
     ``superseded`` and its words are left out: the person called again since,
-    or their typed interview is over. A call where nothing was said is
-    answered ``no_usable_speech`` whatever the arm, as there is nothing to
-    confirm. Whether the answer closes the interview is
-    :func:`voice_hand_off_closes_interview`.
+    typed into their interview after the call ended, or their typed
+    interview is over. A call where nothing was said is answered
+    ``no_usable_speech`` whatever the arm, as there is nothing to confirm.
+    Whether the answer is over for the call is
+    :func:`voice_hand_off_closes_interview`; whether it takes the interview
+    is the call's hand-off's to claim (``voice_handoff``).
     """
     if await _call_superseded(user_id, call_id):
         logger.info(f"Voice onboarding interview {call_id[:12]} superseded: {reason}")
-        return InterviewClosure(ending=None, hand_off=_superseded())
+        return InterviewClosure(ending=None, hand_off=superseded_take())
     words = with_corrections(transcript, corrections)
     if not words.strip():
         return InterviewClosure(ending=None, hand_off=_nothing_said())
-    ending = await assigned_ending(user_id, "voice")
     if not (confirmed or hands_off_on_close(ending)):
         return InterviewClosure(ending=ending, hand_off=None)
     logger.info(f"Voice onboarding interview {call_id[:12]} handed off: {reason}")
@@ -689,7 +745,11 @@ async def close_voice_interview(
 
 async def _call_superseded(user_id: str, call_id: str) -> bool:
     """Whether another take owns the interview *call_id* would hand off into:
-    a later call of the person's, or their typed interview, once it is over."""
+    what the person typed after the call ended (the call's record says so), a
+    later call of theirs, or their typed interview, once it is over."""
+    claim = await locks.interview_of(await get_redis_async(), call_id)
+    if claim == locks.INTERVIEW_SUPERSEDED:
+        return True
     latest = await get_onboarding_voice_call_id(user_id)
     if latest is not None and latest != call_id:
         return True
@@ -726,12 +786,17 @@ async def finalize_onboarding_interview(
     owner can finalize it, and a session of any other kind is treated as
     missing.
 
+    The person's finish after their latest call ended is theirs to make
+    over the call's words, as a message is (:func:`supersede_the_latest_call`).
+
     Raises:
         HTTPException: whatever :func:`refuse_while_a_call_holds_the_interview`
-            raises while a voice call holds the interview: the step then shows
-            the call, not the typed interview's ending.
+            and :func:`supersede_the_latest_call` raise while a voice call
+            holds the interview: the step then shows the call, not the typed
+            interview's ending.
     """
     await refuse_while_a_call_holds_the_interview(user_id)
+    await supersede_the_latest_call(user_id)
     closure = await close_onboarding_interview(
         user_id,
         session_id,
@@ -889,7 +954,7 @@ async def _handed_off_take(user_id: str, session_id: str) -> FinalizeResponse:
         # (:func:`hand_off_interview_transcript`).
         return _nothing_said()
     if dump.recordingId != interview_recording_id(session_id):
-        return _superseded()
+        return superseded_take()
     return FinalizeResponse(
         status=dump.status,
         input_mode=dump.inputMode,

@@ -10,11 +10,18 @@ that outlives 48 hours (``retention.py``). The call's record names the latest
 upload, so another pod can find it, and the uploads before it are deleted.
 The post-call job deletes the last one once the transcript of record is
 stored (:meth:`CallRecording.discard`). Nothing of Otto's is recorded.
+
+A spool outlives its call nowhere: the job deletes it whether or not it
+succeeds, and a process deletes, as it starts, any spool older than a call
+and a drain could keep one (:func:`remove_stale_spools`).
 """
 
 import asyncio
 import io
 import logging
+import os
+import time
+import uuid
 import wave
 from pathlib import Path
 from typing import BinaryIO, Protocol
@@ -91,6 +98,49 @@ def pcm_of(wav: bytes) -> bytes:
         raise ValueError("not a call recording") from error
 
 
+SPOOL_SUFFIX = ".pcm"
+
+
+def remove_stale_spools(spool_dir: str | Path, older_than_s: float) -> int:
+    """Delete every spool in *spool_dir* last written more than
+    *older_than_s* ago: no call still writes one that old. Returns how many
+    went."""
+    removed = 0
+    cutoff = time.time() - older_than_s
+    try:
+        spools = list(Path(spool_dir).glob(f"*{SPOOL_SUFFIX}"))
+    except OSError:
+        logger.warning("Voice spools could not be listed", exc_info=True)
+        return 0
+    for spool in spools:
+        try:
+            if spool.stat().st_mtime < cutoff:
+                spool.unlink(missing_ok=True)
+                removed += 1
+        except OSError:
+            logger.warning(f"Voice spool {spool.name} not removed")
+    if removed:
+        logger.info(f"Removed {removed} stale voice spool(s)")
+    return removed
+
+
+def spool_writable(spool_dir: str | Path) -> bool:
+    """Whether a call could record into *spool_dir* now: a probe file is
+    written, read back and deleted there."""
+    probe = Path(spool_dir) / f".probe-{os.getpid()}-{uuid.uuid4().hex}"
+    try:
+        Path(spool_dir).mkdir(parents=True, exist_ok=True)
+        probe.write_bytes(b"ok")
+        return probe.read_bytes() == b"ok"
+    except OSError:
+        return False
+    finally:
+        try:
+            probe.unlink(missing_ok=True)
+        except OSError:
+            logger.debug("Voice spool probe not removed")
+
+
 async def delete_quietly(store: RecordingStore, path: str, call_id: str) -> bool:
     """Delete one recording. A failure is logged, never raised: the retention
     sweep deletes what is left. True when it went."""
@@ -127,7 +177,7 @@ class CallRecording:
         self.user_id = user_id
         self.store = store
         self.call_store = call_store
-        self.spool = Path(spool_dir) / f"{call_id}.pcm"
+        self.spool = Path(spool_dir) / f"{call_id}{SPOOL_SUFFIX}"
         # Samples of the person's audio recorded so far: where in the
         # recording the call is.
         self.samples = 0

@@ -6,14 +6,17 @@
   the URL, so it stays out of load balancer logs. The browser's origin must
   be one the platform allows (``BACKEND_CORS_ALLOW_ORIGINS``).
 - ``GET /healthz`` is liveness. ``GET /readyz`` is readiness, which fails
-  while the process drains so the load balancer sends it no new calls.
+  while the process drains, so the load balancer sends it no new calls, and
+  while it could not record a call: its spool directory takes no writes.
 
 The relay trusts the user a start token names, because only the REST API
 and the relay hold the key that signs it; it reads no platform session.
 
-Once a call ends, its post-call job runs here too (``postcall``), and the
-process sweeps for jobs no pod is running when it starts and every
-``POSTCALL_SWEEP_S``.
+Once a call ends, its transcript job runs here too (``postcall``), and the
+process sweeps for calls no pod is transcribing when it starts and every
+``POSTCALL_SWEEP_S``. The REST API hands each transcript off. As it starts it deletes the spools a call of an earlier
+process left; as it stops, its post-call jobs settle before its services
+close, so each gives up its claim while Redis still answers.
 """
 
 import asyncio
@@ -35,6 +38,7 @@ from backend.data.redis_client import AsyncRedisClient
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.config import (
     CAPS,
+    DEFAULT_DRAIN_S,
     MAX_TEXT_BYTES,
     START_TIMEOUT_S,
     TIMING,
@@ -43,7 +47,11 @@ from backend.voice_relay.config import (
 )
 from backend.voice_relay.metering import LIVE_CALLS, CallMeter, CostSink
 from backend.voice_relay.postcall import PostCall
-from backend.voice_relay.record import CallRecording
+from backend.voice_relay.record import (
+    CallRecording,
+    remove_stale_spools,
+    spool_writable,
+)
 from backend.voice_relay.scope import ScopeClassifier
 from backend.voice_relay.session import Session
 from backend.voice_relay.vendor import VendorConnector
@@ -59,6 +67,10 @@ CLOSE_NO_CALL = 4404
 FIRST_NAME_TIMEOUT_S = 2.0
 RECORD_CALL_TIMEOUT_S = 5.0
 REFUSE_TIMEOUT_S = 5.0
+SPOOL_PROBE_TIMEOUT_S = 2.0
+# How long the post-call jobs still running at shutdown get to finish before
+# they are cancelled, giving up their claims for another pod's sweep.
+SHUTDOWN_JOBS_S = 5.0
 MAX_FIRST_NAME_CHARS = 40
 _NAME_MARKS = "'-’"
 
@@ -78,10 +90,12 @@ class RelayDeps(BaseModel):
     live_model: str
     # Live calls the whole platform takes at once.
     max_concurrent: int
-    # Each call's transcript of record and hand-off, and the sweep.
+    # Each call's transcript of record, and the sweep.
     postcall: PostCall
     # Where a call's recording is spooled before it is uploaded.
     spool_dir: str
+    # A spool older than this is no live call's: the call cap and the drain.
+    spool_stale_s: float = CAPS.max_call_s + DEFAULT_DRAIN_S
     # Where priced rows go; None logs them to PlatformCostLog.
     cost_sink: CostSink | None = None
     caps: Caps = CAPS
@@ -206,7 +220,11 @@ def create_app(
 
     @app.get("/readyz")
     async def readyz() -> JSONResponse:
-        ready = not relay.draining and relay.deps is not None
+        ready = (
+            not relay.draining
+            and relay.deps is not None
+            and await _spool_ready(relay.deps.spool_dir)
+        )
         return JSONResponse(
             {"ready": ready, "live_calls": len(relay.sessions)},
             status_code=200 if ready else 503,
@@ -221,18 +239,32 @@ def create_app(
 
 @asynccontextmanager
 async def _sweeping(relay: Relay) -> AsyncIterator[None]:
-    """Sweep for post-call jobs no pod is running while the app serves."""
-    if relay.deps is None:
+    """Sweep for post-call jobs no pod is running while the app serves, and
+    settle this process's jobs before its services close."""
+    deps = relay.deps
+    if deps is None:
         yield
         return
+    await asyncio.to_thread(remove_stale_spools, deps.spool_dir, deps.spool_stale_s)
     sweep = asyncio.create_task(
-        relay.deps.postcall.sweep_forever(), name="voice-postcall-sweep"
+        deps.postcall.sweep_forever(), name="voice-postcall-sweep"
     )
     try:
         yield
     finally:
         sweep.cancel()
         await asyncio.gather(sweep, return_exceptions=True)
+        await deps.postcall.settle(SHUTDOWN_JOBS_S)
+
+
+async def _spool_ready(spool_dir: str) -> bool:
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(spool_writable, spool_dir), timeout=SPOOL_PROBE_TIMEOUT_S
+        )
+    except Exception:
+        logger.warning("Voice spool directory unreadable", exc_info=True)
+        return False
 
 
 class _Refused(Exception):
@@ -391,10 +423,10 @@ async def _start_call(
         )
         await store.record(
             status="connecting",
-            uid=claims.user_id,
             pod=relay.pod,
             leg=leg,
             started=round(time.time(), 3),
+            ending=claims.ending,
         )
         await session.run()
     finally:

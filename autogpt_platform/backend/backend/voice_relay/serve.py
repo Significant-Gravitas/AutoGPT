@@ -14,6 +14,7 @@ import logging
 import signal
 import socket
 import time
+import uuid
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from types import FrameType
@@ -39,7 +40,13 @@ from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.settings import Settings
 from backend.voice_relay import tokens
 from backend.voice_relay.app import Relay, RelayDeps, create_app, first_name_of
-from backend.voice_relay.config import TRANSCRIBE_MODEL, WS_MAX_MESSAGE_BYTES, price_of
+from backend.voice_relay.config import (
+    CAPS,
+    LIVE_CALL_STALE_S,
+    TRANSCRIBE_MODEL,
+    WS_MAX_MESSAGE_BYTES,
+    price_of,
+)
 from backend.voice_relay.metering import warn_if_prices_out_of_date, watch_prices
 from backend.voice_relay.postcall import GeminiTranscriber, PostCall
 from backend.voice_relay.record import CloudRecordings
@@ -121,6 +128,11 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
         )
     await db.connect()
     await redis_client.get_redis_async()
+    drain_s = settings.config.voice_relay_drain_max_s
+    # This process's name in the post-call claims: one per process, so a
+    # restarted relay on the same host never mistakes its predecessor's claim
+    # for its own.
+    holder = f"{socket.gethostname()}:{uuid.uuid4().hex[:8]}"
     client = genai.Client(api_key=settings.secrets.gemini_api_key)
     deps = RelayDeps(
         vendor=GeminiLive(
@@ -144,9 +156,11 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
             transcriber=GeminiTranscriber(client),
             first_name=_first_name,
             live_model=model,
-            pod=socket.gethostname(),
+            pod=holder,
+            running_window_s=CAPS.max_call_s + drain_s + LIVE_CALL_STALE_S,
         ),
         spool_dir=settings.config.voice_interview_spool_dir,
+        spool_stale_s=CAPS.max_call_s + drain_s,
     )
     # Startup's objects stay out of full collections, which would otherwise
     # pause every live call's event loop.
@@ -213,7 +227,8 @@ def keep_frame_locals_out_of_sentry() -> None:
 
 
 class VoiceRelay(AppProcess):
-    # The start route decides who may call; the relay reads no flags.
+    # The REST API reads every flag a call needs: who may call, the leg, and
+    # the voice ending arm, which the start token carries to the call's record.
     reads_feature_flags = False
 
     def run(self) -> None:

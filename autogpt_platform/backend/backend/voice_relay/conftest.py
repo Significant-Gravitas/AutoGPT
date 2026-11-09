@@ -10,11 +10,7 @@ import pytest
 import uvicorn
 from fakeredis import FakeServer
 from fakeredis.aioredis import FakeRedis
-from fastapi import BackgroundTasks
-from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 
-from backend.api.features.onboarding_dump.interview import InterviewClosure
-from backend.api.features.onboarding_dump.models import FinalizeResponse
 from backend.api.utils.cors import build_cors_params
 from backend.util.settings import AppEnvironment
 from backend.voice_relay import tokens
@@ -28,8 +24,6 @@ from backend.voice_relay.config import (
     Timing,
 )
 from backend.voice_relay.fake_vendor import FakeVendor
-from backend.voice_relay.handoff import record_hand_off
-from backend.voice_relay.locks import CallRecord
 from backend.voice_relay.metering import Row
 from backend.voice_relay.postcall import PostCall, Transcription
 from backend.voice_relay.serve import DrainingServer
@@ -119,27 +113,6 @@ class ScriptedTranscriber:
         if isinstance(text, Exception):
             raise text
         return Transcription(text=text, tokens_in=100, tokens_out=10)
-
-
-class HandOffs:
-    """Hands every call off as an accepted take and remembers each."""
-
-    def __init__(self) -> None:
-        self.calls: list[CallRecord] = []
-
-    async def __call__(
-        self, redis, record: CallRecord, background: BackgroundTasks
-    ) -> InterviewClosure:
-        self.calls.append(record)
-        closure = InterviewClosure(
-            ending=None,
-            hand_off=FinalizeResponse(
-                status=BrainDumpStatus.transcribed,
-                input_mode=BrainDumpInputMode.typed,
-            ),
-        )
-        await record_hand_off(redis, record.call_id, closure)
-        return closure
 
 
 class FakeSocket:
@@ -235,7 +208,6 @@ class RunningRelay:
         recorded: dict[str, str],
         postcall: PostCall,
         recordings: MemoryRecordings,
-        hand_offs: HandOffs,
     ) -> None:
         self.relay = relay
         self.server = server
@@ -246,7 +218,6 @@ class RunningRelay:
         self.recorded = recorded
         self.postcall = postcall
         self.recordings = recordings
-        self.hand_offs = hand_offs
 
     async def postcalls_done(self, timeout: float = 10.0) -> None:
         """Wait for the post-call jobs running on the relay."""
@@ -288,7 +259,6 @@ async def running_relay(
     rows: list[Row] = []
     recorded: dict[str, str] = {}
     recordings = MemoryRecordings()
-    hand_offs = HandOffs()
 
     async def get_redis():
         if redis_delay_s:
@@ -323,7 +293,6 @@ async def running_relay(
         live_model="gemini-3.8-live",
         pod="relay-test",
         cost_sink=sink,
-        hand_off=hand_offs,
     )
     relay = Relay(
         max_calls=max_calls,
@@ -371,7 +340,6 @@ async def running_relay(
         recorded=recorded,
         postcall=postcall,
         recordings=recordings,
-        hand_offs=hand_offs,
     )
     try:
         yield running

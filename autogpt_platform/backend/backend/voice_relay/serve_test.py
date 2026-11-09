@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import json
 import signal
@@ -153,7 +154,7 @@ def test_sigint_exits_without_draining():
     assert not relay.draining
 
 
-async def test_sigterm_waits_for_a_calls_post_call_job_before_exiting(redis):
+async def test_sigterm_waits_for_a_calls_transcript_job_before_exiting(redis):
     class HeldTranscriber(ScriptedTranscriber):
         def __init__(self) -> None:
             super().__init__()
@@ -179,13 +180,15 @@ async def test_sigterm_waits_for_a_calls_post_call_job_before_exiting(redis):
 
         running.server.handle_exit(signal.SIGTERM, None)
         await asyncio.sleep(0.5)
-        # The call is over but its words are not handed off yet.
+        # The call is over but its transcript is not made yet.
         assert not running.serving.done()
-        assert running.hand_offs.calls == []
+        record = await locks.read_call(redis, call_id)
+        assert record is not None and record.transcript_of_record is None
 
         transcriber.release.set()
         await asyncio.wait_for(running.serving, timeout=10)
-        assert [record.call_id for record in running.hand_offs.calls] == [call_id]
+        record = await locks.read_call(redis, call_id)
+        assert record is not None and record.status == locks.TRANSCRIBED
 
 
 SAID = "what the person said on the call"
@@ -308,14 +311,34 @@ async def test_a_call_starting_as_the_drain_begins_runs_and_the_drain_waits_for_
     assert running.recorded == {"user-1": call_id}
 
 
-def test_the_relay_process_does_not_load_the_executor():
-    # A fresh interpreter: this one has loaded the executor through other tests.
+# What the relay never loads: the executor, the copilot's tools, and the
+# onboarding pipeline, whose hand-off of a call runs in the REST API.
+NOT_THE_RELAYS = (
+    "backend.executor",
+    "backend.copilot.tools",
+    "backend.api.features.onboarding_dump.interview",
+    "backend.api.features.onboarding_dump.service",
+    "backend.api.features.onboarding_dump.quality",
+    "backend.api.features.onboarding_dump.voice_handoff",
+)
+RELAY_PACKAGE = Path(__file__).resolve().parent
+
+
+def _not_the_relays(module: str) -> bool:
+    return any(
+        module == banned or module.startswith(f"{banned}.") for banned in NOT_THE_RELAYS
+    )
+
+
+def test_the_relay_process_loads_neither_the_executor_nor_the_pipeline():
+    # A fresh interpreter: this one has loaded them through other tests.
     probe = (
         "import json, sys\n"
         "import backend.voice_relay.serve\n"
-        "loaded = sorted(m for m in sys.modules"
-        " if m.split('.')[:2] == ['backend', 'executor'])\n"
-        "print('EXECUTOR_MODULES=' + json.dumps(loaded))\n"
+        f"banned = {NOT_THE_RELAYS!r}\n"
+        "loaded = sorted(m for m in sys.modules if any("
+        "m == b or m.startswith(b + '.') for b in banned))\n"
+        "print('BANNED_MODULES=' + json.dumps(loaded))\n"
     )
     run = subprocess.run(
         [sys.executable, "-c", probe],
@@ -327,6 +350,43 @@ def test_the_relay_process_does_not_load_the_executor():
     )
     assert run.returncode == 0, run.stderr[-2000:]
     reported = next(
-        line for line in run.stdout.splitlines() if line.startswith("EXECUTOR_MODULES=")
+        line for line in run.stdout.splitlines() if line.startswith("BANNED_MODULES=")
     )
     assert json.loads(reported.split("=", 1)[1]) == []
+
+
+def _imports(source: Path) -> list[str]:
+    """Every module *source* imports, a ``from`` import's names included as
+    the submodules they may be."""
+    package = "backend.voice_relay"
+    imported: list[str] = []
+    for node in ast.walk(ast.parse(source.read_text(), filename=str(source))):
+        if isinstance(node, ast.Import):
+            imported.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                parent = package.rsplit(".", node.level - 1)[0]
+                base = f"{parent}.{node.module}" if node.module else parent
+            else:
+                base = node.module or ""
+            imported.append(base)
+            imported.extend(f"{base}.{alias.name}" for alias in node.names)
+    return imported
+
+
+def test_no_relay_module_imports_the_executor_or_the_pipeline():
+    """Read from the source, so the line holds before anything runs."""
+    sources = [
+        source
+        for source in sorted(RELAY_PACKAGE.glob("*.py"))
+        if not source.name.endswith("_test.py") and source.name != "conftest.py"
+    ]
+    assert sources
+
+    offending = {
+        source.name: banned
+        for source in sources
+        if (banned := sorted(m for m in _imports(source) if _not_the_relays(m)))
+    }
+
+    assert offending == {}

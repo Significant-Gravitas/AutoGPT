@@ -820,3 +820,40 @@ async def test_a_call_whose_job_another_process_claimed_leaves_it_to_that_one(re
     await asyncio.wait_for(task, timeout=5)
 
     assert not session.postcall_claimed
+
+
+async def test_a_call_claims_its_post_call_job_as_it_starts(redis):
+    ws = FakeSocket()
+    session = _session(redis, FakeVendor([Reply(text="Hi", audio_s=0.1)]), ws, [])
+    session.store = CallStore(
+        redis, call_id=session.call_id, user_id=USER, holder="pod-a"
+    )
+    task = asyncio.create_task(session.run())
+    await ws.wait_for("ready")
+
+    assert session.postcall_claimed
+    assert await redis.get(locks.postcall_claim_key(session.call_id)) == "pod-a"
+
+    ws.send_json({"type": "hangup"})
+    await asyncio.wait_for(task, timeout=5)
+
+
+async def test_a_call_ending_after_a_post_call_job_took_it_keeps_the_jobs_status(
+    redis,
+):
+    """A sweep took the call as crashed while it still ran; the call's own
+    end never moves its record back."""
+    call = await open_call(redis, FakeVendor([Reply(text="Hi", audio_s=0.1)]))
+    await locks.write_call_record(
+        redis,
+        call.session.call_id,
+        {"status": "transcribing", "end_reason": "crashed"},
+    )
+
+    call.ws.send_json({"type": "hangup"})
+    await call.ended()
+
+    record = await locks.read_call_record(redis, call.session.call_id)
+    assert (record["status"], record["end_reason"]) == ("transcribing", "crashed")
+    assert record["uid"] == USER
+    assert json.loads(record["agent_turns"]) == 1

@@ -2,7 +2,7 @@
 
 Each vendor usage report becomes priced rows (Live audio in, text in, audio
 out, and text out with thinking in it), each scope label two more, and each
-turn the post-call job transcribes two more. Every row is one
+turn the transcript job transcribes two more. Every row is one
 ``PlatformCostLog`` row through ``persist_and_record_usage`` on the
 platform's account: the user's plan windows are left alone, since the
 interview comes before any plan. Every row also adds to the platform's daily
@@ -68,14 +68,16 @@ COST_USD = Counter(
 )
 POSTCALL_SECONDS = Histogram(
     "voice_interview_postcall_seconds",
-    "From a post-call job's start to the hand-off's answer",
+    "From a transcript job's start to its end",
     buckets=(1, 2, 3, 5, 8, 13, 20, 30, 60, 120),
 )
 POSTCALLS = Counter(
     "voice_interview_postcalls_total",
-    "Post-call jobs, by how they ended: handed_off, failed, transcribed (waiting "
-    "for the person's confirm), retry (left for another attempt), gave_up, or "
-    "expired (the call's record was gone)",
+    "Transcript jobs, by how they ended: transcribed, recording_unavailable "
+    "(the person's audio was taken and no recording of it was left), retry "
+    "(left for another attempt), gave_up, expired (the call's record was gone), "
+    "unowned (the record named no owner), answered (its hand-off had answered), "
+    "or lost_claim (another process holds the job)",
     ["outcome"],
 )
 

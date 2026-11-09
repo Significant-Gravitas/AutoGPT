@@ -23,9 +23,9 @@ _CHECKS_ALLOWANCE = "checks the allowance before calling"
 _DREAM_BUDGET = "a dream or skill-learning pass, gated by check_dream_budget"
 _OUTSIDE_TURNS = "a platform feature's call outside any AutoPilot turn"
 _VOICE_INTERVIEW_BOUNDS = (
-    "the voice interview's Gemini client, for its live session and scope labels; "
-    "bounded by the per-call spend cap, the person's call allowance and the "
-    "platform's daily voice budget"
+    "the voice interview's Gemini client, for its live session, scope labels "
+    "and post-call transcript; bounded by the per-call spend and length caps, "
+    "the person's call allowance and the platform's daily voice budget"
 )
 
 _PLATFORM_KEY_MODEL_CALLS = {

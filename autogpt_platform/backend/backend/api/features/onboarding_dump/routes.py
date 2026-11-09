@@ -296,8 +296,10 @@ async def get_onboarding_voice_call_status(
     call_id: VoiceCallId,
 ) -> VoiceCallStatusResponse:
     """A voice call of the person's as it stands, polled once it ends until
-    its hand-off has answered. 404 for a call that is not theirs, or has
-    expired."""
+    its hand-off has answered. Its ``interview`` says whether the call's words
+    took the person's interview or what they typed after the call superseded
+    them, and is read before ``end_reason`` and ``status``. 404 for a call
+    that is not theirs, or has expired."""
     try:
         return await voice.call_status(user_id, call_id)
     except fastapi.HTTPException as e:
@@ -318,9 +320,10 @@ async def finish_onboarding_voice_call(
     """The person's confirm of their voice call, and "Meet your team".
 
     Idempotent: a call that took the interview or that another take beat, or
-    whose words the pipeline ruled on, is answered as it stands. A call
-    waiting for the confirm, one whose hand-off the pipeline never ruled on,
-    or one cut off with its words accepted hands its words off now, with any
+    whose words the pipeline ruled on, is answered as it stands, and a call
+    the person's typing superseded is answered ``superseded``. A call waiting
+    for the confirm, one whose hand-off the pipeline never ruled on, or one
+    cut off with its words accepted hands its words off now, with any
     ``corrections`` after them, and its accepted take becomes the interview's.
     The client reads the answer as it reads the typed interview's finish. 404
     for a call that is not theirs; 409

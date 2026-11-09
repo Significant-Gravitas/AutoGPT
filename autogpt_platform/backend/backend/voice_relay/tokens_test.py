@@ -117,3 +117,28 @@ async def test_a_start_token_is_spent_by_its_first_use(redis):
     assert 0 < await redis.ttl(tokens.spent_key(claims.call_id)) <= 90
     with pytest.raises(TokenError, match="token_used"):
         await tokens.spend(redis, claims)
+
+
+def test_a_start_token_carries_the_persons_ending_arm():
+    token = tokens.mint_start(USER, _call_id(), "websocket", ending="02-profile-card")
+    assert tokens.verify_start(token).ending == "02-profile-card"
+    assert (
+        tokens.verify_start(tokens.mint_start(USER, _call_id(), "websocket")).ending
+        is None
+    )
+
+
+@pytest.mark.parametrize("ending", [7, "", "02 profile card", "x" * 65])
+def test_a_token_naming_an_arm_that_is_not_one_is_refused(ending):
+    token = tokens._sign(
+        {
+            "kind": "start",
+            "uid": USER,
+            "call_id": _call_id(),
+            "leg": "websocket",
+            "exp": time.time() + 60,
+            "ending": ending,
+        }
+    )
+    with pytest.raises(TokenError, match="token_invalid"):
+        tokens.verify_start(token)

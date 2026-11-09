@@ -59,7 +59,14 @@ from backend.voice_relay.config import (
     Caps,
     Timing,
 )
-from backend.voice_relay.locks import CallStore, TurnMark
+from backend.voice_relay.locks import (
+    CONNECTING,
+    ENDED,
+    LIVE,
+    RUNNING,
+    CallStore,
+    TurnMark,
+)
 from backend.voice_relay.metering import (
     CALL_SECONDS,
     CALLS,
@@ -283,6 +290,9 @@ class Session:
     async def run(self) -> None:
         """Run the call to its end, then report how it ended."""
         await self.store.pend_postcall()
+        # Held from here, so no other process's sweep takes the job of a call
+        # still running; the call's refresh holds it on.
+        self.postcall_claimed = await self.store.claim_postcall()
         try:
             live = await asyncio.wait_for(
                 self.vendor.connect(opening=voice_interview_kickoff(self.first_name)),
@@ -291,8 +301,10 @@ class Session:
             self.t0 = time.monotonic()
             self.bucket_at = self.t0
             self.live = live
-            await self.store.record(
-                status="live", connect_s=round(self.t0 - self.started, 3)
+            await self.store.advance(
+                LIVE,
+                moves_from=(None, CONNECTING),
+                connect_s=round(self.t0 - self.started, 3),
             )
             ticket = tokens.mint_resume(
                 self.user_id, self.call_id, self.caps.max_call_s + RESUME_GRACE_S
@@ -338,11 +350,15 @@ class Session:
             )
             await self.meter.flush()
             # Before the call stops counting as live, so no other process's
-            # sweep takes the job from under this one.
+            # sweep takes the job from under this one, when the claim at the
+            # start did not go through.
             self.postcall_claimed = await self.store.claim_postcall()
-            await self.store.record(
-                status="ended",
-                end_reason=reason,
+            # A post-call job that took the call meanwhile keeps the status it
+            # wrote, and the end reason it ran on.
+            await self.store.advance(
+                ENDED,
+                moves_from=(None, *RUNNING),
+                guarded={"end_reason": reason},
                 ended_at=round(time.time(), 3),
                 elapsed_s=round(elapsed, 1),
                 agent_turns=len(self.turns),

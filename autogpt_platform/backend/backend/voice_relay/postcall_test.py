@@ -1,8 +1,8 @@
-"""The post-call job: the transcript of record, its hand-off, and the sweep
-that finishes what a dead pod left.
+"""The relay's half of a call's post-call work: its transcript of record,
+and the sweep that makes the transcript of a call whose pod died.
 
-The hand-off runs for real into the onboarding pipeline over the in-memory
-dump table the pipeline tests use, so these assert what reaches the take.
+No onboarding pipeline runs here: the job stops at the stored transcript,
+which the REST API hands off (``onboarding_dump.voice_handoff``).
 """
 
 import asyncio
@@ -11,61 +11,31 @@ from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
-from fastapi import BackgroundTasks, HTTPException
 from google.genai import types
-from prisma.enums import BrainDumpStatus
 from pytest_mock import MockerFixture
 
-from backend.api.features.onboarding_dump import interview, quality, voice
-from backend.api.features.onboarding_dump.interview_endings import InterviewEnding
-from backend.api.features.onboarding_dump.interview_test import (
-    StoredInterview,
-    allowance,
-    jobs,
-    opening,
-    stored,
+from backend.voice_relay import locks, postcall, tokens
+from backend.voice_relay.config import (
+    CAPS,
+    IN_RATE,
+    POSTCALL_CLAIM_TTL_S,
+    POSTCALL_JOB_TIMEOUT_S,
+    TRANSCRIBE_MODEL,
+    Timing,
+    transcribe_timeout_s,
 )
-from backend.api.features.onboarding_dump.service_test import (
-    DumpStore,
-    dumps,
-    extraction,
-    personalization_admission,
-    quality_gate,
-    storage_mocks,
-    transcribe,
-)
-from backend.copilot.model import (
-    INTERVIEW_STAGE_HANDED_OFF,
-    ONBOARDING_INTERVIEW_KIND,
-    ChatSession,
-)
-from backend.copilot.onboarding_interview import INTERVIEW_CLOSED
-from backend.voice_relay import handoff, locks, postcall, tokens
-from backend.voice_relay.config import IN_RATE, TRANSCRIBE_MODEL
 from backend.voice_relay.conftest import MemoryRecordings, ScriptedTranscriber
 from backend.voice_relay.locks import TurnMark
-from backend.voice_relay.metering import Row
+from backend.voice_relay.metering import POSTCALLS, Row
 from backend.voice_relay.postcall import (
     GeminiTranscriber,
     PostCall,
+    Transcription,
     transcript_of_record,
     transcription_text,
     user_turn_clips,
 )
-from backend.voice_relay.record import wav_of
-
-__all__ = [
-    "allowance",
-    "dumps",
-    "extraction",
-    "jobs",
-    "opening",
-    "personalization_admission",
-    "quality_gate",
-    "storage_mocks",
-    "stored",
-    "transcribe",
-]
+from backend.voice_relay.record import CallRecording, wav_of
 
 USER = "user-1"
 LIVE = "gemini-3.8-live"
@@ -98,71 +68,9 @@ def recording_of(*answers: bytes) -> tuple[bytes, list[int]]:
     return pcm, marks
 
 
-class Interviews:
-    """What the person's onboarding row and chat store hold of their
-    interviews."""
-
-    def __init__(self) -> None:
-        self.latest_call: str | None = None
-        # The call that took the interview, as the onboarding row keeps it.
-        self.taken: str | None = None
-        self.typed: ChatSession | None = None
-
-
-@pytest.fixture(autouse=True)
-def interviews(mocker: MockerFixture, redis) -> Interviews:
-    state = Interviews()
-
-    async def latest_call(user_id: str) -> str | None:
-        return state.latest_call
-
-    async def typed(user_id: str) -> ChatSession | None:
-        return state.typed
-
-    async def taken(user_id: str) -> str | None:
-        return state.taken
-
-    async def take(user_id: str, call_id: str) -> None:
-        state.taken = call_id
-
-    mocker.patch.object(
-        interview,
-        "get_onboarding_voice_interview_call_id",
-        new=AsyncMock(side_effect=taken),
-    )
-    mocker.patch.object(
-        handoff,
-        "record_onboarding_voice_interview_call",
-        new=AsyncMock(side_effect=take),
-    )
-    mocker.patch.object(
-        interview,
-        "get_onboarding_voice_call_id",
-        new=AsyncMock(side_effect=latest_call),
-    )
-    mocker.patch.object(
-        interview,
-        "find_onboarding_interview_session",
-        new=AsyncMock(side_effect=typed),
-    )
-    mocker.patch.object(interview, "get_redis_async", AsyncMock(return_value=redis))
-    mocker.patch.object(voice, "get_redis_async", AsyncMock(return_value=redis))
-    return state
-
-
-@pytest.fixture(autouse=True)
-def arm(mocker: MockerFixture) -> AsyncMock:
-    """The person's arm of the voice ending experiment: none unless a test
-    says otherwise."""
-    return mocker.patch.object(
-        interview, "assigned_ending", new=AsyncMock(return_value=None)
-    )
-
-
 class Rig:
-    def __init__(self, redis, interviews: Interviews) -> None:
+    def __init__(self, redis) -> None:
         self.redis = redis
-        self.interviews = interviews
         self.recordings = MemoryRecordings()
         self.rows: list[Row] = []
 
@@ -173,6 +81,7 @@ class Rig:
         pod: str = "pod-a",
         attempts: int = 3,
         first_name: str | None = "Dana",
+        max_jobs: int = 4,
     ) -> PostCall:
         async def get_redis():
             return self.redis
@@ -192,6 +101,7 @@ class Rig:
             pod=pod,
             cost_sink=sink,
             attempts=attempts,
+            max_jobs=max_jobs,
         )
 
     async def call(
@@ -201,18 +111,18 @@ class Rig:
         *,
         status: str = "ended",
         end_reason: str | None = "finished",
-        first_task: str | None = None,
         uploaded: bool = True,
+        started: float | None = None,
     ) -> str:
-        """A call as the relay leaves it on its record: pending its job, the
-        person's latest, its recording uploaded."""
+        """A call as the relay leaves it on its record: pending, its recording
+        uploaded. It started an hour ago unless *started* says otherwise."""
         call_id = tokens.new_call_id()
         fields: dict[str, object] = {
             "status": status,
             "uid": USER,
             "leg": "websocket",
+            "started": time.time() - 3600 if started is None else started,
             "end_reason": end_reason,
-            "first_task": first_task,
             "turns": [
                 TurnMark(index=index, at=at).model_dump()
                 for index, at in enumerate(marks)
@@ -224,7 +134,6 @@ class Rig:
             )
         await locks.write_call_record(self.redis, call_id, fields)
         await locks.add_postcall_pending(self.redis, call_id)
-        self.interviews.latest_call = call_id
         return call_id
 
     async def run(self, job: PostCall, call_id: str, **kwargs) -> locks.CallRecord:
@@ -237,8 +146,8 @@ class Rig:
 
 
 @pytest.fixture
-def rig(redis, interviews: Interviews) -> Rig:
-    return Rig(redis, interviews)
+def rig(redis) -> Rig:
+    return Rig(redis)
 
 
 # ---------- the person's turns ----------
@@ -393,26 +302,23 @@ def test_server_tags_never_reach_the_transcript_of_record():
 # ---------- the job ----------
 
 
-async def test_an_accepted_take_hands_the_persons_words_off_and_closes_the_interview(
-    rig: Rig, dumps: DumpStore, jobs: dict[str, AsyncMock]
+async def test_the_job_stores_the_transcript_and_leaves_the_call_for_its_hand_off(
+    rig: Rig,
 ):
     pcm, marks = recording_of(answer(), answer())
     call_id = await rig.call(pcm, marks)
-    transcriber = ScriptedTranscriber(SAID)
 
-    record = await rig.run(rig.postcall(transcriber), call_id, pcm=pcm)
+    record = await rig.run(rig.postcall(ScriptedTranscriber(SAID)), call_id, pcm=pcm)
 
-    assert record.status == locks.HANDED_OFF
-    assert record.hand_off is not None
-    assert record.hand_off.status == BrainDumpStatus.transcribed
+    assert record.status == locks.TRANSCRIBED
     assert record.transcript_of_record == "\n".join(SAID)
-    assert dumps.row is not None
-    assert dumps.row.recordingId == f"interview-{call_id}"
-    assert dumps.row.transcript == "\n".join(SAID)
-    # The pipeline's own jobs ran on the same words.
-    jobs["greeting"].assert_awaited_once_with("\n".join(SAID))
-    assert await locks.postcall_pending(rig.redis) == []
-    assert await interview.call_that_took_the_interview(USER) == call_id
+    assert record.transcribed_at is not None
+    assert record.hand_off is None
+    assert record.audio_path is None
+    assert rig.recordings.objects == {}
+    # The claim is given up, and the call is the REST API's to hand off.
+    assert await rig.redis.get(locks.postcall_claim_key(call_id)) is None
+    assert await locks.postcall_pending(rig.redis) == [call_id]
 
 
 async def test_the_transcription_names_the_speaker_from_the_account(rig: Rig):
@@ -423,38 +329,6 @@ async def test_the_transcription_names_the_speaker_from_the_account(rig: Rig):
     await rig.run(rig.postcall(transcriber, first_name="Dana"), call_id, pcm=pcm)
 
     assert [name for _, name in transcriber.calls] == ["Dana"]
-
-
-async def test_the_hand_off_is_told_why_the_call_ended_and_the_task_it_agreed(
-    rig: Rig, mocker: MockerFixture
-):
-    close = mocker.patch.object(
-        handoff,
-        "close_voice_interview",
-        new=AsyncMock(
-            return_value=interview.InterviewClosure(ending=None, hand_off=None)
-        ),
-    )
-    pcm, marks = recording_of(answer())
-    call_id = await rig.call(pcm, marks, first_task="Answer order emails")
-
-    await rig.run(rig.postcall(ScriptedTranscriber(SAID[:1])), call_id, pcm=pcm)
-
-    close.assert_awaited_once()
-    assert close.await_args.args[:3] == (USER, call_id, SAID[0])
-    assert close.await_args.kwargs["reason"] == "confirmed"
-    assert close.await_args.kwargs["first_task"] == "Answer order emails"
-
-
-async def test_the_recording_is_deleted_once_the_transcript_is_stored(rig: Rig):
-    pcm, marks = recording_of(answer())
-    call_id = await rig.call(pcm, marks)
-
-    record = await rig.run(rig.postcall(ScriptedTranscriber(SAID[:1])), call_id)
-
-    assert rig.recordings.objects == {}
-    assert record.audio_path is None
-    assert record.transcript_of_record == SAID[0]
 
 
 async def test_each_transcribed_turn_is_on_the_calls_bill(rig: Rig):
@@ -468,9 +342,7 @@ async def test_each_transcribed_turn_is_on_the_calls_bill(rig: Rig):
     assert billed.count((TRANSCRIBE_MODEL, "text_out", 10)) == 2
 
 
-async def test_a_near_silent_clip_is_an_empty_turn_and_the_job_completes(
-    rig: Rig, dumps: DumpStore
-):
+async def test_a_near_silent_clip_is_an_empty_turn_and_the_job_completes(rig: Rig):
     """A 0.7 s clip barely above the speech threshold comes back from the
     transcription model with no candidates at all."""
     pcm, marks = recording_of(tone(0.7, amplitude=300) + quiet(0.8))
@@ -487,176 +359,23 @@ async def test_a_near_silent_clip_is_an_empty_turn_and_the_job_completes(
     record = await rig.run(rig.postcall(GeminiTranscriber(client)), call_id, pcm=pcm)
 
     generate.assert_awaited_once()
-    assert record.status == locks.FAILED
-    assert record.hand_off is not None
-    assert record.hand_off.error_code == quality.NO_USABLE_SPEECH
-    assert record.transcript_of_record == ""
-    assert dumps.row is None
-    assert await locks.postcall_pending(rig.redis) == []
-
-
-async def test_a_call_where_nothing_was_heard_leaves_the_interview_open_for_another(
-    rig: Rig, dumps: DumpStore
-):
-    silent, silent_marks = recording_of(quiet(2.0))
-    first = await rig.call(silent, silent_marks)
-    job = rig.postcall(ScriptedTranscriber(SAID[:1]))
-
-    record = await rig.run(job, first, pcm=silent)
-
-    assert record.status == locks.FAILED
-    assert record.hand_off is not None
-    assert record.hand_off.error_code == quality.NO_USABLE_SPEECH
-    assert await interview.call_that_took_the_interview(USER) is None
-
-    pcm, marks = recording_of(answer())
-    second = await rig.call(pcm, marks)
-    record = await rig.run(job, second, pcm=pcm)
-
-    assert record.status == locks.HANDED_OFF
-    assert dumps.row is not None
-    assert dumps.row.recordingId == f"interview-{second}"
-
-
-async def test_a_verdict_on_the_words_fails_the_call_and_leaves_the_interview_open(
-    rig: Rig, quality_gate: AsyncMock
-):
-    quality_gate.return_value = quality.QualityRejection(
-        error_code=quality.INSUFFICIENT_CONTENT, reason="judge_unusable"
-    )
-    pcm, marks = recording_of(answer())
-    call_id = await rig.call(pcm, marks)
-
-    record = await rig.run(rig.postcall(ScriptedTranscriber(["idk"])), call_id, pcm=pcm)
-
-    assert record.status == locks.FAILED
-    assert record.hand_off is not None
-    assert record.hand_off.error_code == quality.INSUFFICIENT_CONTENT
-    assert await interview.call_that_took_the_interview(USER) is None
-
-
-async def test_a_take_the_judge_never_ruled_on_is_handed_off_again_by_the_finish_route(
-    rig: Rig, quality_gate: AsyncMock, dumps: DumpStore
-):
-    quality_gate.side_effect = [
-        quality.QualityRejection(
-            error_code=quality.QUALITY_CHECK_UNAVAILABLE, reason="judge_error"
-        ),
-        None,
-    ]
-    pcm, marks = recording_of(answer())
-    call_id = await rig.call(pcm, marks)
-
-    record = await rig.run(
-        rig.postcall(ScriptedTranscriber(SAID[:1])), call_id, pcm=pcm
-    )
-
-    assert record.status == locks.FAILED
-    assert record.hand_off is not None
-    assert record.hand_off.error_code == quality.QUALITY_CHECK_UNAVAILABLE
-    # The words stay on the call for the retry.
-    assert record.transcript_of_record == SAID[0]
-    assert await interview.call_that_took_the_interview(USER) is None
-
-    background = BackgroundTasks()
-    again = await voice.finish_call(USER, call_id, background)
-    await background()
-
-    assert again.status == BrainDumpStatus.transcribed
-    assert quality_gate.await_count == 2
-    record = await locks.read_call(rig.redis, call_id)
-    assert record is not None and record.status == locks.HANDED_OFF
-    # The person's finish makes the take the interview's.
-    assert record.took_interview
-    assert rig.interviews.taken == call_id
-    assert dumps.row is not None and dumps.row.transcript == SAID[0]
-
-
-async def test_the_pipeline_refusing_for_now_is_recorded_for_the_finish_route(
-    rig: Rig, personalization_admission: AsyncMock
-):
-    personalization_admission.side_effect = HTTPException(
-        status_code=429, headers={"Retry-After": "60"}
-    )
-    pcm, marks = recording_of(answer())
-    call_id = await rig.call(pcm, marks)
-
-    record = await rig.run(
-        rig.postcall(ScriptedTranscriber(SAID[:1])), call_id, pcm=pcm
-    )
-
-    assert record.status == locks.FAILED
-    assert record.hand_off is not None
-    assert record.hand_off.error_code == "rate_limited"
-    assert record.transcript_of_record == SAID[0]
-    assert await locks.postcall_pending(rig.redis) == []
-
-
-async def test_a_confirm_arm_waits_and_the_finish_route_completes_the_hand_off(
-    rig: Rig, arm: AsyncMock, dumps: DumpStore
-):
-    arm.return_value = InterviewEnding.PROFILE_CARD.value
-    pcm, marks = recording_of(answer())
-    call_id = await rig.call(pcm, marks)
-
-    record = await rig.run(
-        rig.postcall(ScriptedTranscriber(SAID[:1])), call_id, pcm=pcm
-    )
-
+    # The verdict on nothing said is the hand-off's to give.
     assert record.status == locks.TRANSCRIBED
+    assert record.transcript_of_record == ""
     assert record.hand_off is None
-    assert dumps.row is None
-
-    background = BackgroundTasks()
-    confirmed = await voice.finish_call(
-        USER, call_id, background, corrections="Eight staff, not five."
-    )
-    await background()
-
-    assert confirmed.status == BrainDumpStatus.transcribed
-    assert dumps.row is not None
-    assert dumps.row.transcript == f"{SAID[0]}\nEight staff, not five."
-    record = await locks.read_call(rig.redis, call_id)
-    assert record is not None and record.status == locks.HANDED_OFF
-    # The person's finish makes the take the interview's.
-    assert record.took_interview
-    assert rig.interviews.taken == call_id
+    assert await locks.postcall_pending(rig.redis) == [call_id]
 
 
-async def test_a_call_the_person_has_called_again_since_is_superseded(
-    rig: Rig, dumps: DumpStore
-):
-    pcm, marks = recording_of(answer())
-    call_id = await rig.call(pcm, marks)
-    rig.interviews.latest_call = tokens.new_call_id()
+async def test_a_call_where_nothing_was_heard_stores_an_empty_transcript(rig: Rig):
+    silent, marks = recording_of(quiet(2.0))
+    call_id = await rig.call(silent, marks)
+    transcriber = ScriptedTranscriber(SAID[:1])
 
-    record = await rig.run(
-        rig.postcall(ScriptedTranscriber(SAID[:1])), call_id, pcm=pcm
-    )
+    record = await rig.run(rig.postcall(transcriber), call_id, pcm=silent)
 
-    assert record.status == locks.HANDED_OFF
-    assert record.hand_off is not None
-    assert record.hand_off.error_code == interview.SUPERSEDED
-    assert dumps.row is None
-
-
-async def test_a_call_after_the_typed_interview_ended_is_superseded(
-    rig: Rig, dumps: DumpStore
-):
-    typed = ChatSession.new(USER, dry_run=False)
-    typed.metadata.kind = ONBOARDING_INTERVIEW_KIND
-    typed.metadata.onboarding_interview_stage = INTERVIEW_STAGE_HANDED_OFF
-    rig.interviews.typed = typed
-    pcm, marks = recording_of(answer())
-    call_id = await rig.call(pcm, marks)
-
-    record = await rig.run(
-        rig.postcall(ScriptedTranscriber(SAID[:1])), call_id, pcm=pcm
-    )
-
-    assert record.hand_off is not None
-    assert record.hand_off.error_code == interview.SUPERSEDED
-    assert dumps.row is None
+    assert transcriber.calls == []
+    assert record.status == locks.TRANSCRIBED
+    assert record.transcript_of_record == ""
 
 
 async def test_a_job_that_fails_is_left_for_another_attempt_then_records_the_failure(
@@ -674,6 +393,8 @@ async def test_a_job_that_fails_is_left_for_another_attempt_then_records_the_fai
     assert await locks.postcall_pending(rig.redis) == [call_id]
     # The claim is given up, so the next sweep tries again.
     assert await rig.redis.get(locks.postcall_claim_key(call_id)) is None
+    # The last upload stays for the next attempt.
+    assert first.audio_path in rig.recordings.objects
 
     second = await rig.run(job, call_id, pcm=pcm)
 
@@ -681,8 +402,8 @@ async def test_a_job_that_fails_is_left_for_another_attempt_then_records_the_fai
     assert second.hand_off is not None
     assert second.hand_off.error_code == postcall.TRANSCRIPTION_UNAVAILABLE
     assert await locks.postcall_pending(rig.redis) == []
-    # The recording stays for the retention sweep.
-    assert second.audio_path in rig.recordings.objects
+    # Nothing reads the recording again, so it goes.
+    assert rig.recordings.objects == {}
 
 
 async def test_a_turn_whose_transcription_fails_once_is_tried_again(
@@ -699,24 +420,30 @@ async def test_a_turn_whose_transcription_fails_once_is_tried_again(
     assert record.transcript_of_record == SAID[0]
 
 
-async def test_a_call_whose_answer_was_recorded_is_only_cleared(rig: Rig):
+async def test_a_call_whose_hand_off_answered_is_only_cleared(rig: Rig):
     pcm, marks = recording_of(answer())
     call_id = await rig.call(pcm, marks)
-    await locks.write_call_record(rig.redis, call_id, {"status": locks.HANDED_OFF})
+    await locks.write_call_record(
+        rig.redis,
+        call_id,
+        {
+            "status": locks.HANDED_OFF,
+            "hand_off": {"status": "transcribed", "input_mode": "typed"},
+        },
+    )
     transcriber = ScriptedTranscriber(SAID[:1])
 
-    await rig.run(rig.postcall(transcriber), call_id)
+    await rig.run(rig.postcall(transcriber), call_id, pcm=pcm)
 
     assert transcriber.calls == []
     assert await locks.postcall_pending(rig.redis) == []
+    assert rig.recordings.objects == {}
 
 
 # ---------- the sweep ----------
 
 
-async def test_a_crashed_call_is_finished_once_by_one_of_two_pods(
-    rig: Rig, dumps: DumpStore
-):
+async def test_a_crashed_call_is_transcribed_once_by_one_of_two_pods(rig: Rig):
     """A pod died mid-call: its call never ended, and its recording was last
     uploaded at a checkpoint."""
     pcm, marks = recording_of(answer(), answer())
@@ -735,17 +462,42 @@ async def test_a_crashed_call_is_finished_once_by_one_of_two_pods(
     assert len(transcriber.calls) == 2
     record = await locks.read_call(rig.redis, call_id)
     assert record is not None
-    assert record.status == locks.HANDED_OFF
+    assert record.status == locks.TRANSCRIBED
     assert record.end_reason == postcall.CRASHED
-    assert dumps.row is not None and dumps.row.transcript == "\n".join(SAID)
-    assert await locks.postcall_pending(rig.redis) == []
+    assert record.transcript_of_record == "\n".join(SAID)
+    assert record.transcribed_from_upload
     assert rig.recordings.objects == {}
+    # Its hand-off is the REST API's.
+    assert await locks.postcall_pending(rig.redis) == [call_id]
+
+
+async def test_the_sweep_leaves_a_call_whose_transcript_is_made(rig: Rig):
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(pcm, marks)
+    await locks.store_transcript(
+        rig.redis, call_id, SAID[0], uid=USER, from_upload=False
+    )
+
+    assert await rig.postcall(ScriptedTranscriber()).sweep() == []
+    assert await locks.postcall_pending(rig.redis) == [call_id]
 
 
 async def test_a_live_call_is_left_to_the_pod_running_it(rig: Rig):
     pcm, marks = recording_of(answer())
     call_id = await rig.call(pcm, marks, status="live", end_reason=None)
     await locks.register_live_call(rig.redis, call_id, time.time())
+
+    assert await rig.postcall(ScriptedTranscriber()).sweep() == []
+    assert await locks.postcall_pending(rig.redis) == [call_id]
+
+
+async def test_the_sweep_leaves_a_call_that_may_still_run_to_its_pod(rig: Rig):
+    """Out of the live count, as a moment's Redis trouble can leave a call,
+    but started too recently to have ended."""
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(
+        pcm, marks, status="live", end_reason=None, started=time.time()
+    )
 
     assert await rig.postcall(ScriptedTranscriber()).sweep() == []
     assert await locks.postcall_pending(rig.redis) == [call_id]
@@ -763,7 +515,7 @@ async def test_a_job_another_pod_holds_is_taken_up_once_its_claim_lapses(rig: Ri
     assert await job.sweep() == [call_id]
     await asyncio.gather(*job.jobs.values())
     record = await locks.read_call(rig.redis, call_id)
-    assert record is not None and record.status == locks.HANDED_OFF
+    assert record is not None and record.status == locks.TRANSCRIBED
 
 
 async def test_a_pending_call_whose_record_expired_is_dropped(rig: Rig):
@@ -783,3 +535,270 @@ async def test_a_draining_process_takes_no_other_pods_jobs(rig: Rig):
     job.stopped = True
 
     assert await job.sweep() == []
+
+
+async def test_the_sweep_takes_only_as_many_jobs_as_fit(rig: Rig):
+    pcm, marks = recording_of(answer())
+    calls = [await rig.call(pcm, marks) for _ in range(3)]
+    go_on = asyncio.Event()
+
+    class Held:
+        async def __call__(self, wav: bytes, *, first_name: str | None):
+            await go_on.wait()
+            return Transcription(text=SAID[0])
+
+    job = rig.postcall(Held(), max_jobs=2)
+
+    first = await job.sweep()
+
+    assert len(first) == 2
+    assert await job.sweep() == []
+    go_on.set()
+    await asyncio.gather(*job.jobs.values())
+    assert await job.sweep() == [call for call in calls if call not in first]
+    await asyncio.gather(*job.jobs.values())
+    for call_id in calls:
+        record = await locks.read_call(rig.redis, call_id)
+        assert record is not None and record.status == locks.TRANSCRIBED
+
+
+# ---------- one job, once in effect ----------
+
+
+def test_a_claim_outlives_the_longest_call_and_its_job():
+    timing = Timing()
+    longest_call = (
+        CAPS.max_call_s
+        + timing.vendor_connect_timeout_s
+        + timing.wrap_grace_s
+        + timing.finish_grace_s
+    )
+    assert POSTCALL_CLAIM_TTL_S > longest_call + POSTCALL_JOB_TIMEOUT_S
+
+
+def test_a_turn_is_given_a_few_times_its_length_to_transcribe():
+    assert transcribe_timeout_s(2.0) == pytest.approx(14.0)
+    assert transcribe_timeout_s(30.0) == pytest.approx(70.0)
+
+
+async def test_a_stalled_transcription_is_given_up_after_its_turns_share(
+    rig: Rig, mocker: MockerFixture
+):
+    mocker.patch.object(postcall, "RETRY_BACKOFF_S", 0.0)
+    mocker.patch.object(postcall, "transcribe_timeout_s", lambda audio_s: 0.05)
+
+    class Stalled:
+        calls = 0
+
+        async def __call__(self, wav: bytes, *, first_name: str | None):
+            Stalled.calls += 1
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(pcm, marks)
+
+    record = await rig.run(rig.postcall(Stalled()), call_id, pcm=pcm)
+
+    assert Stalled.calls == 3
+    assert record.status == locks.TRANSCRIBING
+    assert await locks.postcall_pending(rig.redis) == [call_id]
+
+
+async def test_a_job_whose_claim_lapsed_under_it_writes_nothing(rig: Rig):
+    """The claim lapses while the first job transcribes, and another pod's
+    sweep takes the call up and finishes it. The first job then stops: the
+    call's transcript is the second job's."""
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(pcm, marks)
+    transcribing = asyncio.Event()
+    go_on = asyncio.Event()
+
+    class Held:
+        async def __call__(self, wav: bytes, *, first_name: str | None):
+            transcribing.set()
+            await go_on.wait()
+            return Transcription(text="Words the first job heard.")
+
+    first = rig.postcall(Held(), pod="pod-a")
+    assert await locks.claim_postcall(rig.redis, call_id, "pod-a")
+    running = asyncio.create_task(first.run(call_id, pcm=pcm))
+    await asyncio.wait_for(transcribing.wait(), timeout=5)
+
+    await rig.redis.delete(locks.postcall_claim_key(call_id))
+    second = rig.postcall(ScriptedTranscriber(SAID[:1]), pod="pod-b")
+    assert await second.sweep() == [call_id]
+    await asyncio.gather(*second.jobs.values())
+    go_on.set()
+    await asyncio.wait_for(running, timeout=5)
+
+    record = await locks.read_call(rig.redis, call_id)
+    assert record is not None
+    assert record.status == locks.TRANSCRIBED
+    assert record.transcript_of_record == SAID[0]
+    assert await locks.postcall_pending(rig.redis) == [call_id]
+
+
+async def test_a_job_that_cannot_reach_redis_still_deletes_its_spool(
+    rig: Rig, tmp_path
+):
+    call_id = tokens.new_call_id()
+    recording = CallRecording(
+        call_id=call_id,
+        user_id=USER,
+        spool_dir=tmp_path,
+        store=rig.recordings,
+        call_store=locks.CallStore(rig.redis, call_id=call_id, user_id=USER),
+    )
+    recording.append(tone(0.2))
+    assert recording.spool.exists()
+
+    async def down():
+        raise ConnectionError("redis is down")
+
+    job = PostCall(
+        redis=down,
+        recordings=rig.recordings,
+        transcriber=ScriptedTranscriber(),
+        first_name=AsyncMock(return_value=None),
+        live_model=LIVE,
+        pod="pod-a",
+    )
+    await job.run(call_id, recording=recording, pcm=tone(0.2))
+
+    assert not recording.spool.exists()
+
+
+async def test_a_record_that_names_no_owner_is_never_transcribed(rig: Rig):
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(pcm, marks)
+    await rig.redis.hdel(locks.call_record_key(call_id), "uid")
+    transcriber = ScriptedTranscriber(SAID[:1])
+
+    record = await rig.run(rig.postcall(transcriber), call_id, pcm=pcm)
+
+    assert transcriber.calls == []
+    assert record.transcript_of_record is None
+    assert await locks.postcall_pending(rig.redis) == []
+    assert rig.recordings.objects == {}
+
+
+# ---------- the recording ----------
+
+
+async def test_the_whole_recording_is_transcribed_again_over_one_from_an_upload(
+    rig: Rig,
+):
+    """The sweep made the transcript from an upload that stopped short; the
+    pod that ran the call holds all of it."""
+    pcm, marks = recording_of(answer(), answer())
+    call_id = await rig.call(pcm, marks)
+    await locks.store_transcript(
+        rig.redis, call_id, SAID[0], uid=USER, from_upload=True
+    )
+
+    record = await rig.run(rig.postcall(ScriptedTranscriber(SAID)), call_id, pcm=pcm)
+
+    assert record.status == locks.TRANSCRIBED
+    assert record.transcript_of_record == "\n".join(SAID)
+    assert not record.transcribed_from_upload
+
+
+async def test_a_transcript_whose_hand_off_answered_is_kept_over_the_recording(
+    rig: Rig,
+):
+    pcm, marks = recording_of(answer(), answer())
+    call_id = await rig.call(pcm, marks)
+    await locks.store_transcript(
+        rig.redis, call_id, SAID[0], uid=USER, from_upload=True
+    )
+    await locks.write_call_record(
+        rig.redis,
+        call_id,
+        {
+            "status": locks.HANDED_OFF,
+            "hand_off": {"status": "transcribed", "input_mode": "typed"},
+        },
+    )
+    transcriber = ScriptedTranscriber(SAID)
+
+    record = await rig.run(rig.postcall(transcriber), call_id, pcm=pcm)
+
+    assert transcriber.calls == []
+    assert record.transcript_of_record == SAID[0]
+    assert record.status == locks.HANDED_OFF
+
+
+async def test_a_job_for_a_call_already_transcribed_still_deletes_its_recording(
+    rig: Rig, tmp_path
+):
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(pcm, marks, uploaded=False)
+    await locks.store_transcript(
+        rig.redis, call_id, SAID[0], uid=USER, from_upload=False
+    )
+    recording = CallRecording(
+        call_id=call_id,
+        user_id=USER,
+        spool_dir=tmp_path,
+        store=rig.recordings,
+        call_store=locks.CallStore(rig.redis, call_id=call_id, user_id=USER),
+    )
+    recording.append(pcm)
+    assert await recording.checkpoint()
+    assert rig.recordings.objects
+
+    await rig.run(rig.postcall(ScriptedTranscriber()), call_id, recording=recording)
+
+    assert rig.recordings.objects == {}
+    assert not recording.spool.exists()
+
+
+def _outcomes(outcome: str) -> float:
+    return POSTCALLS.labels(outcome=outcome)._value.get()
+
+
+async def test_a_call_whose_recording_was_lost_says_so(rig: Rig):
+    """The relay took the person's audio, and no recording of it is left: no
+    verdict on their words, so another call or typing takes them."""
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(pcm, marks, uploaded=False)
+    transcriber = ScriptedTranscriber(SAID[:1])
+    before = _outcomes(postcall.RECORDING_UNAVAILABLE)
+
+    record = await rig.run(rig.postcall(transcriber), call_id, pcm=b"")
+
+    assert record.status == locks.FAILED
+    assert record.hand_off is not None
+    assert record.hand_off.error_code == postcall.RECORDING_UNAVAILABLE
+    assert record.transcript_of_record is None
+    assert transcriber.calls == []
+    assert _outcomes(postcall.RECORDING_UNAVAILABLE) == before + 1
+    assert await locks.postcall_pending(rig.redis) == []
+
+
+async def test_a_crashed_call_with_no_upload_left_says_its_recording_was_lost(
+    rig: Rig,
+):
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(pcm, marks, status="live", end_reason=None, uploaded=False)
+    job = rig.postcall(ScriptedTranscriber())
+
+    assert await job.sweep() == [call_id]
+    await asyncio.gather(*job.jobs.values())
+
+    record = await locks.read_call(rig.redis, call_id)
+    assert record is not None and record.hand_off is not None
+    assert record.hand_off.error_code == postcall.RECORDING_UNAVAILABLE
+
+
+async def test_a_call_that_took_none_of_the_persons_audio_has_an_empty_transcript(
+    rig: Rig,
+):
+    pcm, marks = recording_of()
+    call_id = await rig.call(pcm, marks, uploaded=False)
+
+    record = await rig.run(rig.postcall(ScriptedTranscriber()), call_id, pcm=b"")
+
+    assert record.status == locks.TRANSCRIBED
+    assert record.transcript_of_record == ""

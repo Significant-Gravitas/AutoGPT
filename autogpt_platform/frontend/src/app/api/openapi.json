@@ -13007,7 +13007,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Start Onboarding Interview",
-        "description": "Open the person's onboarding interview, with Otto speaking first.\n\nThe first call starts Otto's greeting; every later one adopts the same\ninterview, so Back, a reload and a second tab land in one conversation.\n``turn_id`` is set only when this call started the greeting. A greeting\nalready being written is answered without one, like an interview under\nway: the client reads the session, which resumes the running turn. An\ninterview that is over is answered the same way, with its ``stage``, so\nthe client shows how it ended and the finish button.\n\nA person has one interview, typed or spoken: 409 ``call_in_progress``\nwhile a voice call of theirs is live, and 409\n``onboarding_interview_closed`` once a call's words became the\ninterview's take, each naming the call (``call_id``). 429 at its turn\nbudget, 503 while the budget, the chat stream or the person's calls\ncannot be read. A 429 carries its wait in the body\n(``retry_after_seconds``) as well as in ``Retry-After``: the browser's API\nclient keeps a refusal's body, not its headers.",
+        "description": "Open the person's onboarding interview, with Otto speaking first.\n\nThe first call starts Otto's greeting; every later one adopts the same\ninterview, so Back, a reload and a second tab land in one conversation.\n``turn_id`` is set only when this call started the greeting. A greeting\nalready being written is answered without one, like an interview under\nway: the client reads the session, which resumes the running turn. An\ninterview that is over is answered the same way, with its ``stage``, so\nthe client shows how it ended and the finish button.\n\nA person has one interview, typed or spoken: 409 ``call_in_progress``\nwhile a voice call of theirs is live, and 409\n``onboarding_interview_closed`` once a call took the interview (its words\naccepted from a call that ran to its close, or that the person\nconfirmed), each naming the call (``call_id``). A call that was cut off\nleaves the typed interview open. 429 at its turn\nbudget, 503 while the budget, the chat stream or the person's calls\ncannot be read. A 429 carries its wait in the body\n(``retry_after_seconds``) as well as in ``Retry-After``: the browser's API\nclient keeps a refusal's body, not its headers.",
         "operationId": "start_onboarding_interview",
         "responses": {
           "200": {
@@ -13031,7 +13031,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Finish Onboarding Interview",
-        "description": "The person ends the interview on screen: close it if it is still\nopen, and hand what they said to the onboarding pipeline.\n\nIdempotent: an interview already handed off is not handed off again, and\nthe response describes its take as it stands. A take that failed without\na ruling on the words (``quality_check_unavailable``, or no code) leaves\nthe interview to be handed off again on the next call. The pipeline's\njobs run after the response, as a typed brain dump's do. 404 when the\nperson has no interview. A 429 carries its wait in the body\n(``retry_after_seconds``), as the start route's does.",
+        "description": "The person ends the interview on screen: close it if it is still\nopen, and hand what they said to the onboarding pipeline.\n\nIdempotent: an interview already handed off is not handed off again, and\nthe response describes its take as it stands. A take that failed without\na ruling on the words (``quality_check_unavailable``, or no code) leaves\nthe interview to be handed off again on the next call. The pipeline's\njobs run after the response, as a typed brain dump's do. 404 when the\nperson has no interview. As the start route does, 409 ``call_in_progress``\nwhile a voice call of theirs is live and 409\n``onboarding_interview_closed`` once a call took the interview, each\nnaming the call (``call_id``). A 429 carries its wait in the body\n(``retry_after_seconds``), as the start route's does.",
         "operationId": "finish_onboarding_interview",
         "responses": {
           "200": {
@@ -13099,7 +13099,7 @@
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Get Onboarding Voice Call Status",
-        "description": "A voice call of the person's as it stands, polled once it ends until\nits hand-off has answered. 404 for a call that is not theirs, or has\nexpired.",
+        "description": "A voice call of the person's as it stands, polled once it ends until\nits hand-off has answered. Its ``interview`` says whether the call's words\ntook the person's interview or what they typed after the call superseded\nthem, and is read before ``end_reason`` and ``status``. 404 for a call\nthat is not theirs, or has expired.",
         "operationId": "get_onboarding_voice_call_status",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -13181,7 +13181,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Finish Onboarding Voice Call",
-        "description": "The person's confirm of their voice call, and \"Meet your team\".\n\nIdempotent: a call already handed off, or whose words the pipeline ruled\non, is answered as it stands. A call waiting for the confirm, or whose\nhand-off the pipeline never ruled on, hands its words off now, with any\n``corrections`` after them. The client reads the answer as it reads the\ntyped interview's finish. 404 for a call that is not theirs; 409\n(``call_not_ready``) while the call's words are not ready. A 429 or 503\ncarries its wait in the body (``retry_after_seconds``).",
+        "description": "The person's confirm of their voice call, and \"Meet your team\".\n\nIdempotent: a call that took the interview or that another take beat, or\nwhose words the pipeline ruled on, is answered as it stands, and a call\nthe person's typing superseded is answered ``superseded``. A call waiting\nfor the confirm, one whose hand-off the pipeline never ruled on, or one\ncut off with its words accepted hands its words off now, with any\n``corrections`` after them, and its accepted take becomes the interview's.\nThe client reads the answer as it reads the typed interview's finish. 404\nfor a call that is not theirs; 409\n(``call_not_ready``) while the call's words are not ready. A 429 or 503\ncarries its wait in the body (``retry_after_seconds``).",
         "operationId": "finish_onboarding_voice_call",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -39954,10 +39954,18 @@
               "ended",
               "transcribing",
               "transcribed",
+              "handing_off",
               "handed_off",
               "failed"
             ],
             "title": "Status"
+          },
+          "interview": {
+            "anyOf": [
+              { "type": "string", "enum": ["taken", "superseded"] },
+              { "type": "null" }
+            ],
+            "title": "Interview"
           },
           "end_reason": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
