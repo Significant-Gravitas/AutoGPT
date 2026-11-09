@@ -74,6 +74,9 @@ _INHERITED_CUA_SETTINGS = frozenset(
     }
 )
 
+# The shim's own settings, its configuration and the keychain passphrase.
+_SHIM_SETTINGS_PREFIX = "AUTOGPT_SHIM_"
+
 Runtime = Literal["direct", "service"]
 
 
@@ -182,11 +185,15 @@ def driver_environment(
     """The driver's environment: the shim's own, which the driver and the
     apps it launches need (the display, the session bus, the locale), with
     only the reviewed cua settings, telemetry and update checks off and, for
-    `mcp`, the shim's policy."""
+    `mcp`, the shim's policy. The shim's own settings (`AUTOGPT_SHIM_*`, the
+    keychain passphrase among them) stay out: nothing the driver starts
+    needs them, and an app it launches by name would inherit them, where a
+    terminal shows its environment to anyone who looks."""
     env = {
         name: value
         for name, value in (os.environ if base is None else base).items()
-        if not name.upper().startswith("CUA") or name.upper() in _INHERITED_CUA_SETTINGS
+        if not name.upper().startswith(_SHIM_SETTINGS_PREFIX)
+        and (not name.upper().startswith("CUA") or name.upper() in _INHERITED_CUA_SETTINGS)
     }
     env.update(
         {
@@ -247,6 +254,12 @@ class CuaDriverBridge:
         """The running driver, if one has started."""
         return self._snapshot.info if self._snapshot is not None else None
 
+    @property
+    def last_snapshot(self) -> DriverSnapshot | None:
+        """What the driver offered when it last started, if it has: kept
+        while it restarts, since a start lists the same tools."""
+        return self._snapshot
+
     async def snapshot(self, *, deadline: float | None = None) -> DriverSnapshot:
         """What the driver offers, starting it if need be. With `deadline`
         (loop time), a start still running then raises CallNotStarted."""
@@ -285,6 +298,9 @@ class CuaDriverBridge:
                 await self._turn.acquire()
         except TimeoutError as exc:
             raise CallNotStarted(f"{name} waited as long as it could for the driver") from exc
+        # A stop still under way when the caller gives up: the turn is let go
+        # only once it is done (below).
+        stopping: asyncio.Future[None] | None = None
         try:
             client = await self._client_by(start_by, name)
             remaining = deadline - loop.time()
@@ -296,10 +312,16 @@ class CuaDriverBridge:
                 self._last_failure = str(exc)
                 raise DriverUnavailable(f"cua-driver stopped during the call: {exc}") from exc
             except (TimeoutError, asyncio.CancelledError):
-                await asyncio.shield(self._stop_unfinished(client))
+                stopping = asyncio.ensure_future(self._stop_unfinished(client))
+                await asyncio.shield(stopping)
                 raise
         finally:
-            self._turn.release()
+            if stopping is not None and not stopping.done():
+                # Cancelled again while the driver stops: the next call would
+                # start another driver while this one still acts on the desktop.
+                stopping.add_done_callback(lambda _stopped: self._turn.release())
+            else:
+                self._turn.release()
 
     async def close(self) -> None:
         start = self._start

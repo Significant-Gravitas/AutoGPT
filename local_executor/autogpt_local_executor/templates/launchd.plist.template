@@ -20,10 +20,12 @@
 
     <!--
       KeepAlive: SuccessfulExit=false re-launches the daemon on any
-      non-zero exit. The TCC chain relies on this: when computer-use
+      non-zero exit, at most every ten seconds (launchd's default
+      throttle). The TCC chain relies on this: when computer-use
       is requested but Accessibility / Screen Recording aren't granted,
-      the daemon exits 78 (EX_CONFIG); a TCC.db change (user granting
-      consent in System Settings) lets the next launch succeed.
+      the daemon exits 78 (EX_CONFIG) on every launch, each one starting
+      cua-driver to check; once the user grants consent in System
+      Settings, the next launch succeeds. launchd doesn't watch TCC.db.
       See docs/COMPUTER_USE.md "macOS" and docs/CROSS_PLATFORM.md "Autostart".
       A failure that no restart can fix (an authentication failure, a bad
       config, a missing package or a setting that can't work) would restart

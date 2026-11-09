@@ -409,6 +409,35 @@ def test_doctor_fails_when_the_driver_cannot_read_an_x_display(
     assert rc == (doctor.EX_CONFIG if marker == "FAIL" else 0)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("env", "marker"),
+    [
+        ({"DISPLAY": ":0"}, "FAIL"),
+        ({"WAYLAND_DISPLAY": "wayland-0", "CUA_DRIVER_RS_ENABLE_WAYLAND": "1"}, "WARN"),
+    ],
+    ids=["x11", "native-wayland"],
+)
+async def test_an_x_display_that_stops_answering_fails_doctor(
+    monkeypatch, env: dict[str, str], marker: str
+) -> None:
+    """An X server that stopped answering left the screen probe to time out,
+    and doctor warned and exited 0, though every call would wait on it."""
+    for name in ("DISPLAY", "WAYLAND_DISPLAY", "CUA_DRIVER_RS_ENABLE_WAYLAND"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    class Unanswered:
+        async def call_tool(self, *_args, **_kwargs):
+            raise TimeoutError
+
+    check = await doctor._check_screen(Unanswered(), "linux")  # type: ignore[arg-type]
+
+    assert (check.marker, check.blocking) == (marker, marker == "FAIL")
+    assert "no answer" in check.detail
+
+
 def test_doctor_blocks_computer_use_on_wsl2(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "wsl2")
 

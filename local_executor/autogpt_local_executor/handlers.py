@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import contextvars
 import hashlib
 import json
 import logging
@@ -59,6 +60,7 @@ from .path_jail import (
     PathJailError,
     assert_entry_inside_jail,
     assert_inside_jail,
+    from_root,
     is_inside_jail,
     open_jail_file,
     write_jail_file,
@@ -304,8 +306,25 @@ def _is_link(path: Path) -> bool:
 _T = TypeVar("_T")
 
 
+class _ClipboardCheckOutOfTime(TimeoutError):
+    """A foreign clipboard read whose deadline passed before its checks for
+    a password manager's mark were done: what it read is withheld. The
+    driver ran nothing past the deadline, so it isn't stopped."""
+
+
 class _NeverStarted(Exception):
     """The job was cancelled while it still waited for a worker thread."""
+
+
+# Set for a request whose session is ending, or was revoked, before its task
+# is cancelled (the daemon's _cancel_dispatch_requests). A cancel reaches the
+# task only when it next runs, and a worker thread freed up in between would
+# start a change still queued for one: a write, a move or a delete after
+# revocation. Checked as the thread starts, so a change already running
+# finishes and is recorded, and one still queued never starts.
+work_refused: contextvars.ContextVar[threading.Event | None] = contextvars.ContextVar(
+    "work_refused", default=None
+)
 
 
 async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:
@@ -317,14 +336,17 @@ async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: A
     would never be written. The cancellation is held until the thread is
     done, then dropped, so the handler records what happened. Its reply
     goes nowhere: a revoked session refuses sends and a closed one fails
-    them. A job still waiting for a thread when the cancel lands never
-    starts, and the task stays cancelled: nothing ran, so there is nothing
-    to record. Requests still queued for a slot never get here either.
+    them. A job still waiting for a thread when the cancel lands, or when
+    the daemon refuses its request's work (work_refused) just before the
+    cancel, never starts, and the task stays cancelled: nothing ran, so
+    there is nothing to record. Requests still queued for a slot never get
+    here either.
     """
     cancelled = threading.Event()
+    refused = work_refused.get()
 
     def run() -> _T:
-        if cancelled.is_set():
+        if cancelled.is_set() or (refused is not None and refused.is_set()):
             raise _NeverStarted
         return func(*args, **kwargs)
 
@@ -353,6 +375,17 @@ async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: A
         if task is not None:
             for _ in range(held):
                 task.uncancel()
+
+
+async def _read_in_a_thread(func: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:
+    """Run a read (FILE_READ, FILE_STAT, FILE_LIST) in a worker thread, and
+    keep its task until the thread is done even if the task is cancelled
+    meanwhile, then let the cancel go on. The thread can't be stopped, and a
+    request holds its machine slot until its task ends: one let go as the
+    cancel landed, with its read still blocked (on a network filesystem,
+    say), let repeated disconnects pile up reads past the limit, holding the
+    worker threads every chat's requests share."""
+    return await _finish_then_cancel(asyncio.to_thread(func, *args, **kwargs))
 
 
 async def _finish_then_cancel(work: Awaitable[_T]) -> _T:
@@ -859,7 +892,7 @@ class FileHandler:
                 return file.read(requested_size), size
 
         try:
-            chunk, size = await asyncio.to_thread(read_chunk)
+            chunk, size = await _read_in_a_thread(read_chunk)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_READ", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -1017,9 +1050,9 @@ class FileHandler:
 
         try:
             if payload.follow_symlinks:
-                st = await asyncio.to_thread(os.stat, str(path))
+                st = await _read_in_a_thread(os.stat, str(path))
             else:
-                st = await asyncio.to_thread(os.lstat, str(path))
+                st = await _read_in_a_thread(os.lstat, str(path))
         except FileNotFoundError:
             await self._emit("FILE_STAT", msg.id, details, _ok_result(_elapsed_ms(start)))
             return FileStatResponseMessage(
@@ -1043,9 +1076,13 @@ class FileHandler:
             is_symlink = stat.S_ISLNK(st.st_mode)
         else:
             # Even with follow=True we can report whether the *original*
-            # path was a symlink, via a separate lstat.
+            # path was a symlink, via a separate lstat of the path the jail
+            # checked (a relative one is the root's, not the working
+            # directory's).
             try:
-                lst = await asyncio.to_thread(os.lstat, payload.path)
+                lst = await _read_in_a_thread(
+                    os.lstat, from_root(payload.path, self.config.allowed_root)
+                )
                 is_symlink = stat.S_ISLNK(lst.st_mode)
             except OSError:
                 is_symlink = False
@@ -1232,7 +1269,7 @@ class FileHandler:
             return entries, truncated or unread
 
         try:
-            entries, truncated = await asyncio.to_thread(_walk)
+            entries, truncated = await _read_in_a_thread(_walk)
         except OSError as exc:
             # The folder can be entered but not read (no read permission, a
             # macOS privacy prompt nobody answered), or went away: listing it
@@ -1453,6 +1490,24 @@ class ComputerUseHandler:
         driver (share_with)."""
         return not self._owns_driver
 
+    async def hello_snapshot(self) -> DriverSnapshot:
+        """What this session's HELLO advertises. A chat's session waits for
+        the shared driver at most CHILD_DRIVER_WAIT_SECONDS: after another
+        chat's call overran, the driver can take up to a minute to start
+        again, longer than the platform waits for the session. Past that it
+        goes on with what the driver offered when it last ran, which its
+        next start lists again."""
+        if not self.shares_a_driver:
+            return await self.driver.snapshot()
+        loop = asyncio.get_running_loop()
+        try:
+            return await self.driver.snapshot(deadline=loop.time() + CHILD_DRIVER_WAIT_SECONDS)
+        except CallNotStarted:
+            last = self.driver.last_snapshot
+            if last is None:
+                raise DriverUnavailable("cua-driver is still starting") from None
+            return last
+
     @property
     def driver(self) -> CuaDriverBridge:
         if self._driver is None:
@@ -1616,24 +1671,19 @@ class ComputerUseHandler:
         seconds = float(msg.payload.timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
         return (asyncio.get_running_loop().time() if received_at is None else received_at) + seconds
 
-    async def refuse_unstarted(self, msg: ComputerToolCallMessage) -> Any:
-        """Answer a call whose deadline passed before it could be taken (it
-        waited for one of the machine's request slots), as one whose
-        deadline passed waiting for the computer is answered."""
-        if not self.config.enable_computer_use:
-            return await self.handle(msg)
-        return await self._not_started(msg, self._call_details(msg), time.monotonic())
-
     @staticmethod
     def _call_details(msg: ComputerToolCallMessage) -> dict[str, Any]:
         tool = msg.payload.tool
         approved = msg.payload.approved_arguments
+        # Only a name the tool can have approved counts: a call naming
+        # another is refused, and its record keeps the usual cut.
+        approves = set(approved) & set(APPROVAL_ARGUMENTS.get(tool, {}))
         details: dict[str, Any] = {
             "tool": tool,
             # What launches, and the paths the person approved, are kept
             # whole, as EXECUTE_COMMAND keeps argv.
             "arguments": _audit_arguments(
-                dict(msg.payload.arguments), truncate=tool != "launch_app" and not approved
+                dict(msg.payload.arguments), truncate=tool != "launch_app" and not approves
             ),
         }
         if approved:
@@ -1677,14 +1727,19 @@ class ComputerUseHandler:
             )
         except CallNotStarted:
             return await self._not_started(msg, details, start)
-        except TimeoutError:
+        except TimeoutError as exc:
             await self._emit(
                 msg.id, details, _err_result(_elapsed_ms(start), ErrorCode.COMMAND_TIMEOUT.value)
             )
             return make_error(
                 msg.id,
                 ErrorCode.COMMAND_TIMEOUT,
-                f"{tool} did not finish in time, so the local executor stopped cua-driver "
+                (
+                    f"{tool} ran out of time before the clipboard could be checked for a "
+                    "password manager's mark, so nothing it read is returned. Read it again."
+                )
+                if isinstance(exc, _ClipboardCheckOutOfTime)
+                else f"{tool} did not finish in time, so the local executor stopped cua-driver "
                 "to end it. What it already did stays done, and the next call starts the "
                 "driver afresh: look at the window again before you act on it.",
                 details={
@@ -1773,16 +1828,19 @@ class ComputerUseHandler:
         --enable-clipboard-read-foreign anything does, unless a password
         manager marked it private."""
         arguments["include_text"] = True
-        deadline = asyncio.get_running_loop().time() + timeout
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
         foreign = self.config.enable_clipboard_read_foreign
-        before = await asyncio.to_thread(clipboard_state) if foreign else None
+        # Each look at the OS gets what is left of the deadline (xclip and
+        # wl-paste can take seconds), and so does each read: the call holds
+        # the computer's turn throughout, which every chat's calls share.
+        before = await asyncio.to_thread(clipboard_state, timeout) if foreign else None
+        timeout = deadline - loop.time()
+        if timeout <= 0:
+            # None left means the read never starts.
+            raise CallNotStarted("clipboard_read's deadline passed in the marker check")
         if before is not None and before.marker:
             raise ClipboardConcealedError("concealed_type", marker=before.marker)
-        # The check above can take seconds (xclip, wl-paste): the read gets
-        # what is left of the deadline, and none left means it never starts.
-        timeout = deadline - asyncio.get_running_loop().time()
-        if timeout <= 0:
-            raise CallNotStarted("clipboard_read's deadline passed in the marker check")
         raw = await self.call_driver("clipboard_read", arguments, timeout=timeout)
         if raw.get("isError"):
             return raw
@@ -1800,11 +1858,12 @@ class ComputerUseHandler:
                 # and the driver reads the types, then the text: a password
                 # manager's copy between the two would pass as clean. Read
                 # again; the same text with no marker belongs to one copy.
-                again = await self.call_driver(
-                    "clipboard_read",
-                    arguments,
-                    timeout=max(deadline - asyncio.get_running_loop().time(), 0.001),
-                )
+                # Not past the deadline: a read that overran would have the
+                # bridge stop the driver every chat shares.
+                left = deadline - loop.time()
+                if left <= 0:
+                    raise _ClipboardCheckOutOfTime
+                again = await self.call_driver("clipboard_read", arguments, timeout=left)
                 checked = again.get("structuredContent")
                 checked = checked if isinstance(checked, dict) else {}
                 listed = marker_in(checked.get("types"))
@@ -1815,7 +1874,12 @@ class ComputerUseHandler:
                         "changed",
                         message="The clipboard changed while it was read. Read it again.",
                     )
-            after = await asyncio.to_thread(clipboard_state)
+            left = deadline - loop.time()
+            if left <= 0:
+                raise _ClipboardCheckOutOfTime
+            after = await asyncio.to_thread(clipboard_state, left)
+            if loop.time() >= deadline:
+                raise _ClipboardCheckOutOfTime
             if after.marker:
                 raise ClipboardConcealedError("concealed_type", marker=after.marker)
             if before.sequence is not None and after.sequence != before.sequence:
@@ -1879,36 +1943,38 @@ class ComputerUseHandler:
         structured = structured if isinstance(structured, dict) else None
 
         # Every operation's payload stays within the negotiated
-        # max_file_size_bytes (PROTOCOL.md), and within the frame.
+        # max_file_size_bytes (PROTOCOL.md), and within the frame, the notes
+        # added below included.
         budget = min(self.config.max_file_size_bytes, MAX_WIRE_BASE64_CONTENT_BYTES)
-        size = sum(_block_size(block) for block in content) + len(
-            json.dumps(structured) if structured is not None else ""
-        )
-        if size > budget:
+
+        def size() -> int:
+            return (
+                sum(_block_size(block) for block in content)
+                + sum(_json_text_size(note) for note in notes)
+                + len(json.dumps(structured) if structured is not None else "")
+            )
+
+        if size() > budget:
             images = [block for block in content if isinstance(block, ComputerImageContent)]
             content = [block for block in content if isinstance(block, ComputerTextContent)]
-            size -= sum(_block_size(block) for block in images)
             withheld += len(images)
             if images:
                 notes.append(
                     f"{len(images)} screenshot(s) left out: the result was too large to "
                     "send. Ask for a smaller image (max_image_dimension) or zoom in."
                 )
-        if size > budget:
+        if size() > budget:
             structured = None
             first_text = next(
                 (block for block in content if isinstance(block, ComputerTextContent)), None
             )
             content = []
-            if first_text is not None:
-                content.append(
-                    ComputerTextContent(
-                        text=_truncate_utf8(
-                            first_text.text, min(budget, MAX_WIRE_TEXT_CONTENT_BYTES)
-                        )
-                    )
-                )
             notes.append("The result was cut down to fit the connection's message limit.")
+            if first_text is not None:
+                # Measured as JSON writes it: a control character takes six
+                # bytes there, so its UTF-8 length can be far less.
+                room = min(budget, MAX_WIRE_TEXT_CONTENT_BYTES) - size()
+                content.append(ComputerTextContent(text=_truncate_json_text(first_text.text, room)))
         for block in content:
             if isinstance(block, ComputerImageContent):
                 self._screenshot_rate.allow()
@@ -1996,14 +2062,28 @@ def _block_size(block: ComputerTextContent | ComputerImageContent) -> int:
     a quote or backslash two."""
     if isinstance(block, ComputerImageContent):
         return len(block.data)
-    return len(json.dumps(block.text, ensure_ascii=False).encode("utf-8"))
+    return _json_text_size(block.text)
 
 
-def _truncate_utf8(text: str, limit: int) -> str:
-    encoded = text.encode("utf-8")
-    if len(encoded) <= limit:
+def _json_text_size(text: str) -> int:
+    """The bytes `text` takes as a JSON string, quotes and escapes included."""
+    return len(json.dumps(text, ensure_ascii=False).encode("utf-8"))
+
+
+def _truncate_json_text(text: str, limit: int) -> str:
+    """The longest start of `text` that takes at most `limit` bytes as a JSON
+    string. Every character takes at least one byte, so it is no longer than
+    `limit` characters."""
+    if _json_text_size(text) <= limit:
         return text
-    return encoded[:limit].decode("utf-8", "ignore")
+    low, high = 0, min(len(text), max(limit, 0))
+    while low < high:
+        middle = (low + high + 1) // 2
+        if _json_text_size(text[:middle]) <= limit:
+            low = middle
+        else:
+            high = middle - 1
+    return text[:low]
 
 
 def _shim_version() -> str:

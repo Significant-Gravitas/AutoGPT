@@ -483,17 +483,27 @@ async def test_a_legacy_session_creates_its_allowed_root_on_start(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("error", "terminal"),
-    [("KeyringLocked", False), ("KeyringError", False), ("NoKeyringError", True)],
+    ("error", "restart"),
+    [
+        ("KeyringLocked", False),
+        ("KeyringError", False),
+        ("NoKeyringError", True),
+        ("InitError", True),
+    ],
 )
-async def test_a_keychain_read_failure_is_retried_unless_there_is_no_keychain(
-    tmp_path: Path, error: str, terminal: bool
+async def test_a_keychain_read_failure_is_retried(
+    tmp_path: Path, error: str, restart: bool
 ) -> None:
     """A keychain that is still locked at login used to stop the LaunchAgent
-    for good; only a missing keychain backend is a setup problem."""
+    for good. So did one that hadn't started yet (a Secret Service the
+    desktop session starts after the autostart service), whose audit key
+    the shim waits for, or reads from the file fallback: the sign-in read
+    then exited 77, and the service stayed stopped once it came up. The
+    keyring package picks its backend once per process, so that one is
+    waited for by a new process (exit 75), not a retry in this one."""
     import keyring.errors
 
-    from autogpt_local_executor.daemon import KeychainUnavailableError
+    from autogpt_local_executor.daemon import KeychainNotUpError, KeychainUnavailableError
 
     failure = getattr(keyring.errors, error)
 
@@ -508,9 +518,12 @@ async def test_a_keychain_read_failure_is_retried_unless_there_is_no_keychain(
     )
     daemon = ShimDaemon(config, token_store=Store(), audit=MagicMock())  # type: ignore[arg-type]
 
-    expected = DaemonAuthenticationError if terminal else KeychainUnavailableError
-    with pytest.raises(expected):
+    expected = KeychainNotUpError if restart else KeychainUnavailableError
+    with pytest.raises(expected) as raised:
         await daemon._read_access_token()
+    assert not isinstance(raised.value, DaemonAuthenticationError)
+    if restart:
+        assert raised.value.transient is True
 
 
 @pytest.mark.asyncio
@@ -561,23 +574,24 @@ async def test_a_refresh_that_could_not_reach_the_server_is_retried(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("where", "error", "terminal"),
+    ("where", "error", "restart"),
     [
         ("refresh", "KeyringLocked", False),
         ("refresh", "PasswordSetError", False),
         ("refresh", "NoKeyringError", True),
+        ("refresh", "InitError", True),
         ("reread", "KeyringLocked", False),
     ],
 )
-async def test_a_keychain_failure_during_a_refresh_is_retried_unless_there_is_no_keychain(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str, error: str, terminal: bool
+async def test_a_keychain_failure_during_a_refresh_is_retried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str, error: str, restart: bool
 ) -> None:
     """The refresh's catch-all took a keychain that locked during the refresh
     for a refused refresh token, which ended the session for good."""
     import keyring.errors
 
     from autogpt_local_executor.auth import OAuthFlow
-    from autogpt_local_executor.daemon import KeychainUnavailableError
+    from autogpt_local_executor.daemon import KeychainNotUpError, KeychainUnavailableError
 
     failure = getattr(keyring.errors, error)
     reads = 0
@@ -597,7 +611,7 @@ async def test_a_keychain_failure_during_a_refresh_is_retried_unless_there_is_no
     daemon.token_store = SimpleNamespace(get_access_token=get_access_token)
     monkeypatch.setattr(OAuthFlow, "refresh_token", refresh)
 
-    expected = DaemonAuthenticationError if terminal else KeychainUnavailableError
+    expected = KeychainNotUpError if restart else KeychainUnavailableError
     with pytest.raises(expected):
         await daemon._get_access_token(refresh_on_fail=True, rejected_token="stale")
 
@@ -816,3 +830,113 @@ async def test_run_retries_a_keychain_that_is_still_locked(
 
     assert reads == 2
     assert tokens == ["the-token"]
+
+
+@pytest.mark.asyncio
+async def test_run_retries_a_refresh_the_token_endpoint_could_not_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The refresh tests called _get_access_token alone, so a run() that
+    stopped on TokenRefreshUnavailableError, instead of retrying with backoff
+    until the endpoint answers, would still have passed them."""
+    import httpx
+
+    from autogpt_local_executor.auth import OAuthFlow
+
+    refreshes = 0
+    store_token = "stale"
+
+    async def get_access_token() -> str:
+        return store_token
+
+    async def refresh(_flow) -> None:
+        nonlocal refreshes, store_token
+        refreshes += 1
+        if refreshes == 1:
+            request = httpx.Request("POST", "https://platform.example/api/oauth/token")
+            raise httpx.ConnectError("unreachable", request=request)
+        store_token = "fresh"
+
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+        reconnect_base_delay=0.01,
+        reconnect_jitter_seconds=0,
+    )
+    audit = MagicMock()
+    for name in (
+        "write",
+        "shim_start",
+        "shim_stop",
+        "ws_connected",
+        "ws_disconnected",
+        "token_refreshed",
+    ):
+        setattr(audit, name, AsyncMock())
+    daemon = ShimDaemon(
+        config,
+        token_store=SimpleNamespace(get_access_token=get_access_token),  # type: ignore[arg-type]
+        audit=audit,
+    )
+    monkeypatch.setattr(OAuthFlow, "refresh_token", refresh)
+    tokens: list[str | None] = []
+
+    async def session() -> None:
+        tokens.append(await daemon._get_access_token(refresh_on_fail=True, rejected_token="stale"))
+        daemon._running = False
+
+    monkeypatch.setattr(daemon, "_session", session)
+
+    await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert refreshes == 2
+    assert tokens == ["fresh"]
+
+
+@pytest.mark.asyncio
+async def test_run_ends_for_a_restart_when_no_keychain_is_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A keychain that wasn't up when the sign-in was read was retried inside
+    the process, but the keyring package picks its backend once per process,
+    so a Secret Service that started later was never found. run() now ends
+    with a transient preflight error, which `start` turns into 75 for the
+    service manager to start a new process."""
+    import keyring.errors
+
+    from autogpt_local_executor.daemon import DaemonPreflightError
+
+    reads = 0
+
+    class Store:
+        async def get_access_token(self) -> str:
+            nonlocal reads
+            reads += 1
+            if reads == 1:
+                raise keyring.errors.NoKeyringError("no recommended backend")
+            return "the-token"
+
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+        reconnect_base_delay=0.01,
+        reconnect_jitter_seconds=0,
+    )
+    audit = MagicMock()
+    for name in ("write", "shim_start", "shim_stop", "ws_connected", "ws_disconnected"):
+        setattr(audit, name, AsyncMock())
+    daemon = ShimDaemon(config, token_store=Store(), audit=audit)  # type: ignore[arg-type]
+
+    async def session() -> None:
+        await daemon._read_access_token()
+        daemon._running = False
+
+    monkeypatch.setattr(daemon, "_session", session)
+
+    with pytest.raises(DaemonPreflightError) as raised:
+        await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert raised.value.transient is True
+    assert reads == 1

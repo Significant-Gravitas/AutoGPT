@@ -23,6 +23,7 @@ import logging
 import math
 import random
 import secrets
+import threading
 import urllib.parse
 from collections import OrderedDict
 from collections.abc import AsyncIterator
@@ -156,8 +157,9 @@ class DaemonPreflightError(RuntimeError):
     Per docs/COMPUTER_USE.md: when computer_use is requested but its
     Accessibility or Screen Recording grant is missing (macOS), the daemon
     emits a clear audit record and exits with EX_CONFIG (78). launchd's
-    KeepAlive: SuccessfulExit=false re-launches us on the next TCC
-    change.
+    KeepAlive: SuccessfulExit=false starts us again after each nonzero exit
+    (at most every ten seconds), each start checking again, so the one
+    after the grant comes up.
 
     `permanent` marks a failure no relaunch can fix (a preview that is
     turned on, a missing package, an audit log that fails verification): a
@@ -241,6 +243,27 @@ class DaemonAuthenticationError(RuntimeError):
     """Terminal WebSocket authentication or session-authorization failure."""
 
 
+class KeychainNotUpError(DaemonPreflightError):
+    """No keychain to read the sign-in from. The shim couldn't have signed in
+    without one, so it is most often one that hasn't started yet: a Secret
+    Service the desktop session starts after the autostart service, say.
+    The keyring package picks its backend once per process, so this process
+    would never find one that starts later: `start` exits 75 (EX_TEMPFAIL)
+    for the service manager to start the shim again, as for the audit key."""
+
+    def __init__(self, exc: Exception) -> None:
+        super().__init__(
+            f"No OS keychain is available yet ({type(exc).__name__}), so the sign-in "
+            "can't be read; exiting to be started again once it is. If none is set "
+            "up, set one up and run `autogpt-shim auth`.",
+            transient=True,
+        )
+
+
+def _keychain_not_up_yet(exc: Exception) -> KeychainNotUpError:
+    return KeychainNotUpError(exc)
+
+
 # RFC 6455 §5.5: a control frame carries at most 125 bytes, two of them the
 # close code. A longer reason fails to send, and the close code with it.
 MAX_CLOSE_REASON_BYTES = 123
@@ -293,6 +316,12 @@ DISPATCH_DRAIN_SECONDS = 10.0
 # until its thread returns, which a hung one never does. Well inside the 30
 # seconds the platform waits for most replies.
 MACHINE_WORK_WAIT_SECONDS = 10.0
+# How long a session has to stay up after its handshake for its drop to
+# start the reconnect backoff over. One the platform ends sooner (closing
+# with 1011 right after HELLO_ACK while it is overloaded, say) counts as a
+# failed connect, so the backoff keeps growing rather than every shim
+# reconnecting every few seconds.
+STABLE_SESSION_SECONDS = 60.0
 
 # When the shim received the request this task serves (loop time), set by
 # _dispatch: a computer-use call's deadline counts from it.
@@ -409,6 +438,8 @@ class ShimDaemon:
         self._granted_capabilities: frozenset[str] = frozenset()
         self._pending_requests = 0
         self._dispatch_tasks: set[asyncio.Task[None]] = set()
+        # Each request's handlers.work_refused, set before its task is cancelled.
+        self._work_refused: dict[asyncio.Task[None], threading.Event] = {}
         self._shim_start_logged = False
         # Effective negotiated protocol version, populated on HELLO_ACK.
         # `None` before handshake completes.
@@ -423,7 +454,9 @@ class ShimDaemon:
         self._revoked_ws: Any = None
         # Whether the current connection got through its handshake. A session
         # that was up and then dropped starts the reconnect backoff over.
-        self._session_up = False
+        # When the current session's handshake completed (loop time), or None
+        # while it isn't up.
+        self._session_up_at: float | None = None
         # Backpressure / health bookkeeping (#38). _in_flight = tasks
         # currently holding the semaphore; _queue_depth = tasks waiting
         # to acquire it. Maintained explicitly so we don't have to poke
@@ -523,7 +556,7 @@ class ShimDaemon:
         attempt = 0
         try:
             while self._running:
-                self._session_up = False
+                self._session_up_at = None
                 try:
                     await self._session()
                 except asyncio.CancelledError:
@@ -531,6 +564,11 @@ class ShimDaemon:
                 except DaemonAuthenticationError as exc:
                     logger.error("Authentication rejected; will not auto-reconnect: %s", exc)
                     self._disable_reconnect = True
+                    self._running = False
+                    raise
+                except KeychainNotUpError:
+                    # Retrying here would find the same backend; a new
+                    # process looks again.
                     self._running = False
                     raise
                 except ProtocolVersionMismatch as exc:
@@ -557,7 +595,11 @@ class ShimDaemon:
                         break
                     if not self._running:
                         break
-                    if self._session_up:
+                    if (
+                        self._session_up_at is not None
+                        and asyncio.get_running_loop().time() - self._session_up_at
+                        >= STABLE_SESSION_SECONDS
+                    ):
                         # The drop ended a working session, not a run of failed
                         # connects, so reconnect promptly.
                         attempt = 0
@@ -722,7 +764,7 @@ class ShimDaemon:
             except Exception as exc:
                 disconnect_reason = f"handshake_failed: {exc.__class__.__name__}"
                 raise
-            self._session_up = True
+            self._session_up_at = asyncio.get_running_loop().time()
             # Start the periodic STATUS ticker AFTER handshake — we want
             # max_concurrent from HELLO_ACK before announcing capacity.
             self._status_task = asyncio.create_task(self._status_ticker(ws))
@@ -788,11 +830,19 @@ class ShimDaemon:
         await self._drain_dispatch_tasks(self._cancel_dispatch_requests())
 
     def _cancel_dispatch_requests(self) -> tuple[asyncio.Task[None], ...]:
-        """Cancel the session's requests, without waiting for them."""
+        """Cancel the session's requests, without waiting for them. A change
+        still waiting for a worker thread is refused first, so it can't start
+        before its task takes in the cancel (handlers.work_refused)."""
         tasks = tuple(self._dispatch_tasks)
         for task in tasks:
+            refused = self._work_refused.get(task)
+            if refused is not None:
+                refused.set()
             task.cancel()
         return tasks
+
+    def _forget_work_refused(self, task: asyncio.Task[None]) -> None:
+        self._work_refused.pop(task, None)
 
     async def _drain_dispatch_tasks(self, tasks: tuple[asyncio.Task[None], ...]) -> None:
         """Wait up to DISPATCH_DRAIN_SECONDS for cancelled requests to stop,
@@ -856,11 +906,8 @@ class ShimDaemon:
                 raise
             except CredentialScopeError as exc:
                 raise DaemonAuthenticationError(str(exc)) from None
-            except (keyring.errors.NoKeyringError, keyring.errors.InitError):
-                raise DaemonAuthenticationError(
-                    "No usable OS keychain is configured. Set one up, then run "
-                    "`autogpt-shim auth` with the intended deployment configuration."
-                ) from None
+            except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
+                raise _keychain_not_up_yet(exc) from None
             except keyring.errors.KeyringError as exc:
                 # Reading the refresh token or storing the new pair failed: a
                 # keychain that locked, say, which can clear on its own.
@@ -897,11 +944,8 @@ class ShimDaemon:
             token = await self.token_store.get_access_token()
         except CredentialScopeError as exc:
             raise DaemonAuthenticationError(str(exc)) from None
-        except (keyring.errors.NoKeyringError, keyring.errors.InitError):
-            raise DaemonAuthenticationError(
-                "No usable OS keychain is configured. Set one up, then run "
-                "`autogpt-shim auth` with the intended deployment configuration."
-            ) from None
+        except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
+            raise _keychain_not_up_yet(exc) from None
         except Exception as exc:
             raise KeychainUnavailableError(
                 f"The OS keychain could not be read ({type(exc).__name__}); "
@@ -1090,7 +1134,7 @@ class ShimDaemon:
         if "computer_use" in caps:
             # Advertised only once cua-driver has started and listed its tools.
             try:
-                snapshot = await self._computer_handler.driver.snapshot()
+                snapshot = await self._computer_handler.hello_snapshot()
                 computer_use_driver = snapshot.info
                 computer_use_tools = sorted(tool["name"] for tool in snapshot.tools)
             except DriverUnavailable as exc:
@@ -1168,6 +1212,10 @@ class ShimDaemon:
     # ── Frame dispatch ────────────────────────────────────────────────────
 
     async def _on_frame(self, ws, raw: str | bytes) -> None:
+        # A computer-use call's deadline counts from here, when the frame
+        # arrived: its task can start later, after other work that kept the
+        # event loop busy.
+        received_at = asyncio.get_running_loop().time()
         try:
             msg = parse_message(raw)
         except (ValidationError, ValueError) as exc:
@@ -1231,9 +1279,14 @@ class ShimDaemon:
 
         self._pending_requests += 1
         self._queue_depth += 1
-        task = asyncio.create_task(self._dispatch(ws, msg, prequeued=True))
+        refused = threading.Event()
+        task = asyncio.create_task(
+            self._dispatch(ws, msg, prequeued=True, received_at=received_at, refused=refused)
+        )
         self._dispatch_tasks.add(task)
+        self._work_refused[task] = refused
         task.add_done_callback(self._dispatch_tasks.discard)
+        task.add_done_callback(self._forget_work_refused)
 
     async def _handle_session_revoked(self, ws, msg: SessionRevokedMessage) -> None:
         """Per PROTOCOL.md → Session ownership: log, stop sending, close,
@@ -1256,10 +1309,15 @@ class ShimDaemon:
             reason,
             new_machine,
         )
-        await self._audit_session_revoked(
-            reason=reason,
-            source="frame",
-            new_shim_machine_id=new_machine,
+        # The record and the close don't wait for each other: an audit
+        # writer held up (its lock taken by `audit verify` on a large log, a
+        # slow disk) left the revoked connection open until it was done.
+        record = asyncio.ensure_future(
+            self._audit_session_revoked(
+                reason=reason,
+                source="frame",
+                new_shim_machine_id=new_machine,
+            )
         )
         try:
             # We send no further protocol frames; just close cleanly.
@@ -1267,6 +1325,7 @@ class ShimDaemon:
         except Exception:
             logger.debug("ws.close after SESSION_REVOKED failed", exc_info=True)
         await self._stop_status_ticker()
+        await record
         await self._drain_dispatch_tasks(cancelled)
 
     async def _audit_session_revoked(
@@ -1408,11 +1467,24 @@ class ShimDaemon:
             and self._recording_handler._active_recording_id is None
         )
 
-    async def _dispatch(self, ws, msg: Any, *, prequeued: bool = False) -> None:
+    async def _dispatch(
+        self,
+        ws,
+        msg: Any,
+        *,
+        prequeued: bool = False,
+        received_at: float | None = None,
+        refused: threading.Event | None = None,
+    ) -> None:
         assert self._semaphore is not None
-        # A computer-use call's deadline counts from here, through every wait.
-        # Each dispatch runs in its own task, so this is the request's own.
-        _request_received_at.set(asyncio.get_running_loop().time())
+        if refused is not None:
+            handlers.work_refused.set(refused)
+        # A computer-use call's deadline counts from when the frame arrived
+        # (_on_frame), else from here, through every wait. Each dispatch runs
+        # in its own task, so this is the request's own.
+        _request_received_at.set(
+            asyncio.get_running_loop().time() if received_at is None else received_at
+        )
         generation = self._dispatch_generation
 
         def counted() -> bool:
@@ -1451,7 +1523,17 @@ class ShimDaemon:
                     queue_owed = False
                     in_flight_owed = True
                     try:
-                        if self._machine_work_semaphore is not None and not self._control_mode:
+                        # A computer tool call takes no machine slot: the
+                        # computer's calls take turns at it, each waiting no
+                        # longer than its own deadline, and calls waiting
+                        # their turn while a long one ran held every slot,
+                        # so other chats' file and shell requests got
+                        # machine_busy.
+                        if (
+                            self._machine_work_semaphore is not None
+                            and not self._control_mode
+                            and not isinstance(msg, ComputerToolCallMessage)
+                        ):
                             response = await self._handle_in_a_machine_slot(
                                 self._machine_work_semaphore, msg, _stream_send
                             )
@@ -1515,23 +1597,12 @@ class ShimDaemon:
         """Handle `msg` in one of the machine's request slots, shared by every
         chat, or refuse it when none frees up in MACHINE_WORK_WAIT_SECONDS.
         Only the wait is bounded: a slot taken is held until the work ends,
-        since a thread already running it can't be stopped. A computer tool
-        call waits no longer than its own deadline, which the wait counts
-        toward, and one still waiting then gets COMMAND_TIMEOUT, unstarted."""
+        since a thread already running it can't be stopped."""
         give_up = asyncio.get_running_loop().time() + MACHINE_WORK_WAIT_SECONDS
-        call_deadline = None
-        if (
-            isinstance(msg, ComputerToolCallMessage)
-            and "computer_use" in self._granted_capabilities
-        ):
-            call_deadline = ComputerUseHandler.call_deadline(msg, _request_received_at.get())
-        limit = give_up if call_deadline is None else min(give_up, call_deadline)
         try:
-            async with asyncio.timeout_at(limit):
+            async with asyncio.timeout_at(give_up):
                 await slots.acquire()
         except TimeoutError:
-            if call_deadline is not None and call_deadline <= give_up:
-                return await self._computer_handler.refuse_unstarted(msg)
             return make_error(
                 msg.id,
                 ErrorCode.SHIM_OVERLOADED,

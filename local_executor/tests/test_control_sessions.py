@@ -475,15 +475,41 @@ async def test_a_control_hello_ack_missing_a_required_field_stops_the_daemon(
 
 
 @pytest.mark.asyncio
-async def test_a_complete_control_hello_ack_connects(tmp_path: Path) -> None:
+@pytest.mark.parametrize("session_id", [None, ""], ids=["null", "empty"])
+async def test_a_complete_control_hello_ack_connects(
+    tmp_path: Path, session_id: str | None
+) -> None:
+    """PROTOCOL.md lets a control ACK name a null or an empty session. The
+    model refused an empty one before the daemon's own check, which allows
+    it, so the daemon closed with 4400 and stopped reconnecting."""
     daemon = _control_daemon(tmp_path)
-    websocket = _AckSocket(dict(_CONTROL_ACK))
+    websocket = _AckSocket({**_CONTROL_ACK, "session_id": session_id})
 
     await daemon._handshake(websocket)
 
     assert websocket.closed is None
     assert daemon._disable_reconnect is False
     assert daemon._connection_id == "connection-1"
+
+
+@pytest.mark.asyncio
+async def test_a_data_connection_ack_with_an_empty_session_is_refused(tmp_path: Path) -> None:
+    """An empty session_id is the control connection's; a chat's session must
+    see its own named back."""
+    config = ShimConfig(
+        session_id="session-1",
+        machine_id="machine-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+    )
+    audit = AuditWriter(config.audit_log_path, b"a" * 32, machine_id=config.machine_id)
+    daemon = ShimDaemon(config, token_store=object(), audit=audit)
+    websocket = _AckSocket({**_CONTROL_ACK, "session_id": ""})
+
+    with pytest.raises(RuntimeError):
+        await daemon._handshake(websocket)
+
+    assert websocket.closed is not None
 
 
 @pytest.mark.asyncio

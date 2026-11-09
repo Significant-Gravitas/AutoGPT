@@ -65,12 +65,14 @@ def marker_in(types: object) -> str | None:
     return next((folded[m.casefold()] for m in sorted(markers) if m.casefold() in folded), None)
 
 
-def clipboard_state() -> ClipboardState:
+def clipboard_state(timeout: float | None = None) -> ClipboardState:
+    """The clipboard's marker, looked up within `timeout` seconds where the
+    look runs a program (Linux); macOS and Windows ask the OS directly."""
     if sys.platform == "darwin":
         return _macos_state()
     if sys.platform == "win32":
         return _windows_state()
-    return _linux_state()
+    return _linux_state(timeout)
 
 
 def _macos_state() -> ClipboardState:
@@ -121,16 +123,17 @@ def linux_clipboard_types_command() -> list[str] | None:
     return None
 
 
-def _linux_state() -> ClipboardState:
+def _linux_state(timeout: float | None = None) -> ClipboardState:
     argv = linux_clipboard_types_command()
-    if argv is None:
+    limit = _LIST_TIMEOUT_SECONDS if timeout is None else min(timeout, _LIST_TIMEOUT_SECONDS)
+    if argv is None or limit <= 0:
         return ClipboardState(UNKNOWN)
     try:
         listed = subprocess.run(
             argv,
             capture_output=True,
             text=True,
-            timeout=_LIST_TIMEOUT_SECONDS,
+            timeout=limit,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):

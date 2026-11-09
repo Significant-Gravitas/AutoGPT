@@ -139,8 +139,14 @@ algorithm, and the `autogpt-shim audit` CLI are spec'd in
 [AUDIT_LOG.md](AUDIT_LOG.md). The audit key never leaves the machine;
 the user provides it out-of-band when uploading a log for support.
 Audit initialization is mandatory: if the key or writer cannot be created,
-daemon construction fails and the CLI exits with `EX_CONFIG` rather than
-running in an unaudited degraded mode.
+the daemon doesn't start rather than running in an unaudited degraded mode.
+A failure that can clear on its own (a keychain still locked or not up yet,
+audit storage full or not mounted) exits 75 (`EX_TEMPFAIL`), which the
+supplied systemd unit and LaunchAgent restart; one that can't (a malformed
+key, a log that fails verification, storage the shim may not write) exits
+78 (`EX_CONFIG`), or 0 under the LaunchAgent, which would otherwise restart
+it every few seconds. See
+[CROSS_PLATFORM.md → Autostart](CROSS_PLATFORM.md#autostart--background-daemon).
 An existing log must verify before appending; malformed stored keys or corrupt
 logs fail closed without being silently replaced. Runtime audit writes remain
 best-effort for most data operations: disk/writer failures can leave completed

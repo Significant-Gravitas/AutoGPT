@@ -195,7 +195,7 @@ async def test_cli_rotation_while_the_daemon_runs_keeps_both_chains_valid(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     """`autogpt-shim audit rotate` has its own writer; the daemon's must notice."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     daemon = _writer(tmp_path)
     await daemon.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     await daemon.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
@@ -562,32 +562,44 @@ async def test_concurrent_writes_serialize_via_internal_lock(tmp_path: Path) -> 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX file locks and modes")
 @pytest.mark.asyncio
-async def test_audit_verify_reads_the_log_under_the_writers_lock(
+async def test_audit_verify_reads_under_the_writers_lock_and_checks_after_it(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """A verify that read mid-append could call a valid log truncated."""
+    """A verify that read mid-append could call a valid log truncated. One
+    that also checked every record under the lock held the daemon's audit
+    writes, and the requests waiting on them, for the whole check."""
     import fcntl
 
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
-    held: list[bool] = []
+    held: dict[str, list[bool]] = {"read": [], "check": []}
 
-    def verify(_path: Path, _key: bytes) -> list:
+    def lock_held() -> bool:
         with open(tmp_path / ".audit.log.lock", "a+b") as probe:
             try:
                 fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                held.append(True)
-            else:
-                fcntl.flock(probe, fcntl.LOCK_UN)
-                held.append(False)
-        return []
+                return True
+            fcntl.flock(probe, fcntl.LOCK_UN)
+            return False
 
-    monkeypatch.setattr(AuditWriter, "verify", staticmethod(verify))
+    real_read = cli._read_audit_file
+    real_check = AuditWriter.verify_records
+
+    def read(path: Path) -> bytes | None:
+        held["read"].append(lock_held())
+        return real_read(path)
+
+    def check(data: bytes, key: bytes) -> list:
+        held["check"].append(lock_held())
+        return real_check(data, key)
+
+    monkeypatch.setattr(cli, "_read_audit_file", read)
+    monkeypatch.setattr(AuditWriter, "verify_records", staticmethod(check))
 
     assert cli._audit_verify(writer.path) == 0
-    assert held == [True]
+    assert held == {"read": [True], "check": [False]}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
@@ -745,7 +757,7 @@ def test_audit_reads_report_a_lock_they_cannot_take(tmp_path: Path, monkeypatch,
         yield
 
     monkeypatch.setattr(audit_module, "holding_log_lock", refuse)
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     log = tmp_path / "audit.log"
     log.write_text("")
     # An expired rotated log, so prune has something to delete under the lock.
@@ -778,7 +790,7 @@ def _rotate_before_the_lock(monkeypatch, writer: AuditWriter) -> None:
 async def test_verify_all_lists_the_files_under_the_lock(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     _rotate_before_the_lock(monkeypatch, writer)
@@ -797,7 +809,7 @@ async def test_verify_all_checks_records_without_holding_the_lock(
     """verify-all held the writers' lock while it parsed and HMACed every
     record of every retained file, so each audit write the daemon made
     meanwhile waited for the whole scan."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     writer.force_rotate()
@@ -819,7 +831,7 @@ async def test_verify_all_checks_records_without_holding_the_lock(
 async def test_verify_all_skips_a_rotated_file_pruned_while_it_runs(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     writer.force_rotate()
@@ -849,7 +861,7 @@ async def test_verify_all_skips_a_rotated_file_pruned_while_it_runs(
 async def test_export_lists_the_files_under_the_lock(tmp_path: Path, monkeypatch) -> None:
     import zipfile
 
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     _rotate_before_the_lock(monkeypatch, writer)
@@ -913,7 +925,7 @@ async def test_export_refuses_to_write_over_an_audit_log(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     """ZipFile(output, "w") truncates the log before it is read into the zip."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     before = writer.path.read_bytes()
@@ -921,6 +933,25 @@ async def test_export_refuses_to_write_over_an_audit_log(
     assert cli._audit_export(writer.path, writer.path) == 2
     assert writer.path.read_bytes() == before
     assert "audit log" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_export_refuses_to_write_over_the_logs_lock(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """An export named after the writers' lock replaced it, so a writer that
+    opened the lock afterwards locked another file than the daemon held, and
+    both appended to the log."""
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    lock = tmp_path / ".audit.log.lock"
+    before = lock.stat()
+
+    assert cli._audit_export(writer.path, lock) == 2
+    assert lock.stat().st_ino == before.st_ino
+    assert lock.stat().st_size == before.st_size
+    assert "lock" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("line", [b"[]", b'"text"', b"42", b"null"])
@@ -1071,7 +1102,7 @@ async def test_export_refuses_an_output_named_like_a_rotated_log(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     """verify-all would later read the zip as a rotated log and fail on it."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     output = tmp_path / "audit.log.export.zip"
@@ -1119,7 +1150,7 @@ async def test_a_new_log_is_owner_only_from_the_start(tmp_path: Path, monkeypatc
 @pytest.mark.asyncio
 async def test_an_export_is_owner_only(tmp_path: Path, monkeypatch) -> None:
     """The zip holds every audit record, but got the umask's mode."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     output = tmp_path / "export.zip"
@@ -1187,7 +1218,7 @@ async def test_export_writes_the_archive_after_releasing_the_lock(
     every audit write, and the requests waiting on them."""
     import zipfile
 
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     writer.force_rotate()
@@ -1341,6 +1372,118 @@ def test_a_keychain_missing_at_start_is_not_replaced_by_a_new_file_key(
     assert not (tmp_path / "audit-key.enc").exists()
 
 
+@pytest.mark.asyncio
+async def test_an_audit_command_never_makes_a_file_key_for_a_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """With no keychain up and the passphrase set, `audit verify` made a file
+    key for a log the keychain's key had signed: it reported the log corrupt,
+    and the stray key then stood in for the keychain at the daemon's next
+    start, which found its own log failing verification and stopped."""
+    import keyring
+    import keyring.errors
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    with patch.object(keyring, "get_password", side_effect=keyring.errors.NoKeyringError("none")):
+        assert cli._audit_verify(writer.path) == 2
+        assert cli._audit_verify_all(writer.path) == 2
+        assert cli._audit_rotate(writer.path) == 2
+        assert cli._audit_export(writer.path, tmp_path / "export.zip") == 2
+
+    assert not (tmp_path / "audit-key.enc").exists()
+    assert "Could not load audit key" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_an_audit_command_never_stores_a_keychain_key(tmp_path: Path) -> None:
+    """With the keychain up and holding no key, `audit verify` stored a new
+    one, which no existing log was signed with."""
+    import keyring
+
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    stored: list[str] = []
+    with (
+        patch.object(keyring, "get_password", return_value=None),
+        patch.object(keyring, "set_password", side_effect=lambda *args: stored.append(args[2])),
+    ):
+        assert cli._audit_verify(writer.path) == 2
+
+    assert stored == []
+
+
+def test_an_empty_keychain_gets_no_new_key_for_a_signed_log(tmp_path: Path) -> None:
+    """With the keychain up but its audit key gone, the daemon stored a new
+    key, failed to verify its log with it, and stopped as if the log were
+    corrupt, leaving the new key behind in place of the one that signed it."""
+    import keyring
+
+    from autogpt_local_executor.audit import AuditKeyError
+
+    log = tmp_path / "audit.log"
+    log.write_text('{"seq": 1}\n')
+    stored: list[str] = []
+    with (
+        patch.object(keyring, "get_password", return_value=None),
+        patch.object(keyring, "set_password", side_effect=lambda *args: stored.append(args[2])),
+    ):
+        with pytest.raises(AuditKeyError, match="move the log aside"):
+            get_or_create_audit_key(log)
+        # A first start, with no log yet, makes one as before.
+        assert len(get_or_create_audit_key(tmp_path / "new.log")) == 32
+
+    assert len(stored) == 1
+
+
+def test_no_keyring_package_gets_no_new_file_key_for_a_signed_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without the keyring package, and with the passphrase set, the daemon
+    made a file key for a log the keychain's key had signed, so the log no
+    longer verified."""
+    from autogpt_local_executor.audit import AuditKeyError
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    monkeypatch.setitem(sys.modules, "keyring", None)
+    log = tmp_path / "audit.log"
+    log.write_text('{"seq": 1}\n')
+
+    with pytest.raises(AuditKeyError, match="move the log aside"):
+        get_or_create_audit_key(log)
+
+    assert not (tmp_path / "audit-key.enc").exists()
+
+
+def test_a_keychain_that_turns_up_later_keeps_the_file_key_that_signed_the_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A first start without a keychain made a file key and signed the log
+    with it. Once a keychain was available, holding no audit key, the daemon
+    stored a new one there, the log no longer verified, and it stopped."""
+    import keyring
+    import keyring.errors
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    log = tmp_path / "audit.log"
+    with patch.object(keyring, "get_password", side_effect=keyring.errors.NoKeyringError("none")):
+        signing_key = get_or_create_audit_key(log)
+    log.write_text('{"seq": 1}\n')
+    stored: list[str] = []
+    with (
+        patch.object(keyring, "get_password", return_value=None),
+        patch.object(keyring, "set_password", side_effect=lambda *args: stored.append(args[2])),
+    ):
+        assert get_or_create_audit_key(log) == signing_key
+        assert cli._audit_verify(log) != 2  # the audit commands read it too
+
+    assert stored == []
+
+
 # ── Export: descriptors, a prune meanwhile, the default name ───────────
 
 
@@ -1352,7 +1495,7 @@ async def test_export_keeps_one_rotated_log_open_at_a_time(tmp_path: Path, monke
     limit, and the export ended in a traceback with no archive."""
     import zipfile
 
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     for index in range(40):
         await writer.write("EXECUTE_COMMAND", request_id=str(index), details={}, result={})
@@ -1378,7 +1521,7 @@ async def test_an_export_whose_rotated_log_is_pruned_meanwhile_writes_nothing(
 ) -> None:
     """The set is listed under the lock and read after it; a prune in
     between must fail the export, not leave a file out of it."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     writer.force_rotate()
@@ -1410,7 +1553,7 @@ async def test_a_second_export_in_the_same_second_keeps_the_first(
     import datetime as real_datetime
     import zipfile
 
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     exports = tmp_path / "exports"
@@ -1598,7 +1741,7 @@ def test_rotate_reports_a_log_it_cannot_open_instead_of_crashing(
 ) -> None:
     """Opening the log for a rotation raised out of `audit rotate`: a log that
     fails verification, or one it can't open, ended in a traceback."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     log = tmp_path / "audit.log"
     log.write_text('{"seq": 1, "ts": 1.0, "op": "X", "hmac": "00"}\n')
     if failure == "unreadable":

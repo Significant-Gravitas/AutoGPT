@@ -289,8 +289,12 @@ def _cmd_auth(config) -> int:
         print(f"Authentication failed: {exc}")
         return 1
     except OAuthDenied as exc:
-        # The platform's own reason, from the redirect: safe to show.
-        print(f"Sign-in was refused: {exc}")
+        from .doctor import _printable
+
+        # The platform's own reason, from the redirect: safe to show, with
+        # what stdout's encoding can't carry (a legacy Windows code page, a
+        # redirect to a file) written as escapes rather than raising.
+        print(_printable(f"Sign-in was refused: {exc}"))
         return 1
     except Exception:
         print(
@@ -344,8 +348,9 @@ async def _cmd_start(config) -> int:
             # the user has fixed it. (The systemd unit won't restart on 78.)
             _print_launchagent_stopped("Fix the above")
             return 0
-        # Exit 78 (EX_CONFIG) so launchd's KeepAlive: SuccessfulExit=false
-        # re-launches us on the next TCC change. See COMPUTER_USE.md "macOS".
+        # Exit 78 (EX_CONFIG): launchd's KeepAlive: SuccessfulExit=false
+        # starts us again after any nonzero exit (at most every ten seconds),
+        # and the start after the grant comes up. See COMPUTER_USE.md "macOS".
         return 78
     except DaemonAuthenticationError as exc:
         print(f"Authentication failed: {exc}", file=sys.stderr, flush=True)
@@ -707,20 +712,27 @@ def _audit_show(current: Path, seq: int) -> int:
 
 
 def _audit_verify(current: Path) -> int:
-    from .audit import AuditWriter, get_or_create_audit_key, holding_log_lock
+    from .audit import AuditWriter, holding_log_lock, load_audit_key
 
     if not current.is_file():
         print(f"Audit log not found: {current}")
         return 1
     try:
-        key = get_or_create_audit_key()
+        key = load_audit_key()
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2
-    # The daemon may be appending; a half-written record would read as a break.
+    # The daemon may be appending; a half-written record would read as a
+    # break. So the log is read whole under the writers' lock, and checked
+    # after it, as verify-all does: checking parses and HMACs every record,
+    # and the daemon's audit writes, and the requests that wait on them,
+    # would wait for all of it.
     with holding_log_lock(current):
-        violations = AuditWriter.verify(current, key)
-    return _print_violations(current, violations)
+        contents = _read_audit_file(current)
+    if contents is None:
+        print(f"Audit log not found: {current}")
+        return 1
+    return _print_violations(current, AuditWriter.verify_records(contents, key))
 
 
 def _same_file(a: Path, b: Path) -> bool:
@@ -744,10 +756,10 @@ def _audit_files(current: Path) -> list[Path]:
 
 
 def _audit_verify_all(current: Path) -> int:
-    from .audit import AuditWriter, get_or_create_audit_key, holding_log_lock
+    from .audit import AuditWriter, holding_log_lock, load_audit_key
 
     try:
-        key = get_or_create_audit_key()
+        key = load_audit_key()
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2
@@ -808,13 +820,14 @@ def _audit_export(current: Path, output: Path | None) -> int:
     from .audit import (
         KEYCHAIN_AUDIT_KEY_USERNAME,
         _file_identity,
-        get_or_create_audit_key,
+        _lock_path,
         holding_log_lock,
+        load_audit_key,
     )
     from .fsops import temporary_sibling
 
     try:
-        key = get_or_create_audit_key()
+        key = load_audit_key()
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2
@@ -849,6 +862,12 @@ def _audit_export(current: Path, output: Path | None) -> int:
         # The finished archive replaces `output`, so it must not be a log being exported.
         if any(_same_file(output, path) for path in (current, *files)):
             print(f"Refusing to write the export over an audit log: {output}")
+            return 2
+        # Nor the writers' lock: a writer that then opened the new file would
+        # take a lock the daemon, holding the old one, doesn't, and both
+        # would append.
+        if _same_file(output, _lock_path(current)):
+            print(f"Refusing to write the export over the audit log's lock: {output}")
             return 2
         # Nor named like a rotated log beside it, which verify-all would read.
         if _same_file(output.parent, current.parent) and output.name.startswith(current.name + "."):
@@ -933,13 +952,13 @@ def _install_export(temp: Path, output: Path, *, numbered: bool) -> Path:
 
 
 def _audit_rotate(current: Path) -> int:
-    from .audit import AuditLogCorruptError, AuditWriter, get_or_create_audit_key
+    from .audit import AuditLogCorruptError, AuditWriter, load_audit_key
 
     if not current.is_file():
         print(f"Audit log not found: {current}")
         return 1
     try:
-        key = get_or_create_audit_key()
+        key = load_audit_key()
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2

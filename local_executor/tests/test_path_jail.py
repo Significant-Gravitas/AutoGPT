@@ -260,3 +260,28 @@ def test_content_descriptor_is_closed_after_rejection(tmp_path: Path, write: boo
     with pytest.raises(OSError):
         os.fstat(opened[0])
     assert target.read_text() == "original"
+
+
+def test_a_relative_path_is_taken_from_the_root_not_the_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A relative path resolved against the directory the shim started in:
+    refused when that was outside the root, and another file than the
+    platform meant (it joins a relative path to allowed_root) when that was
+    a folder inside it."""
+    from autogpt_local_executor.path_jail import assert_entry_inside_jail
+
+    root = tmp_path / "root"
+    (root / "sub").mkdir(parents=True)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    expected = Path(os.path.realpath(root)) / "notes.txt"
+
+    monkeypatch.chdir(elsewhere)
+    assert assert_inside_jail("notes.txt", root) == expected
+    monkeypatch.chdir(root / "sub")
+    assert assert_inside_jail("notes.txt", root) == expected
+    assert assert_entry_inside_jail("notes.txt", root) == expected
+    with pytest.raises(PathJailError) as exc:
+        assert_inside_jail(os.path.join("..", "escape.txt"), root)
+    assert exc.value.code == "PATH_OUTSIDE_ALLOWED_ROOT"

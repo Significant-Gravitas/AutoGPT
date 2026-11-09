@@ -333,6 +333,31 @@ def test_auth_says_why_the_platform_denied_sign_in(
     assert "access_denied: Local PC isn't available for this account yet." in output
 
 
+def test_a_refused_sign_in_prints_its_reason_whatever_stdouts_encoding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The platform's reason for a refused sign-in can hold any character.
+    Under a legacy code page (stdout redirected on Windows, say), printing
+    one it lacks raised UnicodeEncodeError instead of showing the reason."""
+    import io
+
+    from autogpt_local_executor.auth import OAuthDenied, OAuthFlow
+
+    def refuse(_flow):
+        raise OAuthDenied("access_denied: Local PC isn\u2019t available \u2014 \u672a\u6765")
+
+    monkeypatch.setattr(OAuthFlow, "run", refuse)
+    raw = io.BytesIO()
+    stdout = io.TextIOWrapper(raw, encoding="cp437", errors="strict")
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    assert cli._cmd_auth(ShimConfig(allowed_root=tmp_path)) == 1
+    stdout.flush()
+    shown = raw.getvalue().decode("cp437")
+    assert "Sign-in was refused: access_denied: Local PC isn" in shown
+    assert "\\u672a" in shown
+
+
 def test_auth_failure_does_not_print_token_bearing_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -444,7 +469,7 @@ AUDIT_KEY = b"\x01" * 32
 
 @pytest.fixture
 def audit_key(monkeypatch: pytest.MonkeyPatch) -> bytes:
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: AUDIT_KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: AUDIT_KEY)
     return AUDIT_KEY
 
 

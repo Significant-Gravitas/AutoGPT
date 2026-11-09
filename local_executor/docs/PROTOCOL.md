@@ -70,8 +70,8 @@ to apply. The platform learns the shim's maximum from HELLO before it
 answers, so it must not send a newer minor's fields to an older shim. A
 frame whose objects and arrays nest more than 64 levels deep is logged and
 dropped the same way; no message comes close. So is one holding `NaN`,
-`Infinity` or a number too large for a double (`1e999`): JSON has none of
-them, though some encoders write them.
+`Infinity` or a number too large for a double (`1e999`, or a whole number
+309 digits long): JSON has none of them, though some encoders write them.
 
 ### Frame-level `version`
 
@@ -415,6 +415,12 @@ transport ceiling to account for worst-case JSON escaping.
 
 ### File Operations
 
+A file operation's `path` (`src` and `dst` for a move), like
+`EXECUTE_COMMAND`'s `cwd`, is normally absolute. A relative one is taken
+from `allowed_root`, as the platform's own tools take it, never from the
+directory the shim happens to run in; `~` is the user's home. Either way it
+must resolve inside `allowed_root`.
+
 #### `FILE_READ` (platform → shim)
 ```json
 {
@@ -510,7 +516,9 @@ owner and group, and its mode, except set-user-ID and set-group-ID, which a
 write drops so that new contents never run with the file owner's privileges
 (Linux drops them for an unprivileged writer; the shim drops them whatever
 it runs as, and refuses the write when it can't, as for someone else's file
-written in place); a new one gets the usual default (0o666 less the umask). An existing file with more than
+written in place); a new one gets the usual default (0o666 less the umask).
+The new file beside an existing one is owner-only until it has that mode,
+so no other account can open it, and read the new contents, before then. An existing file with more than
 one hard link is refused with `PATH_OUTSIDE_ALLOWED_ROOT`, as `FILE_READ`
 refuses one: its other names may be outside the root, and the shim can't
 tell, so the write neither succeeds nor replaces it. Because a target the
@@ -868,7 +876,11 @@ refused call again, once (it never ran). Element tokens and other state
 from the ended label are gone, so the model takes a fresh snapshot, as
 after any stale state. The
 list doesn't change while the shim runs; the platform may cache it per
-connection. Listing tools never waits for a running action.
+connection. Listing tools doesn't wait for a running action: it never takes
+the turn computer tool calls take. Like any request, though, it needs one of
+the session's and the machine's request slots (see
+[Concurrency](#concurrency)), and waits up to ten seconds for a machine slot
+other chats' work holds, then gets `SHIM_OVERLOADED`.
 
 #### `COMPUTER_TOOL_CALL` (platform → shim)
 ```json
@@ -899,8 +911,10 @@ element tokens and sessions of the old one.
 
 `approved_arguments` (at most 8, default empty) names the tool's approval
 arguments the platform approved for this call: usually the person, on an
-approval card, but a chat that runs Unsupervised approves without asking.
-The shim can't tell which and trusts the field. An argument in a tool's
+approval card, but a chat that runs Unsupervised approves without asking,
+and a standing rule the person set on an earlier card ("from now on")
+approves later calls of that kind whatever their arguments. The shim can't
+tell which and trusts the field. An argument in a tool's
 `approval_arguments` can reach the disk (`screenshot_out_file`, clipboard
 `file_path` / `image_path`, `browser_set_input_files.files`, and
 `run_script.script`, whose calls inside the driver can save a screenshot to
@@ -916,8 +930,8 @@ doesn't offer, and, with `details.argument` too, an argument it never
 accepts: `check_permissions` with `prompt: true`; any approval argument
 inside a `run_steps` step or its `observe`; and a `launch_app` `name`,
 `bundle_id` or `aumid` that isn't an app's name or id (a path, a URL scheme,
-a leading `-`, a control character, or on Linux a command line whose first
-word is a program).
+a leading `-`, a control character, or on Linux a name whose first word is
+a program, a program's own name included).
 
 #### `COMPUTER_TOOL_RESULT` (shim → platform)
 ```json
@@ -991,8 +1005,10 @@ Error codes:
   the call already did stays done. Neither is retried automatically (see
   [Idempotency](#idempotency)); the model decides, and may send a call that
   didn't start again. `EXECUTE_COMMAND` doesn't use this code: on timeout it
-  returns `COMMAND_RESULT` with `timed_out: true` and `exit_code = -1`, so
-  callers branch on the `timed_out` flag.
+  returns `COMMAND_RESULT` with `timed_out: true`, and `exit_code` is the
+  stopped process's own status (on POSIX the negated signal that ended it,
+  such as -15 or -9), or -1 when there is none to read, so callers branch on
+  the `timed_out` flag, not the code.
 - `SHELL_NOT_AVAILABLE` — `shell` selector requested a shell not installed on this OS
 - `UNSUPPORTED_ARCH` — HELLO `arch` value not recognized
 - `CAPABILITY_NOT_GRANTED` — requested capability not in granted_capabilities
@@ -1146,14 +1162,14 @@ assigns each request its own async task and responds with matching `id` when com
 Max concurrent requests: `HELLO_ACK.max_concurrent` (default 4).
 The chats on a machine also share the control connection's `max_concurrent`
 slots. A request waits up to ten seconds for one, then gets
-`SHIM_OVERLOADED` with `details.reason: "machine_busy"`. A
-`COMPUTER_TOOL_CALL` waits no longer than its own deadline, which this wait
-counts toward; one whose deadline comes first gets `COMMAND_TIMEOUT` with
-`details.started: false`. A slot stays taken
+`SHIM_OVERLOADED` with `details.reason: "machine_busy"`. A slot stays taken
 until its work ends, including work still running in a thread after its
 session ended.
-`COMPUTER_TOOL_CALL`s from every session on a machine take turns, since
-they share one screen.
+`COMPUTER_TOOL_CALL`s take no slot: those from every session on a machine
+take turns, since they share one screen, so calls waiting their turn would
+otherwise hold every slot while a long one ran. Each waits for its turn no
+longer than its own deadline; one whose deadline comes first gets
+`COMMAND_TIMEOUT` with `details.started: false`.
 
 ---
 
@@ -1267,6 +1283,8 @@ and the spec's discriminated union just gains it within a major.
 
 Shim uses exponential backoff: `min(2^attempt * 1s, 60s) + jitter(0-5s)`.
 `attempt` counts failed connects in a row and goes back to 0 once a
-connection completes its handshake, so a session that drops after
-running reconnects promptly. On reconnect, shim sends a new `HELLO`. Platform re-issues `HELLO_ACK` with same session.
+session that completed its handshake has stayed up for a minute, so a
+session that drops after running reconnects promptly, while one the
+platform ends right after `HELLO_ACK` (closing with 1011 while
+overloaded, say) counts as a failed connect and the backoff keeps growing. On reconnect, shim sends a new `HELLO`. Platform re-issues `HELLO_ACK` with same session.
 Any in-flight requests at disconnect time are considered failed; platform retries if safe.

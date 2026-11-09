@@ -64,6 +64,11 @@ so it shows on Windows and Linux but not on macOS.
 **Environment.** The driver gets the shim's environment (it and the apps it
 launches need `DISPLAY`, the session bus and the rest), with these changes:
 
+- The shim's own settings (`AUTOGPT_SHIM_*`, among them
+  `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`) are dropped: nothing the driver starts
+  needs them, and an app it launches would inherit them. That keeps them
+  out of a terminal's `env`, not out of reach: any program running as the
+  user can read the shim's own environment.
 - Of cua's own settings (`CUA*`), only those cua's SDK hands a driver it
   embeds pass: `CUA_LOG`, `CUA_DRIVER_RS_HOME`, the accessibility and
   Wayland switches (`CUA_DRIVER_RS_ENABLE_WAYLAND`,
@@ -138,7 +143,7 @@ sixteen tools; all of them are in the catalog, which
 **The shim** (`handlers.ComputerUseHandler`):
 
 - Only an offered tool is relayed (`FEATURE_NOT_SUPPORTED` otherwise).
-- Arguments that reach the disk need the person's approval, per call:
+- Arguments that reach the disk need approval, call by call:
   `screenshot_out_file` on `get_window_state` and `get_desktop_state`
   (writes the screenshot to a file), `file_path` and `image_path` on
   `clipboard_write` (puts a file from anywhere on disk on the clipboard),
@@ -151,8 +156,10 @@ sixteen tools; all of them are in the catalog, which
   must name an app. The tool list names them in each tool's `approval_arguments`. The platform
   asks the person on an approval card that shows the path, and only then
   sends the call with the argument in `approved_arguments`; a chat that runs
-  Unsupervised sends it without asking, and the shim, which can't tell the
-  two apart, trusts the field. Without it the shim answers
+  Unsupervised sends it without asking, and so does a standing rule the
+  person set on an earlier card ("from now on"), for later calls of that
+  kind whatever path they name. The shim, which can't tell these apart,
+  trusts the field. Without it the shim answers
   `APPROVAL_REQUIRED` and nothing reaches the driver. A
   `run_steps` step may not use one at all, and neither may the `observe`
   that ends a batch, which the driver runs as a `get_window_state` call.
@@ -213,7 +220,9 @@ Known gaps:
   terminal the agent types into, nobody sees them: each is an approval
   argument. On Linux the driver also runs `name` as a command line before
   it looks for an app of that name, so the shim refuses a `name` whose first
-  word is a program, and on every OS a `name`, `bundle_id` or `aumid` with a
+  word is a program, a program's own name included (`reboot` would run it;
+  an app goes by the name `list_apps` shows, such as `Firefox`), and on
+  every OS a `name`, `bundle_id` or `aumid` with a
   path, a URL scheme or a leading `-`. A plain launch, an app by its name or
   id, asks nothing, and a launched app can do whatever it does.
 - `set_value` writes a field's value directly, without visible keystrokes.
@@ -292,7 +301,10 @@ through the same driver. The platform gives a new chat's session a few
 seconds to connect, so if another chat's call holds the driver for more
 than two of them, the new session goes ahead unchecked: the grants are the
 app's, checked when the shim started, and a busy driver is a working one.
-Its HELLO waits as briefly for the screen size, and leaves it out instead.
+Its HELLO waits as briefly for the screen size, and leaves it out instead,
+and as briefly for a driver that is starting again (after another chat's
+call overran, say), and then lists the tools the driver offered when it
+last ran, which its next start offers again.
 `autogpt-shim doctor` runs cua-driver's own
 `doctor`, starts the driver as the daemon does, reads the screen size, and on
 macOS reports both grants and, when one is missing, asks macOS to show its

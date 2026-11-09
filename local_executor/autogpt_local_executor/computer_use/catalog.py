@@ -325,16 +325,20 @@ def _check_app_identity(
             )
     # On Linux the driver runs `name` as a command line first, split at
     # spaces, and matches it against the installed apps only if no program
-    # has its first word. A display name such as "Google Chrome" starts with
-    # no program's name and so reaches the match.
+    # has its first word. A program's own name ("reboot") would run it, in
+    # the background. An app's display name, as list_apps gives it ("Google
+    # Chrome", "Firefox"), starts with no program's name (PATH lookups are
+    # case-sensitive) and so reaches the match.
     name = arguments.get("name")
     words = name.split() if platform.startswith("linux") and isinstance(name, str) else []
-    if len(words) > 1 and on_path(words[0]):
+    if words and on_path(words[0]):
+        rest = " with the rest as its arguments" if len(words) > 1 else ""
         raise ArgumentRefused(
             "launch_app",
             "name",
-            f"the driver would run {words[0]!r} with the rest as its arguments; pass a "
-            "command line as launch_path, which the person approves",
+            f"the driver would run the program {words[0]!r}{rest}; name the app as "
+            "list_apps shows it, or pass a command line as launch_path, which the "
+            "person approves",
         )
 
 

@@ -582,19 +582,33 @@ class AuditLogCorruptError(RuntimeError):
     it. A restart can't fix this: someone has to look at the log."""
 
 
-def get_or_create_audit_key(audit_log: Path | None = None) -> bytes:
+def load_audit_key() -> bytes:
+    """The stored audit key, for the audit commands, which read and check
+    logs: they never make one, since a new key couldn't check a log another
+    key signed, and the daemon would then find its log signed with neither.
+    AuditKeyError, or AuditKeyUnavailableError, when none can be read."""
+    return get_or_create_audit_key(create=False)
+
+
+def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = True) -> bytes:
     """Return the persisted audit key, generating + storing one on first use.
 
     Prefers the OS keychain. The legacy audit-only fallback requires
     AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE; OAuth tokens have no file fallback.
-    With no keychain, the fallback's key is used once it exists; a new one
-    is made only while `audit_log` (the log the key is for) doesn't exist
-    yet, since one the keychain's key signed would never verify with it.
+    With no keychain, the fallback's key is used once it exists, and so it
+    is when a keychain that turns up later holds none: that key signed the
+    log. A new one is made only while `audit_log` (the log the key is for)
+    doesn't exist yet, since a log another key signed would never verify
+    with it. With `create` false no key is made at all (load_audit_key).
     """
     try:
         import keyring
         import keyring.errors
     except ImportError:
+        if not _fallback_path().exists():
+            _refuse_a_new_key(
+                audit_log, create, "No keyring package is installed, and the file fallback"
+            )
         return _fallback_audit_key()
     try:
         stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
@@ -610,6 +624,12 @@ def get_or_create_audit_key(audit_log: Path | None = None) -> bytes:
                     "Stored audit key has an invalid length; refusing to replace it"
                 )
             return key
+        if _fallback_path().exists() and os.environ.get("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE"):
+            # The file fallback made the key while there was no keychain, so
+            # it signed the log; a new keychain key couldn't verify it.
+            logger.info("The keychain holds no audit key; using the file fallback's.")
+            return _fallback_audit_key()
+        _refuse_a_new_key(audit_log, create, "The OS keychain")
         key = secrets.token_bytes(32)
         keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME, key.hex())
         return key
@@ -617,7 +637,7 @@ def get_or_create_audit_key(audit_log: Path | None = None) -> bytes:
         raise
     except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
         if not _fallback_path().exists():
-            _no_keychain_yet(exc, audit_log)
+            _no_keychain_yet(exc, audit_log, create=create)
         logger.warning("No usable keychain for the audit key (%s); using the file fallback.", exc)
         return _fallback_audit_key()
     except Exception as exc:
@@ -627,7 +647,27 @@ def get_or_create_audit_key(audit_log: Path | None = None) -> bytes:
         ) from exc
 
 
-def _no_keychain_yet(exc: Exception, audit_log: Path | None) -> None:
+def _refuse_a_new_key(audit_log: Path | None, create: bool, holder: str) -> None:
+    """Raise AuditKeyError unless a new audit key may be made: never for the
+    audit commands (`create` false), and never while `audit_log`, the log
+    the key is for, exists, since a new key couldn't verify a log another
+    key signed. `holder` names where no key was found."""
+    if not create:
+        raise AuditKeyError(f"{holder} holds no audit key, so there is none to read")
+    if audit_log is not None and os.path.lexists(audit_log):
+        hint = (
+            " (the file fallback has one: set AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE to read it)"
+            if _fallback_path().exists()
+            else ""
+        )
+        raise AuditKeyError(
+            f"{holder} holds no audit key, but the audit log at {audit_log} was signed "
+            f"with one{hint}, which a new key couldn't verify. Restore that key, or move "
+            "the log aside to start a new log with a new key"
+        )
+
+
+def _no_keychain_yet(exc: Exception, audit_log: Path | None, *, create: bool = True) -> None:
     """With no keychain and no file key yet, raise AuditKeyUnavailableError
     unless the file fallback may start a new key.
 
@@ -636,7 +676,12 @@ def _no_keychain_yet(exc: Exception, audit_log: Path | None) -> None:
     Service the desktop session starts after the autostart service, say. It
     is waited for (the daemon exits to be restarted) rather than taken as
     gone, unless the person set the passphrase and no log exists for the
-    keychain's key to have signed."""
+    keychain's key to have signed. Without `create` there is no key to read."""
+    if not create:
+        raise AuditKeyUnavailableError(
+            f"No OS keychain is available ({type(exc).__name__}), and the file fallback "
+            "holds no audit key, so there is none to read"
+        ) from exc
     if not os.environ.get("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE"):
         raise AuditKeyUnavailableError(
             f"No OS keychain is available ({type(exc).__name__}) and "
@@ -996,6 +1041,7 @@ __all__ = [
     "SessionAuditWriter",
     "canonical_bytes",
     "get_or_create_audit_key",
+    "load_audit_key",
     "holding_log_lock",
     "list_rotated_files",
 ]
