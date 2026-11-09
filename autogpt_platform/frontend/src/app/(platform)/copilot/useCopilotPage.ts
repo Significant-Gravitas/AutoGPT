@@ -452,6 +452,7 @@ function useCopilotPageChat(
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
     metadata?: ExpertKickoffMetadata,
+    waitForDeferredSend = false,
   ) {
     const trimmed = message.trim();
     const hasAttachments =
@@ -529,8 +530,15 @@ function useCopilotPageChat(
       // Resolve once dispatched, not when the whole answer has streamed:
       // the composer's enqueue path is waiting on this, and holding it for
       // the entire turn would lock Enter and the queue button again.
-      void sendNewMessage(message, files, workspaceFiles, metadata).catch(
-        (err: unknown) => recoverFailedDeferredSend(trimmed, [], err),
+      const deferredSend = sendNewMessage(
+        message,
+        files,
+        workspaceFiles,
+        metadata,
+      );
+      if (waitForDeferredSend) return await deferredSend;
+      void deferredSend.catch((err: unknown) =>
+        recoverFailedDeferredSend(trimmed, [], err),
       );
       return sessionId;
     }
@@ -545,11 +553,11 @@ function useCopilotPageChat(
   );
   // A suggested task records which chat its message started.
   const onStartTask = useStableCallback((message: string) =>
-    sendOrQueue(message),
+    sendOrQueue(message, undefined, undefined, undefined, true),
   );
 
   useWorkflowImportAutoSubmit({
-    onSend: sendOrQueue,
+    onSend: onStartTask,
     setPendingFileParts,
     isSendLocked: isExpertSendLocked,
     onTaskStarted: markTaskSent,

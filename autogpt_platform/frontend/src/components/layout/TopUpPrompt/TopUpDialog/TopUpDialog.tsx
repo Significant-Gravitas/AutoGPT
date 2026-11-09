@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
+import { useMountEffect } from "@/hooks/useMountEffect";
 import { useRef } from "react";
 
 import { TopUpForm } from "../TopUpForm/TopUpForm";
@@ -31,6 +32,9 @@ export function TopUpDialog({
   const { isRedirecting } = useCheckoutRedirect();
   const isRequestingRef = useRef(false);
   const closedWhileRequestingRef = useRef(false);
+  useMountEffect(() => () => {
+    closedWhileRequestingRef.current = false;
+  });
 
   function handleOpenChange(open: boolean) {
     if (open) return;

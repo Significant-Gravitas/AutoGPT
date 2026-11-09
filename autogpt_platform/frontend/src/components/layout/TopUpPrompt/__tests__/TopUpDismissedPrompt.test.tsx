@@ -24,8 +24,16 @@ import {
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
+const auth = vi.hoisted(() => ({ userID: "user-a" }));
+const failedCheckout = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
-  useAuth: () => ({ user: { id: "user-a" }, isLoggedIn: true }),
+  useAuth: () => ({ user: { id: auth.userID }, isLoggedIn: true }),
+}));
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/molecules/Toast/use-toast")
+  >()),
+  useToastOnFail: () => () => failedCheckout,
 }));
 
 vi.mock("@/hooks/usePlatformPayment", () => ({
@@ -68,12 +76,12 @@ function setup(claimedId: string | null = "prompt-1") {
       };
     }),
   );
-  render(
+  const view = render(
     <TopUpPromptProvider>
       <Controls />
     </TopUpPromptProvider>,
   );
-  return { claims, patches };
+  return { claims, patches, rerender: view.rerender };
 }
 
 async function closeTopUpDialog() {
@@ -85,7 +93,10 @@ async function closeTopUpDialog() {
   );
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  auth.userID = "user-a";
+});
 afterEach(() => resetCheckoutRedirect());
 
 test("closing the out-of-credits dialog claims and shows the card", async () => {
@@ -170,4 +181,41 @@ test("closing during a failed payment request still offers feedback", async () =
     release();
   }
   expect(await screen.findByText(CARD_TITLE)).toBeDefined();
+});
+
+test("a failed request from the previous account cannot open feedback", async () => {
+  const { claims, rerender } = setup();
+  let release = () => {};
+  const payment = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = vi.fn();
+  server.use(
+    http.post("*/api/credits", async () => {
+      started();
+      await payment;
+      return HttpResponse.json({ detail: "failed" }, { status: 500 });
+    }),
+  );
+  try {
+    fireEvent.click(screen.getByRole("button", { name: "Open top-up" }));
+    await userEvent.type(
+      await screen.findByRole("textbox", { name: "Amount" }),
+      "5",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Top up" }));
+    await waitFor(() => expect(started).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    auth.userID = "user-b";
+    rerender(
+      <TopUpPromptProvider>
+        <Controls />
+      </TopUpPromptProvider>,
+    );
+  } finally {
+    release();
+  }
+  await waitFor(() => expect(failedCheckout).toHaveBeenCalledOnce());
+  expect(screen.getByText("card closed")).toBeDefined();
+  expect(claims).toEqual([]);
 });

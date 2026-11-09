@@ -1,3 +1,4 @@
+import * as feedbackPromptAPI from "@/app/api/__generated__/endpoints/feedback-prompts/feedback-prompts";
 import {
   getPatchV2UpdateFeedbackPromptMockHandler200,
   getPostV2ClaimFeedbackPromptMockHandler200,
@@ -789,6 +790,60 @@ describe("onboarding brain dump — why it was skipped", () => {
     );
     expect(await screen.findByTestId("step-plan")).toBeDefined();
     expect(screen.queryByText(SKIP_QUESTION)).toBeNull();
+  });
+
+  it("keeps skip reasons open after late microphone denial", async () => {
+    mockPrompt();
+    let deny = (_error: Error) => {};
+    getUserMedia.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        deny = reject;
+      }),
+    );
+    landOnPainPointsStep();
+    render(<OnboardingPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Talk" }));
+    await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+    await screen.findByText(SKIP_QUESTION);
+    await act(async () => deny(new DOMException("Denied", "NotAllowedError")));
+    expect(screen.getByText(SKIP_QUESTION)).toBeDefined();
+    expect(
+      screen.queryByRole("textbox", { name: "Your brain dump" }),
+    ).toBeNull();
+  });
+
+  it("ignores a refused claim after leaving the step", async () => {
+    let finish = (
+      _response: Awaited<
+        ReturnType<typeof feedbackPromptAPI.postV2ClaimFeedbackPrompt>
+      >,
+    ) => {};
+    const claim = new Promise<
+      Awaited<ReturnType<typeof feedbackPromptAPI.postV2ClaimFeedbackPrompt>>
+    >((resolve) => {
+      finish = resolve;
+    });
+    const request = vi
+      .spyOn(feedbackPromptAPI, "postV2ClaimFeedbackPrompt")
+      .mockReturnValueOnce(claim);
+    onTestFinished(() => request.mockRestore());
+    landOnPainPointsStep();
+    render(<OnboardingPage />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Skip for now" }),
+    );
+    await screen.findByText(SKIP_QUESTION);
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    const step = useOnboardingWizardStore.getState().currentStep;
+    vi.mocked(posthog.capture).mockClear();
+    await act(async () =>
+      finish({ status: 200, data: { id: null }, headers: new Headers() }),
+    );
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(step);
+    expect(posthog.capture).not.toHaveBeenCalledWith(
+      "brain_dump_skipped",
+      expect.anything(),
+    );
   });
 
   it("shows the tiles and stays on the step", async () => {

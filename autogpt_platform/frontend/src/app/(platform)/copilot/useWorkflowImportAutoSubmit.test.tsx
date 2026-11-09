@@ -111,6 +111,30 @@ describe("useWorkflowImportAutoSubmit", () => {
       expect(sessionStorage.getItem("importWorkflowPrompt")).toBe(PROMPT);
     });
 
+    it.each(["", "#prompt=%20%20"])(
+      "uses the stored handoff when a selected task has no usable hash: %s",
+      async (hash) => {
+        storeAutoSubmitPrompt();
+        window.history.replaceState(
+          {},
+          "",
+          `/home?autosubmit=true&suggestedTaskId=task-1${hash}`,
+        );
+        const onSend = vi.fn().mockResolvedValue("session-1");
+        const onTaskStarted = vi.fn();
+        renderHook(() =>
+          useWorkflowImportAutoSubmit({
+            onSend,
+            setPendingFileParts: vi.fn(),
+            onTaskStarted,
+          }),
+        );
+        await waitFor(() => expect(onSend).toHaveBeenCalledWith(PROMPT));
+        expect(sessionStorage.getItem("importWorkflowPrompt")).toBeNull();
+        expect(onTaskStarted).not.toHaveBeenCalled();
+      },
+    );
+
     it.each([
       ["no chat came of it", () => Promise.resolve(undefined)],
       ["the send failed", () => Promise.reject(new Error("boom"))],

@@ -197,6 +197,35 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
     expect(sendNewMessage).not.toHaveBeenCalled();
   });
 
+  it("does not return a deferred task chat before send admission succeeds", async () => {
+    let rejectSend = (_error: Error) => {};
+    sendNewMessage.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectSend = reject;
+      }),
+    );
+    const { result, rerender } = renderHook(() => useCopilotPage());
+    let settled = false;
+    let error: unknown;
+    const send = result.current.onStartTask("The selected task").then(
+      () => {
+        settled = true;
+      },
+      (failure: unknown) => {
+        settled = true;
+        error = failure;
+      },
+    );
+    await waitFor(() => expect(queueFollowUpMessage).toHaveBeenCalled());
+    streamState.status = "ready";
+    rerender();
+    await waitFor(() => expect(sendNewMessage).toHaveBeenCalled());
+    expect(settled).toBe(false);
+    await act(async () => rejectSend(new Error("Payment required")));
+    await send;
+    expect(error).toEqual(new Error("Payment required"));
+  });
+
   it.each(["ready", "error"] as const)(
     "starts a new turn directly after the stream settles with status %s",
     async (status) => {

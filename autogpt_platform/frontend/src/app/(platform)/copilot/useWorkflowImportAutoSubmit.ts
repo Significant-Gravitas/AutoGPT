@@ -26,7 +26,13 @@ function extractPromptFromUrl(): {
   // Check sessionStorage first (used by workflow import for large prompts
   // and by the marketing-site CTA handoff via useCaptureMarketingPrompt).
   const storedPrompt = sessionStorage.getItem("importWorkflowPrompt");
-  if (storedPrompt && !searchParams.has(SUGGESTED_TASK_PARAM)) {
+  const hashPrompt = new URLSearchParams(window.location.hash.slice(1)).get(
+    "prompt",
+  );
+  const hasTaskPrompt = Boolean(
+    searchParams.get(SUGGESTED_TASK_PARAM) && hashPrompt?.trim(),
+  );
+  if (storedPrompt && !hasTaskPrompt) {
     sessionStorage.removeItem("importWorkflowPrompt");
 
     // Onboarding wipes URL params before we reach /copilot, so the
@@ -63,6 +69,7 @@ function extractPromptFromUrl(): {
     const cleanURL = new URL(window.location.href);
     cleanURL.searchParams.delete("autosubmit");
     cleanURL.searchParams.delete("source");
+    cleanURL.searchParams.delete(SUGGESTED_TASK_PARAM);
     window.history.replaceState(
       null,
       "",

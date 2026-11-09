@@ -67,6 +67,7 @@ export function TopUpPromptProvider({ children }: Props) {
     >
       {children}
       <TopUpDialog
+        key={identityKey ?? "anonymous"}
         isOpen={isOpen}
         onClose={closeTopUp}
         onDismissed={() => setIsTopUpCardOpen(true)}

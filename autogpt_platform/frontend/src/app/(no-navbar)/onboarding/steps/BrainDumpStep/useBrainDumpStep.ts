@@ -2,6 +2,7 @@ import {
   discardBrainDump,
   finalizeBrainDump,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
+import { useMountEffect } from "@/hooks/useMountEffect";
 import { setIntroPath } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
@@ -67,6 +68,9 @@ export function useBrainDumpStep() {
   // prompt answered once the typed text is already on its way.
   const screenRef = useRef(screen);
   const startVersionRef = useRef(0);
+  useMountEffect(() => () => {
+    startVersionRef.current += 1;
+  });
   useEffect(() => {
     screenRef.current = screen;
   });
@@ -136,7 +140,12 @@ export function useBrainDumpStep() {
   // alone: reopening the composer would let it be sent a second time.
   useEffect(() => {
     if (!recorder.permissionDenied) return;
-    if (isSubmittingRef.current || screenRef.current === "processing") return;
+    if (
+      isSubmittingRef.current ||
+      screenRef.current === "processing" ||
+      screenRef.current === "skip-reason"
+    )
+      return;
     setScreen("typing");
     if (typedFallbackTrackedRef.current) return;
     typedFallbackTrackedRef.current = true;
@@ -439,11 +448,16 @@ export function useBrainDumpStep() {
   // can't hold the step up, so the skip itself runs the moment one is given.
   function openSkipReason() {
     if (isSubmittingRef.current) return;
-    startVersionRef.current += 1;
+    const version = ++startVersionRef.current;
     screenRef.current = "skip-reason";
     void recorder.stop().catch(() => undefined);
     void skipPrompt.claim().then(({ id, failed }) => {
-      if (!id && !failed && screenRef.current === "skip-reason")
+      if (
+        version === startVersionRef.current &&
+        !id &&
+        !failed &&
+        screenRef.current === "skip-reason"
+      )
         void handleSkip();
     });
     setScreen("skip-reason");
