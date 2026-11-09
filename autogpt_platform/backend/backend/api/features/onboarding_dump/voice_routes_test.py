@@ -14,7 +14,7 @@ from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump import routes, voice
 from backend.util.settings import AppEnvironment
-from backend.voice_relay import locks, metering, tokens
+from backend.voice_relay import locks, tokens
 from backend.voice_relay.config import CAPS
 
 app = fastapi.FastAPI()
@@ -108,7 +108,7 @@ async def test_a_second_start_while_a_call_is_live_is_refused_naming_it(
 
 
 async def test_past_the_daily_budget_voice_waits_for_the_next_day(redis):
-    await metering.add_daily_spend(redis, 25.0, datetime.now(UTC))
+    await locks.add_daily_spend(redis, 25.0, datetime.now(UTC))
     response = await start()
     assert response.status_code == 503
     wait = int(response.headers["Retry-After"])

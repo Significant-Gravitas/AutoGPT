@@ -16,14 +16,13 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from prometheus_client import Counter, Gauge, Histogram
 
 from backend.copilot import token_tracking
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.data.redis_client import AsyncRedisClient
-from backend.data.redis_helpers import as_str
 from backend.voice_relay.config import (
     AUDIO_TOKENS_PER_S,
     CLASSIFIER_MODEL,
@@ -32,13 +31,13 @@ from backend.voice_relay.config import (
     SPEND_CAP_USD,
     price_of,
 )
+from backend.voice_relay.locks import add_daily_spend
 from backend.voice_relay.vendor import Usage
 
 logger = logging.getLogger(__name__)
 
 BLOCK_NAME = "onboarding:voice_interview"
 COST_SOURCE = "onboarding_voice_interview"
-DAILY_SPEND_TTL_S = 2 * 24 * 3600
 REDIS_TIMEOUT_S = 0.5
 
 LIVE_CALLS = Gauge(
@@ -287,30 +286,3 @@ async def drain_cost_logs(timeout_s: float = 5.0) -> None:
         ]
     if pending:
         await asyncio.wait(pending, timeout=timeout_s)
-
-
-def daily_spend_key(now: datetime) -> str:
-    return f"voice:spend:{now.astimezone(UTC).date().isoformat()}"
-
-
-async def add_daily_spend(redis: AsyncRedisClient, usd: float, now: datetime) -> None:
-    key = daily_spend_key(now)
-    pipe = redis.pipeline(transaction=True)
-    pipe.incrbyfloat(key, usd)
-    pipe.expire(key, DAILY_SPEND_TTL_S)
-    await pipe.execute()
-
-
-async def daily_spend_usd(redis: AsyncRedisClient, now: datetime) -> float:
-    """What voice calls have spent across the platform today (UTC)."""
-    raw = as_str(await redis.get(daily_spend_key(now)))
-    return float(raw) if raw else 0.0
-
-
-def seconds_until_tomorrow(now: datetime) -> int:
-    """Seconds until the UTC day turns and the daily budget starts over."""
-    utc = now.astimezone(UTC)
-    tomorrow = datetime.combine(
-        utc.date() + timedelta(days=1), datetime.min.time(), UTC
-    )
-    return max(1, int((tomorrow - utc).total_seconds()))

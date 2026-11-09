@@ -14,12 +14,15 @@ production Redis cluster unchanged:
   stops counting once its entry goes stale.
 - ``voice:end:<call id>`` asks the pod that owns a call to end it; the pod
   looks every second.
+- ``voice:spend:<UTC date>`` is what voice calls spent across the platform
+  that day, which the start route holds to the daily budget.
 """
 
 import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Mapping
+from datetime import UTC, datetime, timedelta
 from typing import TypeVar
 
 from redis.typing import EncodableT, FieldT
@@ -40,6 +43,7 @@ T = TypeVar("T")
 LIVE_CALLS_KEY = "voice:concurrent"
 # How long one Redis operation of a live call may take before it is skipped.
 REDIS_TIMEOUT_S = 0.5
+DAILY_SPEND_TTL_S = 2 * 24 * 3600
 
 
 def user_lock_key(user_id: str) -> str:
@@ -146,6 +150,33 @@ async def request_end(redis: AsyncRedisClient, call_id: str) -> None:
 
 async def end_requested(redis: AsyncRedisClient, call_id: str) -> bool:
     return bool(await redis.exists(end_flag_key(call_id)))
+
+
+def daily_spend_key(now: datetime) -> str:
+    return f"voice:spend:{now.astimezone(UTC).date().isoformat()}"
+
+
+async def add_daily_spend(redis: AsyncRedisClient, usd: float, now: datetime) -> None:
+    key = daily_spend_key(now)
+    pipe = redis.pipeline(transaction=True)
+    pipe.incrbyfloat(key, usd)
+    pipe.expire(key, DAILY_SPEND_TTL_S)
+    await pipe.execute()
+
+
+async def daily_spend_usd(redis: AsyncRedisClient, now: datetime) -> float:
+    """What voice calls have spent across the platform today (UTC)."""
+    raw = as_str(await redis.get(daily_spend_key(now)))
+    return float(raw) if raw else 0.0
+
+
+def seconds_until_tomorrow(now: datetime) -> int:
+    """Seconds until the UTC day turns and the daily budget starts over."""
+    utc = now.astimezone(UTC)
+    tomorrow = datetime.combine(
+        utc.date() + timedelta(days=1), datetime.min.time(), UTC
+    )
+    return max(1, int((tomorrow - utc).total_seconds()))
 
 
 class CallStore:

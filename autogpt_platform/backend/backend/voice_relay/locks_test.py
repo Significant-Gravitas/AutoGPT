@@ -1,5 +1,6 @@
 import json
 import time
+from datetime import UTC, datetime
 
 from backend.voice_relay import locks
 from backend.voice_relay.config import (
@@ -102,3 +103,13 @@ async def test_a_store_keeps_a_call_going_when_redis_is_down():
     await store.refresh_live(time.time())
     await store.release()
     assert await store.end_requested() is False
+
+
+async def test_nothing_spent_today_reads_as_zero(redis):
+    assert await locks.daily_spend_usd(redis, datetime.now(UTC)) == 0.0
+
+
+def test_the_daily_budget_waits_for_the_utc_day_to_turn():
+    now = datetime(2026, 11, 9, 23, 59, 30, tzinfo=UTC)
+    assert locks.seconds_until_tomorrow(now) == 30
+    assert locks.daily_spend_key(now) == "voice:spend:2026-11-09"

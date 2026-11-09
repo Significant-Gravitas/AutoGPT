@@ -6,7 +6,7 @@ import pytest
 from prometheus_client import REGISTRY
 
 from backend.copilot import token_tracking
-from backend.voice_relay import metering
+from backend.voice_relay import locks, metering
 from backend.voice_relay.config import IN_RATE, OUT_RATE, PRICES
 from backend.voice_relay.metering import CallMeter, Row
 from backend.voice_relay.vendor import Usage
@@ -110,19 +110,15 @@ async def test_every_row_adds_to_the_platforms_daily_spend(redis):
     await first.flush()
     await second.flush()
     now = datetime.now(UTC)
-    spent = await metering.daily_spend_usd(redis, now)
+    spent = await locks.daily_spend_usd(redis, now)
     assert spent == pytest.approx(first.usd + second.usd)
     assert spent == pytest.approx(
         10_000 * PRICES[LIVE].audio_in / 1e6
         + 1_000 * PRICES[FLASH].text_in / 1e6
         + 100 * PRICES[FLASH].text_out / 1e6
     )
-    key = metering.daily_spend_key(now)
-    assert 0 < await redis.ttl(key) <= metering.DAILY_SPEND_TTL_S
-
-
-async def test_nothing_spent_today_reads_as_zero(redis):
-    assert await metering.daily_spend_usd(redis, datetime.now(UTC)) == 0.0
+    key = locks.daily_spend_key(now)
+    assert 0 < await redis.ttl(key) <= locks.DAILY_SPEND_TTL_S
 
 
 async def test_a_call_is_over_its_cap_at_fifty_cents(redis):
@@ -230,9 +226,3 @@ async def test_a_slow_redis_does_not_hold_up_a_usage_report():
         meter.classifier_usage(tokens_in=100, tokens_out=10), timeout=0.05
     )
     await meter.flush()
-
-
-def test_the_daily_budget_waits_for_the_utc_day_to_turn():
-    now = datetime(2026, 11, 9, 23, 59, 30, tzinfo=UTC)
-    assert metering.seconds_until_tomorrow(now) == 30
-    assert metering.daily_spend_key(now) == "voice:spend:2026-11-09"

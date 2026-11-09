@@ -36,7 +36,6 @@ from backend.util.feature_flag import (
 from backend.util.settings import AppEnvironment, Settings
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.config import CAPS, TOKEN_TTL_S
-from backend.voice_relay.metering import daily_spend_usd, seconds_until_tomorrow
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -114,11 +113,11 @@ async def _voice_enabled(user_id: str) -> bool:
 
 async def _refuse_past_platform_limits(redis: AsyncRedisClient) -> None:
     now = datetime.now(UTC)
-    spent = await _bounded(daily_spend_usd(redis, now))
+    spent = await _bounded(locks.daily_spend_usd(redis, now))
     if spent >= settings.config.voice_interview_daily_budget_usd:
         raise _unavailable(
             "Voice calls are paused until tomorrow. You can type instead.",
-            seconds_until_tomorrow(now),
+            locks.seconds_until_tomorrow(now),
         )
     live = await _bounded(locks.live_call_count(redis, now.timestamp()))
     if live >= settings.config.voice_interview_max_concurrent:
