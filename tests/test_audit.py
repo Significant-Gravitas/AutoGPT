@@ -1474,6 +1474,41 @@ async def test_a_path_that_is_not_valid_utf_8_is_still_audited(tmp_path: Path) -
     assert AuditWriter.verify(writer.path, KEY) == []
 
 
+@pytest.mark.asyncio
+async def test_an_escaped_key_keeps_both_values_when_it_spells_another_key(
+    tmp_path: Path,
+) -> None:
+    """A lone surrogate key was escaped to `\\udcff`, which is also how a
+    key a request carries can be spelled, so one of the two values was
+    dropped from the record, a refused call's included."""
+    writer = _writer(tmp_path)
+
+    await writer.write(
+        "COMPUTER_TOOL_CALL",
+        request_id="req-1",
+        details={"arguments": {"\udcff": "lone", "\\udcff": "spelled", "a\\b": "plain"}},
+        result={},
+    )
+
+    [line] = writer.path.read_text(encoding="utf-8").splitlines()
+    arguments = json.loads(line)["details"]["arguments"]
+    assert sorted(arguments.values()) == ["lone", "plain", "spelled"]
+    assert arguments["\\udcff"] == "lone"
+    assert AuditWriter.verify(writer.path, KEY) == []
+
+
+@pytest.mark.asyncio
+async def test_keys_that_need_no_escape_are_written_as_they_are(tmp_path: Path) -> None:
+    writer = _writer(tmp_path)
+
+    await writer.write(
+        "FILE_WRITE", request_id="req-1", details={"a\\b": 1, "path": "x"}, result={}
+    )
+
+    [line] = writer.path.read_text(encoding="utf-8").splitlines()
+    assert json.loads(line)["details"] == {"a\\b": 1, "path": "x"}
+
+
 @pytest.mark.parametrize("failure", ["corrupt", "unreadable"])
 def test_rotate_reports_a_log_it_cannot_open_instead_of_crashing(
     tmp_path: Path, monkeypatch, capsys, failure: str

@@ -197,7 +197,9 @@ and `±Infinity` are rejected: the canonicalizer raises on them rather
 than silently producing non-JSON.
 A string UTF-8 can't encode (a POSIX path whose bytes aren't UTF-8
 decodes to lone surrogates) is written with those code points as
-`\udcXX` escapes, so its record is never dropped.
+`\udcXX` escapes, so its record is never dropped. In an object with such
+a key, every key's backslashes are written doubled, so an escaped key
+can't be spelled like another key and take its place.
 
 ### Verification
 

@@ -121,16 +121,33 @@ def _utf8_safe(value: Any) -> Any:
     that raised was dropped while the operation went ahead; those code points
     are kept as `\\udcXX` escapes."""
     if isinstance(value, str):
-        try:
-            value.encode("utf-8")
-        except UnicodeEncodeError:
-            return value.encode("utf-8", "backslashreplace").decode("utf-8")
-        return value
+        if _encodes(value):
+            return value
+        return value.encode("utf-8", "backslashreplace").decode("utf-8")
     if isinstance(value, dict):
-        return {_utf8_safe(key): _utf8_safe(item) for key, item in value.items()}
+        # An escaped key can spell another key of the same object, which
+        # would drop one of the two values. In an object with a key to
+        # escape, every key's backslashes are doubled first, so an escape's
+        # single backslash can't match a key's own. Others stay as they are.
+        double = any(isinstance(key, str) and not _encodes(key) for key in value)
+        return {_utf8_safe_key(key, double): _utf8_safe(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_utf8_safe(item) for item in value]
     return value
+
+
+def _utf8_safe_key(key: Any, double: bool) -> Any:
+    if double and isinstance(key, str):
+        key = key.replace("\\", "\\\\")
+    return _utf8_safe(key)
+
+
+def _encodes(text: str) -> bool:
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def canonical_bytes(record: dict[str, Any]) -> bytes:
