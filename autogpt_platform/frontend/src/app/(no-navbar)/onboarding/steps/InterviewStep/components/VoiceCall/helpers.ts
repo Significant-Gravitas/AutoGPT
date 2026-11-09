@@ -133,8 +133,16 @@ const RAN_TO_CLOSE = new Set([
   "user_hangup",
 ]);
 
-// The call is running, or its words are still being made into a take.
-const UNSETTLED = new Set(["connecting", "live", "ended", "transcribing"]);
+// The call is running, or its words are still on their way to a take: being
+// transcribed, or handed off (the call routes report a call owed a hand-off
+// as `handing_off`). `transcribed` alone means a confirm is awaited.
+const UNSETTLED = new Set([
+  "connecting",
+  "live",
+  "ended",
+  "transcribing",
+  "handing_off",
+]);
 
 const SUPERSEDED = "superseded";
 const VERDICTS_ON_THE_WORDS = new Set([

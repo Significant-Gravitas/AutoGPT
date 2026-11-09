@@ -69,14 +69,23 @@ describe("the relay's messages", () => {
 });
 
 describe("what a call's record answers", () => {
-  it("waits while the call runs or its words are being made into a take", () => {
+  it("waits while the call runs or its words are on their way to a take", () => {
+    // `handing_off` is how the call routes report a call owed a hand-off.
     for (const status of [
       "connecting",
       "live",
       "ended",
       "transcribing",
-    ] as const) {
-      expect(answerOf(call({ status, hand_off: null }))).toBeNull();
+      "handing_off",
+    ]) {
+      expect(
+        answerOf(
+          call({
+            status: status as VoiceCallStatusResponse["status"],
+            hand_off: null,
+          }),
+        ),
+      ).toBeNull();
     }
   });
 

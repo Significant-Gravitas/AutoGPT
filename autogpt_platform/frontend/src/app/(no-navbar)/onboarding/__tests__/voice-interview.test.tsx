@@ -1026,26 +1026,32 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(mints).toBe(2);
   });
 
-  it("keeps Wrapping up beside Type instead past the wait, and stops reading the call once the person types", async () => {
-    callStates[CALL_ID] = [
-      callRecord({ status: "transcribing", hand_off: null }),
-    ];
-    render(<OnboardingPage />);
-    const socket = await liveCall();
+  it.each([["transcribing"], ["handing_off"]])(
+    "keeps Wrapping up beside Type instead past the wait while the call is %s, and stops reading the call once the person types",
+    async (status) => {
+      callStates[CALL_ID] = [
+        callRecord({
+          status: status as CallRecord["status"],
+          hand_off: null,
+        }),
+      ];
+      render(<OnboardingPage />);
+      const socket = await liveCall();
 
-    endCall(socket, "finished");
-    const typeInstead = await screen.findByRole("button", {
-      name: "Type instead",
-    });
-    expect(screen.getByText("Wrapping up…")).toBeDefined();
+      endCall(socket, "finished");
+      const typeInstead = await screen.findByRole("button", {
+        name: "Type instead",
+      });
+      expect(screen.getByText("Wrapping up…")).toBeDefined();
 
-    await userEvent.setup().click(typeInstead);
-    expect(await screen.findByText(GREETING)).toBeDefined();
-    const readsWhenTyping = statusReads.length;
-    await new Promise((resolve) => setTimeout(resolve, 200));
+      await userEvent.setup().click(typeInstead);
+      expect(await screen.findByText(GREETING)).toBeDefined();
+      const readsWhenTyping = statusReads.length;
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
-    expect(statusReads.length).toBe(readsWhenTyping);
-  });
+      expect(statusReads.length).toBe(readsWhenTyping);
+    },
+  );
 });
 
 describe("onboarding interview by voice: one interview, typed or spoken", () => {
