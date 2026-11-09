@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from backend.api.features.experts import experts_db
+from backend.api.features.experts.models import Expert
 from backend.blocks.desktop._api import DesktopStream
 from backend.copilot import active_turns
 from backend.copilot import service as chat_service
@@ -127,6 +128,7 @@ from backend.copilot.response_model import (
     StreamFinishStep,
     StreamFollowUpQueued,
     StreamHeartbeat,
+    StreamRecoveredError,
     StreamStart,
     StreamStartStep,
     StreamStatus,
@@ -319,22 +321,12 @@ async def _validate_and_get_writable_session(
     return session
 
 
-# Minimum age before the orphan-reset paths (``get_session`` and
-# ``cancel_session_task``) will touch a ``chatStatus='running'`` session
-# that has no live Redis stream.  Lower bound has to clear the
-# ``acquire_turn_slot``→``dispatch_turn.create_session`` window (a few
-# ms in practice).  30s is a generous safety margin — anything still
-# at ``running`` after that without a Redis stream is genuinely an
-# orphan, not an in-flight admit racing this read.
-_ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS = 30
-
-
 async def _try_release_orphan_running(
     session_id: str, user_id: str, *, cancel_background: bool = False
 ) -> bool:
     """Force-release a session if it's stuck in ``chatStatus='running'``
-    older than ``_ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS`` (= the
-    ``acquire_turn_slot``→``create_session`` race window).  Returns
+    older than ``ORPHAN_RUNNING_RESET_SECONDS`` (its rationale is with the
+    constant in ``active_turns``).  Returns
     True iff a release happened — callers map that into their response
     so the user can tell ``orphan_released`` apart from
     ``no_active_session``."""
@@ -348,7 +340,7 @@ async def _try_release_orphan_running(
     if updated_at.tzinfo is None:
         updated_at = updated_at.replace(tzinfo=timezone.utc)
     age = (datetime.now(timezone.utc) - updated_at).total_seconds()
-    if age <= _ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS:
+    if age <= active_turns.ORPHAN_RUNNING_RESET_SECONDS:
         return False
     if cancel_background:
         return await cancel_orphaned_background_subtasks(
@@ -576,9 +568,9 @@ class SessionDetailResponse(BaseModel):
     metadata: ChatSessionMetadata = ChatSessionMetadata()
     expert_id: str | None = None
     # From the background-task record, not the transcript page: a child's
-    # outcome, and until when a parent may still receive a follow-up.
+    # outcome, and whether a parent still has a continuation to come.
     background_outcome: str | None = None
-    background_pending_until: str | None = None
+    background_pending: bool = False
 
 
 class SessionSummaryResponse(BaseModel):
@@ -822,6 +814,12 @@ async def set_default_chat_transport(
     return ChatTransportsResponse(transports=transports)
 
 
+async def _new_session_expert(user_id: str, expert_id: str | None) -> Expert | None:
+    if expert_id is None:
+        return None
+    return await experts_db.get_expert(user_id, expert_id)
+
+
 async def _resolve_new_session_llm_route(
     user_id: str,
     request: CreateSessionRequest | None,
@@ -964,14 +962,22 @@ async def create_session(
             detail="builder_graph_id and expert_id are mutually exclusive",
         )
 
-    if expert_id is not None:
-        expert = await experts_db.get_expert(user_id, expert_id)
-        if expert is None or expert.is_archived:
-            raise HTTPException(status_code=404, detail="Expert not found")
-
-    llm_auth_provider, llm_credential_id = await _resolve_new_session_llm_route(
-        user_id, request
+    # The expert and the connection don't depend on each other, so they are
+    # looked up side by side. Both lookups end before either is acted on, and
+    # the expert's failures come first: a failed lookup, then a missing or
+    # archived expert (404), then the connection's error.
+    expert, route = await asyncio.gather(
+        _new_session_expert(user_id, expert_id),
+        _resolve_new_session_llm_route(user_id, request),
+        return_exceptions=True,
     )
+    if isinstance(expert, BaseException):
+        raise expert
+    if expert_id is not None and (expert is None or expert.is_archived):
+        raise HTTPException(status_code=404, detail="Expert not found")
+    if isinstance(route, BaseException):
+        raise route
+    llm_auth_provider, llm_credential_id = route
 
     if llm_auth_provider == "platform":
         await enforce_payment_paywall(user_id)
@@ -1487,9 +1493,7 @@ async def get_session(
         metadata=page.session.metadata,
         expert_id=page.session.expert_id,
         background_outcome=background.outcome,
-        background_pending_until=(
-            background.pending_until.isoformat() if background.pending_until else None
-        ),
+        background_pending=background.pending,
     )
 
 
@@ -2606,8 +2610,8 @@ def _resume_response(
     *,
     cursor: bool,
 ) -> StreamingResponse:
-    """Stream the queue as SSE. A ``cursor`` read writes no made-up frame: a
-    stream that stops without the turn's finish just ends the response."""
+    """Stream stored frames and id-less recovered terminal errors. A cursor
+    read that stops without a stored finish ends without inventing one."""
 
     async def event_generator() -> AsyncGenerator[str, None]:
         chunk_count = 0
@@ -2623,7 +2627,7 @@ def _resume_response(
                 if (
                     cursor
                     and frame_id is None
-                    and not isinstance(chunk, StreamHeartbeat)
+                    and not isinstance(chunk, (StreamHeartbeat, StreamRecoveredError))
                 ):
                     break
                 if chunk_count < 3:

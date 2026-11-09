@@ -12,6 +12,7 @@ import posixpath
 import re
 import uuid
 from collections.abc import Collection, Sequence
+from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 from prisma.errors import UniqueViolationError
@@ -470,6 +471,7 @@ class WorkspaceManager:
                 logger.warning("Failed to clean up replaced blob", exc_info=True)
 
         if replaced_file_id and replaced_file_id != file.id:
+            file = file.model_copy(update={"replaced_file_id": replaced_file_id})
             try:
                 from backend.api.features.workspace.embeddings import (
                     delete_workspace_file_embedding,
@@ -747,6 +749,8 @@ class WorkspaceManager:
         allowed_path_prefixes: Optional[list[str]] = None,
         include_user_files: bool = False,
         include_internal: bool = True,
+        created_after: Optional[datetime] = None,
+        created_before: Optional[datetime] = None,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -784,6 +788,9 @@ class WorkspaceManager:
                 (see :meth:`_include_user_files`).
             include_internal: Whether to list Otto's own working files. Lists
                 the user sees pass ``False``.
+            created_after: Only files written at or after this instant.
+            created_before: Only files written before this instant. Both
+                apply in the query, ahead of ``limit``.
 
         Returns:
             List of WorkspaceFile instances
@@ -812,6 +819,8 @@ class WorkspaceManager:
             allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
             include_user_files=self._include_user_files(include_user_files),
             include_internal=include_internal,
+            created_after=created_after,
+            created_before=created_before,
         )
 
     async def delete_file(self, file_id: str) -> bool:

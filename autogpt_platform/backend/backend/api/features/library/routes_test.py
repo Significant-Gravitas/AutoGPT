@@ -8,6 +8,7 @@ import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.rest_api import app as rest_app
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.onboarding_steps import OnboardingStep
 from backend.util.exceptions import MissingConfigError
 from backend.util.models import MAX_PAGE, Pagination
@@ -84,6 +85,44 @@ def test_create_preset_from_run_without_saved_credentials_returns_400(
 
     assert response.status_code == 400
     assert "can't be turned into a preset" in response.json()["detail"]
+
+
+def test_execute_a_webhook_triggered_preset_returns_400(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Its trigger node only gets a payload from a delivery."""
+    app.dependency_overrides[enforce_payment_paywall] = lambda: None
+    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    mocker.patch(
+        "backend.api.features.library.routes.presets.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=library_model.LibraryAgentPreset.model_validate(
+            {
+                "id": "p-1",
+                "user_id": "test-user-id",
+                "graph_id": "graph-1",
+                "graph_version": 1,
+                "name": "Preset",
+                "description": "",
+                "inputs": {},
+                "credentials": {},
+                "created_at": now,
+                "updated_at": now,
+                "webhook_id": "hook-1",
+                "webhook": None,
+            }
+        ),
+    )
+    add = mocker.patch(
+        "backend.api.features.library.routes.presets.add_graph_execution",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/presets/p-1/execute", json={})
+
+    assert response.status_code == 400
+    assert "can't be run directly" in response.json()["detail"]
+    add.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
