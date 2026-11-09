@@ -20,6 +20,7 @@ LIVE_EVENT_NAMES = {
     "credential_oauth_started",
     "credential_oauth_exchange_failed",
     "hire_failed",
+    "plan_experts_hired",
     "writing_style_added",
     "workflow_installed_on_expert",
     "expert_fired",
