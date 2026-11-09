@@ -98,6 +98,73 @@ async def test_a_new_recording_id_always_claims_the_row(
     assert update["greetingSeen"] is False
 
 
+EARLIER_CALL_TAKE = "interview-" + "a" * 32
+LATER_CALL_TAKE = "interview-" + "b" * 32
+TYPED_INTERVIEW_TAKE = "interview-1b4e28ba-2fa1-11d2-883f-0016d3cca427"
+PROCESSING = [
+    BrainDumpStatus.recording_uploaded,
+    BrainDumpStatus.transcribed,
+    BrainDumpStatus.extracting,
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", PROCESSING)
+async def test_a_later_calls_take_displaces_an_earlier_calls_in_any_status(
+    mocker: MockerFixture, upsert: AsyncMock, status: BrainDumpStatus
+):
+    """The row named the later call when it started, so the two calls'
+    takes are ordered, as two voice uploads are."""
+    mocker.patch.object(
+        db, "get_dump", AsyncMock(return_value=_row(status, EARLIER_CALL_TAKE))
+    )
+
+    await db.start_dump(USER_ID, LATER_CALL_TAKE, BrainDumpInputMode.typed)
+
+    upsert.assert_awaited_once()
+    update = upsert.await_args.kwargs["data"]["update"]
+    assert (update["recordingId"], update["greeting"], update["transcript"]) == (
+        LATER_CALL_TAKE,
+        None,
+        None,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", PROCESSING)
+@pytest.mark.parametrize(
+    ("taking", "held"),
+    [
+        ("typed-dump", EARLIER_CALL_TAKE),
+        ("typed-dump", RECORDING_ID),
+        (LATER_CALL_TAKE, TYPED_INTERVIEW_TAKE),
+        (LATER_CALL_TAKE, RECORDING_ID),
+        (TYPED_INTERVIEW_TAKE, EARLIER_CALL_TAKE),
+    ],
+    ids=[
+        "typed-over-a-call",
+        "typed-over-a-brain-dump",
+        "call-over-a-typed-interview",
+        "call-over-a-brain-dump",
+        "typed-interview-over-a-call",
+    ],
+)
+async def test_no_other_typed_take_displaces_a_take_still_processing(
+    mocker: MockerFixture,
+    upsert: AsyncMock,
+    status: BrainDumpStatus,
+    taking: str,
+    held: str,
+):
+    existing = _row(status, held)
+    mocker.patch.object(db, "get_dump", AsyncMock(return_value=existing))
+
+    result = await db.start_dump(USER_ID, taking, BrainDumpInputMode.typed)
+
+    assert result is existing
+    upsert.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "status",

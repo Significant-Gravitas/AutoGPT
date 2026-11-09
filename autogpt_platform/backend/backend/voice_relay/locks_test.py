@@ -378,6 +378,36 @@ async def test_a_call_with_no_record_takes_no_interview_claim(redis):
     assert not await redis.exists(locks.call_record_key("call-a"))
 
 
+@pytest.mark.parametrize("status", [None, "connecting", "live"])
+async def test_a_call_not_yet_ended_takes_no_interview_claim(redis, status):
+    """A typed message admitted before the call started does not outrank it."""
+    await locks.write_call_record(redis, "call-a", {"uid": USER, "status": status})
+
+    assert (
+        await locks.claim_interview(redis, "call-a", locks.INTERVIEW_SUPERSEDED) is None
+    )
+    assert await locks.interview_of(redis, "call-a") is None
+
+    await locks.write_call_record(redis, "call-a", {"status": "ended"})
+    assert await locks.claim_interview(redis, "call-a", locks.INTERVIEW_SUPERSEDED) == (
+        locks.INTERVIEW_SUPERSEDED
+    )
+
+
+async def test_every_write_of_a_call_names_the_call_before_it(redis):
+    store = locks.CallStore(redis, call_id="call-b", user_id=USER)
+    store.prev = "call-a"
+
+    await store.advance(locks.LIVE, moves_from=(None, locks.CONNECTING))
+    record = await locks.read_call(redis, "call-b")
+    assert record is not None and (record.uid, record.prev) == (USER, "call-a")
+
+    await redis.hdel(locks.call_record_key("call-b"), "prev")
+    await store.record(turns=[])
+    record = await locks.read_call(redis, "call-b")
+    assert record is not None and record.prev == "call-a"
+
+
 async def test_a_call_ends_on_its_record_only_while_it_still_runs(redis):
     await locks.write_call_record(
         redis,

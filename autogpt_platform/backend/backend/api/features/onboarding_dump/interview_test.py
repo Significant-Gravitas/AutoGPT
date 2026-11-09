@@ -2098,6 +2098,47 @@ async def test_a_message_after_the_calls_words_took_the_interview_names_the_call
 
 
 @pytest.mark.asyncio
+async def test_typing_claims_back_past_calls_that_heard_nothing_to_the_take(
+    stored: StoredInterview, voice_calls: VoiceCalls
+):
+    """The take the person's typing outranks is their latest call with words,
+    where its hand-off claims too: its record is claimed, and so is each
+    no-words call after it."""
+    await voice_calls.ended("call-1", status="transcribed")
+    await locks.write_call_record(
+        voice_calls.redis, "call-1", {"transcript_of_record": SAID}
+    )
+    nothing_heard = _take(quality.NO_USABLE_SPEECH).model_dump(mode="json")
+    for later, earlier in (("call-2", "call-1"), ("call-3", "call-2")):
+        await voice_calls.ended(later, status="failed")
+        await locks.write_call_record(
+            voice_calls.redis, later, {"prev": earlier, "hand_off": nothing_heard}
+        )
+
+    await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+    await interview.typed_message_accepted(USER_ID)
+
+    for call_id in ("call-1", "call-2", "call-3"):
+        assert await locks.interview_of(voice_calls.redis, call_id) == (
+            locks.INTERVIEW_SUPERSEDED
+        )
+
+
+@pytest.mark.parametrize("status", ["connecting", "live"])
+@pytest.mark.asyncio
+async def test_a_message_dispatched_after_a_new_call_started_claims_nothing_from_it(
+    stored: StoredInterview, voice_calls: VoiceCalls, status: str
+):
+    """Admitted before the call started, the message is not the newer take."""
+    await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+    await voice_calls.ended("call-2", status=status)
+
+    await interview.typed_message_accepted(USER_ID)
+
+    assert await locks.interview_of(voice_calls.redis, "call-2") is None
+
+
+@pytest.mark.asyncio
 async def test_a_message_while_the_call_is_live_supersedes_nothing(
     stored: StoredInterview, voice_calls: VoiceCalls
 ):

@@ -271,6 +271,24 @@ async def finalize_typed_dump(
     ).response
 
 
+async def give_up_unrun_take(user_id: str, recording_id: str, error_code: str) -> bool:
+    """Mark *recording_id*'s take failed with *error_code* while no pipeline
+    has run it: still ``recording_uploaded``, or ``transcribed`` with its
+    jobs not started. A take the pipeline has moved on, or another take on
+    the row, is left as it is. True when the take was given up."""
+    for expected in (BrainDumpStatus.transcribed, BrainDumpStatus.recording_uploaded):
+        if await db.claim_transition(
+            user_id,
+            recording_id,
+            expected=expected,
+            new=BrainDumpStatus.failed,
+            errorCode=error_code,
+            errorReason=None,
+        ):
+            return True
+    return False
+
+
 async def reopen_unjudged_take(user_id: str, recording_id: str) -> bool:
     """Put a take whose row was claimed and left ``transcribed`` with no
     answer back where a finalize claims it again, so its words are judged

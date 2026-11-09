@@ -340,11 +340,21 @@ async def record_answer(
     )
 
 
-# Sets the record's ``interview`` field unless it holds one; never creates a
-# record. Returns the field as it stands, or nothing for no record.
+# Sets the record's ``interview`` field unless it holds one, on a call that
+# has ended; never creates a record, and never claims a call with no status
+# or one still running. Returns the field as it stands, or nothing for no
+# record. KEYS[1]: the record. ARGV[1]: the claim. ARGV[2..]: the statuses
+# of a call still running.
 _CLAIM_INTERVIEW_LUA = """
 if redis.call('EXISTS', KEYS[1]) == 0 then return false end
-redis.call('HSETNX', KEYS[1], 'interview', ARGV[1])
+local status = redis.call('HGET', KEYS[1], 'status')
+local running = not status
+for i = 2, #ARGV do
+    if status == ARGV[i] then running = true end
+end
+if not running then
+    redis.call('HSETNX', KEYS[1], 'interview', ARGV[1])
+end
 return redis.call('HGET', KEYS[1], 'interview')
 """
 
@@ -355,14 +365,18 @@ async def claim_interview(
     """Claim the person's interview for *claim* on the call's record: taken by
     the call's words, or superseded by the person's typing.
 
-    Set-if-absent on the one record, so of two claims exactly one wins.
-    Returns the claim that stands, the winner's, or None when the call has no
-    record.
+    Set-if-absent on the one record, so of two claims exactly one wins. A
+    call with no status yet, or still running, takes no claim: a typed
+    message admitted before it started does not outrank it. Returns the
+    claim that stands, the winner's, or None when there is none or the call
+    has no record.
     """
     standing = as_str(
         await cast(
             Any,
-            redis.eval(_CLAIM_INTERVIEW_LUA, 1, call_record_key(call_id), claim),
+            redis.eval(
+                _CLAIM_INTERVIEW_LUA, 1, call_record_key(call_id), claim, *RUNNING
+            ),
         )
     )
     if standing == INTERVIEW_TAKEN:
@@ -679,7 +693,8 @@ class CallStore:
 
     A Redis outage never ends or stalls a call: each operation is bounded,
     and a failed one is logged and skipped. Every write names the call's
-    owner, so no write leaves a record without one.
+    owner, and the person's call before it once admission has read it
+    (:attr:`prev`), so no write leaves a record without them.
 
     *holder* names the process the call runs on, which claims the call's
     post-call job as the call starts and holds it with each refresh
@@ -701,13 +716,15 @@ class CallStore:
         self.holder = holder
         # Whether this process holds the call's post-call job.
         self.claimed = False
+        # The person's call the onboarding row named before this one.
+        self.prev: str | None = None
 
     async def record(self, **fields: object) -> bool:
         """Set *fields* on the call's record. True once written."""
 
         async def write() -> bool:
             await write_call_record(
-                self.redis, self.call_id, {**fields, "uid": self.user_id}
+                self.redis, self.call_id, {**fields, **self._names()}
             )
             return True
 
@@ -733,10 +750,15 @@ class CallStore:
                     status,
                     moves_from=moves_from,
                     guarded=guarded,
-                    fields={**fields, "uid": self.user_id},
+                    fields={**fields, **self._names()},
                 ),
             )
         )
+
+    def _names(self) -> dict[str, object]:
+        """What every write of the call's names: its owner, and the call
+        before it."""
+        return {"uid": self.user_id, "prev": self.prev}
 
     async def pend_postcall(self) -> None:
         """Count the call as one whose post-call job has yet to finish, so a

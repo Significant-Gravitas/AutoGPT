@@ -66,6 +66,7 @@ from backend.api.features.onboarding_dump.voice_handoff import (
     hand_off_call,
     owed,
     settle_if_owed,
+    settle_the_take_before,
 )
 from backend.copilot.onboarding_interview import (
     INTERVIEW_CLOSED,
@@ -74,6 +75,7 @@ from backend.copilot.onboarding_interview import (
 )
 from backend.data.onboarding import get_onboarding_voice_call_id
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
+from backend.util.background import spawn_background_task
 from backend.util.feature_flag import (
     Flag,
     evaluate_feature_flag,
@@ -253,7 +255,10 @@ def _unavailable(message: str, retry_after: int) -> HTTPException:
 async def call_status(user_id: str, call_id: str) -> VoiceCallStatusResponse:
     """*call_id* as it stands, when it is *user_id*'s. A call whose
     transcript is made and whose hand-off is owed has the hand-off started
-    in the background, and reads ``handing_off`` until it answers.
+    in the background, and reads ``handing_off`` until it answers. A call
+    that settled without words, the relay's answers included, starts the
+    hand-off of the take before it the same way
+    (:func:`settle_the_take_before`).
 
     Raises:
         HTTPException: 404 for a call that is not theirs or has expired, 503
@@ -262,6 +267,11 @@ async def call_status(user_id: str, call_id: str) -> VoiceCallStatusResponse:
     redis = await _bounded(get_redis_async())
     record = await _their_call(redis, user_id, call_id)
     settle_if_owed(record)
+    if call_words(record) == "no_words":
+        spawn_background_task(
+            settle_the_take_before(redis, record),
+            name=f"voice-settle-before-{call_id[:12]}",
+        )
     return _status_of(record)
 
 

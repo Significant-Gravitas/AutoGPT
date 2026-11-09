@@ -385,6 +385,9 @@ async def _start_call(
     if refusal is not None:
         await _refuse_try_again(ws, store, claims, refusal)
         return
+    # The person's call before this one, on every write of the call's, so
+    # their calls in between can be found from the latest without a scan.
+    store.prev = replaced
 
     # This relay carries a call's audio on the control socket.
     leg: tokens.Leg = "websocket"
@@ -427,15 +430,16 @@ async def _start_call(
             store=deps.postcall.recordings,
             call_store=store,
         )
+        # Pending before its first record write: a pod that dies between the
+        # two leaves a pending call with no record, which the relay's sweep
+        # drops once the call is no longer counted live.
+        await store.pend_postcall()
         await store.record(
             status="connecting",
             pod=relay.pod,
             leg=leg,
             started=round(time.time(), 3),
             ending=claims.ending,
-            # The person's call before this one, so their calls in between
-            # can be found from the latest without a scan.
-            prev=replaced,
         )
         await session.run()
     finally:

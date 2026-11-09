@@ -51,7 +51,7 @@ from typing import Literal
 
 from fastapi import BackgroundTasks, HTTPException
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from backend.api.features.onboarding_dump import db as dump_db
 from backend.api.features.onboarding_dump import quality, service
@@ -115,7 +115,8 @@ from backend.data.onboarding import (
     get_onboarding_voice_call_id,
     get_onboarding_voice_interview_call_id,
 )
-from backend.data.redis_client import get_redis_async
+from backend.data.redis_client import AsyncRedisClient, get_redis_async
+from backend.data.redis_helpers import as_str
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import NotFoundError
 from backend.voice_relay import locks
@@ -367,30 +368,28 @@ async def admit_onboarding_interview_turn(
 
 
 async def refuse_once_the_latest_call_took_it(user_id: str) -> None:
-    """Refuse a typed message once the person's latest call's words took the
-    interview on the call's record, which the hand-off claims a moment before
-    it writes the onboarding row. Claims nothing.
+    """Refuse a typed message once the words of the person's latest take, the
+    latest call of theirs that has words (:func:`_calls_back_to_a_take`),
+    took the interview on the call's record, which the hand-off claims a
+    moment before it writes the onboarding row. Claims nothing.
 
     Raises:
         HTTPException: 409 ``onboarding_interview_closed`` naming the call;
-            503 while the call cannot be read.
+            503 while the calls cannot be read.
     """
     try:
-        call_id = await get_onboarding_voice_call_id(user_id)
-        standing = (
-            None
-            if call_id is None
-            else await locks.interview_of(await get_redis_async(), call_id)
-        )
+        calls = await _calls_back_to_a_take(await get_redis_async(), user_id)
     except Exception as exc:
         logger.warning(
             f"Onboarding interview: voice calls unreadable: {type(exc).__name__}"
         )
         raise _voice_calls_unreadable() from exc
-    if standing == locks.INTERVIEW_TAKEN:
-        raise HTTPException(
-            status_code=409, detail={"code": INTERVIEW_CLOSED, "call_id": call_id}
-        )
+    for record in calls:
+        if record.interview == locks.INTERVIEW_TAKEN:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": INTERVIEW_CLOSED, "call_id": record.call_id},
+            )
 
 
 async def typed_message_accepted(user_id: str) -> None:
@@ -409,42 +408,68 @@ async def typed_message_accepted(user_id: str) -> None:
 
 
 async def supersede_the_latest_call(user_id: str) -> None:
-    """Make the person's typing the newer take than their latest voice call,
-    once that call has ended: what they type now owns the interview, and the
-    call's hand-off, should it land later, is answered ``superseded``.
+    """Make the person's typing the newer take than their voice calls, once
+    the latest has ended: what they type now owns the interview, and a call's
+    hand-off, should it land later, is answered ``superseded``.
 
-    Claimed on the call's record (:func:`locks.claim_interview`), which the
-    call's hand-off claims too, so exactly one of the two wins. A call whose
-    record expired has no hand-off left to land. Called once no call of the
-    person's is live (:func:`refuse_while_a_call_holds_the_interview`), so the
-    latest call has ended: by the typed finish, and for each typed message
-    once it is dispatched or queued (:func:`typed_message_accepted`). The
-    typed start never calls it, since a greeting the person has only looked
-    at does not outrank a complete call.
+    Claimed on the person's latest take (:func:`_calls_back_to_a_take`): a
+    call that settled without words is no take, and the take before it is
+    the one whose hand-off claims the interview. That hand-off claims on its
+    own record too (:func:`locks.claim_interview`), so of the two exactly one
+    wins. Then, unless the take's words won, on each call after it that
+    settled without words. A call whose record expired has no hand-off left
+    to land. Called once no call of the person's is live
+    (:func:`refuse_while_a_call_holds_the_interview`), so the latest call has
+    ended: by the typed finish, and for each typed message once it is
+    dispatched or queued (:func:`typed_message_accepted`). The typed start
+    never calls it, since a greeting the person has only looked at does not
+    outrank a complete call.
 
     Raises:
         HTTPException: 409 ``onboarding_interview_closed`` naming the call
-            when its words took the interview first; 503 while the call
-            cannot be read.
+            whose words took the interview first; 503 while the calls cannot
+            be read.
     """
+    took: str | None = None
     try:
-        call_id = await get_onboarding_voice_call_id(user_id)
-        standing = (
-            None
-            if call_id is None
-            else await locks.claim_interview(
-                await get_redis_async(), call_id, locks.INTERVIEW_SUPERSEDED
+        redis = await get_redis_async()
+        for record in reversed(await _calls_back_to_a_take(redis, user_id)):
+            standing = await locks.claim_interview(
+                redis, record.call_id, locks.INTERVIEW_SUPERSEDED
             )
-        )
+            if standing == locks.INTERVIEW_TAKEN:
+                took = record.call_id
+                break
     except Exception as exc:
         logger.warning(
             f"Onboarding interview: voice calls unreadable: {type(exc).__name__}"
         )
         raise _voice_calls_unreadable() from exc
-    if standing == locks.INTERVIEW_TAKEN:
+    if took is not None:
         raise HTTPException(
-            status_code=409, detail={"code": INTERVIEW_CLOSED, "call_id": call_id}
+            status_code=409, detail={"code": INTERVIEW_CLOSED, "call_id": took}
         )
+
+
+async def _calls_back_to_a_take(
+    redis: AsyncRedisClient, user_id: str
+) -> list[locks.CallRecord]:
+    """The person's calls from the onboarding row's latest back along each
+    record's ``prev``, through every one that settled without words
+    (:func:`call_words`), to the first that has words or is still to settle:
+    the person's latest take, last. Stops at a record that expired or is not
+    the person's."""
+    calls: list[locks.CallRecord] = []
+    current = await get_onboarding_voice_call_id(user_id)
+    while current is not None and all(call.call_id != current for call in calls):
+        record = await locks.read_call(redis, current)
+        if record is None or record.uid != user_id:
+            break
+        calls.append(record)
+        if call_words(record) != "no_words":
+            break
+        current = record.prev
+    return calls
 
 
 async def record_onboarding_interview_turn_started(
@@ -563,10 +588,23 @@ async def hand_off_closed_interview(user_id: str, session_id: str) -> None:
     Otto's end signal closes an interview inside a turn, and a request can
     arrive before that turn's settle has stamped the arm, or after a restart
     lost it. A confirm arm then keeps its ending screen, and anyone not
-    enrolled is handed off now.
+    enrolled is handed off now. One whose hand-off is owed is handed off as
+    owed, with the corrections its close was handed
+    (:func:`hand_off_owed_typed_interview`).
 
     Background work: its pipeline jobs run here, rather than after a response.
     """
+    try:
+        owed = await _owed_hand_off(user_id)
+    except Exception:
+        logger.warning(
+            f"Onboarding interview {session_id[:12]}: owed hand-off unreadable",
+            exc_info=True,
+        )
+        owed = None
+    if owed is not None and owed.session_id == session_id:
+        await hand_off_owed_typed_interview(user_id)
+        return
     try:
         session, stored = await _read_interview(user_id, session_id)
     except NotFoundError:
@@ -598,6 +636,10 @@ class InterviewClosure(BaseModel):
     # The take the answers became, once handed off; None while the arm waits
     # for the person's confirm.
     hand_off: FinalizeResponse | None
+    # A voice call's answer ``superseded`` because another take owns the
+    # interview (:func:`_call_standing`), ruled before the dump row was
+    # touched; not one the row gave.
+    outranked: bool = False
 
 
 async def close_onboarding_interview(
@@ -623,9 +665,10 @@ async def close_onboarding_interview(
     call on one already handed off describes its take as it stands. It is
     handed off once the pipeline has ruled on its words
     (:func:`hand_off_is_final`); a hand-off the pipeline never ruled on
-    leaves it closed but not handed off, for the next call to retry, and so
-    does a ``superseded`` answer while the dump row still holds a call's take
-    the person's typing beat (:func:`_beat_a_call_still_on_the_row`). Closing
+    leaves it closed but not handed off, for the next call to retry. A
+    ``superseded`` answer while the dump row still holds the take of a call
+    the person's typing beat leaves it closed too, its hand-off owed and
+    started once the row is free (:func:`_waits_on_a_beaten_call`). Closing
     also drops any question Otto left waiting, so Home never lists it.
     *background_tasks* runs the pipeline's jobs after a route's response;
     without it they run before this returns.
@@ -677,8 +720,8 @@ async def close_onboarding_interview(
         with_corrections(interview_transcript(session.messages), corrections),
         tasks,
     )
-    if hand_off_is_final(response) and not await _beat_a_call_still_on_the_row(
-        user_id, session_id, response
+    if hand_off_is_final(response) and not await _waits_on_a_beaten_call(
+        user_id, session_id, response, corrections
     ):
         await update_session_interview_stage(
             session_id, user_id, INTERVIEW_STAGE_HANDED_OFF
@@ -688,38 +731,229 @@ async def close_onboarding_interview(
     return InterviewClosure(ending=ending, hand_off=response)
 
 
-async def _beat_a_call_still_on_the_row(
-    user_id: str, session_id: str, response: FinalizeResponse
+async def _waits_on_a_beaten_call(
+    user_id: str,
+    session_id: str,
+    response: FinalizeResponse,
+    corrections: str | None,
 ) -> bool:
     """Whether a ``superseded`` answer to the typed interview's hand-off only
-    means a call's take still holds the dump row, while the person's typing
-    won the interview from that call (:func:`supersede_the_latest_call`).
+    means the dump row still holds the take of a call the person's typing
+    beat (:func:`supersede_the_latest_call`), so the answer is not final:
+    the interview stays closed, and its hand-off is owed, with *corrections*
+    (:func:`hand_off_owed_typed_interview`).
 
-    That call's hand-off gives the row up once it sees it lost
-    (``voice_handoff``), so the answer is not final: the interview stays
-    closed, and the next request hands it off again. A read that fails
-    counts the same way, as a retry costs no pipeline run.
+    The owed hand-off starts once the row is free. The call's hand-off gives
+    the row up and starts it (``voice_handoff``). A call whose hand-off has
+    answered already gives nothing up any more, so its take is given up here
+    while no pipeline has run it (:func:`service.give_up_unrun_take`), and
+    the owed hand-off started. The hand-off is owed before the call's answer
+    is read, so one side or the other always starts it; the REST API's sweep
+    hands off any left behind. A read that fails counts as not final.
     """
     if response.error_code != SUPERSEDED:
         return False
     try:
-        call_id = await get_onboarding_voice_call_id(user_id)
+        call_id = await _beaten_call_on_the_row(user_id)
         if call_id is None:
             return False
-        claim = await locks.interview_of(await get_redis_async(), call_id)
+        await _owe_the_hand_off(user_id, session_id, corrections)
+        record = await locks.read_call(await get_redis_async(), call_id)
+        if record is not None and record.hand_off is None:
+            logger.info(
+                f"Onboarding interview {session_id[:12]}: a call's take still "
+                f"holds the dump row; handed off once the call's hand-off gives "
+                f"it up"
+            )
+            return True
+        recording_id = interview_recording_id(call_id)
+        await service.give_up_unrun_take(user_id, recording_id, SUPERSEDED)
+        if await _take_still_runs(user_id, recording_id):
+            logger.info(
+                f"Onboarding interview {session_id[:12]}: a call's take still "
+                f"runs on the dump row; handed off by the sweep once it is done"
+            )
+            return True
+        start_owed_typed_hand_off(user_id)
     except Exception as exc:
         logger.warning(
             f"Onboarding interview {session_id[:12]}: voice calls unreadable: "
             f"{type(exc).__name__}"
         )
-        return True
-    if claim != locks.INTERVIEW_SUPERSEDED:
-        return False
-    logger.info(
-        f"Onboarding interview {session_id[:12]}: a call's take still holds "
-        f"the dump row; handed off again on the next request"
-    )
     return True
+
+
+async def _beaten_call_on_the_row(user_id: str) -> str | None:
+    """The call whose take is on the person's dump row, when the person's
+    typing beat it to the interview (the call's record says
+    ``superseded``); None for any other take."""
+    row = await dump_db.get_dump(user_id)
+    if row is None or not row.recordingId.startswith(INTERVIEW_RECORDING_PREFIX):
+        return None
+    call_id = row.recordingId[len(INTERVIEW_RECORDING_PREFIX) :]
+    record = await locks.read_call(await get_redis_async(), call_id)
+    if (
+        record is None
+        or record.uid != user_id
+        or record.interview != locks.INTERVIEW_SUPERSEDED
+    ):
+        return None
+    return call_id
+
+
+async def _take_still_runs(user_id: str, recording_id: str) -> bool:
+    """Whether the dump row still holds *recording_id*'s take where a newer
+    take cannot replace it: waiting for the pipeline, or in it."""
+    row = await dump_db.get_dump(user_id)
+    return (
+        row is not None
+        and row.recordingId == recording_id
+        and row.status in _TAKE_STILL_RUNS
+    )
+
+
+# The row statuses in which a take holds the dump row against a newer typed
+# take (``db.start_dump``).
+_TAKE_STILL_RUNS = frozenset(
+    {
+        BrainDumpStatus.recording_uploaded,
+        BrainDumpStatus.transcribing,
+        BrainDumpStatus.transcribed,
+        BrainDumpStatus.extracting,
+    }
+)
+
+# Typed interviews whose hand-off is owed (:func:`_waits_on_a_beaten_call`):
+# one field per person, naming their interview and the corrections its close
+# was handed.
+OWED_HAND_OFFS_KEY = "onboarding:interview:hand_off:owed"
+# An owed hand-off still not handed off this long after it was first owed is
+# dropped; the person's next visit to the step hands the interview off.
+OWED_HAND_OFF_TTL_S = 24 * 3600
+
+
+class OwedHandOff(BaseModel):
+    """A typed interview's hand-off a close made and the pipeline left owed."""
+
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str
+    corrections: str | None = None
+    # When it was first owed, in seconds since the epoch.
+    at: float
+
+
+async def _owed_hand_off(user_id: str) -> OwedHandOff | None:
+    raw = as_str(await (await get_redis_async()).hget(OWED_HAND_OFFS_KEY, user_id))
+    if raw is None:
+        return None
+    try:
+        return OwedHandOff.model_validate_json(raw)
+    except ValidationError:
+        logger.warning("Onboarding interview: an owed hand-off is unreadable")
+        return None
+
+
+async def _owe_the_hand_off(
+    user_id: str, session_id: str, corrections: str | None
+) -> None:
+    """Record the person's typed hand-off as owed, with *corrections*,
+    keeping when it was first owed."""
+    earlier = await _owed_hand_off(user_id)
+    owed = OwedHandOff(
+        session_id=session_id,
+        corrections=corrections,
+        at=(
+            earlier.at
+            if earlier is not None and earlier.session_id == session_id
+            else time.time()
+        ),
+    )
+    await (await get_redis_async()).hset(
+        OWED_HAND_OFFS_KEY, user_id, owed.model_dump_json()
+    )
+
+
+async def _forget_the_hand_off(user_id: str) -> None:
+    await (await get_redis_async()).hdel(OWED_HAND_OFFS_KEY, user_id)
+
+
+def start_owed_typed_hand_off(user_id: str) -> asyncio.Task:
+    """Start the person's owed typed hand-off in the background
+    (:func:`hand_off_owed_typed_interview`)."""
+    return spawn_background_task(
+        hand_off_owed_typed_interview(user_id),
+        name=f"interview-owed-hand-off-{user_id[:12]}",
+    )
+
+
+async def hand_off_owed_typed_interview(user_id: str) -> None:
+    """Hand off the person's typed interview if its hand-off is owed: a close
+    handed it off while the take of a call the person's typing beat held the
+    dump row (:func:`_waits_on_a_beaten_call`). It is handed off as that
+    close was, with the corrections it was handed, and forgotten once it is
+    handed off or gone.
+
+    What the call's hand-off starts once it gives up the row its take held
+    (``voice_handoff``), what a typed request starts for a closed interview
+    (:func:`hand_off_closed_interview`), and what the REST API's sweep runs
+    for any left behind. An interview waiting for the person's confirm owes
+    nothing, so this never hands one off ahead of it.
+
+    Background work: its pipeline jobs run here, rather than after a response.
+    """
+    owed = await _owed_hand_off(user_id)
+    if owed is None:
+        return
+    try:
+        _, stored = await _read_interview(user_id, owed.session_id)
+    except NotFoundError:
+        await _forget_the_hand_off(user_id)
+        return
+    if stored.metadata.onboarding_interview_stage != INTERVIEW_STAGE_CLOSED:
+        await _forget_the_hand_off(user_id)
+        return
+    if time.time() - owed.at > OWED_HAND_OFF_TTL_S:
+        logger.warning(
+            f"Onboarding interview {owed.session_id[:12]}: an owed hand-off " f"expired"
+        )
+        await _forget_the_hand_off(user_id)
+        return
+    await close_onboarding_interview(
+        user_id,
+        owed.session_id,
+        reason="user",
+        confirmed=True,
+        corrections=owed.corrections,
+    )
+    _, stored = await _read_interview(user_id, owed.session_id)
+    if stored.metadata.onboarding_interview_stage == INTERVIEW_STAGE_HANDED_OFF:
+        await _forget_the_hand_off(user_id)
+
+
+async def hand_off_owed_typed_interviews(stop: asyncio.Event | None = None) -> int:
+    """Hand off, one at a time, every typed interview whose hand-off is owed
+    (:func:`hand_off_owed_typed_interview`); *stop* ends it between them. For
+    the REST API's sweep. Returns how many were owed."""
+    owed = [
+        user_id
+        for user_id in (
+            as_str(field)
+            for field in await (await get_redis_async()).hkeys(OWED_HAND_OFFS_KEY)
+        )
+        if user_id
+    ]
+    for user_id in owed:
+        if stop is not None and stop.is_set():
+            break
+        try:
+            await hand_off_owed_typed_interview(user_id)
+        except Exception as error:
+            logger.warning(
+                f"Onboarding interview: an owed hand-off failed: "
+                f"{type(error).__name__}"
+            )
+    return len(owed)
 
 
 def hand_off_is_final(response: FinalizeResponse) -> bool:
@@ -817,15 +1051,16 @@ async def close_voice_interview(
     :func:`voice_hand_off_closes_interview`; whether it takes the interview
     is the call's hand-off's to claim (``voice_handoff``).
 
-    *unanswered* says no answer is recorded on the call yet: a take the row
-    holds ``transcribed`` that this call did not judge was then claimed by an
-    earlier hand-off that stopped before it answered, and its words are
-    judged again rather than read as a ruling.
+    *unanswered* says no answer accepting the call's words is recorded on the
+    call: none at all, or a failure the call's finish hands off again. A
+    take the row holds ``transcribed`` that this call did not judge was then
+    claimed by an earlier hand-off that stopped before it answered, and its
+    words are judged again rather than read as a ruling.
     """
     standing = await _call_standing(user_id, call_id)
     if standing == "superseded":
         logger.info(f"Voice onboarding interview {call_id[:12]} superseded: {reason}")
-        return InterviewClosure(ending=None, hand_off=superseded_take())
+        return InterviewClosure(ending=None, hand_off=superseded_take(), outranked=True)
     if standing == "waiting":
         raise LaterCallUnsettled
     words = with_corrections(transcript, corrections)
@@ -919,7 +1154,8 @@ async def _call_standing(user_id: str, call_id: str) -> CallStanding:
     still to settle makes the hand-off wait (``waiting``), so no hand-off runs
     while a later call could still become a take. ``clear`` once the walk
     reaches this call, or the chain breaks: a later call with no record that
-    holds no lock died before it began.
+    holds no lock died before it began, and a record that is not the
+    person's is no call of theirs.
     """
     redis = await get_redis_async()
     if await locks.interview_of(redis, call_id) == locks.INTERVIEW_SUPERSEDED:
@@ -937,6 +1173,8 @@ async def _call_standing(user_id: str, call_id: str) -> CallStanding:
             # it holds the person's lock.
             if await locks.live_call_of(redis, user_id) == current:
                 return "waiting"
+            return "clear"
+        if record.uid != user_id:
             return "clear"
         words = call_words(record)
         if words == "words":

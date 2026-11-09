@@ -68,14 +68,16 @@ from fastapi import BackgroundTasks, HTTPException
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prometheus_client import Counter, Histogram
 
-from backend.api.features.onboarding_dump import db as dump_db
+from backend.api.features.onboarding_dump import service
 from backend.api.features.onboarding_dump.interview import (
-    NO_WORDS,
     SUPERSEDED,
     InterviewClosure,
     LaterCallUnsettled,
+    call_words,
     close_voice_interview,
+    hand_off_owed_typed_interviews,
     interview_recording_id,
+    start_owed_typed_hand_off,
     superseded_take,
     voice_hand_off_closes_interview,
 )
@@ -215,8 +217,8 @@ async def record_hand_off(
     """Record a hand-off's answer on the call of *uid*'s, naming them. Returns
     the call's status. A call answered ``handed_off`` or ``failed`` leaves the
     pending set; one still waiting for a confirm stays in it. A call answered
-    without words of record is no take, so the call before it, waiting on
-    it, is handed off now (:func:`_settle_the_call_before`)."""
+    without words of record is no take, so the take before it, waiting on
+    it, is handed off now (:func:`settle_the_take_before`)."""
     status = call_status_after(closure)
     hand_off = closure.hand_off
     await locks.forget_call_fields(
@@ -232,22 +234,47 @@ async def record_hand_off(
     )
     if status in (locks.HANDED_OFF, locks.FAILED):
         await locks.remove_postcall_pending(redis, call_id)
-    if hand_off is not None and hand_off.error_code in NO_WORDS:
-        await _settle_the_call_before(redis, call_id, uid)
+    if hand_off is not None:
+        record = await _read_quietly(redis, call_id)
+        if record is not None and call_words(record) == "no_words":
+            await settle_the_take_before(redis, record)
     return status
 
 
-async def _settle_the_call_before(
-    redis: AsyncRedisClient, call_id: str, uid: str
-) -> None:
-    """Start the hand-off of the person's call before *call_id*, if it is
-    owed one: it waited on this call, which settled without words."""
-    record = await locks.read_call(redis, call_id)
-    if record is None or record.prev is None:
-        return
-    earlier = await locks.read_call(redis, record.prev)
-    if earlier is not None and earlier.uid == uid:
-        settle_if_owed(earlier, trigger="settle")
+async def settle_the_take_before(
+    redis: AsyncRedisClient, record: CallRecord
+) -> asyncio.Task | None:
+    """Start the hand-off of the person's take before *record*'s call, which
+    settled without words: the first call back along each record's ``prev``
+    past every other that settled without words, when it is owed one
+    (:func:`settle_if_owed`). It waited on the calls after it. Best effort:
+    a failure is logged, and the next status read or sweep asks again.
+    Returns the hand-off started, or None."""
+    try:
+        seen = {record.call_id}
+        current = record.prev
+        while current is not None and current not in seen:
+            seen.add(current)
+            earlier = await locks.read_call(redis, current)
+            if earlier is None or earlier.uid != record.uid:
+                return None
+            if call_words(earlier) != "no_words":
+                return settle_if_owed(earlier, trigger="settle")
+            current = earlier.prev
+    except Exception as error:
+        logger.warning(
+            f"Voice call {record.call_id}: the take before it not settled: "
+            f"{type(error).__name__}"
+        )
+    return None
+
+
+async def _read_quietly(redis: AsyncRedisClient, call_id: str) -> CallRecord | None:
+    try:
+        return await locks.read_call(redis, call_id)
+    except Exception as error:
+        logger.warning(f"Voice call {call_id}: record unread: {type(error).__name__}")
+        return None
 
 
 def takes_the_interview(
@@ -333,6 +360,14 @@ async def hand_off_call(
     (:func:`_give_the_row_up`). The pipeline's jobs for the take reach
     *background_tasks* only when the take stands. Every write is made under
     *claim*, and none once it is lost (:class:`LostClaim`).
+
+    A call another take outranks (``interview._call_standing``) claims
+    ``superseded`` on its record; a ``superseded`` the dump row gave is the
+    call's answer and claims nothing. A call's take dropped for a newer take
+    gives up the dump row while no pipeline has run it
+    (:func:`_give_the_row_up`), and once that frees the row the typed
+    interview's owed hand-off starts
+    (``interview.hand_off_owed_typed_interview``).
     """
     own = BackgroundTasks()
     try:
@@ -346,7 +381,10 @@ async def hand_off_call(
             confirmed=confirmed,
             corrections=corrections,
             first_task=record.first_task,
-            unanswered=record.hand_off is None,
+            # A failure the finish hands off again accepted nothing, so a take
+            # the row holds unjudged is judged again.
+            unanswered=record.hand_off is None
+            or record.hand_off.status == BrainDumpStatus.failed,
         )
     except HTTPException as refusal:
         answer = refused_hand_off(refusal)
@@ -360,6 +398,7 @@ async def hand_off_call(
             )
         raise
     await claim.check()
+    freed = False
     if _accepted(closure):
         if takes_the_interview(closure, record, by_person=by_person):
             standing = await locks.claim_interview(
@@ -374,15 +413,23 @@ async def hand_off_call(
                 f"Voice call {record.call_id}: the person's typing since "
                 f"owns the interview"
             )
-            closure = await _give_the_row_up(record, closure)
-    elif _superseded(closure):
+            freed = await _give_the_row_up(record)
+            closure = InterviewClosure(
+                ending=closure.ending, hand_off=superseded_take()
+            )
+    elif closure.outranked:
         # Another take owns the interview: the record says so too, for the
-        # step that reads it first.
+        # step that reads it first. A take an earlier hand-off of this call
+        # left on the row gives it up. A ``superseded`` the row gave claims
+        # nothing: it is recorded as the call's answer.
         await locks.claim_interview(redis, record.call_id, locks.INTERVIEW_SUPERSEDED)
+        freed = await _give_the_row_up(record)
+    await claim.check()
     if not _superseded(closure):
         background_tasks.tasks.extend(own.tasks)
-    await claim.check()
     await record_hand_off(redis, record.call_id, closure, uid=record.uid)
+    if freed:
+        start_owed_typed_hand_off(record.uid)
     return closure
 
 
@@ -396,18 +443,14 @@ def _superseded(closure: InterviewClosure) -> bool:
     return hand_off is not None and hand_off.error_code == SUPERSEDED
 
 
-async def _give_the_row_up(
-    record: CallRecord, closure: InterviewClosure
-) -> InterviewClosure:
-    """Give up the dump row a call's accepted take holds, for the person's
-    typing, which claimed the interview while the pipeline judged the call:
-    the take is marked failed ``superseded``, so the typed take can claim the
-    row, and its pipeline jobs never run. Returns the call's answer,
-    ``superseded``."""
-    await dump_db.mark_failed(
+async def _give_the_row_up(record: CallRecord) -> bool:
+    """Give up the dump row the call's take holds, for a newer take: the
+    take is marked failed ``superseded`` while no pipeline has run it
+    (:func:`service.give_up_unrun_take`), so the newer take can claim the
+    row; its pipeline jobs never run. True when that freed the row."""
+    return await service.give_up_unrun_take(
         record.uid, interview_recording_id(record.call_id), SUPERSEDED
     )
-    return InterviewClosure(ending=closure.ending, hand_off=superseded_take())
 
 
 def owed(record: CallRecord) -> bool:
@@ -507,7 +550,8 @@ async def hand_off_owed(call_id: str, *, trigger: str, confirmed: bool = False) 
         await release_quietly(redis, call_id, holder)
     HANDOFFS.labels(outcome=outcome, trigger=trigger).inc()
     HANDOFF_SECONDS.observe(time.monotonic() - started)
-    if background.tasks:
+    # A hand-off that lost its claim leaves the call to the one holding it.
+    if background.tasks and outcome != LOST_CLAIM:
         try:
             await background()
         except Exception as error:
@@ -611,8 +655,9 @@ async def _failed_attempt(
 async def sweep(stop: asyncio.Event | None = None) -> list[str]:
     """Hand off, one at a time, every pending call owed a hand-off whose
     backoff has passed, and every confirm arm's call left unconfirmed for
-    ``UNCONFIRMED_HANDOFF_S``; *stop* ends it between calls. Returns the
-    calls this sweep handed off."""
+    ``UNCONFIRMED_HANDOFF_S``, then every typed interview whose hand-off is
+    owed (``interview.hand_off_owed_typed_interviews``); *stop* ends it
+    between them. Returns the calls this sweep handed off."""
     redis = await get_redis_async()
     now = time.time()
     handed: list[str] = []
@@ -632,6 +677,11 @@ async def sweep(stop: asyncio.Event | None = None) -> list[str]:
             continue
         if outcome not in (HELD, SETTLED, WAITING):
             handed.append(call_id)
+    if stop is None or not stop.is_set():
+        try:
+            await hand_off_owed_typed_interviews(stop)
+        except Exception:
+            logger.warning("Owed typed hand-offs not swept", exc_info=True)
     return handed
 
 

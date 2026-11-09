@@ -9,6 +9,7 @@ table the pipeline tests use, so these assert what reaches the take.
 
 import asyncio
 import time
+import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -21,6 +22,7 @@ from pytest_mock import MockerFixture
 from backend.api.features.onboarding_dump import (
     interview,
     quality,
+    service,
     voice,
     voice_handoff,
 )
@@ -960,13 +962,33 @@ async def _typed_refusals(stored: StoredInterview) -> list[tuple[int, object]]:
     return refusals
 
 
-async def _close_typed(stored: StoredInterview):
+async def _close_typed(stored: StoredInterview, *, corrections: str | None = None):
     background = BackgroundTasks()
     response = await interview.finalize_onboarding_interview(
-        USER, stored.session.session_id, background
+        USER, stored.session.session_id, background, corrections=corrections
     )
     await background()
     return response
+
+
+async def _started(prefix: str) -> None:
+    """Wait for the background tasks named *prefix* started so far."""
+    await asyncio.wait_for(
+        asyncio.gather(
+            *(
+                task
+                for task in asyncio.all_tasks()
+                if task.get_name().startswith(prefix)
+                and task is not asyncio.current_task()
+            )
+        ),
+        timeout=5,
+    )
+
+
+async def _typed_take_handed_off() -> None:
+    """Wait for the typed hand-offs owed and started so far."""
+    await _started("interview-owed-hand-off")
 
 
 @pytest.mark.parametrize("end_reason", RAN_TO_ITS_CLOSE)
@@ -1196,16 +1218,18 @@ async def test_typing_that_lands_while_the_pipeline_judges_the_call_wins(
     assert dumps.row.recordingId == f"interview-{stored.session.session_id}"
 
 
-async def test_a_typed_finish_while_the_pipeline_judges_the_call_wins(
+async def test_a_typed_finish_while_the_pipeline_judges_the_call_hands_the_typed_take_off(
     rig: Rig,
     stored: StoredInterview,
     mocker: MockerFixture,
     dumps: DumpStore,
 ):
-    """The person finishes the typed interview while the pipeline judges the
-    call. The finish wins the interview, but the row still holds the call's
-    take, so its own hand-off is not final yet; the call's hand-off then
-    gives the row up, and the next request hands the typed take off."""
+    """The person finishes the typed interview, with corrections, while the
+    pipeline judges the call. The finish wins the interview, but the row
+    still holds the call's take, so it answers ``superseded`` and its
+    hand-off is owed. The call's hand-off then gives the row up and starts
+    the owed hand-off, which lands the typed take, corrections and all, with
+    no further request."""
     rig.interviews.typed = stored.session
     call_id = await rig.call()
     judge = voice_handoff.close_voice_interview
@@ -1213,7 +1237,9 @@ async def test_a_typed_finish_while_the_pipeline_judges_the_call_wins(
 
     async def judged_then_finished(*args, **kwargs):
         closure = await judge(*args, **kwargs)
-        finished.append(await _close_typed(stored))
+        finished.append(
+            await _close_typed(stored, corrections="Eight staff, not five.")
+        )
         return closure
 
     mocker.patch.object(
@@ -1221,23 +1247,109 @@ async def test_a_typed_finish_while_the_pipeline_judges_the_call_wins(
     )
 
     record = await rig.hand_off(call_id)
+    await _typed_take_handed_off()
 
     assert finished[0].error_code == interview.SUPERSEDED
-    assert stored.session.metadata.onboarding_interview_stage == (
-        INTERVIEW_STAGE_CLOSED
-    )
     assert record.hand_off is not None
     assert record.hand_off.error_code == interview.SUPERSEDED
+    assert record.interview == locks.INTERVIEW_SUPERSEDED
     assert rig.interviews.taken is None
-
-    await interview.hand_off_closed_interview(USER, stored.session.session_id)
-
     assert dumps.row is not None
     assert dumps.row.recordingId == f"interview-{stored.session.session_id}"
     assert dumps.row.status != BrainDumpStatus.failed
+    assert dumps.row.transcript is not None
+    assert dumps.row.transcript.endswith("Eight staff, not five.")
     assert stored.session.metadata.onboarding_interview_stage == (
         INTERVIEW_STAGE_HANDED_OFF
     )
+    assert await rig.redis.hget(interview.OWED_HAND_OFFS_KEY, USER) is None
+
+
+async def test_the_sweep_hands_off_a_typed_interview_left_owed(
+    rig: Rig,
+    stored: StoredInterview,
+    mocker: MockerFixture,
+    dumps: DumpStore,
+):
+    """The call's hand-off gave the row up, and the owed typed hand-off it
+    starts never ran: the REST API's sweep hands it off."""
+    rig.interviews.typed = stored.session
+    call_id = await rig.call()
+    judge = voice_handoff.close_voice_interview
+
+    async def judged_then_finished(*args, **kwargs):
+        closure = await judge(*args, **kwargs)
+        await _close_typed(stored)
+        return closure
+
+    mocker.patch.object(
+        voice_handoff, "close_voice_interview", new=judged_then_finished
+    )
+    lost = mocker.patch.object(voice_handoff, "start_owed_typed_hand_off")
+
+    await rig.hand_off(call_id)
+
+    lost.assert_called_once_with(USER)
+    assert stored.session.metadata.onboarding_interview_stage == (
+        INTERVIEW_STAGE_CLOSED
+    )
+
+    await voice_handoff.sweep()
+
+    assert dumps.row is not None
+    assert dumps.row.recordingId == f"interview-{stored.session.session_id}"
+    assert stored.session.metadata.onboarding_interview_stage == (
+        INTERVIEW_STAGE_HANDED_OFF
+    )
+    assert await rig.redis.hget(interview.OWED_HAND_OFFS_KEY, USER) is None
+
+
+async def test_a_typed_interview_waiting_for_its_confirm_is_not_handed_off_for_it(
+    rig: Rig,
+    stored: StoredInterview,
+    typed_arm: AsyncMock,
+    quality_gate: AsyncMock,
+    dumps: DumpStore,
+):
+    """While the pipeline judges the call, the person types, and Otto's
+    goodbye closes the typed interview on a confirm arm. The call's take
+    gives the row up, but the typed interview owes no hand-off until the
+    person confirms, so their corrections reach it."""
+    typed_arm.side_effect = None
+    typed_arm.return_value = InterviewEnding.PROFILE_CARD.value
+    rig.interviews.typed = stored.session
+    judge = Judge()
+    quality_gate.side_effect = judge.rule
+    call_id = await rig.call()
+    hand_off = asyncio.create_task(
+        voice_handoff.hand_off_owed(call_id, trigger="status")
+    )
+    await asyncio.wait_for(judge.entered.wait(), timeout=5)
+
+    await _type(stored)
+    closed = await interview.close_onboarding_interview(
+        USER, stored.session.session_id, reason="confirmed"
+    )
+    judge.release.set()
+    await asyncio.wait_for(hand_off, timeout=5)
+    await _typed_take_handed_off()
+
+    assert closed.hand_off is None
+    assert stored.session.metadata.onboarding_interview_stage == (
+        INTERVIEW_STAGE_CLOSED
+    )
+    assert dumps.row is not None
+    assert (dumps.row.recordingId, dumps.row.status) == (
+        f"interview-{call_id}",
+        BrainDumpStatus.failed,
+    )
+
+    confirmed = await _close_typed(stored, corrections="Eight staff, not five.")
+
+    assert confirmed.status == BrainDumpStatus.transcribed
+    assert dumps.row.recordingId == f"interview-{stored.session.session_id}"
+    assert dumps.row.transcript is not None
+    assert dumps.row.transcript.endswith("Eight staff, not five.")
 
 
 @pytest.mark.parametrize("first", ["typing", "hand_off"])
@@ -1246,42 +1358,58 @@ async def test_a_hand_off_and_a_message_at_once_leave_exactly_one_take(
     stored: StoredInterview,
     allowance: AsyncMock,
     mocker: MockerFixture,
+    quality_gate: AsyncMock,
+    dumps: DumpStore,
+    jobs: dict[str, AsyncMock],
     first: str,
 ):
-    """The person's message is admitted while the call's hand-off runs, and
-    the message's dispatch and the hand-off claim the interview on the call's
-    record at once: whichever claim lands first stands, and the other side's
-    answer says so."""
+    """The person's message is admitted while the call's hand-off judges its
+    words, and the message's dispatch and the hand-off then claim the
+    interview on the call's record: whichever claim lands first stands, and
+    the other side's answer says so. The words are judged once either way."""
     rig.interviews.typed = stored.session
+    judge = Judge()
+    quality_gate.side_effect = judge.rule
     call_id = await rig.call()
     await interview.admit_onboarding_interview_turn(stored.session, USER)
-    first_claim = (
-        locks.INTERVIEW_SUPERSEDED if first == "typing" else locks.INTERVIEW_TAKEN
+    hand_off = asyncio.create_task(
+        voice_handoff.hand_off_owed(call_id, trigger="status")
     )
-    claim = locks.claim_interview
-    landed = asyncio.Event()
+    await asyncio.wait_for(judge.entered.wait(), timeout=5)
 
-    async def in_order(redis, call: str, standing):
-        if standing != first_claim:
-            await landed.wait()
-        result = await claim(redis, call, standing)
-        if standing == first_claim:
-            landed.set()
-        return result
+    if first == "typing":
+        await interview.typed_message_accepted(USER)
+        judge.release.set()
+        await asyncio.wait_for(hand_off, timeout=5)
+    else:
+        claim = locks.claim_interview
+        taken = asyncio.Event()
 
-    mocker.patch.object(locks, "claim_interview", new=in_order)
+        async def after_the_take(redis, call: str, standing):
+            if standing == locks.INTERVIEW_SUPERSEDED:
+                await taken.wait()
+            result = await claim(redis, call, standing)
+            if standing == locks.INTERVIEW_TAKEN:
+                taken.set()
+            return result
 
-    await asyncio.gather(
-        voice_handoff.hand_off_owed(call_id, trigger="status"),
-        interview.typed_message_accepted(USER),
-    )
+        mocker.patch.object(locks, "claim_interview", new=after_the_take)
+        judge.release.set()
+        await asyncio.wait_for(
+            asyncio.gather(hand_off, interview.typed_message_accepted(USER)),
+            timeout=5,
+        )
+    await _typed_take_handed_off()
 
     record = await rig.read(call_id)
+    assert judge.judged == 1
     assert record.hand_off is not None
+    assert dumps.row is not None
     if first == "hand_off":
         assert record.interview == locks.INTERVIEW_TAKEN
         assert record.accepted
         assert rig.interviews.taken == call_id
+        jobs["greeting"].assert_awaited_once()
         with pytest.raises(HTTPException) as refused:
             await interview.admit_onboarding_interview_turn(stored.session, USER)
         assert refused.value.detail == {"code": INTERVIEW_CLOSED, "call_id": call_id}
@@ -1289,6 +1417,13 @@ async def test_a_hand_off_and_a_message_at_once_leave_exactly_one_take(
         assert record.interview == locks.INTERVIEW_SUPERSEDED
         assert record.hand_off.error_code == interview.SUPERSEDED
         assert rig.interviews.taken is None
+        jobs["greeting"].assert_not_awaited()
+        # The call's take gave the row up.
+        assert (dumps.row.recordingId, dumps.row.status, dumps.row.errorCode) == (
+            f"interview-{call_id}",
+            BrainDumpStatus.failed,
+            interview.SUPERSEDED,
+        )
         await interview.admit_onboarding_interview_turn(stored.session, USER)
 
 
@@ -1303,6 +1438,486 @@ async def test_turns_typed_before_the_call_do_not_supersede_it(
 
     assert record.interview == locks.INTERVIEW_TAKEN
     assert rig.interviews.taken == call_id
+
+
+async def test_typing_inside_an_earlier_calls_judge_past_a_no_words_call_wins(
+    rig: Rig,
+    stored: StoredInterview,
+    allowance: AsyncMock,
+    quality_gate: AsyncMock,
+    dumps: DumpStore,
+    jobs: dict[str, AsyncMock],
+):
+    """The later call heard nothing, so the earlier call's hand-off runs, and
+    the person's message is dispatched while its words are judged. Typing's
+    claim reaches the earlier call's record past the no-words one, where the
+    hand-off claims too, so exactly one take stands: the typed one."""
+    rig.interviews.typed = stored.session
+    judge = Judge()
+    quality_gate.side_effect = judge.rule
+    earlier = await rig.call()
+    later = await rig.call(None)
+    await rig.no_words(later, quality.NO_USABLE_SPEECH)
+    await interview.admit_onboarding_interview_turn(stored.session, USER)
+    hand_off = asyncio.create_task(
+        voice_handoff.hand_off_owed(earlier, trigger="settle")
+    )
+    await asyncio.wait_for(judge.entered.wait(), timeout=5)
+
+    await interview.typed_message_accepted(USER)
+    judge.release.set()
+    await asyncio.wait_for(hand_off, timeout=5)
+    await _typed_take_handed_off()
+
+    record = await rig.read(earlier)
+    assert record.interview == locks.INTERVIEW_SUPERSEDED
+    assert (await rig.read(later)).interview == locks.INTERVIEW_SUPERSEDED
+    assert record.hand_off is not None
+    assert record.hand_off.error_code == interview.SUPERSEDED
+    assert rig.interviews.taken is None
+    jobs["greeting"].assert_not_awaited()
+
+    await interview.admit_onboarding_interview_turn(stored.session, USER)
+    response = await _close_typed(stored)
+
+    assert response.status == BrainDumpStatus.transcribed
+    assert dumps.row is not None
+    assert dumps.row.recordingId == f"interview-{stored.session.session_id}"
+
+
+async def test_a_message_after_an_earlier_call_took_the_interview_takes_nothing(
+    rig: Rig, stored: StoredInterview, allowance: AsyncMock
+):
+    """Behind a later call that heard nothing, the earlier call's words took
+    the interview a moment before the person's message was dispatched: the
+    message claims nothing, the no-words call included, and the next one is
+    refused naming the earlier call, before its onboarding row is written
+    as after."""
+    rig.interviews.typed = stored.session
+    earlier = await rig.call()
+    later = await rig.call(None)
+    await rig.no_words(later, quality.NO_USABLE_SPEECH)
+    await interview.admit_onboarding_interview_turn(stored.session, USER)
+    assert (await rig.hand_off(earlier)).interview == locks.INTERVIEW_TAKEN
+
+    await interview.typed_message_accepted(USER)
+
+    assert await locks.interview_of(rig.redis, earlier) == locks.INTERVIEW_TAKEN
+    assert await locks.interview_of(rig.redis, later) is None
+    for row_written in (False, True):
+        rig.interviews.taken = earlier if row_written else None
+        with pytest.raises(HTTPException) as refused:
+            await interview.admit_onboarding_interview_turn(stored.session, USER)
+        assert refused.value.detail == {"code": INTERVIEW_CLOSED, "call_id": earlier}
+
+
+async def _cut_inside_the_judge(call_id: str, judge: Judge) -> None:
+    """A hand-off of *call_id* stopped inside the quality gate: the call's
+    take holds the row, claimed and never judged, and no answer is recorded."""
+    cut = asyncio.create_task(voice_handoff.hand_off_owed(call_id, trigger="status"))
+    await asyncio.wait_for(judge.entered.wait(), timeout=5)
+    cut.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cut
+
+
+async def test_a_take_left_unjudged_on_the_row_is_given_up_once_typing_beat_its_call(
+    rig: Rig,
+    stored: StoredInterview,
+    allowance: AsyncMock,
+    quality_gate: AsyncMock,
+    dumps: DumpStore,
+):
+    """A hand-off stopped inside the judge left the call's take on the row,
+    and the person typed and finished before its retry: their finish answers
+    ``superseded`` while the take holds the row. The retry answers
+    ``superseded`` without the pipeline and gives the row up, and the typed
+    take lands with no further request."""
+    rig.interviews.typed = stored.session
+    judge = Judge()
+    quality_gate.side_effect = judge.rule
+    call_id = await rig.call()
+    await _cut_inside_the_judge(call_id, judge)
+    assert dumps.row is not None
+    assert (dumps.row.recordingId, dumps.row.status) == (
+        f"interview-{call_id}",
+        BrainDumpStatus.transcribed,
+    )
+
+    await _type(stored)
+    finished = await _close_typed(stored)
+    assert finished.error_code == interview.SUPERSEDED
+    assert stored.session.metadata.onboarding_interview_stage == (
+        INTERVIEW_STAGE_CLOSED
+    )
+
+    record = await rig.hand_off(call_id)
+    await _typed_take_handed_off()
+
+    assert record.hand_off is not None
+    assert record.hand_off.error_code == interview.SUPERSEDED
+    assert dumps.row.recordingId == f"interview-{stored.session.session_id}"
+    assert dumps.row.status != BrainDumpStatus.failed
+    assert stored.session.metadata.onboarding_interview_stage == (
+        INTERVIEW_STAGE_HANDED_OFF
+    )
+
+
+async def test_a_typed_finish_frees_a_row_a_call_beaten_by_typing_left_after_answering(
+    rig: Rig,
+    stored: StoredInterview,
+    allowance: AsyncMock,
+    quality_gate: AsyncMock,
+    dumps: DumpStore,
+):
+    """The call's hand-off has answered, yet its take still holds the row
+    unjudged: no hand-off of the call is left to give it up, so the typed
+    finish gives it up itself, while no pipeline has run the take, and the
+    typed take lands with no further request."""
+    rig.interviews.typed = stored.session
+    judge = Judge()
+    quality_gate.side_effect = judge.rule
+    call_id = await rig.call()
+    await _cut_inside_the_judge(call_id, judge)
+    await _type(stored)
+    await locks.record_answer(
+        rig.redis,
+        call_id,
+        uid=USER,
+        status=locks.HANDED_OFF,
+        answer=interview.superseded_take(),
+    )
+
+    finished = await _close_typed(stored)
+    await _typed_take_handed_off()
+
+    assert finished.error_code == interview.SUPERSEDED
+    assert dumps.row is not None
+    assert dumps.row.recordingId == f"interview-{stored.session.session_id}"
+    assert dumps.row.status != BrainDumpStatus.failed
+    assert stored.session.metadata.onboarding_interview_stage == (
+        INTERVIEW_STAGE_HANDED_OFF
+    )
+
+
+async def test_a_hand_off_that_loses_its_claim_at_its_last_check_runs_no_jobs(
+    rig: Rig,
+    mocker: MockerFixture,
+    quality_gate: AsyncMock,
+    jobs: dict[str, AsyncMock],
+):
+    """The claim lapses between the interview's claim and the answer: the
+    hand-off records no answer and runs none of its pipeline jobs, and the
+    next hand-off judges the words again and runs them once."""
+    call_id = await rig.call()
+    claim = locks.claim_interview
+    lapsed: list[str] = []
+
+    async def claimed_then_lapsed(redis, call: str, standing):
+        result = await claim(redis, call, standing)
+        if not lapsed:
+            lapsed.append(call)
+            await redis.delete(locks.postcall_claim_key(call))
+        return result
+
+    mocker.patch.object(locks, "claim_interview", new=claimed_then_lapsed)
+
+    assert await voice_handoff.hand_off_owed(call_id, trigger="status") == (
+        voice_handoff.LOST_CLAIM
+    )
+
+    assert (await rig.read(call_id)).hand_off is None
+    jobs["greeting"].assert_not_awaited()
+    assert call_id in await locks.postcall_pending(rig.redis)
+
+    assert (await rig.hand_off(call_id)).status == locks.HANDED_OFF
+    assert quality_gate.await_count == 2
+    jobs["greeting"].assert_awaited_once_with(SAID[0])
+
+
+async def test_a_record_on_the_row_that_is_not_the_persons_ends_the_walk(rig: Rig):
+    """The row's latest call is a record of someone else's, still being
+    transcribed: no call of the person's, so the earlier call's hand-off
+    does not wait on it."""
+    earlier = await rig.call()
+    other = tokens.new_call_id()
+    await locks.write_call_record(
+        rig.redis, other, {"uid": "someone-else", "status": locks.TRANSCRIBING}
+    )
+    rig.interviews.latest_call = other
+
+    record = await rig.hand_off(earlier)
+
+    assert record.status == locks.HANDED_OFF
+    assert record.interview == locks.INTERVIEW_TAKEN
+
+
+async def test_try_again_after_a_cut_retry_judges_the_take_it_left_on_the_row(
+    rig: Rig,
+    quality_gate: AsyncMock,
+    dumps: DumpStore,
+    jobs: dict[str, AsyncMock],
+):
+    """The call's hand-off answered ``quality_check_unavailable``, and a "Try
+    again" stopped inside the judge, leaving the take on the row unjudged.
+    The next "Try again" judges it rather than reading the row as accepted,
+    and the pipeline's jobs run once."""
+    rulings = 0
+    cut_here = asyncio.Event()
+
+    async def gate(*args, **kwargs):
+        nonlocal rulings
+        rulings += 1
+        if rulings == 1:
+            return quality.QualityRejection(
+                error_code=quality.QUALITY_CHECK_UNAVAILABLE, reason="judge_error"
+            )
+        if rulings == 2:
+            cut_here.set()
+            await asyncio.Event().wait()
+        return None
+
+    quality_gate.side_effect = gate
+    call_id = await rig.call()
+    answered = (await rig.hand_off(call_id)).hand_off
+    assert answered is not None
+    assert answered.error_code == quality.QUALITY_CHECK_UNAVAILABLE
+    cut = asyncio.create_task(_finish(call_id))
+    await asyncio.wait_for(cut_here.wait(), timeout=5)
+    cut.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cut
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.transcribed
+
+    again = await _finish(call_id)
+
+    assert again.status == BrainDumpStatus.transcribed
+    assert rulings == 3
+    jobs["greeting"].assert_awaited_once_with(SAID[0])
+    assert (await rig.read(call_id)).took_interview
+
+
+def _note_settles(mocker: MockerFixture) -> list[asyncio.Task | None]:
+    """The hand-offs started for a take a no-words call settled."""
+    settle = voice_handoff.settle_if_owed
+    settled: list[asyncio.Task | None] = []
+
+    def settle_noted(record: locks.CallRecord, *, trigger: str = "status"):
+        running = settle(record, trigger=trigger)
+        if trigger == "settle":
+            settled.append(running)
+        return running
+
+    mocker.patch.object(voice_handoff, "settle_if_owed", new=settle_noted)
+    return settled
+
+
+async def test_a_no_words_answer_settles_the_take_past_other_no_words_calls(
+    rig: Rig, mocker: MockerFixture
+):
+    earlier = await rig.call()
+    middle = await rig.call(None)
+    await rig.no_words(middle, locks.TRANSCRIPTION_UNAVAILABLE)
+    later = await rig.call("")
+    settled = _note_settles(mocker)
+
+    answer = (await rig.hand_off(later)).hand_off
+
+    assert answer is not None and answer.error_code == quality.NO_USABLE_SPEECH
+    assert len(settled) == 1 and settled[0] is not None
+    assert await asyncio.wait_for(settled[0], timeout=5) == locks.HANDED_OFF
+    assert rig.interviews.taken == earlier
+
+
+async def test_a_status_read_of_a_no_words_call_settles_the_take_before_it(
+    rig: Rig, mocker: MockerFixture
+):
+    """The relay recorded the later call's answer, which settles nothing on
+    its own: the step's read of that call does."""
+    earlier = await rig.call()
+    later = await rig.call(None)
+    assert await voice_handoff.hand_off_owed(earlier, trigger="status") == (
+        voice_handoff.WAITING
+    )
+    await rig.no_words(later, locks.TRANSCRIPTION_UNAVAILABLE)
+    settled = _note_settles(mocker)
+
+    read = await voice.call_status(USER, later)
+    await _started("voice-settle-before")
+
+    assert read.status == locks.FAILED
+    assert len(settled) == 1 and settled[0] is not None
+    assert await asyncio.wait_for(settled[0], timeout=5) == locks.HANDED_OFF
+    assert rig.interviews.taken == earlier
+
+
+async def test_a_settle_that_fails_never_fails_the_answer(
+    rig: Rig, mocker: MockerFixture
+):
+    earlier = await rig.call()
+    later = await rig.call("")
+    mocker.patch.object(
+        voice_handoff, "settle_if_owed", side_effect=ConnectionError("redis")
+    )
+
+    record = await rig.hand_off(later)
+
+    assert record.status == locks.FAILED
+    assert record.hand_off is not None
+    assert record.hand_off.error_code == quality.NO_USABLE_SPEECH
+    assert earlier in await locks.postcall_pending(rig.redis)
+
+
+async def _until(done, what: str) -> None:
+    for _ in range(500):
+        if done():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"never {what}")
+
+
+@pytest.mark.parametrize("held_as", ["transcribed", "extracting"])
+@pytest.mark.parametrize(
+    ("end_reason", "claim"),
+    [("client_gone", None), ("finished", locks.INTERVIEW_TAKEN)],
+    ids=["cut-off", "ran-to-its-close"],
+)
+async def test_a_later_calls_take_displaces_an_earlier_calls_take_in_the_pipeline(
+    rig: Rig,
+    mocker: MockerFixture,
+    dumps: DumpStore,
+    jobs: dict[str, AsyncMock],
+    extraction: dict[str, AsyncMock],
+    quality_gate: AsyncMock,
+    held_as: str,
+    end_reason: str,
+    claim: str | None,
+):
+    """A cut-off call's accepted take holds the row while its pipeline runs,
+    and the person called again. The later call's take claims the row from
+    it, is never answered ``superseded``, claims nothing for it, and its
+    pipeline runs; the earlier take's jobs write nothing more, and its call's
+    record is left as it was until the person finishes that call."""
+    release = asyncio.Event()
+    held = asyncio.Event()
+
+    async def greeting_of(transcript: str, *args, **kwargs):
+        return (f"Greeting for {transcript}", [])
+
+    jobs["greeting"].side_effect = greeting_of
+    earlier = await rig.call(SAID[0], end_reason="client_gone")
+    earlier_take = f"interview-{earlier}"
+
+    async def hold_the_earlier(*args, **kwargs) -> None:
+        if any(SAID[0] in str(arg) for arg in (*args, *kwargs.values())):
+            held.set()
+            await release.wait()
+
+    if held_as == "transcribed":
+        run_jobs = service._run_background_jobs
+
+        async def jobs_held(user_id: str, recording_id: str, *args):
+            if recording_id == earlier_take:
+                held.set()
+                await release.wait()
+            await run_jobs(user_id, recording_id, *args)
+
+        mocker.patch.object(service, "_run_background_jobs", new=jobs_held)
+    else:
+        team = jobs["team"].return_value
+        understanding = extraction["extract_business_understanding"].return_value
+
+        async def team_held(*args, **kwargs):
+            await hold_the_earlier(*args, **kwargs)
+            return team
+
+        async def understanding_held(*args, **kwargs):
+            await hold_the_earlier(*args, **kwargs)
+            return understanding
+
+        jobs["team"].side_effect = team_held
+        extraction["extract_business_understanding"].side_effect = understanding_held
+
+    first = asyncio.create_task(voice_handoff.hand_off_owed(earlier, trigger="status"))
+    await asyncio.wait_for(held.wait(), timeout=5)
+    if held_as == "extracting":
+        await _until(
+            lambda: dumps.row is not None and dumps.row.greeting is not None,
+            "stored the earlier greeting",
+        )
+    assert dumps.row is not None
+    assert (dumps.row.recordingId, dumps.row.status) == (
+        earlier_take,
+        BrainDumpStatus(held_as),
+    )
+
+    later = await rig.call(SAID[1], end_reason=end_reason)
+    record = await rig.hand_off(later)
+    release.set()
+    await asyncio.wait_for(first, timeout=5)
+
+    # The later call's take: on the row, its pipeline run.
+    assert record.status == locks.HANDED_OFF
+    assert record.accepted
+    assert record.hand_off is not None and record.hand_off.error_code is None
+    assert record.interview == claim
+    row = dumps.row
+    assert (row.recordingId, row.transcript, row.greeting, row.status) == (
+        f"interview-{later}",
+        SAID[1],
+        f"Greeting for {SAID[1]}",
+        BrainDumpStatus.completed,
+    )
+    # The earlier take's jobs wrote nothing more: no model ran for a take
+    # whose jobs had not started, and none of its later results was kept.
+    greeted = [call.args[0] for call in jobs["greeting"].await_args_list]
+    assert greeted == ([SAID[1]] if held_as == "transcribed" else SAID)
+    assert extraction["upsert_business_understanding"].await_count == 1
+    # The earlier call's record is as it was.
+    before = await rig.read(earlier)
+    assert (before.status, before.accepted, before.interview) == (
+        locks.HANDED_OFF,
+        True,
+        None,
+    )
+
+    gate_runs = quality_gate.await_count
+    answered = await _finish(earlier)
+
+    assert answered.error_code == interview.SUPERSEDED
+    assert quality_gate.await_count == gate_runs
+    assert (await rig.read(earlier)).interview == locks.INTERVIEW_SUPERSEDED
+    assert dumps.row.recordingId == f"interview-{later}"
+
+
+@pytest.mark.parametrize("held", ["typed-interview", "brain-dump"])
+async def test_a_calls_take_never_displaces_a_typed_interviews_or_a_brain_dumps(
+    rig: Rig, dumps: DumpStore, quality_gate: AsyncMock, held: str
+):
+    """Nor does the row's ``superseded`` claim anything: it is recorded as
+    the call's answer."""
+    take = f"interview-{uuid.uuid4()}" if held == "typed-interview" else "brain-dump-1"
+    row = await dumps.start_dump(
+        USER,
+        take,
+        (
+            BrainDumpInputMode.typed
+            if held == "typed-interview"
+            else BrainDumpInputMode.voice
+        ),
+    )
+    row.status = BrainDumpStatus.extracting
+    call_id = await rig.call()
+
+    record = await rig.hand_off(call_id)
+
+    assert record.status == locks.HANDED_OFF
+    assert record.hand_off is not None
+    assert record.hand_off.error_code == interview.SUPERSEDED
+    assert record.interview is None
+    quality_gate.assert_not_awaited()
+    assert dumps.row is not None and dumps.row.recordingId == take
 
 
 async def test_the_sweeps_retry_of_a_superseded_call_runs_no_pipeline(
@@ -1532,9 +2147,9 @@ async def test_typing_after_a_no_words_call_supersedes_the_call_before_it(
 
     await _type(stored)
 
-    # Claimed on the latest call's record alone.
+    # Claimed on the take, the earlier call, and on the no-words call after it.
     assert await locks.interview_of(rig.redis, later) == locks.INTERVIEW_SUPERSEDED
-    assert await locks.interview_of(rig.redis, earlier) is None
+    assert await locks.interview_of(rig.redis, earlier) == (locks.INTERVIEW_SUPERSEDED)
     record = await rig.hand_off(earlier)
     assert record.hand_off is not None
     assert record.hand_off.error_code == interview.SUPERSEDED
