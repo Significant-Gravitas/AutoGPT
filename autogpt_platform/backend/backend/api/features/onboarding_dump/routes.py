@@ -6,7 +6,7 @@ from typing import Annotated
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id
-from fastapi import APIRouter, Form, Security, UploadFile
+from fastapi import APIRouter, Form, Path, Security, UploadFile
 from fastapi.responses import RedirectResponse
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 
@@ -25,6 +25,7 @@ from backend.api.features.onboarding_dump.models import (
     MAX_PART_BYTES,
     MAX_RECORDING_BYTES,
     RECORDING_ID_PATTERN,
+    VOICE_CALL_ID_PATTERN,
     DumpStatusResponse,
     FinalizeRequest,
     FinalizeResponse,
@@ -36,7 +37,9 @@ from backend.api.features.onboarding_dump.models import (
     SuggestedTasksResponse,
     SuggestedTasksUpdate,
     UploadPartResponse,
+    VoiceCallFinishRequest,
     VoiceCallStartResponse,
+    VoiceCallStatusResponse,
 )
 from backend.api.features.onboarding_dump.plan_models import (
     PlanHireResponse,
@@ -200,10 +203,14 @@ async def start_onboarding_interview(
     interview that is over is answered the same way, with its ``stage``, so
     the client shows how it ended and the finish button.
 
-    429 at its turn budget, 503 while the budget or the chat stream cannot be
-    read. A 429 carries its wait in the body (``retry_after_seconds``) as
-    well as in ``Retry-After``: the browser's API client keeps a refusal's
-    body, not its headers.
+    A person has one interview, typed or spoken: 409 ``call_in_progress``
+    while a voice call of theirs is live, and 409
+    ``onboarding_interview_closed`` once a call's words became the
+    interview's take, each naming the call (``call_id``). 429 at its turn
+    budget, 503 while the budget, the chat stream or the person's calls
+    cannot be read. A 429 carries its wait in the body
+    (``retry_after_seconds``) as well as in ``Retry-After``: the browser's API
+    client keeps a refusal's body, not its headers.
     """
     try:
         started = await interview.start_onboarding_interview(user_id)
@@ -257,6 +264,95 @@ async def start_onboarding_voice_call(
         return await voice.start_voice_call(user_id)
     except fastapi.HTTPException as e:
         if e.status_code in (429, 503):
+            raise _with_wait_in_body(e) from e
+        raise
+
+
+VoiceCallId = Annotated[str, Path(pattern=VOICE_CALL_ID_PATTERN)]
+
+
+@router.get("/interview/voice", operation_id="get_latest_onboarding_voice_call")
+async def get_latest_onboarding_voice_call(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> VoiceCallStatusResponse:
+    """The person's latest voice call as it stands, for a step that reloads:
+    live, wrapping up, waiting for their confirm, handed off or failed. 404
+    when they have no call, or its record has expired."""
+    try:
+        return await voice.latest_call(user_id)
+    except fastapi.HTTPException as e:
+        if e.status_code == 503:
+            raise _with_wait_in_body(e) from e
+        raise
+
+
+@router.get(
+    "/interview/voice/{call_id}", operation_id="get_onboarding_voice_call_status"
+)
+async def get_onboarding_voice_call_status(
+    user_id: Annotated[str, Security(get_user_id)],
+    call_id: VoiceCallId,
+) -> VoiceCallStatusResponse:
+    """A voice call of the person's as it stands, polled once it ends until
+    its hand-off has answered. 404 for a call that is not theirs, or has
+    expired."""
+    try:
+        return await voice.call_status(user_id, call_id)
+    except fastapi.HTTPException as e:
+        if e.status_code == 503:
+            raise _with_wait_in_body(e) from e
+        raise
+
+
+@router.post(
+    "/interview/voice/{call_id}/finish", operation_id="finish_onboarding_voice_call"
+)
+async def finish_onboarding_voice_call(
+    user_id: Annotated[str, Security(get_user_id)],
+    call_id: VoiceCallId,
+    background_tasks: fastapi.BackgroundTasks,
+    request: VoiceCallFinishRequest | None = None,
+) -> FinalizeResponse:
+    """The person's confirm of their voice call, and "Meet your team".
+
+    Idempotent: a call already handed off, or whose words the pipeline ruled
+    on, is answered as it stands. A call waiting for the confirm, or whose
+    hand-off the pipeline never ruled on, hands its words off now, with any
+    ``corrections`` after them. The client reads the answer as it reads the
+    typed interview's finish. 404 for a call that is not theirs; 409
+    (``call_not_ready``) while the call's words are not ready. A 429 or 503
+    carries its wait in the body (``retry_after_seconds``).
+    """
+    try:
+        return await voice.finish_call(
+            user_id,
+            call_id,
+            background_tasks,
+            corrections=request.corrections if request is not None else None,
+        )
+    except fastapi.HTTPException as e:
+        if e.status_code in (429, 503):
+            raise _with_wait_in_body(e) from e
+        raise
+
+
+@router.post(
+    "/interview/voice/{call_id}/end",
+    operation_id="end_onboarding_voice_call",
+    status_code=202,
+)
+async def end_onboarding_voice_call(
+    user_id: Annotated[str, Security(get_user_id)],
+    call_id: VoiceCallId,
+) -> None:
+    """End a live voice call of the person's that they can no longer reach,
+    such as one on another device. The relay running it ends it within a
+    second or so, and the person can call again. 404 for a call that is not
+    theirs."""
+    try:
+        await voice.end_call(user_id, call_id)
+    except fastapi.HTTPException as e:
+        if e.status_code == 503:
             raise _with_wait_in_body(e) from e
         raise
 

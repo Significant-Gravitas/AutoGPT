@@ -1,4 +1,5 @@
-"""The voice call start route: who may call, and the start token it mints."""
+"""The voice call routes: who may call and the start token it mints, then the
+call's state, its finish and ending it, each for the person's own call only."""
 
 import time
 from datetime import UTC, datetime
@@ -10,10 +11,17 @@ import pytest
 from fakeredis import FakeServer
 from fakeredis.aioredis import FakeRedis
 from httpx import ASGITransport, AsyncClient
-from prisma.enums import SubscriptionTier
+from prisma.enums import BrainDumpInputMode, BrainDumpStatus, SubscriptionTier
 from pytest_mock import MockerFixture
 
-from backend.api.features.onboarding_dump import rate_limit, routes, voice
+from backend.api.features.onboarding_dump import (
+    interview,
+    quality,
+    rate_limit,
+    routes,
+    voice,
+)
+from backend.api.features.onboarding_dump.models import FinalizeResponse
 from backend.copilot.model import (
     INTERVIEW_STAGE_CLOSED,
     INTERVIEW_STAGE_HANDED_OFF,
@@ -69,6 +77,13 @@ def voice_on(mocker: MockerFixture, monkeypatch, redis) -> SimpleNamespace:
         # Someone who has not opened the typed interview.
         interview=mocker.patch.object(
             voice, "find_onboarding_interview_session", AsyncMock(return_value=None)
+        ),
+        # Nor had a call take it.
+        taken_by=mocker.patch.object(
+            voice, "call_that_took_the_interview", AsyncMock(return_value=None)
+        ),
+        latest=mocker.patch.object(
+            voice, "get_onboarding_voice_call_id", AsyncMock(return_value=None)
         ),
     )
 
@@ -268,3 +283,273 @@ async def test_a_refused_start_spends_none_of_the_allowance(
         assert (await start()).status_code == 409
     await locks.release_user_lock(redis, test_user_id, "a" * 32)
     assert (await start()).status_code == 200
+
+
+async def test_a_person_whose_call_took_the_interview_cannot_call_again(voice_on):
+    voice_on.taken_by.return_value = "a" * 32
+    response = await start()
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "code": "onboarding_interview_closed",
+        "call_id": "a" * 32,
+    }
+
+
+# ---------- the call after it starts ----------
+
+CALL = "c" * 32
+OTHER_USER = "someone-else"
+
+
+def _take(code: str | None = None) -> FinalizeResponse:
+    return FinalizeResponse(
+        status=BrainDumpStatus.failed if code else BrainDumpStatus.transcribed,
+        input_mode=BrainDumpInputMode.typed,
+        error_code=code,
+    )
+
+
+async def _record(redis, uid: str, call_id: str = CALL, **fields: object) -> None:
+    await locks.write_call_record(
+        redis, call_id, {"uid": uid, "leg": "websocket", **fields}
+    )
+
+
+async def request(method: str, path: str, **kwargs):
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        return await client.request(method, f"{URL}{path}", **kwargs)
+
+
+@pytest.fixture
+def hand_off(mocker: MockerFixture) -> AsyncMock:
+    """The hand-off a finish runs: accepted, unless a test says otherwise."""
+
+    async def accept(redis, record, background, **kwargs):
+        closure = interview.InterviewClosure(ending=None, hand_off=_take())
+        await locks.write_call_record(
+            redis,
+            record.call_id,
+            {"status": locks.HANDED_OFF, "hand_off": _take().model_dump(mode="json")},
+        )
+        return closure
+
+    return mocker.patch.object(
+        voice, "hand_off_call", new=AsyncMock(side_effect=accept)
+    )
+
+
+async def test_a_calls_state_moves_as_its_record_does(redis, test_user_id):
+    seen = []
+    for fields in (
+        {"status": "connecting"},
+        {"status": "live"},
+        {"status": "ended", "end_reason": "finished"},
+        {"status": "transcribing"},
+        {"status": "handed_off", "hand_off": _take().model_dump(mode="json")},
+    ):
+        await _record(redis, test_user_id, **fields)
+        body = (await request("GET", f"/{CALL}")).json()
+        seen.append((body["status"], body["end_reason"], body["hand_off"]))
+
+    assert seen == [
+        ("connecting", None, None),
+        ("live", None, None),
+        ("ended", "finished", None),
+        ("transcribing", "finished", None),
+        ("handed_off", "finished", _take().model_dump(mode="json")),
+    ]
+    body = (await request("GET", f"/{CALL}")).json()
+    assert body["call_id"] == CALL
+    assert body["leg"] == "websocket"
+
+
+async def test_someone_elses_call_is_not_found(redis):
+    await _record(redis, OTHER_USER, status="live")
+    assert (await request("GET", f"/{CALL}")).status_code == 404
+    assert (await request("GET", f"/{'d' * 32}")).status_code == 404
+
+
+async def test_a_call_id_that_is_not_one_is_refused(redis):
+    assert (await request("GET", "/not-a-call")).status_code == 422
+
+
+async def test_a_reloaded_step_finds_the_persons_latest_call(
+    voice_on, redis, test_user_id
+):
+    assert (await request("GET", "")).status_code == 404
+
+    voice_on.latest.return_value = CALL
+    await _record(redis, test_user_id, status="transcribed")
+    body = (await request("GET", "")).json()
+
+    assert (body["call_id"], body["status"]) == (CALL, "transcribed")
+    voice_on.latest.assert_awaited_with(test_user_id)
+
+
+async def test_finishing_a_handed_off_call_again_answers_its_take(
+    redis, test_user_id, hand_off: AsyncMock
+):
+    await _record(
+        redis,
+        test_user_id,
+        status="handed_off",
+        hand_off=_take().model_dump(mode="json"),
+        transcript_of_record="I run a bakery.",
+    )
+
+    response = await request("POST", f"/{CALL}/finish")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "transcribed"
+    hand_off.assert_not_awaited()
+
+
+async def test_finishing_a_call_whose_words_were_turned_away_answers_the_verdict(
+    redis, test_user_id, hand_off: AsyncMock
+):
+    """The person calls again or types instead; the same words would only be
+    turned away again."""
+    await _record(
+        redis,
+        test_user_id,
+        status="failed",
+        hand_off=_take(quality.INSUFFICIENT_CONTENT).model_dump(mode="json"),
+        transcript_of_record="idk",
+    )
+
+    response = await request("POST", f"/{CALL}/finish")
+
+    assert response.json()["error_code"] == quality.INSUFFICIENT_CONTENT
+    hand_off.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("status", "stored"),
+    [
+        ("transcribed", None),
+        ("failed", _take(quality.QUALITY_CHECK_UNAVAILABLE)),
+        ("failed", _take("rate_limited")),
+    ],
+    ids=["confirm", "judge-unavailable", "rate-limited"],
+)
+async def test_a_finish_hands_off_a_call_the_pipeline_never_ruled_on(
+    redis,
+    test_user_id,
+    hand_off: AsyncMock,
+    status: str,
+    stored: FinalizeResponse | None,
+):
+    await _record(
+        redis,
+        test_user_id,
+        status=status,
+        hand_off=stored.model_dump(mode="json") if stored else None,
+        transcript_of_record="I run a bakery.",
+    )
+
+    response = await request(
+        "POST", f"/{CALL}/finish", json={"corrections": "Eight staff."}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "transcribed"
+    hand_off.assert_awaited_once()
+    record = hand_off.await_args.args[1]
+    assert (record.call_id, record.uid) == (CALL, test_user_id)
+    assert hand_off.await_args.kwargs == {
+        "confirmed": True,
+        "corrections": "Eight staff.",
+    }
+    # The finish gave the call back once it was done with it.
+    assert await redis.get(locks.postcall_claim_key(CALL)) is None
+    again = await request("POST", f"/{CALL}/finish")
+    assert again.json()["status"] == "transcribed"
+    hand_off.assert_awaited_once()
+
+
+@pytest.mark.parametrize("status", ["live", "ended", "transcribing"])
+async def test_a_call_whose_words_are_not_ready_cannot_be_finished(
+    redis, test_user_id, hand_off: AsyncMock, status: str
+):
+    await _record(redis, test_user_id, status=status)
+
+    response = await request("POST", f"/{CALL}/finish")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {"code": "call_not_ready"}
+    hand_off.assert_not_awaited()
+
+
+async def test_a_finish_already_running_holds_the_next_one_back(
+    redis, test_user_id, hand_off: AsyncMock
+):
+    await _record(redis, test_user_id, status="transcribed", transcript_of_record="Hi.")
+    await locks.claim_postcall(redis, CALL, "finish:another-request")
+
+    response = await request("POST", f"/{CALL}/finish")
+
+    assert response.status_code == 409
+    hand_off.assert_not_awaited()
+
+
+async def test_someone_else_cannot_finish_a_call(redis, hand_off: AsyncMock):
+    await _record(
+        redis, OTHER_USER, status="transcribed", transcript_of_record="I run a bakery."
+    )
+
+    response = await request("POST", f"/{CALL}/finish")
+
+    assert response.status_code == 404
+    hand_off.assert_not_awaited()
+
+
+async def test_a_finish_the_pipeline_turns_away_for_now_carries_its_wait(
+    redis, test_user_id, hand_off: AsyncMock
+):
+    hand_off.side_effect = fastapi.HTTPException(
+        status_code=429, detail="Slow down", headers={"Retry-After": "120"}
+    )
+    await _record(redis, test_user_id, status="transcribed", transcript_of_record="Hi.")
+
+    response = await request("POST", f"/{CALL}/finish")
+
+    assert response.status_code == 429
+    assert response.json()["detail"]["retry_after_seconds"] == 120
+    assert await redis.get(locks.postcall_claim_key(CALL)) is None
+
+
+async def test_ending_a_call_of_ones_own_asks_its_pod_to_end_it(redis, test_user_id):
+    await _record(redis, test_user_id, status="live")
+
+    response = await request("POST", f"/{CALL}/end")
+
+    assert response.status_code == 202
+    assert await locks.end_requested(redis, CALL)
+
+
+async def test_someone_else_cannot_end_a_call(redis):
+    await _record(redis, OTHER_USER, status="live")
+    await locks.take_user_lock(redis, OTHER_USER, CALL)
+
+    response = await request("POST", f"/{CALL}/end")
+
+    assert response.status_code == 404
+    assert not await locks.end_requested(redis, CALL)
+
+
+async def test_a_live_call_whose_record_was_lost_can_still_be_ended(
+    redis, test_user_id
+):
+    await locks.take_user_lock(redis, test_user_id, CALL)
+
+    response = await request("POST", f"/{CALL}/end")
+
+    assert response.status_code == 202
+    assert await locks.end_requested(redis, CALL)
+
+
+async def test_ending_a_call_that_is_not_there_is_not_found(redis):
+    assert (await request("POST", f"/{CALL}/end")).status_code == 404
+    assert not await locks.end_requested(redis, CALL)

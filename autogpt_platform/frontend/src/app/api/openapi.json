@@ -13007,7 +13007,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Start Onboarding Interview",
-        "description": "Open the person's onboarding interview, with Otto speaking first.\n\nThe first call starts Otto's greeting; every later one adopts the same\ninterview, so Back, a reload and a second tab land in one conversation.\n``turn_id`` is set only when this call started the greeting. A greeting\nalready being written is answered without one, like an interview under\nway: the client reads the session, which resumes the running turn. An\ninterview that is over is answered the same way, with its ``stage``, so\nthe client shows how it ended and the finish button.\n\n429 at its turn budget, 503 while the budget or the chat stream cannot be\nread. A 429 carries its wait in the body (``retry_after_seconds``) as\nwell as in ``Retry-After``: the browser's API client keeps a refusal's\nbody, not its headers.",
+        "description": "Open the person's onboarding interview, with Otto speaking first.\n\nThe first call starts Otto's greeting; every later one adopts the same\ninterview, so Back, a reload and a second tab land in one conversation.\n``turn_id`` is set only when this call started the greeting. A greeting\nalready being written is answered without one, like an interview under\nway: the client reads the session, which resumes the running turn. An\ninterview that is over is answered the same way, with its ``stage``, so\nthe client shows how it ended and the finish button.\n\nA person has one interview, typed or spoken: 409 ``call_in_progress``\nwhile a voice call of theirs is live, and 409\n``onboarding_interview_closed`` once a call's words became the\ninterview's take, each naming the call (``call_id``). 429 at its turn\nbudget, 503 while the budget, the chat stream or the person's calls\ncannot be read. A 429 carries its wait in the body\n(``retry_after_seconds``) as well as in ``Retry-After``: the browser's API\nclient keeps a refusal's body, not its headers.",
         "operationId": "start_onboarding_interview",
         "responses": {
           "200": {
@@ -13050,6 +13050,28 @@
       }
     },
     "/api/onboarding/brain-dump/interview/voice": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Latest Onboarding Voice Call",
+        "description": "The person's latest voice call as it stands, for a step that reloads:\nlive, wrapping up, waiting for their confirm, handed off or failed. 404\nwhen they have no call, or its record has expired.",
+        "operationId": "get_latest_onboarding_voice_call",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceCallStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Start Onboarding Voice Call",
@@ -13071,6 +13093,143 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/interview/voice/{call_id}": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Onboarding Voice Call Status",
+        "description": "A voice call of the person's as it stands, polled once it ends until\nits hand-off has answered. 404 for a call that is not theirs, or has\nexpired.",
+        "operationId": "get_onboarding_voice_call_status",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "call_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$",
+              "title": "Call Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceCallStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onboarding/brain-dump/interview/voice/{call_id}/end": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "End Onboarding Voice Call",
+        "description": "End a live voice call of the person's that they can no longer reach,\nsuch as one on another device. The relay running it ends it within a\nsecond or so, and the person can call again. 404 for a call that is not\ntheirs.",
+        "operationId": "end_onboarding_voice_call",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "call_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$",
+              "title": "Call Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onboarding/brain-dump/interview/voice/{call_id}/finish": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Finish Onboarding Voice Call",
+        "description": "The person's confirm of their voice call, and \"Meet your team\".\n\nIdempotent: a call already handed off, or whose words the pipeline ruled\non, is answered as it stands. A call waiting for the confirm, or whose\nhand-off the pipeline never ruled on, hands its words off now, with any\n``corrections`` after them. The client reads the answer as it reads the\ntyped interview's finish. 404 for a call that is not theirs; 409\n(``call_not_ready``) while the call's words are not ready. A 429 or 503\ncarries its wait in the body (``retry_after_seconds``).",
+        "operationId": "finish_onboarding_voice_call",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "call_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$",
+              "title": "Call Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/VoiceCallFinishRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FinalizeResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/onboarding/brain-dump/intro": {
@@ -25539,14 +25698,16 @@
         "enum": [
           "subscription-pricing-page-initial-state",
           "trial-checkout-no-charge-copy",
-          "onboarding-interview-ending-text"
+          "onboarding-interview-ending-text",
+          "onboarding-interview-ending-voice"
         ],
         "title": "Experiment",
         "description": "Experiments, each a multivariate PostHog flag read by the frontend or backend.",
         "x-enum-varnames": [
           "SUBSCRIPTION_PRICING",
           "TRIAL_CHECKOUT_NO_CHARGE_COPY",
-          "ONBOARDING_INTERVIEW_ENDING_TEXT"
+          "ONBOARDING_INTERVIEW_ENDING_TEXT",
+          "ONBOARDING_INTERVIEW_ENDING_VOICE"
         ]
       },
       "ExperimentAssignment": {
@@ -39738,6 +39899,20 @@
         "title": "VoiceCallCaps",
         "description": "A voice call's limits. The relay enforces them; the browser shows them."
       },
+      "VoiceCallFinishRequest": {
+        "properties": {
+          "corrections": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Corrections"
+          }
+        },
+        "type": "object",
+        "title": "VoiceCallFinishRequest",
+        "description": "The person's confirm of a voice call."
+      },
       "VoiceCallLeg": {
         "properties": {
           "kind": { "type": "string", "const": "websocket", "title": "Kind" }
@@ -39767,6 +39942,43 @@
         ],
         "title": "VoiceCallStartResponse",
         "description": "A voice call the person can now open on the relay."
+      },
+      "VoiceCallStatusResponse": {
+        "properties": {
+          "call_id": { "type": "string", "title": "Call Id" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "connecting",
+              "live",
+              "ended",
+              "transcribing",
+              "transcribed",
+              "handed_off",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "end_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "End Reason"
+          },
+          "leg": {
+            "type": "string",
+            "enum": ["livekit", "websocket"],
+            "title": "Leg"
+          },
+          "hand_off": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/FinalizeResponse" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["call_id", "status", "leg"],
+        "title": "VoiceCallStatusResponse",
+        "description": "A voice call as it stands."
       },
       "VoiceSample": {
         "properties": {

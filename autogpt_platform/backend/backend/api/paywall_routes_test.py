@@ -170,6 +170,14 @@ OPEN_WHILE_PAYWALLED = {
     # is paid for. The person's own call allowance and the platform's daily
     # voice budget bound it.
     "POST /api/onboarding/brain-dump/interview/voice",
+    # The person's own call after it starts, still before the plan step:
+    # reading its state, ending it from another device, and confirming or
+    # retrying its hand-off, which the person's personalization budget and
+    # one take per call bound.
+    "GET /api/onboarding/brain-dump/interview/voice",
+    "GET /api/onboarding/brain-dump/interview/voice/{call_id}",
+    "POST /api/onboarding/brain-dump/interview/voice/{call_id}/end",
+    "POST /api/onboarding/brain-dump/interview/voice/{call_id}/finish",
     # Reading the account's own data, or the catalog.
     "GET /api/blocks",
     "GET /api/briefings/latest",
