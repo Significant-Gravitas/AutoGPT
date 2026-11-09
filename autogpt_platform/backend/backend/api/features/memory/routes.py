@@ -61,6 +61,7 @@ _EXPERT_ID_PATH = Path(
 _FACT_UUID_PATH = Path(min_length=1, max_length=128, description="Fact edge uuid")
 _LIMIT_QUERY = Query(ge=1, le=500)
 
+
 async def _resolve_scope(user_id: str, expert_id: str | None) -> MemoryScope:
     """Resolve the caller-owned memory scope for the request.
 

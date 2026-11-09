@@ -22,14 +22,9 @@ import pytest
 import pytest_asyncio
 
 import backend.api.features.store.model as store_model
-from backend.api.features.experts import (
-    experts_db,
-    raise_attachments,
-    routine_jobs,
-    routines,
-    scheduling,
-    seed,
-)
+from backend.api.features.experts import experts_db, raise_attachments
+from backend.api.features.experts import reset as expert_reset
+from backend.api.features.experts import routine_jobs, routines, scheduling, seed
 from backend.api.features.experts.models import (
     EXPERT_DAY_ONE_MAX_ITEMS,
     ExpertBundledSkill,
@@ -41,7 +36,6 @@ from backend.api.features.experts.models import (
     VoiceSample,
     encode_voice_preferences,
 )
-from backend.api.features.experts import reset as expert_reset
 from backend.api.features.experts.roster import RosterError, load_roster
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
@@ -7646,17 +7640,12 @@ async def test_reset_archives_the_chats_and_the_next_kickoff_starts_fresh(
 
     await expert_reset.reset_expert(test_user.id, expert_id)
 
-    old = await prisma.models.ChatSession.prisma().find_unique(
-        where={"id": old_thread}
-    )
+    old = await prisma.models.ChatSession.prisma().find_unique(where={"id": old_thread})
     assert old is not None and old.archivedAt is not None
-    listed = await copilot_db.get_user_chat_sessions(
-        test_user.id, expert_id=expert_id
-    )
+    listed = await copilot_db.get_user_chat_sessions(test_user.id, expert_id=expert_id)
     assert listed == []
     assert (
-        await copilot_db.get_user_session_count(test_user.id, expert_id=expert_id)
-        == 0
+        await copilot_db.get_user_session_count(test_user.id, expert_id=expert_id) == 0
     )
     # The expert has no open thread, so it introduces itself again, in a new
     # thread rather than the archived one its kickoff id used to name.

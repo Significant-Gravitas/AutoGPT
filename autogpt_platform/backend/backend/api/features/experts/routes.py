@@ -7,11 +7,11 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.api.features.experts import avatar_routes
 from backend.api.features.experts import credentials as expert_credentials
-from backend.api.features.experts import experts_db, onboarding, scheduling
+from backend.api.features.experts import experts_db, onboarding
 from backend.api.features.experts import reset as expert_reset
+from backend.api.features.experts import scheduling
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
-from backend.api.features.experts.reset import ExpertResetResult
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
@@ -39,6 +39,7 @@ from backend.api.features.experts.models import (
     RaiseResult,
     validate_avatar_url,
 )
+from backend.api.features.experts.reset import ExpertResetResult
 from backend.blocks.desktop._api import DesktopStream
 from backend.copilot.computer import (
     ComputerInfo,
