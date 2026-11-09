@@ -32,13 +32,11 @@
         "asks a question"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
         "asks_question": false,
         "services_called": [
           "calendar"
-        ]
+        ],
+        "starts_work": true
       }
     },
     "human_example": {
@@ -82,13 +80,11 @@
         "turn 2: says it cannot answer until the task finishes"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
         "asks_question": false,
         "services_called": [
           "calendar"
-        ]
+        ],
+        "starts_work": true
       }
     },
     "human_example": {
@@ -131,13 +127,11 @@
         "turn 2: lectures about the task"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
         "asks_question": false,
         "services_called": [
           "calendar"
-        ]
+        ],
+        "starts_work": true
       }
     },
     "human_example": {
@@ -180,13 +174,11 @@
         "turn 2: starts a task for a simple calendar question"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
         "asks_question": false,
         "services_called": [
           "calendar"
-        ]
+        ],
+        "starts_work": true
       }
     },
     "human_example": {
@@ -228,13 +220,11 @@
         "adds pleasantries or preamble"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
         "asks_question": false,
         "services_called": [
           "calendar"
-        ]
+        ],
+        "starts_work": true
       }
     },
     "human_example": {
@@ -277,13 +267,11 @@
         "turn 2: asks which Vinod Kapoor"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
         "asks_question": false,
         "services_called": [
           "calendar"
-        ]
+        ],
+        "starts_work": true
       }
     },
     "human_example": {
@@ -326,13 +314,11 @@
         "turn 2: starts a task for the calendar question"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
         "asks_question": false,
         "services_called": [
           "calendar"
-        ]
+        ],
+        "starts_work": true
       }
     },
     "human_example": {
@@ -376,10 +362,8 @@
         "turn 2: asks a question"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -421,10 +405,8 @@
         "turn 2: starts a task"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -467,10 +449,8 @@
         "turn 2: asks a question"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -513,10 +493,8 @@
         "turn 2: restarts or duplicates the work"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {

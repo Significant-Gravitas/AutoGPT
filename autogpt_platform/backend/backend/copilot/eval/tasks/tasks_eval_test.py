@@ -421,3 +421,17 @@ def test_task_edits_and_filters_behave_like_the_real_tools():
 
     assert [t["title"] for t in json.loads(todo)["tasks"]] == ["New"]
     assert [t["owner"] for t in json.loads(owned)["tasks"]] == ["exp_1"]
+
+
+def test_starting_work_counts_a_new_task_a_delegation_or_a_resumed_task():
+    case = _case(expected={"checks": {"starts_work": True}})
+
+    def passed(*calls: ToolCall) -> bool:
+        run = Run(case_id="c1", turns=[TurnRecord(user="hi", tool_calls=list(calls))])
+        return all(c.passed for c in run_checks(case, run))
+
+    assert passed(ToolCall(name="start_task"))
+    assert passed(ToolCall(name="delegate_to_expert"))
+    assert passed(ToolCall(name="update_task", arguments={"status": "IN_PROGRESS"}))
+    assert not passed(ToolCall(name="update_task", arguments={"status": "DONE"}))
+    assert not passed(ToolCall(name="web_search"))

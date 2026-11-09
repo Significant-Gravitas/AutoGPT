@@ -33,10 +33,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -76,10 +74,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -118,10 +114,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -159,10 +153,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -201,10 +193,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -242,10 +232,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -285,10 +273,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -327,10 +313,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -368,10 +352,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -409,10 +391,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -451,10 +431,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -493,10 +471,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -535,10 +511,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -576,10 +550,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -619,10 +591,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -661,10 +631,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -703,10 +671,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -744,10 +710,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -786,10 +750,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -828,10 +790,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -870,10 +830,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -912,10 +870,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -954,10 +910,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -997,10 +951,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1040,10 +992,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1080,10 +1030,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1120,10 +1068,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1161,10 +1107,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1203,10 +1147,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1245,10 +1187,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1287,10 +1227,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1329,10 +1267,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1370,10 +1306,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1411,10 +1345,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1452,10 +1384,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1493,10 +1423,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1535,10 +1463,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1577,10 +1503,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1618,10 +1542,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1660,10 +1582,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1702,10 +1622,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1743,10 +1661,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1785,10 +1701,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1828,10 +1742,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {
@@ -1870,10 +1782,8 @@
         "asks a question the chat or the connected data already answers"
       ],
       "checks": {
-        "tools_called": [
-          "start_task"
-        ],
-        "asks_question": false
+        "asks_question": false,
+        "starts_work": true
       }
     },
     "human_example": {

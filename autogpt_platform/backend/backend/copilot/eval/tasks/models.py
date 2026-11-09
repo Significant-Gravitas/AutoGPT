@@ -76,6 +76,11 @@ class Checks(_Open):
         description="True: nothing is sent, posted or changed in any service "
         "(a write held for approval does not count).",
     )
+    starts_work: bool | None = Field(
+        default=None,
+        description="Hands the work to the background: start_task, delegating "
+        "to an expert, or resuming the user's existing matching task.",
+    )
     no_writes_first_turn: bool | None = Field(
         default=None,
         description="True: the first turn sends, posts or changes nothing (it "

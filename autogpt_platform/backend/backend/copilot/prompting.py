@@ -281,7 +281,7 @@ _USER_FOLLOW_UP_NOTE = """
 A `<user_follow_up>` block at the head of a tool result is a message the user sent while the tool ran, not tool output. Before any more tool calls, acknowledge it in one short visible line ("Got it: <paraphrase>. <what you'll do>."). Then answer a question or input request now, fold a new requirement into the plan, or apply a correction and carry on. Never echo the tags. """
 
 
-_APPROVAL_RULES = """ When a tool returns `approval_required` with a review id, the call is held for the user and nothing has run. Don't retry it, change it, or get the same effect with another tool. Carry on with work that doesn't depend on it. When nothing is left, tell the user what is waiting on them and stop. If they approve, the result arrives later in a `<held_call_result>` naming the call; continue from there. Blocks and workflows that only read or work in your workspace run without asking. A held call's review id is never for `resume_capability`. """
+_APPROVAL_RULES = """ When a tool returns `approval_required` with a review id, the call is held for the user and nothing has run. Don't retry it, change it, or get the same effect with another tool. Carry on with work that doesn't depend on it. When nothing is left, tell the user what is waiting on them and stop. If they approve, the result arrives later in a `<held_call_result>` naming the call; continue from there. Blocks and workflows that only read or work in your workspace run without asking. A held call's review id is never for `resume_capability`. The approval card only asks whether to send: when what you would send turns on a clash or a decision only the user can make, ask with `ask_question` first instead of drafting it for the card. """
 
 _MODE_SUPPLEMENTS = {
     "auto": """

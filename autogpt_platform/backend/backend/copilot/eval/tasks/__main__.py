@@ -27,7 +27,7 @@ from .judge import review, run_checks, score_case
 from .llm import Backend, ClaudeBackend, CursorBackend, OpenAIBackend
 from .models import Case, CaseResult, Rating, World
 from .native.runner import run_case_native
-from .runner import Models, run_case
+from .runner import Models, context_prefix, run_case
 
 HERE = Path(__file__).parent
 DATA = HERE / "data"
@@ -114,8 +114,10 @@ async def evaluate(args: argparse.Namespace) -> Path:
         async with gate:
             run = await play(case, worlds[case.world], models)
         checks = run_checks(case, run)
+        world = worlds[case.world]
+        knew = context_prefix(world, case.approval_mode or world.approval_mode)
         reviews = await asyncio.gather(
-            *(review(case, run, checks, b, m) for _, b, m in reviewers)
+            *(review(case, run, checks, b, m, knew) for _, b, m in reviewers)
         )
         scored = [score_case(case, run, checks, r) for r in reviews]
         result = scored[0].model_copy(
