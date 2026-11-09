@@ -273,6 +273,30 @@ def test_a_frame_nested_too_deeply_is_refused(depth: int) -> None:
         parse_message(_computer_call_frame(depth))
 
 
+@pytest.mark.parametrize("number", ["NaN", "Infinity", "-Infinity", "1e999", "-1e999"])
+def test_a_frame_with_a_number_json_cannot_hold_is_refused(number: str) -> None:
+    """Python's json reads NaN and Infinity, which JSON has no spelling
+    for, and reads 1e999 as infinity. A computer tool call carrying one
+    reached cua-driver while its audit record failed, since the canonical
+    form refuses them."""
+    frame = (
+        '{"type":"COMPUTER_TOOL_CALL","id":"req","ts":1.0,'
+        '"payload":{"tool":"click","arguments":{"steps":[{"x":' + number + "}]}}}"
+    )
+
+    with pytest.raises(ValueError, match="finite"):
+        parse_message(frame)
+
+
+def test_a_frame_with_ordinary_numbers_parses() -> None:
+    frame = (
+        '{"type":"COMPUTER_TOOL_CALL","id":"req","ts":1.5e9,'
+        '"payload":{"tool":"click","arguments":{"x":-12.5,"y":3,"z":1e300}}}'
+    )
+
+    assert parse_message(frame).payload.arguments == {"x": -12.5, "y": 3, "z": 1e300}
+
+
 def test_a_frame_nested_within_the_limit_parses() -> None:
     from autogpt_local_executor.protocol import MAX_FRAME_NESTING
 
