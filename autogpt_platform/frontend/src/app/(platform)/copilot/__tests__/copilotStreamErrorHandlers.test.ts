@@ -108,6 +108,37 @@ describe("handleStreamError", () => {
     );
   });
 
+  it("toasts an auth error for a 401 status in the message", () => {
+    handleStreamError({
+      error: new Error("Request failed: HTTP 401"),
+      onRateLimit: vi.fn(),
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Authentication error" }),
+    );
+  });
+
+  it("does not take 401 inside an id for an auth error", () => {
+    handleStreamError({
+      error: new Error(
+        JSON.stringify({
+          detail: {
+            code: "onboarding_interview_closed",
+            call_id: "a4019f3c5e6d7b8a9c0d1e2f3a4b5c6d",
+          },
+        }),
+      ),
+      onRateLimit: vi.fn(),
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+    expect(mockToast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Authentication error" }),
+    );
+  });
+
   it("uses curated copy for known backend codes", () => {
     handleStreamError({
       error: new Error("[code:idle_timeout] tool sleeping"),
