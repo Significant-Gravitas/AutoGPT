@@ -59,6 +59,9 @@ class FrontendFlag(str, Enum):
     # The onboarding wizard's typed interview with Otto, in place of the brain
     # dump step. The backend serves any interview it is asked to.
     ONBOARDING_INTERVIEW = "onboarding-interview"
+    # The interview offers a voice call with Otto. Needs ONBOARDING_INTERVIEW:
+    # the typed interview is where a call's endings point.
+    ONBOARDING_INTERVIEW_VOICE = Flag.ONBOARDING_INTERVIEW_VOICE.value
 
     @classmethod
     def __get_pydantic_json_schema__(

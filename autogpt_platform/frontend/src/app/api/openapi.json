@@ -13049,6 +13049,30 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump/interview/voice": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Start Onboarding Voice Call",
+        "description": "Start a voice call for the person's onboarding interview.\n\nAnswers with the relay's call socket and a start token good for this one\ncall within a minute: the browser opens the socket and sends the token as\nits first message. 404 while voice is off for the person; 409 once their\ninterview is over, or while a call of theirs is live (``call_id`` names\nit); 429 past their call allowance; 503 past the platform's voice budget\nor live-call ceiling, or while voice cannot be served. A 429 or 503\ncarries its wait in the body (``retry_after_seconds``) as well as in\n``Retry-After``.",
+        "operationId": "start_onboarding_voice_call",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceCallStartResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/brain-dump/intro": {
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
@@ -26941,7 +26965,8 @@
           "copilot-auto-mode",
           "copilot-stream-shadow",
           "copilot-stream-runtime",
-          "onboarding-interview"
+          "onboarding-interview",
+          "onboarding-interview-voice"
         ],
         "title": "FrontendFlag",
         "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
@@ -26961,7 +26986,8 @@
           "COPILOT_AUTO_MODE",
           "COPILOT_STREAM_SHADOW",
           "COPILOT_STREAM_RUNTIME",
-          "ONBOARDING_INTERVIEW"
+          "ONBOARDING_INTERVIEW",
+          "ONBOARDING_INTERVIEW_VOICE"
         ]
       },
       "FrontendFlagValues": {
@@ -39692,6 +39718,55 @@
         "type": "object",
         "required": ["public_key"],
         "title": "VapidPublicKeyResponse"
+      },
+      "VoiceCallCaps": {
+        "properties": {
+          "max_call_s": { "type": "number", "title": "Max Call S" },
+          "soft_wrap_s": { "type": "number", "title": "Soft Wrap S" },
+          "max_agent_turns": { "type": "integer", "title": "Max Agent Turns" },
+          "soft_wrap_turns": { "type": "integer", "title": "Soft Wrap Turns" },
+          "idle_s": { "type": "number", "title": "Idle S" }
+        },
+        "type": "object",
+        "required": [
+          "max_call_s",
+          "soft_wrap_s",
+          "max_agent_turns",
+          "soft_wrap_turns",
+          "idle_s"
+        ],
+        "title": "VoiceCallCaps",
+        "description": "A voice call's limits. The relay enforces them; the browser shows them."
+      },
+      "VoiceCallLeg": {
+        "properties": {
+          "kind": { "type": "string", "const": "websocket", "title": "Kind" }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "VoiceCallLeg",
+        "description": "How the call's audio travels. The control socket always carries the\ncall's events; on the ``websocket`` leg it carries the audio too."
+      },
+      "VoiceCallStartResponse": {
+        "properties": {
+          "call_id": { "type": "string", "title": "Call Id" },
+          "relay_url": { "type": "string", "title": "Relay Url" },
+          "token": { "type": "string", "title": "Token" },
+          "expires_in": { "type": "integer", "title": "Expires In" },
+          "leg": { "$ref": "#/components/schemas/VoiceCallLeg" },
+          "caps": { "$ref": "#/components/schemas/VoiceCallCaps" }
+        },
+        "type": "object",
+        "required": [
+          "call_id",
+          "relay_url",
+          "token",
+          "expires_in",
+          "leg",
+          "caps"
+        ],
+        "title": "VoiceCallStartResponse",
+        "description": "A voice call the person can now open on the relay."
       },
       "VoiceSample": {
         "properties": {

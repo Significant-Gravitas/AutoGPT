@@ -41,3 +41,26 @@ describe("experimental dream flag defaults fail closed", () => {
     expect(result.current).toBe(true);
   });
 });
+
+describe("the onboarding voice interview flag fails closed", () => {
+  const ENV_KEY = "NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_INTERVIEW_VOICE";
+
+  beforeEach(() => {
+    delete process.env[ENV_KEY];
+  });
+
+  it("stays off when the flag service has not answered, as the call start route does", () => {
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.ONBOARDING_INTERVIEW_VOICE),
+    );
+    expect(result.current).toBe(false);
+  });
+
+  it("can be turned on for a local build", () => {
+    process.env[ENV_KEY] = "true";
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.ONBOARDING_INTERVIEW_VOICE),
+    );
+    expect(result.current).toBe(true);
+  });
+});
