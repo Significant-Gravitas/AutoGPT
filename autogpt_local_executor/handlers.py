@@ -1860,13 +1860,28 @@ def _audit_arguments(value: Any, key: str | None = None, *, truncate: bool = Tru
     if isinstance(value, dict):
         return {k: _audit_arguments(v, k, truncate=truncate) for k, v in value.items()}
     if isinstance(value, list):
+        if key == "keys" and _types_a_character(value):
+            return [{"redacted_chars": 1} if _is_character(item) else item for item in value]
         return [_audit_arguments(item, key, truncate=truncate) for item in value]
     if isinstance(value, str):
-        if key in _AUDIT_REDACTED_ARGUMENTS:
+        # press_key takes any single character, so a secret can be typed a
+        # key at a time; named keys (enter, tab) stay readable.
+        if key in _AUDIT_REDACTED_ARGUMENTS or (key == "key" and _is_character(value)):
             return {"redacted_chars": len(value)}
         if truncate and len(value) > _AUDIT_STRING_LIMIT:
             return value[:_AUDIT_STRING_LIMIT] + f"… ({len(value)} chars)"
     return value
+
+
+def _is_character(value: Any) -> bool:
+    return isinstance(value, str) and len(value) == 1
+
+
+def _types_a_character(keys: list[Any]) -> bool:
+    """Whether a hotkey chord types a character: shift and a character, as
+    against a command chord (ctrl+c) whose keys stay readable."""
+    held = {key.lower() for key in keys if isinstance(key, str) and not _is_character(key)}
+    return held <= {"shift"} and any(_is_character(key) for key in keys)
 
 
 def _block_size(block: ComputerTextContent | ComputerImageContent) -> int:

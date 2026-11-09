@@ -343,6 +343,33 @@ def test_computer_tool_text_is_redacted_to_its_length() -> None:
     assert details["query"].startswith("q" * 200) and details["query"].endswith("(300 chars)")
 
 
+def test_keys_pressed_one_character_at_a_time_are_redacted() -> None:
+    """press_key takes any single character, so a secret typed a key at a
+    time went into the audit log whole, a run_steps batch's in one record.
+    A shift chord types a character too. Named keys and command chords
+    stay readable."""
+    from autogpt_local_executor.handlers import _audit_arguments
+
+    details = _audit_arguments(
+        {
+            "key": "p",
+            "steps": [
+                {"tool": "press_key", "args": {"key": "a", "pid": 3}},
+                {"press_key": {"key": "enter"}},
+                {"tool": "hotkey", "args": {"keys": ["shift", "s"]}},
+                {"tool": "hotkey", "args": {"keys": ["ctrl", "c"]}},
+            ],
+        }
+    )
+
+    assert details["key"] == {"redacted_chars": 1}
+    steps = details["steps"]
+    assert steps[0]["args"] == {"key": {"redacted_chars": 1}, "pid": 3}
+    assert steps[1] == {"press_key": {"key": "enter"}}
+    assert steps[2]["args"] == {"keys": ["shift", {"redacted_chars": 1}]}
+    assert steps[3]["args"] == {"keys": ["ctrl", "c"]}
+
+
 # ── verify-all across multiple rotated files ─────────────────────────────────
 
 
