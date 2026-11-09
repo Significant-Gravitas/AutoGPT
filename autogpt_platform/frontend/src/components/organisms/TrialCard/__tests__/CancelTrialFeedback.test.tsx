@@ -28,6 +28,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
+  usePathname: () => "/settings/billing",
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({
     push,
     replace: vi.fn(),

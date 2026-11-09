@@ -424,6 +424,7 @@ function landOnPainPointsStep() {
 }
 
 beforeEach(() => {
+  server.use(getPostV2ClaimFeedbackPromptMockHandler200({ id: null }));
   installBrowserRecordingAPIs();
   getUserMedia.mockReset();
   getUserMedia.mockResolvedValue({ getTracks: () => [] });
@@ -1294,11 +1295,15 @@ describe("onboarding brain dump — insufficient content", () => {
 
   it("moves on from 'Continue without it' before the skip is recorded", async () => {
     const skip = holdSkipRecord();
+    onTestFinished(skip.release);
 
     await recordAndSend();
     await screen.findByText("We didn't catch enough of that.");
     await userEvent.click(
       screen.getByRole("button", { name: "Continue without it" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Continue" }),
     );
 
     expect(await screen.findByTestId("step-plan")).toBeDefined();
@@ -1338,6 +1343,9 @@ describe("onboarding brain dump — insufficient content", () => {
     const recordingID = recordingStoreState.parts[0].recordingId;
     await userEvent.click(
       screen.getByRole("button", { name: "Continue without it" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Continue" }),
     );
     await screen.findByTestId("step-plan");
     await userEvent.click(screen.getByRole("button", { name: "Back" }));

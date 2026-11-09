@@ -327,6 +327,65 @@ describe("feedback cards in a chat", () => {
     );
   });
 
+  it("saves a rating, reason and note in order when the first write is slow", async () => {
+    const { patches } = setup();
+    let releaseScore = () => {};
+    const heldScore = new Promise<void>((resolve) => {
+      releaseScore = resolve;
+    });
+    const started = vi.fn();
+    const saved: Record<string, unknown>[] = [];
+    server.use(
+      getPostV2SubmitMessageFeedbackMockHandler200(async ({ request }) => {
+        const rating = (await request.clone().json()) as Record<
+          string,
+          unknown
+        >;
+        started(rating);
+        if (!rating.reason) await heldScore;
+        saved.push(rating);
+        return { id: "feedback-1", score_name: "work_check", score_value: 0 };
+      }),
+    );
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[USER, reply([workCheck()])]}
+      />,
+    );
+    try {
+      fireEvent.click(await screen.findByRole("button", { name: "Okay" }));
+      await waitFor(() => expect(started).toHaveBeenCalledOnce());
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Something else" }),
+      );
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "Needed another pass" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() =>
+        expect(patches).toContainEqual({ note: "Needed another pass" }),
+      );
+      expect(started).toHaveBeenCalledOnce();
+    } finally {
+      releaseScore();
+    }
+    await waitFor(() => expect(saved).toHaveLength(3));
+    expect(saved).toEqual([
+      {
+        message_id: "sess-1-seq-4",
+        score_name: "work_check",
+        score_value: 1,
+      },
+      expect.objectContaining({ score_value: 1, reason: "other" }),
+      expect.objectContaining({
+        score_value: 1,
+        reason: "other",
+        comment: "Needed another pass",
+      }),
+    ]);
+  });
+
   it("shows the mistake card as Otto even in an expert chat", async () => {
     const { ratings } = setup();
     render(

@@ -23,7 +23,9 @@ export function useFeedbackCard({ kind, promptId, target }: Args) {
   const queryClient = useQueryClient();
   const prompt = useFeedbackPrompt(kind);
   const scoreRef = useRef<0 | 1 | 2>(0);
-  const { mutate: submitRating } = usePostV2SubmitMessageFeedback();
+  const { mutate: submitRating } = usePostV2SubmitMessageFeedback({
+    mutation: { scope: { id: `feedback-card:${promptId}` } },
+  });
   const { data: state, isPending } = useGetV2GetFeedbackPrompt(promptId, {
     query: {
       staleTime: Infinity,
