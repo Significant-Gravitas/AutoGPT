@@ -207,7 +207,11 @@ async def test_a_cost_log_failure_never_reaches_the_call(redis):
     assert meter.usd > 0
 
 
-async def test_a_slow_redis_does_not_hold_up_a_usage_report():
+async def test_a_slow_redis_does_not_hold_up_a_usage_report(monkeypatch):
+    # The daily-spend write may wait on Redis far longer than a report could.
+    monkeypatch.setattr(metering, "REDIS_TIMEOUT_S", 60.0)
+    answered = asyncio.Event()
+
     class SlowPipeline:
         def incrbyfloat(self, *args):
             pass
@@ -216,7 +220,7 @@ async def test_a_slow_redis_does_not_hold_up_a_usage_report():
             pass
 
         async def execute(self):
-            await asyncio.sleep(5)
+            await answered.wait()
 
     class SlowRedis:
         def pipeline(self, transaction: bool = True):
@@ -231,8 +235,12 @@ async def test_a_slow_redis_does_not_hold_up_a_usage_report():
         sink=AsyncMock(),
     )
     await asyncio.wait_for(
-        meter.classifier_usage(tokens_in=100, tokens_out=10), timeout=0.05
+        meter.classifier_usage(tokens_in=100, tokens_out=10), timeout=5
     )
+    # The report is in while its daily-spend write still waits on Redis.
+    assert meter.usd > 0
+    assert any(not task.done() for task in meter._pending)
+    answered.set()
     await meter.flush()
 
 
@@ -270,3 +278,23 @@ async def test_the_price_table_is_checked_again_while_the_relay_runs(caplog):
             await until(lambda: len(caplog.records) >= 3)
         finally:
             watch.cancel()
+
+
+def test_thinking_is_priced_once_as_text_out():
+    # A turn as Gemini Live reports it: the response is the audio Otto speaks,
+    # thinking is counted apart from it, and the total is prompt plus response.
+    usage = Usage(
+        prompt_tokens=1084,
+        response_tokens=224,
+        thoughts_tokens=63,
+        prompt_by_modality={"text": 774, "audio": 205},
+        response_by_modality={"audio": 224},
+    )
+    rows = {row.meter: row.tokens for row in metering.priced_rows(LIVE, usage)}
+    assert rows == {"audio_in": 310, "text_in": 774, "audio_out": 224, "text_out": 63}
+
+
+def test_a_report_without_a_response_breakdown_prices_thinking_once():
+    usage = Usage(prompt_tokens=500, response_tokens=300, thoughts_tokens=50)
+    rows = {row.meter: row.tokens for row in metering.priced_rows(LIVE, usage)}
+    assert rows == {"audio_in": 500, "audio_out": 300, "text_out": 50}

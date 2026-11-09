@@ -547,3 +547,38 @@ async def test_a_start_whose_redis_never_answers_is_refused_and_frees_its_slot(
         assert await refusal(ws) == ({"type": "error", "error": "unavailable"}, 1013)
         await until(lambda: running.relay.held_slots == 0)
     assert await locks.live_call_of(redis, USER) is None
+
+
+class LockChangesHands(_Passthrough):
+    """The user lock is held by another call when taken, and gone when read."""
+
+    def __init__(self, redis) -> None:
+        super().__init__(redis)
+        self.churning = True
+
+    async def set(self, name, *args, **kwargs):
+        if self.churning and name.startswith("voice:live:"):
+            return None
+        return await self._redis.set(name, *args, **kwargs)
+
+    async def get(self, name):
+        if self.churning and name.startswith("voice:live:"):
+            return None
+        return await self._redis.get(name)
+
+
+async def test_a_lock_that_keeps_changing_hands_lets_the_same_token_retry(redis):
+    churn = LockChangesHands(redis)
+    call_id = tokens.new_call_id()
+    first = start(call_id=call_id)
+    async with running_relay(churn, FakeVendor([Reply(text="Hi")])) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(first))
+        assert await refusal(ws) == ({"type": "error", "error": "unavailable"}, 1013)
+        assert not await redis.exists(tokens.spent_key(call_id))
+        churn.churning = False
+        again = await open_socket(running.url)
+        await again.send(json.dumps(first))
+        await read_until(again, "ready")
+        await again.send(json.dumps({"type": "hangup"}))
+        await read_until(again, "ended")
