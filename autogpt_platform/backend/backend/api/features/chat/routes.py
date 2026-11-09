@@ -166,6 +166,7 @@ from backend.copilot.tools.models import (
     ExecutionStartedResponse,
     ExpertOnboardingResponse,
     ExpertSoulUpdatedResponse,
+    FeedbackPromptToolResponse,
     InputValidationErrorResponse,
     MCPToolOutputResponse,
     MCPToolsDiscoveredResponse,
@@ -2797,6 +2798,7 @@ ToolResponseUnion = (
     | TodoWriteResponse
     | ExpertSoulUpdatedResponse
     | ExpertOnboardingResponse
+    | FeedbackPromptToolResponse
 )
 
 

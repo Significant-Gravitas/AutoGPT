@@ -146,6 +146,7 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
+from backend.data.feedback_prompts import claim_feedback_prompt, count_feedback_prompts
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -586,6 +587,10 @@ class DatabaseManager(AppService):
 
     # ============ Activity Events ============ #
     create_activity_event = _(create_activity_event)
+
+    # ============ Feedback Prompts ============ #
+    claim_feedback_prompt = _(claim_feedback_prompt)
+    count_feedback_prompts = _(count_feedback_prompts)
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
@@ -1193,6 +1198,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Activity Events ============ #
     create_activity_event = d.create_activity_event
+
+    # ============ Feedback Prompts ============ #
+    claim_feedback_prompt = d.claim_feedback_prompt
+    count_feedback_prompts = d.count_feedback_prompts
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions
