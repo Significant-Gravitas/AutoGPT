@@ -213,7 +213,9 @@ Known gaps:
   terminal the agent types into, nobody sees them: each is an approval
   argument. On Linux the driver also runs `name` as a command line before
   it looks for an app of that name, so the shim refuses a `name` whose first
-  word is a program, and on every OS a `name`, `bundle_id` or `aumid` with a
+  word is a program, a program's own name included (`reboot` would run it;
+  an app goes by the name `list_apps` shows, such as `Firefox`), and on
+  every OS a `name`, `bundle_id` or `aumid` with a
   path, a URL scheme or a leading `-`. A plain launch, an app by its name or
   id, asks nothing, and a launched app can do whatever it does.
 - `set_value` writes a field's value directly, without visible keystrokes.
