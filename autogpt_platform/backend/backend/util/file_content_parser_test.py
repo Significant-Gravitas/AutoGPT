@@ -705,6 +705,27 @@ class TestFallbackDelimiter:
         result = parse_file_content(content, "tsv")
         assert result == [["a", "b,c"], ["1", "2"], ["3", "4"]]
 
+    def test_punctuation_only_in_a_single_column_header_stays_text(self):
+        """A delimiter that splits only the header, not the rows, isn't one."""
+        content = "label;note\nX\nY"
+        assert parse_file_content(content, "csv") == content
+
+    def test_header_only_file_with_fallback_delimiter(self):
+        assert parse_file_content("Name;Score", "csv") == [["Name", "Score"]]
+
+    def test_one_ragged_row_in_ten_still_parses(self):
+        content = "a;b\n" + "1;2\n" * 9 + "3;4;5"
+        result = parse_file_content(content, "csv")
+        assert result == [["a", "b"]] + [["1", "2"]] * 9 + [["3", "4", "5"]]
+
+    def test_row_cut_off_by_the_sample_is_not_counted(self):
+        # Three 3,000-character rows: the 8 KB sample ends inside the third,
+        # before its ";". Counting that stub would reject ";" (2 rows in 3).
+        row = "x" * 2900 + ";" + "y" * 99
+        content = "\n".join([row] * 3)
+        result = parse_file_content(content, "csv")
+        assert result == [["x" * 2900, "y" * 99]] * 3
+
     @pytest.mark.parametrize("delimiter_in_sample", ["", ";"])
     def test_quote_heavy_single_column_parses_quickly(self, delimiter_in_sample):
         """csv.Sniffer took ten seconds on this 503-character shape before
