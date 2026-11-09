@@ -519,6 +519,34 @@ def test_a_failed_autostart_write_leaves_the_old_file(
     assert sorted(p.name for p in tmp_path.iterdir()) == ["autogpt-shim.service"]
 
 
+def test_two_writes_to_one_target_that_overlap_both_finish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The test below only finds the old fixed temporary name in place; this
+    one runs a second write while the first waits to rename, so a shared
+    name of any spelling would make one overwrite or remove the other's
+    file."""
+    import os
+
+    target = tmp_path / "autogpt-shim.service"
+    real_replace = os.replace
+    renamed: list[str] = []
+
+    def replace(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
+        renamed.append(Path(src).name)
+        if len(renamed) == 1:
+            install_mod._write_atomic(target, "second")  # while the first waits
+        real_replace(src, dst)
+
+    monkeypatch.setattr(install_mod.os, "replace", replace)
+    install_mod._write_atomic(target, "first")
+    monkeypatch.undo()
+
+    assert len(set(renamed)) == 2
+    assert target.read_text() == "first"
+    assert sorted(p.name for p in tmp_path.iterdir()) == [target.name]
+
+
 def test_a_write_leaves_another_installs_temporary_file_alone(tmp_path: Path) -> None:
     """Two installs at once shared one temporary name, so one could write into
     the other's file, or rename it away before the other had finished."""
