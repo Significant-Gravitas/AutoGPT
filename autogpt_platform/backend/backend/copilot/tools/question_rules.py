@@ -38,6 +38,14 @@ _PERMISSION_CHATTER = re.compile(
     r"may i proceed|should we proceed|ready for me to)\b",
     re.IGNORECASE,
 )
+# An open question hands the thinking back to the user; a blocked Otto asks
+# the one fact it needs, with the real options.
+_OPEN_ENDED = re.compile(
+    r"\b(what (would|do) you (like|want) (me )?to do|"
+    r"how (would|do) you (like|want) (me )?to (handle|proceed|go|play)|"
+    r"what should i do|how should i (handle|proceed))\b",
+    re.IGNORECASE,
+)
 
 
 LOOK_FIRST = (
@@ -57,12 +65,7 @@ def refusal(
     """Why these questions may not be asked, or None when they may."""
     problems = [p for q in questions if (p := _problem(q, mode))]
     if problems:
-        return (
-            "Not asked. "
-            + " ".join(problems)
-            + " Decide these yourself with your default and note each as an "
-            "assumption; ask again only about what truly blocks you."
-        )
+        return "Not asked. " + " ".join(problems)
     budget = QUESTION_BUDGET[mode]
     if asked_in_a_row >= budget:
         return (
@@ -78,14 +81,27 @@ def refusal(
 def _problem(question: ClarifyingQuestion, mode: AutopilotMode) -> str | None:
     label = f"'{question.question}':"
     if question.reason is None:
-        return f"{label} give the reason it blocks you and a default_guess."
+        return f"{label} give the reason it blocks you and a default_guess, then ask again."
     if question.reason == "preference" and mode != "ask_first":
-        return f"{label} a preference is not asked in {mode} mode."
+        return (
+            f"{label} a preference is not asked in {mode} mode: decide it with "
+            "your default and note it as an assumption."
+        )
+    if _OPEN_ENDED.search(question.question):
+        return (
+            f"{label} too open. Ask the one fact that blocks you (which report? "
+            "has she signed off? which money pays?) with the real options, "
+            "and put your plan in default_guess."
+        )
     if (
         _PERMISSION_CHATTER.search(question.question)
         and question.reason != "irreversible_choice"
     ):
-        return f"{label} do not ask permission to do the work you were asked for."
+        return (
+            f"{label} do not ask permission to do the work you were asked for. "
+            "If a fact blocks you (has someone signed off? which money pays? "
+            "which one?), ask that fact instead; if nothing blocks you, do the work."
+        )
     return None
 
 

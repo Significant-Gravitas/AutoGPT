@@ -230,10 +230,11 @@ class Simulator:
             items = [item for item in items if _on_days(item, days)]
             return [_clip(item) for item in items[:_MAX_ITEMS]]
         if words:
-            scored = [(i, _hits(item, words)) for i, item in enumerate(items)]
-            items = [
-                items[i] for i, hits in sorted(scored, key=lambda s: -s[1]) if hits
-            ]
+            # Best match first and, among equal matches, newest first, as a
+            # mail search lists them.
+            scored = [(_hits(item, words), _when(item), item) for item in items]
+            scored.sort(key=lambda s: (s[0], s[1]), reverse=True)
+            items = [item for hits, _, item in scored if hits]
         return [_clip(item) for item in items[:_MAX_ITEMS]]
 
     def _items(self, provider: str) -> list[dict[str, Any]]:
@@ -310,11 +311,29 @@ def _is_records(value: Any) -> bool:
     return isinstance(value, list) and bool(value) and isinstance(value[0], dict)
 
 
+# Search operators ("from:gareth") name a field, not a word to find; the
+# value after them still is one.
+_OPERATOR = re.compile(
+    r"\b(?:from|to|cc|bcc|subject|label|in|has|is|after|before|newer_than|"
+    r"older_than|filename):",
+    re.IGNORECASE,
+)
+_NOT_WORDS = frozenset({"and", "not"})
+
+
 def _words(value: Any) -> list[str]:
     """The search words in a query or a call's arguments (their values only:
-    the argument names are not search terms)."""
-    text = " ".join(_strings(value))
-    return [w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2][:20]
+    the argument names and search operators are not search terms)."""
+    text = _OPERATOR.sub(" ", " ".join(_strings(value)))
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    return [w for w in words if len(w) > 2 and w not in _NOT_WORDS][:20]
+
+
+def _when(item: Any) -> str:
+    """The item's timestamp as sortable text, or "" when it has none."""
+    if not isinstance(item, dict):
+        return ""
+    return str(item.get("date") or item.get("ts") or item.get("start") or "")
 
 
 def _strings(value: Any) -> list[str]:
@@ -328,7 +347,7 @@ def _strings(value: Any) -> list[str]:
 def _hits(item: Any, words: list[str]) -> int:
     """How many of the words the item holds as whole words; one holding all
     of them ranks above every partial match, as a mail search's AND does."""
-    found = set(re.findall(r"[a-z0-9]+", json.dumps(item, default=str).lower()))
+    found = set(re.findall(r"[a-z0-9]+", " ".join(_strings(item)).lower()))
     hits = sum(1 for w in words if w in found)
     return hits + len(words) if words and hits == len(words) else hits
 

@@ -470,3 +470,19 @@ def test_a_search_matches_whole_words_and_ranks_full_matches_first():
     )
     subjects = [item["subject"] for item in json.loads(result)["items"]]
     assert subjects == ["Black Friday plan", "Friday standup"]
+
+
+def test_a_mail_search_reads_operators_and_lists_newest_first():
+    messages = [
+        {"from": "Gareth <g@packright.co.uk>", "date": "2026-11-03", "body": "old"},
+        {"from": "Gareth <g@packright.co.uk>", "date": "2026-11-09", "body": "new"},
+        {"from": "Ann <a@x.com>", "date": "2026-11-09", "body": "from the field"},
+    ]
+    world = World.model_validate(
+        WORLD.model_dump() | {"data": {"gmail": {"messages": messages}}}
+    )
+    _, result = Simulator(world).call(
+        "run_capability",
+        {"id": "service:gmail/search", "input": {"query": "from:gareth"}},
+    )
+    assert [item["body"] for item in json.loads(result)["items"]] == ["new", "old"]

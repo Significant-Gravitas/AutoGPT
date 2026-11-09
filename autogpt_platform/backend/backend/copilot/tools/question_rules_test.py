@@ -103,3 +103,14 @@ def test_a_question_before_any_look_is_sent_back_once():
     question = _q("Which bill?")
     assert refusal([question], "auto", 0, looked=False) == LOOK_FIRST
     assert refusal([question], "auto", 0, looked=True) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "The draft isn't ready. What would you like me to do?",
+        "How would you like me to handle it?",
+    ],
+)
+def test_an_open_question_is_sent_back_for_the_blocking_fact(text):
+    assert "too open" in (refusal([_q(text, "conflict")], "auto", 0) or "")
