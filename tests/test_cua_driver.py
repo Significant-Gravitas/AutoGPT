@@ -234,6 +234,68 @@ async def test_a_driver_that_exits_fails_the_waiting_request(fake_log: Path) -> 
         await client.close()
 
 
+class _StalledInput:
+    """A pipe to a driver that has stopped reading its input: writes are
+    taken, and a drain past the first `drains` never ends."""
+
+    def __init__(self, drains: int = 0) -> None:
+        self.written: list[bytes] = []
+        self._drains = drains
+
+    def write(self, data: bytes) -> None:
+        self.written.append(data)
+
+    async def drain(self) -> None:
+        if self._drains > 0:
+            self._drains -= 1
+            return
+        await asyncio.Event().wait()
+
+    def is_closing(self) -> bool:
+        return False
+
+
+def _client_writing_to(stdin: _StalledInput) -> StdioMcpClient:
+    from types import SimpleNamespace
+
+    client = StdioMcpClient(["cua-driver", "mcp"])
+    client._process = SimpleNamespace(stdin=stdin, returncode=None, pid=1)  # type: ignore[assignment]
+    return client
+
+
+async def test_a_request_the_driver_does_not_read_ends_at_its_deadline() -> None:
+    """The deadline started once the request was written, so a driver that
+    had stopped reading its input held a large call in drain() for good,
+    and with it the computer's turn: the bridge stops the driver only when
+    the call returns."""
+    stdin = _StalledInput()
+    client = _client_writing_to(stdin)
+    task = asyncio.ensure_future(client.call_tool("type_text", {"text": "x" * 100}, timeout=0.2))
+    try:
+        done, _ = await asyncio.wait({task}, timeout=20)
+        assert task in done
+        with pytest.raises(TimeoutError):
+            task.result()
+    finally:
+        task.cancel()
+
+
+async def test_a_cancel_notice_the_driver_does_not_read_does_not_hold_the_call() -> None:
+    """The request went out, no answer came, and the cancel notice sent at
+    the deadline then waited in drain() for good."""
+    stdin = _StalledInput(drains=1)
+    client = _client_writing_to(stdin)
+    task = asyncio.ensure_future(client.call_tool("click", {"pid": 5}, timeout=0.2))
+    try:
+        done, _ = await asyncio.wait({task}, timeout=20)
+        assert task in done
+        with pytest.raises(TimeoutError):
+            task.result()
+        assert b"notifications/cancelled" in stdin.written[-1]
+    finally:
+        task.cancel()
+
+
 async def test_the_client_answers_the_servers_ping(fake_log: Path) -> None:
     client = _fake_client([str(FAKE), "mcp"])
     await client.start(timeout=10)
