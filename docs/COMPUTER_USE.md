@@ -103,11 +103,10 @@ Three of cua-driver's tool arguments reach this computer's disk themselves:
 saving a screenshot to a file, putting a file or image file on the
 clipboard, and handing files to a web page's upload field. Otto asks you
 first, every time, on an approval card in the chat that shows the path; the
-shim runs the call only once you approve it (an Unsupervised chat doesn't
-ask). Without an approval the shim answers `APPROVAL_REQUIRED` and nothing
-happens.
+shim runs the call only once you approve it. Without an approval the shim
+answers `APPROVAL_REQUIRED` and nothing happens.
 
-A script (`run_script`) asks too, every time, on a card that shows it: the
+A script (`run_script`) asks too, on a card that shows it: the
 shim can't check the calls a script makes inside cua-driver, and one of
 them can save a screenshot to a file.
 
@@ -116,6 +115,10 @@ command line or a program's path, extra command-line arguments, links or
 files to open, or an inspector port. cua-driver starts those out of sight,
 with no window of their own, and opens a link in your own browser. Opening
 an app by its name or id asks nothing.
+
+In an Unsupervised chat, none of these ask: the platform approves the call
+itself and tells the shim so, and the shim, which can't tell that from your
+approval, runs it.
 
 These approvals cover those arguments, not the apps. An app Otto drives
 reads and writes files with your access, outside the shared folders too: a

@@ -887,7 +887,9 @@ already made stays made. The next call starts the driver afresh, without the
 element tokens and sessions of the old one.
 
 `approved_arguments` (at most 8, default empty) names the tool's approval
-arguments the person approved for this call. An argument in a tool's
+arguments the platform approved for this call: usually the person, on an
+approval card, but a chat that runs Unsupervised approves without asking.
+The shim can't tell which and trusts the field. An argument in a tool's
 `approval_arguments` can reach the disk (`screenshot_out_file`, clipboard
 `file_path` / `image_path`, `browser_set_input_files.files`, and
 `run_script.script`, whose calls inside the driver can save a screenshot to

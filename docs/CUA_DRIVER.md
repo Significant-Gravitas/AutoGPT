@@ -150,8 +150,10 @@ sixteen tools; all of them are in the catalog, which
   program out of sight (see Residual risk); `name`, `bundle_id` and `aumid`
   must name an app. The tool list names them in each tool's `approval_arguments`. The platform
   asks the person on an approval card that shows the path, and only then
-  sends the call with the argument in `approved_arguments`; without it the
-  shim answers `APPROVAL_REQUIRED` and nothing reaches the driver. A
+  sends the call with the argument in `approved_arguments`; a chat that runs
+  Unsupervised sends it without asking, and the shim, which can't tell the
+  two apart, trusts the field. Without it the shim answers
+  `APPROVAL_REQUIRED` and nothing reaches the driver. A
   `run_steps` step may not use one at all, and neither may the `observe`
   that ends a batch, which the driver runs as a `get_window_state` call.
 - `prompt: true` on `check_permissions` is refused: permission prompts are
@@ -189,8 +191,8 @@ that can type can open a terminal. The shim doesn't claim otherwise: the
 capability is off until the person turns it on, the platform must grant it
 to each session, the calls it takes are audited (best effort, see Audit),
 and the agent cursor shows where the agent works. The approval arguments keep disk access out of side channels the
-person can't see: each one waits for the person to approve it. They are not a
-sandbox around the GUI.
+person can't see: each one waits for the person to approve it, unless the
+chat runs Unsupervised. They are not a sandbox around the GUI.
 
 Known gaps:
 
