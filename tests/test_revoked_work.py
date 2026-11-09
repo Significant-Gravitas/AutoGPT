@@ -198,3 +198,68 @@ async def test_a_change_that_fails_after_a_cancel_lets_the_held_cancel_go() -> N
     release.set()
 
     assert await asyncio.wait_for(task, timeout=5) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("op", ["list", "read"])
+async def test_a_cancelled_read_keeps_its_task_until_its_thread_ends(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, op: str
+) -> None:
+    """A cancelled FILE_LIST or FILE_READ ended its task at once while its
+    thread, blocked on a network filesystem say, went on, so its request let
+    go of its machine slot: repeated disconnects piled up reads past the
+    limit, holding the worker threads every chat's requests share."""
+    from autogpt_local_executor import platform_info
+    from autogpt_local_executor.protocol import (
+        FileListMessage,
+        FileListPayload,
+        FileReadMessage,
+        FileReadPayload,
+    )
+
+    (tmp_path / "notes.txt").write_text("hello")
+    handler = FileHandler(
+        ShimConfig(allowed_root=tmp_path, audit_log_path=tmp_path / "audit.log"),
+        audit=_RecordingAudit(),  # type: ignore[arg-type]
+    )
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocking(real: Any) -> Any:
+        def blocked(*args: Any, **kwargs: Any) -> Any:
+            entered.set()
+            release.wait(30)
+            return real(*args, **kwargs)
+
+        return blocked
+
+    if op == "list":
+        monkeypatch.setattr(
+            platform_info,
+            "is_case_insensitive_fs",
+            blocking(platform_info.is_case_insensitive_fs),
+        )
+        work = handler.handle_list(
+            FileListMessage(id=new_id(), ts=now_ts(), payload=FileListPayload(path=str(tmp_path)))
+        )
+    else:
+        monkeypatch.setattr(
+            handlers_module, "open_jail_file", blocking(handlers_module.open_jail_file)
+        )
+        work = handler.handle_read(
+            FileReadMessage(
+                id=new_id(), ts=now_ts(), payload=FileReadPayload(path=str(tmp_path / "notes.txt"))
+            )
+        )
+    task = asyncio.ensure_future(work)
+    try:
+        assert await asyncio.to_thread(entered.wait, 30)
+        task.cancel()
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert not task.done()
+    finally:
+        release.set()
+    await asyncio.wait({task}, timeout=30)
+
+    assert task.cancelled()

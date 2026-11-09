@@ -377,6 +377,17 @@ async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: A
                 task.uncancel()
 
 
+async def _read_in_a_thread(func: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:
+    """Run a read (FILE_READ, FILE_STAT, FILE_LIST) in a worker thread, and
+    keep its task until the thread is done even if the task is cancelled
+    meanwhile, then let the cancel go on. The thread can't be stopped, and a
+    request holds its machine slot until its task ends: one let go as the
+    cancel landed, with its read still blocked (on a network filesystem,
+    say), let repeated disconnects pile up reads past the limit, holding the
+    worker threads every chat's requests share."""
+    return await _finish_then_cancel(asyncio.to_thread(func, *args, **kwargs))
+
+
 async def _finish_then_cancel(work: Awaitable[_T]) -> _T:
     """Await `work` to the end even if this task is cancelled meanwhile, then
     let the cancellation go on.
@@ -881,7 +892,7 @@ class FileHandler:
                 return file.read(requested_size), size
 
         try:
-            chunk, size = await asyncio.to_thread(read_chunk)
+            chunk, size = await _read_in_a_thread(read_chunk)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_READ", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -1039,9 +1050,9 @@ class FileHandler:
 
         try:
             if payload.follow_symlinks:
-                st = await asyncio.to_thread(os.stat, str(path))
+                st = await _read_in_a_thread(os.stat, str(path))
             else:
-                st = await asyncio.to_thread(os.lstat, str(path))
+                st = await _read_in_a_thread(os.lstat, str(path))
         except FileNotFoundError:
             await self._emit("FILE_STAT", msg.id, details, _ok_result(_elapsed_ms(start)))
             return FileStatResponseMessage(
@@ -1069,7 +1080,7 @@ class FileHandler:
             # checked (a relative one is the root's, not the working
             # directory's).
             try:
-                lst = await asyncio.to_thread(
+                lst = await _read_in_a_thread(
                     os.lstat, from_root(payload.path, self.config.allowed_root)
                 )
                 is_symlink = stat.S_ISLNK(lst.st_mode)
@@ -1258,7 +1269,7 @@ class FileHandler:
             return entries, truncated or unread
 
         try:
-            entries, truncated = await asyncio.to_thread(_walk)
+            entries, truncated = await _read_in_a_thread(_walk)
         except OSError as exc:
             # The folder can be entered but not read (no read permission, a
             # macOS privacy prompt nobody answered), or went away: listing it
