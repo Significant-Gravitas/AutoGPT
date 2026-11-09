@@ -1,4 +1,8 @@
-import { getGetBrainDumpPlanMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import {
+  getGetBrainDumpPlanMockHandler200,
+  getGetBrainDumpSuggestedTasksMockHandler200,
+} from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import { getPostV2ClaimFeedbackPromptMockHandler200 } from "@/app/api/__generated__/endpoints/feedback-prompts/feedback-prompts.msw";
 import {
   getGetTrialsGetTrialStatusMockHandler200,
   getPostTrialsCancelTrialMockHandler200,
@@ -17,6 +21,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import {
+  findCancelConfirmation,
   setTrialUser,
   trialOffer,
   trialResponse,
@@ -454,7 +459,11 @@ test("preserves active-trial status and confirmed cancellation", async () => {
   const cancel = vi.fn(() =>
     trialResponse({ active: false, status: "canceled" }),
   );
-  server.use(getPostTrialsCancelTrialMockHandler200(cancel));
+  server.use(
+    getPostTrialsCancelTrialMockHandler200(cancel),
+    getPostV2ClaimFeedbackPromptMockHandler200({ id: null }),
+    getGetBrainDumpSuggestedTasksMockHandler200({ tasks: [], stored: false }),
+  );
   render(<PlanTrialStep hasPaywall />);
   fireEvent.click(await screen.findByRole("button", { name: "Cancel trial" }));
   expect(
@@ -462,9 +471,9 @@ test("preserves active-trial status and confirmed cancellation", async () => {
   ).toBeNull();
   expect(cancel).not.toHaveBeenCalled();
   fireEvent.click(
-    within(
-      await screen.findByRole("dialog", { name: "Cancel your trial?" }),
-    ).getByRole("button", { name: "Cancel trial" }),
+    within(await findCancelConfirmation()).getByRole("button", {
+      name: "Cancel trial",
+    }),
   );
   await screen.findByText(/Cancellation confirmed/);
   expect(cancel).toHaveBeenCalledOnce();
