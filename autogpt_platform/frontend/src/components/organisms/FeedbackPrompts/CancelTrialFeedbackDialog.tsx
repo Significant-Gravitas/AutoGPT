@@ -4,15 +4,12 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Textarea } from "@/components/atoms/Textarea/Textarea";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { useState } from "react";
+import type { ReactNode } from "react";
 import { NoInitialFocus } from "./components/NoInitialFocus";
 import { OttoOfferCard } from "./components/OttoOfferCard";
 import { ReasonTiles } from "./components/ReasonTiles";
-import { OTHER_LABEL, TRIAL_CANCEL_REASONS } from "./helpers";
-
-type Step = "reason" | "offer" | "confirm";
-
-const OFFER_REASON = "I haven't seen results yet";
+import { TRIAL_CANCEL_REASONS } from "./helpers";
+import { type Step, useCancelTrialFeedback } from "./useCancelTrialFeedback";
 
 const TITLES: Record<Step, string> = {
   reason: "Before you go, what's the main reason?",
@@ -21,34 +18,56 @@ const TITLES: Record<Step, string> = {
 };
 
 interface Props {
+  trigger?: ReactNode;
+  endDate?: string;
+  isCanceling?: boolean;
   starters?: string[];
   initialStep?: Step;
   initialReason?: string | null;
+  onOpen?: () => void;
+  onReason?: (value: string) => void;
+  onNote?: (note: string) => void;
+  onConfirm?: () => void;
+  onPickStarter?: (starter: string) => void;
+  onTryOtto?: () => void;
 }
 
 export function CancelTrialFeedbackDialog({
+  trigger,
+  endDate = "November 4",
+  isCanceling = false,
   starters = [],
   initialStep = "reason",
   initialReason = null,
+  onOpen,
+  onReason,
+  onNote,
+  onConfirm,
+  onPickStarter,
+  onTryOtto,
 }: Props) {
-  const [isOpen, setIsOpen] = useState(true);
-  const [step, setStep] = useState<Step>(initialStep);
-  const [reason, setReason] = useState<string | null>(initialReason);
-  const [note, setNote] = useState("");
-
-  function close() {
-    setIsOpen(false);
-  }
+  const flow = useCancelTrialFeedback({
+    startsOpen: !trigger,
+    initialStep,
+    initialReason,
+    onOpen,
+    onReason,
+    onNote,
+    onConfirm,
+    onPickStarter,
+    onTryOtto,
+  });
 
   return (
     <Dialog
-      title={TITLES[step]}
+      title={TITLES[flow.step]}
       styling={{ maxWidth: "38rem", minWidth: "auto" }}
-      controlled={{ isOpen, set: setIsOpen }}
+      controlled={{ isOpen: flow.isOpen, set: flow.setOpen }}
     >
+      {trigger ? <Dialog.Trigger>{trigger}</Dialog.Trigger> : null}
       <Dialog.Content>
         <NoInitialFocus />
-        {step === "reason" ? (
+        {flow.step === "reason" ? (
           <div className="flex flex-col gap-4">
             <Text variant="body" className="!text-foreground-tertiary">
               One tap helps us fix the right thing.
@@ -56,14 +75,14 @@ export function CancelTrialFeedbackDialog({
             <ReasonTiles
               reasons={TRIAL_CANCEL_REASONS}
               label={TITLES.reason}
-              selected={reason}
-              onSelect={setReason}
+              selected={flow.reason}
+              onSelect={flow.pickReason}
             />
-            {reason === OTHER_LABEL || reason === "It's missing something" ? (
+            {flow.asksForNote ? (
               <Textarea
                 rows={3}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
+                value={flow.note}
+                onChange={(e) => flow.setNote(e.target.value)}
                 aria-label="What would have made you stay?"
                 placeholder="What would have made you stay?"
                 className="resize-none"
@@ -72,67 +91,87 @@ export function CancelTrialFeedbackDialog({
           </div>
         ) : null}
 
-        {step === "offer" ? <OttoOfferCard starters={starters} /> : null}
+        {flow.step === "offer" ? (
+          <OttoOfferCard starters={starters} onPick={flow.pickStarter} />
+        ) : null}
 
-        {step === "confirm" ? (
-          <div className="flex flex-col gap-3">
+        {flow.step === "confirm" ? (
+          <div
+            data-slot="cancel-trial-dialog-body"
+            className="flex flex-col gap-3"
+          >
             <Text variant="body" className="!text-foreground-emphasis">
               Your trial won&apos;t convert to a paid plan and your card
               won&apos;t be charged.
             </Text>
             <Text variant="body" className="!text-foreground-emphasis">
               You keep full access until{" "}
-              <strong className="font-semibold">November 4</strong>, and you can
-              resume your trial any time before then.
+              <strong
+                data-slot="cancel-trial-dialog-end-date"
+                className="font-semibold"
+              >
+                {endDate}
+              </strong>
+              , and you can resume your trial any time before then.
             </Text>
           </div>
         ) : null}
 
         <Dialog.Footer className="items-center gap-2">
-          {step === "reason" ? (
+          {flow.step === "reason" ? (
             <>
               <Button
                 variant="ghost"
                 size="small"
                 className="mr-auto"
-                onClick={() => setStep("confirm")}
+                onClick={() => flow.setStep("confirm")}
               >
                 Skip
               </Button>
-              <Button variant="outline" size="small" onClick={close}>
+              <Button
+                variant="outline"
+                size="small"
+                onClick={() => flow.setOpen(false)}
+              >
                 Keep trial
               </Button>
               <Button
                 size="small"
-                disabled={!reason}
-                onClick={() =>
-                  setStep(reason === OFFER_REASON ? "offer" : "confirm")
-                }
+                disabled={!flow.reason}
+                onClick={flow.continueFromReason}
               >
                 Continue
               </Button>
             </>
           ) : null}
-          {step === "offer" ? (
+          {flow.step === "offer" ? (
             <>
               <Button
                 variant="ghost"
                 size="small"
-                onClick={() => setStep("confirm")}
+                onClick={() => flow.setStep("confirm")}
               >
                 No thanks, cancel
               </Button>
-              <Button size="small" onClick={close}>
+              <Button size="small" onClick={flow.tryOtto}>
                 Try it with Otto
               </Button>
             </>
           ) : null}
-          {step === "confirm" ? (
+          {flow.step === "confirm" ? (
             <>
-              <Button variant="outline" size="small" onClick={close}>
+              <Button
+                variant="outline"
+                size="small"
+                onClick={() => flow.setOpen(false)}
+              >
                 Keep trial
               </Button>
-              <Button size="small" onClick={close}>
+              <Button
+                size="small"
+                disabled={isCanceling}
+                onClick={flow.confirm}
+              >
                 Cancel trial
               </Button>
             </>

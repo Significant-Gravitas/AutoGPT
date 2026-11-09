@@ -15,6 +15,7 @@ export type Tone =
   | "neutral";
 
 export interface Reason {
+  value: string;
   label: string;
   icon: IconSvgElement;
   tone: Tone;
@@ -33,7 +34,7 @@ interface Props {
   reasons: Reason[];
   label: string;
   selected: string | null;
-  onSelect: (label: string) => void;
+  onSelect: (value: string) => void;
   columns?: 2 | 3 | 4;
   layout?: "row" | "stack";
   size?: "default" | "compact";
@@ -60,14 +61,14 @@ export function ReasonTiles({
       className={cn("grid gap-2 p-px", COLUMNS[columns])}
     >
       {reasons.map((reason, index) => {
-        const isSelected = selected === reason.label;
+        const isSelected = selected === reason.value;
         return (
           <motion.button
-            key={reason.label}
+            key={reason.value}
             type="button"
             aria-pressed={isSelected}
             whileTap={{ scale: 0.97 }}
-            onClick={() => onSelect(reason.label)}
+            onClick={() => onSelect(reason.value)}
             className={cn(
               "relative flex rounded-xl border bg-surface text-left transition-[border-color,box-shadow,background-color] duration-150",
               "border-separator hover:border-border-base hover:shadow-sm",
@@ -89,7 +90,7 @@ export function ReasonTiles({
             </span>
             <span
               className={cn(
-                "min-w-0 break-words font-medium leading-5 text-foreground-emphasis",
+                "min-w-0 leading-5 font-medium break-words text-foreground-emphasis",
                 isCompact ? "text-caption leading-4" : "text-body",
               )}
             >
@@ -97,7 +98,7 @@ export function ReasonTiles({
             </span>
             <span
               className={cn(
-                "absolute right-1.5 top-1.5 flex size-4 items-center justify-center rounded-full bg-action text-action-foreground transition-[opacity,transform] duration-150",
+                "absolute top-1.5 right-1.5 flex size-4 items-center justify-center rounded-full bg-action text-action-foreground transition-[opacity,transform] duration-150",
                 isSelected ? "scale-100 opacity-100" : "scale-50 opacity-0",
               )}
             >

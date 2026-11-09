@@ -21,31 +21,64 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { Reason } from "./components/ReasonTiles";
 
-export const OTHER_LABEL = "Something else";
+export const OTHER_VALUE = "other";
 
 const OTHER: Reason = {
-  label: OTHER_LABEL,
+  value: OTHER_VALUE,
+  label: "Something else",
   icon: PencilEdit02Icon,
   tone: "neutral",
 };
 
 export const TRIAL_CANCEL_REASONS: Reason[] = [
-  { label: "It costs too much", icon: Coins01Icon, tone: "warning" },
-  { label: "I haven't seen results yet", icon: HourglassIcon, tone: "info" },
-  { label: "It's missing something", icon: PuzzleIcon, tone: "accent" },
-  { label: "I was only trying it out", icon: TestTube01Icon, tone: "success" },
+  {
+    value: "too_expensive",
+    label: "It costs too much",
+    icon: Coins01Icon,
+    tone: "warning",
+  },
+  {
+    value: "no_results_yet",
+    label: "I haven't seen results yet",
+    icon: HourglassIcon,
+    tone: "info",
+  },
+  {
+    value: "missing_something",
+    label: "It's missing something",
+    icon: PuzzleIcon,
+    tone: "accent",
+  },
+  {
+    value: "only_trying",
+    label: "I was only trying it out",
+    icon: TestTube01Icon,
+    tone: "success",
+  },
   OTHER,
 ];
 
 export const TRIAL_CHECKOUT_REASONS: Reason[] = [
-  { label: "Not sure what I get", icon: HelpCircleIcon, tone: "info" },
   {
+    value: "unclear_value",
+    label: "Not sure what I get",
+    icon: HelpCircleIcon,
+    tone: "info",
+  },
+  {
+    value: "no_card_yet",
     label: "Didn't want to add a card yet",
     icon: CreditCardIcon,
     tone: "warning",
   },
-  { label: "Want to look around first", icon: Search01Icon, tone: "success" },
   {
+    value: "looking_around",
+    label: "Want to look around first",
+    icon: Search01Icon,
+    tone: "success",
+  },
+  {
+    value: "card_failed",
     label: "My card didn't go through",
     icon: CreditCardNotAcceptIcon,
     tone: "error",
@@ -54,9 +87,15 @@ export const TRIAL_CHECKOUT_REASONS: Reason[] = [
 ];
 
 export const UPGRADE_CHECKOUT_REASONS: Reason[] = [
-  { label: "The price", icon: Coins01Icon, tone: "warning" },
-  { label: "Not sure what I get", icon: HelpCircleIcon, tone: "info" },
+  { value: "price", label: "The price", icon: Coins01Icon, tone: "warning" },
   {
+    value: "unclear_value",
+    label: "Not sure what I get",
+    icon: HelpCircleIcon,
+    tone: "info",
+  },
+  {
+    value: "card_failed",
     label: "My card didn't go through",
     icon: CreditCardNotAcceptIcon,
     tone: "error",
@@ -65,38 +104,99 @@ export const UPGRADE_CHECKOUT_REASONS: Reason[] = [
 ];
 
 export const WORK_REASONS: Reason[] = [
-  { label: "Got facts wrong", icon: Alert02Icon, tone: "error" },
-  { label: "Missed what I asked", icon: Target02Icon, tone: "warning" },
-  { label: "Too slow", icon: Clock01Icon, tone: "info" },
-  { label: "Needed too much help", icon: UserQuestion01Icon, tone: "accent" },
+  {
+    value: "wrong_facts",
+    label: "Got facts wrong",
+    icon: Alert02Icon,
+    tone: "error",
+  },
+  {
+    value: "missed_ask",
+    label: "Missed what I asked",
+    icon: Target02Icon,
+    tone: "warning",
+  },
+  { value: "too_slow", label: "Too slow", icon: Clock01Icon, tone: "info" },
+  {
+    value: "too_much_help",
+    label: "Needed too much help",
+    icon: UserQuestion01Icon,
+    tone: "accent",
+  },
   OTHER,
 ];
 
 export const MISTAKE_REASONS: Reason[] = [
-  { label: "Got facts wrong", icon: Alert02Icon, tone: "error" },
-  { label: "Ignored my instructions", icon: Target02Icon, tone: "warning" },
-  { label: "Made things up", icon: AiMagicIcon, tone: "accent" },
-  { label: "Too slow", icon: Clock01Icon, tone: "info" },
+  {
+    value: "wrong_facts",
+    label: "Got facts wrong",
+    icon: Alert02Icon,
+    tone: "error",
+  },
+  {
+    value: "ignored_instructions",
+    label: "Ignored my instructions",
+    icon: Target02Icon,
+    tone: "warning",
+  },
+  {
+    value: "made_up",
+    label: "Made things up",
+    icon: AiMagicIcon,
+    tone: "accent",
+  },
+  { value: "too_slow", label: "Too slow", icon: Clock01Icon, tone: "info" },
   OTHER,
 ];
 
 export const TOP_UP_REASONS: Reason[] = [
-  { label: "A lower price", icon: Coins01Icon, tone: "warning" },
-  { label: "Smaller amounts", icon: PackageIcon, tone: "info" },
   {
+    value: "lower_price",
+    label: "A lower price",
+    icon: Coins01Icon,
+    tone: "warning",
+  },
+  {
+    value: "smaller_amounts",
+    label: "Smaller amounts",
+    icon: PackageIcon,
+    tone: "info",
+  },
+  {
+    value: "credits_unclear",
     label: "Knowing what credits buy",
     icon: MessageQuestionIcon,
     tone: "accent",
   },
-  { label: "Just trying things out", icon: TestTube01Icon, tone: "success" },
+  {
+    value: "just_trying",
+    label: "Just trying things out",
+    icon: TestTube01Icon,
+    tone: "success",
+  },
   OTHER,
 ];
 
 export const BRAIN_DUMP_SKIP_REASONS: Reason[] = [
-  { label: "No microphone", icon: MicOff01Icon, tone: "info" },
-  { label: "Privacy", icon: SquareLock02Icon, tone: "accent" },
-  { label: "Not sure what to say", icon: HelpCircleIcon, tone: "warning" },
-  { label: "I'd rather type", icon: KeyboardIcon, tone: "success" },
+  { value: "no_mic", label: "No microphone", icon: MicOff01Icon, tone: "info" },
+  {
+    value: "privacy",
+    label: "Privacy",
+    icon: SquareLock02Icon,
+    tone: "accent",
+  },
+  {
+    value: "unsure_what_to_say",
+    label: "Not sure what to say",
+    icon: HelpCircleIcon,
+    tone: "warning",
+  },
+  {
+    value: "prefer_typing",
+    label: "I'd rather type",
+    icon: KeyboardIcon,
+    tone: "success",
+  },
 ];
 
 // What GET /api/onboarding/brain-dump/suggested-tasks returns for two different

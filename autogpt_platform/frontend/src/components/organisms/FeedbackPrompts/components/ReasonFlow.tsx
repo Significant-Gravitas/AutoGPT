@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Textarea } from "@/components/atoms/Textarea/Textarea";
 import { useState } from "react";
-import { OTHER_LABEL } from "../helpers";
+import { OTHER_VALUE } from "../helpers";
 import { ReasonTiles, type Reason } from "./ReasonTiles";
 import { ThanksLine } from "./ThanksLine";
 
@@ -15,6 +15,8 @@ interface Props {
   thanks?: string;
   initialReason?: string | null;
   initialSent?: boolean;
+  onReason?: (value: string) => void;
+  onSubmit?: (answer: { reason: string; note: string }) => void;
 }
 
 export function ReasonFlow({
@@ -25,10 +27,26 @@ export function ReasonFlow({
   thanks,
   initialReason = null,
   initialSent = false,
+  onReason,
+  onSubmit,
 }: Props) {
   const [reason, setReason] = useState<string | null>(initialReason);
   const [note, setNote] = useState("");
   const [sent, setSent] = useState(initialSent);
+
+  function pickReason(value: string) {
+    setReason(value);
+    onReason?.(value);
+  }
+
+  function send() {
+    setSent(true);
+    if (reason)
+      onSubmit?.({
+        reason,
+        note: reason === OTHER_VALUE ? note.trim() : "",
+      });
+  }
 
   if (sent) return <ThanksLine>{thanks}</ThanksLine>;
 
@@ -38,10 +56,10 @@ export function ReasonFlow({
         reasons={reasons}
         label={label}
         selected={reason}
-        onSelect={setReason}
+        onSelect={pickReason}
         size={size}
       />
-      {reason === OTHER_LABEL ? (
+      {reason === OTHER_VALUE ? (
         <Textarea
           autoFocus
           rows={2}
@@ -54,7 +72,7 @@ export function ReasonFlow({
       ) : null}
       {reason ? (
         <div className="flex justify-end">
-          <Button size="small" onClick={() => setSent(true)}>
+          <Button size="small" onClick={send}>
             Send
           </Button>
         </div>

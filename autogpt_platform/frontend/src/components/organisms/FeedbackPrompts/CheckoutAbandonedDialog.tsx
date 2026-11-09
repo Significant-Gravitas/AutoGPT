@@ -27,9 +27,16 @@ const COPY: Record<Kind, { title: string; body: string; thanks: string }> = {
 interface Props {
   kind: Kind;
   initialReason?: string | null;
+  onReason?: (value: string) => void;
+  onSubmit?: (answer: { reason: string; note: string }) => void;
 }
 
-export function CheckoutAbandonedDialog({ kind, initialReason = null }: Props) {
+export function CheckoutAbandonedDialog({
+  kind,
+  initialReason = null,
+  onReason,
+  onSubmit,
+}: Props) {
   const [isOpen, setIsOpen] = useState(true);
   const copy = COPY[kind];
 
@@ -54,6 +61,8 @@ export function CheckoutAbandonedDialog({ kind, initialReason = null }: Props) {
             }
             initialReason={initialReason}
             thanks={copy.thanks}
+            onReason={onReason}
+            onSubmit={onSubmit}
           />
         </div>
       </Dialog.Content>

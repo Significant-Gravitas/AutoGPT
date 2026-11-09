@@ -16,7 +16,7 @@ import { ReasonFlow } from "./components/ReasonFlow";
 import { ThanksLine } from "./components/ThanksLine";
 import { WORK_REASONS } from "./helpers";
 
-type Rating = "bad" | "okay" | "great";
+export type WorkCheckRating = "bad" | "okay" | "great";
 
 const RATINGS = [
   {
@@ -43,7 +43,12 @@ interface Props {
   name: string;
   avatarUrl: string | null;
   note: string;
-  initialRating?: Rating | null;
+  initialRating?: WorkCheckRating | null;
+  initialSent?: boolean;
+  onRate?: (rating: WorkCheckRating) => void;
+  onReason?: (value: string) => void;
+  onSubmit?: (answer: { reason: string; note: string }) => void;
+  onDismiss?: () => void;
 }
 
 // Sits at the end of a chat, under the reply that finished the work. Otto
@@ -54,9 +59,24 @@ export function WorkCheckCard({
   avatarUrl,
   note,
   initialRating = null,
+  initialSent = false,
+  onRate,
+  onReason,
+  onSubmit,
+  onDismiss,
 }: Props) {
-  const [rating, setRating] = useState<Rating | null>(initialRating);
+  const [rating, setRating] = useState<WorkCheckRating | null>(initialRating);
   const [isOpen, setIsOpen] = useState(true);
+
+  function rate(value: WorkCheckRating) {
+    setRating(value);
+    onRate?.(value);
+  }
+
+  function close() {
+    setIsOpen(false);
+    onDismiss?.();
+  }
 
   if (!isOpen) return null;
 
@@ -82,8 +102,8 @@ export function WorkCheckCard({
         <Button
           variant="ghost"
           size="xs"
-          className="-mr-1 -mt-1"
-          onClick={() => setIsOpen(false)}
+          className="-mt-1 -mr-1"
+          onClick={close}
         >
           Not now
         </Button>
@@ -96,7 +116,7 @@ export function WorkCheckCard({
               type="button"
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => setRating(option.value)}
+              onClick={() => rate(option.value)}
               className={cn(
                 "flex flex-col items-center gap-1.5 rounded-xl bg-surface-muted py-3 text-foreground-secondary transition-colors",
                 option.tone,
@@ -121,6 +141,9 @@ export function WorkCheckCard({
           label={`What should ${name} do better?`}
           size="compact"
           thanks={`Thanks. ${name} learns from this.`}
+          initialSent={initialSent}
+          onReason={onReason}
+          onSubmit={onSubmit}
         />
       ) : null}
     </div>

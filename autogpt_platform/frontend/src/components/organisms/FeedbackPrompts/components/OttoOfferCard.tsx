@@ -9,9 +9,10 @@ interface Props {
    *  Empty when onboarding stored none; the card then asks with no list
    *  rather than showing generic examples. */
   starters: string[];
+  onPick?: (starter: string) => void;
 }
 
-export function OttoOfferCard({ starters }: Props) {
+export function OttoOfferCard({ starters, onPick }: Props) {
   const hasStarters = starters.length > 0;
 
   return (
@@ -33,6 +34,7 @@ export function OttoOfferCard({ starters }: Props) {
               <button
                 key={starter}
                 type="button"
+                onClick={() => onPick?.(starter)}
                 className="group flex items-center justify-between gap-3 rounded-xl bg-surface/70 px-4 py-2.5 text-left text-body text-foreground-emphasis transition-colors hover:bg-surface hover:shadow-sm"
               >
                 {starter}

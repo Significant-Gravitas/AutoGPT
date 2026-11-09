@@ -7,8 +7,25 @@ import { useState } from "react";
 import { ReasonFlow } from "./components/ReasonFlow";
 import { MISTAKE_REASONS } from "./helpers";
 
-export function OttoMistakeCard() {
+interface Props {
+  initialSent?: boolean;
+  onReason?: (value: string) => void;
+  onSubmit?: (answer: { reason: string; note: string }) => void;
+  onDismiss?: () => void;
+}
+
+export function OttoMistakeCard({
+  initialSent = false,
+  onReason,
+  onSubmit,
+  onDismiss,
+}: Props) {
   const [isOpen, setIsOpen] = useState(true);
+
+  function close() {
+    setIsOpen(false);
+    onDismiss?.();
+  }
 
   if (!isOpen) return null;
 
@@ -27,8 +44,8 @@ export function OttoMistakeCard() {
         <Button
           variant="ghost"
           size="xs"
-          className="-mr-1 -mt-1"
-          onClick={() => setIsOpen(false)}
+          className="-mt-1 -mr-1"
+          onClick={close}
         >
           Not now
         </Button>
@@ -38,6 +55,9 @@ export function OttoMistakeCard() {
         label="Which of these went wrong?"
         size="compact"
         thanks="Thanks. The team reads every one of these."
+        initialSent={initialSent}
+        onReason={onReason}
+        onSubmit={onSubmit}
       />
     </div>
   );

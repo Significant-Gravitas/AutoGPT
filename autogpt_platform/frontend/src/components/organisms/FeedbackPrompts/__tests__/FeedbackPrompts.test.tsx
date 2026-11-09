@@ -1,6 +1,6 @@
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { expectTypingKept } from "@/tests/integrations/typing";
 import { CancelTrialFeedbackDialog } from "../CancelTrialFeedbackDialog";
@@ -210,3 +210,41 @@ test.each(["Not good", "Okay", "Great"])(
     }
   },
 );
+
+test("reason callbacks carry stable values and the note", async () => {
+  const onReason = vi.fn();
+  const onSubmit = vi.fn();
+  render(<TopUpDismissedCard onReason={onReason} onSubmit={onSubmit} />);
+  await userEvent.click(screen.getByRole("button", { name: "A lower price" }));
+  expect(onReason).toHaveBeenCalledWith("lower_price");
+  await userEvent.click(screen.getByRole("button", { name: "Something else" }));
+  expect(onReason).toHaveBeenLastCalledWith("other");
+  await userEvent.type(
+    screen.getByRole("textbox", { name: "Tell us a bit more (optional)" }),
+    "Less per month",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(onSubmit).toHaveBeenCalledWith({
+    reason: "other",
+    note: "Less per month",
+  });
+});
+
+test("the trial offer only appears for the no-results reason, by value", async () => {
+  render(<CancelTrialFeedbackDialog />);
+  await userEvent.click(
+    screen.getByRole("button", { name: "It's missing something" }),
+  );
+  expect(
+    screen.getByRole("textbox", { name: "What would have made you stay?" }),
+  ).toBeDefined();
+  await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+  expect(await screen.findByText("Cancel your trial?")).toBeDefined();
+});
+
+test("closing a card without answering reports a dismissal", async () => {
+  const onDismiss = vi.fn();
+  render(<NpsCard onDismiss={onDismiss} />);
+  await userEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(onDismiss).toHaveBeenCalledOnce();
+});

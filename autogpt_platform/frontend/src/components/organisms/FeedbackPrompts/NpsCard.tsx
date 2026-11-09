@@ -13,6 +13,9 @@ const SCORES = Array.from({ length: 11 }, (_, i) => i);
 interface Props {
   initialScore?: number | null;
   initialSent?: boolean;
+  onScore?: (score: number) => void;
+  onSubmit?: (answer: { score: number; note: string }) => void;
+  onDismiss?: () => void;
 }
 
 function followUpFor(score: number) {
@@ -21,18 +24,39 @@ function followUpFor(score: number) {
   return "What's the biggest thing holding it back?";
 }
 
-export function NpsCard({ initialScore = null, initialSent = false }: Props) {
+export function NpsCard({
+  initialScore = null,
+  initialSent = false,
+  onScore,
+  onSubmit,
+  onDismiss,
+}: Props) {
   const [score, setScore] = useState<number | null>(initialScore);
   const [note, setNote] = useState("");
   const [sent, setSent] = useState(initialSent);
   const [isOpen, setIsOpen] = useState(true);
+
+  function pickScore(value: number) {
+    setScore(value);
+    onScore?.(value);
+  }
+
+  function send() {
+    setSent(true);
+    if (score !== null) onSubmit?.({ score, note: note.trim() });
+  }
+
+  function close() {
+    setIsOpen(false);
+    if (!sent) onDismiss?.();
+  }
 
   if (!isOpen) return null;
 
   return (
     <PromptCard
       title="How likely are you to recommend AutoGPT?"
-      onClose={() => setIsOpen(false)}
+      onClose={close}
     >
       {sent ? (
         <ThanksLine />
@@ -48,7 +72,7 @@ export function NpsCard({ initialScore = null, initialSent = false }: Props) {
                 key={value}
                 type="button"
                 aria-pressed={score === value}
-                onClick={() => setScore(value)}
+                onClick={() => pickScore(value)}
                 className={cn(
                   "h-8 flex-1 rounded-md border border-border-base bg-surface text-caption font-medium text-foreground-emphasis transition-colors hover:border-border-strong hover:bg-surface-muted",
                   "aria-pressed:border-action aria-pressed:bg-action aria-pressed:text-action-foreground",
@@ -80,7 +104,7 @@ export function NpsCard({ initialScore = null, initialSent = false }: Props) {
                 className="resize-none"
               />
               <div className="flex justify-end">
-                <Button size="small" onClick={() => setSent(true)}>
+                <Button size="small" onClick={send}>
                   Send
                 </Button>
               </div>

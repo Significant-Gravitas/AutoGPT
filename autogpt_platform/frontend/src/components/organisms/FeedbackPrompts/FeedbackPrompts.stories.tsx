@@ -13,7 +13,7 @@ import { MockPage, SkeletonBlocks } from "./components/MockPage";
 import { BRAIN_DUMP_SKIP_REASONS, SAMPLE_STARTERS } from "./helpers";
 
 const meta: Meta = {
-  title: "Prototypes/Feedback prompts",
+  title: "Organisms/Feedback prompts",
   parameters: { layout: "fullscreen" },
 };
 
@@ -39,7 +39,7 @@ function TrialOffer({ starters }: { starters: string[] }) {
       <CancelTrialFeedbackDialog
         starters={starters}
         initialStep="offer"
-        initialReason="I haven't seen results yet"
+        initialReason="no_results_yet"
       />
     </MockPage>
   );
@@ -65,10 +65,7 @@ export const CheckoutTrial: Story = {
   render: () => (
     <MockPage title="Billing">
       <SkeletonBlocks />
-      <CheckoutAbandonedDialog
-        kind="trial"
-        initialReason="Didn't want to add a card yet"
-      />
+      <CheckoutAbandonedDialog kind="trial" initialReason="no_card_yet" />
     </MockPage>
   ),
 };
