@@ -1513,6 +1513,16 @@ def test_a_record_with_an_integer_past_pythons_limit_is_a_parse_error(
     assert "[unparseable]" in capsys.readouterr().out
 
 
+def test_tail_marks_a_line_nested_too_deeply_to_parse(capsys) -> None:
+    """json.loads raises RecursionError for a line nested past Python's
+    limit, which ended `audit tail` with a traceback."""
+    nested = '{"a":' * 100_000 + "1" + "}" * 100_000
+
+    cli._print_record_line(nested.encode() + b"\n")
+
+    assert "[unparseable]" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize(
     "record",
     ['{"seq": null, "op": "X"}', '{"seq": 1, "op": ["X"]}', '{"seq": {"a": 1}, "op": null}'],

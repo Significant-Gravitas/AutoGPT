@@ -307,6 +307,32 @@ async def test_revoke_failure_does_not_log_token_bearing_error(
     assert "refresh-secret" not in output
 
 
+def test_auth_says_why_the_platform_denied_sign_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The platform's reason for a denial ("Local PC isn't available for
+    this account yet.") came back with the redirect and was kept to
+    printable text for the terminal, but `auth` printed only its generic
+    advice."""
+    import socket
+
+    from autogpt_local_executor.auth import OAuthFlow
+
+    def deny(flow: OAuthFlow) -> None:
+        server, codes, errors, _port = flow._bind_callback_server(expected_state="state")
+        errors.append("access_denied: Local PC isn't available for this account yet.")
+        flow._wait_for_callback(server, codes, errors)
+
+    monkeypatch.setattr(OAuthFlow, "run", deny)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = int(probe.getsockname()[1])
+
+    assert cli._cmd_auth(ShimConfig(allowed_root=tmp_path, oauth_redirect_port=port)) == 1
+    output = capsys.readouterr().out
+    assert "access_denied: Local PC isn't available for this account yet." in output
+
+
 def test_auth_failure_does_not_print_token_bearing_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

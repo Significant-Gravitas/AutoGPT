@@ -1155,6 +1155,24 @@ async def test_an_image_too_large_for_the_connection_is_left_out(make_handler, m
     assert (record["details"]["images"], record["details"]["images_withheld"]) == (0, 1)
 
 
+async def test_an_image_past_the_negotiated_payload_limit_is_left_out(
+    make_handler, monkeypatch
+) -> None:
+    """A result was held only to the frame's budget, so with a lower
+    negotiated max_file_size_bytes, which bounds every operation's payload
+    (PROTOCOL.md), a screenshot could exceed the limit the platform set."""
+    monkeypatch.setenv("FAKE_CUA_IMAGE_BYTES", "4000")
+    handler = make_handler()
+    handler.config.max_file_size_bytes = 1000
+
+    response = await handler.handle(_call("get_window_state", {"pid": 1}))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert not [b for b in response.payload.content if isinstance(b, ComputerImageContent)]
+    assert any("too large" in b.text for b in response.payload.content
+               if isinstance(b, ComputerTextContent))  # fmt: skip
+
+
 async def test_text_is_measured_as_json_writes_it(make_handler, monkeypatch) -> None:
     """The budget counted a text block's raw UTF-8 bytes, but JSON writes a
     control character as six bytes and a quote as two, so a result could
@@ -1321,6 +1339,19 @@ async def test_the_deadline_counts_from_when_the_shim_received_the_call(
     assert isinstance(response, ErrorMessage)
     assert response.payload.details["started"] is False
     assert _records(fake_log, "call") == []
+
+
+@pytest.mark.parametrize("width", ["NaN", "Infinity"])
+async def test_a_screen_size_that_is_not_a_finite_number_is_left_out(
+    make_handler, fake_log, monkeypatch, width: str
+) -> None:
+    """The driver's output is read with Python's json, which takes NaN and
+    Infinity, and int() of either raised, so HELLO failed instead of going
+    out without the size."""
+    monkeypatch.setenv("FAKE_CUA_SCREEN", f'{{"width": {width}, "height": 1080}}')
+    handler = make_handler()
+
+    assert await handler.screen_size() is None
 
 
 async def test_hello_skips_the_screen_size_rather_than_end_another_call(
@@ -1538,6 +1569,32 @@ async def test_a_second_read_that_finds_the_same_text_returns_it(
 
     assert isinstance(response, ComputerToolResultMessage)
     assert response.payload.structured_content["text"] == "a copied paragraph"
+
+
+async def test_a_clipboard_read_whose_deadline_passes_in_the_marker_check_never_starts(
+    make_handler, tmp_path, fake_log, monkeypatch
+) -> None:
+    """The check for a password manager's marker (xclip or wl-paste, up to
+    three seconds) ran before the driver's read, which still got the call's
+    whole timeout, so the read could start after the deadline."""
+    import time
+
+    from autogpt_local_executor import handlers
+
+    def slow_look() -> concealed.ClipboardState:
+        time.sleep(2)
+        return concealed.ClipboardState(None, 7)
+
+    monkeypatch.setattr(handlers, "clipboard_state", slow_look)
+    handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+
+    response = await handler.handle(_call("clipboard_read", timeout_seconds=1))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+    assert response.payload.details["started"] is False
+    assert [r for r in _records(fake_log, "call") if r["tool"] == "clipboard_read"] == []
 
 
 def test_marker_in_finds_each_platforms_marker() -> None:

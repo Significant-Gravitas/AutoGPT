@@ -17,6 +17,7 @@ import binascii
 import hashlib
 import json
 import logging
+import math
 import mimetypes
 import os
 import shutil
@@ -1474,7 +1475,13 @@ class ComputerUseHandler:
         if raw.get("isError") or not isinstance(structured, dict):
             return None
         width, height = structured.get("width"), structured.get("height")
-        if isinstance(width, int | float) and isinstance(height, int | float):
+        # Python's json reads NaN and Infinity, which int() refuses.
+        if (
+            isinstance(width, int | float)
+            and isinstance(height, int | float)
+            and math.isfinite(width)
+            and math.isfinite(height)
+        ):
             return int(width), int(height)
         return None
 
@@ -1726,6 +1733,11 @@ class ComputerUseHandler:
         before = await asyncio.to_thread(clipboard_state) if foreign else None
         if before is not None and before.marker:
             raise ClipboardConcealedError("concealed_type", marker=before.marker)
+        # The check above can take seconds (xclip, wl-paste): the read gets
+        # what is left of the deadline, and none left means it never starts.
+        timeout = deadline - asyncio.get_running_loop().time()
+        if timeout <= 0:
+            raise CallNotStarted("clipboard_read's deadline passed in the marker check")
         raw = await self.driver.call_tool("clipboard_read", arguments, timeout=timeout)
         if raw.get("isError"):
             return raw
@@ -1821,7 +1833,9 @@ class ComputerUseHandler:
         structured = raw.get("structuredContent")
         structured = structured if isinstance(structured, dict) else None
 
-        budget = MAX_WIRE_BASE64_CONTENT_BYTES
+        # Every operation's payload stays within the negotiated
+        # max_file_size_bytes (PROTOCOL.md), and within the frame.
+        budget = min(self.config.max_file_size_bytes, MAX_WIRE_BASE64_CONTENT_BYTES)
         size = sum(_block_size(block) for block in content) + len(
             json.dumps(structured) if structured is not None else ""
         )
@@ -1844,7 +1858,9 @@ class ComputerUseHandler:
             if first_text is not None:
                 content.append(
                     ComputerTextContent(
-                        text=_truncate_utf8(first_text.text, MAX_WIRE_TEXT_CONTENT_BYTES)
+                        text=_truncate_utf8(
+                            first_text.text, min(budget, MAX_WIRE_TEXT_CONTENT_BYTES)
+                        )
                     )
                 )
             notes.append("The result was cut down to fit the connection's message limit.")

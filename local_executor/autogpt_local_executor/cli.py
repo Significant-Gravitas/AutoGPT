@@ -280,13 +280,17 @@ def _build_config(args):
 
 
 def _cmd_auth(config) -> int:
-    from .auth import CredentialScopeError, KeychainTokenStore, OAuthFlow
+    from .auth import CredentialScopeError, KeychainTokenStore, OAuthDenied, OAuthFlow
 
     try:
         flow = OAuthFlow(config=config, token_store=KeychainTokenStore(config))
         flow.run()
     except CredentialScopeError as exc:
         print(f"Authentication failed: {exc}")
+        return 1
+    except OAuthDenied as exc:
+        # The platform's own reason, from the redirect: safe to show.
+        print(f"Sign-in was refused: {exc}")
         return 1
     except Exception:
         print(
@@ -1091,7 +1095,9 @@ def _print_record_line(raw: bytes) -> None:
         return
     try:
         rec = json.loads(s)
-    except ValueError:  # an integer past Python's limit raises a plain one
+    except (ValueError, RecursionError):
+        # ValueError too for an integer past Python's limit; RecursionError
+        # for a line nested past it.
         rec = None
     if not isinstance(rec, dict):
         print(f"[unparseable] {s}")

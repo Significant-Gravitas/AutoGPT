@@ -110,6 +110,12 @@ class CredentialScopeError(ValueError):
     """Stored credentials cannot be used with the configured destinations."""
 
 
+class OAuthDenied(ValueError):
+    """The sign-in redirect came back with an error instead of a code. Its
+    text is the provider's error and reason, kept to printable text: safe to
+    show, unlike other failures, whose text can hold a token."""
+
+
 def _canonical_endpoint(value: str) -> str:
     parsed = urllib.parse.urlsplit(
         _validate_platform_endpoint(value, {"https", "http", "wss", "ws"})
@@ -479,8 +485,9 @@ class OAuthFlow:
             server.server_close()
 
         if not auth_code:
-            detail = oauth_error[0] if oauth_error else "OAuth callback timed out"
-            raise ValueError(detail)
+            if oauth_error:
+                raise OAuthDenied(oauth_error[0])
+            raise ValueError("OAuth callback timed out")
         return auth_code[0]
 
     async def _exchange_code(
