@@ -199,6 +199,21 @@ def test_the_rendered_block_names_the_ids_and_skills_and_is_a_server_tag():
     assert strip_server_injected_tags(notice + "hello") == "hello"
 
 
+def test_the_notice_still_allows_an_expanded_describe():
+    """describe_capability summarises large enums and nested block outputs and
+    points at expand=true for the rest; "never describe again" would leave a
+    listed id stuck with the summary."""
+    session = _session()
+    session.messages.extend(
+        [
+            _assistant(_call("describe_capability", {"id": "block:abc"}, "c1")),
+            _result("c1", {"type": "block_details"}),
+        ]
+    )
+
+    assert "except with expand=true" in build_seen_capabilities_notice(session)
+
+
 def test_render_of_nothing_is_empty():
     assert render_seen_capabilities(seen_capabilities(_session())) == ""
 
