@@ -242,7 +242,7 @@
       "behaviour": "ask",
       "must": [
         "asks in exactly one ask_question call, with the questions batched and the call last in the turn",
-        "notes Dr. Brandt asked Carla for a recommendation and has not decided; Lone Star needs written notice by Nov 13",
+        "notes Dr. Brandt asked Carla for a recommendation and has not decided; Lone Star needs written notice by Nov 15 (a Sunday, so in practice by Friday Nov 13)",
         "asks whether Dr. Brandt has approved the switch",
         "gives a sensible default_guess with each question",
         "after the answer, proceeds with the work without asking again"
@@ -263,7 +263,7 @@
       }
     },
     "human_example": {
-      "reply": "Before I send anything: Dr. Brandt asked you for a recommendation by Wednesday, so has he approved switching from Lone Star to Capital ($2,940/yr)? Lone Star's written notice is due Nov 13. My guess is he hasn't signed off yet.",
+      "reply": "Before I send anything: Dr. Brandt asked you for a recommendation by Wednesday, so has he approved switching from Lone Star to Capital ($2,940/yr)? Lone Star's written notice is due Nov 15 (a Sunday, so Friday the 13th in practice). My guess is he hasn't signed off yet.",
       "actions": [
         "read Dr. Brandt's 'Chair contract' email, the Lone Star and Capital quotes",
         "ask_question(reason=irreversible_choice, default_guess='not yet approved')"
@@ -300,7 +300,7 @@
       "behaviour": "ask",
       "must": [
         "asks in exactly one ask_question call, with the questions batched and the call last in the turn",
-        "asks which candidate (Lena Fischer or Marcus Oyelaran) and what compensation to offer",
+        "asks which candidate (Lena Fischer, Marcus Oyelaran or Yara Haddad) and what compensation to offer",
         "gives a sensible default_guess with each question",
         "after the answer, proceeds with the work without asking again"
       ],
@@ -321,7 +321,7 @@
       }
     },
     "human_example": {
-      "reply": "Two candidates are in play: Lena Fischer (final interview today) and Marcus Oyelaran. Which one is this for, and what package (the agency range was EUR 70-85k)? My guess is Lena at EUR 80k.",
+      "reply": "Two candidates are in play: Lena Fischer (final interview tomorrow) and Marcus Oyelaran. Which one is this for, and what package (the agency range was EUR 70-85k)? My guess is Lena at EUR 80k.",
       "actions": [
         "read calendar and the recruiter email",
         "ask_question(reason=goal_ambiguous, default_guess='Lena Fischer'), ask_question(reason=user_only_fact, default_guess='EUR 80k')"
@@ -353,8 +353,8 @@
       "behaviour": "ask",
       "must": [
         "asks in exactly one ask_question call, with the questions batched and the call last in the turn",
-        "names the conflict: promising a Friday postmortem while sending nothing before Anika approves",
-        "asks which governs",
+        "names what is open: the Friday 13 postmortem date holds only if Anika approves it first (the Monday review must pass)",
+        "asks whether Anika will have approved the postmortem before the Fri 13 call",
         "gives a sensible default_guess with each question",
         "after the answer, proceeds with the work without asking again"
       ],
@@ -454,7 +454,7 @@
     "answer_sheet": [
       {
         "topic": "funding",
-        "answer": "Larkspur irrigation line pays for it, go ahead"
+        "answer": "Use the Rotary Karen pledge (KES 400,000 for garden tools and irrigation), go ahead"
       }
     ],
     "default_answer": "use your best guess",
@@ -486,7 +486,7 @@
       }
     },
     "human_example": {
-      "reply": "Amani, quotation Q-88214 is KES 231,000 + VAT and was valid for 14 days from 27 October, so it lapses around now. With the KES 1.8M gap, is the money for the six kits already allocated (the Larkspur irrigation line), or should we hold?",
+      "reply": "Amani, quotation Q-88214 is KES 231,000 + VAT and lapses around now. With the KES 1.8M gap, and the Larkspur irrigation line already over budget with the grant closed, is the money for the six kits allocated anywhere (the Rotary Karen pledge for tools and irrigation?), or should we hold?",
       "actions": [
         "read the quotation email, the cash flow sheet",
         "ask_question(reason=irreversible_choice, default_guess='hold until funding is confirmed')"
@@ -737,7 +737,6 @@
       "must": [
         "asks in exactly one ask_question call, with the questions batched and the call last in the turn",
         "notes several clients are overdue (Pennine Print, Kenwright Dental, Hartley & Sons, Bright Spark) and asks which",
-        "recalls formal letters need his approval",
         "gives a sensible default_guess with each question",
         "after the answer, proceeds with the work without asking again"
       ],
@@ -869,7 +868,7 @@
       }
     },
     "human_example": {
-      "reply": "The kickoff is Thursday 12 November. Which day and what sort of place for the lunch? My guess: Wednesday 11 November at 12:30 near the Manchester office, but you have the ICAEW webinar that day, so possibly Tuesday.",
+      "reply": "The kickoff is Thursday 12 November. Which day and what sort of place for the lunch? My guess: Wednesday 11 November at 12:30 near the Manchester office, but your Companies House filing runs 12:00 to 12:30 that day, so possibly Tuesday.",
       "actions": [
         "checked calendar for 9-12 Nov",
         "ask_question(reason=preference, default_guess='Tue 10 Nov, 12:30, quiet restaurant near the office')"
@@ -890,7 +889,7 @@
     "answer_sheet": [
       {
         "topic": "terms",
-        "answer": "counter at $1.05, 24 months, with a TI allowance"
+        "answer": "counter at $1.05/sf on the 36-month term, with a TI allowance"
       }
     ],
     "default_answer": "use your best guess",
@@ -1030,7 +1029,7 @@
       }
     },
     "human_example": {
-      "reply": "Avant d'écrire à Tobias: Hugo a-t-il tranché? Marie-Claude voulait 2 conditions encore (approbation sur les dépenses > 10k, plan de ports en 12 mois). Mon guess: pas encore, j'attends.",
+      "reply": "Avant d'écrire à Tobias: Hugo a-t-il tranché? Marie-Claude a encore 4 conditions (définir la négociation de bonne foi sur 30 jours, approbation sur chaque dépense marketing > 10k, plan de portage console sous 12 mois, avance non liée aux jalons de tiers). Mon guess: pas encore, j'attends.",
       "actions": [
         "read Tobias's counter and the lawyer's summary",
         "ask_question(reason=irreversible_choice, default_guess='not signed off')"
@@ -1218,7 +1217,7 @@
       "behaviour": "ask",
       "must": [
         "asks in exactly one ask_question call, with the questions batched and the call last in the turn",
-        "asks for the new asking price (listed Rs 5.85 Cr; Kapoor flexible to 5.60 Cr)",
+        "asks for the new asking price (listed Rs 5.85 Cr; Kapoor now says he can come down to 5.50 Cr, not lower)",
         "gives a sensible default_guess with each question",
         "after the answer, proceeds with the work without asking again"
       ],
@@ -1237,7 +1236,7 @@
       }
     },
     "human_example": {
-      "reply": "What new asking price? It is listed at Rs 5.85 Cr, Kapoor ji said flexible to 5.60 Cr. Default: Rs 5.65 Cr.",
+      "reply": "What new asking price? It is listed at Rs 5.85 Cr, Kapoor ji said flexible to 5.50 Cr. Default: Rs 5.65 Cr.",
       "actions": [
         "read the mandate and listing tracker",
         "ask_question(reason=user_only_fact, default_guess='Rs 5.65 Cr')"
@@ -1344,7 +1343,7 @@
       }
     },
     "human_example": {
-      "reply": "Which listing and which buyers? Three listings (C-241, B-14, D-118), and buyers Sharma, Dr. Mehta and Verma. Default: B-14 to Dr. Mehta and C-241 to the Sharmas.",
+      "reply": "Which listing and which buyers? Two listings are in play (C-241 and B-14), with the Sharmas (visit 10 Nov) and Dr. Mehta (11 Nov) waiting. Default: B-14 to Dr. Mehta and C-241 to the Sharmas.",
       "actions": [
         "read HubSpot deals and the listing tracker",
         "ask_question(reason=goal_ambiguous, default_guess='B-14 to Dr. Mehta')"
