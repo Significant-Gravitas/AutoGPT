@@ -2,6 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from backend.copilot.constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -10,6 +12,7 @@ from backend.copilot.constants import (
 from backend.copilot.model import ChatMessage
 from backend.copilot.sdk.compaction import COMPACTION_TOOL_NAME
 from backend.copilot.sdk.resume_gap import (
+    fetch_missing_rows,
     is_marker_row,
     missing_range,
     sendable_gap,
@@ -118,6 +121,26 @@ def test_sendable_gap_drops_markers_and_compaction_rows():
         ChatMessage(role="assistant", content="answer"),
     ]
     assert [m.content for m in sendable_gap(rows)] == ["question", "answer"]
+
+
+@pytest.mark.asyncio
+async def test_a_hole_whose_session_is_gone_is_a_failed_fetch(mocker):
+    """The page comes back None when the session is missing: a fetch that
+    failed, which the caller reports as rows left out, not an empty range."""
+    db = MagicMock()
+    db.get_chat_messages_paginated = AsyncMock(return_value=None)
+    mocker.patch("backend.copilot.sdk.resume_gap.chat_db", return_value=db)
+
+    assert await fetch_missing_rows("sess-1", (3, 6), "[test]") is None
+
+
+@pytest.mark.asyncio
+async def test_an_empty_hole_has_no_rows(mocker):
+    mocker.patch(
+        "backend.copilot.sdk.resume_gap.chat_db", return_value=_db_returning([])
+    )
+
+    assert await fetch_missing_rows("sess-1", (3, 6), "[test]") == []
 
 
 def _db_returning(rows: list[ChatMessage]) -> MagicMock:

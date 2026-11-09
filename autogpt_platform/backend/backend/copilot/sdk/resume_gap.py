@@ -103,6 +103,15 @@ async def fetch_missing_rows(
             e,
         )
         return None
-    if not page:
-        return []
+    if page is None:
+        # No session to read: a fetch that failed, not a range with nothing in it.
+        logger.warning(
+            "%s [%s] hole-fill DB fetch found no session (range=[%d,%d))"
+            " — sending gap without hole",
+            log_prefix,
+            session_id[:8],
+            start,
+            end,
+        )
+        return None
     return [m for m in page.messages if m.role != "reasoning"]
