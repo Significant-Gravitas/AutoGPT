@@ -63,6 +63,10 @@ async def test_a_message_sent_while_a_stop_settles_runs_as_the_next_turn(
         session_id, test_user_id, "chat_stream", "chat", turn_id=stopped_turn
     )
     await push_pending_message(session_id, PendingMessage(content="typed before"))
+    await push_pending_message(
+        session_id,
+        PendingMessage(content="from another chat", metadata={"from_session_id": "x"}),
+    )
     world = _stub_boundaries(mocker)
 
     async def executor_confirms_the_stop() -> None:
@@ -91,6 +95,7 @@ async def test_a_message_sent_while_a_stop_settles_runs_as_the_next_turn(
         cancelled = await asyncio.wait_for(cancel, timeout=10)
 
     assert cancelled.json()["cancelled"] is True
+    assert cancelled.json()["discarded_messages"] == ["typed before"]
     assert send.status_code == 200
     assert "data-follow-up-queued" not in send.text
     world.schedule.assert_awaited_once()

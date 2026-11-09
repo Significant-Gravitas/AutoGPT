@@ -101,6 +101,7 @@ from backend.copilot.pending_messages import (
     claim_client_message,
     clear_pending_messages_unsafe,
     client_message_state,
+    drain_pending_messages,
     peek_pending_messages,
     release_client_message,
 )
@@ -600,6 +601,10 @@ class CancelSessionResponse(BaseModel):
 
     cancelled: bool
     reason: str | None = None
+    discarded_messages: list[str] = Field(
+        default_factory=list,
+        description="The user's follow-ups the Stop discarded unread, oldest first.",
+    )
 
 
 class UpdateSessionTitleRequest(BaseModel):
@@ -1718,16 +1723,22 @@ _CANCEL_CONFIRM_TIMEOUT_SECONDS = 5.0
 _CANCEL_CONFIRM_POLL_INTERVAL_SECONDS = 0.5
 
 
-async def _stop_follow_ups_best_effort(session_id: str) -> None:
-    """Close the running turn to new follow-ups, then drop the ones it holds."""
+async def _stop_follow_ups_best_effort(session_id: str) -> list[str]:
+    """Close the running turn to new follow-ups, then drop the ones it holds.
+
+    Returns the user's own dropped follow-ups for the client to give back;
+    an internal sender's entry carries metadata and is left out.
+    """
     try:
         await stream_registry.mark_stop_requested(session_id)
+        dropped = await drain_pending_messages(session_id)
     except Exception:
         logger.warning(
-            f"[CANCEL] Failed to flag the stop for session ...{session_id[-8:]}",
+            f"[CANCEL] Failed to stop follow-ups for session ...{session_id[-8:]}",
             exc_info=True,
         )
-    await _clear_pending_best_effort(session_id)
+        return []
+    return [message.content for message in dropped if not message.metadata]
 
 
 async def _clear_pending_best_effort(session_id: str) -> None:
@@ -1770,7 +1781,7 @@ async def cancel_session_task(
     # Stop discards the follow-ups queued before it, which would otherwise feed
     # the next unrelated turn. The flag set first makes the pending-write gate
     # refuse every later send, which ``stream_chat_post`` starts as the next turn.
-    await _stop_follow_ups_best_effort(session_id)
+    discarded = await _stop_follow_ups_best_effort(session_id)
 
     await cancel_background_subtasks(user_id, session_id)
 
@@ -1779,9 +1790,13 @@ async def cancel_session_task(
     if await background_task_db().cancel_queued_background_followup(
         user_id, session_id
     ):
-        return CancelSessionResponse(cancelled=True, reason="dequeued")
+        return CancelSessionResponse(
+            cancelled=True, reason="dequeued", discarded_messages=discarded
+        )
     if await turn_queue.cancel_queued_turn(user_id=user_id, session_id=session_id):
-        return CancelSessionResponse(cancelled=True, reason="dequeued")
+        return CancelSessionResponse(
+            cancelled=True, reason="dequeued", discarded_messages=discarded
+        )
 
     active_session, _ = await stream_registry.get_active_session(session_id, user_id)
     if not active_session:
@@ -1799,8 +1814,16 @@ async def cancel_session_task(
         if await _try_release_orphan_running(
             session_id, user_id, cancel_background=True
         ):
-            return CancelSessionResponse(cancelled=True, reason="orphan_released")
-        return CancelSessionResponse(cancelled=True, reason="no_active_session")
+            return CancelSessionResponse(
+                cancelled=True,
+                reason="orphan_released",
+                discarded_messages=discarded,
+            )
+        return CancelSessionResponse(
+            cancelled=True,
+            reason="no_active_session",
+            discarded_messages=discarded,
+        )
 
     await cancel_background_subtasks(user_id, session_id, active_session.turn_id)
     await enqueue_cancel_task(session_id)
@@ -1815,7 +1838,7 @@ async def cancel_session_task(
         # A turn the cancelled one's end woke is not the one the user stopped,
         # and its queued follow-ups are its own.
         if session_state and session_state.turn_id != active_session.turn_id:
-            return CancelSessionResponse(cancelled=True)
+            return CancelSessionResponse(cancelled=True, discarded_messages=discarded)
         if session_state is None or session_state.status != "running":
             logger.info(
                 f"[CANCEL] Session ...{session_id[-8:]} confirmed stopped "
@@ -1824,7 +1847,7 @@ async def cancel_session_task(
             # Re-clear now the turn is no longer running, for what an internal
             # sender queued past the gate during the cancel window.
             await _clear_pending_best_effort(session_id)
-            return CancelSessionResponse(cancelled=True)
+            return CancelSessionResponse(cancelled=True, discarded_messages=discarded)
 
     logger.warning(
         f"[CANCEL] Session ...{session_id[-8:]} not confirmed after "
@@ -1842,7 +1865,9 @@ async def cancel_session_task(
     # internal sender queued during the poll window.
     await _clear_pending_best_effort(session_id)
     return CancelSessionResponse(
-        cancelled=True, reason="cancel_published_not_confirmed"
+        cancelled=True,
+        reason="cancel_published_not_confirmed",
+        discarded_messages=discarded,
     )
 
 

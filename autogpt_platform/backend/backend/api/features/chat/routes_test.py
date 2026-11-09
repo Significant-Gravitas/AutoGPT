@@ -4188,8 +4188,8 @@ def test_cancel_confirms_once_the_next_turn_holds_the_session(
 
     assert response.json()["cancelled"] is True
     mock_registry.mark_session_completed.assert_not_awaited()
-    # Only the up-front clear; the next turn's follow-ups stay queued.
-    clear_pending.assert_awaited_once()
+    # No clear once the next turn holds the session; its follow-ups stay queued.
+    clear_pending.assert_not_awaited()
 
 
 def test_cancel_session_clears_pending_buffer(
@@ -4205,16 +4205,25 @@ def test_cancel_session_clears_pending_buffer(
         "backend.copilot.turn_queue.cancel_queued_turn",
         new=AsyncMock(return_value=True),
     )
-    mock_clear = mocker.patch(
-        "backend.api.features.chat.routes.clear_pending_messages_unsafe",
-        new_callable=AsyncMock,
+    mocker.patch.object(
+        chat_routes.stream_registry, "mark_stop_requested", new=AsyncMock()
+    )
+    mock_drain = mocker.patch.object(
+        chat_routes,
+        "drain_pending_messages",
+        new=AsyncMock(
+            return_value=[
+                pending_messages_module.PendingMessage(content="typed before")
+            ]
+        ),
     )
 
     response = client.post("/sessions/sess-1/cancel")
 
     assert response.status_code == 200
     assert response.json()["cancelled"] is True
-    mock_clear.assert_awaited_once_with("sess-1")
+    assert response.json()["discarded_messages"] == ["typed before"]
+    mock_drain.assert_awaited_once_with("sess-1")
 
 
 def test_cancel_session_survives_pending_clear_failure(
@@ -4227,8 +4236,9 @@ def test_cancel_session_survives_pending_clear_failure(
         "backend.copilot.turn_queue.cancel_queued_turn",
         new=AsyncMock(return_value=True),
     )
-    mocker.patch(
-        "backend.api.features.chat.routes.clear_pending_messages_unsafe",
+    mocker.patch.object(
+        chat_routes,
+        "drain_pending_messages",
         new=AsyncMock(side_effect=RuntimeError("redis down")),
     )
 
@@ -4236,6 +4246,7 @@ def test_cancel_session_survives_pending_clear_failure(
 
     assert response.status_code == 200
     assert response.json()["cancelled"] is True
+    assert response.json()["discarded_messages"] == []
 
 
 def test_cancel_session_reclears_pending_buffer_after_running_settles(
@@ -4272,10 +4283,14 @@ def test_cancel_session_reclears_pending_buffer_after_running_settles(
     mock_registry = MagicMock()
     mock_registry.get_active_session = AsyncMock(return_value=(active_session, "1-0"))
     mock_registry.get_session = AsyncMock(return_value=stopped_session)
+    mock_registry.mark_stop_requested = AsyncMock(return_value=True)
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     mocker.patch(
         "backend.api.features.chat.routes.enqueue_cancel_task",
         new_callable=AsyncMock,
+    )
+    mock_drain = mocker.patch.object(
+        chat_routes, "drain_pending_messages", new=AsyncMock(return_value=[])
     )
     mock_clear = mocker.patch(
         "backend.api.features.chat.routes.clear_pending_messages_unsafe",
@@ -4286,9 +4301,9 @@ def test_cancel_session_reclears_pending_buffer_after_running_settles(
 
     assert response.status_code == 200
     assert response.json()["cancelled"] is True
-    # Once up front, once after the turn settles.
-    assert mock_clear.await_count == 2
-    assert all(call.args == ("sess-1",) for call in mock_clear.await_args_list)
+    # Drained up front, cleared again after the turn settles.
+    mock_drain.assert_awaited_once_with("sess-1")
+    mock_clear.assert_awaited_once_with("sess-1")
 
 
 # ─── session_assign_user ──────────────────────────────────────────────

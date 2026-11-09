@@ -99,25 +99,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
   ])(
     "Stop puts a follow-up queued before it back in the composer (re-read answered %s the cancel)",
     async (_order, peekDelayMs) => {
-      const { hold } = createStreamHold(4);
-      server.use(
-        http.post(`${SESSION_URL}/stream`, ({ request }) =>
-          streamSseResponse(stoppableTurnChunks(), {
-            hold,
-            abortSignal: request.signal,
-          }),
-        ),
-      );
-      renderHost();
-      const buffer = serverPendingBuffer(peekDelayMs);
-
-      await typeAndSend(FIRST);
-      await screen.findByText(LIVE_PARTIAL, undefined, { timeout: 5000 });
-      const user = userEvent.setup();
-      await user.type(composer(), QUEUED);
-      await user.click(screen.getByRole("button", { name: "Queue message" }));
-      await screen.findByText("Queued");
-      expect(buffer.messages).toEqual([QUEUED]);
+      const buffer = await queueAFollowUpWhileOttoAnswers(peekDelayMs);
 
       const peeksBeforeStop = buffer.peeksAnswered;
       await clickStop();
@@ -137,13 +119,59 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     },
     20_000,
   );
+
+  it("Stop gives nothing back when the stopped turn already read the follow-up", async () => {
+    const buffer = await queueAFollowUpWhileOttoAnswers(0);
+    buffer.messages = [];
+    const cancels = buffer.cancelsAnswered;
+
+    await clickStop();
+
+    await waitFor(() => expect(buffer.cancelsAnswered).toBe(cancels + 1), {
+      timeout: 5000,
+    });
+    await waitFor(() => expect(screen.queryByText("Queued")).toBeNull(), {
+      timeout: 5000,
+    });
+    expect(composer().value).toBe("");
+    expect(toast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Queued message not sent" }),
+    );
+  }, 20_000);
 });
+
+async function queueAFollowUpWhileOttoAnswers(peekDelayMs: number) {
+  const { hold } = createStreamHold(4);
+  server.use(
+    http.post(`${SESSION_URL}/stream`, ({ request }) =>
+      streamSseResponse(stoppableTurnChunks(), {
+        hold,
+        abortSignal: request.signal,
+      }),
+    ),
+  );
+  renderHost();
+  const buffer = serverPendingBuffer(peekDelayMs);
+
+  await typeAndSend(FIRST);
+  await screen.findByText(LIVE_PARTIAL, undefined, { timeout: 5000 });
+  const user = userEvent.setup();
+  await user.type(composer(), QUEUED);
+  await user.click(screen.getByRole("button", { name: "Queue message" }));
+  await screen.findByText("Queued");
+  expect(buffer.messages).toEqual([QUEUED]);
+  return buffer;
+}
 
 // The pending buffer as the server holds it. The cancel answers a moment late,
 // as it does while the executor tears the turn down, so a re-read made at the
-// Stop still sees the follow-up there.
+// Stop still sees the follow-up there; it reports what it discarded.
 function serverPendingBuffer(peekDelayMs: number) {
-  const buffer = { messages: [] as string[], peeksAnswered: 0 };
+  const buffer = {
+    messages: [] as string[],
+    peeksAnswered: 0,
+    cancelsAnswered: 0,
+  };
   server.use(
     http.post(`${SESSION_URL}/messages/pending`, async ({ request }) => {
       const { message } = (await request.json()) as { message: string };
@@ -162,8 +190,14 @@ function serverPendingBuffer(peekDelayMs: number) {
     }),
     http.post(`${PROXIED_SESSION_URL}/cancel`, async () => {
       await delay(300);
+      const discarded = buffer.messages;
       buffer.messages = [];
-      return HttpResponse.json({ cancelled: true, reason: null });
+      buffer.cancelsAnswered += 1;
+      return HttpResponse.json({
+        cancelled: true,
+        reason: null,
+        discarded_messages: discarded,
+      });
     }),
   );
   return buffer;

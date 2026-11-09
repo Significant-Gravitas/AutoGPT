@@ -21969,6 +21969,12 @@
           "reason": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Reason"
+          },
+          "discarded_messages": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Discarded Messages",
+            "description": "The user's follow-ups the Stop discarded unread, oldest first."
           }
         },
         "type": "object",

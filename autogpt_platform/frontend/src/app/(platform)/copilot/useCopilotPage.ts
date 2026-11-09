@@ -429,13 +429,15 @@ function useCopilotPageChat(
         }),
   });
 
-  // Stop discards the follow-ups queued before it on the server, so their
-  // text goes back to the composer rather than vanishing.
+  // Every follow-up queued before a Stop was either read by the stopped turn
+  // or discarded; the ones the server discarded go back to the composer.
   const restoreDraft = useCopilotUIStore((s) => s.restoreDraft);
   async function stopAndGiveBackQueued() {
-    const discarded = queuedMessages;
-    if (!(await stop()) || discarded.length === 0) return;
-    dropQueued(discarded);
+    const queued = queuedMessages;
+    const discarded = await stop();
+    if (discarded === null) return;
+    dropQueued(queued);
+    if (discarded.length === 0) return;
     restoreDraft(discarded.join("\n\n"));
     toast({
       title:
