@@ -5,6 +5,7 @@ import pytest
 from backend.copilot.model import ChatMessage
 from backend.copilot.tools.models import ClarifyingQuestion
 from backend.copilot.tools.question_rules import (
+    LOOK_FIRST,
     QUESTION_BUDGET,
     questions_in_a_row,
     refusal,
@@ -87,3 +88,9 @@ def test_counts_only_the_unbroken_run_of_question_turns():
 def test_a_fresh_chat_has_asked_nothing():
     assert questions_in_a_row([_user("hi")]) == 0
     assert questions_in_a_row([]) == 0
+
+
+def test_a_question_before_any_look_is_sent_back_once():
+    question = _q("Which bill?")
+    assert refusal([question], "auto", 0, looked=False) == LOOK_FIRST
+    assert refusal([question], "auto", 0, looked=True) is None

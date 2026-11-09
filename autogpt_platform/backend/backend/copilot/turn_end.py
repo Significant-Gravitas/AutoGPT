@@ -12,6 +12,9 @@ work runs elsewhere, so the turn may still start more tasks and say one
 closing line, but every other tool call is refused, so none of the task is
 done inline and the chat is free again at once.
 
+The registry also counts the tool calls each turn has started, so a question
+can tell whether anything was looked at before it (``question_rules``).
+
 Process-local: the tool runs in the same executor process as the engine that
 checks. Each turn clears its session when it starts, and the executor clears
 it again when the turn is over, so an entry never reaches a later turn.
@@ -33,6 +36,23 @@ _STILL_ALLOWED_AFTER_TASK = frozenset({"start_task"})
 
 _lock = threading.Lock()
 _state: dict[str, Literal["question", "task"]] = {}
+_calls: dict[str, int] = {}
+
+
+def note_call(session_id: str | None) -> None:
+    """A tool call is starting in *session_id*'s turn."""
+    if not session_id:
+        return
+    with _lock:
+        _calls[session_id] = _calls.get(session_id, 0) + 1
+
+
+def calls_started(session_id: str | None) -> int:
+    """How many tool calls *session_id*'s turn has started, this one included."""
+    if not session_id:
+        return 0
+    with _lock:
+        return _calls.get(session_id, 0)
 
 
 def request_end(session_id: str) -> None:
@@ -66,6 +86,7 @@ def clear(session_id: str) -> None:
     """Forget the request, at the start and end of every turn."""
     with _lock:
         _state.pop(session_id, None)
+        _calls.pop(session_id, None)
 
 
 def _get(session_id: str | None) -> Literal["question", "task"] | None:

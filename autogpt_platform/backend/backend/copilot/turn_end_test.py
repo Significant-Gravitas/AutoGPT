@@ -39,3 +39,12 @@ def test_a_question_after_a_task_still_stops_the_turn():
 def test_clearing_an_unknown_session_is_a_no_op():
     turn_end.clear("never-seen")
     assert turn_end.refusal("never-seen", "x") is None
+
+
+def test_the_calls_a_turn_started_are_counted_until_it_clears():
+    turn_end.note_call("sess-count")
+    turn_end.note_call("sess-count")
+    assert turn_end.calls_started("sess-count") == 2
+    assert turn_end.calls_started("sess-other") == 0
+    turn_end.clear("sess-count")
+    assert turn_end.calls_started("sess-count") == 0

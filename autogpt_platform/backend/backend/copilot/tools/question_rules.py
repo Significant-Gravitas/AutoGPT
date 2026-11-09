@@ -4,8 +4,11 @@ Every question names why the work cannot go on without it. A preference
 (tone, format, naming) is asked only in Ask First; in Auto and Unsupervised
 Otto picks its default and notes it. "Should I go ahead?" questions are
 refused unless the choice cannot be undone, since the gate's approval cards
-ask for permission where the mode wants it. And a chat may only ask so many
-times in a row before Otto has to decide on its own.
+ask for permission where the mode wants it. A chat may only ask so many
+times in a row before Otto has to decide on its own. And a question that is
+the first thing in its turn is sent back once: looking first (email, files,
+tasks, memory) often settles it, or lets it name the real options and the
+deadline; asked again, it goes through.
 """
 
 import re
@@ -31,10 +34,19 @@ _PERMISSION_CHATTER = re.compile(
 )
 
 
+LOOK_FIRST = (
+    "Not asked: you have not looked at anything this turn. Read what bears on "
+    "it first (their email, files, tasks, memory, and the plans those point "
+    "to): it may settle the question, or let you name every real option and "
+    "the deadline. If there is nothing to look up, ask again."
+)
+
+
 def refusal(
     questions: Sequence[ClarifyingQuestion],
     mode: AutopilotMode,
     asked_in_a_row: int,
+    looked: bool = True,
 ) -> str | None:
     """Why these questions may not be asked, or None when they may."""
     problems = [p for q in questions if (p := _problem(q, mode))]
@@ -52,6 +64,8 @@ def refusal(
             f"row with a question, the most {mode} mode allows. Go on with your "
             "default_guess for each question and say what you assumed."
         )
+    if not looked:
+        return LOOK_FIRST
     return None
 
 

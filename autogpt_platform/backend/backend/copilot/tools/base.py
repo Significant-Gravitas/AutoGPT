@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, Sequence
 from openai.types.chat import ChatCompletionToolParam
 from prisma.enums import APIKeyPermission
 
+from backend.copilot import turn_end
 from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
 from backend.copilot.context import args_already_bound, get_current_envelope
 from backend.copilot.google_data_redaction import (
@@ -568,6 +569,7 @@ class BaseTool:
                 tool_call_id=tool_call_id,
             ) as outcome,
         ):
+            turn_end.note_call(session.session_id)
             output = await self._execute_checked(
                 user_id, session, tool_call_id, **kwargs
             )

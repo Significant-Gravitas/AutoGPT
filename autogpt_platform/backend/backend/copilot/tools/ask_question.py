@@ -140,6 +140,7 @@ class AskQuestionTool(BaseTool):
                 questions,
                 resolve_mode(session),
                 question_rules.questions_in_a_row(session.messages),
+                looked=turn_end.calls_started(session.session_id) > 1,
             )
         ):
             raise ValueError(refused)

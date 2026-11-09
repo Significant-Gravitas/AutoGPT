@@ -147,7 +147,8 @@ def _ask(
         call.refused = "ask_question requires at least one valid question"
         return call.refused
     in_a_row = _questions_in_a_row(run.turns[:-1])
-    if refused := question_rules.refusal(questions, mode, in_a_row):
+    looked = len(record.tool_calls) > 1  # as turn_end counts in production
+    if refused := question_rules.refusal(questions, mode, in_a_row, looked):
         call.refused = refused
         return refused
     record.questions = [

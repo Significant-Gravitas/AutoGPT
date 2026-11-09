@@ -156,7 +156,13 @@ QUESTION = {
 @pytest.mark.asyncio
 async def test_a_question_ends_the_turn_and_refuses_the_calls_after_it():
     models = _models(
-        _message(calls=[("ask_question", QUESTION), ("web_search", {"query": "x"})]),
+        _message(
+            calls=[
+                ("memory_search", {"query": "team"}),
+                ("ask_question", QUESTION),
+                ("web_search", {"query": "x"}),
+            ]
+        ),
         _message("Sent to sales."),
         answers=["sales"],
     )
@@ -166,7 +172,7 @@ async def test_a_question_ends_the_turn_and_refuses_the_calls_after_it():
     first, answered = run.turns
     assert first.ended_by == "question"
     assert [q.question for q in first.questions] == ["Which team?"]
-    assert first.tool_calls[1].refused is not None
+    assert first.tool_calls[2].refused is not None
     assert answered.user == "sales"
     assert answered.reply == "Sent to sales."
 
