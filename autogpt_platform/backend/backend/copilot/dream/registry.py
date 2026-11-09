@@ -79,6 +79,7 @@ async def ensure_scope_scheduled(
     was already registered (no RPC made), ``{"skipped": True, "reason": ...}``
     when it was not registered (flag off, ``scope_paused``, ``scope_wiped``,
     ``scope_changed``, ``timezone_lookup_failed``, ``registry_unavailable``,
+    ``flag_unavailable``,
     ``registration_failed``, ``record_failed``), otherwise the scheduler's
     own result.
     """
@@ -102,7 +103,7 @@ async def ensure_scope_scheduled(
         # can read the real timezone.
         return results | skip_all(enabled, "timezone_lookup_failed")
     return results | await register_scope_jobs(
-        scope, enabled, row, user_timezone, force_refresh
+        scope, enabled, row, user_timezone, force_refresh, results
     )
 
 
@@ -204,9 +205,9 @@ async def reregister_user(user_id: str) -> dict[str, dict[str, Any]]:
     The account always goes through, row or not: its crons may predate the
     registry and still run in the old timezone. Each expert with a row
     follows: paused ones are skipped and take the new timezone when they
-    resume, wiped ones are skipped for good. An owner with every dream flag
-    off costs no database call, as with :func:`ensure_scope_scheduled`.
-    Keyed by scope key.
+    resume, wiped ones are skipped for good. Community maintenance remains
+    scheduled independently of the dream and skill-learning flags. Keyed by
+    scope key.
     """
     try:
         account = MemoryScope.for_user(user_id)

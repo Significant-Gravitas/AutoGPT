@@ -1,13 +1,11 @@
-"""Keep Google user data out of the LLM traces sent to Langfuse.
+"""Tell Google user data apart, and redact it from anything traced.
 
 Google's Limited Use policy bars staff from reading what the Gmail, Drive,
 Docs, Sheets and Calendar blocks return, so neither their output nor the
-arguments AutoPilot passed them may reach a trace. Every traced payload goes
-through :func:`redact_google_data`: the Langfuse SDK applies it as its
-``mask`` (baseline turns and every call through the Langfuse-wrapped OpenAI
-client), and LangSmith's Claude Agent SDK tracing, which exports SDK turns to
-Langfuse over OTLP, applies it as the client's ``hide_inputs`` and
-``hide_outputs``.
+arguments AutoPilot passed them may reach a trace. :func:`redact_google_data`
+is the redaction for a traced payload. Nothing in the backend applies it: the
+backend no longer traces to Langfuse (SECRT-2711), and the PostHog spans it
+sends (``copilot/ai_spans.py``) carry no tool input or output.
 
 Data counts as Google's by the block that produced it, never by what it says:
 
@@ -44,17 +42,15 @@ from collections.abc import Iterator
 from contextvars import ContextVar
 from typing import Any
 
-import langsmith
-from langfuse import Langfuse
 from pydantic import BaseModel
 
 from backend.blocks import get_blocks
 from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.constants import COPILOT_NODE_PREFIX, parse_node_id_from_exec_id
 from backend.integrations.providers import ProviderName
-from backend.util.settings import Settings
 
 REDACTED = "[redacted: Google data]"
+_IMAGE_REDACTED = "[redacted: image data]"
 
 # Set on a ``tool-outputs/`` workspace file that saved a Google block's output,
 # so reading it back is recognised as Google data too.
@@ -82,8 +78,9 @@ _redacting_every_text: ContextVar[bool] = ContextVar(
 
 def redact_google_data(data: Any) -> Any:
     """Return *data* with Google block calls and results replaced by
-    :data:`REDACTED`. Everything else is returned unchanged, unless
-    :func:`tracing_google_data` is active, when every text is replaced."""
+    :data:`REDACTED` and image payloads omitted. Everything else is returned
+    unchanged, unless :func:`tracing_google_data` is active, when every text
+    is replaced."""
     if _redacting_every_text.get():
         return _redact_every_text(data)
     return _redact(data, _google_call_ids(data))
@@ -98,50 +95,6 @@ def tracing_google_data(active: bool = True) -> Iterator[None]:
         yield
     finally:
         _redacting_every_text.reset(token)
-
-
-def mask_langfuse_data(*, data: Any, **kwargs: Any) -> Any:
-    """The Langfuse SDK's ``mask`` hook."""
-    return redact_google_data(data)
-
-
-def install_trace_redaction() -> None:
-    """Apply the redaction to both tracers.
-
-    Langfuse first: its client keeps the settings of the first one built in
-    the process, and building it sets the OpenTelemetry tracer provider the
-    LangSmith client then exports through, as it would have lazily.
-    """
-    install_langfuse_mask()
-    langsmith.configure(client=langsmith.Client(hide_inputs=_hide, hide_outputs=_hide))
-
-
-def install_langfuse_mask() -> None:
-    """Build the process's Langfuse client with the mask.
-
-    Has to run before anything calls ``langfuse.get_client()``, which hands
-    out copies of the first client built: the SDK keeps that one's settings
-    and drops a mask passed later. Raises when the client it gets back does
-    not mask, so the caller can leave tracing off rather than trace unmasked.
-    """
-    # The configured credentials, which ``.env`` puts in ``Settings`` but not
-    # in the environment the SDK would otherwise read them from. ``host``
-    # still yields to ``LANGFUSE_BASE_URL``, as it would by default.
-    secrets = Settings().secrets
-    client = Langfuse(
-        public_key=secrets.langfuse_public_key or None,
-        secret_key=secrets.langfuse_secret_key or None,
-        host=secrets.langfuse_host or None,
-        mask=mask_langfuse_data,
-    )
-    # ``_resources`` is None when the client is disabled (no keys): it sends
-    # nothing, so there is nothing to mask.
-    resources = client._resources
-    if resources is not None and resources.mask is not mask_langfuse_data:
-        raise RuntimeError(
-            "A Langfuse client was built before the Google data mask; "
-            "its traces would not be redacted"
-        )
 
 
 def remember_google_output(output: str) -> None:
@@ -208,10 +161,6 @@ def _reviewed_block_id(review_id: object) -> str | None:
     return parse_node_id_from_exec_id(review_id).removeprefix(COPILOT_NODE_PREFIX)
 
 
-def _hide(data: dict) -> dict:
-    return redact_google_data(data)
-
-
 def _google_call_ids(data: Any) -> set[str]:
     """Ids of the tool calls in *data* that ran a Google block: by the block
     the call names, or by the Google data its result carries."""
@@ -234,6 +183,7 @@ def _redact(node: Any, google_ids: set[str]) -> Any:
         return [_redact(item, google_ids) for item in node]
     if not isinstance(node, dict):
         return node
+    node = _without_image_data(node)
     redacted = {key: _redact(value, google_ids) for key, value in node.items()}
     if _answered_call_id(node) in google_ids and "content" in node:
         redacted["content"] = REDACTED
@@ -243,6 +193,23 @@ def _redact(node: Any, google_ids: set[str]) -> Any:
     if is_google_call(node):
         redacted = _without_payload(redacted)
     return redacted
+
+
+def _without_image_data(node: dict[str, Any]) -> dict[str, Any]:
+    """Wire image blocks lose provenance on replay, so never trace their pixels."""
+    if node.get("type") == "image":
+        if "data" in node:
+            node = {**node, "data": _IMAGE_REDACTED}
+        source = node.get("source")
+        if isinstance(source, dict) and source.get("type") == "base64":
+            return {**node, "source": {**source, "data": _IMAGE_REDACTED}}
+    if node.get("type") == "image_url":
+        image_url = node.get("image_url")
+        if isinstance(image_url, dict):
+            return {**node, "image_url": {**image_url, "url": _IMAGE_REDACTED}}
+    if node.get("type") == "input_image" and "image_url" in node:
+        return {**node, "image_url": _IMAGE_REDACTED}
+    return node
 
 
 def _redact_every_text(node: Any) -> Any:
@@ -301,7 +268,7 @@ def _call_arguments(node: dict[str, Any]) -> dict[str, Any] | None:
 
 def _answered_call_id(node: dict[str, Any]) -> str | None:
     """The call a tool result answers: Anthropic ``tool_use_id`` or OpenAI
-    (and LangSmith history) ``tool_call_id``."""
+    ``tool_call_id``."""
     answered = node.get("tool_use_id") or node.get("tool_call_id")
     return answered if isinstance(answered, str) else None
 

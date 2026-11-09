@@ -1,5 +1,5 @@
 import type { CopilotWeeklyUsageRow } from "@/app/api/__generated__/models/copilotWeeklyUsageRow";
-import type { UserTransaction } from "@/app/api/__generated__/models/userTransaction";
+import type { UserCreditTransactionAdminView } from "@/app/api/__generated__/models/userCreditTransactionAdminView";
 
 const MICRODOLLARS_PER_USD = 1_000_000;
 const CREDIT_CENTS_PER_USD = 100;
@@ -21,7 +21,9 @@ const CREDIT_CSV_HEADERS = [
   "reason",
 ];
 
-export function buildCreditTransactionsCsv(rows: UserTransaction[]): string {
+export function buildCreditTransactionsCsv(
+  rows: UserCreditTransactionAdminView[],
+): string {
   const header = CREDIT_CSV_HEADERS.map(csvEscape).join(",");
   const body = rows.map((tx) =>
     [

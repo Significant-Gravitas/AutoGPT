@@ -19,8 +19,8 @@ statement against the row as it stands when the statement runs:
   * ``readUuids`` gains the update's, never losing one;
   * ``leaseExpiresAt`` only moves later: a renewal written late (a sync
     renewal the store gave up on, landing after the batch submit's longer
-    lease) never shortens the lease the row holds. Every renewal is now
-    plus its route's TTL, so none needs to move it earlier;
+    lease) never shortens the lease the row holds. Every renewal sets an
+    expiry at the renewal time plus its route's TTL;
   * ``leaseToken``, ``leaseExpiresAt``, ``inputBundle`` and
     ``cleanupPendingAt`` become NULL when the update names them in ``clear``
     (a closing row drops its bundle, and its lease unless the close marks

@@ -26,7 +26,7 @@ vi.mock("use-stick-to-bottom", () => ({
   }),
 }));
 
-vi.mock("@/components/ai-elements/conversation", () => ({
+vi.mock("@/components/organisms/Conversation/Conversation", () => ({
   Conversation: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
@@ -36,7 +36,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
   ConversationScrollButton: () => null,
 }));
 
-vi.mock("@/components/ai-elements/message", () => ({
+vi.mock("@/components/organisms/Message/Message", () => ({
   Message: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   MessageActions: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
@@ -71,8 +71,8 @@ vi.mock("../components/MessagePartRenderer", () => ({
 vi.mock("../../ToolChain/SwapText", () => ({
   SwapText: ({ text }: { text: string }) => <span>{text}</span>,
 }));
-vi.mock("../../PixelGridLoader/PixelGridLoader", () => ({
-  PixelGridLoader: () => null,
+vi.mock("../../DrawnLineLoader/DrawnLineLoader", () => ({
+  DrawnLineLoader: () => null,
 }));
 vi.mock("../../JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: ({ elapsedSeconds }: { elapsedSeconds?: number }) => (

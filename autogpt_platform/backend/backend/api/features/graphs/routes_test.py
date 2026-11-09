@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
@@ -13,22 +14,24 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.graphs.routes import router
 from backend.api.rest_api import app as real_app
-from backend.api.rest_api import handle_internal_http_error
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.blocks.basic import StoreValueBlock
+from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+from backend.blocks.mcp.block import MCPToolBlock
+from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus
-from backend.data.graph import GraphModel
+from backend.data.graph import GraphModel, NodeModel
 from backend.data.onboarding import OnboardingStep
-from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
-from backend.util.exceptions import GraphValidationError
+from backend.util.exceptions import GraphInUseError, GraphValidationError
 
 app = fastapi.FastAPI()
 app.include_router(router)
-# Mirror rest_api.py's GraphActivationError -> 400 mapping so the atomicity
-# tests verify the same behaviour the real app exposes.
-app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
+# Same handler set as the real app (GraphActivationError -> 400 included), so
+# the atomicity tests verify the behaviour it actually exposes.
+add_exception_handlers(app)
 client = fastapi.testclient.TestClient(app)
 
 
@@ -62,6 +65,14 @@ def setup_app_auth(mock_jwt_user, test_user_id):
     app.dependency_overrides[get_request_context] = _fake_request_context
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def caller_owns_every_graph_id(mocker: pytest_mock.MockFixture, test_user_id):
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.graph_owner_id",
+        new=AsyncMock(return_value=test_user_id),
+    )
 
 
 def _execution_meta() -> execution_db.GraphExecutionMeta:
@@ -227,7 +238,7 @@ def test_get_graphs(
 
     mocker.patch(
         "backend.data.graph.list_graphs_paginated",
-        return_value=Mock(graphs=[mock_graph]),
+        return_value=([mock_graph], Mock()),
     )
 
     response = client.get("/graphs")
@@ -278,6 +289,162 @@ def test_get_graph(
     )
 
 
+def _graph_owned_by(owner_id: str) -> GraphModel:
+    owner = {
+        "user_id": owner_id,
+        "organization_id": "owner-org",
+        "team_id": "owner-team",
+        "created_at": datetime(2025, 9, 4, 13, 37),
+    }
+    sub_graph = GraphModel(
+        id="sub-graph",
+        name="Sub",
+        description="",
+        nodes=[
+            NodeModel(
+                id="query",
+                block_id=SQLQueryBlock().id,
+                graph_id="sub-graph",
+                graph_version=1,
+                input_default={"host": "db.internal", "query": "select 1"},
+            )
+        ],
+        **owner,
+    )
+    return GraphModel(
+        id="graph-123",
+        version=1,
+        is_active=True,
+        name="Shared",
+        description="",
+        nodes=[
+            NodeModel(
+                id="trigger",
+                block_id=GenericWebhookTriggerBlock().id,
+                graph_id="graph-123",
+                graph_version=1,
+                input_default={"secret_token": "owner-token"},
+                webhook_id="owner-webhook",
+            )
+        ],
+        sub_graphs=[sub_graph],
+        **owner,
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/graphs/graph-123",
+        "/graphs/graph-123?for_export=false",
+        "/graphs/graph-123/versions/1",
+    ],
+)
+def test_get_graph_gives_someone_who_isnt_the_owner_an_export(
+    mocker: pytest_mock.MockFixture, path: str
+) -> None:
+    """A teammate or library member reading a graph they don't own gets what
+    an export gives, whatever they ask for: no stored secrets, no trigger
+    subscription, no owner."""
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        return_value=_graph_owned_by("someone-else"),
+    )
+
+    response = client.get(path)
+
+    assert response.status_code == 200
+    graph = response.json()
+    assert (graph["user_id"], graph["organization_id"], graph["team_id"]) == (
+        "",
+        None,
+        None,
+    )
+    [trigger] = graph["nodes"]
+    assert trigger["webhook_id"] is None
+    assert "secret_token" not in trigger["input_default"]
+    [sub_graph] = graph["sub_graphs"]
+    assert not any(
+        sub_graph.get(key) for key in ("user_id", "organization_id", "team_id")
+    )
+    assert "host" not in sub_graph["nodes"][0]["input_default"]
+
+
+def test_get_graph_gives_the_owner_their_graph_as_saved(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        return_value=_graph_owned_by(test_user_id),
+    )
+
+    graph = client.get("/graphs/graph-123").json()
+
+    assert (graph["user_id"], graph["organization_id"], graph["team_id"]) == (
+        test_user_id,
+        "owner-org",
+        "owner-team",
+    )
+    [trigger] = graph["nodes"]
+    assert trigger["webhook_id"] == "owner-webhook"
+    assert trigger["input_default"]["secret_token"] == "owner-token"
+    assert graph["sub_graphs"][0]["nodes"][0]["input_default"]["host"] == "db.internal"
+
+
+def test_an_owners_export_keeps_everything_the_export_kept(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An export comes back with its owner blanked, so the route can't tell an
+    owner's export from anyone else's and sends it through `shared_copy`.
+    That has to take nothing away, such as the plain inputs an export keeps
+    on a node whose block is missing."""
+    export = GraphModel(
+        id="graph-123",
+        version=1,
+        is_active=True,
+        name="Exported",
+        description="",
+        user_id="",
+        created_at=datetime(2025, 9, 4, 13, 37),
+        nodes=[
+            NodeModel(
+                id="gone",
+                block_id="00000000-0000-0000-0000-0000000dead00",
+                graph_id="graph-123",
+                graph_version=1,
+                input_default={"note": "plain"},
+            )
+        ],
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        return_value=export,
+    )
+
+    graph = client.get("/graphs/graph-123?for_export=true").json()
+
+    assert graph["nodes"][0]["input_default"] == {"note": "plain"}
+
+
+def test_get_graph_all_versions_exports_only_the_versions_someone_else_owns(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        return_value=[_graph_owned_by(test_user_id), _graph_owned_by("teammate")],
+    )
+
+    own, teammates = client.get("/graphs/graph-123/versions").json()
+
+    assert own["user_id"] == test_user_id
+    assert own["nodes"][0]["webhook_id"] == "owner-webhook"
+    assert own["nodes"][0]["input_default"]["secret_token"] == "owner-token"
+    assert teammates["user_id"] == ""
+    assert teammates["nodes"][0]["webhook_id"] is None
+    assert "secret_token" not in teammates["nodes"][0]["input_default"]
+    assert "host" not in teammates["sub_graphs"][0]["nodes"][0]["input_default"]
+
+
 def test_get_graph_not_found(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -315,11 +482,23 @@ def test_delete_graph(
         return_value=mock_graph,
     )
     mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.user_owns_graph",
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.assert_graph_deletable",
+        return_value=None,
+    )
+    deactivate = mocker.patch(
         "backend.api.features.graphs.routes.on_graph_deactivate",
         return_value=None,
     )
+    cleanup = mocker.patch(
+        "backend.api.features.graphs.routes.library_db.cleanup_graph_for_permanent_delete",
+        return_value=None,
+    )
     mocker.patch(
-        "backend.api.features.graphs.routes.graph_db.delete_graph",
+        "backend.api.features.graphs.routes.graph_db.delete_graph_permanently",
         return_value=3,  # Number of versions deleted
     )
 
@@ -328,12 +507,81 @@ def test_delete_graph(
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["version_counts"] == 3
+    deactivate.assert_awaited_once_with(mock_graph, user_id=test_user_id)
+    cleanup.assert_awaited_once_with("graph-123", test_user_id)
 
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "grphs_del",
     )
+
+
+def test_delete_graph_in_use_returns_409_and_keeps_triggers(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A graph other users or a store listing reference is refused with 409
+    (not a 500 FK violation), before its triggers are deactivated."""
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.user_owns_graph",
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.assert_graph_deletable",
+        side_effect=GraphInUseError("in use by other users"),
+    )
+    deactivate = mocker.patch(
+        "backend.api.features.graphs.routes.on_graph_deactivate",
+    )
+    cleanup = mocker.patch(
+        "backend.api.features.graphs.routes.library_db.cleanup_graph_for_permanent_delete",
+    )
+    delete = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.delete_graph_permanently",
+    )
+
+    response = client.delete("/graphs/graph-123")
+
+    assert response.status_code == 409
+    assert "in use" in response.json()["detail"]
+    deactivate.assert_not_called()
+    cleanup.assert_not_called()
+    delete.assert_not_called()
+
+
+def test_delete_graph_by_non_owner_returns_200_with_zero_count(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A non-owner's delete keeps the pre-#15637 behaviour: 200 with
+    version_counts 0, without the in-use check (whose 409 would wrongly say
+    "in use by other users" and confirm the graph exists), deactivation or
+    any cleanup."""
+    owns = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.user_owns_graph",
+        return_value=False,
+    )
+    deletable = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.assert_graph_deletable",
+    )
+    deactivate = mocker.patch(
+        "backend.api.features.graphs.routes.on_graph_deactivate",
+    )
+    cleanup = mocker.patch(
+        "backend.api.features.graphs.routes.library_db.cleanup_graph_for_permanent_delete",
+    )
+    delete = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.delete_graph_permanently",
+    )
+
+    response = client.delete("/graphs/graph-123")
+
+    assert response.status_code == 200
+    assert response.json() == {"version_counts": 0}
+    owns.assert_awaited_once()
+    deletable.assert_not_called()
+    deactivate.assert_not_called()
+    cleanup.assert_not_called()
+    delete.assert_not_called()
 
 
 def test_create_new_graph_returns_400_and_persists_nothing_on_activation_error(
@@ -413,7 +661,7 @@ def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
         "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
     )
     update_lib_agent_mock = mocker.patch(
-        "backend.api.features.graphs.routes.library_db.update_library_agent_version_and_settings",
+        "backend.api.features.graphs.routes.library_db.update_agent_version_in_library",
         new=AsyncMock(),
     )
 
@@ -742,6 +990,63 @@ def test_create_new_graph_names_the_missing_field_on_the_submitted_node(
     create_graph_mock.assert_not_awaited()
 
 
+@pytest.mark.parametrize("sink_name,status", [("query", 200), ("not_an_argument", 400)])
+def test_create_new_graph_takes_a_link_named_after_an_mcp_tool_argument(
+    mocker: pytest_mock.MockFixture, sink_name: str, status: int
+) -> None:
+    """The builder names a link into an MCP tool's argument after the
+    argument, and saving it answered 400 "invalid, Allowed fields". A name
+    that is neither an argument nor a field of the block is still refused."""
+    mocker.patch(
+        "backend.api.features.graphs.routes.before_graph_activate",
+        new=AsyncMock(side_effect=lambda g, **_: g),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.library_db.create_library_agent",
+        new=AsyncMock(),
+    )
+    graph = {
+        "name": "Value to MCP tool",
+        "description": "",
+        "nodes": [
+            {
+                "id": "value",
+                "block_id": StoreValueBlock().id,
+                "input_default": {"input": "hi"},
+            },
+            {
+                "id": "tool",
+                "block_id": MCPToolBlock().id,
+                "input_default": {
+                    "server_url": "https://mcp.example.com/mcp",
+                    "selected_tool": "search",
+                    "tool_input_schema": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                },
+            },
+        ],
+        "links": [
+            {
+                "source_id": "value",
+                "sink_id": "tool",
+                "source_name": "output",
+                "sink_name": sink_name,
+            }
+        ],
+    }
+
+    response = client.post("/graphs", json={"graph": graph})
+
+    assert response.status_code == status, response.text
+    assert create_graph_mock.await_count == (status == 200)
+
+
 @pytest.mark.parametrize(
     "block,title",
     [(AgentInputBlock, "Agent Input"), (AgentOutputBlock, "Agent Output")],
@@ -1014,3 +1319,39 @@ def test_execute_graph_records_a_failure_and_re_raises(
         client.post("/graphs/graph-1/execute/1", json={})
 
     assert record.call_args.kwargs["status"] == "error"
+
+
+def test_execute_graph_refuses_an_input_nested_too_deep(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """#15648: an input nested ~1000 levels deep answered 422 but still saved
+    an INCOMPLETE run whose ``inputs`` column held a string, which broke every
+    later listing of the user's runs. The real ``add_graph_execution`` must
+    refuse it as a validation error before anything is written."""
+    credit_model = Mock()
+    credit_model.get_credits = AsyncMock(return_value=100)
+    mocker.patch(
+        "backend.api.features.graphs.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch(
+        "backend.executor.utils.is_user_paywalled", AsyncMock(return_value=False)
+    )
+    mocker.patch("backend.executor.utils.is_user_banned", AsyncMock(return_value=False))
+    created = mocker.patch(
+        "backend.executor.utils.execution_db.create_graph_execution", AsyncMock()
+    )
+    mocker.patch("backend.api.features.graphs.routes.record_graph_operation", Mock())
+    value: Any = "abyss"
+    for _ in range(300):
+        value = [value]
+
+    response = client.post(
+        "/graphs/graph-1/execute/1", json={"inputs": {"shift_tags": value}}
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["type"] == "validation_error"
+    assert "shift_tags" in detail["message"]
+    created.assert_not_awaited()

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { readLocalProgress, writeLocalProgress } from "../progress";
 import { PAYWALL_LAST_STEPS, useOnboardingWizardStore } from "../store";
 import { useWizardProgress } from "../useWizardProgress";
-import { makeProgress } from "./progress-fixture";
+import { makeProgress as makeBaseProgress } from "./progress-fixture";
 
 const { getState, patchState } = vi.hoisted(() => ({
   getState: vi.fn(),
@@ -19,6 +19,17 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => params,
 }));
 
+function makeProgress(overrides: Parameters<typeof makeBaseProgress>[0] = {}) {
+  const draft = makeBaseProgress(overrides);
+  return {
+    ...draft,
+    completedSteps: [
+      "team",
+      "autopilot",
+      ...draft.completedSteps,
+    ] as typeof draft.completedSteps,
+  };
+}
 function response(progress = makeProgress(), revision = 4, userID = "u1") {
   return {
     status: 200,

@@ -36,6 +36,24 @@ def test_posthog_catalog_entry_uses_hosted_authentication():
     )
 
 
+def test_cloudflare_catalog_entry_uses_hosted_authentication():
+    entry = get_mcp_catalog_entry_for_url("https://mcp.cloudflare.com/mcp")
+
+    assert entry is not None
+    assert entry.name == "mcp_cloudflare"
+    assert entry.display_name == "Cloudflare"
+    assert entry.mcp_server.icon_id == "cloudflare"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.allow_custom_url is False
+    assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
+    # Its resource asks only for identity and adds scopes through step-up,
+    # which we don't do. A pinned list would break sign-in once Cloudflare
+    # retires one of its scopes, so take whatever it advertises.
+    assert entry.mcp_server.oauth_scopes is None
+    assert entry.mcp_server.oauth_request_all_scopes is True
+    assert "oauth_request_all_scopes" not in entry.mcp_server.model_dump()
+
+
 def test_openseo_catalog_entry_defaults_to_cloud_and_allows_self_hosting():
     entry = get_mcp_catalog_entry_for_url("https://app.openseo.so/mcp")
 
@@ -139,6 +157,15 @@ def oauth_server_data():
 def test_catalog_rejects_inconsistent_authentication(changes):
     with pytest.raises(ValidationError):
         MCPServerMetadata.model_validate({**oauth_server_data(), **changes})
+
+
+def test_requesting_every_advertised_scope_is_an_oauth_setting():
+    data = {**oauth_server_data(), "oauth_request_all_scopes": True}
+    assert MCPServerMetadata.model_validate(data).oauth_request_all_scopes
+    with pytest.raises(ValidationError, match="require OAuth"):
+        MCPServerMetadata.model_validate({**data, "auth_methods": ["bearer"]})
+    with pytest.raises(ValidationError, match="not both"):
+        MCPServerMetadata.model_validate({**data, "oauth_scopes": ["read"]})
 
 
 @pytest.mark.parametrize("field", ["oauth_scopes", "oauth_write_scopes"])
@@ -255,6 +282,10 @@ def test_a_tool_cannot_carry_two_effects():
             "irreversible",
         ),
         ("https://api.githubcopilot.com/mcp/", "not_published", None),
+        ("https://mcp.cloudflare.com/mcp", "search", "read"),
+        ("https://mcp.cloudflare.com/mcp", "docs", "read"),
+        ("https://mcp.cloudflare.com/mcp", "whoami", "read"),
+        ("https://mcp.cloudflare.com/mcp", "execute", "external"),
         ("https://mcp.example.com/mcp", "get_things", None),
     ],
 )

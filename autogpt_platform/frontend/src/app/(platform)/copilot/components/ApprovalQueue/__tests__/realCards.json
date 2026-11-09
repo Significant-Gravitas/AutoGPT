@@ -63,7 +63,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "Gmail Send",
       "editable": false,
@@ -254,7 +255,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "Google Sheets Update Row",
       "editable": false,
@@ -478,7 +480,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "Execute Code Step",
       "editable": false,
@@ -632,7 +635,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "Send Web Request",
       "editable": false,
@@ -780,7 +784,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "Post To X",
       "editable": false,
@@ -1073,6 +1078,222 @@
     }
   },
   {
+    "story": "Airtable Create Table",
+    "review": {
+      "node_exec_id": "copilot-node-gate-run_capability:550289d2011cf535",
+      "node_id": "copilot-node-gate-run_capability",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "run_capability",
+        "arguments": {
+          "base_id": "appK7rB2xQ9mN4pLs",
+          "table_name": "Printify orders",
+          "table_fields": [
+            {
+              "name": "Order number",
+              "type": "singleLineText"
+            },
+            {
+              "name": "Customer",
+              "type": "singleLineText"
+            },
+            {
+              "name": "Total",
+              "type": "currency",
+              "options": {
+                "precision": 2
+              }
+            },
+            {
+              "name": "Status",
+              "type": "singleSelect",
+              "options": {
+                "choices": [
+                  {
+                    "name": "New"
+                  },
+                  {
+                    "name": "Shipped"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Ordered on",
+              "type": "dateTime"
+            }
+          ]
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "base_id",
+            "label": "Base",
+            "format": null
+          },
+          {
+            "key": "table_name",
+            "label": "Table name",
+            "format": null
+          },
+          {
+            "key": "table_fields",
+            "label": "Table fields",
+            "format": null
+          }
+        ],
+        "references": [],
+        "reference_totals": {},
+        "tool_call_id": "call-run_capability",
+        "turn": 1,
+        "mode": "auto",
+        "subject": {
+          "kind": "block",
+          "key": "block:fcc20ced-d817-42ea-9b40-c35e7bf34b4f",
+          "name": "Airtable Create Table",
+          "effect": "external",
+          "irreversible": false,
+          "block_id": "fcc20ced-d817-42ea-9b40-c35e7bf34b4f"
+        },
+        "reason": "Nothing changes in your account until you approve.",
+        "reason_kind": "subject",
+        "decided_by": null,
+        "chat_rules_allowed": ["allow", "judge"],
+        "headline": {
+          "ask": "Add a table to your Airtable:",
+          "object": "Printify orders",
+          "object_key": null
+        },
+        "spend": null,
+        "workflow": null,
+        "preview": {
+          "ask": "Add a table to your Airtable:",
+          "object": "Printify orders",
+          "tables": [
+            {
+              "name": "Printify orders",
+              "description": "",
+              "fields": [
+                {
+                  "name": "Order number",
+                  "kind": "Text",
+                  "detail": ""
+                },
+                {
+                  "name": "Customer",
+                  "kind": "Text",
+                  "detail": ""
+                },
+                {
+                  "name": "Total",
+                  "kind": "Money",
+                  "detail": "precision 2"
+                },
+                {
+                  "name": "Status",
+                  "kind": "Choice of New, Shipped",
+                  "detail": ""
+                },
+                {
+                  "name": "Ordered on",
+                  "kind": "Date and time",
+                  "detail": ""
+                }
+              ]
+            }
+          ],
+          "covers": ["table_name", "table_fields"]
+        }
+      },
+      "instructions": "Airtable Create Table",
+      "editable": false,
+      "status": "WAITING"
+    },
+    "schema": {
+      "properties": {
+        "credentials": {
+          "credentials_provider": ["airtable"],
+          "credentials_types": ["api_key"],
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
+            },
+            "provider": {
+              "description": "Provider name for integrations. Can be any string value, including custom provider names.",
+              "title": "Provider",
+              "type": "string"
+            },
+            "type": {
+              "enum": ["api_key", "oauth2", "user_password"],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": ["id", "provider", "type"],
+          "title": "CredentialsMetaInput[ProviderName, Literal['api_key', 'oauth2', 'user_password']]",
+          "type": "object",
+          "description": "Airtable API credentials"
+        },
+        "base_id": {
+          "advanced": false,
+          "description": "The Airtable base to use: a set of tables, like a spreadsheet file with several sheets.",
+          "format": "airtable-base-picker",
+          "resource_picker": {
+            "access": "create",
+            "provider": "airtable"
+          },
+          "secret": false,
+          "title": "Airtable base",
+          "type": "string"
+        },
+        "table_name": {
+          "advanced": false,
+          "description": "The name of the table to create",
+          "secret": false,
+          "title": "Table Name",
+          "type": "string"
+        },
+        "table_fields": {
+          "advanced": true,
+          "default": [
+            {
+              "name": "Name",
+              "type": "singleLineText"
+            }
+          ],
+          "description": "Table fields with name, type, and options",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "secret": false,
+          "title": "Table Fields",
+          "type": "array"
+        }
+      },
+      "required": ["credentials", "base_id", "table_name"],
+      "title": "Input",
+      "type": "object"
+    }
+  },
+  {
     "story": "Gmail Newsletter",
     "review": {
       "node_exec_id": "copilot-node-gate-run_capability:373b3f39ce8fdfb5",
@@ -1130,7 +1351,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "Gmail Send",
       "editable": false,
@@ -1306,7 +1528,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "Morning digest",
       "editable": false,
@@ -1366,7 +1589,8 @@
           "object_key": null
         },
         "spend": null,
-        "workflow": null
+        "workflow": null,
+        "preview": null
       },
       "instructions": "Run a command in the sandbox",
       "editable": false,
@@ -1444,7 +1668,8 @@
           "graph_id": "g-digest",
           "graph_version": 1,
           "name": "Morning digest"
-        }
+        },
+        "preview": null
       },
       "instructions": "Run “Gmail Send”",
       "editable": false,

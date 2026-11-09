@@ -1,4 +1,7 @@
+import json
 from typing import Any, List
+
+from fastapi.encoders import jsonable_encoder
 
 from backend.blocks._base import (
     Block,
@@ -9,7 +12,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
-from backend.util.json import loads
+from backend.util.json import dumps, loads
 from backend.util.mock import MockObject
 from backend.util.prompt import estimate_token_count_str
 
@@ -197,12 +200,44 @@ class FindInDictionaryBlock(Block):
         elif isinstance(obj, list) and isinstance(key, int) and 0 <= key < len(obj):
             yield "output", obj[key]
         elif isinstance(obj, list) and isinstance(key, str):
+            digits = key.strip().removeprefix("-")
+            is_index = digits.isascii() and digits.isdigit()
             if len(obj) == 0:
-                yield "output", []
-            elif isinstance(obj[0], dict) and key in obj[0]:
-                yield "output", [item[key] for item in obj if key in item]
+                # Any index into an empty list is out of range.
+                if is_index:
+                    yield "missing", input_data.input
+                else:
+                    yield "output", []
+            elif dicts := [item for item in obj if isinstance(item, dict)]:
+                # Pluck the key from every dict, whatever the first item holds;
+                # non-dict items are skipped.
+                found = [item[key] for item in dicts if key in item]
+                if found:
+                    yield "output", found
+                else:
+                    yield "missing", input_data.input
+            elif is_index:
+                # Builder inputs send `str | int` keys as strings by default,
+                # so treat a numeric string as a list index, with the same
+                # range rule as an int key (negatives are missing). isdigit()
+                # alone also accepts characters like "²" that int() rejects.
+                # Lists that contain dicts pluck by key instead (above).
+                try:
+                    index = int(key.strip())
+                except ValueError:
+                    # Python 3.11+ refuses to convert very long digit strings.
+                    yield "missing", input_data.input
+                    return
+                if 0 <= index < len(obj):
+                    yield "output", obj[index]
+                else:
+                    yield "missing", input_data.input
             else:
-                yield "output", [getattr(val, key) for val in obj if hasattr(val, key)]
+                found = [getattr(val, key) for val in obj if hasattr(val, key)]
+                if found:
+                    yield "output", found
+                else:
+                    yield "missing", input_data.input
         elif isinstance(obj, object) and isinstance(key, str) and hasattr(obj, key):
             yield "output", getattr(obj, key)
         else:
@@ -401,7 +436,10 @@ class CreateListBlock(Block):
             if (max_tokens and (cur_tokens + tokens > max_tokens)) or (
                 max_size and (cur_size + 1 > max_size)
             ):
-                yield "list", chunk
+                # A first value that alone exceeds the limit leaves nothing to
+                # flush; don't emit an empty list ahead of it.
+                if chunk:
+                    yield "list", chunk
                 chunk = [value]
                 cur_size, cur_tokens = 1, tokens
             else:
@@ -795,18 +833,27 @@ def _make_hashable(item: Any):
     """
     Create a hashable representation of any item for deduplication.
     Converts unhashable types (dicts, lists) into deterministic tuple structures.
+    Dicts, lists and bools are tagged with their kind, so values of different
+    kinds never share a key, whatever they contain (e.g. ``{}`` vs ``[]``,
+    ``True`` vs ``1``, ``{}`` vs ``["dict", []]``). Numbers aren't tagged, so
+    ``1`` and ``1.0`` still match.
     """
     if isinstance(item, dict):
-        return tuple(
-            sorted(
-                ((_make_hashable(k), _make_hashable(v)) for k, v in item.items()),
-                key=lambda x: (str(type(x[0])), str(x[0])),
-            )
+        return (
+            "dict",
+            tuple(
+                sorted(
+                    ((_make_hashable(k), _make_hashable(v)) for k, v in item.items()),
+                    key=lambda x: (str(type(x[0])), str(x[0])),
+                )
+            ),
         )
     if isinstance(item, (list, tuple)):
-        return tuple(_make_hashable(i) for i in item)
+        return ("list", tuple(_make_hashable(i) for i in item))
     if isinstance(item, set):
         return frozenset(_make_hashable(i) for i in item)
+    if isinstance(item, bool):
+        return ("bool", item)
     return item
 
 
@@ -1151,6 +1198,12 @@ class InterleaveListsBlock(Block):
         yield "length", len(result)
 
 
+# Most bytes a zipped result may add to its input, as JSON: the fill value
+# written into each padded cell, plus the separators around every cell and
+# group. Each input element appears in the result at most once.
+ZIP_LISTS_MAX_ADDED_BYTES = 4 * 1024 * 1024
+
+
 class ZipListsBlock(Block):
     """
     Zips multiple lists together into a list of grouped tuples/lists.
@@ -1256,6 +1309,17 @@ class ZipListsBlock(Block):
             yield "length", 0
             return
 
+        added_bytes = _zipped_added_bytes(
+            input_data.lists, input_data.pad_to_longest, input_data.fill_value
+        )
+        if added_bytes > ZIP_LISTS_MAX_ADDED_BYTES:
+            yield "error", (
+                f"The zipped result would add {added_bytes / 2**20:.1f} MiB to "
+                f"its input, more than the limit of "
+                f"{ZIP_LISTS_MAX_ADDED_BYTES / 2**20:g} MiB."
+            )
+            return
+
         if input_data.pad_to_longest:
             result = self._zip_pad(input_data.lists, input_data.fill_value)
         else:
@@ -1263,6 +1327,35 @@ class ZipListsBlock(Block):
 
         yield "zipped_list", result
         yield "length", len(result)
+
+
+def _zipped_added_bytes(
+    lists: list[list[Any]], pad_to_longest: bool, fill_value: Any
+) -> int:
+    """JSON bytes the zipped result adds to its input, computed without building it."""
+    lengths = [len(lst) for lst in lists if lst is not None]
+    if not lengths:
+        return 0
+    groups = max(lengths) if pad_to_longest else min(lengths)
+    cells = groups * len(lengths)
+    padded_cells = cells - sum(min(length, groups) for length in lengths)
+    fill_bytes = _json_bytes(fill_value) if padded_cells else 0
+    # A "," after each cell, "[]," around each group.
+    return padded_cells * fill_bytes + cells + groups * 3
+
+
+def _json_bytes(value: Any) -> int:
+    try:
+        return len(dumps(value).encode())
+    except TypeError:
+        # orjson stops at 64-bit integers; Python's json does not. Normalise
+        # first, as dumps does, so dates and models beside such an integer
+        # still serialize.
+        return len(
+            json.dumps(
+                jsonable_encoder(value), separators=(",", ":"), ensure_ascii=False
+            ).encode()
+        )
 
 
 class ListDifferenceBlock(Block):

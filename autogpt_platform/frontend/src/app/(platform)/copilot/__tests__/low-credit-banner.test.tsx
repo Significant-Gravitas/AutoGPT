@@ -18,9 +18,6 @@ vi.mock("../components/ChatContainer/ChatContainer", () => ({
 vi.mock("../components/NotificationBanner/NotificationBanner", () => ({
   NotificationBanner: () => null,
 }));
-vi.mock("../components/NotificationDialog/NotificationDialog", () => ({
-  NotificationDialog: () => null,
-}));
 vi.mock("../components/RateLimitResetDialog/RateLimitGate", () => ({
   RateLimitGate: () => null,
 }));
@@ -38,7 +35,7 @@ vi.mock("../components/ScaleLoader/ScaleLoader", () => ({
 vi.mock("../components/ArtifactPanel/ArtifactPanel", () => ({
   ArtifactPanel: () => null,
 }));
-vi.mock("@/components/ui/sidebar", () => ({
+vi.mock("@/components/molecules/Sidebar/Sidebar", () => ({
   SidebarProvider: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),
@@ -90,9 +87,16 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flag === actual.Flag.ENABLE_PLATFORM_PAYMENT,
+    useGetFlag: () => false,
   };
 });
+
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: true,
+    isResolved: true,
+  }),
+}));
 
 function setupCredits(credits: number) {
   server.use(

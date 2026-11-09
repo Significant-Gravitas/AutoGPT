@@ -6,12 +6,12 @@ import anthropic
 import httpx
 from pydantic import BaseModel
 
-from backend.copilot.dream.structured_output import output_tool_name
 from backend.copilot.transport_routing import ProviderRoutingKwargs
 from backend.util.llm.conversions import ToolCall, ToolContentBlock
 from backend.util.llm.providers import ProviderResponse
 
 from .context import InferenceContext, InferenceJob, InferenceScope, RouteDecision
+from .structured_output import output_tool_name
 
 # Where the tests patch the transport's key and the provider call.
 ROUTING = "backend.copilot.inference.routing.routing_kwargs_for_chat_transport"

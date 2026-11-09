@@ -21,12 +21,10 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import orjson
-from langfuse import propagate_attributes
 from openai import APIConnectionError
 from openai import omit as openai_omit
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
-from opentelemetry import trace as otel_trace
 
 from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot import engine_switch
@@ -35,11 +33,13 @@ from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
 )
+from backend.copilot.baseline.image_context import prune_image_context
 from backend.copilot.baseline.reasoning import (
     BaselineReasoningEmitter,
     anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
+from backend.copilot.baseline.tool_order import writes_files
 from backend.copilot.baseline.tool_persistence import BaselineToolPersistence
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.builder_context import (
@@ -48,18 +48,24 @@ from backend.copilot.builder_context import (
 )
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
-from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.constants import EMPTY_COMPLETION_NOTICE
+from backend.copilot.context import (
+    get_workspace_manager,
+    is_unattended_turn,
+    set_execution_context,
+    turn_sandbox,
+)
 from backend.copilot.continuation import send_trailing_note_as_user
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
-from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.context_marker import append_injected_memory_block
 from backend.copilot.graphiti.context_refresh import join_refresh, start_refresh
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.hidden_rows import visible_to_model
+from backend.copilot.host_fs import save_new_file
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.llm_attribution import openrouter_attribution
@@ -92,6 +98,7 @@ from backend.copilot.pending_messages import (
     PendingMessage,
     drain_pending_messages,
     format_pending_as_user_message,
+    pending_message_text,
 )
 from backend.copilot.permissions import allowed_providers, denied_tool_names
 from backend.copilot.prompting import (
@@ -127,6 +134,7 @@ from backend.copilot.response_model import (
     StreamUsage,
     ToolDisplayData,
 )
+from backend.copilot.sandbox_status import build_sandbox_replaced_notice
 from backend.copilot.service import (
     _build_system_prompt,
     _get_main_client,
@@ -136,6 +144,10 @@ from backend.copilot.service import (
     strip_user_context_tags,
 )
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
+from backend.copilot.skill_invocation import (
+    get_persisted_skill_invocation,
+    inject_skill_invocation,
+)
 from backend.copilot.stream_checkpoint import turn_checkpoint
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import (
@@ -160,6 +172,7 @@ from backend.copilot.tools.e2b_sandbox import (
 )
 from backend.copilot.tools.seen_capabilities import build_seen_capabilities_notice
 from backend.copilot.tools.session_context import build_session_context
+from backend.copilot.tools.skill_matching import build_matched_skills_notice
 from backend.copilot.tools.skills import (
     build_skills_context,
     build_skills_update_notice,
@@ -181,7 +194,6 @@ from backend.copilot.transcript import (
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.llm.provider_billing import (
     PROVIDER_UNAVAILABLE_CODE,
     PROVIDER_UNAVAILABLE_MESSAGE,
@@ -256,16 +268,6 @@ _BUDGET_EXHAUSTED_FALLBACK_TEXT = (
     "Send a follow-up message to continue from here."
 )
 
-# Fallback surfaced when the model finished naturally (under the budget) but
-# left the terminal round with zero visible text — the baseline equivalent
-# of the SDK's ``StreamError(code="empty_completion")``. Without this the FE
-# silently shows nothing after a long thinking-only turn on baseline-routed
-# sessions (e.g. some Kimi K2.6 cohorts).
-_NATURAL_FINISH_EMPTY_FALLBACK_TEXT = (
-    "The model returned no response for this turn. "
-    "Please try again or rephrase your request."
-)
-
 
 def _silent_finish_fallback_events(
     notice: str | None,
@@ -304,7 +306,7 @@ def _natural_finish_empty_notice_text(terminal_round_text: str) -> str | None:
     """
     if terminal_round_text.strip():
         return None
-    return _NATURAL_FINISH_EMPTY_FALLBACK_TEXT
+    return EMPTY_COMPLETION_NOTICE
 
 
 def _build_budget_exhausted_fallback_events(
@@ -346,9 +348,6 @@ _VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/w
 
 # Max size for embedding images directly in the user message (20 MiB raw).
 _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
-
-# Matches characters unsafe for filenames.
-_UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
 
 # OpenRouter-specific extra_body flag that embeds the real generation cost
 # into the final usage chunk. Module-level constant so we don't reallocate
@@ -438,16 +437,7 @@ async def _prepare_baseline_attachments(
                     f"{file_info.size_bytes:,} bytes) [embedded as image]"
                 )
             else:
-                safe = _UNSAFE_FILENAME.sub("_", file_info.name) or "file"
-                candidate = os.path.join(working_dir, safe)
-                if os.path.exists(candidate):
-                    stem, ext = os.path.splitext(safe)
-                    idx = 1
-                    while os.path.exists(candidate):
-                        candidate = os.path.join(working_dir, f"{stem}_{idx}{ext}")
-                        idx += 1
-                with open(candidate, "wb") as f:
-                    f.write(content)
+                candidate = save_new_file(working_dir, file_info.name, content)
                 file_descriptions.append(
                     f"- {file_info.name} ({mime}, "
                     f"{file_info.size_bytes:,} bytes) saved to "
@@ -889,10 +879,17 @@ def _prepend_skills_notice_to_current_message(
         return
     for msg in reversed(openai_messages):
         if msg["role"] == "user":
-            existing = msg.get("content", "")
-            if isinstance(existing, str):
-                msg["content"] = notice + existing
+            _add_message_text(msg, notice, prepend=True)
             break
+
+
+def _add_message_text(msg: dict[str, Any], text: str, *, prepend: bool) -> None:
+    content = msg.get("content") or ""
+    if isinstance(content, list):
+        block = {"type": "text", "text": text}
+        msg["content"] = [block, *content] if prepend else [*content, block]
+    else:
+        msg["content"] = text + content if prepend else content + text
 
 
 def _mark_system_message_with_cache_control(
@@ -929,6 +926,7 @@ async def _baseline_llm_caller(
 
     round_text = ""
     try:
+        prune_image_context(messages)
         client = _get_main_client()
         supports_cache = _supports_prompt_cache_markers(state.model)
         if supports_cache:
@@ -1012,8 +1010,8 @@ async def _baseline_llm_caller(
         # Route through the shared providers helper so future provider
         # work (streaming flex tier, new SDK upgrades) propagates here
         # without a parallel migration. The pre-built ``client`` is
-        # passed through so the module-level Langfuse-wrapped client
-        # keeps its HTTP connection pool warm across turns.
+        # passed through so the module-level client keeps its HTTP
+        # connection pool warm across turns.
         response = await call_provider_stream(
             client=client,
             model=state.model,
@@ -1284,6 +1282,8 @@ async def _baseline_tool_executor(
                 tool_call_id=tool_call_id,
                 tool_name=called_name,
                 content=tool_output,
+                is_error=not result.success,
+                image_blocks=[result.image.anthropic()] if result.image else [],
             )
         )
     except Exception as e:
@@ -1344,6 +1344,28 @@ def _mutate_openai_messages(
                     "content": tr.content,
                 }
             )
+        image_content = [
+            block
+            for tr in tool_results
+            if tr.image_blocks
+            for block in (
+                {
+                    "type": "text",
+                    "text": f"Image returned by {tr.tool_name} ({tr.tool_call_id}):",
+                },
+                *[
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{image['source']['media_type']};base64,{image['source']['data']}"
+                        },
+                    }
+                    for image in tr.image_blocks
+                ],
+            )
+        ]
+        if image_content:
+            messages.append({"role": "user", "content": image_content})
     elif response.response_text:
         messages.append({"role": "assistant", "content": response.response_text})
 
@@ -1397,7 +1419,11 @@ def _record_turn_to_transcript(
             # assistant(tool_use) → user(tool_result)
             transcript_builder.append_tool_result(
                 tool_use_id=tr.tool_call_id,
-                content=tr.content,
+                content=(
+                    [{"type": "text", "text": tr.content}, *tr.image_blocks]
+                    if tr.image_blocks
+                    else tr.content
+                ),
             )
     elif response.response_text:
         transcript_builder.append_assistant(
@@ -1660,7 +1686,12 @@ async def _load_prior_transcript(
         # Corrupt file in GCS; overwriting with a valid one is better.
         return True, None
 
-    stripped = strip_for_upload(raw_str)
+    try:
+        stripped = strip_for_upload(raw_str)
+    except ValueError:
+        logger.warning("[Baseline] CLI session content could not be scrubbed")
+        # Corrupt file in GCS; overwriting with a valid one is better.
+        return True, None
     if not validate_transcript(stripped):
         logger.warning("[Baseline] CLI session content invalid after strip")
         # Corrupt file in GCS; overwriting with a valid one is better.
@@ -1801,6 +1832,7 @@ async def _enqueue_graphiti_turn(
         message,
         assistant_msg=assistant_msg,
         expert_id=session.expert_id,
+        bridge_origin=session.metadata.source_platform is not None,
     )
 
 
@@ -1867,7 +1899,14 @@ async def stream_chat_completion_baseline(
     if is_user_message and message and message.strip():
         await clear_pending_question(session)
 
-    if maybe_append_user_message(session, message, is_user_message, message_metadata):
+    persisted_invocation = (
+        get_persisted_skill_invocation(message, session.messages)
+        if is_user_message
+        else None
+    )
+    if persisted_invocation is None and maybe_append_user_message(
+        session, message, is_user_message, message_metadata
+    ):
         if is_user_message:
             track_user_message(
                 user_id=user_id,
@@ -1993,7 +2032,9 @@ async def stream_chat_completion_baseline(
     # Gate context fetch on both first turn AND user message so that assistant-
     # role calls (e.g. tool-result submissions) on the first turn don't trigger
     # a needless DB lookup for user understanding.
-    should_inject_user_context = is_first_turn and is_user_message
+    should_inject_user_context = (
+        is_first_turn and is_user_message and persisted_invocation is None
+    )
 
     if should_inject_user_context:
         prompt_task = _build_system_prompt(user_id)
@@ -2026,10 +2067,8 @@ async def stream_chat_completion_baseline(
 
     # NOTE: drained pending messages are folded into the current user
     # message's content (see the turn-start drain above), so the single
-    # ``transcript_builder.append_user`` call below (covered by the
-    # ``if message and is_user_message`` branch that appends
-    # ``user_message_for_transcript or message``) already records the
-    # combined text in the transcript. Do NOT also append drained items
+    # ``transcript_builder.append_user`` call below records the combined
+    # text in the transcript. Do NOT also append drained items
     # individually here — on the ``transcript_download is None`` path
     # that would produce N separate pending entries plus the combined
     # entry, duplicating the pending content in the JSONL uploaded for
@@ -2047,7 +2086,12 @@ async def stream_chat_completion_baseline(
             first_message = user_messages[0].content or message or ""
             if first_message:
                 task = asyncio.create_task(
-                    _update_title_async(session_id, first_message, user_id)
+                    _update_title_async(
+                        session_id,
+                        first_message,
+                        user_id,
+                        bridge_origin=session.metadata.source_platform is not None,
+                    )
                 )
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
@@ -2055,18 +2099,14 @@ async def stream_chat_completion_baseline(
     message_id = str(uuid.uuid4())
 
     # Append tool documentation, technical notes, and Graphiti memory instructions
-    graphiti_enabled = await is_enabled_for_user(user_id)
+    graphiti_enabled = bool(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
-    auto_mode_supplement = approval_mode_supplement(await active_mode(user_id, session))
-    # The whole expert-team surface rides the hire-experts flag, failing
-    # closed for anonymous turns.  Resolved here rather than at the
-    # tool-filtering site below so the delegation rules can be gated on the
-    # same boolean — a flag-off turn must not be told to call tools its
-    # ``execute_tool`` gate will refuse.
-    experts_enabled = bool(user_id) and await is_feature_enabled(
-        Flag.HIRE_EXPERTS, user_id, default=False
+    auto_mode_supplement = approval_mode_supplement(
+        await active_mode(user_id, session),
+        interactive=not is_unattended_turn(),
     )
+    experts_enabled = bool(user_id)
     delegation_supplement = get_delegation_supplement() if experts_enabled else ""
     oversight_supplement = get_expert_oversight_supplement(
         experts_enabled=experts_enabled, expert_id=session.expert_id
@@ -2156,8 +2196,13 @@ async def stream_chat_completion_baseline(
     # Inject user context into the first user message on first turn.
     # Done before attachment/URL injection so the context prefix lands at
     # the very start of the message content.
-    user_message_for_transcript = message
+    turn_text = persisted_invocation or message or ""
+    if not turn_text and session.messages and session.messages[-1].role == "user":
+        turn_text = session.messages[-1].content or ""
+    user_message_for_transcript = turn_text
+    transcript_context_prefix = ""
     if should_inject_user_context:
+        user_message_for_transcript = strip_user_context_tags(turn_text)
         # Mirror the SDK path's "model knows about budget" behaviour by
         # injecting a per-turn ``<budget_context>`` block — the baseline
         # path has no equivalent of the SDK CLI's native
@@ -2193,7 +2238,7 @@ async def stream_chat_completion_baseline(
             )
         prefixed = await inject_user_context(
             understanding,
-            message or "",
+            user_message_for_transcript,
             session_id,
             session.messages,
             budget_ctx=budget_ctx,
@@ -2209,9 +2254,38 @@ async def stream_chat_completion_baseline(
                 if msg["role"] == "user":
                     msg["content"] = prefixed
                     break
-            user_message_for_transcript = prefixed
+            transcript_context_prefix = prefixed.removesuffix(
+                user_message_for_transcript
+            )
         else:
             logger.warning("[Baseline] No user message found for context injection")
+
+    # A ``/skill-name arguments`` send carries the skill's instructions into
+    # this turn and every later one; same row, and same ordering reason, as
+    # the injection above.
+    if is_user_message:
+        current_user = next(
+            (msg for msg in reversed(openai_messages) if msg["role"] == "user"), None
+        )
+        if current_user is not None and isinstance(current_user.get("content"), str):
+            # A user skill's package is copied into the model's working
+            # directory, which is the sandbox's when the turn has one; the
+            # execution context that names it is set further down.
+            with turn_sandbox(e2b_sandbox):
+                invoked = await inject_skill_invocation(
+                    str(current_user["content"]),
+                    session_id,
+                    session.messages,
+                    user_id=user_id,
+                    expert_id=session.expert_id,
+                )
+            if invoked is not None:
+                current_user["content"] = invoked
+            if invoked is not None or persisted_invocation is not None:
+                user_message_for_transcript = str(current_user["content"]).removeprefix(
+                    transcript_context_prefix
+                )
+
     # Now that ``inject_user_context`` has wrapped + persisted the
     # original turn-starting send into its row, fold pending into the
     # model's current-turn input AND persist each pending message as
@@ -2220,7 +2294,7 @@ async def stream_chat_completion_baseline(
     #  1. ``openai_messages`` (what the model sees this round) — append
     #     each pending as a separate user entry, matching the mid-turn
     #     drain pattern below.
-    #  2. ``message`` (used for transcript/title fallbacks) — combine.
+    #  2. ``message`` and ``user_message_for_transcript`` — combine.
     #  3. ``session.messages`` + DB — one raw row per pending via
     #     ``persist_pending_as_user_rows(transcript_builder=None)``.
     #
@@ -2242,13 +2316,33 @@ async def stream_chat_completion_baseline(
         )
         if persisted_ok:
             opening_entries.append(drained_rows_entry(drained_at_start_pending))
+            user_message_for_transcript = combine_pending_with_current(
+                drained_at_start_pending,
+                user_message_for_transcript,
+                request_arrival_at=request_arrival_at,
+            )
             message = combine_pending_with_current(
                 drained_at_start_pending,
                 message,
                 request_arrival_at=request_arrival_at,
             )
+            turn_text = combine_pending_with_current(
+                drained_at_start_pending,
+                turn_text,
+                request_arrival_at=request_arrival_at,
+            )
             for pm in drained_at_start_pending:
                 openai_messages.append(format_pending_as_user_message(pm))
+
+    if is_user_message:
+        for msg in reversed(openai_messages):
+            if msg["role"] == "user":
+                matched_skills_notice = await build_matched_skills_notice(
+                    user_id, session, turn_text, permissions=permissions
+                )
+                if matched_skills_notice:
+                    _add_message_text(msg, matched_skills_notice, prepend=False)
+                break
 
     # Live budget, every turn — the first-turn ``<budget_context>`` above is
     # stale from turn two onward and says nothing about the tree. After the
@@ -2256,10 +2350,12 @@ async def stream_chat_completion_baseline(
     # on ``user_message_for_transcript``: that would persist one stale figure
     # per turn, the same trap the warm-context injection below names.
     budget_status = await build_turn_budget_block(envelope, user_id)
+    if e2b_sandbox is not None:
+        budget_status += await build_sandbox_replaced_notice(session_id)
     if budget_status:
         for msg in reversed(openai_messages):
             if msg["role"] == "user":
-                msg["content"] = budget_status + str(msg.get("content") or "")
+                _add_message_text(msg, budget_status, prepend=True)
                 break
 
     warm_ctx = await _refresh_follow_up_warm_context(
@@ -2280,12 +2376,10 @@ async def stream_chat_completion_baseline(
     # mark the SDK engine's blocks carry (``graphiti/context_marker.py``).
     # Reverse scan so we update the current turn's user message, not the
     # oldest one when pending messages were drained.
-    if warm_ctx:
+    if memory_block := append_injected_memory_block("", warm_ctx):
         for msg in reversed(openai_messages):
             if msg["role"] == "user":
-                existing = msg.get("content", "")
-                if isinstance(existing, str):
-                    msg["content"] = append_injected_memory_block(existing, warm_ctx)
+                _add_message_text(msg, memory_block, prepend=False)
                 break
         # Model input only: NOT the stored user message (``inject_user_context``
         # never takes it) nor ``user_message_for_transcript``, so no later
@@ -2306,9 +2400,7 @@ async def stream_chat_completion_baseline(
         if builder_block:
             for msg in reversed(openai_messages):
                 if msg["role"] == "user":
-                    existing = msg.get("content", "")
-                    if isinstance(existing, str):
-                        msg["content"] = builder_block + existing
+                    _add_message_text(msg, builder_block, prepend=True)
                     break
 
     # Skill-drift notice — same query-only contract as the builder block
@@ -2346,8 +2438,11 @@ async def stream_chat_completion_baseline(
     # attempt stored this message), so skipping it would leave the
     # transcript without the user turn, creating a malformed
     # assistant-after-assistant structure when the LLM reply is added.
-    if message and is_user_message:
-        transcript_builder.append_user(content=user_message_for_transcript or message)
+    # Keep trusted context ahead of user text, including older pending messages.
+    if user_message_for_transcript and is_user_message:
+        transcript_builder.append_user(
+            content=transcript_context_prefix + user_message_for_transcript
+        )
 
     working_dir: str | None = None
     if file_ids and user_id:
@@ -2389,28 +2484,32 @@ async def stream_chat_completion_baseline(
     # message in a single reverse scan.
     extra_hint = attachment_hint + context_hint
     if extra_hint or image_blocks:
-        for i in range(len(openai_messages) - 1, -1, -1):
-            if openai_messages[i].get("role") == "user":
-                existing = openai_messages[i].get("content", "")
-                if isinstance(existing, str):
-                    text = existing + "\n" + extra_hint if extra_hint else existing
-                    if image_blocks:
-                        parts: list[dict[str, Any]] = [{"type": "text", "text": text}]
-                        for img in image_blocks:
-                            parts.append(
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": (
-                                            f"data:{img['source']['media_type']};"
-                                            f"base64,{img['source']['data']}"
-                                        )
-                                    },
-                                }
-                            )
-                        openai_messages[i]["content"] = parts
-                    else:
-                        openai_messages[i]["content"] = text
+        for msg in reversed(openai_messages):
+            if msg.get("role") == "user":
+                if extra_hint:
+                    _add_message_text(msg, "\n" + extra_hint, prepend=False)
+                if image_blocks:
+                    content = msg.get("content") or ""
+                    parts = (
+                        content
+                        if isinstance(content, list)
+                        else [{"type": "text", "text": content}]
+                    )
+                    msg["content"] = [
+                        *parts,
+                        *[
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": (
+                                        f"data:{img['source']['media_type']};"
+                                        f"base64,{img['source']['data']}"
+                                    )
+                                },
+                            }
+                            for img in image_blocks
+                        ],
+                    ]
                 break
 
     disabled_tool_groups: list[ToolGroup] = []
@@ -2513,20 +2612,6 @@ async def stream_chat_completion_baseline(
             format_pending_as_user_message(pm) for pm in held_results
         )
 
-    # Propagate user/session context to Langfuse so all LLM calls within
-    # this request are grouped under a single trace with proper attribution.
-    _trace_ctx: Any = None
-    try:
-        _trace_ctx = propagate_attributes(
-            user_id=user_id,
-            session_id=session_id,
-            trace_name="copilot-baseline",
-            tags=["baseline", "tool_surface:registry"],
-        )
-        _trace_ctx.__enter__()
-    except Exception:
-        logger.warning("[Baseline] Langfuse trace context setup failed")
-
     _stream_error = False  # Track whether an error occurred during streaming
     state = _BaselineStreamState(
         model=active_model,
@@ -2612,6 +2697,7 @@ async def stream_chat_completion_baseline(
                 update_conversation=_bound_conversation_updater,
                 max_iterations=max_tool_rounds,
                 last_iteration_message=_LAST_ITERATION_HINT,
+                runs_alone=writes_files,
             ):
                 loop_result_holder[0] = loop_result
                 # Engine switch requested (enter_agent_building_mode): end
@@ -2732,22 +2818,15 @@ async def stream_chat_completion_baseline(
                     # discarded when the new one is persisted in the ``finally``.
                     _session_holder[0] = current_session
 
-                    # ``format_pending_as_user_message`` embeds file attachments
-                    # and context URL/page content into the content string so
-                    # the in-session transcript is a faithful copy of what the
-                    # model actually saw.  We also mirror each push into
-                    # ``openai_messages`` so the model's next LLM round sees it.
-                    #
-                    # Pre-compute the formatted dicts once so both the openai
-                    # messages append and the content_of lookup inside the
-                    # shared helper use the same string — and so ``on_rollback``
-                    # can trim ``openai_messages`` to the recorded anchor.
+                    # Image blocks go only to the model; persisted chat rows
+                    # keep the same formatted text and attachment/context hints.
+                    # Rollback trims the model messages to the recorded anchor.
                     formatted_by_pm = {
                         id(pm): format_pending_as_user_message(pm) for pm in pending
                     }
 
                     def _formatted(pm: PendingMessage) -> str:
-                        return formatted_by_pm[id(pm)]["content"]
+                        return pending_message_text(pm)
 
                     _openai_anchor = len(openai_messages)
                     for pm in pending:
@@ -2764,6 +2843,18 @@ async def stream_chat_completion_baseline(
                         content_of=_formatted,
                         on_rollback=_trim_openai_on_rollback,
                     ):
+                        matched_skills_notice = await build_matched_skills_notice(
+                            user_id,
+                            current_session,
+                            "\n\n".join(pm.content for pm in pending),
+                            permissions=permissions,
+                        )
+                        if matched_skills_notice:
+                            _add_message_text(
+                                openai_messages[-1],
+                                matched_skills_notice,
+                                prepend=False,
+                            )
                         _emit(state, drained_rows_entry(pending, _formatted))
                     checkpoint = turn_checkpoint(current_session.messages, turn_start)
                     if checkpoint is not None:
@@ -2938,27 +3029,6 @@ async def stream_chat_completion_baseline(
         # Any message pushed after the final drain window stays in the
         # buffer and gets picked up at the start of the next turn.
 
-        # Set cost attributes on OTEL span before closing
-        if _trace_ctx is not None:
-            try:
-                span = otel_trace.get_current_span()
-                if span and span.is_recording():
-                    span.set_attribute(
-                        "gen_ai.usage.prompt_tokens", state.turn_prompt_tokens
-                    )
-                    span.set_attribute(
-                        "gen_ai.usage.completion_tokens",
-                        state.turn_completion_tokens,
-                    )
-                    if state.cost_usd is not None:
-                        span.set_attribute("gen_ai.usage.cost_usd", state.cost_usd)
-            except Exception:
-                logger.debug("[Baseline] Failed to set OTEL cost attributes")
-            try:
-                _trace_ctx.__exit__(None, None, None)
-            except Exception:
-                logger.warning("[Baseline] Langfuse trace context teardown failed")
-
         # Fallback: estimate tokens via tiktoken when the provider does
         # not honour stream_options={"include_usage": True}.
         # ``openai_messages`` is mutated in-place by tool_call_loop so it
@@ -3086,7 +3156,7 @@ async def stream_chat_completion_baseline(
             _ingest_task.add_done_callback(_background_tasks.discard)
 
         # --- Skill learning: record this turn as a learning source ---
-        # Independent of Graphiti; flag-gated and never raises.
+        # Independent of Graphiti; honors the user's learning preferences.
         if user_id and message and is_user_message:
             _capture_task = asyncio.create_task(
                 capture_chat_turn(

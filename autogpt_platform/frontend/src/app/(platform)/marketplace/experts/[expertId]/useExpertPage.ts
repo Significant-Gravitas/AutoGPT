@@ -3,25 +3,20 @@ import {
   useListExpertTemplates,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetV1ListSystemProviders } from "@/app/api/__generated__/endpoints/integrations/integrations";
-import { okData } from "@/app/api/helpers";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
+import { okData } from "@/app/api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 
 interface Args {
   expertId: string;
 }
 
-/** The template behind a marketplace expert page, plus whether this viewer
- *  can hire it. Templates are public, so the profile loads for everyone; the
- *  hired roster and the hire itself need a session and the experts flag.
- *  With the flag off the header shows its coming-soon label instead. */
+/** Public template and signed-in viewer hiring state. */
 export function useExpertPage({ expertId }: Args) {
   const { isLoggedIn, isUserLoading } = useAuth();
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
-  const isHiringOpen = Boolean(enabled);
-  const canHire = isLoggedIn && isHiringOpen;
+
+  const canHire = isLoggedIn;
 
   const templatesQuery = useListExpertTemplates(undefined, {
     query: { select: (x) => x.data as ExpertTemplate[] },
@@ -51,13 +46,7 @@ export function useExpertPage({ expertId }: Args) {
     // rather than risk naming a provider the platform supplies.
     systemProviders: systemProvidersQuery.data,
     isLoggedIn,
-    isHiringOpen,
-    // Which header action to show is only decided once LaunchDarkly has
-    // answered and the roster is in: rendering "Coming soon" or a "Hire"
-    // button first would flash the wrong state at users who have hiring, or
-    // have already hired this expert. A disabled roster query never blocks —
-    // isLoading is false unless it is actually fetching.
-    isActionReady: !isUserLoading && ready && !expertsQuery.isLoading,
+    isActionReady: !isUserLoading && !expertsQuery.isLoading,
     isLoading: templatesQuery.isLoading,
     isError: templatesQuery.isError,
     refetch: templatesQuery.refetch,
