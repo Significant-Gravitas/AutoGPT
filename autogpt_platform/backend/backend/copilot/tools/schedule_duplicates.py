@@ -8,6 +8,7 @@ Only active schedules count: a paused one does not run, and a one-shot that
 has fired is spent, so setting the same thing up again is a real request.
 """
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -22,6 +23,8 @@ from .manage_schedules import _is_in_session_scope
 # for "noon" a few minutes apart lands the two a few minutes apart. Within this
 # window, the same message to the same chat is the same request.
 ONE_SHOT_DUPLICATE_WINDOW = timedelta(minutes=10)
+
+Tenant = tuple[str | None, str | None]
 
 
 async def find_duplicate_followup(
@@ -46,8 +49,11 @@ async def find_duplicate_followup(
         if (
             not isinstance(job, CopilotTurnJobInfo)
             or job.routine_id
-            or not _is_same_owner(
-                job, session, session.organization_id, session.team_id
+            or not _is_same_scope(job, session)
+            or (
+                session.expert_id is None
+                and _tenant(job.organization_id, job.team_id)
+                != _tenant(session.organization_id, session.team_id)
             )
             or (job.session_id or None) != (target_session_id or None)
             or not _same_words(job.message, message)
@@ -79,53 +85,66 @@ async def find_duplicate_graph_schedule(
     inputs: dict[str, Any],
     input_defaults: dict[str, Any],
     credentials: dict[str, CredentialsMetaInput],
-    organization_id: str | None,
-    team_id: str | None,
+    tenant: Tenant,
+    default_tenant: Callable[[], Awaitable[Tenant]],
 ) -> GraphExecutionJobInfo | None:
     """A schedule of the same workflow version, on the same cron in the same
-    timezone, with the same inputs and the same accounts. Inputs are compared
-    with the workflow's defaults filled in, since a run fills them the same
-    way. Its name is only a label, so a different one doesn't make it a
-    different schedule."""
+    timezone and tenant, with the same inputs and the same accounts. Inputs
+    are compared as a run sees them: defaults filled in, and an input left
+    out the same as one given as nothing. Its name is only a label, so a
+    different one doesn't make it a different schedule.
+
+    A job saved before schedules carried a tenant runs in the owner's default
+    team, so *default_tenant* is asked for that, and only when one turns up."""
     jobs = await scheduler.get_execution_schedules(
         user_id=user_id, graph_id=graph_id, kind="graph"
     )
     wanted_accounts = _account_ids(credentials)
-    wanted_inputs = {**input_defaults, **inputs}
-    return next(
-        (
-            job
-            for job in jobs
-            if isinstance(job, GraphExecutionJobInfo)
-            and _is_same_owner(job, session, organization_id, team_id)
+    wanted_inputs = _as_run_sees(inputs, input_defaults)
+    for job in jobs:
+        if not (
+            isinstance(job, GraphExecutionJobInfo)
+            and _is_same_scope(job, session)
             and job.graph_id == graph_id
             and job.graph_version == graph_version
             and _same_words(job.cron, cron)
             and job.timezone == timezone
-            and {**input_defaults, **job.input_data} == wanted_inputs
+            and _as_run_sees(job.input_data, input_defaults) == wanted_inputs
             and _account_ids(job.input_credentials) == wanted_accounts
-        ),
-        None,
-    )
+        ):
+            continue
+        if session.expert_id is not None:
+            return job
+        job_tenant = _tenant(job.organization_id, job.team_id)
+        if job_tenant[0] is None:
+            job_tenant = _tenant(*await default_tenant())
+        if job_tenant == _tenant(*tenant):
+            return job
+    return None
 
 
-def _is_same_owner(
-    job: GraphExecutionJobInfo | CopilotTurnJobInfo,
-    session: ChatSession,
-    organization_id: str | None,
-    team_id: str | None,
+def _is_same_scope(
+    job: GraphExecutionJobInfo | CopilotTurnJobInfo, session: ChatSession
 ) -> bool:
-    # Personal AutoPilot can see its experts' schedules, but an expert's
-    # schedule is not a copy of the same work set up for the account.
-    if not _is_in_session_scope(job, session) or job.expert_id != session.expert_id:
-        return False
-    # An expert's jobs are moved to her own private tenancy when they are
-    # made, so the expert is what identifies them. Without one, the same work
-    # set up in another organization or team is that tenant's own schedule.
-    return session.expert_id is not None or (
-        (job.organization_id or None, job.team_id or None)
-        == (organization_id or None, team_id or None)
-    )
+    """Personal AutoPilot can see its experts' schedules, but an expert's
+    schedule is not a copy of the same work set up for the account. An
+    expert's jobs are moved to her private tenancy when they are made, so
+    for those the expert is what identifies them; without one, the callers
+    also compare the organization and team."""
+    return _is_in_session_scope(job, session) and job.expert_id == session.expert_id
+
+
+def _tenant(organization_id: str | None, team_id: str | None) -> Tenant:
+    return organization_id or None, team_id or None
+
+
+def _as_run_sees(inputs: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
+    merged = {**defaults, **inputs}
+    return {
+        name: value
+        for name, value in merged.items()
+        if value is not None or defaults.get(name) is not None
+    }
 
 
 def _same_words(a: str | None, b: str | None) -> bool:

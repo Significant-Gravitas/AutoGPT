@@ -1439,8 +1439,8 @@ class RunAgentTool(BaseTool):
             inputs=inputs,
             input_defaults=_input_defaults(graph),
             credentials=graph_credentials,
-            organization_id=org_id,
-            team_id=team_id,
+            tenant=(org_id, team_id),
+            default_tenant=lambda: orgs_db().get_user_default_team(user_id),
         )
         if existing is not None:
             return ExecutionStartedResponse(

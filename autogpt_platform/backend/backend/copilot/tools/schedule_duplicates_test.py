@@ -156,8 +156,8 @@ async def _find_graph_schedule(job, session=None, **request):
         "inputs": {"repo": "Significant-Gravitas/AutoGPT"},
         "input_defaults": {},
         "credentials": {"github": _account("account-1")},
-        "organization_id": "org-a",
-        "team_id": "team-a",
+        "tenant": ("org-a", "team-a"),
+        "default_tenant": AsyncMock(return_value=("org-a", "team-a")),
     }
     wanted.update(request)
     return await find_duplicate_graph_schedule(
@@ -179,6 +179,50 @@ async def test_an_input_left_to_its_default_matches_the_default_given():
         _graph_schedule(input_data={}), inputs=defaults, input_defaults=defaults
     )
     assert found is not None and found.id == "existing"
+
+
+@pytest.mark.asyncio
+async def test_an_input_given_as_nothing_matches_one_left_out():
+    found = await _find_graph_schedule(
+        _graph_schedule(), inputs={"repo": "Significant-Gravitas/AutoGPT", "x": None}
+    )
+    assert found is not None and found.id == "existing"
+
+
+@pytest.mark.asyncio
+async def test_nothing_given_over_a_default_is_not_the_default():
+    found = await _find_graph_schedule(
+        _graph_schedule(input_data={"repo": None}),
+        input_defaults={"repo": "Significant-Gravitas/AutoGPT"},
+    )
+    assert found is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "default_team, matches",
+    [
+        pytest.param(("org-a", "team-a"), True, id="the requested tenant"),
+        pytest.param(("org-b", "team-b"), False, id="another tenant"),
+    ],
+)
+async def test_a_schedule_saved_without_a_tenant_runs_in_the_default_team(
+    default_team, matches
+):
+    default_tenant = AsyncMock(return_value=default_team)
+    found = await _find_graph_schedule(
+        _graph_schedule(organization_id="", team_id=None),
+        default_tenant=default_tenant,
+    )
+    assert (found is not None) is matches
+    default_tenant.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_the_default_team_is_only_looked_up_for_an_untagged_schedule():
+    default_tenant = AsyncMock(return_value=("org-a", "team-a"))
+    await _find_graph_schedule(_graph_schedule(), default_tenant=default_tenant)
+    default_tenant.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -204,7 +248,7 @@ async def test_an_experts_schedule_matches_whatever_tenancy_it_was_moved_to():
             {"credentials": {"github": _account("account-2")}},
             id="another account",
         ),
-        pytest.param({"team_id": "team-b"}, id="another team"),
+        pytest.param({"tenant": ("org-a", "team-b")}, id="another team"),
         pytest.param({"inputs": {}}, id="a missing input with no default"),
     ],
 )
