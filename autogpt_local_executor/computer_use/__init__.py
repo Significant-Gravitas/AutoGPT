@@ -16,6 +16,7 @@ from .catalog import (
 )
 from .clipboard import WRITEBACK_WINDOW_SECONDS, ClipboardWritebackRegistry
 from .driver import (
+    CallNotStarted,
     CuaDriverBridge,
     DriverSnapshot,
     DriverUnavailable,
@@ -29,6 +30,7 @@ __all__ = [
     "WRITEBACK_WINDOW_SECONDS",
     "ApprovalRequired",
     "ArgumentRefused",
+    "CallNotStarted",
     "ClipboardConcealedError",
     "ClipboardWritebackRegistry",
     "ComputerUseError",

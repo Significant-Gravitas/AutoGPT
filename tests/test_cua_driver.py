@@ -1085,9 +1085,51 @@ async def test_a_call_past_its_timeout_is_stopped_at_the_driver(
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
     assert "stopped cua-driver" in response.payload.message
-    assert response.payload.details == {"tool": "drag", "timeout_seconds": 1}
+    assert response.payload.details == {"tool": "drag", "timeout_seconds": 1, "started": True}
     assert isinstance(after, ComputerToolResultMessage)
     assert _records(fake_log, "slow_done") == []
+
+
+async def test_a_call_kept_waiting_past_its_deadline_never_starts(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """The deadline started only once the call had the computer, so a call
+    queued behind another chat's could start its action after the platform
+    had given up on it, on a screen that had changed since."""
+    monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "2")
+    first = make_handler(session_id=None)
+    second = make_handler(session_id="other-chat")
+    first.share_with(second)
+    slow = asyncio.create_task(first.handle(_call("drag", {"pid": -2}, timeout_seconds=30)))
+    for _ in range(250):
+        if _records(fake_log, "call"):
+            break
+        await asyncio.sleep(0.02)
+
+    queued = await second.handle(_call("click", {"pid": 7}, timeout_seconds=1))
+    await slow
+
+    assert isinstance(queued, ErrorMessage)
+    assert queued.payload.code == ErrorCode.COMMAND_TIMEOUT
+    assert queued.payload.details == {"tool": "click", "timeout_seconds": 1, "started": False}
+    assert "Nothing ran" in queued.payload.message
+    assert [r["tool"] for r in _records(fake_log, "call")] == ["drag"]
+
+
+async def test_the_deadline_counts_from_when_the_shim_received_the_call(
+    make_handler, fake_log
+) -> None:
+    """Time already spent waiting for a request slot counts too."""
+    handler = make_handler()
+    received_at = asyncio.get_running_loop().time() - 5
+
+    response = await handler.handle(
+        _call("click", {"pid": 7}, timeout_seconds=2), received_at=received_at
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.details["started"] is False
+    assert _records(fake_log, "call") == []
 
 
 async def test_hello_skips_the_screen_size_rather_than_end_another_call(
@@ -1440,6 +1482,37 @@ async def test_computer_tool_calls_need_the_granted_capability(tmp_path, fake_lo
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.CAPABILITY_NOT_GRANTED
+    assert _records(fake_log, "call") == []
+
+
+async def test_a_call_queued_behind_another_chats_call_gives_up_unstarted(
+    tmp_path, fake_log
+) -> None:
+    """The daemon waited for the computer with no bound, so a call queued
+    behind another chat's started whenever its turn came."""
+    daemon = _daemon(tmp_path)
+    daemon._granted_capabilities = frozenset({"files", "computer_use"})
+    daemon._semaphore = asyncio.Semaphore(4)
+    sent: list[Any] = []
+
+    async def send_frame(_ws: Any, frame: Any) -> bool:
+        sent.append(frame)
+        return True
+
+    daemon._send_frame = send_frame  # type: ignore[method-assign]
+    try:
+        # Another chat's call holds the computer for longer than this one may wait.
+        async with daemon._computer_use_lock:
+            await asyncio.wait_for(
+                daemon._dispatch(None, _call("click", {"pid": 1}, timeout_seconds=1)), 30
+            )
+    finally:
+        await daemon._computer_handler.close()
+
+    [frame] = sent
+    assert isinstance(frame, ErrorMessage)
+    assert frame.payload.code == ErrorCode.COMMAND_TIMEOUT
+    assert frame.payload.details["started"] is False
     assert _records(fake_log, "call") == []
 
 

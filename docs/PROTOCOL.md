@@ -873,12 +873,16 @@ connection. Listing tools never waits for a running action.
 ```
 
 `tool` matches `^[a-z][a-z0-9_]{0,63}$`. `arguments` follows the tool's
-`input_schema`. `timeout_seconds` (1-600, default 120) bounds the call; at
-the deadline the shim stops the driver, which can't cancel a call it is
-running, and answers `COMMAND_TIMEOUT`, though an action the driver already
-made stays made. The next call starts the driver afresh, without the
+`input_schema`. Calls from every session on a machine take turns: there is
+one screen. `timeout_seconds` (1-600, default 120) bounds the whole call,
+from when the shim receives it: the wait for its turn counts. A call whose
+deadline passes while it waits never reaches the driver and gets
+`COMMAND_TIMEOUT` with `details.started: false`; nothing ran, so it can be
+sent again. At the deadline of a call the driver is running, the shim stops
+the driver, which can't cancel a call it is running, and answers
+`COMMAND_TIMEOUT` with `details.started: true`, though an action the driver
+already made stays made. The next call starts the driver afresh, without the
 element tokens and sessions of the old one.
-Calls from every session on a machine take turns: there is one screen.
 
 `approved_arguments` (at most 8, default empty) names the tool's approval
 arguments the person approved for this call. An argument in a tool's

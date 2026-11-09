@@ -14,6 +14,7 @@ can't starve keepalive.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import errno
 import json
 import logging
@@ -275,6 +276,12 @@ DISPATCH_DRAIN_SECONDS = 10.0
 # seconds the platform waits for most replies.
 MACHINE_WORK_WAIT_SECONDS = 10.0
 
+# When the shim received the request this task serves (loop time), set by
+# _dispatch: a computer-use call's deadline counts from it.
+_request_received_at: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "request_received_at", default=None
+)
+
 
 @dataclass
 class _ActiveChild:
@@ -320,7 +327,9 @@ class ShimDaemon:
         handler_audit = cast(AuditWriter, self.audit)
         self._file_handler = FileHandler(config, audit=handler_audit)
         self._command_handler = CommandHandler(config, audit=handler_audit)
-        self._computer_handler = ComputerUseHandler(config, audit=handler_audit)
+        self._computer_handler = ComputerUseHandler(
+            config, audit=handler_audit, machine_turn=self._computer_use_lock
+        )
         self._local_llm_handler = LocalLLMHandler(config, audit=handler_audit)
         self._recording_handler = RecordingHandler(config, audit=handler_audit)
         self._running = False
@@ -1320,6 +1329,9 @@ class ShimDaemon:
 
     async def _dispatch(self, ws, msg: Any, *, prequeued: bool = False) -> None:
         assert self._semaphore is not None
+        # A computer-use call's deadline counts from here, through every wait.
+        # Each dispatch runs in its own task, so this is the request's own.
+        _request_received_at.set(asyncio.get_running_loop().time())
         generation = self._dispatch_generation
 
         def counted() -> bool:
@@ -1557,9 +1569,9 @@ class ShimDaemon:
         if isinstance(msg, FileMoveMessage):
             return await self._file_handler.handle_move(msg)
         if isinstance(msg, ComputerToolCallMessage):
-            # One GUI: calls from every session take turns.
-            async with self._computer_use_lock:
-                return await self._computer_handler.handle(msg)
+            # One GUI: the handler makes calls from every session take turns,
+            # within each call's deadline.
+            return await self._computer_handler.handle(msg, received_at=_request_received_at.get())
         if isinstance(msg, ComputerToolsRequestMessage):
             return await self._computer_handler.handle(msg)
         if isinstance(msg, LocalLLMCompletionMessage):

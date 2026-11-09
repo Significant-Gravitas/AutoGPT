@@ -159,10 +159,13 @@ sixteen tools; all of them are in the catalog, which
 - `session` is set to the shim session's label on every call that takes it,
   overriding the caller's.
 - The clipboard rules, the screenshot budget and the frame limit below.
-- A deadline per call (120 s unless the platform asks for 1-600 s); past it
-  the shim stops the driver, and the next call starts a new one. Its
-  sessions, element tokens and launched browsers' pages start over too.
-- One call at a time per machine.
+- One call at a time per machine, and one deadline per call (120 s unless
+  the platform asks for 1-600 s), counted from when the shim receives it, so
+  the wait for its turn counts. A call still waiting at its deadline never
+  reaches the driver (`started: false`). Past the deadline of a running
+  call, the shim stops the driver (`started: true`), and the next call
+  starts a new one; its sessions, element tokens and launched browsers'
+  pages start over too.
 - An audit record for every call, refused ones too. An approved call's
   record names the approved arguments and keeps their paths whole.
 
