@@ -385,6 +385,42 @@ def test_keys_pressed_one_character_at_a_time_are_redacted() -> None:
     assert steps[3]["args"] == {"keys": ["ctrl", "c"]}
 
 
+@pytest.mark.parametrize(
+    ("platform", "chord", "types"),
+    [
+        # On a Mac, Option with a key types a character: Option+L is @ on a
+        # German layout, Option+Shift+7 a backslash.
+        ("darwin", ["option", "l"], True),
+        ("darwin", ["alt", "shift", "7"], True),
+        ("darwin", ["cmd", "option", "m"], False),
+        # Windows reads Ctrl+Alt as AltGr: Ctrl+Alt+Q is @ on a German layout.
+        ("win32", ["ctrl", "alt", "q"], True),
+        ("win32", ["alt", "f"], False),  # a menu's access key
+        ("linux", ["alt", "f"], False),
+        ("linux", ["ctrl", "alt", "t"], False),
+    ],
+)
+def test_a_chord_that_types_a_character_is_redacted(
+    platform: str, chord: list[str], types: bool
+) -> None:
+    """Only a Shift chord's character was redacted, so a secret typed with
+    Option on a Mac, or with Ctrl+Alt on Windows, went into the audit log a
+    chord at a time, its characters there to read back from the keyboard
+    layout. The modifiers, and command chords, stay readable."""
+    from autogpt_local_executor.handlers import _audit_arguments
+
+    details = _audit_arguments(
+        {"keys": chord, "steps": [{"tool": "hotkey", "args": {"keys": chord}}]},
+        platform=platform,
+    )
+
+    expected = (
+        [{"redacted_chars": 1} if len(key) == 1 else key for key in chord] if types else chord
+    )
+    assert details["keys"] == expected
+    assert details["steps"][0]["args"]["keys"] == expected
+
+
 # ── verify-all across multiple rotated files ─────────────────────────────────
 
 

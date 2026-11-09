@@ -2100,13 +2100,22 @@ _AUDIT_REDACTED_ARGUMENTS = frozenset({"prompt_text", "script", "text", "value"}
 _AUDIT_STRING_LIMIT = 200
 
 
-def _audit_arguments(value: Any, key: str | None = None, *, truncate: bool = True) -> Any:
+def _audit_arguments(
+    value: Any, key: str | None = None, *, truncate: bool = True, platform: str | None = None
+) -> Any:
+    """`value` as the audit log keeps it. `platform` is the machine's
+    (sys.platform) unless a test says otherwise: it decides which chords
+    type a character."""
+    platform = sys.platform if platform is None else platform
     if isinstance(value, dict):
-        return {k: _audit_arguments(v, k, truncate=truncate) for k, v in value.items()}
+        return {
+            k: _audit_arguments(v, k, truncate=truncate, platform=platform)
+            for k, v in value.items()
+        }
     if isinstance(value, list):
-        if key == "keys" and _types_a_character(value):
+        if key == "keys" and _types_a_character(value, platform):
             return [{"redacted_chars": 1} if _is_character(item) else item for item in value]
-        return [_audit_arguments(item, key, truncate=truncate) for item in value]
+        return [_audit_arguments(item, key, truncate=truncate, platform=platform) for item in value]
     if isinstance(value, str):
         # press_key takes any single character, so a secret can be typed a
         # key at a time; named keys (enter, tab) stay readable.
@@ -2121,11 +2130,23 @@ def _is_character(value: Any) -> bool:
     return isinstance(value, str) and len(value) == 1
 
 
-def _types_a_character(keys: list[Any]) -> bool:
-    """Whether a hotkey chord types a character: shift and a character, as
-    against a command chord (ctrl+c) whose keys stay readable."""
+def _types_a_character(keys: list[Any], platform: str) -> bool:
+    """Whether a hotkey chord types a character, as against a command chord
+    (ctrl+c) whose keys stay readable: Shift and a character on every OS;
+    Option too on macOS (Option+L is @ on a German layout); Ctrl with Alt
+    on Windows, which reads the pair as AltGr (Ctrl+Alt+Q is @ there)."""
+    if not any(_is_character(key) for key in keys):
+        return False
     held = {key.lower() for key in keys if isinstance(key, str) and not _is_character(key)}
-    return held <= {"shift"} and any(_is_character(key) for key in keys)
+    if held <= {"shift"}:
+        return True
+    alt = bool(held & {"alt", "option"})
+    if platform == "darwin":
+        return alt and held <= {"shift", "alt", "option"}
+    if platform == "win32":
+        ctrl = bool(held & {"ctrl", "control"})
+        return alt and ctrl and held <= {"shift", "alt", "option", "ctrl", "control"}
+    return False
 
 
 def _block_size(block: ComputerTextContent | ComputerImageContent) -> int:
