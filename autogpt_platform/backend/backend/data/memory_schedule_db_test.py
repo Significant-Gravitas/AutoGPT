@@ -313,7 +313,7 @@ async def test_the_accounts_that_learn_are_listed_once_each_page_by_page(
 async def test_the_community_sweep_lists_the_oldest_due_active_scopes(
     server: SpinTestServer,
 ):
-    """A scope is due a week after its last clean rebuild, or after its row's
+    """A scope is due a week after the sweep last took it, or after its row's
     creation before the first; both kinds come back in one order by that
     time, and a row that is not ACTIVE never does. The dates are in 2001 so
     that no other test's rows are due before the cut."""

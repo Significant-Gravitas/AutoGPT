@@ -204,7 +204,8 @@ async def forget_scope_job(user_id: str, scope_key: str, job_id: str) -> bool:
 
 
 async def record_scope_run(user_id: str, scope_key: str, kind: ScopeRunKind) -> bool:
-    """Stamp the time the scope's nightly or community job last ran cleanly."""
+    """Stamp the time the scope's nightly job last ran cleanly, or the
+    community sweep last took it."""
     now = datetime.now(timezone.utc)
     data: prisma.types.MemoryScopeScheduleUpdateManyMutationInput = (
         {"lastNightlyRunAt": now} if kind == "nightly" else {"lastCommunityRunAt": now}
@@ -257,8 +258,8 @@ async def list_active_scope_schedules(
 async def list_due_community_scopes(
     *, due_before: datetime, limit: int
 ) -> list[MemoryScopeSchedule]:
-    """ACTIVE rows whose last clean community rebuild, or creation when there
-    was none, is older than ``due_before``, the oldest first and at most
+    """ACTIVE rows last taken by the community sweep, or created if it never
+    took them, before ``due_before``, the oldest first and at most
     ``limit``. For the scheduler's hourly community sweep."""
     table = prisma.models.MemoryScopeSchedule.prisma()
     # Two reads, because Prisma cannot order on the coalesce of the two.

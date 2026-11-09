@@ -27,7 +27,7 @@ from backend.copilot.dream.registry_fakes_test import install_registry_env
 from backend.copilot.dream.scheduling import NIGHTLY_BATCH_JOB_PREFIX, dream_system_job
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.executor import scheduler as sm
-from backend.executor.jobstore import ResilientSQLAlchemyJobStore
+from backend.executor.jobstore import WRITE_TIMEOUT, ResilientSQLAlchemyJobStore
 
 _EXECUTION = sm.Jobstores.EXECUTION.value
 _MEMORY = sm.Jobstores.MEMORY_CRON_RECONCILE.value
@@ -133,9 +133,21 @@ def test_the_old_per_scope_community_crons_are_removed_in_batches(
             noop, "interval", hours=1, id=decoy, jobstore=_EXECUTION
         )
 
+        store = service._execution_jobstore
+        remove, bounds = store.remove_job, []
+
+        def bounded_remove(job_id: str) -> None:
+            bounds.append(WRITE_TIMEOUT.get())
+            remove(job_id)
+
+        # Each delete gives up on a row another transaction holds.
+        monkeypatch.setattr(store, "remove_job", bounded_remove)
+
         assert service._remove_community_crons() == len(old)
         assert _execution_job_ids(service) == {nightly.job_id(old[0]), decoy}
         assert service._remove_community_crons() == 0
+    assert bounds == [sm.MEMORY_CRON_WRITE_TIMEOUT_SECONDS] * len(old)
+    assert WRITE_TIMEOUT.get() is None
 
 
 def test_the_sweep_runs_hourly_in_each_process_from_its_start(tmp_path):

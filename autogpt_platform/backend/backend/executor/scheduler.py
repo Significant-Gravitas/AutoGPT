@@ -4714,7 +4714,9 @@ class Scheduler(AppService):
         """Remove every per-scope community rebuild cron from the EXECUTION
         jobstore, a batch of ids at a time; how many it removed. Each goes
         through ``remove_job``, which holds APScheduler's jobstore lock, so a
-        dispatch pass never loses a row it is about to update."""
+        dispatch pass never loses a row it is about to update, and gives up
+        after ``MEMORY_CRON_WRITE_TIMEOUT_SECONDS`` on a row another
+        transaction holds rather than keep that lock."""
         ids = self._execution_jobstore.jobs_t.c.id
         query = (
             select(ids)
@@ -4722,17 +4724,21 @@ class Scheduler(AppService):
             .limit(COMMUNITY_CRON_REMOVAL_BATCH)
         )
         removed = 0
-        while True:
-            with self._execution_jobstore.engine.connect() as connection:
-                batch = connection.execute(query).scalars().all()
-            for job_id in batch:
-                try:
-                    self.scheduler.remove_job(job_id, Jobstores.EXECUTION.value)
-                    removed += 1
-                except JobLookupError:
-                    pass
-            if len(batch) < COMMUNITY_CRON_REMOVAL_BATCH:
-                return removed
+        token = WRITE_TIMEOUT.set(MEMORY_CRON_WRITE_TIMEOUT_SECONDS)
+        try:
+            while True:
+                with self._execution_jobstore.engine.connect() as connection:
+                    batch = connection.execute(query).scalars().all()
+                for job_id in batch:
+                    try:
+                        self.scheduler.remove_job(job_id, Jobstores.EXECUTION.value)
+                        removed += 1
+                    except JobLookupError:
+                        pass
+                if len(batch) < COMMUNITY_CRON_REMOVAL_BATCH:
+                    return removed
+        finally:
+            WRITE_TIMEOUT.reset(token)
 
     # --- Morning briefing ---
     #

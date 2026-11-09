@@ -1,5 +1,5 @@
 """The hourly community sweep: which scopes it rebuilds, what an unchanged
-graph costs, and when it stamps a scope.
+graph costs, and that it stamps every scope it takes.
 
 The rebuild is the real ``rebuild_communities_for_user`` over a fake graph,
 so its activity gate decides what is unchanged; the registry is the fake
@@ -173,13 +173,15 @@ async def test_a_changed_graph_is_rebuilt_only_once_its_owner_checks_pass(
 
     assert report.outcomes == {outcome: 1}
     assert graphs.built == ([scope.group_id] if outcome == "built" else [])
-    assert (last_run(env, scope) > LONG_AGO) is (outcome == "built")
+    assert last_run(env, scope) > LONG_AGO
 
 
 @pytest.mark.asyncio
-async def test_a_failed_rebuild_is_not_stamped_and_the_rest_go_on(
+async def test_a_failed_rebuild_waits_a_week_like_the_rest(
     env, graphs, banned, monkeypatch
 ):
+    """Retried every hour, a scope that keeps failing would stay at the head
+    of every batch."""
     failing, fine = [await scope_with(env, f"user-{n}", LONG_AGO) for n in range(2)]
     for scope in (failing, fine):
         graphs.episodes[scope.group_id] = 5
@@ -189,14 +191,15 @@ async def test_a_failed_rebuild_is_not_stamped_and_the_rest_go_on(
     report = await sweep()
 
     assert report.outcomes == {"failed": 1, "built": 1}
-    assert last_run(env, failing) == LONG_AGO
+    assert last_run(env, failing) > LONG_AGO
     assert last_run(env, fine) > LONG_AGO
 
 
 @pytest.mark.asyncio
 async def test_a_rebuild_past_its_timeout_is_left_to_finish(env, banned, monkeypatch):
-    """The sweep stops waiting and leaves the scope due; the rebuild itself
-    runs on to the end rather than stopping between its delete and build."""
+    """The sweep stops waiting and moves the scope a week on; the rebuild
+    itself runs on to the end rather than stopping between its delete and
+    build."""
     scope = await scope_with(env, "user-1", LONG_AGO)
     due_listing(env, monkeypatch, [scope.scope_key])
     release, finished = asyncio.Event(), asyncio.Event()
@@ -213,4 +216,4 @@ async def test_a_rebuild_past_its_timeout_is_left_to_finish(env, banned, monkeyp
     await asyncio.wait_for(finished.wait(), 5)
 
     assert report.outcomes == {"failed": 1}
-    assert last_run(env, scope) == LONG_AGO
+    assert last_run(env, scope) > LONG_AGO

@@ -2077,8 +2077,8 @@ model MemoryScopeSchedule {
   nightlyJobId   String?
   learningJobId  String?
 
-  // When the nightly job body, and the community sweep, last ran its pass
-  // without an error; the sweep rebuilds a scope a week after this.
+  // When the nightly job body last ran its pass without an error, and when
+  // the community sweep last took the scope; it takes it again a week later.
   lastNightlyRunAt   DateTime?
   lastCommunityRunAt DateTime?
 

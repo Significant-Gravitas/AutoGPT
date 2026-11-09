@@ -1,13 +1,14 @@
 """The weekly community rebuild of every memory scope, from one hourly job.
 
 The scheduler runs :func:`rebuild_due_communities` every hour. It reads the
-ACTIVE scopes whose last clean rebuild (before the first, their row's
-creation) is a week old, the oldest first and at most ``SWEEP_BATCH``, and
-rebuilds them ``SWEEP_CONCURRENCY`` at a time. The rebuild's activity gate
-skips a graph with nothing new, and the owner checks run only for a graph it
-would rebuild, so the empty graph most scopes have costs two graph reads and
-a stamp. A pass that ends without an error is stamped, which moves its scope
-a week on; a refused or failed one stays due.
+ACTIVE scopes it last took (before the first, their row's creation) a week
+ago, the oldest first and at most ``SWEEP_BATCH``, and rebuilds them
+``SWEEP_CONCURRENCY`` at a time. The rebuild's activity gate skips a graph
+with nothing new, and the owner checks run only for a graph it would
+rebuild, so the empty graph most scopes have costs two graph reads and a
+stamp. Every scope it takes is stamped, whatever the outcome, which moves it
+a week on: a refused or failed one retried every hour would stay at the
+head of every batch.
 
 This replaced a cron per scope at owner-local Monday 04:00: every scope in a
 timezone fell due at one instant, and APScheduler dispatched them all in one
@@ -84,24 +85,35 @@ async def _rebuild(
 ) -> Outcome:
     try:
         scope = MemoryScope.build(row.user_id, row.expert_id)
-        rebuild = rebuild_communities_for_user(
-            scope.owner_user_id,
-            expert_id=scope.expert_id,
-            may_rebuild=lambda: _owner_allows(scope, expert_status),
-        )
+    except ValueError:
+        logger.warning(f"Community rebuild of scope {row.scope_key[:12]}: bad ids")
+        return "failed"
+    outcome = await _attempt(scope, expert_status, timeout)
+    await record_scope_run(scope, "community")
+    return outcome
+
+
+async def _attempt(
+    scope: MemoryScope, expert_status: ExpertStatusLookup, timeout: float
+) -> Outcome:
+    rebuild = rebuild_communities_for_user(
+        scope.owner_user_id,
+        expert_id=scope.expert_id,
+        may_rebuild=lambda: _owner_allows(scope, expert_status),
+    )
+    try:
         # Cut off between its delete and its build, a rebuild would leave the
         # graph half built: a timeout only stops the sweep waiting for it.
         result = await asyncio.wait_for(asyncio.shield(rebuild), timeout)
     except Exception:
         logger.warning(
-            f"Community rebuild of scope {row.scope_key[:12]} failed", exc_info=True
+            f"Community rebuild of {scope_label(scope)} failed", exc_info=True
         )
         return "failed"
     if result.get("error"):
         return "failed"
     if result.get("skip_reason") == REBUILD_REFUSED:
         return "refused"
-    await record_scope_run(scope, "community")
     return "unchanged" if result.get("skipped") else "built"
 
 

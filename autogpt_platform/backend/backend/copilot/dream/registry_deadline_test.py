@@ -205,9 +205,9 @@ async def test_a_timezone_change_is_bounded_when_the_listing_hangs(env, monkeypa
 async def test_a_step_at_the_deadline_does_not_extend_a_lifecycle_change(
     env, monkeypatch
 ):
-    """Codex's round-2 reproduction, scaled down: the nightly cron is
-    registered right at the deadline after a short loop stall, and recording
-    it would then hang. The change must end at the deadline; it used to run
+    """Codex's round-2 reproduction, scaled down: the nightly cron's
+    registration ends past the deadline after a loop stall, and recording it
+    would then hang. The change must end at the deadline; it used to run
     that record on a fresh deadline, taking twice as long."""
     budget = 0.3
     monkeypatch.setattr(deadline, "REGISTRY_CALL_TIMEOUT_SECONDS", budget)
@@ -216,9 +216,10 @@ async def test_a_step_at_the_deadline_does_not_extend_a_lifecycle_change(
     add_nightly = env.scheduler.add_scope_nightly_batch_schedule
 
     async def nightly(**kwargs: Any) -> Any:
-        await asyncio.sleep(started + budget - 0.02 - loop.time())
         added = await add_nightly(**kwargs)
-        time.sleep(0.06)  # a short loop stall carries it past the deadline
+        # A loop stall carries it past the deadline with no await after it, so
+        # the deadline lands in the record, not in this registration.
+        time.sleep(max(0.0, started + budget + 0.04 - loop.time()))
         return added
 
     hang = Hang()
