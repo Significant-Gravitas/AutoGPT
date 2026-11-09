@@ -108,7 +108,13 @@ class Row(BaseModel):
 
 
 def priced_rows(model: str, usage: Usage) -> list[Row]:
-    """A usage report as priced rows; tokens it does not attribute are audio."""
+    """A usage report as priced rows; tokens it does not attribute are audio.
+
+    Gemini Live counts thinking apart from the response: the response count
+    is the audio Otto speaks (about 25 tokens a second) and the report's total
+    is prompt plus response. So thoughts are priced once, as text out, and are
+    never part of the response's unattributed remainder.
+    """
     price = price_of(model)
     audio_in = usage.prompt_by_modality.get("audio", 0)
     text_in = usage.prompt_by_modality.get("text", 0)

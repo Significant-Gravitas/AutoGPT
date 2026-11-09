@@ -372,8 +372,13 @@ async def _start_call(
         # The token is this attempt's, and the lock may be.
         await _refuse_try_again(ws, store, claims, "unavailable")
         return
+    if holder == "":
+        # The lock changed hands while it was read, which passes: the start
+        # gives back what it took so the same token can try again.
+        await _refuse_try_again(ws, store, claims, "unavailable")
+        return
     if holder is not None:
-        await _refuse(ws, "call_in_progress", CLOSE_POLICY, call_id=holder or None)
+        await _refuse(ws, "call_in_progress", CLOSE_POLICY, call_id=holder)
         return
     refusal = await _admit(deps, redis, claims)
     if refusal is not None:
