@@ -10,6 +10,10 @@
 
 The relay trusts the user a start token names, because only the REST API
 and the relay hold the key that signs it; it reads no platform session.
+
+Once a call ends, its post-call job runs here too (``postcall``), and the
+process sweeps for jobs no pod is running when it starts and every
+``POSTCALL_SWEEP_S``.
 """
 
 import asyncio
@@ -38,6 +42,8 @@ from backend.voice_relay.config import (
     Timing,
 )
 from backend.voice_relay.metering import LIVE_CALLS, CallMeter, CostSink
+from backend.voice_relay.postcall import PostCall
+from backend.voice_relay.record import CallRecording
 from backend.voice_relay.scope import ScopeClassifier
 from backend.voice_relay.session import Session
 from backend.voice_relay.vendor import VendorConnector
@@ -69,6 +75,10 @@ class RelayDeps(BaseModel):
     # Records a started call on the user's onboarding row: (user id, call id).
     record_call: Callable[[str, str], Awaitable[None]]
     live_model: str
+    # Each call's transcript of record and hand-off, and the sweep.
+    postcall: PostCall
+    # Where a call's recording is spooled before it is uploaded.
+    spool_dir: str
     # Where priced rows go; None logs them to PlatformCostLog.
     cost_sink: CostSink | None = None
     caps: Caps = CAPS
@@ -97,6 +107,16 @@ class Relay:
     def start_drain(self) -> None:
         self.draining = True
         self.drain_started = time.monotonic()
+        if self.deps is not None:
+            # A draining process takes no other pod's post-call jobs.
+            self.deps.postcall.stopped = True
+
+    @property
+    def busy(self) -> bool:
+        """Whether a call or a post-call job is still running here."""
+        return bool(self.sessions) or bool(
+            self.deps is not None and self.deps.postcall.jobs
+        )
 
     def origin_allowed(self, origin: str | None) -> bool:
         if not origin:
@@ -120,11 +140,13 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         relay.loop = asyncio.get_running_loop()
         if setup is None:
-            yield
+            async with _sweeping(relay):
+                yield
             return
         async with setup() as deps:
             relay.deps = deps
-            yield
+            async with _sweeping(relay):
+                yield
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -145,6 +167,22 @@ def create_app(
         await serve_socket(relay, ws)
 
     return app
+
+
+@asynccontextmanager
+async def _sweeping(relay: Relay) -> AsyncIterator[None]:
+    """Sweep for post-call jobs no pod is running while the app serves."""
+    if relay.deps is None:
+        yield
+        return
+    sweep = asyncio.create_task(
+        relay.deps.postcall.sweep_forever(), name="voice-postcall-sweep"
+    )
+    try:
+        yield
+    finally:
+        sweep.cancel()
+        await asyncio.gather(sweep, return_exceptions=True)
 
 
 class _Refused(Exception):
@@ -220,7 +258,12 @@ async def _start(relay: Relay, ws: WebSocket, first: Mapping[str, Any]) -> None:
     if holder is not None:
         await _refuse(ws, "call_in_progress", CLOSE_POLICY, call_id=holder or None)
         return
-    store = locks.CallStore(redis, call_id=claims.call_id, user_id=claims.user_id)
+    store = locks.CallStore(
+        redis,
+        call_id=claims.call_id,
+        user_id=claims.user_id,
+        holder=deps.postcall.pod,
+    )
     # Recorded once the call holds the lock, so the row names a call that ran.
     try:
         await asyncio.wait_for(
@@ -267,12 +310,27 @@ async def _start(relay: Relay, ws: WebSocket, first: Mapping[str, Any]) -> None:
             caps=deps.caps,
             timing=deps.timing,
             started=started,
+            recording=CallRecording(
+                call_id=claims.call_id,
+                user_id=claims.user_id,
+                spool_dir=deps.spool_dir,
+                store=deps.postcall.recordings,
+                call_store=store,
+            ),
         )
         relay.sessions[claims.call_id] = session
         LIVE_CALLS.inc()
         try:
             await session.run()
         finally:
+            # Handed over before the call leaves the live calls, so a drain
+            # never finds this process idle between the two.
+            deps.postcall.after_call(
+                call_id=claims.call_id,
+                recording=session.recording,
+                claimed=session.postcall_claimed,
+                first_name=session.first_name,
+            )
             relay.sessions.pop(claims.call_id, None)
             LIVE_CALLS.dec()
     finally:

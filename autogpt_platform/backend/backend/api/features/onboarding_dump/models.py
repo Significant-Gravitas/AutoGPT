@@ -26,6 +26,13 @@ MAX_RECORDING_BYTES = 50 * 1024 * 1024
 # composer is a paragraph or two, so cap well below that.
 MAX_TYPED_CHARS = 20_000
 
+# What the person may add on an interview's ending screen that ends on a
+# confirm.
+MAX_CORRECTION_CHARS = 2_000
+
+# A voice call's id, as the start route mints it (``voice_relay.tokens``).
+VOICE_CALL_ID_PATTERN = r"^[0-9a-f]{32}$"
+
 # The client stops recording at 30 minutes, and this number is not just
 # metadata: an unmuxed MediaRecorder stream carries no container duration,
 # so it becomes the loop bound in ``transcription.split_audio`` — one
@@ -335,3 +342,49 @@ class VoiceCallStartResponse(BaseModel):
     expires_in: int
     leg: VoiceCallLeg
     caps: VoiceCallCaps
+
+
+# A voice call's status, in the order a call moves through them: opening,
+# live, over, its transcript of record being made, made and waiting for the
+# person's confirm, and handed to the onboarding pipeline or failed.
+VoiceCallStatus = Literal[
+    "connecting",
+    "live",
+    "ended",
+    "transcribing",
+    "transcribed",
+    "handed_off",
+    "failed",
+]
+
+
+class VoiceCallStatusResponse(BaseModel):
+    """A voice call as it stands."""
+
+    call_id: str
+    status: VoiceCallStatus
+    """``connecting`` and ``live`` while the call runs; ``ended`` and
+    ``transcribing`` while its transcript of record is made. Then
+    ``transcribed`` while the person's ending arm waits for their confirm;
+    ``handed_off`` once the call closed the interview, its words taken or
+    another take's kept (``hand_off`` says which); or ``failed``, with
+    ``hand_off`` saying why, while the interview stays open."""
+    end_reason: str | None = None
+    """Why the call ended: ``finished`` once Otto said goodbye, the control
+    that ended it (``wall_clock``, ``turn_cap``, ``idle``, ``scope``,
+    ``spend_cap``, ``user_hangup``, ``superseded``, ``client_gone``,
+    ``vendor_error``, ``server_restart``), or ``crashed`` when the server
+    running it stopped."""
+    leg: Literal["livekit", "websocket"]
+    hand_off: FinalizeResponse | None = None
+    """What the onboarding pipeline answered the call's hand-off, read the
+    way the typed interview's finish answer is read; None until it has
+    answered."""
+
+
+class VoiceCallFinishRequest(BaseModel):
+    """The person's confirm of a voice call."""
+
+    corrections: str | None = Field(default=None, max_length=MAX_CORRECTION_CHARS)
+    """What they changed on the ending screen, handed off as their own words
+    after the call's."""

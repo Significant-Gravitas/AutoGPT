@@ -1,8 +1,9 @@
 """What a voice call costs, metered as it happens.
 
 Each vendor usage report becomes priced rows (Live audio in, text in, audio
-out, and text out with thinking in it), and each scope label two more. Every
-row is one ``PlatformCostLog`` row through ``persist_and_record_usage`` on the
+out, and text out with thinking in it), each scope label two more, and each
+turn the post-call job transcribes two more. Every row is one
+``PlatformCostLog`` row through ``persist_and_record_usage`` on the
 platform's account: the user's plan windows are left alone, since the
 interview comes before any plan. Every row also adds to the platform's daily
 voice spend in Redis, which the start route checks, and to Prometheus.
@@ -29,6 +30,7 @@ from backend.voice_relay.config import (
     IN_RATE,
     OUT_RATE,
     SPEND_CAP_USD,
+    TRANSCRIBE_MODEL,
     price_of,
 )
 from backend.voice_relay.locks import add_daily_spend
@@ -63,6 +65,21 @@ COST_USD = Counter(
     "What onboarding voice interviews cost, by meter",
     ["meter"],
 )
+POSTCALL_SECONDS = Histogram(
+    "voice_interview_postcall_seconds",
+    "From a post-call job's start to the hand-off's answer",
+    buckets=(1, 2, 3, 5, 8, 13, 20, 30, 60, 120),
+)
+POSTCALLS = Counter(
+    "voice_interview_postcalls_total",
+    "Post-call jobs, by how they ended: handed_off, failed, transcribed (waiting "
+    "for the person's confirm), retry (left for another attempt), gave_up, or "
+    "expired (the call's record was gone)",
+    ["outcome"],
+)
+
+# The Prometheus role of each model a call pays for besides the live one.
+_ROLES = {CLASSIFIER_MODEL: "classifier", TRANSCRIBE_MODEL: "transcribe"}
 
 
 class Row(BaseModel):
@@ -84,8 +101,7 @@ class Row(BaseModel):
     @property
     def label(self) -> str:
         """The row's Prometheus meter: which model's which tokens."""
-        role = "classifier" if self.model == CLASSIFIER_MODEL else "live"
-        return f"{role}_{self.meter}"
+        return f"{_ROLES.get(self.model, 'live')}_{self.meter}"
 
 
 def priced_rows(model: str, usage: Usage) -> list[Row]:
@@ -195,16 +211,29 @@ class CallMeter:
         await self._record(priced_rows(self.model, usage))
 
     async def classifier_usage(self, *, tokens_in: int, tokens_out: int) -> None:
-        price = price_of(CLASSIFIER_MODEL)
+        await self._model_usage(
+            CLASSIFIER_MODEL, (("text_in", tokens_in), ("text_out", tokens_out))
+        )
+
+    async def transcription_usage(self, *, tokens_in: int, tokens_out: int) -> None:
+        """Meter one turn's transcription: its audio in, its text out."""
+        await self._model_usage(
+            TRANSCRIBE_MODEL, (("audio_in", tokens_in), ("text_out", tokens_out))
+        )
+
+    async def _model_usage(
+        self, model: str, quantities: tuple[tuple[str, int], ...]
+    ) -> None:
+        price = price_of(model)
         await self._record(
             [
                 Row(
-                    model=CLASSIFIER_MODEL,
+                    model=model,
                     meter=meter,
                     tokens=tokens,
                     usd=tokens * price.per_token(meter),
                 )
-                for meter, tokens in (("text_in", tokens_in), ("text_out", tokens_out))
+                for meter, tokens in quantities
                 if tokens > 0
             ]
         )

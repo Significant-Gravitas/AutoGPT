@@ -7,7 +7,7 @@ from prometheus_client import REGISTRY
 
 from backend.copilot import token_tracking
 from backend.voice_relay import locks, metering
-from backend.voice_relay.config import IN_RATE, OUT_RATE, PRICES
+from backend.voice_relay.config import IN_RATE, OUT_RATE, PRICES, TRANSCRIBE_MODEL
 from backend.voice_relay.metering import CallMeter, Row
 from backend.voice_relay.vendor import Usage
 
@@ -226,3 +226,24 @@ async def test_a_slow_redis_does_not_hold_up_a_usage_report():
         meter.classifier_usage(tokens_in=100, tokens_out=10), timeout=0.05
     )
     await meter.flush()
+
+
+async def test_a_transcribed_turn_is_billed_as_audio_in_and_text_out(redis):
+    rows: list[Row] = []
+    meter = _meter(redis, rows)
+
+    await meter.transcription_usage(tokens_in=1_000, tokens_out=50)
+    await meter.flush()
+
+    price = PRICES[TRANSCRIBE_MODEL]
+    assert [(row.model, row.meter, row.tokens) for row in rows] == [
+        (TRANSCRIBE_MODEL, "audio_in", 1_000),
+        (TRANSCRIBE_MODEL, "text_out", 50),
+    ]
+    assert meter.usd == pytest.approx(
+        1_000 * price.audio_in / 1e6 + 50 * price.text_out / 1e6
+    )
+    assert [row.label for row in rows] == ["transcribe_audio_in", "transcribe_text_out"]
+    assert await locks.daily_spend_usd(redis, datetime.now(UTC)) == pytest.approx(
+        meter.usd
+    )

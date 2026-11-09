@@ -3,14 +3,16 @@
 Stock uvicorn answers SIGTERM by closing every open socket at once, which
 would drop every call on each deploy. The relay drains instead: its first
 SIGTERM fails readiness, refuses new calls with 1013, and lets live calls run
-to their end (the call cap bounds each), then exits. Calls still open after
-``VOICE_RELAY_DRAIN_MAX_S`` end with reason ``server_restart``. A second
-SIGTERM, or a SIGINT, exits at once.
+to their end (the call cap bounds each) and their post-call jobs finish, then
+exits. Calls still open after ``VOICE_RELAY_DRAIN_MAX_S`` end with reason
+``server_restart``; a post-call job still running at exit is left to another
+pod's sweep. A second SIGTERM, or a SIGINT, exits at once.
 """
 
 import asyncio
 import logging
 import signal
+import socket
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -33,9 +35,11 @@ from backend.monitoring.instrumentation import start_metrics_server
 from backend.util.process import AppProcess
 from backend.util.settings import Settings
 from backend.voice_relay import tokens
-from backend.voice_relay.app import Relay, RelayDeps, create_app
-from backend.voice_relay.config import WS_MAX_MESSAGE_BYTES, price_of
+from backend.voice_relay.app import Relay, RelayDeps, create_app, first_name_of
+from backend.voice_relay.config import TRANSCRIBE_MODEL, WS_MAX_MESSAGE_BYTES, price_of
 from backend.voice_relay.metering import drain_cost_logs
+from backend.voice_relay.postcall import GeminiTranscriber, PostCall
+from backend.voice_relay.record import CloudRecordings
 from backend.voice_relay.scope import GeminiScopeClassifier
 from backend.voice_relay.vendor import GeminiLive
 
@@ -83,12 +87,12 @@ class DrainingServer(uvicorn.Server):
     async def drain(self) -> None:
         relay = self.relay
         started = relay.drain_started or time.monotonic()
-        while relay.sessions and time.monotonic() - started < self.drain_max_s:
+        while relay.busy and time.monotonic() - started < self.drain_max_s:
             await asyncio.sleep(POLL_S)
         for session in list(relay.sessions.values()):
             session.end("server_restart")
         settling = time.monotonic()
-        while relay.sessions and time.monotonic() - settling < self.settle_s:
+        while relay.busy and time.monotonic() - settling < self.settle_s:
             await asyncio.sleep(POLL_S)
         logger.warning(f"Drain done after {time.monotonic() - started:.1f}s")
         self.should_exit = True
@@ -101,6 +105,7 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
     model = settings.config.voice_interview_model
     # A call is priced as it runs, so a model with no price cannot take one.
     price_of(model)
+    price_of(TRANSCRIBE_MODEL)
     if not settings.secrets.gemini_api_key:
         raise RuntimeError("GEMINI_API_KEY is not set")
     if not tokens.is_configured():
@@ -127,6 +132,15 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
             account_name=_account_name,
             record_call=record_onboarding_voice_call,
             live_model=model,
+            postcall=PostCall(
+                redis=redis_client.get_redis_async,
+                recordings=CloudRecordings(),
+                transcriber=GeminiTranscriber(client),
+                first_name=_first_name,
+                live_model=model,
+                pod=socket.gethostname(),
+            ),
+            spool_dir=settings.config.voice_interview_spool_dir,
         )
     finally:
         await drain_cost_logs()
@@ -144,6 +158,15 @@ async def _account_name(user_id: str) -> str | None:
     # The relay connects the database itself, as the REST API does.
     user = await get_user_by_id(user_id)
     return user.name
+
+
+async def _first_name(user_id: str) -> str | None:
+    """The first name the transcription of a call is told the speaker has."""
+    try:
+        return first_name_of(await _account_name(user_id))
+    except Exception:
+        logger.info("Voice post-call: the account's name could not be read")
+        return None
 
 
 class VoiceRelay(AppProcess):

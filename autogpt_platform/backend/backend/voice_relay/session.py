@@ -15,6 +15,12 @@ browser only displays them:
   the conversation so far, at most ``max_vendor_reconnects`` times;
 - an end request from the person's other device, and the drain on deploys.
 
+It also records the person's audio (``record``) and marks on the call's
+record where each of Otto's turns ended in it, which is what the post-call
+job cuts the recording into turns by. The call is pending a post-call job
+from its start, and the call claims that job before it stops counting as
+live (``postcall``).
+
 Browser to relay, after ``start``: binary frames of 16 kHz PCM16, and JSON
 ``hangup`` and ``ping {id}``. Relay to browser: binary frames of 24 kHz PCM16,
 and JSON ``ready``, ``user_text``, ``agent_text``, ``interrupted``,
@@ -53,13 +59,14 @@ from backend.voice_relay.config import (
     Caps,
     Timing,
 )
-from backend.voice_relay.locks import CallStore
+from backend.voice_relay.locks import CallStore, TurnMark
 from backend.voice_relay.metering import (
     CALL_SECONDS,
     CALLS,
     FIRST_AUDIO_SECONDS,
     CallMeter,
 )
+from backend.voice_relay.record import CallRecording
 from backend.voice_relay.scope import ScopeClassifier
 from backend.voice_relay.tokens import Leg
 from backend.voice_relay.vendor import (
@@ -165,6 +172,7 @@ class Session:
         caps: Caps = CAPS,
         timing: Timing = TIMING,
         started: float | None = None,
+        recording: CallRecording | None = None,
     ) -> None:
         self.call_id = call_id
         self.user_id = user_id
@@ -177,6 +185,11 @@ class Session:
         self.first_name = first_name
         self.caps = caps
         self.timing = timing
+        # The person's audio, and where each of Otto's turns ended in it.
+        self.recording = recording
+        self.turn_marks: list[TurnMark] = []
+        # Whether this process holds the call's post-call job.
+        self.postcall_claimed = False
         # When the start message arrived (monotonic): the first audio is
         # measured from here.
         self.started = time.monotonic() if started is None else started
@@ -258,6 +271,7 @@ class Session:
 
     async def run(self) -> None:
         """Run the call to its end, then report how it ended."""
+        await self.store.pend_postcall()
         try:
             live = await asyncio.wait_for(
                 self.vendor.connect(opening=voice_interview_kickoff(self.first_name)),
@@ -311,6 +325,9 @@ class Session:
             why="listening after the last usage report",
         )
         await self.meter.flush()
+        # Before the call stops counting as live, so no other process's sweep
+        # takes the job from under this one.
+        self.postcall_claimed = await self.store.claim_postcall()
         await self.store.record(
             status="ended",
             end_reason=reason,
@@ -455,6 +472,8 @@ class Session:
             return
         self.bucket -= samples
         self.received += samples
+        if self.recording is not None:
+            self.recording.append(pcm)
         if vad.heard(pcm):
             self.quiet_s = 0.0
         live = self.live
@@ -697,6 +716,10 @@ class Session:
         self.user_buf = ""
         if heard:
             self.user_turns.append(UserTurn(after=turn.index - 1, text=heard))
+        self.turn_marks.append(
+            TurnMark(index=turn.index, at=self.received, text=turn.text)
+        )
+        await self.store.record(turns=[mark.model_dump() for mark in self.turn_marks])
 
         spoke_at = turn.first_audio
         if self.wrapping:
@@ -724,6 +747,7 @@ class Session:
         last = time.monotonic()
         next_end_check = last
         next_refresh = last + LIVE_CALL_REFRESH_S
+        next_checkpoint = last + self.timing.checkpoint_s
         while not self.ended.is_set():
             await asyncio.sleep(tick)
             now = time.monotonic()
@@ -759,6 +783,9 @@ class Session:
             if now >= next_refresh:
                 next_refresh = now + LIVE_CALL_REFRESH_S
                 await self.store.refresh_live(time.time())
+            if self.recording is not None and now >= next_checkpoint:
+                next_checkpoint = now + self.timing.checkpoint_s
+                self.recording.checkpoint_soon()
 
     async def nudge(self, kind: str) -> None:
         if kind in self.nudged or self.wrapping:

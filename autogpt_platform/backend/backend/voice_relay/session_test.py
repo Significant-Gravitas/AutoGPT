@@ -502,3 +502,78 @@ async def test_ending_the_call_from_another_device_supersedes_it(redis):
     call = await open_call(redis, FakeVendor([Reply(text="Hi", audio_s=0.1)]))
     await locks.request_end(redis, call.session.call_id)
     assert (await call.ended())["reason"] == "superseded"
+
+
+async def test_a_call_is_pending_its_post_call_job_from_its_start(redis):
+    call = await open_call(redis, FakeVendor([Reply(text="Hi", audio_s=0.1)]))
+
+    assert await locks.postcall_pending(redis) == [call.session.call_id]
+
+    call.ws.send_json({"type": "hangup"})
+    await call.ended()
+    # Still pending: only its post-call job clears it.
+    assert await locks.postcall_pending(redis) == [call.session.call_id]
+
+
+async def test_each_of_ottos_turns_is_marked_where_it_ended_in_the_recording(redis):
+    vendor = FakeVendor(
+        [
+            Reply(text="Hi, what do you do?", audio_s=0.1),
+            Reply(text="Nice. Bye!", audio_s=0.1, heard="I bake", first_task="Bake"),
+        ]
+    )
+    call = await open_call(redis, vendor)
+    await call.ws.wait_for("turn_complete")
+    call.ws.send_audio(speech(0.4))
+    await call.ended()
+
+    record = await locks.read_call(redis, call.session.call_id)
+    assert record is not None
+    assert [(mark.index, mark.text) for mark in record.turns] == [
+        (0, "Hi, what do you do?"),
+        (1, "Nice. Bye!"),
+    ]
+    # Otto greeted before a word was heard, and answered all the person said.
+    assert record.turns[0].at == 0
+    assert record.turns[1].at == call.session.received == len(speech(0.4)) * 640
+
+
+async def test_a_call_claims_its_post_call_job_before_it_stops_counting_as_live(
+    redis,
+):
+    claim_at_release: list[str | None] = []
+
+    class WatchingStore(CallStore):
+        async def release(self) -> None:
+            claim_at_release.append(
+                await redis.get(locks.postcall_claim_key(self.call_id))
+            )
+            await super().release()
+
+    ws = FakeSocket()
+    session = _session(redis, FakeVendor([Reply(text="Hi", audio_s=0.1)]), ws, [])
+    session.store = WatchingStore(
+        redis, call_id=session.call_id, user_id=USER, holder="pod-a"
+    )
+    task = asyncio.create_task(session.run())
+    await ws.wait_for("ready")
+    ws.send_json({"type": "hangup"})
+    await asyncio.wait_for(task, timeout=5)
+
+    assert session.postcall_claimed
+    assert claim_at_release[0] == "pod-a"
+
+
+async def test_a_call_whose_job_another_process_claimed_leaves_it_to_that_one(redis):
+    ws = FakeSocket()
+    session = _session(redis, FakeVendor([Reply(text="Hi", audio_s=0.1)]), ws, [])
+    session.store = CallStore(
+        redis, call_id=session.call_id, user_id=USER, holder="pod-a"
+    )
+    await locks.claim_postcall(redis, session.call_id, "pod-b")
+    task = asyncio.create_task(session.run())
+    await ws.wait_for("ready")
+    ws.send_json({"type": "hangup"})
+    await asyncio.wait_for(task, timeout=5)
+
+    assert not session.postcall_claimed

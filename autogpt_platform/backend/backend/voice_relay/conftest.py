@@ -1,7 +1,8 @@
 import asyncio
 import json
 import socket
-from collections.abc import AsyncIterator
+import tempfile
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
 import numpy as np
@@ -9,7 +10,11 @@ import pytest
 import uvicorn
 from fakeredis import FakeServer
 from fakeredis.aioredis import FakeRedis
+from fastapi import BackgroundTasks
+from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 
+from backend.api.features.onboarding_dump.interview import InterviewClosure
+from backend.api.features.onboarding_dump.models import FinalizeResponse
 from backend.api.utils.cors import build_cors_params
 from backend.util.settings import AppEnvironment
 from backend.voice_relay import tokens
@@ -23,8 +28,13 @@ from backend.voice_relay.config import (
     Timing,
 )
 from backend.voice_relay.fake_vendor import FakeVendor
+from backend.voice_relay.handoff import record_hand_off
+from backend.voice_relay.locks import CallRecord
 from backend.voice_relay.metering import Row
+from backend.voice_relay.postcall import PostCall, Transcription
 from backend.voice_relay.serve import DrainingServer
+
+BUCKET = "test-bucket"
 
 SIGNING_KEY = "k" * 48  # pragma: allowlist secret
 ORIGIN = "http://localhost:3000"
@@ -54,6 +64,72 @@ def speech(seconds: float) -> list[bytes]:
 def silence(seconds: float) -> list[bytes]:
     frame = bytes(int(IN_RATE * 0.04) * 2)
     return [frame for _ in range(max(1, round(seconds / 0.04)))]
+
+
+class MemoryRecordings:
+    """Cloud storage for recordings, in memory."""
+
+    def __init__(self, *, fail_stores: int = 0) -> None:
+        self.objects: dict[str, bytes] = {}
+        self.stored: list[str] = []
+        self.deleted: list[str] = []
+        # The next this-many stores fail, as an outage does.
+        self.fail_stores = fail_stores
+
+    async def store(self, user_id: str, wav: bytes, filename: str) -> str:
+        if self.fail_stores:
+            self.fail_stores -= 1
+            raise ConnectionError("storage is down")
+        path = f"gcs://{BUCKET}/uploads/users/{user_id}/{len(self.stored)}/{filename}"
+        self.objects[path] = wav
+        self.stored.append(path)
+        return path
+
+    async def fetch(self, path: str, user_id: str) -> bytes:
+        if f"/users/{user_id}/" not in path:
+            raise PermissionError("not this user's file")
+        return self.objects[path]
+
+    async def delete(self, path: str) -> None:
+        self.objects.pop(path, None)
+        self.deleted.append(path)
+
+
+class ScriptedTranscriber:
+    """Transcribes each turn with the next of *texts*; an exception in them is
+    raised instead."""
+
+    def __init__(self, texts: Sequence[str | Exception] = ()) -> None:
+        self.texts = list(texts)
+        self.calls: list[tuple[int, str | None]] = []
+
+    async def __call__(self, wav: bytes, *, first_name: str | None) -> Transcription:
+        self.calls.append((len(wav), first_name))
+        text = self.texts.pop(0) if self.texts else "I run a bakery."
+        if isinstance(text, Exception):
+            raise text
+        return Transcription(text=text, tokens_in=100, tokens_out=10)
+
+
+class HandOffs:
+    """Hands every call off as an accepted take and remembers each."""
+
+    def __init__(self) -> None:
+        self.calls: list[CallRecord] = []
+
+    async def __call__(
+        self, redis, record: CallRecord, background: BackgroundTasks
+    ) -> InterviewClosure:
+        self.calls.append(record)
+        closure = InterviewClosure(
+            ending=None,
+            hand_off=FinalizeResponse(
+                status=BrainDumpStatus.transcribed,
+                input_mode=BrainDumpInputMode.typed,
+            ),
+        )
+        await record_hand_off(redis, record.call_id, closure)
+        return closure
 
 
 class FakeSocket:
@@ -142,6 +218,9 @@ class RunningRelay:
         *,
         rows: list[Row],
         recorded: dict[str, str],
+        postcall: PostCall,
+        recordings: MemoryRecordings,
+        hand_offs: HandOffs,
     ) -> None:
         self.relay = relay
         self.server = server
@@ -150,6 +229,20 @@ class RunningRelay:
         self.rows = rows
         # The calls recorded on onboarding rows: user id -> call id.
         self.recorded = recorded
+        self.postcall = postcall
+        self.recordings = recordings
+        self.hand_offs = hand_offs
+
+    async def postcalls_done(self, timeout: float = 10.0) -> None:
+        """Wait for the post-call jobs running on the relay."""
+
+        async def idle() -> None:
+            while self.postcall.jobs:
+                await asyncio.gather(
+                    *self.postcall.jobs.values(), return_exceptions=True
+                )
+
+        await asyncio.wait_for(idle(), timeout=timeout)
 
     @property
     def url(self) -> str:
@@ -171,16 +264,22 @@ async def running_relay(
     caps: Caps = CAPS,
     timing: Timing = TIMING,
     record_fails: bool = False,
+    transcriber: ScriptedTranscriber | None = None,
 ) -> AsyncIterator[RunningRelay]:
     """The relay app under a real uvicorn server on a free local port."""
     rows: list[Row] = []
     recorded: dict[str, str] = {}
+    recordings = MemoryRecordings()
+    hand_offs = HandOffs()
 
     async def get_redis():
         return redis
 
     async def account_name(user_id: str) -> str | None:
         return "Dana Smith"
+
+    async def first_name(user_id: str) -> str | None:
+        return "Dana"
 
     async def sink(row: Row) -> None:
         rows.append(row)
@@ -190,6 +289,17 @@ async def running_relay(
             raise ConnectionError("database is down")
         recorded[user_id] = call_id
 
+    spool = tempfile.TemporaryDirectory()
+    postcall = PostCall(
+        redis=get_redis,
+        recordings=recordings,
+        transcriber=transcriber or ScriptedTranscriber(),
+        first_name=first_name,
+        live_model="gemini-3.8-live",
+        pod="relay-test",
+        cost_sink=sink,
+        hand_off=hand_offs,
+    )
     relay = Relay(
         max_calls=max_calls,
         origins=build_cors_params([ORIGIN], AppEnvironment.LOCAL),
@@ -200,6 +310,8 @@ async def running_relay(
             account_name=account_name,
             record_call=record_call,
             live_model="gemini-3.8-live",
+            postcall=postcall,
+            spool_dir=spool.name,
             cost_sink=sink,
             caps=caps,
             timing=timing,
@@ -231,6 +343,9 @@ async def running_relay(
         listener.getsockname()[1],
         rows=rows,
         recorded=recorded,
+        postcall=postcall,
+        recordings=recordings,
+        hand_offs=hand_offs,
     )
     try:
         yield running
@@ -239,4 +354,9 @@ async def running_relay(
         for session in list(relay.sessions.values()):
             session.end("server_restart")
         await asyncio.wait_for(serving, timeout=15)
+        await asyncio.wait_for(
+            asyncio.gather(*postcall.jobs.values(), return_exceptions=True),
+            timeout=15,
+        )
         listener.close()
+        spool.cleanup()

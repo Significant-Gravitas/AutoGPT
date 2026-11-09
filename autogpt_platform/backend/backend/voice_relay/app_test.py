@@ -9,7 +9,12 @@ from websockets.exceptions import ConnectionClosed, InvalidStatus
 from backend.voice_relay import app as relay_app
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.app import first_name_of
-from backend.voice_relay.conftest import ORIGIN, running_relay
+from backend.voice_relay.conftest import (
+    ORIGIN,
+    ScriptedTranscriber,
+    running_relay,
+    speech,
+)
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
 
 USER = "user-1"
@@ -253,3 +258,35 @@ async def test_a_call_that_cannot_be_recorded_does_not_start(redis):
         assert await refusal(ws) == ({"type": "error", "error": "unavailable"}, 1013)
     assert vendor.sessions == []
     assert await locks.live_call_of(redis, USER) is None
+
+
+async def test_a_call_is_handed_off_from_its_recording_once_it_ends(redis):
+    vendor = FakeVendor(
+        [
+            Reply(text="Hi, what do you do?", audio_s=0.1),
+            Reply(text="Got it. Bye!", heard="I bake", first_task="Bake bread"),
+        ]
+    )
+    transcriber = ScriptedTranscriber(["I bake bread for three cafes."])
+    async with running_relay(redis, vendor, transcriber=transcriber) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start()))
+        ready = await read_until(ws, "ready")
+        await read_until(ws, "turn_complete")
+        for frame in speech(0.4):
+            await ws.send(frame)
+        ended = await read_until(ws, "ended")
+        await running.postcalls_done()
+
+        [handed] = running.hand_offs.calls
+        assert ended["reason"] == "finished"
+        assert handed.call_id == ready["call_id"]
+        assert handed.transcript_of_record == "I bake bread for three cafes."
+        assert handed.first_task == "Bake bread"
+        assert transcriber.calls[0][1] == "Dana"
+        # The recording went once its transcript was stored.
+        assert running.recordings.stored
+        assert running.recordings.objects == {}
+        assert await locks.postcall_pending(redis) == []
+        record = await locks.read_call(redis, ready["call_id"])
+        assert record is not None and record.status == locks.HANDED_OFF

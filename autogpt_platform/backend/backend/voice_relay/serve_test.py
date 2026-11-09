@@ -12,7 +12,12 @@ from backend.api.utils.cors import build_cors_params
 from backend.util.settings import AppEnvironment
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.app import Relay, create_app
-from backend.voice_relay.conftest import ORIGIN, running_relay, speech
+from backend.voice_relay.conftest import (
+    ORIGIN,
+    ScriptedTranscriber,
+    running_relay,
+    speech,
+)
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
 from backend.voice_relay.serve import DrainingServer
 
@@ -135,3 +140,38 @@ def test_sigint_exits_without_draining():
     server.handle_exit(signal.SIGINT, None)
     assert server.should_exit
     assert not relay.draining
+
+
+async def test_sigterm_waits_for_a_calls_post_call_job_before_exiting(redis):
+    class HeldTranscriber(ScriptedTranscriber):
+        def __init__(self) -> None:
+            super().__init__()
+            self.release = asyncio.Event()
+
+        async def __call__(self, wav: bytes, *, first_name: str | None):
+            await self.release.wait()
+            return await super().__call__(wav, first_name=first_name)
+
+    transcriber = HeldTranscriber()
+    vendor = FakeVendor(
+        [
+            Reply(text="Hi", audio_s=0.1),
+            Reply(text="Bye!", heard="I bake bread", first_task="Bake"),
+        ]
+    )
+    async with running_relay(redis, vendor, transcriber=transcriber) as running:
+        ws, call_id = await start_call(running.url)
+        await read_until(ws, "turn_complete")
+        for frame in speech(0.3):
+            await ws.send(frame)
+        await read_until(ws, "ended")
+
+        running.server.handle_exit(signal.SIGTERM, None)
+        await asyncio.sleep(0.5)
+        # The call is over but its words are not handed off yet.
+        assert not running.serving.done()
+        assert running.hand_offs.calls == []
+
+        transcriber.release.set()
+        await asyncio.wait_for(running.serving, timeout=10)
+        assert [record.call_id for record in running.hand_offs.calls] == [call_id]

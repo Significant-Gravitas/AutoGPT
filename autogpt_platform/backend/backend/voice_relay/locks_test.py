@@ -6,6 +6,7 @@ from backend.voice_relay import locks
 from backend.voice_relay.config import (
     CALL_RECORD_TTL_S,
     LIVE_CALL_STALE_S,
+    POSTCALL_CLAIM_TTL_S,
     USER_LOCK_TTL_S,
 )
 
@@ -113,3 +114,91 @@ def test_the_daily_budget_waits_for_the_utc_day_to_turn():
     now = datetime(2026, 11, 9, 23, 59, 30, tzinfo=UTC)
     assert locks.seconds_until_tomorrow(now) == 30
     assert locks.daily_spend_key(now) == "voice:spend:2026-11-09"
+
+
+async def test_a_post_call_job_is_claimed_by_one_holder_and_given_up_by_it(redis):
+    assert await locks.claim_postcall(redis, "call-a", "pod-a")
+    assert not await locks.claim_postcall(redis, "call-a", "pod-b")
+    assert (
+        0
+        < await redis.ttl(locks.postcall_claim_key("call-a"))
+        <= (POSTCALL_CLAIM_TTL_S)
+    )
+    # Only the holder can give it up.
+    await locks.release_postcall(redis, "call-a", "pod-b")
+    assert not await locks.claim_postcall(redis, "call-a", "pod-b")
+    await locks.release_postcall(redis, "call-a", "pod-a")
+    assert await locks.claim_postcall(redis, "call-a", "pod-b")
+
+
+async def test_calls_stay_pending_until_their_job_clears_them(redis):
+    await locks.add_postcall_pending(redis, "call-b")
+    await locks.add_postcall_pending(redis, "call-a")
+    await locks.add_postcall_pending(redis, "call-a")
+    assert await locks.postcall_pending(redis) == ["call-a", "call-b"]
+    await locks.remove_postcall_pending(redis, "call-a")
+    assert await locks.postcall_pending(redis) == ["call-b"]
+
+
+async def test_a_call_is_live_while_its_pod_refreshes_it(redis):
+    now = time.time()
+    await locks.register_live_call(redis, "call-a", now)
+    assert await locks.is_live(redis, "call-a", now)
+    assert not await locks.is_live(redis, "call-a", now + LIVE_CALL_STALE_S + 1)
+    assert not await locks.is_live(redis, "call-b", now)
+
+
+async def test_a_call_record_reads_back_typed(redis):
+    await locks.write_call_record(
+        redis,
+        "call-a",
+        {
+            "uid": USER,
+            "status": "failed",
+            "turns": [{"index": 0, "at": 0, "text": "Hi"}, {"index": 1, "at": 640}],
+            "hand_off": {
+                "status": "failed",
+                "input_mode": "typed",
+                "error_code": "quality_check_unavailable",
+            },
+            "transcript_of_record": "I run a bakery.",
+            "postcall_attempts": 2,
+        },
+    )
+
+    record = await locks.read_call(redis, "call-a")
+
+    assert record is not None
+    assert (record.uid, record.status) == (USER, "failed")
+    assert [mark.at for mark in record.turns] == [0, 640]
+    assert record.hand_off is not None
+    assert record.hand_off.error_code == "quality_check_unavailable"
+    assert record.transcript_of_record == "I run a bakery."
+    assert record.postcall_attempts == 2
+    assert not record.took_the_interview
+    assert await locks.read_call(redis, "call-b") is None
+
+
+async def test_a_record_with_a_field_that_cannot_be_read_keeps_its_owner(redis):
+    await locks.write_call_record(
+        redis, "call-a", {"uid": USER, "status": "on-the-moon", "turns": "{oops"}
+    )
+
+    record = await locks.read_call(redis, "call-a")
+
+    assert record is not None
+    assert record.uid == USER
+    assert record.status is None
+
+
+async def test_the_transcript_is_stored_in_the_write_that_forgets_the_recording(
+    redis,
+):
+    await locks.write_call_record(redis, "call-a", {"audio_path": "gcs://b/x.wav"})
+
+    await locks.forget_call_fields(
+        redis, "call-a", {"transcript_of_record": "Hello."}, "audio_path"
+    )
+
+    record = await locks.read_call_record(redis, "call-a")
+    assert record == {"transcript_of_record": "Hello."}

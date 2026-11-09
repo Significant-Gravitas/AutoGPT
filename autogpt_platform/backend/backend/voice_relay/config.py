@@ -49,6 +49,25 @@ SPEND_CAP_USD = 0.50
 # Otto is still answering it.
 CLASSIFIER_MODEL = "gemini-3.8-flash"
 
+# The transcript of record's model, and how many of a call's turns it
+# transcribes at once. A turn is tried this many times on an error that may
+# pass, each attempt within the timeout.
+TRANSCRIBE_MODEL = "gemini-3.5-transcribe"
+TRANSCRIBE_CONCURRENCY = 4
+TRANSCRIBE_ATTEMPTS = 3
+TRANSCRIBE_TIMEOUT_S = 60.0
+
+# The recording is uploaded this often while a call runs, so a pod that dies
+# loses at most this much of it.
+CHECKPOINT_S = 30.0
+# Every relay process looks for calls whose post-call job never finished when
+# it starts and this often after. A job's claim lasts this long, so a pod that
+# dies mid-job leaves it to another pod's next look.
+POSTCALL_SWEEP_S = 300.0
+POSTCALL_CLAIM_TTL_S = 600
+# A call whose post-call job fails this many times records the failure.
+POSTCALL_ATTEMPTS = 3
+
 # Audio tokens a second, for the share of a call the vendor bills but never
 # reports in a usage message (the listening tail, a dropped session).
 AUDIO_TOKENS_PER_S = 25
@@ -98,6 +117,8 @@ class Timing(BaseModel):
     scope_timeout_s: float = 8.0
     vendor_connect_timeout_s: float = 15.0
     max_vendor_reconnects: int = 2
+    # How often the person's recording is uploaded while the call runs.
+    checkpoint_s: float = CHECKPOINT_S
 
 
 TIMING = Timing()
@@ -137,6 +158,13 @@ PRICES: dict[str, Price] = {
         source=GEMINI_PRICING_SOURCE + "; doubles on 2027-01-01",
         text_in=0.75,
         text_out=3.75,
+    ),
+    # Its prompt is a clip of audio and one short line of text, all priced as
+    # audio.
+    TRANSCRIBE_MODEL: Price(
+        source=GEMINI_PRICING_SOURCE,
+        audio_in=2.00,
+        text_out=12.00,
     ),
 }
 

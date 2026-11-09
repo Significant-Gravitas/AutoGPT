@@ -25,7 +25,15 @@ loading screen already polls.
 
 Two layers, so where the words come from can change without the pipeline
 noticing. :func:`hand_off_interview_transcript` takes the user's words from
-any interview; the typed interview's come from its chat session.
+any interview; the typed interview's come from its chat session, a voice
+call's from its transcript of record (:func:`close_voice_interview`).
+
+A person has one interview, typed or spoken. The voice call start route
+refuses a call once the typed interview is over; the typed interview is
+refused while a call of theirs is live, and is over once a call's words
+became the take (:func:`refuse_while_a_call_holds_the_interview`). A call
+whose hand-off another take beat is ``superseded``, and so is a typed
+interview closed after a call took the interview.
 """
 
 import asyncio
@@ -45,6 +53,7 @@ from backend.api.features.onboarding_dump.interview_endings import (
     hands_off_on_close,
 )
 from backend.api.features.onboarding_dump.models import (
+    MAX_CORRECTION_CHARS,
     MAX_TYPED_CHARS,
     FinalizeResponse,
 )
@@ -72,6 +81,7 @@ from backend.copilot.onboarding_interview import (
     InterviewTurnRefused,
     check_onboarding_interview_turn,
     count_answered_turns,
+    find_onboarding_interview_session,
     get_or_create_onboarding_interview_session,
     interview_is_over,
     interview_reached_cap,
@@ -93,8 +103,11 @@ from backend.copilot.service import (
     strip_server_injected_tags,
 )
 from backend.data.db_accessors import chat_db
+from backend.data.onboarding import get_onboarding_voice_call_id
+from backend.data.redis_client import get_redis_async
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import NotFoundError
+from backend.voice_relay import locks
 
 logger = logging.getLogger(__name__)
 
@@ -119,9 +132,6 @@ _FINAL_FAILURES = frozenset(
 # before leaving the interview to the next request that touches it.
 GOODBYE_WAIT_SECONDS = 600.0
 _GOODBYE_POLL_SECONDS = 2.0
-
-# What the person may add on an ending screen that ends on a confirm.
-MAX_CORRECTION_CHARS = 2_000
 
 # The chat's answer to an ``ask_question`` card (``QuestionDock`` and
 # ``buildAnswersMessage`` in the frontend): Otto's questions quoted, the
@@ -182,9 +192,12 @@ async def start_onboarding_interview(user_id: str) -> StartedInterview:
     Raises:
         HTTPException: 409 when a turn is already running in it (the client
             follows that turn's stream instead), 429 at the cap on turns
-            running at once, and whatever
+            running at once, whatever
+            :func:`refuse_while_a_call_holds_the_interview` raises while a
+            voice call holds the interview, and whatever
             :func:`enforce_onboarding_interview_allowance` raises.
     """
+    await refuse_while_a_call_holds_the_interview(user_id)
     session = await get_or_create_onboarding_interview_session(user_id)
     if interview_is_over(session):
         if session.metadata.onboarding_interview_stage != INTERVIEW_STAGE_HANDED_OFF:
@@ -231,6 +244,67 @@ async def _refuse_if_busy(session_id: str) -> None:
         raise HTTPException(status_code=409, detail=TURN_IN_PROGRESS)
 
 
+async def refuse_while_a_call_holds_the_interview(user_id: str) -> None:
+    """Refuse the typed interview while a voice call holds the person's
+    interview: a call is live, or a call's words became the interview's take.
+
+    Raises:
+        HTTPException: 409 ``call_in_progress`` naming the live call, which
+            the person can rejoin or end; 409 ``onboarding_interview_closed``
+            naming the call that took the interview, whose ending the step
+            shows; 503 while neither can be read.
+    """
+    try:
+        live = await locks.live_call_of(await get_redis_async(), user_id)
+        taken_by = None if live else await call_that_took_the_interview(user_id)
+    except Exception as exc:
+        logger.warning(
+            f"Onboarding interview: voice calls unreadable: {type(exc).__name__}"
+        )
+        raise _voice_calls_unreadable() from exc
+    if live:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": locks.CALL_IN_PROGRESS, "call_id": live},
+        )
+    if taken_by:
+        raise HTTPException(
+            status_code=409, detail={"code": INTERVIEW_CLOSED, "call_id": taken_by}
+        )
+
+
+async def call_that_took_the_interview(user_id: str) -> str | None:
+    """The person's voice call whose words became their interview's take, or
+    None.
+
+    Only their latest call can be (``UserOnboarding.voiceCallId``), once its
+    hand-off was accepted: its record says so for a day, and after that the
+    dump row does, while it still holds that call's take.
+    """
+    call_id = await get_onboarding_voice_call_id(user_id)
+    if call_id is None:
+        return None
+    record = await locks.read_call(await get_redis_async(), call_id)
+    if record is not None:
+        return call_id if record.took_the_interview else None
+    dump = await dump_db.get_dump(user_id)
+    if (
+        dump is not None
+        and dump.recordingId == interview_recording_id(call_id)
+        and dump.status != BrainDumpStatus.failed
+    ):
+        return call_id
+    return None
+
+
+def _voice_calls_unreadable() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail="Onboarding interview temporarily unavailable, retry shortly",
+        headers={"Retry-After": "30"},
+    )
+
+
 async def admit_onboarding_interview_turn(
     session: ChatSessionInfo,
     user_id: str,
@@ -252,7 +326,9 @@ async def admit_onboarding_interview_turn(
 
     Raises:
         HTTPException: 409 once the interview is over, 422 for a request an
-            interview never takes (a non-user turn, an expert kickoff, files).
+            interview never takes (a non-user turn, an expert kickoff, files),
+            and whatever :func:`refuse_while_a_call_holds_the_interview`
+            raises while a voice call holds the interview.
     """
     full = await get_chat_session(session.session_id, user_id)
     if full is None:
@@ -277,6 +353,7 @@ async def admit_onboarding_interview_turn(
                 name=f"interview-hand-off-{session.session_id[:12]}",
             )
         raise HTTPException(status_code=409, detail=refused.code) from refused
+    await refuse_while_a_call_holds_the_interview(user_id)
     return plan
 
 
@@ -457,8 +534,12 @@ async def close_onboarding_interview(
     *background_tasks* runs the pipeline's jobs after a route's response;
     without it they run before this returns.
 
+    A voice call whose words already became the interview's take keeps it:
+    the typed interview is handed off as ``superseded``, its words unused.
+
     Raises:
         NotFoundError: no onboarding interview of *user_id*'s has this id.
+        HTTPException: 503 while the person's voice calls cannot be read.
     """
     session, stored = await _read_interview(user_id, session_id)
     ending = stored.metadata.onboarding_interview_ending
@@ -472,6 +553,23 @@ async def close_onboarding_interview(
         logger.info(f"Onboarding interview {session_id[:12]} closed: {reason}")
     if stored.metadata.pending_question is not None:
         await _drop_pending_question(user_id, session_id)
+    try:
+        taken_by = await call_that_took_the_interview(user_id)
+    except Exception as exc:
+        logger.warning(
+            f"Onboarding interview {session_id[:12]}: voice calls unreadable: "
+            f"{type(exc).__name__}"
+        )
+        raise _voice_calls_unreadable() from exc
+    if taken_by is not None:
+        logger.info(
+            f"Onboarding interview {session_id[:12]}: voice call "
+            f"{taken_by[:12]} took the interview"
+        )
+        await update_session_interview_stage(
+            session_id, user_id, INTERVIEW_STAGE_HANDED_OFF
+        )
+        return InterviewClosure(ending=ending, hand_off=_superseded())
     if ending is None:
         ending = await _stamp_ending(user_id, session_id, "text")
     if not (confirmed or hands_off_on_close(ending)):
@@ -506,6 +604,98 @@ def hand_off_is_final(response: FinalizeResponse) -> bool:
     if response.status != BrainDumpStatus.failed:
         return True
     return response.error_code in _FINAL_FAILURES
+
+
+def voice_hand_off_closes_interview(response: FinalizeResponse) -> bool:
+    """Whether a voice call's hand-off closes the person's interview.
+
+    It does for an accepted take, and for ``superseded``: another take owns
+    the interview and this one must never replace it. Unlike the typed
+    interview's, a verdict on the words leaves it open, since a new call is
+    new words; so does a hand-off the pipeline never ruled on, which the
+    call's finish route hands off again.
+    """
+    return (
+        response.status != BrainDumpStatus.failed or response.error_code == SUPERSEDED
+    )
+
+
+def _superseded() -> FinalizeResponse:
+    return FinalizeResponse(
+        status=BrainDumpStatus.failed,
+        input_mode=BrainDumpInputMode.typed,
+        error_code=SUPERSEDED,
+    )
+
+
+def _nothing_said() -> FinalizeResponse:
+    """The quality gate's own "nothing usable" answer, which the onboarding
+    screens already handle, for an interview where nothing was said."""
+    return FinalizeResponse(
+        status=BrainDumpStatus.failed,
+        input_mode=BrainDumpInputMode.typed,
+        error_code=quality.NO_USABLE_SPEECH,
+    )
+
+
+async def close_voice_interview(
+    user_id: str,
+    call_id: str,
+    transcript: str,
+    background_tasks: BackgroundTasks,
+    *,
+    reason: InterviewEndReason,
+    confirmed: bool = False,
+    corrections: str | None = None,
+    first_task: str | None = None,
+) -> InterviewClosure:
+    """The voice interview's hand-off: what the voice relay calls once a
+    call's transcript of record is made, and what the call's finish route
+    calls for a confirm or a retry.
+
+    *transcript* is the person's side of the call's transcript of record, one
+    turn per line, and *call_id* names the take it becomes: each call is a
+    take of its own, so a later call replaces an earlier one's take as any
+    re-take does. The person's arm of the voice ending experiment, read here,
+    decides when: an automatic arm, or no enrolment, hands the words to the
+    onboarding pipeline now; an arm that ends on a confirm leaves that to the
+    confirm, which calls this again with *confirmed* and any *corrections*
+    made on its screen. Until then the call's record keeps the transcript.
+    *first_task* is the task the call's end tool carried; the hand-off goes on
+    the person's own words, as the typed interview's does, and the call's
+    record keeps the task.
+
+    A call whose interview another take already owns is answered
+    ``superseded`` and its words are left out: the person called again since,
+    or their typed interview is over. A call where nothing was said is
+    answered ``no_usable_speech`` whatever the arm, as there is nothing to
+    confirm. Whether the answer closes the interview is
+    :func:`voice_hand_off_closes_interview`.
+    """
+    if await _call_superseded(user_id, call_id):
+        logger.info(f"Voice onboarding interview {call_id[:12]} superseded: {reason}")
+        return InterviewClosure(ending=None, hand_off=_superseded())
+    words = with_corrections(transcript, corrections)
+    if not words.strip():
+        return InterviewClosure(ending=None, hand_off=_nothing_said())
+    ending = await assigned_ending(user_id, "voice")
+    if not (confirmed or hands_off_on_close(ending)):
+        return InterviewClosure(ending=ending, hand_off=None)
+    logger.info(f"Voice onboarding interview {call_id[:12]} handed off: {reason}")
+    response = await hand_off_interview_transcript(
+        user_id, call_id, words, background_tasks
+    )
+    return InterviewClosure(ending=ending, hand_off=response)
+
+
+async def _call_superseded(user_id: str, call_id: str) -> bool:
+    """Whether another take owns the interview *call_id* would hand off into:
+    a later call of the person's, or their typed interview, once it is over."""
+    latest = await get_onboarding_voice_call_id(user_id)
+    if latest is not None and latest != call_id:
+        return True
+    typed = await find_onboarding_interview_session(user_id)
+    return typed is not None and interview_is_over(typed)
 
 
 async def _drop_pending_question(user_id: str, session_id: str) -> None:
@@ -678,11 +868,7 @@ async def hand_off_interview_transcript(
     """
     text = transcript.strip()[:MAX_TYPED_CHARS]
     if not text:
-        return FinalizeResponse(
-            status=BrainDumpStatus.failed,
-            input_mode=BrainDumpInputMode.typed,
-            error_code=quality.NO_USABLE_SPEECH,
-        )
+        return _nothing_said()
     return await service.finalize_typed_dump(
         user_id,
         interview_recording_id(interview_id),
@@ -696,17 +882,9 @@ async def _handed_off_take(user_id: str, session_id: str) -> FinalizeResponse:
     if dump is None:
         # The only hand-off that leaves no row is one where nothing was said
         # (:func:`hand_off_interview_transcript`).
-        return FinalizeResponse(
-            status=BrainDumpStatus.failed,
-            input_mode=BrainDumpInputMode.typed,
-            error_code=quality.NO_USABLE_SPEECH,
-        )
+        return _nothing_said()
     if dump.recordingId != interview_recording_id(session_id):
-        return FinalizeResponse(
-            status=BrainDumpStatus.failed,
-            input_mode=BrainDumpInputMode.typed,
-            error_code=SUPERSEDED,
-        )
+        return _superseded()
     return FinalizeResponse(
         status=dump.status,
         input_mode=dump.inputMode,
