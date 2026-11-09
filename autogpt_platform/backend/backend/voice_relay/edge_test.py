@@ -204,14 +204,38 @@ async def test_talking_over_otto_drops_what_the_room_has_not_played():
     await joined.leg.close(play_out=False)
 
 
-async def test_otto_past_the_rooms_queue_is_dropped():
+def _speech(seconds: float, fill: int) -> bytes:
+    return bytes([fill]) * (round(seconds * OUT_RATE) * 2)
+
+
+async def test_past_the_rooms_queue_the_oldest_of_otto_is_dropped():
+    joined = await join(FakeMedia())
+    source = joined.source
+    source.gate = asyncio.Event()
+    first, older, newest = _speech(1, 1), _speech(ROOM_QUEUE_S - 1, 2), _speech(2, 3)
+    await joined.leg.play(first)
+    # The first chunk is on its way into the source; the rest wait.
+    await asyncio.sleep(0.05)
+
+    await joined.leg.play(older)
+    await joined.leg.play(newest)
+    source.gate.set()
+
+    await until(lambda: source.frames == [first, newest])
+    assert joined.leg.dropped_bytes == len(older)
+    await joined.leg.close(play_out=False)
+
+
+async def test_a_chunk_of_otto_longer_than_the_rooms_queue_keeps_its_end():
     joined = await join(FakeMedia())
     joined.source.gate = asyncio.Event()
-    too_long = bytes(round((ROOM_QUEUE_S + 1) * OUT_RATE) * 2)
+    head, tail = _speech(1, 1), _speech(ROOM_QUEUE_S, 2)
 
-    await joined.leg.play(too_long)
+    await joined.leg.play(head + tail)
+    joined.source.gate.set()
 
-    assert joined.leg.dropped_bytes == len(too_long)
+    await until(lambda: joined.source.frames == [tail])
+    assert joined.leg.dropped_bytes == len(head)
     await joined.leg.close(play_out=False)
 
 

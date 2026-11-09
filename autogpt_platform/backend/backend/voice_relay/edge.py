@@ -368,11 +368,18 @@ class RoomLeg:
         usable = pcm[: len(pcm) - len(pcm) % 2]
         if not usable or self._leaving or self._source is None:
             return
-        if self._queued_bytes + len(usable) > self._max_queued_bytes:
-            self.dropped_bytes += len(usable)
-            return
+        # Past the queue's length the oldest speech waiting is dropped, so
+        # the room keeps to Otto's newest words, as the socket leg's player
+        # does.
+        if len(usable) > self._max_queued_bytes:
+            self.dropped_bytes += len(usable) - self._max_queued_bytes
+            usable = usable[-self._max_queued_bytes :]
         self._queue.append(usable)
         self._queued_bytes += len(usable)
+        while self._queued_bytes > self._max_queued_bytes:
+            oldest = self._queue.popleft()
+            self._queued_bytes -= len(oldest)
+            self.dropped_bytes += len(oldest)
         self._fed.clear()
         self._wake.set()
 

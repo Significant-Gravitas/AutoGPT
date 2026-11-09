@@ -62,9 +62,9 @@ RELAY_ROOM_GRACE_S = 60
 # The relay's join, and its leave, are given up past these.
 ROOM_JOIN_TIMEOUT_S = 5.0
 ROOM_LEAVE_TIMEOUT_S = 3.0
-# Otto's speech is held for the room for at most this many seconds; once the
-# call ends, what is held plays out for at most this long before the relay
-# leaves.
+# Otto's speech is held for the room for at most this many seconds, the
+# oldest dropped past it; once the call ends, what is held plays out for at
+# most this long before the relay leaves.
 ROOM_QUEUE_S = 20.0
 ROOM_PLAYOUT_S = 15.0
 # The person's audio reaches the call in frames this long, on either leg: the
