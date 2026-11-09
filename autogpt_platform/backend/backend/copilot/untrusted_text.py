@@ -12,7 +12,12 @@ import re
 
 from backend.copilot.response_model import StreamToolOutputAvailable
 
-_AI = r"\bai\s+(?:\w+\s+){0,2}(?:assistants?|agents?|tools?|systems?|models?)\b"
+_AI_NOUN = r"(?:assistants?|agents?|tools?|systems?|models?)"
+# "AI assistants", "AI email agents", "AI assistants and automated agents"
+_AI = (
+    rf"\bai\s+(?:\w+\s+){{0,2}}{_AI_NOUN}"
+    rf"(?:\s*(?:and|&|or|/)\s*(?:\w+\s+){{0,2}}{_AI_NOUN})?\b"
+)
 _ADDRESSED_TO_AI = re.compile(
     r"(?:notes?|notice|instructions?|message|attention)\s*(?:to|for)?\s*(?:all\s+)?"
     r"(?:ai|automated|llm)\b"

@@ -30,6 +30,17 @@ PROVIDER_ALIASES: dict[str, tuple[str, ...]] = {
     "stripe": ("stripe", "invoice", "payment", "subscription", "charge"),
     "sheets": ("sheets", "spreadsheet", "sheet"),
 }
+# Platform tools production reaches by id (``tool:<name>``) rather than as an
+# eager tool, keyed by the words a capability search for them would use.
+PLATFORM_TOOL_WORDS: dict[str, tuple[str, ...]] = {
+    "web_search": ("web", "internet", "online", "research", "google", "search"),
+    "list_tasks": ("task", "tasks", "todo"),
+    "get_task": ("task", "tasks"),
+    "update_task": ("task", "tasks"),
+    "create_task": ("task", "tasks", "todo"),
+    "list_team": ("team", "expert", "experts", "teammate"),
+    "memory_store": ("memory", "remember"),
+}
 _WRITE_WORDS = (
     "send", "post", "create", "update", "delete", "reply", "draft", "write",
     "add", "remove", "refund", "cancel", "schedule", "invite", "archive", "edit",
@@ -88,7 +99,12 @@ class Simulator:
             for p, aliases in PROVIDER_ALIASES.items()
             if any(a in w or w in a for a in aliases for w in words if len(w) > 2)
         ] or sorted(self.world.connected)
-        entries = [
+        tools = [
+            {"id": f"tool:{name}", "name": name.replace("_", " "), "kind": "tool"}
+            for name, keys in PLATFORM_TOOL_WORDS.items()
+            if any(w in keys for w in words)
+        ]
+        entries = tools + [
             {
                 "id": f"service:{p}/{action}",
                 "name": f"{p.title()}: {action.replace('_', ' ')}",

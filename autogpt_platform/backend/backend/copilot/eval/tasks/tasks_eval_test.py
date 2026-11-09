@@ -435,3 +435,10 @@ def test_starting_work_counts_a_new_task_a_delegation_or_a_resumed_task():
     assert passed(ToolCall(name="update_task", arguments={"status": "IN_PROGRESS"}))
     assert not passed(ToolCall(name="update_task", arguments={"status": "DONE"}))
     assert not passed(ToolCall(name="web_search"))
+
+
+def test_a_capability_search_finds_the_platform_tools_reached_by_id():
+    found = json.loads(Simulator(WORLD).find("web search"))["capabilities"]
+    assert found[0] == {"id": "tool:web_search", "name": "web search", "kind": "tool"}
+    gmail = json.loads(Simulator(WORLD).find("gmail"))["capabilities"]
+    assert all(entry["kind"] == "service" for entry in gmail)
