@@ -281,6 +281,7 @@ def test_the_relay_process_does_not_load_the_executor():
         capture_output=True,
         text=True,
         timeout=180,
+        check=False,
         cwd=Path(__file__).resolve().parents[2],
     )
     assert run.returncode == 0, run.stderr[-2000:]

@@ -1,16 +1,19 @@
 import asyncio
 import json
 import time
+from types import SimpleNamespace
 
 import httpx
 import pytest
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
+from backend.api.utils.cors import build_cors_params
+from backend.util.settings import AppEnvironment
 from backend.voice_relay import app as relay_app
 from backend.voice_relay import locks, tokens
-from backend.voice_relay.app import first_name_of
-from backend.voice_relay.conftest import ORIGIN, running_relay
+from backend.voice_relay.app import Relay, first_name_of
+from backend.voice_relay.conftest import ORIGIN, running_relay, until
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
 
 USER = "user-1"
@@ -359,3 +362,188 @@ async def test_a_start_refused_while_the_platform_is_full_can_use_its_token_agai
         await read_until(again, "ready")
         await again.send(json.dumps({"type": "hangup"}))
         await read_until(again, "ended")
+
+
+class _Passthrough:
+    """The test's Redis, with some of its calls replaced."""
+
+    def __init__(self, redis) -> None:
+        self._redis = redis
+
+    def __getattr__(self, name: str):
+        return getattr(self._redis, name)
+
+
+class SpendFails(_Passthrough):
+    """Spending a start token fails, the way a timed-out SET does."""
+
+    async def set(self, name, *args, **kwargs):
+        if name.startswith("voice:tok:"):
+            raise ConnectionError("Redis went away")
+        return await self._redis.set(name, *args, **kwargs)
+
+
+class LockReplyLost(_Passthrough):
+    """The first user lock taken lands, but its reply never arrives."""
+
+    def __init__(self, redis) -> None:
+        super().__init__(redis)
+        self.lost = False
+
+    async def set(self, name, *args, **kwargs):
+        result = await self._redis.set(name, *args, **kwargs)
+        if name.startswith("voice:live:") and not self.lost:
+            self.lost = True
+            raise TimeoutError("the reply was lost")
+        return result
+
+
+class SetNeverAnswers(_Passthrough):
+    """A SET on keys with *prefix* never gets an answer."""
+
+    def __init__(self, redis, prefix: str) -> None:
+        super().__init__(redis)
+        self.prefix = prefix
+
+    async def set(self, name, *args, **kwargs):
+        if name.startswith(self.prefix):
+            await asyncio.Event().wait()
+        return await self._redis.set(name, *args, **kwargs)
+
+
+class SlowRelease(_Passthrough):
+    """Freeing a user lock or a place in the live-call count takes a while."""
+
+    async def eval(self, script, numkeys, *keys_and_args):
+        if keys_and_args and str(keys_and_args[0]).startswith("voice:live:"):
+            await asyncio.sleep(0.3)
+        return await self._redis.eval(script, numkeys, *keys_and_args)
+
+    async def zrem(self, name, *values):
+        await asyncio.sleep(0.3)
+        return await self._redis.zrem(name, *values)
+
+
+async def test_a_start_whose_token_cannot_be_spent_leaves_the_calls_state_alone(
+    redis,
+):
+    call_id = tokens.new_call_id()
+    first = start(call_id=call_id)
+    # The call is live, holding its token, its lock and its place.
+    await tokens.spend(redis, tokens.verify_start(first["token"]))
+    await locks.take_user_lock(redis, USER, call_id)
+    await locks.register_live_call(redis, call_id, time.time())
+    async with running_relay(SpendFails(redis), FakeVendor()) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(first))
+        assert await refusal(ws) == ({"type": "error", "error": "unavailable"}, 1013)
+    assert await locks.live_call_of(redis, USER) == call_id
+    assert await redis.zscore(locks.LIVE_CALLS_KEY, call_id) is not None
+    assert await redis.exists(tokens.spent_key(call_id))
+
+
+async def test_a_lock_taken_without_a_reply_is_given_back_with_the_token(redis):
+    call_id = tokens.new_call_id()
+    first = start(call_id=call_id)
+    vendor = FakeVendor([Reply(text="Hi")])
+    async with running_relay(LockReplyLost(redis), vendor) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(first))
+        assert await refusal(ws) == ({"type": "error", "error": "unavailable"}, 1013)
+        assert await locks.live_call_of(redis, USER) is None
+        assert not await redis.exists(tokens.spent_key(call_id))
+        again = await open_socket(running.url)
+        await again.send(json.dumps(first))
+        await read_until(again, "ready")
+        await again.send(json.dumps({"type": "hangup"}))
+        await read_until(again, "ended")
+
+
+async def test_a_retry_right_after_a_try_again_refusal_keeps_its_lock_and_place(
+    redis,
+):
+    call_id = tokens.new_call_id()
+    first = start(call_id=call_id)
+    vendor = FakeVendor([Reply(text="Hi")])
+    async with running_relay(SlowRelease(redis), vendor, record_failures=1) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(first))
+        message = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+        assert message == {"type": "error", "error": "unavailable"}
+        # Retried the moment the refusal arrives.
+        again = await open_socket(running.url)
+        await again.send(json.dumps(first))
+        await read_until(again, "ready")
+        # Long enough for anything the refused start still had to do.
+        await asyncio.sleep(1.0)
+        assert await locks.live_call_of(redis, USER) == call_id
+        assert await redis.zscore(locks.LIVE_CALLS_KEY, call_id) is not None
+        await again.send(json.dumps({"type": "hangup"}))
+        await read_until(again, "ended")
+
+
+async def test_a_second_start_for_a_call_live_on_this_relay_is_refused(redis):
+    call_id = tokens.new_call_id()
+    first = start(call_id=call_id)
+    vendor = FakeVendor([Reply(text="Hi")])
+    async with running_relay(redis, vendor) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(first))
+        await read_until(ws, "ready")
+        # The call's shared state is gone, as after a Redis failover.
+        await redis.delete(locks.user_lock_key(USER), tokens.spent_key(call_id))
+
+        again = await open_socket(running.url)
+        await again.send(json.dumps(first))
+        assert await refusal(again) == (
+            {"type": "error", "error": "call_in_progress", "call_id": call_id},
+            1008,
+        )
+        assert len(vendor.sessions) == 1
+        assert running.relay.held_slots == 1
+        # The live call keeps the lock the refused start took for it.
+        assert await locks.live_call_of(redis, USER) == call_id
+        await ws.send(json.dumps({"type": "hangup"}))
+        assert (await read_until(ws, "ended"))["reason"] == "user_hangup"
+
+
+def test_a_relay_never_holds_two_sessions_for_one_call():
+    relay = Relay(
+        max_calls=2, origins=build_cors_params([ORIGIN], AppEnvironment.LOCAL)
+    )
+    live = SimpleNamespace(call_id="c" * 32)
+    duplicate = SimpleNamespace(call_id="c" * 32)
+    first, second = relay.reserve_slot(), relay.reserve_slot()
+    assert first is not None and second is not None
+    assert first.hold(live)  # type: ignore[arg-type]
+    assert not second.hold(duplicate)  # type: ignore[arg-type]
+    second.release()
+    assert relay.sessions == {"c" * 32: live}
+    assert relay.held_slots == 1
+    first.release()
+    assert relay.sessions == {}
+    assert relay.held_slots == 0
+
+
+@pytest.mark.parametrize(
+    "stalls",
+    ["redis-client", "token-spend", "user-lock"],
+)
+async def test_a_start_whose_redis_never_answers_is_refused_and_frees_its_slot(
+    redis, stalls
+):
+    client = {
+        "redis-client": redis,
+        "token-spend": SetNeverAnswers(redis, "voice:tok:"),
+        "user-lock": SetNeverAnswers(redis, "voice:live:"),
+    }[stalls]
+    async with running_relay(
+        client,
+        FakeVendor(),
+        redis_delay_s=30.0 if stalls == "redis-client" else 0.0,
+    ) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start()))
+        assert await refusal(ws) == ({"type": "error", "error": "unavailable"}, 1013)
+        await until(lambda: running.relay.held_slots == 0)
+    assert await locks.live_call_of(redis, USER) is None
