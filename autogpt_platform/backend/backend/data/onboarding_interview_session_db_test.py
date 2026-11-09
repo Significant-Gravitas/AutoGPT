@@ -11,9 +11,12 @@ import uuid
 import pytest
 from prisma.models import User, UserOnboarding
 
+from backend.copilot.db import create_chat_session, delete_chat_session
+from backend.copilot.model import ONBOARDING_INTERVIEW_KIND, ChatSessionMetadata
 from backend.data.onboarding import (
     claim_onboarding_interview_session_id,
     get_onboarding_interview_session_id,
+    reclaim_onboarding_interview_session_id,
 )
 from backend.util.test import SpinTestServer
 
@@ -62,3 +65,44 @@ async def test_the_claim_creates_the_onboarding_row_it_needs(new_user: str):
     row = await UserOnboarding.prisma().find_unique(where={"userId": new_user})
     assert row is not None
     assert row.interviewSessionId == claimed == "interview-a"
+
+
+async def test_deleting_the_interview_lets_the_next_start_record_a_new_one(
+    new_user: str,
+):
+    """A new interview is a new take: its id, and so its take's id, is new."""
+    old = await claim_onboarding_interview_session_id(new_user, str(uuid.uuid4()))
+    await create_chat_session(
+        old, new_user, metadata=ChatSessionMetadata(kind=ONBOARDING_INTERVIEW_KIND)
+    )
+
+    assert await delete_chat_session(old, new_user)
+
+    assert await get_onboarding_interview_session_id(new_user) is None
+    fresh = await claim_onboarding_interview_session_id(new_user, str(uuid.uuid4()))
+    assert fresh != old
+
+
+async def test_deleting_another_chat_keeps_the_interview_recorded(new_user: str):
+    interview = await claim_onboarding_interview_session_id(new_user, str(uuid.uuid4()))
+    other = str(uuid.uuid4())
+    await create_chat_session(other, new_user)
+
+    assert await delete_chat_session(other, new_user)
+
+    assert await get_onboarding_interview_session_id(new_user) == interview
+
+
+async def test_a_stale_id_is_replaced_once_however_many_replace_it(new_user: str):
+    stale = await claim_onboarding_interview_session_id(new_user, "stale-chat")
+
+    replaced = await asyncio.gather(
+        *(
+            reclaim_onboarding_interview_session_id(new_user, stale, f"fresh-{n}")
+            for n in range(5)
+        )
+    )
+
+    assert len(set(replaced)) == 1
+    assert replaced[0] != stale
+    assert await get_onboarding_interview_session_id(new_user) == replaced[0]
