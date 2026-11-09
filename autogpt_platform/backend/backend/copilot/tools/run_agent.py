@@ -94,6 +94,7 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
+from .schedule_duplicates import find_duplicate_graph_schedule
 from .utils import (
     build_missing_credentials_from_graph,
     extract_credentials_from_schema,
@@ -1414,6 +1415,37 @@ class RunAgentTool(BaseTool):
             graph, user_id, *external_tenancy(session)
         )
         emit_tool_display_name(library_agent.name)
+        library_agent_link = f"/library/agents/{library_agent.id}"
+
+        scheduler = get_scheduler_client()
+        existing = await find_duplicate_graph_schedule(
+            scheduler,
+            user_id,
+            session,
+            graph_id=library_agent.graph_id,
+            graph_version=graph.version,
+            cron=cron,
+            timezone=user_timezone,
+            inputs=inputs,
+            credentials=graph_credentials,
+        )
+        if existing is not None:
+            return ExecutionStartedResponse(
+                message=(
+                    f"Already scheduled: '{existing.name}' runs workflow "
+                    f"'{library_agent.name}' on '{cron}' with these inputs, so "
+                    "no second schedule was added. To change it, delete it with "
+                    "tool:delete_schedule and schedule the new one. "
+                    f"{MSG_DO_NOT_SCHEDULE_AGAIN}"
+                ),
+                session_id=session_id,
+                execution_id=existing.id,
+                graph_id=library_agent.graph_id,
+                graph_name=library_agent.name,
+                library_agent_id=library_agent.id,
+                library_agent_link=library_agent_link,
+                status=SCHEDULED_STATUS,
+            ).from_outside()
 
         # Create schedule — the scheduler re-validates credentials via
         # ``validate_and_construct_node_execution_input`` and will raise
@@ -1435,7 +1467,7 @@ class RunAgentTool(BaseTool):
             org_id, team_id = await orgs_db().get_user_default_team(user_id)
 
         try:
-            result = await get_scheduler_client().add_execution_schedule(
+            result = await scheduler.add_execution_schedule(
                 user_id=user_id,
                 graph_id=library_agent.graph_id,
                 graph_version=graph.version,
@@ -1480,7 +1512,6 @@ class RunAgentTool(BaseTool):
             library_agent_id=library_agent.id,
         )
 
-        library_agent_link = f"/library/agents/{library_agent.id}"
         return ExecutionStartedResponse(
             message=(
                 f"Workflow '{library_agent.name}' scheduled successfully as '{schedule_name}'. "
