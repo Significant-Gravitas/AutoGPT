@@ -311,13 +311,26 @@ def _is_records(value: Any) -> bool:
 
 
 def _words(value: Any) -> list[str]:
-    text = value if isinstance(value, str) else json.dumps(value, default=str)
+    """The search words in a query or a call's arguments (their values only:
+    the argument names are not search terms)."""
+    text = " ".join(_strings(value))
     return [w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2][:20]
 
 
+def _strings(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    return [str(value)] if value is not None else []
+
+
 def _hits(item: Any, words: list[str]) -> int:
-    text = json.dumps(item, default=str).lower()
-    return sum(1 for w in words if w in text)
+    """How many of the words the item holds as whole words; one holding all
+    of them ranks above every partial match, as a mail search's AND does."""
+    found = set(re.findall(r"[a-z0-9]+", json.dumps(item, default=str).lower()))
+    hits = sum(1 for w in words if w in found)
+    return hits + len(words) if words and hits == len(words) else hits
 
 
 def _clip(item: dict[str, Any]) -> dict[str, Any]:

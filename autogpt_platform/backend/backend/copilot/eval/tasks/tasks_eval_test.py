@@ -442,3 +442,25 @@ def test_a_capability_search_finds_the_platform_tools_reached_by_id():
     assert found[0] == {"id": "tool:web_search", "name": "web search", "kind": "tool"}
     gmail = json.loads(Simulator(WORLD).find("gmail"))["capabilities"]
     assert all(entry["kind"] == "service" for entry in gmail)
+
+
+def test_a_search_matches_whole_words_and_ranks_full_matches_first():
+    world = World.model_validate(
+        WORLD.model_dump()
+        | {
+            "data": {
+                "gmail": {
+                    "messages": [
+                        {"subject": "Friday standup", "body": "blackout dates"},
+                        {"subject": "Black Friday plan", "body": "teaser Nov 20"},
+                    ]
+                }
+            }
+        }
+    )
+    _, result = Simulator(world).call(
+        "run_capability",
+        {"id": "service:gmail/search", "input": {"query": "Black Friday"}},
+    )
+    subjects = [item["subject"] for item in json.loads(result)["items"]]
+    assert subjects == ["Black Friday plan", "Friday standup"]

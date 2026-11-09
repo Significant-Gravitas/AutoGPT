@@ -411,7 +411,7 @@
       "behaviour": "ask",
       "must": [
         "asks in exactly one ask_question call, with the questions batched and the call last in the turn",
-        "asks which funder and report (Larkspur final report, KCNF, or Rotary Karen) given the narrative is still a draft",
+        "asks which report and funder it means, naming the one it found due (the Larkspur final report, narrative draft v3) and noting it is still a draft that Amani reviews before any funder send; KCNF and Rotary Karen have no report due",
         "gives a sensible default_guess with each question",
         "after the answer, proceeds with the work without asking again"
       ],
@@ -432,7 +432,7 @@
       }
     },
     "human_example": {
-      "reply": "Dear Amani, you have several funders in play: Larkspur (final report, draft v3, due 15 Nov), KCNF and Rotary Karen. Which funder and report do you mean? I'd guess Larkspur, once you have reviewed draft v3.",
+      "reply": "Dear Amani, the only report due is Larkspur's final report (narrative draft v3, due 15 Nov), and sections 3 and 4 are still TODO. Is that the one, and do you want to review it before it goes to Rebecca? I'd guess Larkspur, after your review.",
       "actions": [
         "read Drive file list and the Larkspur emails",
         "ask_question(reason=goal_ambiguous, default_guess='Larkspur final report draft v3')"
