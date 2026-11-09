@@ -53,75 +53,39 @@ const colorMap: Record<
   }
 > = {
   blue: {
-    bg: "bg-blue-300",
-    border: "border-blue-300",
-    borderLight: "border-blue-200",
-    fill: "fill-blue-300",
-    stroke: "stroke-blue-400",
+    bg: "bg-[#93c5fd]",
+    border: "border-[#93c5fd]",
+    borderLight: "border-[#bfdbfe]",
+    fill: "fill-[#93c5fd]",
+    stroke: "stroke-[#60a5fa]",
   },
   purple: {
-    bg: "bg-purple-200",
-    border: "border-purple-200",
-    borderLight: "border-purple-200",
-    fill: "fill-purple-200",
-    stroke: "stroke-purple-400",
+    bg: "bg-[#c0a1fa]",
+    border: "border-[#c0a1fa]",
+    borderLight: "border-[#c0a1fa]",
+    fill: "fill-[#c0a1fa]",
+    stroke: "stroke-[#925cf7]",
   },
   emerald: {
-    bg: "bg-emerald-300",
-    border: "border-emerald-300",
-    borderLight: "border-emerald-200",
-    fill: "fill-emerald-300",
-    stroke: "stroke-emerald-400",
+    bg: "bg-[#6ee7b7]",
+    border: "border-[#6ee7b7]",
+    borderLight: "border-[#a7f3d0]",
+    fill: "fill-[#6ee7b7]",
+    stroke: "stroke-[#34d399]",
   },
   orange: {
-    bg: "bg-orange-200",
-    border: "border-orange-200",
-    borderLight: "border-orange-200",
-    fill: "fill-orange-200",
-    stroke: "stroke-orange-400",
+    bg: "bg-[#ffc88a]",
+    border: "border-[#ffc88a]",
+    borderLight: "border-[#ffc88a]",
+    fill: "fill-[#ffc88a]",
+    stroke: "stroke-[#fe9f33]",
   },
   pink: {
-    bg: "bg-pink-300",
-    border: "border-pink-300",
-    borderLight: "border-pink-200",
-    fill: "fill-pink-300",
-    stroke: "stroke-pink-400",
-  },
-};
-
-export const folderCardStyles: Record<
-  FolderColorName,
-  { bg: string; border: string; buttonBase: string; buttonHover: string }
-> = {
-  blue: {
-    bg: "bg-info-surface",
-    border: "border-blue-200",
-    buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-blue-200",
-  },
-  purple: {
-    bg: "bg-purple-50",
-    border: "border-purple-200",
-    buttonBase: "border-zinc-600 text-foreground-base ",
-    buttonHover: "hover:bg-purple-200",
-  },
-  emerald: {
-    bg: "bg-emerald-50",
-    border: "border-emerald-200",
-    buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-emerald-200",
-  },
-  orange: {
-    bg: "bg-orange-50",
-    border: "border-orange-200",
-    buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-orange-200",
-  },
-  pink: {
-    bg: "bg-pink-50",
-    border: "border-pink-200",
-    buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-pink-200",
+    bg: "bg-[#f284bb]",
+    border: "border-[#f284bb]",
+    borderLight: "border-[#f6abd0]",
+    fill: "fill-[#f284bb]",
+    stroke: "stroke-[#f06dad]",
   },
 };
 

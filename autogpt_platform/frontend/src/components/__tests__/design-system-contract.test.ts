@@ -2,7 +2,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { APP_COLORS } from "../../../tailwind.v3-preset";
 import { COLOR_ROLES } from "../styles/color-roles";
 
 // The contract between the design tokens, the Tailwind config and the
@@ -92,24 +91,9 @@ describe("colour tokens", () => {
     expect(globalsCss).not.toMatch(/\.dark-mode|data-theme=["']?dark/);
   });
 
-  it("keeps the raw palette frozen; new colours are roles in theme.css", () => {
-    expect(Object.keys(APP_COLORS).sort()).toEqual(
-      [
-        "bgLightGrey",
-        "black",
-        "customGray",
-        "green",
-        "orange",
-        "pink",
-        "purple",
-        "red",
-        "slate",
-        "textBlack",
-        "textGrey",
-        "white",
-        "yellow",
-        "zinc",
-      ].sort(),
+  it("has no raw palette: new colours are roles in theme.css", () => {
+    expect(existsSync(path.join(FRONTEND_ROOT, "tailwind.v3-preset.ts"))).toBe(
+      false,
     );
     expect(themeCss).not.toMatch(/^\s*--color-[a-z]+-\d+:/m);
     expect(globalsCss).not.toMatch(/^\s*--color-[a-z]+-\d+:/m);

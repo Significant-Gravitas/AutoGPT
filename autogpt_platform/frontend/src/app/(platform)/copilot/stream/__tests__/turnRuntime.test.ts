@@ -22,6 +22,7 @@ import {
   type RuntimeDeps,
   type RuntimeSnapshot,
 } from "../turnRuntime";
+import { tailEndSequence } from "../turnTail";
 import { fakeBackend, type FakeBackend } from "./fakeBackend";
 import { loadRecordedTurn } from "./recordedTurns";
 
@@ -1170,6 +1171,198 @@ describe("the end-of-turn reconcile", () => {
     });
     await advance(0);
     expect(turnSegment().lastReplySequence).toBe(3);
+  });
+});
+
+describe("recovered terminal errors", () => {
+  function recovered(
+    turnId = backend.turnId,
+    errorText = "provider unavailable",
+  ) {
+    return `data: ${JSON.stringify({ type: "data-turn-error", data: { turnId, errorText }, transient: true })}\n\n`;
+  }
+
+  it.each(["absent", "matching", "different", "missing_reply"] as const)(
+    "reports only real drift with a %s persisted error marker",
+    async (persistedMarker) => {
+      await sendAndPublish(toolTurn.sse.length - 1);
+      backend.stopWithoutFinish();
+      vi.spyOn(backend, "view").mockImplementation(() => {
+        const marker = turnSegment().recoveredError;
+        return {
+          messages: [
+            ...(persistedMarker === "missing_reply"
+              ? toolTurn.rows.slice(0, -1)
+              : toolTurn.rows
+            ).map((row, sequence) => ({ ...row, sequence })),
+            ...((persistedMarker === "matching" ||
+              persistedMarker === "different") &&
+            marker
+              ? [
+                  {
+                    role: "assistant",
+                    content:
+                      persistedMarker === "matching"
+                        ? marker.content
+                        : "different",
+                    sequence: toolTurn.rows.length,
+                  },
+                ]
+              : []),
+          ],
+          has_more_messages: false,
+          active_stream: null,
+        };
+      });
+      backend.connections[0].send(recovered());
+      await advance(1_000);
+
+      expect(turnSegment().reconciled).toBe(true);
+      if (
+        persistedMarker === "different" ||
+        persistedMarker === "missing_reply"
+      ) {
+        expect(report).toHaveBeenCalledWith(
+          "finish",
+          expect.objectContaining({
+            diffs: [
+              persistedMarker === "different" ? "3: content" : "2: missing",
+            ],
+          }),
+        );
+      } else {
+        expect(report).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "fails a resumed turn once, stored finish=%s",
+    async (finish) => {
+      const onError = vi.fn();
+      const onTurnEnd = vi.fn();
+      runtime.bind({ onError, onTurnEnd }, async () => backend.view());
+      await sendAndPublish(FIRST_BLOCK_DONE);
+      backend.connections[0].fail();
+      await advance(3_000);
+      const connection = backend.connections.at(-1)!;
+      expect(connection.method).toBe("GET");
+      expect(connection.url.searchParams.get("after")).toBe("9-0");
+      backend.stopWithoutFinish();
+      connection.send(
+        recovered() +
+          recovered() +
+          'data: {"type":"error","errorText":"provider unavailable"}\n\n' +
+          (finish
+            ? `id: ${backend.turnId}:999-0\ndata: {"type":"finish"}\n\n`
+            : "") +
+          "data: [DONE]\n\n",
+      );
+      connection.cut();
+      await advance(1_000);
+      expect(snapshot().phase).toBe("failed");
+      expect(turnSegment().log.cursor).toBe("9-0");
+      expect(
+        turnSegment().log.rows.filter((row) =>
+          row.content.includes("provider unavailable"),
+        ),
+      ).toHaveLength(1);
+      expect(onError).toHaveBeenCalledOnce();
+      expect(onTurnEnd).toHaveBeenCalledOnce();
+      expect(backend.connections).toHaveLength(2);
+      expect(toast).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([false, true])(
+    "keeps a first-frame failure after database reconciliation, persisted marker=%s",
+    async (persistedMarker) => {
+      const onError = vi.fn();
+      runtime.bind({ onError }, async () => backend.view());
+      void runtime.send({ text: PROMPT }, undefined);
+      await advance(0);
+      backend.connections[0].send(recovered());
+      await advance(0);
+      expect(turnSegment().log.turnId).toBe(backend.turnId);
+      expect(turnSegment().log.cursor).toBeNull();
+      expect(snapshot().phase).toBe("failed");
+      const errorRow = turnSegment().log.rows.at(-1)!;
+      const view = {
+        messages: [
+          { role: "user", content: PROMPT, sequence: 0 },
+          { role: "assistant", content: "Saved partial reply", sequence: 1 },
+          ...(persistedMarker
+            ? [{ role: "assistant", content: errorRow.content, sequence: 2 }]
+            : []),
+        ],
+        has_more_messages: false,
+        active_stream: null,
+        chat_status: "idle",
+      };
+      runtime.observe(view);
+      runtime.observe(view);
+      await advance(0);
+      expect(turnSegment().reconciled).toBe(true);
+      expect(turnSegment().log.rows.map((row) => row.content)).toEqual([
+        "Saved partial reply",
+        errorRow.content,
+      ]);
+      expect(turnSegment().log.cursor).toBeNull();
+      expect(turnSegment().log.rows.at(-1)?.sequence).toBe(
+        persistedMarker ? 2 : null,
+      );
+      expect(onError).toHaveBeenCalledOnce();
+      expect(tailEndSequence([turnSegment()])).toBe(persistedMarker ? 2 : 1);
+    },
+  );
+
+  it.each([
+    null,
+    {},
+    { turnId: "other", errorText: "wrong turn" },
+    { turnId: "", errorText: "empty" },
+    { turnId: "t", errorText: 1 },
+  ])("ignores malformed or unrelated recovery %j", async (data) => {
+    const onError = vi.fn();
+    runtime.bind({ onError }, async () => backend.view());
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    backend.connections[0].send(
+      `data: ${JSON.stringify({ type: "data-turn-error", data, transient: true })}\n\n`,
+    );
+    await advance(100);
+    expect(snapshot().phase).toBe("live");
+    expect(onError).not.toHaveBeenCalled();
+    expect(turnSegment().log.cursor).toBe("9-0");
+  });
+
+  it("keeps untagged transport errors resumable", async () => {
+    const onError = vi.fn();
+    runtime.bind({ onError }, async () => backend.view());
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    backend.connections[0].send(
+      'data: {"type":"error","errorText":"connection interrupted"}\n\ndata: {"type":"finish"}\n\ndata: [DONE]\n\n',
+    );
+    backend.connections[0].cut();
+    await advance(1_000);
+    expect(backend.connections).toHaveLength(2);
+    expect(backend.connections[1].url.searchParams.get("after")).toBe("9-0");
+    expect(onError).not.toHaveBeenCalled();
+    expect(snapshot().phase).toBe("resuming");
+    backend.publish(1);
+    await advance(100);
+    expect(snapshot().phase).toBe("live");
+  });
+
+  it("does not replace explicit Stop with a queued recovered error", async () => {
+    const onError = vi.fn();
+    runtime.bind({ onError }, async () => backend.view());
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    backend.connections[0].send(recovered());
+    runtime.stop();
+    await advance(1_000);
+    expect(snapshot().stopped).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
+    expect(textsOf(render()).at(-1)).toContain("Operation cancelled");
   });
 });
 
