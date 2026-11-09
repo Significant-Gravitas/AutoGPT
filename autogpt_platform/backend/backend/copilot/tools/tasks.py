@@ -129,7 +129,11 @@ class ListTasksTool(BaseTool):
                     "type": "boolean",
                     "description": "Only the tasks linked to this chat.",
                 },
-                "status": {"type": "string", "enum": _STATUSES},
+                "status": {
+                    "type": "string",
+                    "enum": _STATUSES,
+                    "description": "Only tasks in this status.",
+                },
                 "expert_id": _EXPERT_ID,
             },
         }
@@ -229,12 +233,16 @@ class UpdateTaskTool(BaseTool):
             "type": "object",
             "properties": {
                 "task_id": _TASK_ID,
-                "title": {"type": "string"},
+                "title": {"type": "string", "description": "New title."},
                 "description": {
                     "type": "string",
                     "description": "An empty string clears it.",
                 },
-                "status": {"type": "string", "enum": _STATUSES},
+                "status": {
+                    "type": "string",
+                    "enum": _STATUSES,
+                    "description": "New status.",
+                },
                 "expert_id": _EXPERT_ID,
                 "assign_to_otto": {
                     "type": "boolean",

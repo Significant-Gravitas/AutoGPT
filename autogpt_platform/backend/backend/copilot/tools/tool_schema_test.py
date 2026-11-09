@@ -317,7 +317,14 @@ from ._test_data import make_session
 #     + #11220's two arguments        +178        77,904 (89 tools)
 #     + headroom                      +300        78,204
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 78_204
+# Raised for the five task tools (create_task, list_tasks, get_task,
+# update_task, archive_task): a task is a new record the user's work is
+# tracked in, so the tools are new surface rather than description bloat.
+# They are deferred, reached through run_capability. Measured on this branch:
+#     dev 4c59c1c4b2                              77,899 (89 tools)
+#     + task tools                    +2,528      80,427 (94 tools)
+#     + headroom                      +300        80,727
+_CHAR_BUDGET = 80_727
 
 
 @pytest.fixture(scope="module")
@@ -537,7 +544,11 @@ def test_total_schema_char_budget() -> None:
 #     + #11220's two arguments        +164        70,226
 #     + headroom                      +300        70,526
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 70_526
+# The five task tools ride the largest session, as for ``_CHAR_BUDGET``:
+#     dev 4c59c1c4b2                              70,214
+#     + task tools                    +2,213      72,427
+#     + headroom                      +300        72,727
+_SESSION_WIRE_BUDGET = 72_727
 
 
 def test_largest_declared_session_wire_budget() -> None:
