@@ -1563,7 +1563,7 @@ def a_clean_clipboard(monkeypatch: pytest.MonkeyPatch) -> list[concealed.Clipboa
     states: list[concealed.ClipboardState] = []
     from autogpt_local_executor import handlers
 
-    def look() -> concealed.ClipboardState:
+    def look(_timeout: float | None = None) -> concealed.ClipboardState:
         return states.pop(0) if states else concealed.ClipboardState(None, 7)
 
     monkeypatch.setattr(handlers, "clipboard_state", look)
@@ -1678,7 +1678,7 @@ async def test_a_clipboard_read_whose_deadline_passes_in_the_marker_check_never_
 
     from autogpt_local_executor import handlers
 
-    def slow_look() -> concealed.ClipboardState:
+    def slow_look(_timeout: float | None = None) -> concealed.ClipboardState:
         time.sleep(2)
         return concealed.ClipboardState(None, 7)
 
@@ -1692,6 +1692,77 @@ async def test_a_clipboard_read_whose_deadline_passes_in_the_marker_check_never_
     assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
     assert response.payload.details["started"] is False
     assert [r for r in _records(fake_log, "call") if r["tool"] == "clipboard_read"] == []
+
+
+async def test_each_look_at_a_foreign_clipboard_gets_only_the_time_left(
+    make_handler, tmp_path, monkeypatch
+) -> None:
+    """Each check for a password manager's marker could take its own three
+    seconds (xclip, wl-paste) whatever the call's deadline, holding the
+    computer's turn, which every chat's calls share, past it."""
+    from autogpt_local_executor import handlers
+
+    given: list[float | None] = []
+
+    def look(timeout: float | None = None) -> concealed.ClipboardState:
+        given.append(timeout)
+        return concealed.ClipboardState(None, 7)
+
+    monkeypatch.setattr(handlers, "clipboard_state", look)
+    handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+
+    response = await handler.handle(_call("clipboard_read", timeout_seconds=2))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert len(given) == 2
+    assert all(timeout is not None and 0 < timeout <= 2 for timeout in given)
+
+
+async def test_a_second_clipboard_read_never_starts_past_the_deadline(
+    make_handler, tmp_path, fake_log, monkeypatch
+) -> None:
+    """On Linux the shim reads twice. A deadline that passed after the first
+    read still started the second, given a millisecond, so it overran and
+    the bridge stopped the driver every chat shares."""
+    from autogpt_local_executor import handlers
+
+    monkeypatch.setattr(
+        handlers, "clipboard_state", lambda _timeout=None: concealed.ClipboardState(None)
+    )
+    handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+    loop = asyncio.get_running_loop()
+    deadlines: list[float] = []
+    real_deadline = handlers.ComputerUseHandler.call_deadline
+
+    def recorded_deadline(msg, received_at=None):
+        deadlines.append(real_deadline(msg, received_at))
+        return deadlines[-1]
+
+    monkeypatch.setattr(
+        handlers.ComputerUseHandler, "call_deadline", staticmethod(recorded_deadline)
+    )
+    real_call = handler.call_driver
+    reads = 0
+
+    async def first_read_runs_to_the_deadline(tool, arguments, **kwargs):
+        nonlocal reads
+        reads += 1
+        result = await real_call(tool, arguments, **kwargs)
+        if tool == "clipboard_read" and reads == 1:
+            await asyncio.sleep(max(deadlines[0] - loop.time(), 0) + 0.2)
+        return result
+
+    monkeypatch.setattr(handler, "call_driver", first_read_runs_to_the_deadline)
+    response = await handler.handle(_call("clipboard_read", timeout_seconds=2))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+    assert response.payload.details["started"] is True
+    assert "a copied paragraph" not in response.model_dump_json()
+    assert len([r for r in _records(fake_log, "call") if r["tool"] == "clipboard_read"]) == 1
+    assert "stopped cua-driver" not in response.payload.message
 
 
 def test_marker_in_finds_each_platforms_marker() -> None:

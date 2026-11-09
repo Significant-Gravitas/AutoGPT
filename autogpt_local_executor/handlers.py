@@ -305,6 +305,12 @@ def _is_link(path: Path) -> bool:
 _T = TypeVar("_T")
 
 
+class _ClipboardCheckOutOfTime(TimeoutError):
+    """A foreign clipboard read whose deadline passed before its checks for
+    a password manager's mark were done: what it read is withheld. The
+    driver ran nothing past the deadline, so it isn't stopped."""
+
+
 class _NeverStarted(Exception):
     """The job was cancelled while it still waited for a worker thread."""
 
@@ -1700,14 +1706,19 @@ class ComputerUseHandler:
             )
         except CallNotStarted:
             return await self._not_started(msg, details, start)
-        except TimeoutError:
+        except TimeoutError as exc:
             await self._emit(
                 msg.id, details, _err_result(_elapsed_ms(start), ErrorCode.COMMAND_TIMEOUT.value)
             )
             return make_error(
                 msg.id,
                 ErrorCode.COMMAND_TIMEOUT,
-                f"{tool} did not finish in time, so the local executor stopped cua-driver "
+                (
+                    f"{tool} ran out of time before the clipboard could be checked for a "
+                    "password manager's mark, so nothing it read is returned. Read it again."
+                )
+                if isinstance(exc, _ClipboardCheckOutOfTime)
+                else f"{tool} did not finish in time, so the local executor stopped cua-driver "
                 "to end it. What it already did stays done, and the next call starts the "
                 "driver afresh: look at the window again before you act on it.",
                 details={
@@ -1796,16 +1807,19 @@ class ComputerUseHandler:
         --enable-clipboard-read-foreign anything does, unless a password
         manager marked it private."""
         arguments["include_text"] = True
-        deadline = asyncio.get_running_loop().time() + timeout
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
         foreign = self.config.enable_clipboard_read_foreign
-        before = await asyncio.to_thread(clipboard_state) if foreign else None
+        # Each look at the OS gets what is left of the deadline (xclip and
+        # wl-paste can take seconds), and so does each read: the call holds
+        # the computer's turn throughout, which every chat's calls share.
+        before = await asyncio.to_thread(clipboard_state, timeout) if foreign else None
+        timeout = deadline - loop.time()
+        if timeout <= 0:
+            # None left means the read never starts.
+            raise CallNotStarted("clipboard_read's deadline passed in the marker check")
         if before is not None and before.marker:
             raise ClipboardConcealedError("concealed_type", marker=before.marker)
-        # The check above can take seconds (xclip, wl-paste): the read gets
-        # what is left of the deadline, and none left means it never starts.
-        timeout = deadline - asyncio.get_running_loop().time()
-        if timeout <= 0:
-            raise CallNotStarted("clipboard_read's deadline passed in the marker check")
         raw = await self.call_driver("clipboard_read", arguments, timeout=timeout)
         if raw.get("isError"):
             return raw
@@ -1823,11 +1837,12 @@ class ComputerUseHandler:
                 # and the driver reads the types, then the text: a password
                 # manager's copy between the two would pass as clean. Read
                 # again; the same text with no marker belongs to one copy.
-                again = await self.call_driver(
-                    "clipboard_read",
-                    arguments,
-                    timeout=max(deadline - asyncio.get_running_loop().time(), 0.001),
-                )
+                # Not past the deadline: a read that overran would have the
+                # bridge stop the driver every chat shares.
+                left = deadline - loop.time()
+                if left <= 0:
+                    raise _ClipboardCheckOutOfTime
+                again = await self.call_driver("clipboard_read", arguments, timeout=left)
                 checked = again.get("structuredContent")
                 checked = checked if isinstance(checked, dict) else {}
                 listed = marker_in(checked.get("types"))
@@ -1838,7 +1853,12 @@ class ComputerUseHandler:
                         "changed",
                         message="The clipboard changed while it was read. Read it again.",
                     )
-            after = await asyncio.to_thread(clipboard_state)
+            left = deadline - loop.time()
+            if left <= 0:
+                raise _ClipboardCheckOutOfTime
+            after = await asyncio.to_thread(clipboard_state, left)
+            if loop.time() >= deadline:
+                raise _ClipboardCheckOutOfTime
             if after.marker:
                 raise ClipboardConcealedError("concealed_type", marker=after.marker)
             if before.sequence is not None and after.sequence != before.sequence:
