@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth/auth";
+import { isSessionRejection } from "@/lib/auth/server/getServerSession";
 import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
-import { isAPIError } from "better-auth/api";
 import { cookies, headers } from "next/headers";
 import { cache } from "react";
 
@@ -57,7 +57,7 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
     const { token } = await auth.api.getToken({ headers: await headers() });
     return token ?? null;
   } catch (error) {
-    if (isAPIError(error) && error.statusCode === 401) return null;
+    if (isSessionRejection(error)) return null;
     console.error("Failed to get auth token:", error);
     throw new AuthTokenUnavailableError({ cause: error });
   }
