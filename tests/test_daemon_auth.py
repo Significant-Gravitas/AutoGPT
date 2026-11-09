@@ -825,3 +825,65 @@ async def test_run_retries_a_keychain_that_is_still_locked(
 
     assert reads == 2
     assert tokens == ["the-token"]
+
+
+@pytest.mark.asyncio
+async def test_run_retries_a_refresh_the_token_endpoint_could_not_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The refresh tests called _get_access_token alone, so a run() that
+    stopped on TokenRefreshUnavailableError, instead of retrying with backoff
+    until the endpoint answers, would still have passed them."""
+    import httpx
+
+    from autogpt_local_executor.auth import OAuthFlow
+
+    refreshes = 0
+    store_token = "stale"
+
+    async def get_access_token() -> str:
+        return store_token
+
+    async def refresh(_flow) -> None:
+        nonlocal refreshes, store_token
+        refreshes += 1
+        if refreshes == 1:
+            request = httpx.Request("POST", "https://platform.example/api/oauth/token")
+            raise httpx.ConnectError("unreachable", request=request)
+        store_token = "fresh"
+
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+        reconnect_base_delay=0.01,
+        reconnect_jitter_seconds=0,
+    )
+    audit = MagicMock()
+    for name in (
+        "write",
+        "shim_start",
+        "shim_stop",
+        "ws_connected",
+        "ws_disconnected",
+        "token_refreshed",
+    ):
+        setattr(audit, name, AsyncMock())
+    daemon = ShimDaemon(
+        config,
+        token_store=SimpleNamespace(get_access_token=get_access_token),  # type: ignore[arg-type]
+        audit=audit,
+    )
+    monkeypatch.setattr(OAuthFlow, "refresh_token", refresh)
+    tokens: list[str | None] = []
+
+    async def session() -> None:
+        tokens.append(await daemon._get_access_token(refresh_on_fail=True, rejected_token="stale"))
+        daemon._running = False
+
+    monkeypatch.setattr(daemon, "_session", session)
+
+    await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert refreshes == 2
+    assert tokens == ["fresh"]
