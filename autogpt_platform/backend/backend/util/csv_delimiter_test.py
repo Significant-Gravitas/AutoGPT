@@ -25,6 +25,19 @@ def test_colon_file_declared_csv_parses_into_rows():
     assert result == [["Name", "Score"], ["Alice", "90"]]
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        "https://example.com/a\nhttps://example.com/b",
+        "C:\\data\\a.txt\nD:\\b.txt",
+    ],
+)
+def test_one_url_or_path_per_row_stays_text(content):
+    """A colon that starts a URL or follows a drive letter isn't a column."""
+    assert guess_delimiter(content, ",") is None
+    assert parse_file_content(content, "csv") == content
+
+
 def test_quoted_field_spanning_lines_stays_one_field():
     content = 'a;"multi\nline";c\n1;2;3'
     result = parse_file_content(content, "csv")

@@ -31,6 +31,8 @@ def guess_delimiter(content: str, declared: str) -> str | None:
         rows = _sample_rows(content, candidate)
         if not rows or len(rows[0]) < 2:
             continue
+        if candidate == ":" and _splits_urls_or_paths(rows):
+            continue
         width = len(rows[0])
         consistent = sum(len(row) == width for row in rows)
         if consistent * 10 < len(rows) * 9:
@@ -49,6 +51,12 @@ def _sample_rows(content: str, delimiter: str) -> list[list[str]]:
         return list(itertools.islice((row for row in reader if any(row)), _SAMPLE_ROWS))
     except csv.Error:
         return []
+
+
+def _splits_urls_or_paths(rows: list[list[str]]) -> bool:
+    """Whether splitting on ":" cut a URL scheme or a drive letter off a value
+    (`https://…`, `C:\\…`) rather than separating columns."""
+    return any(field.startswith(("/", "\\")) for row in rows for field in row[1:])
 
 
 def _lines(content: str) -> Iterator[str]:
