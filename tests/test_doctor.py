@@ -346,6 +346,40 @@ async def test_doctor_warns_on_a_screen_size_it_cannot_read(
     assert (check.marker, check.label) == ("WARN", "display")
 
 
+@pytest.mark.parametrize(
+    ("env", "marker"),
+    [
+        ({"DISPLAY": ":0"}, "FAIL"),
+        ({"DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-0"}, "FAIL"),
+        # The native Wayland backend still sizes the screen through X11 on
+        # most compositors, so there a refusal doesn't mean it can't work.
+        ({"WAYLAND_DISPLAY": "wayland-0", "CUA_DRIVER_RS_ENABLE_WAYLAND": "1"}, "WARN"),
+    ],
+    ids=["x11", "xwayland", "native-wayland"],
+)
+def test_doctor_fails_when_the_driver_cannot_read_an_x_display(
+    tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver, env: dict[str, str], marker: str
+) -> None:
+    """An X display the driver can't reach (refused, or a server gone) made
+    doctor warn and exit 0, though the daemon offers computer use there and
+    every call then fails."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    for name in ("DISPLAY", "WAYLAND_DISPLAY", "CUA_DRIVER_RS_ENABLE_WAYLAND"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("FAKE_CUA_SCREEN_ERROR", "cannot open display :0")
+
+    rc = doctor.run_doctor(_with_driver(tmp_path))
+
+    lines = _report(capsys.readouterr().out)
+    assert lines["display"] == (
+        marker,
+        "cua-driver could not read the screen: cannot open display :0",
+    )
+    assert rc == (doctor.EX_CONFIG if marker == "FAIL" else 0)
+
+
 def test_doctor_blocks_computer_use_on_wsl2(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "wsl2")
 
