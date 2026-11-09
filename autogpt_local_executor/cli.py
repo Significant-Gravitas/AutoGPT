@@ -1078,7 +1078,9 @@ def _parse_duration(s: str) -> float | None:
         return None  # more digits than int() converts (4300 by default)
     if value == 0:
         return None
-    return value * units[suffix]
+    seconds = value * units[suffix]
+    # The cutoff is a float: one past its range would raise OverflowError.
+    return seconds if _finite(seconds) else None
 
 
 def _print_record_line(raw: bytes) -> None:
