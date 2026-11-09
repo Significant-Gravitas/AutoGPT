@@ -170,7 +170,7 @@ def assert_inside_jail(
     #    Use os.path.realpath (Python 3.8+ handles Windows junctions) —
     #    pathlib's resolve() can hang on broken symlinks on some FS.
     try:
-        resolved = os.path.realpath(str(lex), strict=False)
+        resolved = os.path.realpath(from_root(lex, allowed_root), strict=False)
     except (OSError, ValueError) as exc:
         raise PathJailError(
             "PATH_INVALID_CHARS",
@@ -205,6 +205,16 @@ def assert_inside_jail(
         "PATH_OUTSIDE_ALLOWED_ROOT",
         f"Path {raw!r} (resolved to {resolved!r}) is outside allowed_root {root_resolved!r}",
     )
+
+
+def from_root(
+    requested_path: str | os.PathLike[str], allowed_root: str | os.PathLike[str]
+) -> str:
+    """The path a request names, before symlinks are resolved: `~` expanded,
+    and a relative path taken from the root, as the platform means one (it
+    joins a relative path to allowed_root itself), not from whatever
+    directory the shim was started in."""
+    return os.path.join(os.fspath(allowed_root), Path(os.fspath(requested_path)).expanduser())
 
 
 def _has_prefix(path: str, root: str) -> bool:
@@ -394,6 +404,7 @@ __all__ = [
     "PathJailError",
     "assert_entry_inside_jail",
     "assert_inside_jail",
+    "from_root",
     "is_inside_jail",
     "open_jail_file",
     "write_jail_file",

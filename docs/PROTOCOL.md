@@ -415,6 +415,12 @@ transport ceiling to account for worst-case JSON escaping.
 
 ### File Operations
 
+A file operation's `path` (`src` and `dst` for a move), like
+`EXECUTE_COMMAND`'s `cwd`, is normally absolute. A relative one is taken
+from `allowed_root`, as the platform's own tools take it, never from the
+directory the shim happens to run in; `~` is the user's home. Either way it
+must resolve inside `allowed_root`.
+
 #### `FILE_READ` (platform → shim)
 ```json
 {

@@ -59,6 +59,7 @@ from .path_jail import (
     PathJailError,
     assert_entry_inside_jail,
     assert_inside_jail,
+    from_root,
     is_inside_jail,
     open_jail_file,
     write_jail_file,
@@ -1043,9 +1044,13 @@ class FileHandler:
             is_symlink = stat.S_ISLNK(st.st_mode)
         else:
             # Even with follow=True we can report whether the *original*
-            # path was a symlink, via a separate lstat.
+            # path was a symlink, via a separate lstat of the path the jail
+            # checked (a relative one is the root's, not the working
+            # directory's).
             try:
-                lst = await asyncio.to_thread(os.lstat, payload.path)
+                lst = await asyncio.to_thread(
+                    os.lstat, from_root(payload.path, self.config.allowed_root)
+                )
                 is_symlink = stat.S_ISLNK(lst.st_mode)
             except OSError:
                 is_symlink = False

@@ -300,9 +300,11 @@ def is_inside_jail(requested_path: str, allowed_root: str) -> bool:
     # 3. Resolve symlinks, junctions, firmlinks, reparse points.
     #    Use os.path.realpath, NOT pathlib.Path.resolve() — realpath handles
     #    junctions correctly on Windows since Python 3.8; resolve() can hang
-    #    on broken symlinks on some FS.
+    #    on broken symlinks on some FS. A relative path is taken from the
+    #    root, as the platform means one, never from the shim's working
+    #    directory.
     try:
-        resolved = os.path.realpath(p, strict=False)
+        resolved = os.path.realpath(os.path.join(allowed_root, p), strict=False)
     except OSError:
         return False
 

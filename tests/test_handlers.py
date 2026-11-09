@@ -416,6 +416,33 @@ async def test_stat_without_following_describes_the_symlink_itself(tmp_path: Pat
 
 
 @pytest.mark.asyncio
+async def test_stat_of_a_relative_path_describes_the_roots_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A relative path named a place in the shim's working directory, and a
+    followed one was checked for a symlink there too, not in the root."""
+    target = tmp_path / "data.csv"
+    target.write_text("a,b\n")
+    _symlink_or_skip(tmp_path / "latest.csv", target)
+    (tmp_path / "sub").mkdir()
+    monkeypatch.chdir(tmp_path / "sub")
+    handler = FileHandler(make_config(tmp_path))
+
+    followed = await handler.handle_stat(
+        FileStatMessage(
+            id=new_id(),
+            ts=now_ts(),
+            payload=FileStatPayload(path="latest.csv", follow_symlinks=True),
+        )
+    )
+
+    assert isinstance(followed, FileStatResponseMessage)
+    assert followed.payload.exists is True
+    assert followed.payload.is_symlink is True
+    assert followed.payload.path == os.path.realpath(target)
+
+
+@pytest.mark.asyncio
 async def test_stat_without_following_still_describes_the_root(tmp_path: Path) -> None:
     response = await FileHandler(make_config(tmp_path)).handle_stat(
         _stat_msg(tmp_path, follow_symlinks=False)
