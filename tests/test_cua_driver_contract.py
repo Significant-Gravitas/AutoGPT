@@ -70,6 +70,8 @@ async def _tools_the_driver_lists() -> set[str]:
     """The pinned driver's own tool list, without the shim's policy."""
     binary = driver.bundled_binary()
     assert binary is not None
+    # As the bridge does: pip can install the binary without its execute bit.
+    driver.ensure_executable(binary)
     plat = platform_info.detect_platform()
     client = StdioMcpClient(
         driver.driver_argv(binary, driver.driver_runtime(plat), plat),
