@@ -1268,7 +1268,12 @@ def parse_message(raw: str | bytes) -> Any:
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
     try:
-        data = json.loads(raw, parse_float=_finite_float, parse_constant=_no_constant)
+        data = json.loads(
+            raw,
+            parse_float=_finite_float,
+            parse_int=_double_range_int,
+            parse_constant=_no_constant,
+        )
     except RecursionError:
         raise ValueError("frame nested too deeply to parse") from None
     if _nesting_depth(data) > MAX_FRAME_NESTING:
@@ -1279,11 +1284,23 @@ def parse_message(raw: str | bytes) -> Any:
 # JSON has no NaN or Infinity, but Python's json reads them, and reads a
 # number past a float's range (1e999) as infinity. A frame carrying one is
 # refused: the audit record of a computer tool call holding one failed (the
-# canonical form has no spelling for them) while the call went on.
+# canonical form has no spelling for them) while the call went on. So is one
+# with an integer past a double's range, which Python reads exactly.
 def _finite_float(text: str) -> float:
     value = float(text)
     if not math.isfinite(value):
         raise ValueError(f"frame holds a number that isn't finite: {text}")
+    return value
+
+
+def _double_range_int(text: str) -> int:
+    # A whole number takes no float form, so its own parse needs the same
+    # bound: a 400-digit integer reached the driver otherwise.
+    value = int(text)
+    try:
+        float(value)
+    except OverflowError:
+        raise ValueError(f"frame holds a number too large for a double: {text[:32]}...") from None
     return value
 
 

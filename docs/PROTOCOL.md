@@ -70,8 +70,8 @@ to apply. The platform learns the shim's maximum from HELLO before it
 answers, so it must not send a newer minor's fields to an older shim. A
 frame whose objects and arrays nest more than 64 levels deep is logged and
 dropped the same way; no message comes close. So is one holding `NaN`,
-`Infinity` or a number too large for a double (`1e999`): JSON has none of
-them, though some encoders write them.
+`Infinity` or a number too large for a double (`1e999`, or a whole number
+309 digits long): JSON has none of them, though some encoders write them.
 
 ### Frame-level `version`
 

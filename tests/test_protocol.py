@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 
 import pytest
 from pydantic import ValidationError
@@ -286,6 +287,30 @@ def test_a_frame_with_a_number_json_cannot_hold_is_refused(number: str) -> None:
 
     with pytest.raises(ValueError, match="finite"):
         parse_message(frame)
+
+
+@pytest.mark.parametrize("number", ["1" + "0" * 400, "-" + "9" * 309])
+def test_a_frame_with_an_integer_too_large_for_a_double_is_refused(number: str) -> None:
+    """PROTOCOL.md drops a frame holding a number too large for a double.
+    Python reads a whole number exactly, however long, so a computer tool
+    call with a 400-digit integer reached cua-driver."""
+    frame = (
+        '{"type":"COMPUTER_TOOL_CALL","id":"req","ts":1.0,'
+        '"payload":{"tool":"click","arguments":{"x":' + number + "}}}"
+    )
+
+    with pytest.raises(ValueError, match="too large for a double"):
+        parse_message(frame)
+
+
+def test_a_frame_with_the_largest_whole_double_parses() -> None:
+    largest = int(sys.float_info.max)
+    frame = (
+        '{"type":"COMPUTER_TOOL_CALL","id":"req","ts":1.0,'
+        '"payload":{"tool":"click","arguments":{"x":' + str(largest) + "}}}"
+    )
+
+    assert parse_message(frame).payload.arguments == {"x": largest}
 
 
 def test_a_frame_with_ordinary_numbers_parses() -> None:
