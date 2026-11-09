@@ -72,6 +72,7 @@ function ArtifactContentLoader({
         artifactID={artifact.id}
         artifactTitle={artifact.title}
         artifactType={classification.type}
+        content={content}
       >
         <ArtifactRenderer
           artifact={artifact}

@@ -1089,8 +1089,8 @@ def _make_simple_block(
 
 
 def _patch_excluded(block_ids: set | None = None, block_types: set | None = None):
-    # ``prepare_block_execution`` imports these from ``block_meta`` inside the
-    # function, so the source module is the patch target.  They were read from
+    # ``block_run_refusal`` reads these off ``block_meta`` each time it runs,
+    # so the source module is the patch target.  They were read from
     # ``tools.find_block`` until that module went; ``create=True`` meant the
     # patch kept "working" against a name that was no longer there, and the
     # exclusions under test silently stopped being exercised.
@@ -1322,6 +1322,29 @@ async def test_check_hitl_reuses_existing_waiting_review() -> None:
 
     assert isinstance(result, ReviewRequiredResponse)
     assert result.review_id == "existing-review-42"
+
+
+@pytest.mark.asyncio
+async def test_check_hitl_does_not_reuse_a_review_whose_input_differs_in_type() -> None:
+    """Python's ``1 == True``, but the block receives ``true``: the waiting
+    review shows ``1``, so the call with ``true`` gets a review of its own."""
+    prep = _make_hitl_prep(input_data={"force": True}, needs_review=True)
+
+    existing = MagicMock()
+    existing.node_id = prep.synthetic_node_id
+    existing.status.value = "WAITING"
+    existing.payload = {"force": 1}
+    existing.node_exec_id = "existing-review-42"
+
+    mock_rdb = MagicMock()
+    mock_rdb.get_pending_reviews_for_chat_session = AsyncMock(return_value=[existing])
+
+    with patch("backend.copilot.tools.helpers.review_db", return_value=mock_rdb):
+        result = await check_hitl_review(prep, "user1", "hitl-sess")
+
+    assert isinstance(result, ReviewRequiredResponse)
+    assert result.review_id != "existing-review-42"
+    prep.block.is_block_exec_need_review.assert_awaited_once()
 
 
 @pytest.mark.asyncio
