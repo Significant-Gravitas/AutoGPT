@@ -36,7 +36,7 @@ from backend.api.features.memory.models import (
     MemoryScopeOverview,
     MemoryUnderstanding,
 )
-from backend.copilot.graphiti.erase import erase_scope, is_missing_graph_error
+from backend.copilot.graphiti.erase import erase_scope
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
 from backend.copilot.graphiti.memory_model import MemoryForgetFailureCode
 from backend.copilot.graphiti.recall import live_fact_predicate
@@ -60,6 +60,15 @@ _EXPERT_ID_PATH = Path(
 )
 _FACT_UUID_PATH = Path(min_length=1, max_length=128, description="Fact edge uuid")
 _LIMIT_QUERY = Query(ge=1, le=500)
+
+_MISSING_GRAPH_MARKERS = ("no such graph", "does not exist", "invalid graph")
+
+
+def _is_missing_graph_error(exc: BaseException) -> bool:
+    if not isinstance(exc, ResponseError):
+        return False
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _MISSING_GRAPH_MARKERS)
 
 
 async def _resolve_scope(user_id: str, expert_id: str | None) -> MemoryScope:
@@ -91,7 +100,7 @@ async def _count(driver: AutoGPTFalkorDriver, query: str) -> int:
         rows = result[0] if result else []
         return int(rows[0]["c"]) if rows else 0
     except ResponseError as exc:
-        if is_missing_graph_error(exc):
+        if _is_missing_graph_error(exc):
             return 0
         raise
 
@@ -168,7 +177,7 @@ async def _list_facts_impl(
         )
         rows = result[0] if result else []
     except ResponseError as exc:
-        if not is_missing_graph_error(exc):
+        if not _is_missing_graph_error(exc):
             raise
         rows = []
     finally:
