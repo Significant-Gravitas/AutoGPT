@@ -1,6 +1,10 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
-import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import {
+  getAuthDeepLink,
+  sanitizeAuthNext,
+  withAuthTracking,
+} from "@/lib/auth-redirect";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { setMarketingOptOutFlag } from "@/services/analytics/marketing-opt-out-cookie";
 import { trackSignupMarketingOptOut } from "@/services/analytics/signup-analytics";
@@ -37,7 +41,11 @@ export function useSignupPage() {
 
   // Same-origin redirect target; off-site values are dropped so a crafted
   // `/signup?next=https://phishing.site` cannot redirect users elsewhere.
-  const nextUrl = sanitizeAuthNext(searchParams.get("next"));
+  const rawNext = searchParams.get("next");
+  const nextUrl = getAuthDeepLink(rawNext);
+  // Round trips (Google, the verification email) carry the whole safe `next`;
+  // /auth/callback decides from it, tracking params included.
+  const safeNext = sanitizeAuthNext(rawNext);
 
   useEffect(() => {
     isMounted.current = true;
@@ -93,8 +101,8 @@ export function useSignupPage() {
 
     try {
       // Include next URL in OAuth flow if present
-      const callbackUrl = nextUrl
-        ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
+      const callbackUrl = safeNext
+        ? `/auth/callback?next=${encodeURIComponent(safeNext)}`
         : `/auth/callback`;
       const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
 
@@ -158,7 +166,7 @@ export function useSignupPage() {
         data.password,
         data.confirmPassword,
         data.marketingOptOut,
-        nextUrl,
+        safeNext,
       );
 
       if (!result.success) {
@@ -192,7 +200,8 @@ export function useSignupPage() {
       }
 
       // Prefer the URL's next parameter, then result.next (for onboarding), then default
-      const redirectTo = nextUrl || result.next || "/";
+      const redirectTo =
+        nextUrl || withAuthTracking(result.next || "/", rawNext);
       router.replace(redirectTo);
     } catch (error) {
       setIsLoading(false);
@@ -223,7 +232,7 @@ export function useSignupPage() {
   return {
     form,
     feedback,
-    nextUrl,
+    nextUrl: safeNext,
     verificationEmail,
     isLoggedIn: !!user,
     hasInitializedAuth,

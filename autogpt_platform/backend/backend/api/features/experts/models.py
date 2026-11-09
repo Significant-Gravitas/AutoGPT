@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from pydantic import (
     BaseModel,
     Field,
+    PrivateAttr,
     TypeAdapter,
     ValidationError,
     field_validator,
@@ -359,6 +360,22 @@ class ExpertTemplate(Expert):
     bundled_skills: list[ExpertBundledSkill] = Field(default_factory=list)
 
 
+class CheckedExpert(BaseModel):
+    """An owner's active PRIVATE expert, with the owner's personal
+    organization and team that the expert's work belongs to.
+
+    Only the expert's own columns are loaded. Roster enrichments such as
+    workflows, credential counts/providers, latest run and weekly spend
+    retain their model defaults; those values are not authoritative. Use
+    the roster's get_expert or list_experts paths when those fields are needed.
+    """
+
+    # The expert's own columns only: no workflows, latest run or spend.
+    expert: Expert
+    organization_id: str
+    team_id: str | None
+
+
 # Membership is deliberately not embedded: clients already hold the expert
 # list and each Expert carries `pod_id`, so the roster groups client-side.
 class ExpertPod(BaseModel):
@@ -419,10 +436,26 @@ class ExpertDetachPreview(BaseModel):
 
 class HireResult(BaseModel):
     expert: Expert
+    # False when the expert was already on the team and nothing changed. Kept
+    # out of the response, which stays the expert.
+    _joined: bool = PrivateAttr(default=True)
+
+    @classmethod
+    def of(cls, expert: Expert, joined: bool) -> "HireResult":
+        result = cls(expert=expert)
+        result._joined = joined
+        return result
+
+    @property
+    def joined(self) -> bool:
+        return self._joined
 
 
 # Where a hire was made, for the ``expert_hired`` analytics event.
 HireSurface = Literal["onboarding", "expert_page", "copilot"]
+# What made it, when that is more than a person picking one expert: "plan" is
+# the onboarding plan's team hired once the trial starts.
+HireVia = Literal["plan"]
 
 
 RaiseAttachmentKind = Literal["workflow", "skill"]
