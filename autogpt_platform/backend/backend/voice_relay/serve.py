@@ -22,7 +22,7 @@ from typing import Any, cast
 
 import sentry_sdk
 import uvicorn
-from google import genai
+from google.genai import Client
 
 from backend.api.utils.cors import build_cors_params
 from backend.app import run_processes
@@ -38,7 +38,7 @@ from backend.data.user import get_user_by_id
 from backend.monitoring.instrumentation import start_metrics_server
 from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.settings import Settings
-from backend.voice_relay import tokens
+from backend.voice_relay import rooms, tokens
 from backend.voice_relay.app import Relay, RelayDeps, create_app, first_name_of
 from backend.voice_relay.config import (
     CAPS,
@@ -47,6 +47,7 @@ from backend.voice_relay.config import (
     WS_MAX_MESSAGE_BYTES,
     price_of,
 )
+from backend.voice_relay.edge import LiveKitEdge
 from backend.voice_relay.metering import warn_if_prices_out_of_date, watch_prices
 from backend.voice_relay.postcall import GeminiTranscriber, PostCall
 from backend.voice_relay.record import CloudRecordings
@@ -133,7 +134,7 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
     # restarted relay on the same host never mistakes its predecessor's claim
     # for its own.
     holder = f"{socket.gethostname()}:{uuid.uuid4().hex[:8]}"
-    client = genai.Client(api_key=settings.secrets.gemini_api_key)
+    client = Client(api_key=settings.secrets.gemini_api_key)
     deps = RelayDeps(
         vendor=GeminiLive(
             client,
@@ -161,6 +162,7 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
         ),
         spool_dir=settings.config.voice_interview_spool_dir,
         spool_stale_s=CAPS.max_call_s + drain_s,
+        edge=_livekit_edge(settings),
     )
     # Startup's objects stay out of full collections, which would otherwise
     # pause every live call's event loop.
@@ -179,6 +181,16 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
             await db.disconnect()
         except Exception:
             logger.warning("The database did not disconnect cleanly", exc_info=True)
+
+
+def _livekit_edge(settings: Settings) -> LiveKitEdge | None:
+    """The relay's way into call rooms, or None without a LiveKit project:
+    a call the REST API puts on the LiveKit leg then takes the socket."""
+    project = rooms.livekit_project(settings)
+    if project is None:
+        logger.warning("No LiveKit project: every voice call's audio takes the socket")
+        return None
+    return LiveKitEdge(project)
 
 
 async def _account_name(user_id: str) -> str | None:

@@ -17,8 +17,12 @@ the relay trusts without a platform session. In order, it checks:
   ``Retry-After``;
 - the person's own call allowance, on every tier: 429 with ``Retry-After``.
 
-Then it reads the person's arm of the voice ending experiment, which stores
-it on first read (``experiments.assign``), and the start token carries it to
+Then it picks the leg the call's audio takes from the edge flag: the call's
+LiveKit room where the flag says so and this deployment has a LiveKit
+project, the control socket otherwise. On the LiveKit leg it mints the
+browser's token for the call's room (``rooms.person_token``). It reads the
+person's arm of the voice ending experiment, which stores it on first read
+(``experiments.assign``), and the start token carries the leg and the arm to
 the relay, which reads no flags. The relay records the call on the person's
 onboarding row once the call starts, and its record in Redis for a day,
 with the arm on it for the hand-off, and makes its transcript of record once
@@ -82,7 +86,7 @@ from backend.util.feature_flag import (
     get_feature_flag_value,
 )
 from backend.util.settings import AppEnvironment, Settings
-from backend.voice_relay import locks, tokens
+from backend.voice_relay import locks, rooms, tokens
 from backend.voice_relay.config import CAPS, TOKEN_TTL_S
 from backend.voice_relay.locks import CallRecord
 
@@ -107,11 +111,10 @@ NO_SUCH_CALL = "No such voice call"
 # repeat: the person calls again or types instead.
 _VERDICTS = frozenset({quality.NO_USABLE_SPEECH, quality.INSUFFICIENT_CONTENT})
 
-# The legs this deployment serves, by the edge flag's name for each. A leg the
-# flag names that is not served falls back to the control socket, which every
-# browser can use.
-DEFAULT_LEG = VoiceCallLeg(kind="websocket")
-SERVED_LEGS: dict[str, VoiceCallLeg] = {DEFAULT_LEG.kind: DEFAULT_LEG}
+# The control socket, which every browser can use: the leg of a call whose
+# flag names any other leg, or LiveKit where this deployment has no project.
+SOCKET_LEG = VoiceCallLeg(kind="websocket")
+LIVEKIT = "livekit"
 
 
 async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
@@ -136,9 +139,9 @@ async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
         )
     await _refuse_past_platform_limits(redis)
     await enforce_voice_call_budget(user_id)
-    leg = await _choose_leg(user_id)
-    ending = _voice_arm(await assigned_ending(user_id, "voice"))
     call_id = tokens.new_call_id()
+    leg = await _choose_leg(user_id, call_id)
+    ending = _voice_arm(await assigned_ending(user_id, "voice"))
     return VoiceCallStartResponse(
         call_id=call_id,
         relay_url=relay_url,
@@ -217,16 +220,30 @@ async def _refuse_past_platform_limits(redis: AsyncRedisClient) -> None:
         )
 
 
-async def _choose_leg(user_id: str) -> VoiceCallLeg:
+async def _choose_leg(user_id: str, call_id: str) -> VoiceCallLeg:
+    """The leg *user_id*'s call *call_id* takes, as the edge flag picks it,
+    with the browser's room token on the LiveKit leg."""
     try:
         wanted = await get_feature_flag_value(
-            Flag.ONBOARDING_INTERVIEW_VOICE_EDGE.value, user_id, default="livekit"
+            Flag.ONBOARDING_INTERVIEW_VOICE_EDGE.value, user_id, default=LIVEKIT
         )
     except Exception:
         logger.warning("Voice interview edge flag could not be read", exc_info=True)
-        return DEFAULT_LEG
-    return (
-        SERVED_LEGS.get(wanted, DEFAULT_LEG) if isinstance(wanted, str) else DEFAULT_LEG
+        return SOCKET_LEG
+    if wanted != LIVEKIT:
+        return SOCKET_LEG
+    project = rooms.livekit_project(settings)
+    if project is None:
+        return SOCKET_LEG
+    return VoiceCallLeg(
+        kind="livekit",
+        url=project.url,
+        token=rooms.person_token(
+            user_id=user_id,
+            call_id=call_id,
+            api_key=project.api_key,
+            api_secret=project.api_secret,
+        ),
     )
 
 

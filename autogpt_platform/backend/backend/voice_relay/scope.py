@@ -14,8 +14,7 @@ import logging
 import time
 from typing import Protocol, runtime_checkable
 
-from google import genai
-from google.genai import types
+from google.genai import Client, types
 from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.onboarding_interview_scope import ScopeLabel
@@ -80,7 +79,7 @@ class ScopeClassifier(Protocol):
 
 
 class GeminiScopeClassifier:
-    def __init__(self, client: genai.Client, *, model: str = CLASSIFIER_MODEL) -> None:
+    def __init__(self, client: Client, *, model: str = CLASSIFIER_MODEL) -> None:
         self._client = client
         self._model = model
 

@@ -4,7 +4,9 @@
   its first message, within ``START_TIMEOUT_S``, then runs the call or
   re-attaches to it (``session``). The token rides the first message, never
   the URL, so it stays out of load balancer logs. The browser's origin must
-  be one the platform allows (``BACKEND_CORS_ALLOW_ORIGINS``).
+  be one the platform allows (``BACKEND_CORS_ALLOW_ORIGINS``). The token
+  names the call's leg; the start's ``leg`` may take a LiveKit call onto the
+  socket (the browser could not join the room), never the other way.
 - ``GET /healthz`` is liveness. ``GET /readyz`` is readiness, which fails
   while the process drains, so the load balancer sends it no new calls, and
   while it could not record a call: its spool directory takes no writes.
@@ -45,7 +47,7 @@ from backend.voice_relay.config import (
     Caps,
     Timing,
 )
-from backend.voice_relay.metering import LIVE_CALLS, CallMeter, CostSink
+from backend.voice_relay.metering import FALLBACKS, LIVE_CALLS, CallMeter, CostSink
 from backend.voice_relay.postcall import PostCall
 from backend.voice_relay.record import (
     CallRecording,
@@ -53,7 +55,7 @@ from backend.voice_relay.record import (
     spool_writable,
 )
 from backend.voice_relay.scope import ScopeClassifier
-from backend.voice_relay.session import Session
+from backend.voice_relay.session import RoomEdge, Session
 from backend.voice_relay.vendor import VendorConnector
 
 logger = logging.getLogger(__name__)
@@ -99,6 +101,9 @@ class RelayDeps(BaseModel):
     spool_stale_s: float = CAPS.max_call_s + DEFAULT_DRAIN_S
     # Where priced rows go; None logs them to PlatformCostLog.
     cost_sink: CostSink | None = None
+    # Joins the rooms of calls on the LiveKit leg; None where this relay has
+    # no LiveKit project, so such calls take the socket.
+    edge: RoomEdge | None = None
     caps: Caps = CAPS
     timing: Timing = TIMING
 
@@ -166,10 +171,15 @@ class Relay:
 
     @property
     def busy(self) -> bool:
-        """Whether a call, starting or live, or a post-call job is still
-        running here."""
-        return self.held_slots > 0 or bool(
-            self.deps is not None and self.deps.postcall.jobs
+        """Whether a call, starting or live, a post-call job, or Otto's last
+        words in a call's room are still running here."""
+        deps = self.deps
+        if self.held_slots > 0:
+            return True
+        if deps is None:
+            return False
+        return bool(deps.postcall.jobs) or (
+            deps.edge is not None and deps.edge.rooms > 0
         )
 
     def reserve_slot(self) -> CallSlot | None:
@@ -339,7 +349,8 @@ async def _start_call(
     except tokens.TokenError as error:
         await _refuse(ws, str(error), CLOSE_POLICY)
         return
-    if first.get("leg") not in (None, *tokens.LEGS):
+    leg = leg_of(claims.leg, first.get("leg"))
+    if leg is None:
         await _refuse(ws, "protocol", CLOSE_POLICY)
         return
     try:
@@ -389,8 +400,6 @@ async def _start_call(
     # their calls in between can be found from the latest without a scan.
     store.prev = replaced
 
-    # This relay carries a call's audio on the control socket.
-    leg: tokens.Leg = "websocket"
     owns_state = True
     try:
         session = Session(
@@ -414,6 +423,7 @@ async def _start_call(
             timing=deps.timing,
             started=started,
             on_end=lambda: _hand_over(deps, slot, session),
+            edge=deps.edge,
         )
         if not slot.hold(session):
             # The call already runs here, so the lock and the place this
@@ -441,10 +451,28 @@ async def _start_call(
             started=round(time.time(), 3),
             ending=claims.ending,
         )
+        if leg != claims.leg:
+            # The browser could not join the room, and said so in its start.
+            FALLBACKS.labels(claims.leg, "browser_join").inc()
+            logger.info(
+                f"Voice call {claims.call_id}: the browser's audio takes the socket"
+            )
         await session.run()
     finally:
         if owns_state:
             await store.release()
+
+
+def leg_of(token_leg: tokens.Leg, asked: object) -> tokens.Leg | None:
+    """The leg a start runs on: its token's, or the socket where the browser
+    takes a LiveKit call there. None for any other ask, a LiveKit leg the
+    token does not name included: the token, signed under the edge flag, is
+    the only way onto a room."""
+    if asked is None or asked == token_leg:
+        return token_leg
+    if asked == "websocket":
+        return "websocket"
+    return None
 
 
 async def _admit(

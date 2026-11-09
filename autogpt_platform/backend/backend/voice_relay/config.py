@@ -44,6 +44,34 @@ LIVE_CALL_STALE_S = 120.0
 # How long an "end that call" request waits for the pod that owns the call.
 END_REQUEST_TTL_S = 600
 
+# The LiveKit leg. Each call has a room of its own, joined by the person's
+# browser and by the relay as Otto, and by no one else.
+ROOM_PREFIX = "voice-"
+RELAY_IDENTITY = "otto"
+PERSON_IDENTITY_PREFIX = "user:"
+ROOM_MAX_PARTICIPANTS = 2
+# A room nobody joins closes after this long, and one everybody left after
+# this long.
+ROOM_EMPTY_TIMEOUT_S = 60
+ROOM_DEPARTURE_TIMEOUT_S = 20
+# The browser's room token. It only lets the browser into the room, and once
+# in, LiveKit keeps it there for the whole call.
+ROOM_TOKEN_TTL_S = 600
+# The relay's own room token outlives the call cap by this much.
+RELAY_ROOM_GRACE_S = 60
+# The relay's join, and its leave, are given up past these.
+ROOM_JOIN_TIMEOUT_S = 5.0
+ROOM_LEAVE_TIMEOUT_S = 3.0
+# Otto's speech is held for the room for at most this many seconds; once the
+# call ends, what is held plays out for at most this long before the relay
+# leaves.
+ROOM_QUEUE_S = 20.0
+ROOM_PLAYOUT_S = 15.0
+# The person's audio reaches the call in frames this long, on either leg: the
+# browser sends them so on the socket, and the relay cuts the room's into
+# them, so the voice-activity check reads the same frames on both.
+FRAME_S = 0.04
+
 # What one call may spend, all meters together. Past it the call ends.
 SPEND_CAP_USD = 0.50
 

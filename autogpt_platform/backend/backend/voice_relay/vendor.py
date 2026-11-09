@@ -11,8 +11,7 @@ import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, Protocol, runtime_checkable
 
-from google import genai
-from google.genai import types
+from google.genai import Client, types
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.voice_relay.config import IN_RATE
@@ -133,7 +132,7 @@ class GeminiLive:
 
     def __init__(
         self,
-        client: genai.Client,
+        client: Client,
         *,
         model: str,
         voice: str,

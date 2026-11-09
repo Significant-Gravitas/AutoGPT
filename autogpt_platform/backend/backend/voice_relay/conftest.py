@@ -4,12 +4,15 @@ import socket
 import tempfile
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
+import jwt
 import numpy as np
 import pytest
 import uvicorn
 from fakeredis import FakeServer
 from fakeredis.aioredis import FakeRedis
+from livekit import rtc
 
 from backend.api.utils.cors import build_cors_params
 from backend.util.settings import AppEnvironment
@@ -23,9 +26,11 @@ from backend.voice_relay.config import (
     Caps,
     Timing,
 )
+from backend.voice_relay.edge import LiveKitEdge
 from backend.voice_relay.fake_vendor import FakeVendor
 from backend.voice_relay.metering import Row
 from backend.voice_relay.postcall import PostCall, Transcription
+from backend.voice_relay.rooms import LiveKitProject
 from backend.voice_relay.serve import DrainingServer
 
 BUCKET = "test-bucket"
@@ -68,6 +73,229 @@ async def until(condition: Callable[[], bool], timeout: float = 5.0) -> None:
 def silence(seconds: float) -> list[bytes]:
     frame = bytes(int(IN_RATE * 0.04) * 2)
     return [frame for _ in range(max(1, round(seconds / 0.04)))]
+
+
+LIVEKIT = LiveKitProject(
+    url="wss://agpt-test.livekit.cloud",
+    api_key="APItest",
+    api_secret="r" * 48,  # pragma: allowlist secret
+)
+
+
+class FakeTrack:
+    """A track in a call's room, as the relay's SDK hands it over."""
+
+    def __init__(self, sid: str, kind: int = rtc.TrackKind.KIND_AUDIO) -> None:
+        self.sid = sid
+        self.kind = kind
+
+
+class FakeParticipant:
+    def __init__(self, identity: str) -> None:
+        self.identity = identity
+        self.track_publications: dict[str, SimpleNamespace] = {}
+
+
+class FakeAudioStream:
+    """A microphone in the room, read by the relay: what the test pushes."""
+
+    def __init__(self, track: FakeTrack) -> None:
+        self.track = track
+        self.closed = False
+        self._frames: asyncio.Queue[bytes | Exception | None] = asyncio.Queue()
+
+    def push(self, pcm: bytes) -> None:
+        self._frames.put_nowait(pcm)
+
+    def end(self) -> None:
+        """The track ends under the stream."""
+        self._frames.put_nowait(None)
+
+    def fail(self, error: Exception) -> None:
+        """Reading the stream fails with *error*."""
+        self._frames.put_nowait(error)
+
+    def __aiter__(self) -> "FakeAudioStream":
+        return self
+
+    async def __anext__(self) -> SimpleNamespace:
+        pcm = await self._frames.get()
+        if pcm is None:
+            raise StopAsyncIteration
+        if isinstance(pcm, Exception):
+            raise pcm
+        return SimpleNamespace(frame=SimpleNamespace(data=memoryview(pcm)))
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class FakeAudioSource:
+    """Otto's microphone in the room: it keeps every frame it takes."""
+
+    def __init__(self) -> None:
+        self.frames: list[bytes] = []
+        self.clears = 0
+        self.closed = False
+        # While set and clear, each capture waits on it.
+        self.gate: asyncio.Event | None = None
+        # While set and clear, the play-out waits on it.
+        self.playing: asyncio.Event | None = None
+        # Closing it fails with this, as an SDK call that tears down can.
+        self.close_fails: Exception | None = None
+
+    async def capture_frame(self, frame: bytes) -> None:
+        if self.gate is not None:
+            await self.gate.wait()
+        self.frames.append(frame)
+
+    def clear_queue(self) -> None:
+        self.clears += 1
+
+    async def wait_for_playout(self) -> None:
+        if self.playing is not None:
+            await self.playing.wait()
+
+    async def aclose(self) -> None:
+        if self.close_fails is not None:
+            raise self.close_fails
+        self.closed = True
+
+    @property
+    def audio(self) -> bytes:
+        return b"".join(self.frames)
+
+
+class FakeRoom:
+    """A call's LiveKit room as the relay's SDK shows it. The person's
+    browser joined first, so the room has them in it, their microphone
+    subscribed, when the relay connects."""
+
+    def __init__(self, media: "FakeMedia") -> None:
+        self.media = media
+        self.handlers: dict[str, list[Callable]] = {}
+        self.remote_participants: dict[str, FakeParticipant] = {}
+        self.local_participant = SimpleNamespace(
+            published=[], publish_track=self._publish
+        )
+        self.url: str | None = None
+        self.token: str | None = None
+        self.left = False
+        self._tracks = 0
+
+    def on(self, event: str, callback: Callable) -> Callable:
+        self.handlers.setdefault(event, []).append(callback)
+        return callback
+
+    def emit(self, event: str, *args: object) -> None:
+        for callback in list(self.handlers.get(event, [])):
+            callback(*args)
+
+    async def connect(self, url: str, token: str, options: object = None) -> None:
+        self.url, self.token = url, token
+        if self.media.hang:
+            await asyncio.Event().wait()
+        if self.media.refuse is not None:
+            raise self.media.refuse
+        if self.media.person is not None:
+            self.add_microphone(self.media.person, announce=False)
+
+    async def disconnect(self) -> None:
+        self.left = True
+        self.emit("disconnected", rtc.DisconnectReason.CLIENT_INITIATED)
+
+    async def _publish(self, track: object, options: object) -> None:
+        self.local_participant.published.append((track, options))
+
+    # --- the room's side ---
+
+    @property
+    def claims(self) -> dict:
+        """What the relay's token for this room says."""
+        assert self.token is not None
+        return jwt.decode(self.token, options={"verify_signature": False})
+
+    def add_microphone(
+        self, identity: str, *, announce: bool = True, kind: int | None = None
+    ) -> FakeTrack:
+        """*identity* publishes a microphone, which the relay is subscribed
+        to; *announce* as the SDK does for a track that comes after the
+        join."""
+        self._tracks += 1
+        track = FakeTrack(f"TR_{self._tracks}", kind or rtc.TrackKind.KIND_AUDIO)
+        participant = self.remote_participants.setdefault(
+            identity, FakeParticipant(identity)
+        )
+        publication = SimpleNamespace(track=track)
+        participant.track_publications[track.sid] = publication
+        if announce:
+            self.emit("track_subscribed", track, publication, participant)
+        return track
+
+    def drop_microphone(self, identity: str, track: FakeTrack) -> None:
+        participant = self.remote_participants[identity]
+        publication = participant.track_publications.pop(track.sid)
+        self.emit("track_unsubscribed", track, publication, participant)
+
+    def participant_leaves(self, identity: str) -> None:
+        self.emit("participant_disconnected", self.remote_participants.pop(identity))
+
+    def lost(self) -> None:
+        """The relay's own connection to the room is gone."""
+        self.emit("disconnected", rtc.DisconnectReason.SIGNAL_CLOSE)
+
+
+class FakeMedia:
+    """The LiveKit SDK objects the relay makes, as fakes: every room it joins
+    and every source and stream it opens."""
+
+    def __init__(
+        self,
+        *,
+        person: str | None = "user:user-1",
+        refuse: Exception | None = None,
+        hang: bool = False,
+    ) -> None:
+        # Who is in each room the relay joins, with their microphone.
+        self.person = person
+        # A join that is refused with this, or never answers.
+        self.refuse = refuse
+        self.hang = hang
+        self.rooms: list[FakeRoom] = []
+        self.sources: list[FakeAudioSource] = []
+        self.streams: dict[str, FakeAudioStream] = {}
+
+    def room(self) -> FakeRoom:
+        room = FakeRoom(self)
+        self.rooms.append(room)
+        return room
+
+    def source(self) -> FakeAudioSource:
+        source = FakeAudioSource()
+        self.sources.append(source)
+        return source
+
+    def track(self, source: FakeAudioSource) -> SimpleNamespace:
+        return SimpleNamespace(source=source)
+
+    def stream(self, track: FakeTrack) -> FakeAudioStream:
+        stream = FakeAudioStream(track)
+        self.streams[track.sid] = stream
+        return stream
+
+    def frame(self, pcm: bytes) -> bytes:
+        return pcm
+
+    def say(self, frames: Sequence[bytes]) -> None:
+        """The person speaks into the latest room's microphone."""
+        stream = list(self.streams.values())[-1]
+        for frame in frames:
+            stream.push(frame)
+
+
+def livekit_edge(media: FakeMedia, **options) -> LiveKitEdge:
+    """The relay's LiveKit edge, on fake rooms."""
+    return LiveKitEdge(LIVEKIT, media=media, **options)  # type: ignore[arg-type]
 
 
 class MemoryRecordings:
@@ -254,8 +482,10 @@ async def running_relay(
     max_concurrent: int = 25,
     transcriber: ScriptedTranscriber | None = None,
     redis_delay_s: float = 0.0,
+    edge: LiveKitEdge | None = None,
 ) -> AsyncIterator[RunningRelay]:
-    """The relay app under a real uvicorn server on a free local port."""
+    """The relay app under a real uvicorn server on a free local port; with
+    *edge*, it joins the rooms of calls on the LiveKit leg."""
     rows: list[Row] = []
     recorded: dict[str, str] = {}
     recordings = MemoryRecordings()
@@ -312,6 +542,7 @@ async def running_relay(
             cost_sink=sink,
             caps=caps,
             timing=timing,
+            edge=edge,
         ),
     )
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

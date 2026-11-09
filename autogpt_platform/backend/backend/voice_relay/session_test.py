@@ -65,6 +65,8 @@ def _session(
     classifier=None,
     first_name: str | None = None,
     on_end=None,
+    leg: tokens.Leg = "websocket",
+    edge=None,
 ) -> Session:
     call_id = tokens.new_call_id()
 
@@ -74,14 +76,14 @@ def _session(
     return Session(
         call_id=call_id,
         user_id=USER,
-        leg="websocket",
+        leg=leg,
         ws=ws,
         vendor=vendor,
         store=CallStore(redis, call_id=call_id, user_id=USER),
         meter=CallMeter(
             user_id=USER,
             call_id=call_id,
-            leg="websocket",
+            leg=leg,
             model=LIVE,
             redis=redis,
             sink=sink,
@@ -91,6 +93,7 @@ def _session(
         caps=caps,
         timing=timing,
         on_end=on_end,
+        edge=edge,
     )
 
 

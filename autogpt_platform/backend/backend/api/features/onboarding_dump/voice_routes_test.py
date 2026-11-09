@@ -8,12 +8,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import fastapi
+import jwt
 import posthog.client
 import pytest
 import urllib3.connectionpool
 from fakeredis import FakeServer
 from fakeredis.aioredis import FakeRedis
 from httpx import ASGITransport, AsyncClient
+from livekit import api
 from posthog import Posthog
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus, SubscriptionTier
 from pytest_mock import MockerFixture
@@ -47,6 +49,11 @@ app.include_router(routes.router)
 
 URL = "/onboarding/brain-dump/interview/voice"
 RELAY = "wss://api.example.com/voice"
+LIVEKIT_URL = "wss://agpt-test.livekit.cloud"
+LIVEKIT_KEY = "APIroutes"
+LIVEKIT_SECRET = "q" * 48  # pragma: allowlist secret
+# The control socket's leg, which carries no room.
+SOCKET = {"kind": "websocket", "url": None, "token": None}
 
 
 @pytest.fixture(autouse=True)
@@ -133,7 +140,7 @@ async def test_a_start_names_its_call_socket_caps_and_a_token_the_relay_trusts(
     assert response.status_code == 200
     body = response.json()
     assert body["relay_url"] == f"{RELAY}/call"
-    assert body["leg"] == {"kind": "websocket"}
+    assert body["leg"] == SOCKET
     assert body["caps"] == CAPS.as_message()
     assert body["expires_in"] == 60
     claims = tokens.verify_start(body["token"])
@@ -180,23 +187,63 @@ async def test_calls_whose_pods_died_do_not_hold_the_ceiling(redis, monkeypatch)
     assert (await start()).status_code == 200
 
 
+@pytest.fixture
+def livekit_on(monkeypatch) -> None:
+    monkeypatch.setattr(voice.settings.config, "livekit_url", LIVEKIT_URL)
+    monkeypatch.setattr(voice.settings.secrets, "livekit_api_key", LIVEKIT_KEY)
+    monkeypatch.setattr(voice.settings.secrets, "livekit_api_secret", LIVEKIT_SECRET)
+
+
 @pytest.mark.parametrize(
     "edge,leg",
-    [("websocket", "websocket"), ("livekit", "websocket"), ("pigeon", "websocket")],
-    ids=["websocket", "livekit-not-served", "unknown"],
+    [("livekit", "livekit"), ("websocket", "websocket"), ("pigeon", "websocket")],
+    ids=["livekit", "websocket", "unknown"],
 )
-async def test_the_edge_flag_picks_only_a_leg_this_deployment_serves(
-    voice_on, edge, leg
+async def test_the_edge_flag_picks_the_leg_the_start_token_names(
+    voice_on, livekit_on, edge, leg
 ):
     voice_on.edge.return_value = edge
     body = (await start()).json()
-    assert body["leg"] == {"kind": leg}
+    assert body["leg"]["kind"] == leg
     assert tokens.verify_start(body["token"]).leg == leg
 
 
-async def test_an_edge_flag_that_cannot_be_read_falls_back_to_the_socket(voice_on):
+async def test_the_livekit_leg_names_the_project_and_the_browsers_token_for_the_room(
+    voice_on, livekit_on, test_user_id
+):
+    voice_on.edge.return_value = "livekit"
+    body = (await start()).json()
+
+    leg = body["leg"]
+    assert leg["url"] == LIVEKIT_URL
+    claims = api.TokenVerifier(LIVEKIT_KEY, LIVEKIT_SECRET).verify(leg["token"])
+    assert claims.identity == f"user:{test_user_id}"
+    assert claims.video is not None
+    assert claims.video.room == f"voice-{body['call_id']}"
+    assert claims.video.can_publish_sources == ["microphone"]
+    assert claims.video.can_publish_data is False
+    assert not claims.video.room_admin
+    lifetime = jwt.decode(
+        leg["token"], LIVEKIT_SECRET, algorithms=["HS256"], issuer=LIVEKIT_KEY
+    )
+    assert lifetime["exp"] - lifetime["nbf"] == 600
+
+
+async def test_the_livekit_leg_falls_back_to_the_socket_where_there_is_no_project(
+    voice_on, monkeypatch
+):
+    voice_on.edge.return_value = "livekit"
+    monkeypatch.setattr(voice.settings.config, "livekit_url", "")
+    body = (await start()).json()
+    assert body["leg"] == SOCKET
+    assert tokens.verify_start(body["token"]).leg == "websocket"
+
+
+async def test_an_edge_flag_that_cannot_be_read_falls_back_to_the_socket(
+    voice_on, livekit_on
+):
     voice_on.edge.side_effect = RuntimeError("flag service down")
-    assert (await start()).json()["leg"] == {"kind": "websocket"}
+    assert (await start()).json()["leg"] == SOCKET
 
 
 @pytest.mark.parametrize(

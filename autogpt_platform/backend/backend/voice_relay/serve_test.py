@@ -15,7 +15,7 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
 
 from backend.api.utils.cors import build_cors_params
-from backend.util.settings import AppEnvironment
+from backend.util.settings import AppEnvironment, Settings
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.app import Relay, create_app
 from backend.voice_relay.conftest import (
@@ -25,9 +25,11 @@ from backend.voice_relay.conftest import (
     speech,
     until,
 )
+from backend.voice_relay.edge import LiveKitEdge
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
 from backend.voice_relay.serve import (
     DrainingServer,
+    _livekit_edge,
     keep_frame_locals_out_of_sentry,
     strip_frame_locals,
 )
@@ -478,3 +480,24 @@ def test_no_relay_module_imports_the_executor_or_the_pipeline():
     }
 
     assert offending == {}
+
+
+def _settings(monkeypatch, *, url: str) -> Settings:
+    settings = Settings()
+    monkeypatch.setattr(settings.config, "livekit_url", url)
+    monkeypatch.setattr(settings.secrets, "livekit_api_key", "APIserve")
+    monkeypatch.setattr(
+        settings.secrets, "livekit_api_secret", "s" * 48  # pragma: allowlist secret
+    )
+    return settings
+
+
+def test_a_relay_with_a_livekit_project_joins_call_rooms(monkeypatch):
+    edge = _livekit_edge(_settings(monkeypatch, url="wss://agpt.livekit.cloud"))
+
+    assert isinstance(edge, LiveKitEdge)
+    assert edge.rooms == 0
+
+
+def test_a_relay_with_no_livekit_project_takes_every_call_on_the_socket(monkeypatch):
+    assert _livekit_edge(_settings(monkeypatch, url="")) is None

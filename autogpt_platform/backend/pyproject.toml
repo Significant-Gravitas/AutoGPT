@@ -117,6 +117,9 @@ tavily-python = ">=0.7.26,<0.9.0"
 publicsuffixlist = "1.1.0.20261010"
 google-genai = "2.31.0"
 numpy = "^2.4.2"
+livekit = "1.1.21"
+livekit-api = "1.2.2"
+livekit-protocol = "1.1.27"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"

@@ -339,9 +339,17 @@ class VoiceCallCaps(BaseModel):
 
 class VoiceCallLeg(BaseModel):
     """How the call's audio travels. The control socket always carries the
-    call's events; on the ``websocket`` leg it carries the audio too."""
+    call's events. On the ``websocket`` leg it carries the audio too; on the
+    ``livekit`` leg the audio goes through the call's LiveKit room, which the
+    browser joins before it opens the socket, and takes the socket instead
+    when it cannot join within a few seconds."""
 
-    kind: Literal["websocket"]
+    kind: Literal["websocket", "livekit"]
+    url: str | None = None
+    """The LiveKit project's ``wss://`` URL; on the ``livekit`` leg only."""
+    token: str | None = None
+    """The browser's token for the call's room, which lets it publish its
+    microphone and hear Otto there; on the ``livekit`` leg only."""
 
 
 class VoiceCallStartResponse(BaseModel):
@@ -351,8 +359,8 @@ class VoiceCallStartResponse(BaseModel):
     relay_url: str
     """The relay's call socket."""
     token: str
-    """The socket's first message carries it, ``{"type": "start", "token"}``.
-    Good for this one call, within ``expires_in`` seconds."""
+    """The socket's first message carries it, ``{"type": "start", "token",
+    "leg"}``. Good for this one call, within ``expires_in`` seconds."""
     expires_in: int
     leg: VoiceCallLeg
     caps: VoiceCallCaps

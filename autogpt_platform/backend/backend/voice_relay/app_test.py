@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from prometheus_client import REGISTRY
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
@@ -18,8 +19,10 @@ from backend.voice_relay.app import Relay, RelayDeps, first_name_of
 from backend.voice_relay.config import CAPS, DEFAULT_DRAIN_S
 from backend.voice_relay.conftest import (
     ORIGIN,
+    FakeMedia,
     MemoryRecordings,
     ScriptedTranscriber,
+    livekit_edge,
     running_relay,
     silence,
     speech,
@@ -874,3 +877,122 @@ async def test_a_lock_that_keeps_changing_hands_lets_the_same_token_retry(redis)
         await read_until(again, "ready")
         await again.send(json.dumps({"type": "hangup"}))
         await read_until(again, "ended")
+
+
+# --- the LiveKit leg ---------------------------------------------------------
+
+
+def start_on(leg: str, *, asked: str | None, call_id: str | None = None) -> dict:
+    """A start whose token names *leg*, asking for *asked*."""
+    call_id = call_id or tokens.new_call_id()
+    message = {"type": "start", "token": tokens.mint_start(USER, call_id, leg)}
+    if asked is not None:
+        message["leg"] = asked
+    return message
+
+
+def _fallbacks(why: str) -> float:
+    return (
+        REGISTRY.get_sample_value(
+            "voice_interview_fallbacks_total", {"from": "livekit", "why": why}
+        )
+        or 0.0
+    )
+
+
+async def test_a_livekit_call_runs_its_audio_through_the_room_and_events_on_the_socket(
+    redis,
+):
+    media = FakeMedia()
+    vendor = FakeVendor([Reply(text="Hi, I'm Otto, an AI.", audio_s=0.2)])
+    async with running_relay(redis, vendor, edge=livekit_edge(media)) as running:
+        call_id = tokens.new_call_id()
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start_on("livekit", asked="livekit", call_id=call_id)))
+        ready = await read_until(ws, "ready")
+        assert ready["leg"] == "livekit"
+        await read_until(ws, "turn_complete")
+        assert media.rooms[0].claims["video"]["room"] == f"voice-{call_id}"
+        await until(lambda: len(media.sources[0].audio) == round(0.2 * 24_000) * 2)
+        await ws.send(json.dumps({"type": "hangup"}))
+        received: list[str | bytes] = []
+        while True:
+            message = await asyncio.wait_for(ws.recv(), timeout=5)
+            received.append(message)
+            if isinstance(message, str) and json.loads(message)["type"] == "ended":
+                break
+        # Otto's audio never took the socket.
+        assert not any(isinstance(message, bytes) for message in received)
+        await until(lambda: media.rooms[0].left)
+        await running.postcalls_done()
+
+
+async def test_a_browser_that_could_not_join_the_room_takes_the_call_onto_the_socket(
+    redis,
+):
+    media = FakeMedia()
+    before = _fallbacks("browser_join")
+    vendor = FakeVendor([Reply(text="Hi", audio_s=0.1)])
+    async with running_relay(redis, vendor, edge=livekit_edge(media)) as running:
+        call_id = tokens.new_call_id()
+        ws = await open_socket(running.url)
+        await ws.send(
+            json.dumps(start_on("livekit", asked="websocket", call_id=call_id))
+        )
+        ready = await read_until(ws, "ready")
+        assert ready["leg"] == "websocket"
+        audio = await asyncio.wait_for(ws.recv(), timeout=5)
+        while isinstance(audio, str):
+            audio = await asyncio.wait_for(ws.recv(), timeout=5)
+        assert isinstance(audio, bytes)
+        assert media.rooms == []
+        assert _fallbacks("browser_join") - before == 1
+        record = await locks.read_call(redis, call_id)
+        assert record is not None and record.leg == "websocket"
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+
+
+async def test_a_start_cannot_take_a_socket_call_into_a_room(redis):
+    media = FakeMedia()
+    async with running_relay(redis, FakeVendor(), edge=livekit_edge(media)) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start_on("websocket", asked="livekit")))
+        assert await refusal(ws) == ({"type": "error", "error": "protocol"}, 1008)
+        assert media.rooms == []
+
+
+@pytest.mark.parametrize("asked", [None, "websocket"], ids=["unsaid", "socket"])
+async def test_a_socket_call_stays_on_the_socket_whatever_its_start_says(redis, asked):
+    media = FakeMedia()
+    async with running_relay(
+        redis, FakeVendor([Reply(text="Hi")]), edge=livekit_edge(media)
+    ) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start_on("websocket", asked=asked)))
+        assert (await read_until(ws, "ready"))["leg"] == "websocket"
+        assert media.rooms == []
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+
+
+async def test_the_relay_stays_busy_until_ottos_last_words_have_played_in_the_room(
+    redis,
+):
+    media = FakeMedia()
+    vendor = FakeVendor([Reply(text="Hi", audio_s=0.1)])
+    async with running_relay(redis, vendor, edge=livekit_edge(media)) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start_on("livekit", asked="livekit")))
+        await read_until(ws, "turn_complete")
+        media.sources[0].playing = asyncio.Event()
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+        await running.postcalls_done()
+        # The call is over and its transcript made, but Otto is still talking
+        # in the room: a drain waits for it.
+        assert running.relay.held_slots == 0
+        assert running.relay.busy
+        media.sources[0].playing.set()
+        await until(lambda: not running.relay.busy)
+        assert media.rooms[0].left

@@ -66,6 +66,19 @@ COST_USD = Counter(
     "What onboarding voice interviews cost, by meter",
     ["meter"],
 )
+LIVEKIT_PARTICIPANT_SECONDS = Counter(
+    "voice_interview_livekit_participant_seconds_total",
+    "LiveKit participant-seconds the calls on the LiveKit leg used: the "
+    "relay's own time in each call's room and the person's, which LiveKit "
+    "bills as participant-minutes",
+)
+FALLBACKS = Counter(
+    "voice_interview_fallbacks_total",
+    "Calls whose audio fell back from a leg to the control socket, by the leg "
+    "and why: browser_join (the browser could not join the room), relay_join "
+    "(the relay could not), or relay_unconfigured (this relay has no LiveKit)",
+    ["from", "why"],
+)
 POSTCALL_SECONDS = Histogram(
     "voice_interview_postcall_seconds",
     "From a transcript job's start to its end",

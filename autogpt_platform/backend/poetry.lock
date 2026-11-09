@@ -3437,6 +3437,65 @@ requests = ">=2,<3"
 wrapt = ">=1.14,<2.0"
 
 [[package]]
+name = "livekit"
+version = "1.1.21"
+description = "Python Real-time SDK for LiveKit"
+optional = false
+python-versions = ">=3.9.0"
+groups = ["main"]
+files = [
+    {file = "livekit-1.1.21-py3-none-macosx_10_15_x86_64.whl", hash = "sha256:76c29bc95b771fb37a8f32371163eb6f48404cb880ad27bcadfbf2a5801514aa"},
+    {file = "livekit-1.1.21-py3-none-macosx_11_0_arm64.whl", hash = "sha256:b08c79ceaa5724a8a3d115c66f448fdc33a31c4cda883110d742209ec98a777c"},
+    {file = "livekit-1.1.21-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:4a2b036ba93a8d640b3770d62de1a9ee315824c9d2a0d7fbe1d1f26ecfa9ec6e"},
+    {file = "livekit-1.1.21-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:148553a7d6515cf0c373f591f962de221253fe305d0a84857f2955f520a54340"},
+    {file = "livekit-1.1.21-py3-none-win_amd64.whl", hash = "sha256:0f4bafc5d51cf686dbe308762fa4431e89503ee8348539924438c305a8019a54"},
+    {file = "livekit-1.1.21.tar.gz", hash = "sha256:c6c1783a99954147e46995087cbbfb77844049c0d53c33b761e0dfa7ff47256c"},
+]
+
+[package.dependencies]
+aiofiles = ">=24"
+numpy = ">=1.26"
+protobuf = ">=5"
+types-protobuf = ">=5"
+
+[[package]]
+name = "livekit-api"
+version = "1.2.2"
+description = "Python Server API for LiveKit"
+optional = false
+python-versions = ">=3.9.0"
+groups = ["main"]
+files = [
+    {file = "livekit_api-1.2.2-py3-none-any.whl", hash = "sha256:64f82ed90aaef2dc982dbc7f9dcda6f5dc958928ce77ef2b582459d8e2c87b6b"},
+    {file = "livekit_api-1.2.2.tar.gz", hash = "sha256:689753198dfefe58b007581fcce09e1089b2ad80adb3f9445798e55abdc9a264"},
+]
+
+[package.dependencies]
+aiohttp = {version = ">=3.14.4", markers = "python_version >= \"3.10\""}
+idna = ">=3.15"
+livekit-protocol = ">=1.1.27,<2.0.0"
+multidict = {version = ">=6.9.1", markers = "python_version >= \"3.10\""}
+protobuf = ">=4"
+pyjwt = ">=2.15.1"
+types-protobuf = ">=4"
+
+[[package]]
+name = "livekit-protocol"
+version = "1.1.27"
+description = "Python protocol stubs for LiveKit"
+optional = false
+python-versions = ">=3.9.0"
+groups = ["main"]
+files = [
+    {file = "livekit_protocol-1.1.27-py3-none-any.whl", hash = "sha256:765bbe0c9c6b626519f6f5952793f81eaf3f5b8c9bd1e1b03994f3177774aa10"},
+    {file = "livekit_protocol-1.1.27.tar.gz", hash = "sha256:740a4c6e438da763d204f2a6b0fc8f7f33ca96e27b17ce9abc6557dbb0a28dbd"},
+]
+
+[package.dependencies]
+protobuf = ">=5"
+types-protobuf = ">=5"
+
+[[package]]
 name = "lupa"
 version = "2.8"
 description = "Python wrapper around Lua and LuaJIT"
@@ -7768,6 +7827,18 @@ dev = ["coverage (>=4.4.2)", "coveralls (>=2.1.0)", "tox (>=3.21.0)"]
 test = ["urllib3 (<2)", "vcrpy (>=1.10.3)"]
 
 [[package]]
+name = "types-protobuf"
+version = "7.35.1.20260906"
+description = "Typing stubs for protobuf"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "types_protobuf-7.35.1.20260906-py3-none-any.whl", hash = "sha256:5155e48569e0dabff303fdf578db96cd31ea9a4a63b18018a4ceac6b0ae17462"},
+    {file = "types_protobuf-7.35.1.20260906.tar.gz", hash = "sha256:efd1a3862d4c967dad5512ef8d56b1530ac84f182c41735b94004756518c4998"},
+]
+
+[[package]]
 name = "typesafe-sdk"
 version = "0.6.0"
 description = "Python SDK for TypeSafe AI API."
@@ -8788,4 +8859,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "d123743cc0819f4192aa078bbf9b25e990918f5405e6690b223a8b481f265eb2"
+content-hash = "027d3109fbea15f95d257d2b576710c36c12100115dbfcc32097e05bf0f52cac"

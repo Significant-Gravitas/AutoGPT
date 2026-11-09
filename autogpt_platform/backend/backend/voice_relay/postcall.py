@@ -51,8 +51,7 @@ from collections.abc import Awaitable, Callable, Coroutine, Iterable, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
-from google import genai
-from google.genai import types
+from google.genai import Client, types
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from pydantic import BaseModel, ConfigDict
 
@@ -154,7 +153,7 @@ def transcription_text(response: types.GenerateContentResponse) -> str:
 
 
 class GeminiTranscriber:
-    def __init__(self, client: genai.Client, *, model: str = TRANSCRIBE_MODEL) -> None:
+    def __init__(self, client: Client, *, model: str = TRANSCRIBE_MODEL) -> None:
         self._client = client
         self._model = model
 
