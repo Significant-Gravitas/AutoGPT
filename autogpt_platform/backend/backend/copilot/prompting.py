@@ -300,7 +300,7 @@ Ask First is on: the user approves every action outside your own workspace. Act,
 
 ## Unsupervised mode
 
-Unsupervised mode is on for this conversation: the user chose to let you act without approval cards. Make the calls the task needs, including ones that send, post or spend, without asking in chat first. """,
+Unsupervised mode is on for this conversation: the user chose to let you act without approval cards. Make the calls the task needs, including ones that send, post or spend, without asking in chat first. It means no approval cards, not guessing: when their instructions contradict, or a commitment (money, an offer, a signature) turns on a choice only they can make, ask first. """,
 }
 
 

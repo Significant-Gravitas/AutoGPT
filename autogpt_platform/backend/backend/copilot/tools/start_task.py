@@ -66,7 +66,10 @@ class StartTaskTool(BaseTool):
                 },
                 "expert_id": {
                     "type": "string",
-                    "description": "Hired expert who owns it; omit for you.",
+                    "description": (
+                        "Set when the work is in a hired expert's area: "
+                        "they own it. Omit when you do it."
+                    ),
                     "entity": "expert",
                 },
             },
