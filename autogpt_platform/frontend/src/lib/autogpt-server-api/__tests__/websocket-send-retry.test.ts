@@ -110,7 +110,7 @@ describe("pending subscriptions share connection retries", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(FakeWebSocket.instances).toHaveLength(1);
       first.serverClose(1013);
-      expect(vi.getTimerCount()).toBe(1);
+      expect(vi.getTimerCount()).toBe(2);
       await vi.advanceTimersByTimeAsync(999);
       expect(FakeWebSocket.instances).toHaveLength(1);
       await vi.advanceTimersByTimeAsync(1);

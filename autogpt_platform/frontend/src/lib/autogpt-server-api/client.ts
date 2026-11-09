@@ -58,6 +58,7 @@ import type {
   WebSocketNotification,
 } from "./types";
 import { BackendWebSocket } from "./websocket-connection";
+import { waitForWebSocketConnection } from "./websocket-connection-wait";
 
 const isClient = environment.isClientSide();
 
@@ -979,7 +980,7 @@ export default class BackendAPI {
   ): Promise<void> {
     const message = JSON.stringify({ method, data });
     if (this.webSocket.send(message)) return;
-    await this.connectWebSocket();
+    await waitForWebSocketConnection(this.connectWebSocket());
     if (!this.webSocket.send(message)) {
       throw new Error("WebSocket connection is not authenticated");
     }
