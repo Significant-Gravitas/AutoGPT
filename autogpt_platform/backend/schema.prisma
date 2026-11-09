@@ -446,6 +446,12 @@ model UserOnboarding {
   role      String?
   roleOther String?
 
+  // The chat session of the user's onboarding interview, recorded the first
+  // time it is opened (backend/copilot/onboarding_interview.py). Not a
+  // relation: a session that is deleted leaves the id here, and the next
+  // start creates the interview again at it.
+  interviewSessionId String? @unique
+
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

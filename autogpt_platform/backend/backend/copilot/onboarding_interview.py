@@ -48,6 +48,10 @@ from backend.copilot.model import (
 )
 from backend.copilot.onboarding_interview_goals import ONBOARDING_INTERVIEW_GOALS
 from backend.data.db_accessors import chat_db
+from backend.data.onboarding import (
+    claim_onboarding_interview_session_id,
+    get_onboarding_interview_session_id,
+)
 
 if TYPE_CHECKING:
     from backend.copilot.model import ChatMessage, ChatSession, ChatSessionInfo
@@ -72,11 +76,14 @@ ONBOARDING_INTERVIEW_KICKOFF_MESSAGE = (
 ONBOARDING_INTERVIEW_TITLE = "Onboarding interview"
 
 _KICKOFF_MESSAGE_NAMESPACE = uuid.UUID("45c93a9f-6dbc-4e94-8167-93d7a5b6abdf")
-_SESSION_NAMESPACE = uuid.UUID("0b3f7a52-5e0c-4d61-9b8e-6a2f1c9d4e37")
 
 # Why a turn is refused. A route answers the first with 409 (the interview is
 # over) and the rest with 422 (the request can never be an interview turn).
 INTERVIEW_CLOSED = "onboarding_interview_closed"
+# Why the executor refuses a queued turn an interview never takes: one the
+# scheduler fired, one that is not a user message, or a message sent from
+# another session.
+INTERVIEW_PLAIN_USER_TURNS_ONLY = "onboarding_interview_plain_user_turns_only"
 INTERVIEW_ALREADY_STARTED = "onboarding_interview_already_started"
 INTERVIEW_USER_MESSAGES_ONLY = "onboarding_interview_user_messages_only"
 INTERVIEW_NO_EXPERT_KICKOFF = "onboarding_interview_no_expert_kickoff"
@@ -372,25 +379,16 @@ def render_interview_state(reply: int, cap: int) -> str:
     return f"<{INTERVIEW_STATE_TAG}>\n{body}\n</{INTERVIEW_STATE_TAG}>\n\n"
 
 
-def onboarding_interview_session_id(user_id: str) -> str:
-    """The id of *user_id*'s interview: one per user, so opening it twice
-    adopts the first instead of starting another."""
-    return str(uuid.uuid5(_SESSION_NAMESPACE, user_id))
-
-
-async def get_or_create_onboarding_interview_session(
-    user_id: str,
-    *,
-    organization_id: str | None = None,
-    team_id: str | None = None,
-) -> "ChatSession":
+async def get_or_create_onboarding_interview_session(user_id: str) -> "ChatSession":
     """The user's onboarding interview, created on first use.
 
-    Keyed on the user, so a retry, a second tab or a second visit all land in
-    the same interview. Runs on the platform route: someone who just signed
-    up has no other connection.
+    Its session id is recorded on the user's onboarding row the first time,
+    so a retry, a second tab or a second visit all land in the same
+    interview, and an interview whose session was deleted is created again at
+    the recorded id. Created outside any organization or team, and on the
+    platform route: someone who just signed up has no other connection.
     """
-    session_id = onboarding_interview_session_id(user_id)
+    session_id = await claim_onboarding_interview_session_id(user_id, str(uuid.uuid4()))
     existing = await get_chat_session(session_id, user_id)
     if existing is not None:
         return _as_interview(existing)
@@ -398,8 +396,8 @@ async def get_or_create_onboarding_interview_session(
         await chat_db().create_chat_session(
             session_id=session_id,
             user_id=user_id,
-            organization_id=organization_id,
-            team_id=team_id,
+            organization_id=None,
+            team_id=None,
             metadata=ChatSessionMetadata(
                 kind=ONBOARDING_INTERVIEW_KIND,
                 origin="interactive",
@@ -420,6 +418,18 @@ async def get_or_create_onboarding_interview_session(
     return _as_interview(session)
 
 
+async def find_onboarding_interview_session(user_id: str) -> "ChatSession | None":
+    """The user's onboarding interview, or ``None`` when they have none. For
+    callers that must never create one."""
+    session_id = await get_onboarding_interview_session_id(user_id)
+    if session_id is None:
+        return None
+    session = await get_chat_session(session_id, user_id)
+    if session is None or not is_onboarding_interview(session):
+        return None
+    return session
+
+
 def _as_interview(session: "ChatSession") -> "ChatSession":
     if not is_onboarding_interview(session):
         raise ValueError(f"Session {session.session_id} is not an onboarding interview")
@@ -430,6 +440,16 @@ def onboarding_interview_kickoff_message_id(user_id: str, session_id: str) -> st
     """The kickoff's message PK: one per interview, so starting an interview a
     second time collides on it instead of greeting the user twice."""
     return str(uuid.uuid5(_KICKOFF_MESSAGE_NAMESPACE, f"{user_id}:{session_id}"))
+
+
+async def _stored_messages(session: "ChatSession") -> Sequence["ChatMessage"]:
+    """The interview's rows as the database holds them."""
+    from backend.copilot.db import MAX_LOADED_CHAT_MESSAGES
+
+    page = await chat_db().get_chat_messages_paginated(
+        session.session_id, limit=MAX_LOADED_CHAT_MESSAGES
+    )
+    return page.messages if page is not None else session.messages
 
 
 def onboarding_interview_kickoff_metadata() -> dict[str, Any]:
@@ -451,9 +471,10 @@ async def kick_off_onboarding_interview(session: "ChatSession") -> str | None:
 
     The server writes all of it (text, id, metadata), so a client can open an
     interview but never phrase its first prompt. Safe to call again: a kickoff
-    that was answered is left alone, and one whose turn died before it replied
-    is dispatched again. Returns the new turn id, or ``None`` when there is
-    nothing to start (already answered, or another turn holds the session).
+    that was answered is left alone, and one whose turn died before it replied,
+    or wrote only an error, is dispatched again without a second row. Returns
+    the new turn id, or ``None`` when there is nothing to start (already
+    answered, or another turn holds the session).
 
     Who may start one, and on whose allowance, is the caller's decision
     (``onboarding_dump.interview.start_onboarding_interview``).
@@ -479,8 +500,11 @@ async def kick_off_onboarding_interview(session: "ChatSession") -> str | None:
     message_id = onboarding_interview_kickoff_message_id(
         session.user_id, session.session_id
     )
-    replied = await chat_message_has_assistant_reply(message_id, session.session_id)
-    if replied:
+    # None when the kickoff was never written. An assistant row after it can
+    # be an error the turn wrote instead of a greeting, so only a reply
+    # counts as an answer, read from the database rather than a cached copy.
+    followed = await chat_message_has_assistant_reply(message_id, session.session_id)
+    if followed and count_answered_turns(await _stored_messages(session)) > 0:
         return None
     return await schedule_chat_turn(
         session_id=session.session_id,
@@ -489,8 +513,9 @@ async def kick_off_onboarding_interview(session: "ChatSession") -> str | None:
         message_id=message_id,
         message_metadata=onboarding_interview_kickoff_metadata(),
         # Written but never answered: the turn that should have answered it
-        # died, so dispatch it again without a second row.
-        message_already_persisted=replied is False,
+        # died, or wrote only an error, so dispatch it again without a
+        # second row.
+        message_already_persisted=followed is not None,
         # Never queued behind another turn: a kickoff answered late would
         # greet someone mid-conversation.
         require_fresh_slot=True,
