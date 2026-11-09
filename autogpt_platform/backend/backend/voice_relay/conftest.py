@@ -282,6 +282,7 @@ async def running_relay(
     record_delay_s: float = 0.0,
     max_concurrent: int = 25,
     transcriber: ScriptedTranscriber | None = None,
+    redis_delay_s: float = 0.0,
 ) -> AsyncIterator[RunningRelay]:
     """The relay app under a real uvicorn server on a free local port."""
     rows: list[Row] = []
@@ -290,6 +291,8 @@ async def running_relay(
     hand_offs = HandOffs()
 
     async def get_redis():
+        if redis_delay_s:
+            await asyncio.sleep(redis_delay_s)
         return redis
 
     async def account_name(user_id: str) -> str | None:
