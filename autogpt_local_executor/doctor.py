@@ -25,7 +25,6 @@ import asyncio
 import contextlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 import threading
@@ -426,16 +425,19 @@ async def _macos_grants(bridge: CuaDriverBridge) -> dict[str, bool] | None:
 
 def _check_linux_clipboard_types() -> CheckResult:
     """Reading clipboard content the shim didn't write first checks it for
-    a password manager's marker, with wl-paste or xclip."""
-    wayland = bool(os.environ.get("WAYLAND_DISPLAY"))
-    tool = "wl-paste" if wayland else "xclip"
-    if shutil.which(tool):
-        return CheckResult("OK", "clipboard types", f"{tool} present")
+    a password manager's marker, with wl-paste or xclip, picked as the
+    check itself picks them."""
+    from .computer_use.concealed import linux_clipboard_types_command
+
+    argv = linux_clipboard_types_command()
+    if argv is not None:
+        return CheckResult("OK", "clipboard types", f"{argv[0]} present")
     return CheckResult(
         "WARN",
         "clipboard types",
-        f"{tool} not on PATH — clipboard_read refuses content the shim didn't write, "
-        "since it can't check it for a password manager's marker",
+        "neither wl-paste (with WAYLAND_DISPLAY) nor xclip (with DISPLAY) is usable — "
+        "clipboard_read refuses content the shim didn't write, since it can't check it "
+        "for a password manager's marker",
     )
 
 

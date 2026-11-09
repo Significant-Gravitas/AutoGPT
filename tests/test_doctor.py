@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -390,12 +391,40 @@ def test_doctor_checks_the_tool_foreign_clipboard_reads_need(
     monkeypatch, present: bool, marker: str
 ) -> None:
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-    monkeypatch.setattr(doctor.shutil, "which", lambda name: name if present else None)
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setattr(shutil, "which", lambda name: name if present else None)
 
     result = doctor._check_linux_clipboard_types()
 
     assert result.marker == marker
     assert "xclip" in result.detail
+
+
+@pytest.mark.parametrize(
+    ("env", "installed", "marker", "tool"),
+    [
+        ({"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}, {"xclip"}, "OK", "xclip"),
+        ({"WAYLAND_DISPLAY": "wayland-0"}, {"wl-paste"}, "OK", "wl-paste"),
+        ({}, {"xclip", "wl-paste"}, "WARN", "xclip"),
+    ],
+    ids=["mixed-session-xclip-only", "wayland", "no-display"],
+)
+def test_doctor_picks_the_clipboard_tool_the_check_uses(
+    monkeypatch, env: dict[str, str], installed: set[str], marker: str, tool: str
+) -> None:
+    """doctor asked for wl-paste whenever WAYLAND_DISPLAY was set, where the
+    check itself goes on to xclip with an X display, and took xclip without
+    any display, where the check counts the clipboard as unreadable."""
+    for name in ("WAYLAND_DISPLAY", "DISPLAY"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(shutil, "which", lambda name: name if name in installed else None)
+
+    result = doctor._check_linux_clipboard_types()
+
+    assert result.marker == marker
+    assert tool in result.detail
 
 
 # ── Daemon preflight ─────────────────────────────────────────────────────

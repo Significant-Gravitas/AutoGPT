@@ -111,12 +111,19 @@ def _windows_state() -> ClipboardState:
         return ClipboardState(UNKNOWN)
 
 
-def _linux_state() -> ClipboardState:
+def linux_clipboard_types_command() -> list[str] | None:
+    """The command that lists the clipboard's types on Linux: wl-paste in a
+    Wayland session that has it, else xclip with an X display, else None."""
     if os.environ.get("WAYLAND_DISPLAY") and shutil.which("wl-paste"):
-        argv = ["wl-paste", "--list-types"]
-    elif os.environ.get("DISPLAY") and shutil.which("xclip"):
-        argv = ["xclip", "-selection", "clipboard", "-t", "TARGETS", "-o"]
-    else:
+        return ["wl-paste", "--list-types"]
+    if os.environ.get("DISPLAY") and shutil.which("xclip"):
+        return ["xclip", "-selection", "clipboard", "-t", "TARGETS", "-o"]
+    return None
+
+
+def _linux_state() -> ClipboardState:
+    argv = linux_clipboard_types_command()
+    if argv is None:
         return ClipboardState(UNKNOWN)
     try:
         listed = subprocess.run(
@@ -145,5 +152,6 @@ __all__ = [
     "UNKNOWN",
     "ClipboardState",
     "clipboard_state",
+    "linux_clipboard_types_command",
     "marker_in",
 ]
