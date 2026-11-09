@@ -196,6 +196,15 @@ from backend.data.subscription_trial import (
     list_trials_ending_unrenewed,
     record_subscription_trial_cost,
 )
+from backend.data.task import (
+    archive_task,
+    attach_task_session,
+    create_task,
+    detach_task_session,
+    get_task,
+    list_tasks,
+    update_task,
+)
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -586,6 +595,17 @@ class DatabaseManager(AppService):
 
     # ============ Activity Events ============ #
     create_activity_event = _(create_activity_event)
+
+    # ============ Tasks ============ #
+    # The copilot executor keeps no Prisma connection; its task tools read
+    # and write through here.
+    create_task = _(create_task)
+    get_task = _(get_task)
+    list_tasks = _(list_tasks)
+    update_task = _(update_task)
+    archive_task = _(archive_task)
+    attach_task_session = _(attach_task_session)
+    detach_task_session = _(detach_task_session)
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
@@ -1193,6 +1213,15 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Activity Events ============ #
     create_activity_event = d.create_activity_event
+
+    # ============ Tasks ============ #
+    create_task = d.create_task
+    get_task = d.get_task
+    list_tasks = d.list_tasks
+    update_task = d.update_task
+    archive_task = d.archive_task
+    attach_task_session = d.attach_task_session
+    detach_task_session = d.detach_task_session
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions

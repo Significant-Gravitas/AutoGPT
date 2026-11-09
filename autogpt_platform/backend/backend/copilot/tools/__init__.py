@@ -89,6 +89,13 @@ from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .start_desktop import StartDesktopTool
+from .tasks import (
+    ArchiveTaskTool,
+    CreateTaskTool,
+    GetTaskTool,
+    ListTasksTool,
+    UpdateTaskTool,
+)
 from .todo_write import TodoWriteTool
 from .update_expert import UpdateExpertTool
 from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
@@ -135,6 +142,12 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "move_folder": MoveFolderTool(),
     "delete_folder": DeleteFolderTool(),
     "move_agents_to_folder": MoveAgentsToFolderTool(),
+    # Tasks: one record per piece of work, linked to the chats it ran in
+    "create_task": CreateTaskTool(),
+    "list_tasks": ListTasksTool(),
+    "get_task": GetTaskTool(),
+    "update_task": UpdateTaskTool(),
+    "archive_task": ArchiveTaskTool(),
     "run_agent": RunAgentTool(),
     # Schedule management
     "list_schedules": ListSchedulesTool(),

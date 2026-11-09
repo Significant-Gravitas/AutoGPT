@@ -216,6 +216,7 @@ model User {
   CreditTransactions   CreditTransaction[]
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
+  Tasks                Task[]
   ChatMessageFeedback  ChatMessageFeedback[]
   UserBriefings        UserBriefing[]
   ActivityEvents       ActivityEvent[]
@@ -927,6 +928,10 @@ model ChatSession {
   SharedChatFiles  SharedChatFile[]
   ChatLinkedShares ChatLinkedShare[]
 
+  // The tasks worked on in this chat. A chat can carry several tasks, and a
+  // task can span several chats (delegations, sub-sessions).
+  TaskSessions TaskSession[]
+
   // Single compound index covers (a) the cap-count (count by userId +
   // chatStatus), (b) the queue-list ORDER BY updatedAt asc, AND (c) the
   // sidebar list (find_many WHERE userId ORDER BY updatedAt desc).
@@ -999,6 +1004,82 @@ model ChatBackgroundTask {
 
   @@index([followupState, updatedAt])
   @@index([userId, parentSessionId, launchTurnId])
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  FAILED
+  CANCELLED
+}
+
+enum TaskCreator {
+  USER
+  OTTO
+  EXPERT
+}
+
+// One piece of work: its own record of what was asked, who owns it and where
+// it stands, apart from the chat it was asked in. A chat can carry several
+// tasks and a task can span several chats, through TaskSession.
+model Task {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+
+  // The expert who does the work; null = Otto owns it.
+  ownerExpertId String?
+  OwnerExpert   Expert? @relation("TaskOwnerExpert", fields: [ownerExpertId], references: [id], onDelete: SetNull)
+
+  createdBy         TaskCreator
+  // Set when createdBy is EXPERT.
+  createdByExpertId String?
+  CreatedByExpert   Expert?     @relation("TaskCreatorExpert", fields: [createdByExpertId], references: [id], onDelete: SetNull)
+
+  // Stamped on the first move to IN_PROGRESS, and on reaching DONE, FAILED or
+  // CANCELLED; cleared when the task goes back to TODO.
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  // Soft delete: an archived task keeps its history.
+  isArchived Boolean @default(false)
+  metadata   Json    @default("{}")
+
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  Sessions TaskSession[]
+
+  @@index([userId, isArchived, updatedAt])
+  @@index([userId, status])
+  @@index([ownerExpertId])
+  @@index([teamId, updatedAt])
+  @@index([organizationId])
+}
+
+// Which chats a task was worked on in, many to many.
+model TaskSession {
+  createdAt DateTime @default(now())
+
+  taskId String
+  Task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  chatSessionId String
+  ChatSession   ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, chatSessionId])
+  @@index([chatSessionId])
 }
 
 model ChatMessage {
@@ -1518,6 +1599,8 @@ model Expert {
   Routines        ExpertRoutine[]
   DreamPasses     DreamPass[]
   MemorySchedule  MemoryScopeSchedule?
+  OwnedTasks      Task[]               @relation("TaskOwnerExpert")
+  CreatedTasks    Task[]               @relation("TaskCreatorExpert")
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -3509,6 +3592,7 @@ model Team {
   AgentGraphs    AgentGraph[]
   Executions     AgentGraphExecution[]
   ChatSessions   ChatSession[]
+  Tasks          Task[]
   Presets        AgentPreset[]
   LibraryAgents  LibraryAgent[]
   LibraryFolders LibraryFolder[]

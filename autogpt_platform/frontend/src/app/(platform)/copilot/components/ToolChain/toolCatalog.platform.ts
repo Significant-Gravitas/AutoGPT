@@ -13,6 +13,34 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     running: "Updating tasks",
     done: "Updated tasks",
   },
+  create_task: {
+    category: "todo",
+    running: "Creating task",
+    done: "Created task",
+    subject: (input) => quoted(input, "title"),
+  },
+  list_tasks: {
+    category: "todo",
+    running: "Checking your tasks",
+    done: "Checked your tasks",
+    empty: "none yet",
+  },
+  get_task: {
+    category: "todo",
+    running: "Reading task",
+    done: "Read task",
+  },
+  update_task: {
+    category: "todo",
+    running: "Updating task",
+    done: "Updated task",
+    subject: (input) => quoted(input, "title"),
+  },
+  archive_task: {
+    category: "todo",
+    running: "Archiving task",
+    done: "Archived task",
+  },
   web_search: {
     category: "web",
     running: "Searching the web for",

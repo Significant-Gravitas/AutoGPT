@@ -102,6 +102,13 @@ class ResponseType(str, Enum):
     FOLDER_DELETED = "folder_deleted"
     AGENTS_MOVED_TO_FOLDER = "agents_moved_to_folder"
 
+    # Tasks
+    TASK_CREATED = "task_created"
+    TASK_LIST = "task_list"
+    TASK_DETAILS = "task_details"
+    TASK_UPDATED = "task_updated"
+    TASK_ARCHIVED = "task_archived"
+
     # Browser automation
     BROWSER_NAVIGATE = "browser_navigate"
     BROWSER_ACT = "browser_act"

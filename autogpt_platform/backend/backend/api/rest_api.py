@@ -75,6 +75,7 @@ import backend.api.features.store.routes
 import backend.api.features.store.skill_routes
 import backend.api.features.subscription_activation_routes as subscription_activation_routes
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
+import backend.api.features.tasks.routes as tasks_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.user.routes as user_routes
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
@@ -500,6 +501,7 @@ app.include_router(
 app.include_router(experts_routes.public_router, tags=["v2", "experts"], prefix="/api")
 app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
 app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api")
+app.include_router(tasks_routes.router, tags=["v2", "tasks"], prefix="/api")
 app.include_router(
     skill_learning_routes.router, tags=["v2", "skill-learning"], prefix="/api"
 )

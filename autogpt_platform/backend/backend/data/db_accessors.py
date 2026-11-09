@@ -478,3 +478,16 @@ def scheduled_chats_db():
         scheduled_chats_db = get_database_manager_async_client()
 
     return scheduled_chats_db
+
+
+def task_db():
+    if db.is_connected():
+        from backend.data import task as _task_db
+
+        task_db = _task_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        task_db = get_database_manager_async_client()
+
+    return task_db
