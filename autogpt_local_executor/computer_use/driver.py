@@ -350,8 +350,17 @@ class CuaDriverBridge:
         A start still running at the deadline goes on without the caller,
         who gets CallNotStarted: stopping it part way would count against
         the restart budget, and the next call finds the driver ready. Every
-        caller in the meantime waits for that one start."""
-        await asyncio.to_thread(platform_info.session_display.follow)
+        caller in the meantime waits for that one start. So does the look at
+        the desktop's display before it (systemctl, under the systemd
+        service): one that hangs, or waits for a free thread, would hold the
+        driver's turn past the deadline."""
+        try:
+            async with asyncio.timeout_at(deadline):
+                await asyncio.to_thread(platform_info.session_display.follow)
+        except TimeoutError:
+            raise CallNotStarted(
+                f"{name}'s deadline passed while the desktop's display was checked"
+            ) from None
         client = self._client
         if client is not None and client.alive and self._same_display():
             return client

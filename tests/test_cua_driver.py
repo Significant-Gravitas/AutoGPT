@@ -1590,6 +1590,37 @@ async def test_a_call_gives_up_on_a_slow_start_and_leaves_it_running(fake_log) -
         await bridge.close()
 
 
+async def test_a_call_gives_up_on_a_display_check_that_hangs(fake_log) -> None:
+    """Before each call the bridge looks at the desktop's display (systemctl,
+    under the systemd service), in a thread, with no deadline: a look that
+    hung, or waited for a thread while every one was busy, kept the call
+    waiting past its deadline, holding the driver's turn every chat's calls
+    share."""
+    import threading
+    from unittest.mock import patch
+
+    from autogpt_local_executor import platform_info
+
+    released = threading.Event()
+
+    def follow() -> bool:
+        released.wait(60)
+        return False
+
+    bridge = _bridge()
+    try:
+        with patch.object(platform_info.session_display, "follow", follow):
+            call = asyncio.ensure_future(bridge.call_tool("get_screen_size", {}, timeout=0.3))
+            done, _ = await asyncio.wait({call}, timeout=20)
+            assert call in done
+            with pytest.raises(driver.CallNotStarted):
+                call.result()
+            assert not bridge._turn.locked()
+    finally:
+        released.set()
+        await bridge.close()
+
+
 async def test_a_call_whose_deadline_passes_while_the_driver_starts_never_runs(
     tmp_path, fake_log
 ) -> None:
