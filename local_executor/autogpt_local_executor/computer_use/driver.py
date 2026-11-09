@@ -307,7 +307,7 @@ class CuaDriverBridge:
         # only once it is done (below).
         stopping: asyncio.Future[None] | None = None
         try:
-            client = await self._client_by(start_by, name)
+            client = await self._client_by(start_by, name, call_deadline=deadline)
             remaining = deadline - loop.time()
             if remaining <= 0:
                 raise CallNotStarted(f"{name}'s deadline passed while the driver started")
@@ -344,14 +344,29 @@ class CuaDriverBridge:
 
     # ── Starting ─────────────────────────────────────────────────────
 
-    async def _client_by(self, deadline: float, name: str) -> StdioMcpClient:
+    async def _client_by(
+        self, deadline: float, name: str, *, call_deadline: float | None = None
+    ) -> StdioMcpClient:
         """The running driver, started if need be, by `deadline` (loop time).
 
         A start still running at the deadline goes on without the caller,
         who gets CallNotStarted: stopping it part way would count against
         the restart budget, and the next call finds the driver ready. Every
-        caller in the meantime waits for that one start."""
-        await asyncio.to_thread(platform_info.session_display.follow)
+        caller in the meantime waits for that one start.
+
+        The look at the desktop's display first (systemctl, under the
+        systemd service) is no wait for anyone else, so it ends at the
+        call's own deadline, `call_deadline` (`deadline` if not given): one
+        that hangs, or waits for a free thread, can't hold the driver's turn
+        past it, and a call whose start window went on waiting for the turn
+        still reaches a driver that is running."""
+        try:
+            async with asyncio.timeout_at(deadline if call_deadline is None else call_deadline):
+                await asyncio.to_thread(platform_info.session_display.follow)
+        except TimeoutError:
+            raise CallNotStarted(
+                f"{name}'s deadline passed while the desktop's display was checked"
+            ) from None
         client = self._client
         if client is not None and client.alive and self._same_display():
             return client

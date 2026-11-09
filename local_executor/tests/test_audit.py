@@ -385,6 +385,42 @@ def test_keys_pressed_one_character_at_a_time_are_redacted() -> None:
     assert steps[3]["args"] == {"keys": ["ctrl", "c"]}
 
 
+@pytest.mark.parametrize(
+    ("platform", "chord", "types"),
+    [
+        # On a Mac, Option with a key types a character: Option+L is @ on a
+        # German layout, Option+Shift+7 a backslash.
+        ("darwin", ["option", "l"], True),
+        ("darwin", ["alt", "shift", "7"], True),
+        ("darwin", ["cmd", "option", "m"], False),
+        # Windows reads Ctrl+Alt as AltGr: Ctrl+Alt+Q is @ on a German layout.
+        ("win32", ["ctrl", "alt", "q"], True),
+        ("win32", ["alt", "f"], False),  # a menu's access key
+        ("linux", ["alt", "f"], False),
+        ("linux", ["ctrl", "alt", "t"], False),
+    ],
+)
+def test_a_chord_that_types_a_character_is_redacted(
+    platform: str, chord: list[str], types: bool
+) -> None:
+    """Only a Shift chord's character was redacted, so a secret typed with
+    Option on a Mac, or with Ctrl+Alt on Windows, went into the audit log a
+    chord at a time, its characters there to read back from the keyboard
+    layout. The modifiers, and command chords, stay readable."""
+    from autogpt_local_executor.handlers import _audit_arguments
+
+    details = _audit_arguments(
+        {"keys": chord, "steps": [{"tool": "hotkey", "args": {"keys": chord}}]},
+        platform=platform,
+    )
+
+    expected = (
+        [{"redacted_chars": 1} if len(key) == 1 else key for key in chord] if types else chord
+    )
+    assert details["keys"] == expected
+    assert details["steps"][0]["args"]["keys"] == expected
+
+
 # ── verify-all across multiple rotated files ─────────────────────────────────
 
 
@@ -1307,6 +1343,51 @@ def test_a_locked_keychain_is_not_replaced_by_the_file_key(monkeypatch) -> None:
         with pytest.raises(AuditKeyUnavailableError):
             get_or_create_audit_key()
     fallback.assert_not_called()
+
+
+class _PriorityRaises(type):
+    @property
+    def priority(cls) -> float:
+        raise RuntimeError("The Secret Service daemon is neither running nor activatable")
+
+
+class KeyringNotUpYet(metaclass=_PriorityRaises):
+    """A backend keyring can load whose service isn't running yet, as
+    SecretService is before the desktop session starts it."""
+
+
+@pytest.mark.parametrize(
+    ("backend", "for_good"),
+    [
+        ("keyring.backends.no_such_backend.Keyring", True),  # no such module
+        ("keyring.backends.fail.NoSuchKeyring", True),  # no such class
+        ("NoModuleKeyring", True),  # a name without its module
+        (f"{__name__}.KeyringNotUpYet", False),
+    ],
+)
+def test_a_keyring_backend_that_cant_be_loaded_is_not_waited_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, backend: str, for_good: bool
+) -> None:
+    """A PYTHON_KEYRING_BACKEND naming a backend that isn't there raised
+    ModuleNotFoundError, AttributeError or ValueError from the key read,
+    which the shim took for a keychain still locked: the service exited to
+    be started again, every few seconds, over a setting no restart fixes.
+    A backend that is there but not running yet is still waited for."""
+    import keyring.core
+
+    from autogpt_local_executor.audit import AuditKeyError, AuditKeyUnavailableError
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", backend)
+    # keyring picks its backend once per process; have it pick again.
+    monkeypatch.setattr(keyring.core, "_keyring_backend", None)
+
+    expected = AuditKeyError if for_good else AuditKeyUnavailableError
+    with pytest.raises(expected) as raised:
+        get_or_create_audit_key(tmp_path / "audit.log")
+
+    assert ("PYTHON_KEYRING_BACKEND" in str(raised.value)) is for_good
+    assert not (tmp_path / "audit-key.enc").exists()
 
 
 @pytest.mark.parametrize("error", ["NoKeyringError", "InitError"])

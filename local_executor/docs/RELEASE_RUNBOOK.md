@@ -75,22 +75,36 @@ End-user install: `scoop bucket add autogpt https://github.com/Significant-Gravi
 - Every change made to the monorepo copy (`local_executor/` in
   AutoGPT) is in this repository too. Fixes usually land here first and
   reach the monorepo with `git subtree pull`, but a change made only in
-  the monorepo has to come back the other way before you tag. From an
-  AutoGPT checkout:
+  the monorepo has to come back the other way before you tag. Push it to
+  the branch you will tag, the release branch (`experimental/local-pc-executor`
+  until there is another), from an AutoGPT checkout:
 
   ```bash
+  RELEASE_BRANCH=experimental/local-pc-executor  # the branch step 1 tags
   git subtree push --prefix=local_executor \
     git@github.com:Significant-Gravitas/autogpt-local-executor.git \
-    experimental/local-pc-executor
+    "$RELEASE_BRANCH"
   ```
 
-  It fails if this repository has commits the monorepo doesn't; pull
-  them in first (`git subtree pull`, same prefix and URL).
+  It fails if that branch has commits the monorepo doesn't; pull them in
+  first (`git subtree pull`, same prefix, URL and branch). Then check that
+  the branch holds the monorepo's code:
+
+  ```bash
+  git fetch git@github.com:Significant-Gravitas/autogpt-local-executor.git "$RELEASE_BRANCH"
+  git diff --stat FETCH_HEAD HEAD:local_executor
+  ```
+
+  It should list only the files the monorepo keeps its own way: its
+  `README.md`, `AGENTS.md`, `CLAUDE.md` and `pyproject.toml`, and this
+  repository's `.github/workflows/`, which the monorepo doesn't carry.
 
 ### 1. Tag + push
 
+On the branch the pre-flight pushed to, and checked:
+
 ```bash
-git checkout experimental/local-pc-executor  # or whatever the release branch is
+git checkout experimental/local-pc-executor  # the release branch, as above
 git pull
 git tag v0.0.1
 git push origin v0.0.1

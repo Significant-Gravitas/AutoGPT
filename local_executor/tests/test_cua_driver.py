@@ -1004,6 +1004,59 @@ async def test_hellos_screen_size_survives_an_ended_session(
     assert await handler.screen_size() == (1920, 1080)
 
 
+async def test_a_renewed_session_waits_no_longer_than_the_call_would(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """The call that goes again under a new label got only what was left of
+    its timeout, not of its start window: when another chat's call took the
+    shared driver in between, a child's HELLO screen size or permission
+    check waited for it up to its whole timeout (10 s, 30 s), past the
+    platform's wait for the session to connect, instead of giving up as the
+    first call would have."""
+    handler = make_handler()
+    monkeypatch.setenv("FAKE_CUA_ENDED_SESSIONS", handler.session_label)
+    bridge = handler.driver
+    await bridge.snapshot()  # running already: the first try needs no start
+    real_call_tool = bridge.call_tool
+    calls = 0
+
+    async def call_tool(name, arguments, **kwargs):
+        nonlocal calls
+        calls += 1
+        result = await real_call_tool(name, arguments, **kwargs)
+        if calls == 1:
+            await bridge._turn.acquire()  # another chat's call takes the driver
+        return result
+
+    monkeypatch.setattr(bridge, "call_tool", call_tool)
+    try:
+        renewed = handler.call_driver(
+            "get_screen_size", {"session": handler.session_label}, timeout=60, start_within=0.5
+        )
+        with pytest.raises(driver.CallNotStarted):
+            await asyncio.wait_for(renewed, timeout=20)
+    finally:
+        if bridge._turn.locked():
+            bridge._turn.release()
+
+    assert calls == 2
+
+
+async def test_a_spent_start_window_still_reaches_a_free_driver(make_handler, fake_log) -> None:
+    """The start window bounds the wait for the driver's turn and its start.
+    A call with none of it left, but with the driver running and free, goes
+    ahead: the look at the desktop's display it makes first is no wait, and
+    is bounded by the call's own deadline."""
+    handler = make_handler()
+    await handler.driver.snapshot()
+
+    raw = await handler.call_driver(
+        "get_screen_size", {"session": handler.session_label}, timeout=30, start_within=0
+    )
+
+    assert raw["structuredContent"]["width"] == 1920
+
+
 async def test_a_refusal_for_another_reason_is_not_sent_again(
     make_handler, fake_log, monkeypatch
 ) -> None:
@@ -1587,6 +1640,37 @@ async def test_a_call_gives_up_on_a_slow_start_and_leaves_it_running(fake_log) -
         assert held.started[0].alive
     finally:
         held.go.set()
+        await bridge.close()
+
+
+async def test_a_call_gives_up_on_a_display_check_that_hangs(fake_log) -> None:
+    """Before each call the bridge looks at the desktop's display (systemctl,
+    under the systemd service), in a thread, with no deadline: a look that
+    hung, or waited for a thread while every one was busy, kept the call
+    waiting past its deadline, holding the driver's turn every chat's calls
+    share."""
+    import threading
+    from unittest.mock import patch
+
+    from autogpt_local_executor import platform_info
+
+    released = threading.Event()
+
+    def follow() -> bool:
+        released.wait(60)
+        return False
+
+    bridge = _bridge()
+    try:
+        with patch.object(platform_info.session_display, "follow", follow):
+            call = asyncio.ensure_future(bridge.call_tool("get_screen_size", {}, timeout=0.3))
+            done, _ = await asyncio.wait({call}, timeout=20)
+            assert call in done
+            with pytest.raises(driver.CallNotStarted):
+                call.result()
+            assert not bridge._turn.locked()
+    finally:
+        released.set()
         await bridge.close()
 
 

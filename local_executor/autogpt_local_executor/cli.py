@@ -497,8 +497,10 @@ def _service_global_args(args, environment: dict[str, object]) -> tuple[str, ...
         if value is None:
             continue
         if field == "allowed_root":
-            # The service runs in another working directory.
-            value = os.path.abspath(str(value))
+            # The service runs in another working directory. A `~` the
+            # shell left alone (quoted, after `=`, from the environment) is
+            # the home directory, as the config reads it.
+            value = os.path.abspath(os.path.expanduser(str(value)))
         out += [flag, str(value)]
     return tuple(out)
 

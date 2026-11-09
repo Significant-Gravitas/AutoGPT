@@ -40,7 +40,9 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
+
+from pydantic import ValidationError
 
 from ..config import ShimConfig
 from ..protocol import StepEnrichment, TrajectoryStep
@@ -194,17 +196,28 @@ class A11yEnricher(CaptureSource):
             if step.enrichment.kind != "none":
                 yield step
                 continue
-            resolved = self._resolve(step) or {}
-            fields = {key: resolved.get(key) for key in ("ax_path", "role", "label")}
+            resolved = self._resolve(step)
+            fields = (
+                {key: resolved.get(key) for key in ("ax_path", "role", "label")}
+                if isinstance(resolved, Mapping)
+                else {}
+            )
             if not any(fields.values()):
                 yield step  # nothing the tree could name: keeps kind:none
                 continue
-            enrichment = StepEnrichment(
-                kind="ax",
-                ax_path=fields["ax_path"],
-                role=fields["role"],
-                label=fields["label"],
-            )
+            try:
+                enrichment = StepEnrichment(
+                    kind="ax",
+                    ax_path=fields["ax_path"],
+                    role=fields["role"],
+                    label=fields["label"],
+                )
+            except ValidationError:
+                # A field that isn't text (a number, a native object): as
+                # good as a resolver that failed, for this step alone.
+                logger.debug("a11y: resolver answered no text; treating as no enrichment")
+                yield step
+                continue
             yield step.model_copy(update={"enrichment": enrichment})
 
 

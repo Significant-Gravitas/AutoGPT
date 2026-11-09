@@ -83,6 +83,10 @@ class _CallbackServer(HTTPServer):
     ::1 and the same port, closed with it."""
 
     companion: _CallbackServer | None = None
+    # Never SO_REUSEPORT, which Python 3.14's first betas had HTTPServer set:
+    # another program of the same user could listen on the port too and take
+    # the redirect.
+    allow_reuse_port = False
 
     def server_bind(self) -> None:
         if sys.platform == "win32":

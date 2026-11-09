@@ -611,6 +611,7 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
             )
         return _fallback_audit_key()
     try:
+        _load_keyring_backend(keyring)
         stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
         if stored is not None:
             try:
@@ -644,6 +645,22 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
         raise AuditKeyUnavailableError(
             f"The OS keychain couldn't be read for the audit key ({type(exc).__name__}); "
             "it may still be locked"
+        ) from exc
+
+
+def _load_keyring_backend(keyring: Any) -> None:
+    """Have keyring pick its backend. One that PYTHON_KEYRING_BACKEND or
+    keyring's configuration file names but that can't be loaded (a module
+    or class that isn't there, a name without its module) raises
+    AuditKeyError: no restart fixes a setting. A backend that loads but
+    isn't running yet raises something else, and is waited for as a
+    keychain still locked is."""
+    try:
+        keyring.get_keyring()
+    except (ImportError, AttributeError, ValueError) as exc:
+        raise AuditKeyError(
+            "The keyring backend named by PYTHON_KEYRING_BACKEND or keyring's configuration "
+            f"file can't be loaded ({type(exc).__name__}: {exc}). Fix or remove that setting"
         ) from exc
 
 

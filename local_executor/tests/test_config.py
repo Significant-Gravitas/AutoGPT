@@ -462,3 +462,29 @@ def test_a_home_relative_path_setting_is_expanded(
     assert config.allowed_root == home / "workspace"
     assert config.audit_log_path == home / "logs" / "audit.log"
     assert config.recording_buffer_dir == home / "buffer"
+
+
+def test_a_home_that_cant_be_found_is_a_configuration_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`~name` for an account the machine doesn't have made pathlib raise
+    RuntimeError, which pydantic lets through: `start` ended in a traceback
+    and status 1, which launchd and systemd restart, rather than the
+    configuration error's message and status."""
+    from autogpt_local_executor import cli
+
+    monkeypatch.delenv("AUTOGPT_SHIM_SUPERVISOR", raising=False)
+    # Windows guesses another account's home from this one's, unless the
+    # profile folder isn't named after the account.
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    monkeypatch.setenv("USERNAME", "someone-else")
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('allowed_root = "~no-such-account-for-the-shim/workspace"\n')
+
+    with pytest.raises(ValidationError, match="no home directory"):
+        load_config(config_path=config_file)
+    with pytest.raises(SystemExit) as exited:
+        cli._config_or_exit(lambda: load_config(config_path=config_file))
+
+    assert exited.value.code == 78
+    assert "Configuration error (allowed_root)" in capsys.readouterr().err

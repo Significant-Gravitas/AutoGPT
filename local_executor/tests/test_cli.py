@@ -811,6 +811,36 @@ def test_install_carries_the_deployment_from_the_environment_into_the_service(
     )
 
 
+@pytest.mark.parametrize("given_as", ["flag", "environment"])
+def test_install_gives_the_service_a_home_relative_root_expanded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, given_as: str
+) -> None:
+    """A `~` the shell left alone (quoted, after `--allowed-root=`, or in the
+    environment) was made absolute against this shell's working directory,
+    so the service got `<cwd>/~/ws` and was jailed to a folder named `~`,
+    or made one, while the config this run checked had read it as the
+    home directory's `ws`."""
+    install_autostart = _capture_install(tmp_path, monkeypatch)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.chdir(tmp_path)
+    argv = ["autogpt-shim", "--config", str(_empty_config(tmp_path))]
+    if given_as == "flag":
+        argv.append("--allowed-root=~/ws")
+    else:
+        monkeypatch.setenv("AUTOGPT_SHIM_ALLOWED_ROOT", "~/ws")
+    monkeypatch.setattr(sys, "argv", [*argv, "install"])
+
+    cli.main()
+
+    assert install_autostart.call_args.kwargs["global_args"] == (
+        "--allowed-root",
+        str(home / "ws"),
+    )
+
+
 def test_an_install_flag_outranks_the_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -134,7 +134,15 @@ class ShimConfig(BaseSettings):
         expands it. From the config file or the environment it went through
         whole, so the shim took a folder named `~` in its working directory
         (the home directory, under systemd) for the root, or made one."""
-        return None if value is None else value.expanduser()
+        if value is None:
+            return None
+        try:
+            return value.expanduser()
+        except RuntimeError:
+            # pathlib's error for `~name` naming no account. Pydantic reports
+            # only a ValueError as a bad setting; this one ended `start` in a
+            # traceback, which a service manager restarts.
+            raise ValueError(f"no home directory found for {value.parts[0]}") from None
 
     @field_validator("platform_url", "platform_ws_url", "platform_oauth_url")
     @classmethod
