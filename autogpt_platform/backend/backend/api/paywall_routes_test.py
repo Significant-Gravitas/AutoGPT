@@ -160,6 +160,12 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/onboarding/profile",
     "POST /api/onboarding/reset",
     "POST /api/onboarding/step",
+    # The onboarding interview: a chat with Otto that runs before the plan
+    # step, so before anything can be paid for. Its own turn budget
+    # (onboarding_dump.rate_limit.enforce_interview_turn_budget), its reply
+    # cap and one interview per user bound it instead.
+    "POST /api/onboarding/brain-dump/interview",
+    "POST /api/onboarding/brain-dump/interview/finish",
     # Reading the account's own data, or the catalog.
     "GET /api/blocks",
     "GET /api/briefings/latest",
