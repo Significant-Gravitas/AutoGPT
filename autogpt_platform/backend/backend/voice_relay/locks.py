@@ -28,7 +28,12 @@ from typing import TypeVar
 from redis.typing import EncodableT, FieldT
 
 from backend.data.redis_client import AsyncRedisClient
-from backend.data.redis_helpers import as_str, string_compare_and_set
+from backend.data.redis_helpers import (
+    SlotAdmission,
+    as_str,
+    string_compare_and_set,
+    try_acquire_concurrency_slot,
+)
 from backend.voice_relay.config import (
     CALL_RECORD_TTL_S,
     END_REQUEST_TTL_S,
@@ -118,6 +123,26 @@ async def read_call_record(redis: AsyncRedisClient, call_id: str) -> dict[str, s
     return {
         as_str(name) or "": as_str(value) or "" for name, value in (raw or {}).items()
     }
+
+
+async def acquire_live_call(
+    redis: AsyncRedisClient, call_id: str, now: float, capacity: int
+) -> bool:
+    """Count *call_id* as live across the platform if there is room for it.
+
+    False, with nothing written, once *capacity* live calls are counted.
+    Entries a dead pod left behind are dropped first, so they hold no room.
+    """
+    admission = await try_acquire_concurrency_slot(
+        redis,
+        pool_key=LIVE_CALLS_KEY,
+        slot_id=call_id,
+        score=now,
+        capacity=capacity,
+        stale_before_score=now - LIVE_CALL_STALE_S,
+        ttl_seconds=int(LIVE_CALL_STALE_S * 3),
+    )
+    return admission != SlotAdmission.REJECTED
 
 
 async def register_live_call(redis: AsyncRedisClient, call_id: str, now: float) -> None:

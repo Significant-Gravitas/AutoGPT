@@ -15,12 +15,11 @@ too, as a labelled estimate from the audio the relay counted itself.
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from prometheus_client import Counter, Gauge, Histogram
 from pydantic import BaseModel, ConfigDict
 
-from backend.copilot import token_tracking
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.data.redis_client import AsyncRedisClient
 from backend.voice_relay.config import (
@@ -28,8 +27,10 @@ from backend.voice_relay.config import (
     CLASSIFIER_MODEL,
     IN_RATE,
     OUT_RATE,
+    PRICES_VALID_UNTIL,
     SPEND_CAP_USD,
     price_of,
+    prices_out_of_date,
 )
 from backend.voice_relay.locks import add_daily_spend
 from backend.voice_relay.vendor import Usage
@@ -292,14 +293,27 @@ class CallMeter:
         )
 
 
-async def drain_cost_logs(timeout_s: float = 5.0) -> None:
-    """Wait for this process's cost log writes still in flight, at shutdown."""
-    loop = asyncio.get_running_loop()
-    with token_tracking._pending_log_tasks_lock:
-        pending = [
-            task
-            for task in token_tracking._pending_log_tasks
-            if task.get_loop() is loop
-        ]
-    if pending:
-        await asyncio.wait(pending, timeout=timeout_s)
+DAY_S = 24 * 3600
+
+
+def warn_if_prices_out_of_date(on: date | None = None) -> bool:
+    """Log loudly when the price table is past its horizon. Never raises: the
+    relay goes on pricing calls at the latest rates it has."""
+    if not prices_out_of_date(on):
+        return False
+    logger.error(
+        f"The voice relay's price table is past its horizon "
+        f"({PRICES_VALID_UNTIL.isoformat()}): calls are priced at the latest "
+        f"rates it has. Read the pricing page again and update PRICES in "
+        f"backend/voice_relay/config.py."
+    )
+    return True
+
+
+async def watch_prices(
+    interval_s: float = DAY_S, today: Callable[[], date] | None = None
+) -> None:
+    """Repeat the price table check every *interval_s*, until cancelled."""
+    while True:
+        await asyncio.sleep(interval_s)
+        warn_if_prices_out_of_date(today() if today else None)

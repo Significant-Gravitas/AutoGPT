@@ -113,3 +113,27 @@ def test_the_daily_budget_waits_for_the_utc_day_to_turn():
     now = datetime(2026, 11, 9, 23, 59, 30, tzinfo=UTC)
     assert locks.seconds_until_tomorrow(now) == 30
     assert locks.daily_spend_key(now) == "voice:spend:2026-11-09"
+
+
+async def test_a_call_takes_a_place_under_the_platforms_ceiling(redis):
+    now = time.time()
+    assert await locks.acquire_live_call(redis, "call-a", now, capacity=2)
+    assert await locks.acquire_live_call(redis, "call-b", now, capacity=2)
+    assert not await locks.acquire_live_call(redis, "call-c", now, capacity=2)
+    # Refused with nothing written.
+    assert await redis.zscore(locks.LIVE_CALLS_KEY, "call-c") is None
+    assert await locks.live_call_count(redis, now) == 2
+
+
+async def test_a_call_already_counted_keeps_its_place(redis):
+    now = time.time()
+    assert await locks.acquire_live_call(redis, "call-a", now, capacity=1)
+    assert await locks.acquire_live_call(redis, "call-a", now + 10, capacity=1)
+    assert await locks.live_call_count(redis, now + 10) == 1
+
+
+async def test_entries_a_dead_pod_left_hold_no_place(redis):
+    now = time.time()
+    await locks.register_live_call(redis, "dead-pod-call", now - LIVE_CALL_STALE_S - 1)
+    assert await locks.acquire_live_call(redis, "call-a", now, capacity=1)
+    assert await redis.zscore(locks.LIVE_CALLS_KEY, "dead-pod-call") is None

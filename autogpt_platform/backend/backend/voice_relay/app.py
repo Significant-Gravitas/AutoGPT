@@ -52,6 +52,7 @@ CLOSE_NO_CALL = 4404
 
 FIRST_NAME_TIMEOUT_S = 2.0
 RECORD_CALL_TIMEOUT_S = 5.0
+REFUSE_TIMEOUT_S = 5.0
 MAX_FIRST_NAME_CHARS = 40
 _NAME_MARKS = "'-’"
 
@@ -69,10 +70,38 @@ class RelayDeps(BaseModel):
     # Records a started call on the user's onboarding row: (user id, call id).
     record_call: Callable[[str, str], Awaitable[None]]
     live_model: str
+    # Live calls the whole platform takes at once.
+    max_concurrent: int
     # Where priced rows go; None logs them to PlatformCostLog.
     cost_sink: CostSink | None = None
     caps: Caps = CAPS
     timing: Timing = TIMING
+
+
+class CallSlot:
+    """One of this process's call slots, held from a start to the end of its
+    call, or to its refusal."""
+
+    def __init__(self, relay: "Relay") -> None:
+        self._relay = relay
+        self._call_id: str | None = None
+        self._released = False
+
+    def hold(self, session: Session) -> None:
+        """The slot's call has started: resumable, and counted as live."""
+        self._call_id = session.call_id
+        self._relay.sessions[session.call_id] = session
+        LIVE_CALLS.inc()
+
+    def release(self) -> None:
+        """Give the slot back. Idempotent."""
+        if self._released:
+            return
+        self._released = True
+        self._relay.held_slots -= 1
+        if self._call_id is not None:
+            self._relay.sessions.pop(self._call_id, None)
+            LIVE_CALLS.dec()
 
 
 class Relay:
@@ -89,6 +118,8 @@ class Relay:
         self.origins = origins
         self.deps = deps
         self.sessions: dict[str, Session] = {}
+        # Slots held by calls starting or live; at most max_calls.
+        self.held_slots = 0
         self.draining = False
         self.drain_started: float | None = None
         self.pod = socket.gethostname()
@@ -97,6 +128,17 @@ class Relay:
     def start_drain(self) -> None:
         self.draining = True
         self.drain_started = time.monotonic()
+
+    def reserve_slot(self) -> CallSlot | None:
+        """Hold one of this process's call slots, or None when all are held.
+
+        Checked and taken in one step, with nothing awaited between, so
+        starts that arrive together can never hold more than max_calls.
+        """
+        if self.held_slots >= self.max_calls:
+            return None
+        self.held_slots += 1
+        return CallSlot(self)
 
     def origin_allowed(self, origin: str | None) -> bool:
         if not origin:
@@ -195,9 +237,24 @@ async def _start(relay: Relay, ws: WebSocket, first: Mapping[str, Any]) -> None:
     if relay.draining or deps is None:
         await _refuse(ws, "draining", CLOSE_TRY_AGAIN)
         return
-    if len(relay.sessions) >= relay.max_calls:
+    slot = relay.reserve_slot()
+    if slot is None:
         await _refuse(ws, "busy", CLOSE_TRY_AGAIN)
         return
+    try:
+        await _start_call(relay, deps, slot, ws, first, started)
+    finally:
+        slot.release()
+
+
+async def _start_call(
+    relay: Relay,
+    deps: RelayDeps,
+    slot: CallSlot,
+    ws: WebSocket,
+    first: Mapping[str, Any],
+    started: float,
+) -> None:
     try:
         claims = tokens.verify_start(first.get("token"))
     except tokens.TokenError as error:
@@ -206,6 +263,7 @@ async def _start(relay: Relay, ws: WebSocket, first: Mapping[str, Any]) -> None:
     if first.get("leg") not in (None, *tokens.LEGS):
         await _refuse(ws, "protocol", CLOSE_POLICY)
         return
+    redis: AsyncRedisClient | None = None
     try:
         redis = await deps.redis()
         await tokens.spend(redis, claims)
@@ -215,30 +273,57 @@ async def _start(relay: Relay, ws: WebSocket, first: Mapping[str, Any]) -> None:
         return
     except Exception:
         logger.warning(f"Voice call {claims.call_id}: state unavailable", exc_info=True)
+        if redis is not None:
+            await locks.CallStore(
+                redis, call_id=claims.call_id, user_id=claims.user_id
+            ).release()
+            await _free_token(redis, claims)
         await _refuse(ws, "unavailable", CLOSE_TRY_AGAIN)
         return
     if holder is not None:
         await _refuse(ws, "call_in_progress", CLOSE_POLICY, call_id=holder or None)
         return
-    store = locks.CallStore(redis, call_id=claims.call_id, user_id=claims.user_id)
-    # Recorded once the call holds the lock, so the row names a call that ran.
-    try:
-        await asyncio.wait_for(
-            deps.record_call(claims.user_id, claims.call_id),
-            timeout=RECORD_CALL_TIMEOUT_S,
-        )
-    except Exception:
-        logger.warning(
-            f"Voice call {claims.call_id}: not recorded on the onboarding row",
-            exc_info=True,
-        )
-        await store.release()
-        await _refuse(ws, "unavailable", CLOSE_TRY_AGAIN)
-        return
 
-    # This relay carries a call's audio on the control socket.
-    leg: tokens.Leg = "websocket"
+    store = locks.CallStore(redis, call_id=claims.call_id, user_id=claims.user_id)
     try:
+        # The platform's live-call ceiling, held here rather than only read
+        # when the token was minted.
+        try:
+            admitted = await asyncio.wait_for(
+                locks.acquire_live_call(
+                    redis, claims.call_id, time.time(), deps.max_concurrent
+                ),
+                timeout=locks.REDIS_TIMEOUT_S,
+            )
+        except Exception:
+            logger.warning(
+                f"Voice call {claims.call_id}: live calls unreadable", exc_info=True
+            )
+            await _free_token(redis, claims)
+            await _refuse(ws, "unavailable", CLOSE_TRY_AGAIN)
+            return
+        if not admitted:
+            await _free_token(redis, claims)
+            await _refuse(ws, "busy", CLOSE_TRY_AGAIN)
+            return
+        # Recorded once the call holds its lock and its place, so the row
+        # names a call that ran.
+        try:
+            await asyncio.wait_for(
+                deps.record_call(claims.user_id, claims.call_id),
+                timeout=RECORD_CALL_TIMEOUT_S,
+            )
+        except Exception:
+            logger.warning(
+                f"Voice call {claims.call_id}: not recorded on the onboarding row",
+                exc_info=True,
+            )
+            await _free_token(redis, claims)
+            await _refuse(ws, "unavailable", CLOSE_TRY_AGAIN)
+            return
+
+        # This relay carries a call's audio on the control socket.
+        leg: tokens.Leg = "websocket"
         await store.record(
             status="connecting",
             uid=claims.user_id,
@@ -246,7 +331,6 @@ async def _start(relay: Relay, ws: WebSocket, first: Mapping[str, Any]) -> None:
             leg=leg,
             started=round(time.time(), 3),
         )
-        await store.refresh_live(time.time())
         session = Session(
             call_id=claims.call_id,
             user_id=claims.user_id,
@@ -267,14 +351,10 @@ async def _start(relay: Relay, ws: WebSocket, first: Mapping[str, Any]) -> None:
             caps=deps.caps,
             timing=deps.timing,
             started=started,
+            on_end=slot.release,
         )
-        relay.sessions[claims.call_id] = session
-        LIVE_CALLS.inc()
-        try:
-            await session.run()
-        finally:
-            relay.sessions.pop(claims.call_id, None)
-            LIVE_CALLS.dec()
+        slot.hold(session)
+        await session.run()
     finally:
         await store.release()
 
@@ -295,10 +375,27 @@ async def _resume(relay: Relay, ws: WebSocket, ticket: object) -> None:
     await done.wait()
 
 
-async def _refuse(ws: WebSocket, error: str, code: int, **extra: object) -> None:
+async def _free_token(redis: AsyncRedisClient, claims: tokens.StartClaims) -> None:
+    """Make the start token good again before a refusal that asks the browser
+    to try again, so it can, with the same token. The live-call lock still
+    holds the person to one call."""
     try:
-        await ws.send_text(json.dumps({"type": "error", "error": error, **extra}))
-        await ws.close(code=code)
+        await asyncio.wait_for(
+            tokens.unspend(redis, claims), timeout=locks.REDIS_TIMEOUT_S
+        )
+    except Exception:
+        logger.info(f"Voice call {claims.call_id}: start token not freed")
+
+
+async def _refuse(ws: WebSocket, error: str, code: int, **extra: object) -> None:
+    """Tell the browser why, then close. Bounded: a browser that stops
+    reading holds nothing here."""
+    try:
+        await asyncio.wait_for(
+            ws.send_text(json.dumps({"type": "error", "error": error, **extra})),
+            timeout=REFUSE_TIMEOUT_S,
+        )
+        await asyncio.wait_for(ws.close(code=code), timeout=REFUSE_TIMEOUT_S)
     except Exception:
         logger.debug("A refused socket was already gone")
 

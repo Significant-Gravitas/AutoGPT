@@ -509,8 +509,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=25,
         ge=0,
         description="Live onboarding voice interviews across the platform; past "
-        "it the start route answers 503 with Retry-After. Track the Gemini Live "
-        "tier's session limit.",
+        "it the start route answers 503 with Retry-After and the voice relay "
+        "refuses a call with 1013. Set it the same on rest and voice-relay, and "
+        "track the Gemini Live tier's session limit.",
     )
 
     voice_interview_daily_budget_usd: float = Field(

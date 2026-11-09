@@ -144,6 +144,12 @@ def spent_key(call_id: str) -> str:
     return f"voice:tok:{call_id}"
 
 
+async def unspend(redis: AsyncRedisClient, claims: StartClaims) -> None:
+    """Make a spent start token good again, for a start refused with "try
+    again" (1013), so the browser can retry with the same token."""
+    await redis.delete(spent_key(claims.call_id))
+
+
 async def spend(redis: AsyncRedisClient, claims: StartClaims) -> None:
     """Spend a start token. Raises :class:`TokenError` when it was spent already."""
     fresh = await redis.set(

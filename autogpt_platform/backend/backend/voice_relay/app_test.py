@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 
 import httpx
 import pytest
@@ -247,9 +248,114 @@ async def test_a_started_call_is_recorded_on_the_persons_onboarding_row(redis):
 
 async def test_a_call_that_cannot_be_recorded_does_not_start(redis):
     vendor = FakeVendor([Reply(text="Hi")])
-    async with running_relay(redis, vendor, record_fails=True) as running:
+    async with running_relay(redis, vendor, record_failures=1) as running:
         ws = await open_socket(running.url)
         await ws.send(json.dumps(start()))
         assert await refusal(ws) == ({"type": "error", "error": "unavailable"}, 1013)
     assert vendor.sessions == []
     assert await locks.live_call_of(redis, USER) is None
+    # Nor does it keep a place in the platform-wide count.
+    assert await redis.zcard(locks.LIVE_CALLS_KEY) == 0
+
+
+async def _first_answer(ws: ClientConnection) -> str:
+    """``ready``, or the error a refused start was given."""
+    message = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+    return message["type"] if message["type"] == "ready" else message["error"]
+
+
+async def test_starts_that_arrive_together_hold_no_more_than_the_pods_slots(redis):
+    # The first start still holds its slot while it records its call.
+    vendor = FakeVendor([Reply(text="Hi")])
+    async with running_relay(redis, vendor, max_calls=1, record_delay_s=0.3) as running:
+        first, second = await open_socket(running.url), await open_socket(running.url)
+        await first.send(json.dumps(start(user="user-1")))
+        await second.send(json.dumps(start(user="user-2")))
+        answers = await asyncio.gather(_first_answer(first), _first_answer(second))
+        assert sorted(answers) == ["busy", "ready"]
+        live = first if answers[0] == "ready" else second
+        await live.send(json.dumps({"type": "hangup"}))
+        await read_until(live, "ended")
+    assert running.relay.held_slots == 0
+    assert len(vendor.sessions) == 1
+
+
+async def test_a_refused_start_gives_its_slot_back(redis):
+    async with running_relay(
+        redis, FakeVendor([Reply(text="Hi")]), max_calls=1
+    ) as running:
+        forged = await open_socket(running.url)
+        await forged.send(json.dumps({"type": "start", "token": "forged.token"}))
+        assert (await refusal(forged))[0]["error"] == "token_invalid"
+        assert running.relay.held_slots == 0
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start()))
+        await read_until(ws, "ready")
+        assert running.relay.held_slots == 1
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+    assert running.relay.held_slots == 0
+
+
+async def test_a_start_past_the_platforms_live_call_ceiling_is_refused(redis):
+    await locks.register_live_call(redis, "b" * 32, time.time())
+    vendor = FakeVendor([Reply(text="Hi")])
+    call_id = tokens.new_call_id()
+    async with running_relay(redis, vendor, max_concurrent=1) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start(call_id=call_id)))
+        assert await refusal(ws) == ({"type": "error", "error": "busy"}, 1013)
+        assert running.recorded == {}
+        assert running.relay.held_slots == 0
+    assert vendor.sessions == []
+    assert await locks.live_call_of(redis, USER) is None
+    assert await redis.zscore(locks.LIVE_CALLS_KEY, call_id) is None
+
+
+async def test_calls_whose_pod_died_leave_room_under_the_ceiling(redis):
+    await locks.register_live_call(redis, "b" * 32, time.time() - 600)
+    async with running_relay(
+        redis, FakeVendor([Reply(text="Hi")]), max_concurrent=1
+    ) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start()))
+        await read_until(ws, "ready")
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+
+
+async def test_a_start_refused_for_a_fault_on_the_platforms_side_can_use_its_token_again(
+    redis,
+):
+    async with running_relay(
+        redis, FakeVendor([Reply(text="Hi")]), record_failures=1
+    ) as running:
+        first = start()
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(first))
+        assert await refusal(ws) == ({"type": "error", "error": "unavailable"}, 1013)
+        again = await open_socket(running.url)
+        await again.send(json.dumps(first))
+        await read_until(again, "ready")
+        await again.send(json.dumps({"type": "hangup"}))
+        await read_until(again, "ended")
+
+
+async def test_a_start_refused_while_the_platform_is_full_can_use_its_token_again(
+    redis,
+):
+    other_call = "b" * 32
+    await locks.register_live_call(redis, other_call, time.time())
+    async with running_relay(
+        redis, FakeVendor([Reply(text="Hi")]), max_concurrent=1
+    ) as running:
+        first = start()
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(first))
+        assert await refusal(ws) == ({"type": "error", "error": "busy"}, 1013)
+        await locks.unregister_live_call(redis, other_call)
+        again = await open_socket(running.url)
+        await again.send(json.dumps(first))
+        await read_until(again, "ready")
+        await again.send(json.dumps({"type": "hangup"}))
+        await read_until(again, "ended")

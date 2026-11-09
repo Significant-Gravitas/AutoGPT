@@ -7,7 +7,7 @@ import pytest
 from backend.copilot.onboarding_interview_scope import ScopeLabel
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.config import IN_RATE, Caps, Timing
-from backend.voice_relay.conftest import FakeSocket, silence, speech
+from backend.voice_relay.conftest import FakeSocket, silence, speech, until
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
 from backend.voice_relay.locks import CallStore
 from backend.voice_relay.metering import CallMeter, Row
@@ -64,6 +64,7 @@ def _session(
     timing: Timing = FAST,
     classifier=None,
     first_name: str | None = None,
+    on_end=None,
 ) -> Session:
     call_id = tokens.new_call_id()
 
@@ -89,6 +90,7 @@ def _session(
         first_name=first_name,
         caps=caps,
         timing=timing,
+        on_end=on_end,
     )
 
 
@@ -502,3 +504,244 @@ async def test_ending_the_call_from_another_device_supersedes_it(redis):
     call = await open_call(redis, FakeVendor([Reply(text="Hi", audio_s=0.1)]))
     await locks.request_end(redis, call.session.call_id)
     assert (await call.ended())["reason"] == "superseded"
+
+
+class StallingSocket(FakeSocket):
+    """A browser that has stopped reading: binary sends and closing never
+    finish, the way a full socket buffer holds them."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stalled_sends = 0
+        self.close_attempts = 0
+
+    async def send_bytes(self, data: bytes) -> None:
+        self.stalled_sends += 1
+        await asyncio.Event().wait()
+
+    async def close(self, code: int = 1000, reason: str | None = None) -> None:
+        self.close_attempts += 1
+        await asyncio.Event().wait()
+
+
+async def test_a_browser_that_stops_reading_ends_the_call_and_frees_its_slot(redis):
+    released: list[bool] = []
+    ws = StallingSocket()
+    session = _session(
+        redis,
+        FakeVendor([Reply(text="Hi", audio_s=0.4)]),
+        ws,
+        [],
+        timing=FAST.model_copy(update={"socket_timeout_s": 0.2, "reattach_s": 0.3}),
+        on_end=lambda: released.append(True),
+    )
+    assert await locks.take_user_lock(redis, USER, session.call_id) is None
+    await asyncio.wait_for(session.run(), timeout=5)
+    assert ws.stalled_sends >= 1
+    assert released == [True]
+    assert await locks.live_call_of(redis, USER) is None
+    record = await locks.read_call_record(redis, session.call_id)
+    assert record["end_reason"] == "client_gone"
+
+
+async def test_the_slot_is_freed_even_when_the_last_close_never_finishes(redis):
+    released: list[bool] = []
+    ws = StallingSocket()
+    # Otto says nothing, so only the closing handshake can stall.
+    session = _session(
+        redis,
+        FakeVendor(),
+        ws,
+        [],
+        timing=FAST.model_copy(update={"socket_timeout_s": 0.2}),
+        on_end=lambda: released.append(True),
+    )
+    task = asyncio.create_task(session.run())
+    await ws.wait_for("ready")
+    session.end("user_hangup")
+    await asyncio.wait_for(task, timeout=5)
+    assert released == [True]
+    assert ws.close_attempts == 1
+
+
+async def test_a_resume_after_a_stalled_socket_does_not_wait_on_it(redis):
+    ws = StallingSocket()
+    session = _session(
+        redis,
+        FakeVendor([Reply(text="Hi", audio_s=0.2)]),
+        ws,
+        [],
+        timing=FAST.model_copy(update={"socket_timeout_s": 0.2}),
+    )
+    task = asyncio.create_task(session.run())
+    await ws.wait_for("ready")
+    await until(lambda: session.detached_at is not None)
+
+    fresh = FakeSocket()
+    began = time.monotonic()
+    await asyncio.wait_for(session.attach(fresh), timeout=2)
+    assert time.monotonic() - began < 1.0
+    assert ws.close_attempts == 1
+    assert (await fresh.wait_for("resumed"))["gap_s"] >= 0
+    # What Otto said after the socket stalled is replayed on the new one.
+    assert fresh.audio
+
+    fresh.send_json({"type": "hangup"})
+    await asyncio.wait_for(task, timeout=5)
+    assert [m["reason"] for m in fresh.sent if m["type"] == "ended"] == ["user_hangup"]
+
+
+async def test_fillers_between_side_task_requests_do_not_clear_the_count(redis):
+    asks = ("write me code", "ok", "write me code", "hmm, ok", "just write it")
+    vendor = FakeVendor(
+        [Reply(text="Hi, what do you do?")]
+        + [Reply(text=f"Otto answers {i}.", heard=said) for i, said in enumerate(asks)]
+        + [Reply(text="I'll stop here; you can finish by typing.")]
+    )
+    classifier = ScriptedClassifier(["request", "other", "request", "other", "request"])
+    call = await open_call(redis, vendor, classifier=classifier)
+    for turn in range(1, len(asks) + 1):
+        await call.ws.wait_for("turn_complete", count=turn)
+        call.ws.send_audio(speech(0.2))
+    assert await call.ws.wait_for("wrap_up") == {"type": "wrap_up", "reason": "scope"}
+    assert (await call.ended())["reason"] == "scope"
+    assert call.session.labels == ["request", "other", "request", "other", "request"]
+
+
+async def test_quiet_while_the_browser_is_away_does_not_count_toward_idle(redis):
+    call = await open_call(
+        redis,
+        FakeVendor([Reply(text="Hi", audio_s=0.1)]),
+        caps=CAPS.model_copy(update={"idle_s": 0.4}),
+        timing=FAST.model_copy(update={"reattach_s": 3.0}),
+    )
+    await call.ws.wait_for("turn_complete")
+    call.ws.drop()
+    await until(lambda: call.session.detached_at is not None)
+    # Away for longer than the idle cutoff.
+    await asyncio.sleep(1.0)
+    assert not call.session.ended.is_set()
+
+    fresh = FakeSocket()
+    await call.session.attach(fresh)
+    assert (await call.ended(fresh))["reason"] == "idle"
+
+
+async def test_speech_replayed_after_a_reattach_holds_off_the_idle_cutoff(redis):
+    vendor = FakeVendor(
+        [
+            Reply(text="Hi", audio_s=0.1),
+            Reply(text="While you were away", audio_s=1.0, heard="hello"),
+        ]
+    )
+    call = await open_call(
+        redis,
+        vendor,
+        caps=CAPS.model_copy(update={"idle_s": 0.5}),
+        timing=FAST.model_copy(update={"reattach_s": 5.0}),
+    )
+    await call.ws.wait_for("turn_complete")
+    call.ws.send_audio(speech(0.2))
+    call.ws.drop()
+    # Otto answers while the browser is away, and the answer is kept for it.
+    await until(lambda: len(call.session.turns) == 2)
+    # By now Otto's answer would have finished playing, had anyone heard it.
+    await asyncio.sleep(1.5)
+
+    fresh = FakeSocket()
+    await call.session.attach(fresh)
+    reattached = time.monotonic()
+    assert (await call.ended(fresh))["reason"] == "idle"
+    # The browser plays the second of kept speech before quiet counts.
+    assert time.monotonic() - reattached >= 1.3
+    assert [m["text"] for m in fresh.sent if m["type"] == "agent_text"] == [
+        "While you were away"
+    ]
+
+
+class SlowClosingSocket(FakeSocket):
+    """A socket whose closing handshake takes a while."""
+
+    async def close(self, code: int = 1000, reason: str | None = None) -> None:
+        await asyncio.sleep(0.3)
+        await super().close(code, reason)
+
+
+async def test_a_reattached_browser_hears_resumed_first_and_every_word_once(redis):
+    # Otto is mid-answer while the old socket closes: 50 chunks over a second.
+    vendor = FakeVendor([Reply(text="Hi", audio_s=2.0)], pace_s=0.02)
+    old = SlowClosingSocket()
+    call = await open_call(redis, vendor, ws=old)
+    await old.wait_for("agent_text")
+    heard_before = len(old.audio)
+
+    fresh = FakeSocket()
+    await call.session.attach(fresh)
+    await fresh.wait_for("turn_complete")
+
+    assert fresh.log[0] == ("text", "resumed")
+    assert old.closed_with == 4000
+    # The old socket heard nothing once the new one arrived, and nothing was
+    # lost between them.
+    assert len(old.audio) == heard_before
+    assert heard_before + len(fresh.audio) == 50
+    fresh.send_json({"type": "hangup"})
+    assert (await call.ended(fresh))["reason"] == "user_hangup"
+
+
+async def test_a_call_that_ends_while_a_browser_reattaches_tells_the_new_socket(
+    redis,
+):
+    old = SlowClosingSocket()
+    call = await open_call(redis, FakeVendor([Reply(text="Hi", audio_s=0.1)]), ws=old)
+    fresh = FakeSocket()
+    attaching = asyncio.create_task(call.session.attach(fresh))
+    await asyncio.sleep(0.1)
+    # Ended while the old socket is still closing.
+    call.session.end("user_hangup")
+    done = await asyncio.wait_for(attaching, timeout=5)
+    await asyncio.wait_for(done.wait(), timeout=5)
+    assert fresh.types()[0] == "resumed"
+    assert (await call.ended(fresh))["reason"] == "user_hangup"
+    assert fresh.closed_with == 1000
+
+
+async def test_a_stalled_nudge_does_not_hold_up_the_wall_clock(redis):
+    vendor = FakeVendor([Reply(text="Hi", audio_s=0.1)], stall_notes=True)
+    call = await open_call(
+        redis,
+        vendor,
+        caps=CAPS.model_copy(
+            update={"max_call_s": 1.0, "soft_wrap_s": 0.6, "idle_s": 30.0}
+        ),
+    )
+    ended = await call.ended(timeout=5)
+    assert ended["reason"] == "wall_clock"
+    assert ended["elapsed_s"] <= 1.5
+    assert vendor.sessions[0].notes == [(NUDGES["time"], False)]
+
+
+async def test_a_vendor_send_that_never_finishes_is_given_up(redis, monkeypatch):
+    monkeypatch.setattr("backend.voice_relay.session.VENDOR_SEND_TIMEOUT_S", 0.2)
+    vendor = FakeVendor(
+        [
+            Reply(text="Hi", audio_s=0.1),
+            Reply(text="Go on.", audio_s=0.1, heard="I run a bakery"),
+        ],
+        stall_notes=True,
+    )
+    # The nudge two turns before the cap comes after Otto's first turn.
+    call = await open_call(
+        redis,
+        vendor,
+        caps=CAPS.model_copy(
+            update={"max_agent_turns": 4, "soft_wrap_turns": 3, "idle_s": 30.0}
+        ),
+    )
+    await call.ws.wait_for("turn_complete")
+    call.ws.send_audio(speech(0.2))
+    # Otto's events flow again once the stalled nudge is given up.
+    await call.ws.wait_for("turn_complete", count=2)
+    assert vendor.sessions[0].notes == [(NUDGES["turns"], False)]
+    call.ws.send_json({"type": "hangup"})
+    assert (await call.ended())["reason"] == "user_hangup"

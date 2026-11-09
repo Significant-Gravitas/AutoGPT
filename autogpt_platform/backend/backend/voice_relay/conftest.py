@@ -1,7 +1,7 @@
 import asyncio
 import json
 import socket
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 import numpy as np
@@ -51,6 +51,16 @@ def speech(seconds: float) -> list[bytes]:
     return [tone.tobytes() for _ in range(max(1, round(seconds / 0.04)))]
 
 
+async def until(condition: Callable[[], bool], timeout: float = 5.0) -> None:
+    """Wait until *condition* holds."""
+
+    async def poll() -> None:
+        while not condition():
+            await asyncio.sleep(0.02)
+
+    await asyncio.wait_for(poll(), timeout=timeout)
+
+
 def silence(seconds: float) -> list[bytes]:
     frame = bytes(int(IN_RATE * 0.04) * 2)
     return [frame for _ in range(max(1, round(seconds / 0.04)))]
@@ -63,6 +73,8 @@ class FakeSocket:
         self.inbox: asyncio.Queue[dict] = asyncio.Queue()
         self.sent: list[dict] = []
         self.audio: list[bytes] = []
+        # Everything sent, in order: ("text", its type) or ("bytes", its size).
+        self.log: list[tuple[str, object]] = []
         self.closed_with: int | None = None
         self.broken = False
         self._changed = asyncio.Event()
@@ -74,12 +86,15 @@ class FakeSocket:
 
     async def send_text(self, data: str) -> None:
         self._check()
-        self.sent.append(json.loads(data))
+        message = json.loads(data)
+        self.sent.append(message)
+        self.log.append(("text", message["type"]))
         self._notify()
 
     async def send_bytes(self, data: bytes) -> None:
         self._check()
         self.audio.append(data)
+        self.log.append(("bytes", len(data)))
         self._notify()
 
     async def close(self, code: int = 1000, reason: str | None = None) -> None:
@@ -170,7 +185,9 @@ async def running_relay(
     settle_s: float = 5.0,
     caps: Caps = CAPS,
     timing: Timing = TIMING,
-    record_fails: bool = False,
+    record_failures: int = 0,
+    record_delay_s: float = 0.0,
+    max_concurrent: int = 25,
 ) -> AsyncIterator[RunningRelay]:
     """The relay app under a real uvicorn server on a free local port."""
     rows: list[Row] = []
@@ -185,8 +202,13 @@ async def running_relay(
     async def sink(row: Row) -> None:
         rows.append(row)
 
+    failures = [record_failures]
+
     async def record_call(user_id: str, call_id: str) -> None:
-        if record_fails:
+        if record_delay_s:
+            await asyncio.sleep(record_delay_s)
+        if failures[0] > 0:
+            failures[0] -= 1
             raise ConnectionError("database is down")
         recorded[user_id] = call_id
 
@@ -200,6 +222,7 @@ async def running_relay(
             account_name=account_name,
             record_call=record_call,
             live_model="gemini-3.8-live",
+            max_concurrent=max_concurrent,
             cost_sink=sink,
             caps=caps,
             timing=timing,

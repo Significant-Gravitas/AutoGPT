@@ -1,5 +1,6 @@
 import asyncio
-from datetime import UTC, datetime
+import logging
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -7,7 +8,14 @@ from prometheus_client import REGISTRY
 
 from backend.copilot import token_tracking
 from backend.voice_relay import locks, metering
-from backend.voice_relay.config import IN_RATE, OUT_RATE, PRICES
+from backend.voice_relay.config import (
+    IN_RATE,
+    OUT_RATE,
+    PRICES,
+    PRICES_VALID_UNTIL,
+    price_of,
+)
+from backend.voice_relay.conftest import until
 from backend.voice_relay.metering import CallMeter, Row
 from backend.voice_relay.vendor import Usage
 
@@ -39,7 +47,7 @@ def test_a_usage_report_becomes_one_priced_row_per_meter():
         response_by_modality={"audio": 100},
     )
     rows = metering.priced_rows(LIVE, usage)
-    price = PRICES[LIVE]
+    price = price_of(LIVE)
     assert [(row.meter, row.tokens) for row in rows] == [
         ("audio_in", 200),
         ("text_in", 700),
@@ -113,9 +121,9 @@ async def test_every_row_adds_to_the_platforms_daily_spend(redis):
     spent = await locks.daily_spend_usd(redis, now)
     assert spent == pytest.approx(first.usd + second.usd)
     assert spent == pytest.approx(
-        10_000 * PRICES[LIVE].audio_in / 1e6
-        + 1_000 * PRICES[FLASH].text_in / 1e6
-        + 100 * PRICES[FLASH].text_out / 1e6
+        10_000 * price_of(LIVE).audio_in / 1e6
+        + 1_000 * price_of(FLASH).text_in / 1e6
+        + 100 * price_of(FLASH).text_out / 1e6
     )
     key = locks.daily_spend_key(now)
     assert 0 < await redis.ttl(key) <= locks.DAILY_SPEND_TTL_S
@@ -226,3 +234,39 @@ async def test_a_slow_redis_does_not_hold_up_a_usage_report():
         meter.classifier_usage(tokens_in=100, tokens_out=10), timeout=0.05
     )
     await meter.flush()
+
+
+def test_the_classifiers_rate_doubles_on_its_announced_date():
+    before = price_of(FLASH, date(2026, 12, 31))
+    after = price_of(FLASH, date(2027, 1, 1))
+    assert (before.text_in, before.text_out) == (0.75, 3.75)
+    assert (after.text_in, after.text_out) == (1.50, 7.50)
+    assert after.effective_from == date(2027, 1, 1)
+
+
+def test_every_models_rates_run_oldest_first():
+    for model, rates in PRICES.items():
+        days = [rate.effective_from for rate in rates]
+        assert days == sorted(set(days)), model
+
+
+def test_a_price_table_past_its_horizon_is_logged_loudly_and_never_refuses(caplog):
+    with caplog.at_level(logging.ERROR, logger=metering.__name__):
+        assert not metering.warn_if_prices_out_of_date(PRICES_VALID_UNTIL)
+        assert caplog.records == []
+        day_after = PRICES_VALID_UNTIL + timedelta(days=1)
+        assert metering.warn_if_prices_out_of_date(day_after)
+    assert [record.levelno for record in caplog.records] == [logging.ERROR]
+    assert "past its horizon" in caplog.records[0].getMessage()
+
+
+async def test_the_price_table_is_checked_again_while_the_relay_runs(caplog):
+    day_after = PRICES_VALID_UNTIL + timedelta(days=1)
+    with caplog.at_level(logging.ERROR, logger=metering.__name__):
+        watch = asyncio.create_task(
+            metering.watch_prices(interval_s=0.01, today=lambda: day_after)
+        )
+        try:
+            await until(lambda: len(caplog.records) >= 3)
+        finally:
+            watch.cancel()
