@@ -902,8 +902,8 @@ class DiscordAdapter(SocketAdapter):
             content = (snapshot.content or "").strip()
             if content:
                 parts.append(content)
-            # Surface forwarded attachments by name so the LLM knows files came
-            # with the forward, even though we can't inline their bytes here.
+            # Name forwarded attachments so the LLM knows which files came with
+            # the forward; ``_extract_attachments`` uploads the files themselves.
             for attachment in snapshot.attachments:
                 parts.append(f"[Attached file: {attachment.filename}]")
         return "\n\n".join(parts).strip()
