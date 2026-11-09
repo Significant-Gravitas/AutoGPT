@@ -1187,6 +1187,10 @@ class ShimDaemon:
     # ── Frame dispatch ────────────────────────────────────────────────────
 
     async def _on_frame(self, ws, raw: str | bytes) -> None:
+        # A computer-use call's deadline counts from here, when the frame
+        # arrived: its task can start later, after other work that kept the
+        # event loop busy.
+        received_at = asyncio.get_running_loop().time()
         try:
             msg = parse_message(raw)
         except (ValidationError, ValueError) as exc:
@@ -1250,7 +1254,7 @@ class ShimDaemon:
 
         self._pending_requests += 1
         self._queue_depth += 1
-        task = asyncio.create_task(self._dispatch(ws, msg, prequeued=True))
+        task = asyncio.create_task(self._dispatch(ws, msg, prequeued=True, received_at=received_at))
         self._dispatch_tasks.add(task)
         task.add_done_callback(self._dispatch_tasks.discard)
 
@@ -1427,11 +1431,16 @@ class ShimDaemon:
             and self._recording_handler._active_recording_id is None
         )
 
-    async def _dispatch(self, ws, msg: Any, *, prequeued: bool = False) -> None:
+    async def _dispatch(
+        self, ws, msg: Any, *, prequeued: bool = False, received_at: float | None = None
+    ) -> None:
         assert self._semaphore is not None
-        # A computer-use call's deadline counts from here, through every wait.
-        # Each dispatch runs in its own task, so this is the request's own.
-        _request_received_at.set(asyncio.get_running_loop().time())
+        # A computer-use call's deadline counts from when the frame arrived
+        # (_on_frame), else from here, through every wait. Each dispatch runs
+        # in its own task, so this is the request's own.
+        _request_received_at.set(
+            asyncio.get_running_loop().time() if received_at is None else received_at
+        )
         generation = self._dispatch_generation
 
         def counted() -> bool:

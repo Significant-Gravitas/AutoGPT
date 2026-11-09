@@ -439,6 +439,46 @@ async def test_a_computer_call_waiting_for_a_machine_slot_stops_at_its_deadline(
     assert machine.locked()  # never taken
 
 
+async def test_a_computer_calls_deadline_counts_from_its_frames_arrival(
+    shim_config: ShimConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The deadline counted from when the call's task first ran. Work that
+    kept the event loop busy in between (a filesystem check, say) pushed
+    it back, so a short call could reach the driver after its time, on a
+    window that had changed."""
+    import time
+
+    from autogpt_local_executor.protocol import (
+        ComputerToolCallMessage,
+        ComputerToolCallPayload,
+        dump_message,
+    )
+
+    shim_config.enable_computer_use = True
+    child = _child(shim_config, asyncio.Semaphore(1))
+    child._granted_capabilities = frozenset({"computer_use"})
+    seen: list[float | None] = []
+
+    async def handle(msg: Any, *, received_at: float | None = None) -> AckMessage:
+        seen.append(received_at)
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(child._computer_handler, "handle", handle)
+    call = ComputerToolCallMessage(
+        id="req",
+        ts=now_ts(),
+        payload=ComputerToolCallPayload(tool="click", arguments={"pid": 7}, timeout_seconds=1),
+    )
+    loop = asyncio.get_running_loop()
+    arrived = loop.time()
+    await child._on_frame(_FakeWS(), dump_message(call))
+    time.sleep(1.0)  # the event loop kept busy before the call's task runs
+    await asyncio.wait(child._dispatch_tasks, timeout=10)
+
+    assert len(seen) == 1 and seen[0] is not None
+    assert seen[0] - arrived < 0.5
+
+
 async def test_a_request_takes_a_machine_slot_freed_while_it_waits(
     shim_config: ShimConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
