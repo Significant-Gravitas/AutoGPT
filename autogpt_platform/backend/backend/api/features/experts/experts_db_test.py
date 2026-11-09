@@ -5150,6 +5150,7 @@ def _run_execution(**overrides) -> SimpleNamespace:
         "executionStatus": "COMPLETED",
         "startedAt": None,
         "endedAt": None,
+        "stats": None,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -5230,6 +5231,17 @@ def test_to_expert_run_never_reports_a_failed_run_as_completed(execution_status)
         needs_review=False,
     )
     assert run.status == execution_status.value.lower()
+
+
+def test_to_expert_run_reports_a_completed_run_with_a_failed_step_as_failed():
+    run = experts_db._to_expert_run(
+        _run_execution(stats={"node_count": 3, "node_error_count": 1}),
+        _run_workflow(),
+        "unknown",
+        None,
+        needs_review=False,
+    )
+    assert run.status == "failed"
 
 
 def test_to_expert_run_names_a_library_only_workflow():
