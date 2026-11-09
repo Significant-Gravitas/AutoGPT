@@ -163,6 +163,7 @@ ToolName = Literal[
     "read_skill",
     "read_workspace_file",
     "remove_expert_workflow",
+    "render_ui",
     "request_credential_grant",
     "resume_capability",
     "resume_schedule",

@@ -10,6 +10,7 @@ import {
 } from "../CompactionCard/helpers";
 import { COMPACTION_PART_TYPE, isExpertChangePart } from "../ToolChain/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
+import { RENDER_UI_PART_TYPE } from "../../tools/RenderUI/helpers";
 import { CHAT_IMAGE_TOKEN_PREFIXES } from "../../helpers/chatImageTokens";
 
 export type MessagePart = UIMessage<
@@ -28,6 +29,7 @@ export function isChainableToolPart(part: MessagePart): boolean {
   if (
     part.type === COMPACTION_PART_TYPE ||
     part.type === EXPERT_ONBOARDING_PART_TYPE ||
+    part.type === RENDER_UI_PART_TYPE ||
     isExpertChangePart(part)
   ) {
     return false;

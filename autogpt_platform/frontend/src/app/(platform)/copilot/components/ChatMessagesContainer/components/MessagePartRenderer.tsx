@@ -25,6 +25,8 @@ import { RunCapabilityTool } from "../../../tools/RunCapability/RunCapability";
 import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
 import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
+import { RenderUI } from "../../../tools/RenderUI/RenderUI";
+import { RENDER_UI_PART_TYPE } from "../../../tools/RenderUI/helpers";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
 import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
@@ -171,6 +173,8 @@ interface Props {
    *  only animates while it is; once the stream ends the row is history,
    *  however it was left. */
   isCurrentlyStreaming?: boolean;
+  /** Newest assistant message and no turn in progress: only then can a card send. */
+  canActOnCards?: boolean;
 }
 
 export function MessagePartRenderer({
@@ -184,6 +188,7 @@ export function MessagePartRenderer({
   liveCompactionCallId,
   liveCompactionStats,
   isCurrentlyStreaming,
+  canActOnCards,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
 
@@ -262,6 +267,16 @@ export function MessagePartRenderer({
         />
       );
     }
+    case RENDER_UI_PART_TYPE:
+      return (
+        <RenderUI
+          key={key}
+          part={part as ToolUIPart}
+          canAct={Boolean(canActOnCards && !isCurrentlyStreaming && !readOnly)}
+          isCurrentlyStreaming={isCurrentlyStreaming}
+          fileUrlBuilder={fileUrlBuilder}
+        />
+      );
     case "tool-ask_question":
       return <AskQuestionTool key={key} part={part as ToolUIPart} />;
     case "tool-expert_onboarding":

@@ -81,6 +81,7 @@ from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
 from .resume_capability import ResumeCapabilityTool
 from .routines import ListRoutinesTool, ScheduleRoutineTool
+from .render_ui import RenderUITool
 from .run_agent import RunAgentTool
 from .run_capability import RunCapabilityTool
 from .run_sub_session import RunSubSessionTool
@@ -111,6 +112,7 @@ logger = logging.getLogger(__name__)
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
     "ask_question": AskQuestionTool(),
+    "render_ui": RenderUITool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
     "decompose_goal": DecomposeGoalTool(),

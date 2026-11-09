@@ -427,6 +427,8 @@ class AutoPilotBlock(Block):
             # untrusted upstream data, so this session must not reach the
             # tools that restaff the user's team.
             origin="automation",
+            # The block outputs only the final text.
+            text_only_result=True,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             # The run's expert scope: its grants and tools follow the session.

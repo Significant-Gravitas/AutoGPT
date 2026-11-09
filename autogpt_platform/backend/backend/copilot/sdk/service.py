@@ -219,6 +219,7 @@ from ..tools import (
     origin_disabled_tools,
     tool_names_in_groups,
 )
+from ..tools.render_ui import render_ui_disabled_tools
 from ..tools.e2b_sandbox import (
     forget_turn_ceiling,
     get_or_create_sandbox,
@@ -5531,6 +5532,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             | {"get_agent_building_guide"}
             | kickoff_hidden
             | origin_disabled_tools(session.metadata.origin)
+            | await render_ui_disabled_tools(session)
         )
         # run_capability reaches deferred tools by id; the same hidden set
         # must bound it, so it travels with the turn's execution context.

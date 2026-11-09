@@ -69,6 +69,7 @@ const LIVE_EVENT_NAMES = [
   "trial_offer_viewed",
   "trial_resume_clicked",
   "trial_subscribe_now_clicked",
+  "visual_option_clicked",
   "voice_mode_error",
   "voice_mode_permission_denied",
   "voice_mode_started",

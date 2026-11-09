@@ -16,6 +16,7 @@ interface Props {
   parts: MessagePart[];
   messageID: string;
   isCurrentlyStreaming: boolean;
+  canActOnCards?: boolean;
   onRetry?: () => void;
   fileUrlBuilder?: (fileId: string) => string;
   readOnly?: boolean;
@@ -28,6 +29,7 @@ export function ChainMessageParts({
   parts,
   messageID,
   isCurrentlyStreaming,
+  canActOnCards,
   onRetry,
   fileUrlBuilder,
   readOnly,
@@ -90,6 +92,7 @@ export function ChainMessageParts({
         liveCompactionCallId={liveCompactionCallId}
         liveCompactionStats={liveCompactionStats}
         isCurrentlyStreaming={isCurrentlyStreaming}
+        canActOnCards={canActOnCards}
       />
     );
   });

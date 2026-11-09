@@ -316,8 +316,11 @@ from ._test_data import make_session
 #     dev 7ca3671f6a                              77,726 (89 tools)
 #     + #11220's two arguments        +178        77,904 (89 tools)
 #     + headroom                      +300        78,204
+# render_ui's block schema adds its whole size. Only sessions with
+# copilot-visual-answers on declare it:
+#     dev + render_ui                 +4,402      82,606
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 78_204
+_CHAR_BUDGET = 82_606
 
 
 @pytest.fixture(scope="module")
@@ -536,8 +539,10 @@ def test_total_schema_char_budget() -> None:
 #     dev 7ca3671f6a                              70,062
 #     + #11220's two arguments        +164        70,226
 #     + headroom                      +300        70,526
+# render_ui, in compact separators:
+#     dev + render_ui                 +4,028      74,554
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 70_526
+_SESSION_WIRE_BUDGET = 74_554
 
 
 def test_largest_declared_session_wire_budget() -> None:

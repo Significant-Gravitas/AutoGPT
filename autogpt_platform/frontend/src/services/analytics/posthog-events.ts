@@ -209,6 +209,11 @@ export const MonetizationEvent = {
   CHECKOUT_ABANDONED: "checkout_abandoned",
 } as const;
 
+export const VisualAnswerEvent = {
+  // An option card in one of Otto's visual answers was clicked.
+  VISUAL_OPTION_CLICKED: "visual_option_clicked",
+} as const;
+
 export const PostHogEvent = {
   ...PageEvent,
   ...DeploySkewEvent,
@@ -220,6 +225,7 @@ export const PostHogEvent = {
   ...FirstRunEvent,
   ...TabIntroEvent,
   ...VoiceModeEvent,
+  ...VisualAnswerEvent,
   ...CredentialConnectionFailureEvent,
   ...TrialEvent,
   ...TourEvent,

@@ -395,6 +395,7 @@ merges the website pageviews into the new user:
 | `voice_recording_downloaded` | browser | live | `turn_index` | The audio is downloaded instead. |
 | `voice_mode_permission_denied` | browser | live | `stage` | Microphone permission is refused. |
 | `voice_mode_error` | browser | live | `stage` | The VAD, synthesis or send failed. |
+| `visual_option_clicked` | browser | live | none | An option card in one of Otto's visual answers is clicked, which sends its title as the user's reply. |
 | `experts_section_viewed` | browser | live | — | The marketplace experts shelf renders with results. |
 | `expert_profile_opened` | browser | live | `template_id` | An expert profile page opens. |
 | `hire_started` | browser | live | `template_id`, `surface` (`expert_page`; `onboarding` was the hire step's, gone with SECRT-3201) | A hire button is clicked. The onboarding plan's hires have no click: they are `plan_experts_hired` and `expert_hired` with `via: plan`. |

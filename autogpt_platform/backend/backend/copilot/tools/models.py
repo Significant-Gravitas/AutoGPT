@@ -150,6 +150,7 @@ class ResponseType(str, Enum):
     EXPERT_CHAT_LIST = "expert_chat_list"
     EXPERT_CHAT_TRANSCRIPT = "expert_chat_transcript"
     EXPERT_ONBOARDING = "expert_onboarding"
+    UI_BLOCKS = "ui_blocks"
     TEAM_CONSULT = "team_consult"
     SESSION_LIST = "session_list"
     SESSION_MESSAGE = "session_message"
