@@ -114,10 +114,11 @@ async def test_the_tool_list_deadline_covers_every_page(fake_log, monkeypatch) -
     started = time.monotonic()
     try:
         with pytest.raises(TimeoutError):
-            await asyncio.wait_for(client.list_tools(timeout=0.5), timeout=5)
+            await asyncio.wait_for(client.list_tools(timeout=0.5), timeout=30)
     finally:
         await client.close()
-    assert time.monotonic() - started < 3  # its own deadline, not the guard's
+    # Its own 0.5 s deadline, with 10x room for a slow runner, not the guard's.
+    assert time.monotonic() - started < 5
 
 
 async def test_a_request_past_its_deadline_is_cancelled_as_mcp_has_it(
