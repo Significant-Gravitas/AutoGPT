@@ -98,6 +98,23 @@ describe("Reset expert", () => {
     expect(reset).not.toHaveBeenCalled();
   });
 
+  test("does not promise to reset what a created expert has no template for", async () => {
+    const user = userEvent.setup();
+    render(
+      <ExpertResetSection expert={{ ...maria, source_template_id: null }} />,
+    );
+
+    await user.click(screen.getByTestId("expert-reset-button"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Reset Maria?" });
+    expect(dialog.textContent).not.toContain(
+      "Your edits to their soul and routines",
+    );
+    expect(dialog.textContent).toContain(
+      "Their soul and routines, since you created Maria",
+    );
+  });
+
   test("resets on confirm and lets Maria introduce themselves again", async () => {
     server.use(
       getResetExpertMockHandler({

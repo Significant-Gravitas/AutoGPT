@@ -9,6 +9,7 @@ import { useResetExpertDialog } from "./useResetExpertDialog";
 interface Props {
   expertId: string;
   expertName: string;
+  hasTemplate: boolean;
   open: boolean;
   onClose: () => void;
 }
@@ -16,6 +17,7 @@ interface Props {
 export function ResetExpertDialog({
   expertId,
   expertName,
+  hasTemplate,
   open,
   onClose,
 }: Props) {
@@ -49,7 +51,9 @@ export function ResetExpertDialog({
             <ResetLine>
               {expertName}&apos;s computer and the notes on it
             </ResetLine>
-            <ResetLine>Your edits to their soul and routines</ResetLine>
+            {hasTemplate ? (
+              <ResetLine>Your edits to their soul and routines</ResetLine>
+            ) : null}
           </ResetGroup>
           <ResetGroup label="Archived">
             <ResetLine>
@@ -63,6 +67,11 @@ export function ResetExpertDialog({
             <ResetLine>
               Your files, and what the rest of your team knows
             </ResetLine>
+            {hasTemplate ? null : (
+              <ResetLine>
+                Their soul and routines, since you created {expertName}
+              </ResetLine>
+            )}
           </ResetGroup>
           <Dialog.Footer>
             <Button

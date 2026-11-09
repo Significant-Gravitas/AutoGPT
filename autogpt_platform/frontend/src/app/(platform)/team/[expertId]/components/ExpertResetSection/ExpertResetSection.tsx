@@ -15,6 +15,9 @@ interface Props {
 /** The factory reset: unlike firing, it erases what the expert learned. */
 export function ExpertResetSection({ expert }: Props) {
   const [isOpen, setIsOpen] = useState(false);
+  // A created expert has no template to go back to, so its soul and routines
+  // stay as they are.
+  const hasTemplate = Boolean(expert.source_template_id);
 
   return (
     <section
@@ -30,9 +33,10 @@ export function ExpertResetSection({ expert }: Props) {
             Reset {expert.name}
           </Text>
           <Text variant="body-md" tone="secondary" className="mt-0.5">
-            Start over with {expert.name} as they were the day you hired them:
-            their memory, computer and your edits are erased, and your chats
-            with them are archived. Unlike firing, this can&apos;t be undone.
+            {hasTemplate
+              ? `Start over with ${expert.name} as they were the day you hired them: their memory, computer and your edits are erased, and your chats with them are archived.`
+              : `Start over with ${expert.name}: their memory and computer are erased, and your chats with them are archived.`}{" "}
+            Unlike firing, this can&apos;t be undone.
           </Text>
         </div>
       </div>
@@ -50,6 +54,7 @@ export function ExpertResetSection({ expert }: Props) {
       <ResetExpertDialog
         expertId={expert.id}
         expertName={expert.name}
+        hasTemplate={hasTemplate}
         open={isOpen}
         onClose={() => setIsOpen(false)}
       />

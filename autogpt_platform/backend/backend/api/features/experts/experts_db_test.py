@@ -7671,3 +7671,30 @@ async def test_reset_refuses_someone_elses_expert(
 
     reset_externals.erase.assert_not_awaited()
     reset_externals.computer.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_stops_when_a_routine_job_cannot_be_deleted(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """Unlike switching a routine off, a reset deletes the row, so a job left
+    behind would fire with nothing to stop it: the reset fails instead and
+    the routine stays until a retry succeeds."""
+    expert_id, _, _ = await _hire_with_history(test_user.id)
+    await prisma.models.ExpertRoutine.prisma().update_many(
+        where={"expertId": expert_id, "key": "owner-routine"},
+        data={"scheduleIds": ["sched-live"], "enabledAt": datetime.now(timezone.utc)},
+    )
+    scheduler = MagicMock()
+    scheduler.delete_schedule = AsyncMock(side_effect=RuntimeError("scheduler down"))
+
+    with (
+        patch.object(expert_reset, "get_scheduler_client", return_value=scheduler),
+        pytest.raises(RuntimeError),
+    ):
+        await expert_reset.reset_expert(test_user.id, expert_id)
+
+    kept = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": expert_id, "key": "owner-routine"}
+    )
+    assert [r.scheduleIds for r in kept] == [["sched-live"]]

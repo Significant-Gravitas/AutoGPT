@@ -630,10 +630,13 @@ async def _execute_copilot_turn(**kwargs):
             )
         else:
             session = await get_chat_session(args.session_id, args.user_id)
-            if session is None:
+            if session is None or session.archived_at is not None:
+                # An archived chat belongs to an expert that was reset: it is
+                # closed, so a follow-up aimed at it retires with it.
                 logger.info(
                     f"Copilot turn schedule {args.schedule_id} skipped — session "
-                    f"{args.session_id[:12]} no longer exists; removing schedule"
+                    f"{args.session_id[:12]} no longer exists or is archived; "
+                    "removing schedule"
                 )
                 await _self_delete_copilot_turn_schedule(args)
                 return

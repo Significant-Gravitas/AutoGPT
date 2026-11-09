@@ -23,7 +23,6 @@ from pydantic import BaseModel
 
 from backend.api.features.experts.models import decode_voice_preferences
 from backend.api.features.experts.presentation import template_presentation
-from backend.api.features.experts.routine_jobs import delete_routine_schedules
 from backend.api.features.experts.routines import install_routines
 from backend.blocks.desktop._common import expert_volume_name
 from backend.copilot.config import ChatConfig
@@ -31,10 +30,19 @@ from backend.copilot.graphiti.erase import erase_scope
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import invalidate_session_cache
 from backend.copilot.scheduled_chats.forget import forget_routine
-from backend.copilot.tools.e2b_sandbox import kill_expert_sandbox
-from backend.util.exceptions import ExpertNotFoundError
+from backend.copilot.tools.e2b_sandbox import (
+    SandboxOwner,
+    find_owned_sandbox_id,
+    kill_expert_sandbox,
+)
+from backend.util.clients import get_scheduler_client
+from backend.util.exceptions import ExpertNotFoundError, NotFoundError
 
 logger = logging.getLogger(__name__)
+
+
+class ExpertResetError(Exception):
+    """A step of the reset could not be completed; trying again is safe."""
 
 
 class ExpertResetResult(BaseModel):
@@ -106,7 +114,13 @@ async def _erase_computer(expert_id: str) -> bool:
     api_key = ChatConfig().active_e2b_api_key
     if not api_key:
         return False
-    await kill_expert_sandbox(expert_id, api_key)
+    if not await kill_expert_sandbox(expert_id, api_key):
+        # False means "no box" or "the kill failed". A box that survives would
+        # come back with its old screen and processes, so find out which; the
+        # lookup itself raises when E2B cannot say.
+        owner = SandboxOwner(kind="expert", id=expert_id)
+        if await find_owned_sandbox_id(owner, api_key) is not None:
+            raise ExpertResetError(f"Could not stop expert #{expert_id}'s computer")
     name = expert_volume_name(expert_id)
     volumes = await AsyncVolume.list(api_key=api_key)
     erased = False
@@ -139,8 +153,16 @@ async def _reset_routines(user_id: str, expert_id: str, template_id: str) -> int
     current = await prisma.models.ExpertRoutine.prisma().find_many(
         where={"expertId": expert_id}
     )
+    scheduler = get_scheduler_client()
     for row in current:
-        await delete_routine_schedules(user_id, row)
+        # Unlike switching a routine off, the row goes away, so a job left
+        # behind would fire with nothing to stop it: a failed delete stops
+        # the reset instead (it is safe to try again).
+        for schedule_id in row.scheduleIds:
+            try:
+                await scheduler.delete_schedule(schedule_id, user_id=user_id)
+            except NotFoundError:
+                pass  # already gone, which is what the reset wants
         try:
             await forget_routine(user_id, row.id)
         except Exception:

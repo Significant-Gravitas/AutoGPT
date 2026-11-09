@@ -51,10 +51,28 @@ async def test_erase_computer_without_a_volume_reports_nothing_erased():
     with (
         patch(f"{_MODULE}.ChatConfig", _config("e2b-key")),
         patch(f"{_MODULE}.kill_expert_sandbox", AsyncMock(return_value=False)),
+        patch(f"{_MODULE}.find_owned_sandbox_id", AsyncMock(return_value=None)),
         patch(f"{_MODULE}.AsyncVolume", volume),
     ):
         assert await reset._erase_computer("e1") is False
     volume.destroy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_box_that_survives_the_kill_fails_the_reset():
+    """kill_expert_sandbox answers False both for "no box" and for a failed
+    kill; a box still there would come back with its old state."""
+    volume = MagicMock()
+    volume.list = AsyncMock(return_value=[])
+    with (
+        patch(f"{_MODULE}.ChatConfig", _config("e2b-key")),
+        patch(f"{_MODULE}.kill_expert_sandbox", AsyncMock(return_value=False)),
+        patch(f"{_MODULE}.find_owned_sandbox_id", AsyncMock(return_value="sbx-1")),
+        patch(f"{_MODULE}.AsyncVolume", volume),
+        pytest.raises(reset.ExpertResetError),
+    ):
+        await reset._erase_computer("e1")
+    volume.list.assert_not_called()
 
 
 @pytest.mark.asyncio
