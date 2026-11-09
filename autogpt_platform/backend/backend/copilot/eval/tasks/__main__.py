@@ -22,6 +22,7 @@ from pathlib import Path
 
 import openai
 
+from .html_report import write_html
 from .judge import review, run_checks, score_case
 from .llm import Backend, ClaudeBackend, CursorBackend, OpenAIBackend
 from .models import Case, CaseResult, Rating, World
@@ -177,6 +178,7 @@ def write_report(
         ),
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=2))
+    write_html(out, summary)
     short = [name.split(":")[-1] for name in reviewers]
     lines = [
         f"# Task eval — {out.name}",
