@@ -194,6 +194,25 @@ async def archive_task(task_id: str, user_id: str) -> bool:
     return archived > 0
 
 
+async def move_session_tasks(
+    session_id: str,
+    user_id: str,
+    from_statuses: list[TaskStatus],
+    to_status: TaskStatus,
+) -> int:
+    """Move the chat's live tasks in ``from_statuses`` to ``to_status``, e.g.
+    to NEEDS_INPUT when Otto asks the user something. Returns how many moved."""
+    return await prisma.models.Task.prisma().update_many(
+        where={
+            "userId": user_id,
+            "isArchived": False,
+            "status": {"in": from_statuses},
+            "Sessions": {"some": {"chatSessionId": session_id}},
+        },
+        data={"status": to_status},
+    )
+
+
 async def attach_task_session(task_id: str, session_id: str, user_id: str) -> Task:
     """Link a chat to a task; linking it twice is a no-op."""
     await _get_or_raise(task_id, user_id)
@@ -221,7 +240,7 @@ def _link(task_id: str, session_id: str) -> TaskSessionCreateInput:
 def _status_times(current: Task, status: TaskStatus, now: datetime) -> TaskUpdateInput:
     if status == TaskStatus.TODO:
         return {"startedAt": None, "completedAt": None}
-    if status == TaskStatus.IN_PROGRESS:
+    if status in (TaskStatus.IN_PROGRESS, TaskStatus.NEEDS_INPUT):
         return {"startedAt": current.started_at or now, "completedAt": None}
     return {"completedAt": now}
 

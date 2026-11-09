@@ -19,12 +19,12 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
-from prisma.enums import APIKeyPermission
+from prisma.enums import APIKeyPermission, TaskStatus
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel, Field, PrivateAttr
 
-from backend.data.db_accessors import chat_db, experts_db, library_db
+from backend.data.db_accessors import chat_db, experts_db, library_db, task_db
 from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
@@ -380,6 +380,15 @@ async def clear_pending_question(session: "ChatSession") -> None:
         logger.warning(
             f"Could not clear pending question for {session.session_id}: {e}"
         )
+    try:
+        await task_db().move_session_tasks(
+            session.session_id,
+            session.user_id,
+            [TaskStatus.NEEDS_INPUT],
+            TaskStatus.IN_PROGRESS,
+        )
+    except Exception as e:
+        logger.warning(f"Could not resume tasks for {session.session_id}: {e}")
 
 
 def maybe_append_user_message(

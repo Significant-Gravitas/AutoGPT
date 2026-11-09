@@ -4,9 +4,11 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from prisma.enums import TaskStatus
+
 from backend.copilot import turn_end
 from backend.copilot.model import ChatSession, PendingQuestion
-from backend.data.db_accessors import chat_db
+from backend.data.db_accessors import chat_db, task_db
 
 from .base import BaseTool
 from .models import (
@@ -135,10 +137,30 @@ class AskQuestionTool(BaseTool):
         if session:
             await _mark_pending(session, text)
             turn_end.request_end(session.session_id)
+            await _mark_tasks_waiting(session)
         return ClarificationNeededResponse(
             message=text,
             session_id=session.session_id if session else None,
             questions=questions,
+        )
+
+
+async def _mark_tasks_waiting(session: ChatSession) -> None:
+    """Move this chat's open tasks to NEEDS_INPUT until the user answers.
+
+    Best-effort, like ``_mark_pending``: the question matters more than the
+    status shown next to the task.
+    """
+    try:
+        await task_db().move_session_tasks(
+            session.session_id,
+            session.user_id,
+            [TaskStatus.TODO, TaskStatus.IN_PROGRESS],
+            TaskStatus.NEEDS_INPUT,
+        )
+    except Exception as e:
+        logger.warning(
+            "Could not mark tasks waiting for session %s: %s", session.session_id, e
         )
 
 

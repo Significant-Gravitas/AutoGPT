@@ -1,8 +1,10 @@
 """Tests for AskQuestionTool."""
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from prisma.enums import TaskStatus
 
 from backend.copilot import turn_end
 from backend.copilot.model import ChatSession, clear_pending_question
@@ -14,6 +16,20 @@ from backend.copilot.tools.ask_question import (
     AskQuestionTool,
 )
 from backend.copilot.tools.models import QUESTION_REASONS, ClarificationNeededResponse
+
+
+@pytest.fixture(autouse=True)
+def task_store() -> Iterator[MagicMock]:
+    """Stand in for the task-status writes that asking and replying make."""
+    store = MagicMock(move_session_tasks=AsyncMock(return_value=1))
+    with (
+        patch(
+            "backend.copilot.tools.ask_question.task_db",
+            MagicMock(return_value=store),
+        ),
+        patch("backend.copilot.model.task_db", MagicMock(return_value=store)),
+    ):
+        yield store
 
 
 @pytest.fixture()
@@ -622,3 +638,33 @@ async def test_an_invalid_question_does_not_end_the_turn(
     with pytest.raises(ValueError):
         await tool._execute(user_id=None, session=session, questions=[])
     assert not turn_end.is_ending(session.session_id)
+
+
+@pytest.mark.asyncio
+async def test_asking_parks_the_chats_tasks_and_replying_resumes_them(
+    tool: AskQuestionTool, session: ChatSession, quiet_db, task_store: MagicMock
+):
+    db = MagicMock(clear_session_pending_question=AsyncMock())
+    try:
+        await tool._execute(
+            user_id=None, session=session, questions=[{"question": "Which team?"}]
+        )
+        with patch("backend.copilot.model.chat_db", MagicMock(return_value=db)):
+            await clear_pending_question(session)
+    finally:
+        turn_end.clear(session.session_id)
+
+    assert [c.args for c in task_store.move_session_tasks.await_args_list] == [
+        (
+            session.session_id,
+            session.user_id,
+            [TaskStatus.TODO, TaskStatus.IN_PROGRESS],
+            TaskStatus.NEEDS_INPUT,
+        ),
+        (
+            session.session_id,
+            session.user_id,
+            [TaskStatus.NEEDS_INPUT],
+            TaskStatus.IN_PROGRESS,
+        ),
+    ]

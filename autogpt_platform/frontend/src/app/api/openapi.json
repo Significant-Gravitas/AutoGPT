@@ -37257,7 +37257,14 @@
       },
       "TaskStatus": {
         "type": "string",
-        "enum": ["TODO", "IN_PROGRESS", "DONE", "FAILED", "CANCELLED"],
+        "enum": [
+          "TODO",
+          "IN_PROGRESS",
+          "NEEDS_INPUT",
+          "DONE",
+          "FAILED",
+          "CANCELLED"
+        ],
         "title": "TaskStatus"
       },
       "TaskUpdateRequest": {

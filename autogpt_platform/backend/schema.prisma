@@ -1009,6 +1009,7 @@ model ChatBackgroundTask {
 enum TaskStatus {
   TODO
   IN_PROGRESS
+  NEEDS_INPUT
   DONE
   FAILED
   CANCELLED

@@ -203,6 +203,7 @@ from backend.data.task import (
     detach_task_session,
     get_task,
     list_tasks,
+    move_session_tasks,
     update_task,
 )
 from backend.data.understanding import (
@@ -604,6 +605,7 @@ class DatabaseManager(AppService):
     list_tasks = _(list_tasks)
     update_task = _(update_task)
     archive_task = _(archive_task)
+    move_session_tasks = _(move_session_tasks)
     attach_task_session = _(attach_task_session)
     detach_task_session = _(detach_task_session)
 
@@ -1220,6 +1222,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_tasks = d.list_tasks
     update_task = d.update_task
     archive_task = d.archive_task
+    move_session_tasks = d.move_session_tasks
     attach_task_session = d.attach_task_session
     detach_task_session = d.detach_task_session
 

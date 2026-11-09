@@ -216,3 +216,48 @@ async def test_a_bad_title_is_refused_and_nothing_is_written(
         assert await task_db.list_tasks(user_id) == []
     finally:
         await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_question_parks_only_this_chats_open_tasks(server: SpinTestServer):
+    user_id = await _user()
+    try:
+        chat_id, other_chat_id = await _chat(user_id), await _chat(user_id)
+        open_task = await task_db.create_task(
+            user_id=user_id,
+            title="Draft the launch email",
+            created_by=TaskCreator.OTTO,
+            session_id=chat_id,
+        )
+        done_task = await task_db.create_task(
+            user_id=user_id,
+            title="Old work",
+            created_by=TaskCreator.OTTO,
+            session_id=chat_id,
+        )
+        await task_db.update_task(
+            done_task.id, user_id, TaskPatch(status=TaskStatus.DONE)
+        )
+        elsewhere = await task_db.create_task(
+            user_id=user_id,
+            title="Other chat's work",
+            created_by=TaskCreator.OTTO,
+            session_id=other_chat_id,
+        )
+
+        moved = await task_db.move_session_tasks(
+            chat_id,
+            user_id,
+            [TaskStatus.TODO, TaskStatus.IN_PROGRESS],
+            TaskStatus.NEEDS_INPUT,
+        )
+
+        assert moved == 1
+        statuses = {t.id: t.status for t in await task_db.list_tasks(user_id, limit=10)}
+        assert statuses == {
+            open_task.id: TaskStatus.NEEDS_INPUT,
+            done_task.id: TaskStatus.DONE,
+            elsewhere.id: TaskStatus.TODO,
+        }
+    finally:
+        await _cleanup(user_id)
