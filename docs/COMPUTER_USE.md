@@ -72,9 +72,12 @@ cua-driver uses XWayland unless you set `CUA_DRIVER_RS_ENABLE_WAYLAND=1` in
 the shim's environment for its native backend, whose support varies by
 compositor (see cua-driver's Linux notes). The accessibility tree comes from
 AT-SPI over the session bus: a shim started as a systemd user service needs
-`DISPLAY` (or `WAYLAND_DISPLAY`) and `DBUS_SESSION_BUS_ADDRESS` in its
+`DISPLAY` (XWayland's, on Wayland) and `DBUS_SESSION_BUS_ADDRESS` in its
 environment, which desktop sessions usually import into the user manager.
-`doctor` runs cua-driver's own checks for the display server and AT-SPI.
+`WAYLAND_DISPLAY` stands in for `DISPLAY` only with
+`CUA_DRIVER_RS_ENABLE_WAYLAND=1`; without either, the shim doesn't offer
+computer use. `doctor` runs cua-driver's own checks for the display server
+and AT-SPI.
 
 WSL2 can't drive Windows apps; run the shim on Windows itself.
 
