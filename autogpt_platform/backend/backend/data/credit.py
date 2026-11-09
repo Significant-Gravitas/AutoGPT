@@ -3528,13 +3528,15 @@ def log_tier_reconciliation_discrepancy(
     return direction
 
 
-async def alert_tier_reconciliation_discrepancy(message: str) -> None:
+async def alert_tier_reconciliation_discrepancy(message: str) -> bool:
     """Best-effort ops alert to the platform Discord channel. Never raises so a
     Discord outage can't break reconciliation — but a delivery failure is logged
     at ERROR (→ Sentry) so a broken bot token surfaces loudly instead of leaving
-    ops blind. Discord is the primary alert surface; this is the fallback."""
+    ops blind. Discord is the primary alert surface; this is the fallback.
+    Returns whether Discord took the alert."""
     try:
         await discord_send_alert(message, DiscordChannel.PLATFORM)
+        return True
     except Exception:
         # Discord delivery failed (bad token / channel / gateway timeout) — log
         # the FULL alert content at ERROR so Sentry carries the same payload the
@@ -3545,6 +3547,7 @@ async def alert_tier_reconciliation_discrepancy(message: str) -> None:
             message,
             exc_info=True,
         )
+        return False
 
 
 def _track_billing_event(

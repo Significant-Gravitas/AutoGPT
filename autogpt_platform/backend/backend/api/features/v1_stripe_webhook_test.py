@@ -1235,3 +1235,19 @@ def test_a_late_payment_needing_a_person_alerts_once_across_its_deliveries(
 
     assert restart.await_count == 3
     alert.assert_awaited_once()
+
+
+def test_a_late_payment_alert_that_was_not_delivered_is_sent_by_the_next_delivery(
+    mocker: pytest_mock.MockFixture, late_payment_needing_a_person
+) -> None:
+    """A Discord outage on the first delivery must not use up the invoice's
+    one alert: the next delivery tells the person, and the one after does not
+    repeat it."""
+    deliveries, restart, alert = late_payment_needing_a_person
+    alert.side_effect = [False, True]
+
+    for event in deliveries:
+        _post_event(mocker, event)
+
+    assert restart.await_count == 3
+    assert alert.await_count == 2

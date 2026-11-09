@@ -857,13 +857,22 @@ async def _restart_period_if_paid_late(invoice_id: str | None) -> None:
     if not invoice_id:
         return
     outcome = await restart_period_after_late_payment(invoice_id)
-    if outcome == RestartOutcome.NEEDS_MANUAL_FIX and await _claim_restart_alert(
-        invoice_id
+    if outcome != RestartOutcome.NEEDS_MANUAL_FIX:
+        return
+    if not await _claim_restart_alert(invoice_id):
+        return
+    # The webhook still answers 200: the payment itself was handled, and the
+    # failed alert is already logged at ERROR with its content. Releasing the
+    # claim lets the payment's other events, or a redelivery, alert again.
+    if not await alert_tier_reconciliation_discrepancy(
+        f"Invoice {invoice_id} was paid late but its subscription's billing"
+        " period could not be restarted from the payment; see the logs"
     ):
-        await alert_tier_reconciliation_discrepancy(
-            f"Invoice {invoice_id} was paid late but its subscription's billing"
-            " period could not be restarted from the payment; see the logs"
-        )
+        await _release_restart_alert(invoice_id)
+
+
+def _restart_alert_key(invoice_id: str) -> str:
+    return f"billing_restart_alert:{invoice_id}"
 
 
 async def _claim_restart_alert(invoice_id: str) -> bool:
@@ -873,7 +882,7 @@ async def _claim_restart_alert(invoice_id: str) -> bool:
     try:
         redis_client = await get_redis_async()
         claimed = await redis_client.set(
-            f"billing_restart_alert:{invoice_id}", "1", nx=True, ex=7 * 86400
+            _restart_alert_key(invoice_id), "1", nx=True, ex=7 * 86400
         )
         return bool(claimed)
     except Exception:
@@ -882,6 +891,18 @@ async def _claim_restart_alert(invoice_id: str) -> bool:
             exc_info=True,
         )
         return True
+
+
+async def _release_restart_alert(invoice_id: str) -> None:
+    """Undo the claim of an alert that was not delivered."""
+    try:
+        redis_client = await get_redis_async()
+        await redis_client.delete(_restart_alert_key(invoice_id))
+    except Exception:
+        logger.warning(
+            f"Could not release the billing restart alert for invoice {invoice_id}",
+            exc_info=True,
+        )
 
 
 def _paid_invoice_id(event_type: str, data_object: dict) -> str | None:
