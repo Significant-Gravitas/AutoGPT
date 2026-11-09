@@ -536,8 +536,17 @@ def test_total_schema_char_budget() -> None:
 #     dev 7ca3671f6a                              70,062
 #     + #11220's two arguments        +164        70,226
 #     + headroom                      +300        70,526
+#
+# Raised for raise_expert's `handoff_title` and `handoff_task` (SECRT-3401),
+# the same two fields hire_expert carries, so a new expert created for a task
+# already in the chat is created and handed it in one click. raise_expert is
+# in the largest session. Measured on that branch merged with dev e6a3d35514
+# (2026-11-09); the registry total (77,971) still fits under _CHAR_BUDGET:
+#     dev e6a3d35514                              70,416
+#     + raise_expert's two fields     +240        70,656
+#     + headroom                      +300        70,956
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 70_526
+_SESSION_WIRE_BUDGET = 70_956
 
 
 def test_largest_declared_session_wire_budget() -> None:
