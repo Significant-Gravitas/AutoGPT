@@ -36,7 +36,7 @@ beforeEach(() => {
   source.paid = false;
 });
 describe("onboarding layout", () => {
-  it("includes team introductions, brain dump, and hiring without rollout flags", () => {
+  it("includes team introductions, brain dump, and the plan + trial step without rollout flags", () => {
     const { result } = renderHook(useOnboardingLayout, { initialProps });
     expect(result.current.isReady).toBe(true);
     expect(result.current.steps).toEqual({
@@ -44,9 +44,8 @@ describe("onboarding layout", () => {
       autopilot: 2,
       role: 3,
       painPoints: 4,
-      hire: 5,
-      subscription: 6,
-      preparing: 7,
+      subscription: 5,
+      preparing: 6,
     });
   });
   it("waits only for payment before freezing checkout placement", () => {
@@ -66,7 +65,7 @@ describe("onboarding layout", () => {
     };
     rerender(initialProps);
     expect(result.current.isReady).toBe(true);
-    expect(result.current.steps.subscription).toBe(6);
+    expect(result.current.steps.subscription).toBe(5);
   });
   it("lays out a failed read as payment off without freezing it", () => {
     source.payment = {
@@ -86,7 +85,7 @@ describe("onboarding layout", () => {
     };
     rerender(initialProps);
     expect(result.current.isPaymentEnabled).toBe(true);
-    expect(result.current.steps.subscription).toBe(6);
+    expect(result.current.steps.subscription).toBe(5);
   });
   it("keeps the active account's payment order after a setting change", () => {
     const { result, rerender } = renderHook(useOnboardingLayout, {
@@ -120,17 +119,19 @@ describe("onboarding layout", () => {
     };
     rerender(nextUser);
     expect(result.current.isReady).toBe(true);
-    expect(result.current.steps.hire).toBe(5);
-    expect(result.current.steps.subscription).toBeUndefined();
+    expect(result.current.isPaymentEnabled).toBe(false);
+    // No paywall configured: the plan stands alone where the paywall was.
+    expect(result.current.steps.subscription).toBe(5);
+    expect(result.current.steps.hire).toBeUndefined();
   });
   it.each([
-    ["unpaid hosted", false, false, false, true],
-    ["paid hosted", false, true, false, false],
-    ["active trial", false, false, true, false],
-    ["self-hosted", true, false, false, false],
+    ["unpaid hosted", false, false, false, true, true],
+    ["paid hosted", false, true, false, false, false],
+    ["active trial", false, false, true, false, false],
+    ["self-hosted", true, false, false, false, true],
   ] as const)(
     "preserves the %s checkout layout",
-    (_name, local, paid, trial, paywall) => {
+    (_name, local, paid, trial, paywall, planStep) => {
       source.local = local;
       source.paid = paid;
       source.payment = {
@@ -146,9 +147,9 @@ describe("onboarding layout", () => {
       });
       expect(result.current.isReady).toBe(true);
       expect(result.current.isPaymentEnabled).toBe(paywall);
-      expect(result.current.steps.subscription !== undefined).toBe(paywall);
+      expect(result.current.steps.subscription !== undefined).toBe(planStep);
       expect(result.current.steps.connect !== undefined).toBe(local);
-      expect(result.current.steps.hire).toBe(5);
+      expect(result.current.steps.hire).toBeUndefined();
     },
   );
 });

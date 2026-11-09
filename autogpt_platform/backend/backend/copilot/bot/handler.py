@@ -11,6 +11,7 @@ import logging
 
 from pydantic import BaseModel, Field, SkipValidation
 
+from backend.copilot.service import strip_server_injected_tags
 from backend.platform_linking.models import CardTurn, ChatTurnHandle, TurnDenial
 from backend.util.exceptions import LinkAlreadyExistsError
 
@@ -157,6 +158,9 @@ class MessageHandler:
             await self._follow(ctx, ctx.follow, adapter)
             return
         ctx = with_typed_options(ctx)
+        # Decide on the text as the engines will read it: a message of only
+        # server-only blocks has nothing to answer, the same as an empty one.
+        ctx = ctx.with_changes(text=strip_server_injected_tags(ctx.text))
         # Skipped attachments (too large / failed download) count as content:
         # the user sent something and must hear why nothing happened.
         has_content = bool(

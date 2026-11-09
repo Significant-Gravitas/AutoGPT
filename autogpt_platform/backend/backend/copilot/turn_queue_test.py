@@ -21,6 +21,7 @@ from backend.copilot.gate import held
 from backend.copilot.model import ChatMessage as PydanticChatMessage
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.service import EmptyUserMessage
 from backend.copilot.tree import TreeRefusal, TurnEnvelope
 from backend.copilot.trial_cost_context import TrialCostContext
 
@@ -78,6 +79,14 @@ def _queued_row(session_id: str = "s1", title: str | None = "T") -> ChatSessionI
 
 # A queued child's stored envelope.
 _CHILD = {"tree_id": "t1", "depth": 1}
+
+
+@pytest.fixture(autouse=True)
+def no_tree_reopen(monkeypatch):
+    """Promotion of a background row reopens an expired tree through the
+    ledger and the user's ceiling, which the real-database handoff suite
+    covers; here the ledger is not the subject."""
+    monkeypatch.setattr(turn_queue, "reopen_closed_tree", AsyncMock())
 
 
 @pytest.fixture(autouse=True)
@@ -188,6 +197,59 @@ async def test_enqueue_turn_includes_default_transport_and_attribution() -> None
         "llm_auth_provider": "platform",
         "cost_context": _COST_CONTEXT.model_dump(mode="json"),
     }
+
+
+_WITH_BLOCK = "<user_context>\nA note.\n</user_context>\n\nhello"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("is_user_message", "stored"),
+    [(True, "hello"), (False, _WITH_BLOCK)],
+    ids=["user row", "other row"],
+)
+async def test_a_queued_message_is_stored_as_the_engines_will_read_it(
+    is_user_message: bool, stored: str
+) -> None:
+    """Promotion replays the stored row as the turn's message, and later turns
+    replay it as history, so a user row gets the same input normalisation as a
+    message that starts its own turn. Any other row is stored as given."""
+    db = MagicMock()
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_message = AsyncMock(return_value=_pyd_message())
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            message=_WITH_BLOCK,
+            is_user_message=is_user_message,
+        )
+
+    assert db.add_chat_message.call_args.kwargs["content"].strip() == stored
+
+
+@pytest.mark.asyncio
+async def test_a_queued_user_message_with_nothing_of_its_own_writes_no_row() -> None:
+    db = MagicMock()
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_message = AsyncMock(return_value=_pyd_message())
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        pytest.raises(EmptyUserMessage),
+    ):
+        await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            message="<user_context>\nA note.\n</user_context>",
+        )
+
+    db.add_chat_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -10,7 +10,14 @@
    The hex beside each value is the palette class it replaced. Pale tints and
    borders of a hue are its role at an opacity (`bg-orange/10`, `ring-sky/30`)
    rather than roles of their own. Every role is listed in
-   src/components/styles/color-roles.ts. */
+   src/components/styles/color-roles.ts.
+
+   These roles are the app's only colours. Tailwind's palette is reset below,
+   so `bg-red-500` or `text-zinc-600` generates nothing. */
+@theme {
+  --color-*: initial;
+}
+
 :root {
   /* Surfaces */
   --color-canvas: 246 247 248; /* #F6F7F8, the page behind everything */
@@ -65,6 +72,12 @@
   --color-info-foreground: 37 99 235; /* blue-600 #2563EB */
   --color-info-surface: 239 246 255; /* blue-50 #EFF6FF */
 
+  /* Status text on the always-dark fills (toast, terminal, tooltip), where
+     error and success lose their contrast; the light theme's only dark
+     surfaces. */
+  --color-error-inverse: 242 105 105; /* red-400 #F26969 */
+  --color-success-inverse: 110 231 183; /* emerald-300 #6EE7B7 */
+
   /* Accents: categories, usage meters and badges that are not a status */
   --color-orange: 254 135 0; /* orange-500 #FE8700 */
   --color-orange-foreground: 231 123 0; /* orange-600 #E77B00 */
@@ -97,8 +110,8 @@
    `text-muted-foreground`, `border-border`, ...). tailwind.config.ts scans
    node_modules/streamdown, so these must exist for its code blocks, tables
    and buttons to keep their colours. Each aliases a role. They are for that
-   vendored markup only: design-system/no-alias-colours fails them anywhere in
-   src/, where the role is the name to write. */
+   vendored markup only: design-system/no-shadcn-alias-colours fails them
+   anywhere in src/, where the role is the name to write. */
 @theme inline reference {
   --color-background: rgb(var(--color-canvas) / 1);
   --color-foreground: rgb(var(--color-foreground-base) / 1);
@@ -107,4 +120,32 @@
   --color-border: rgb(var(--color-border-base) / 1);
   --color-primary: rgb(var(--color-action) / 1);
   --color-primary-foreground: rgb(var(--color-action-foreground) / 1);
+}
+
+/* The palette classes streamdown's prebuilt markup still writes: the veil over
+   a hovered image and the mermaid error box. The palette is gone, so they are
+   drawn here, inside streamdown's markup only, with the values the palette
+   gave them (a role where one has the same colour). */
+:where([data-streamdown] *) {
+  &.bg-black\/10 {
+    background-color: rgb(var(--color-scrim) / 0.1);
+  }
+  &.bg-red-50 {
+    background-color: rgb(var(--color-error-surface) / 1);
+  }
+  &.bg-red-100 {
+    background-color: rgb(253 236 236); /* red-100 #FDECEC */
+  }
+  &.border-red-200 {
+    border-color: rgb(250 197 197); /* red-200 #FAC5C5 */
+  }
+  &.text-red-600 {
+    color: rgb(var(--color-error-hover) / 1);
+  }
+  &.text-red-700 {
+    color: rgb(var(--color-error-foreground) / 1);
+  }
+  &.text-red-800 {
+    color: rgb(131 37 37); /* red-800 #832525 */
+  }
 }

@@ -56,6 +56,7 @@ from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.sandbox_status import build_sandbox_replaced_notice
 from backend.copilot.continuation import as_model_prompt
+from backend.copilot.expert_check import forget_expert_checks
 from backend.copilot.cli_session_entry import rewrite_user_entry
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.graphiti.context import fetch_warm_context
@@ -203,6 +204,10 @@ from ..service import (
     first_message_expert_context,
     inject_user_context,
     strip_user_context_tags,
+)
+from ..skill_invocation import (
+    get_persisted_skill_invocation,
+    inject_skill_invocation,
 )
 from ..stream_checkpoint import turn_checkpoint
 from ..thinking_stripper import ThinkingStripper
@@ -1916,6 +1921,10 @@ async def _apply_building_mode_restart(
             log_prefix,
             session.session_id,
         )
+    # The relaunch reads its expert again instead of reusing the turn's check:
+    # it comes after the turn's own work, by when the user may have archived
+    # the expert.
+    forget_expert_checks()
     expert_session_suffix = await build_expert_identity_suffix(
         session.user_id,
         session.expert_id,
@@ -5073,6 +5082,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     if is_user_message and message and message.strip():
         await clear_pending_question(session)
 
+    persisted_invocation = (
+        get_persisted_skill_invocation(message, session.messages)
+        if is_user_message and not continued_pending
+        else None
+    )
     continued_entry: StreamPendingDrained | None = None
     if continued_pending:
         # An auto-continue call streams into the turn it continues: its user
@@ -5087,8 +5101,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         continued_entry = drained_rows_entry(continued_pending)
         _user_message_appended = False
     else:
-        _user_message_appended = maybe_append_user_message(
-            session, message, is_user_message, message_metadata
+        _user_message_appended = (
+            persisted_invocation is None
+            and maybe_append_user_message(
+                session, message, is_user_message, message_metadata
+            )
         )
     if (_user_message_appended or continued_entry) and is_user_message:
         track_user_message(
@@ -5339,7 +5356,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # bare session_id line on any scheduler RPC hiccup); the per-user
         # skill index; and the expert or team block. None of it needs what
         # setup produces, so it is read beside the setup legs below.
-        if not has_history:
+        if not has_history and persisted_invocation is None:
             first_turn_context = FirstTurnContext(
                 (
                     build_session_context(session_id=session_id, user_id=user_id)
@@ -5823,6 +5840,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # messages folded in below), never the context blocks
         # ``inject_user_context`` puts in front of them on a first turn.
         recall_message = current_message
+        if persisted_invocation is not None:
+            current_message = persisted_invocation
 
         # On the first turn inject user context into the message before building
         # the query so that _build_query_message sees the full prefixed content.
@@ -5876,6 +5895,21 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
+
+        # A ``/skill-name arguments`` send carries the skill's instructions
+        # into this turn and every later one. Same row as the injection
+        # above, and before pending messages are folded in for the same
+        # reason.
+        if is_user_message and not continued_pending:
+            invoked_message = await inject_skill_invocation(
+                current_message,
+                session_id,
+                session.messages,
+                user_id=user_id,
+                expert_id=session.expert_id,
+            )
+            if invoked_message is not None:
+                current_message = invoked_message
 
         # Now that ``inject_user_context`` has wrapped + persisted the
         # ORIGINAL turn-starting send into its row, fold any pending
@@ -7124,6 +7158,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # r3105523410 — text-only requeue silently stripped it).
             _auto_requeued = False
             _first_auto_event = True
+            # The continuation reads its expert again instead of reusing the
+            # turn's check: the user may have archived the expert since.
+            forget_expert_checks()
 
             async def _requeue_drained(reason: str) -> None:
                 logger.warning(

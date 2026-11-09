@@ -28,7 +28,7 @@ def enqueue_stand_ins(mocker: MockerFixture) -> None:
     mocker.patch.object(manager, "synchronized", synchronized)
     mocker.patch.object(manager, "send_async_execution_update", AsyncMock())
     mocker.patch.object(
-        manager, "validate_exec", lambda node, data, dry_run=False: (data, "complete")
+        manager, "validate_exec", lambda node, data, **_: (data, "complete")
     )
 
 
