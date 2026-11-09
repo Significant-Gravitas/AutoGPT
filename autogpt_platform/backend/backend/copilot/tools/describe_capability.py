@@ -65,11 +65,11 @@ class DescribeCapabilityTool(BaseTool):
         return (
             "Inputs and outputs of one capability by id, before its first use. "
             "Skip ids listed in the <seen_capabilities> block of the current "
-            "user message: those were already described this session, unless "
-            "you need them again with expand=true. "
-            "Blocks return their schema; MCP servers list their tools; platform "
-            "tools return their parameters. Large enums are sampled and nested "
-            "block output objects list field names only, unless expand=true."
+            "user message (already described this session) unless you need "
+            "expand=true. Blocks return their schema; MCP servers list their "
+            "tools; platform tools return their parameters. Large enums are "
+            "sampled and nested block outputs list field names only, unless "
+            "expand=true."
         )
 
     @property
@@ -83,10 +83,7 @@ class DescribeCapabilityTool(BaseTool):
                 },
                 "expand": {
                     "type": "boolean",
-                    "description": (
-                        "Return every enum value and nested output field "
-                        "instead of a summary."
-                    ),
+                    "description": "Return every enum value and nested output field.",
                     "default": False,
                 },
             },
