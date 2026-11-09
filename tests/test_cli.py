@@ -444,7 +444,7 @@ AUDIT_KEY = b"\x01" * 32
 
 @pytest.fixture
 def audit_key(monkeypatch: pytest.MonkeyPatch) -> bytes:
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: AUDIT_KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: AUDIT_KEY)
     return AUDIT_KEY
 
 

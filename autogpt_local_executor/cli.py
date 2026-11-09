@@ -707,13 +707,13 @@ def _audit_show(current: Path, seq: int) -> int:
 
 
 def _audit_verify(current: Path) -> int:
-    from .audit import AuditWriter, get_or_create_audit_key, holding_log_lock
+    from .audit import AuditWriter, holding_log_lock, load_audit_key
 
     if not current.is_file():
         print(f"Audit log not found: {current}")
         return 1
     try:
-        key = get_or_create_audit_key()
+        key = load_audit_key()
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2
@@ -744,10 +744,10 @@ def _audit_files(current: Path) -> list[Path]:
 
 
 def _audit_verify_all(current: Path) -> int:
-    from .audit import AuditWriter, get_or_create_audit_key, holding_log_lock
+    from .audit import AuditWriter, holding_log_lock, load_audit_key
 
     try:
-        key = get_or_create_audit_key()
+        key = load_audit_key()
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2
@@ -808,13 +808,13 @@ def _audit_export(current: Path, output: Path | None) -> int:
     from .audit import (
         KEYCHAIN_AUDIT_KEY_USERNAME,
         _file_identity,
-        get_or_create_audit_key,
         holding_log_lock,
+        load_audit_key,
     )
     from .fsops import temporary_sibling
 
     try:
-        key = get_or_create_audit_key()
+        key = load_audit_key()
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2
@@ -933,13 +933,13 @@ def _install_export(temp: Path, output: Path, *, numbered: bool) -> Path:
 
 
 def _audit_rotate(current: Path) -> int:
-    from .audit import AuditLogCorruptError, AuditWriter, get_or_create_audit_key
+    from .audit import AuditLogCorruptError, AuditWriter, load_audit_key
 
     if not current.is_file():
         print(f"Audit log not found: {current}")
         return 1
     try:
-        key = get_or_create_audit_key()
+        key = load_audit_key()
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2

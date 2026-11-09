@@ -195,7 +195,7 @@ async def test_cli_rotation_while_the_daemon_runs_keeps_both_chains_valid(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     """`autogpt-shim audit rotate` has its own writer; the daemon's must notice."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     daemon = _writer(tmp_path)
     await daemon.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     await daemon.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
@@ -568,7 +568,7 @@ async def test_audit_verify_reads_the_log_under_the_writers_lock(
     """A verify that read mid-append could call a valid log truncated."""
     import fcntl
 
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     held: list[bool] = []
@@ -745,7 +745,7 @@ def test_audit_reads_report_a_lock_they_cannot_take(tmp_path: Path, monkeypatch,
         yield
 
     monkeypatch.setattr(audit_module, "holding_log_lock", refuse)
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     log = tmp_path / "audit.log"
     log.write_text("")
     # An expired rotated log, so prune has something to delete under the lock.
@@ -778,7 +778,7 @@ def _rotate_before_the_lock(monkeypatch, writer: AuditWriter) -> None:
 async def test_verify_all_lists_the_files_under_the_lock(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     _rotate_before_the_lock(monkeypatch, writer)
@@ -797,7 +797,7 @@ async def test_verify_all_checks_records_without_holding_the_lock(
     """verify-all held the writers' lock while it parsed and HMACed every
     record of every retained file, so each audit write the daemon made
     meanwhile waited for the whole scan."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     writer.force_rotate()
@@ -819,7 +819,7 @@ async def test_verify_all_checks_records_without_holding_the_lock(
 async def test_verify_all_skips_a_rotated_file_pruned_while_it_runs(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     writer.force_rotate()
@@ -849,7 +849,7 @@ async def test_verify_all_skips_a_rotated_file_pruned_while_it_runs(
 async def test_export_lists_the_files_under_the_lock(tmp_path: Path, monkeypatch) -> None:
     import zipfile
 
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     _rotate_before_the_lock(monkeypatch, writer)
@@ -913,7 +913,7 @@ async def test_export_refuses_to_write_over_an_audit_log(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     """ZipFile(output, "w") truncates the log before it is read into the zip."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     before = writer.path.read_bytes()
@@ -1071,7 +1071,7 @@ async def test_export_refuses_an_output_named_like_a_rotated_log(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     """verify-all would later read the zip as a rotated log and fail on it."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     output = tmp_path / "audit.log.export.zip"
@@ -1119,7 +1119,7 @@ async def test_a_new_log_is_owner_only_from_the_start(tmp_path: Path, monkeypatc
 @pytest.mark.asyncio
 async def test_an_export_is_owner_only(tmp_path: Path, monkeypatch) -> None:
     """The zip holds every audit record, but got the umask's mode."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     output = tmp_path / "export.zip"
@@ -1187,7 +1187,7 @@ async def test_export_writes_the_archive_after_releasing_the_lock(
     every audit write, and the requests waiting on them."""
     import zipfile
 
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     writer.force_rotate()
@@ -1341,6 +1341,49 @@ def test_a_keychain_missing_at_start_is_not_replaced_by_a_new_file_key(
     assert not (tmp_path / "audit-key.enc").exists()
 
 
+@pytest.mark.asyncio
+async def test_an_audit_command_never_makes_a_file_key_for_a_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """With no keychain up and the passphrase set, `audit verify` made a file
+    key for a log the keychain's key had signed: it reported the log corrupt,
+    and the stray key then stood in for the keychain at the daemon's next
+    start, which found its own log failing verification and stopped."""
+    import keyring
+    import keyring.errors
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    with patch.object(keyring, "get_password", side_effect=keyring.errors.NoKeyringError("none")):
+        assert cli._audit_verify(writer.path) == 2
+        assert cli._audit_verify_all(writer.path) == 2
+        assert cli._audit_rotate(writer.path) == 2
+        assert cli._audit_export(writer.path, tmp_path / "export.zip") == 2
+
+    assert not (tmp_path / "audit-key.enc").exists()
+    assert "Could not load audit key" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_an_audit_command_never_stores_a_keychain_key(tmp_path: Path) -> None:
+    """With the keychain up and holding no key, `audit verify` stored a new
+    one, which no existing log was signed with."""
+    import keyring
+
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    stored: list[str] = []
+    with (
+        patch.object(keyring, "get_password", return_value=None),
+        patch.object(keyring, "set_password", side_effect=lambda *args: stored.append(args[2])),
+    ):
+        assert cli._audit_verify(writer.path) == 2
+
+    assert stored == []
+
+
 # ── Export: descriptors, a prune meanwhile, the default name ───────────
 
 
@@ -1352,7 +1395,7 @@ async def test_export_keeps_one_rotated_log_open_at_a_time(tmp_path: Path, monke
     limit, and the export ended in a traceback with no archive."""
     import zipfile
 
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     for index in range(40):
         await writer.write("EXECUTE_COMMAND", request_id=str(index), details={}, result={})
@@ -1378,7 +1421,7 @@ async def test_an_export_whose_rotated_log_is_pruned_meanwhile_writes_nothing(
 ) -> None:
     """The set is listed under the lock and read after it; a prune in
     between must fail the export, not leave a file out of it."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     writer.force_rotate()
@@ -1410,7 +1453,7 @@ async def test_a_second_export_in_the_same_second_keeps_the_first(
     import datetime as real_datetime
     import zipfile
 
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     exports = tmp_path / "exports"
@@ -1598,7 +1641,7 @@ def test_rotate_reports_a_log_it_cannot_open_instead_of_crashing(
 ) -> None:
     """Opening the log for a rotation raised out of `audit rotate`: a log that
     fails verification, or one it can't open, ended in a traceback."""
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     log = tmp_path / "audit.log"
     log.write_text('{"seq": 1, "ts": 1.0, "op": "X", "hmac": "00"}\n')
     if failure == "unreadable":
