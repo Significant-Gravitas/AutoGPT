@@ -75,8 +75,10 @@ class RegistryCacheTests(unittest.TestCase):
             SCRIPT.parents[2] / "autogpt_platform/single-container/docker-bake.hcl"
         ).read_text(encoding="utf-8")
         final = bake.split('target "single-container" {', 1)[1].split("\n}", 1)[0]
+        block = re.search(r"^\s*contexts\s*=\s*\{(.*?)^\s*\}", final, re.M | re.S)
+        self.assertIsNotNone(block, final)
         contexts = dict(
-            re.findall(r'^\s*([\w-]+)\s*=\s*"target:([^"]+)"', final, re.MULTILINE)
+            re.findall(r'^\s*([\w-]+)\s*=\s*"target:([^"]+)"', block[1], re.MULTILINE)
         )
         self.assertEqual(
             contexts,
