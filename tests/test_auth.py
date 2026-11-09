@@ -461,6 +461,33 @@ def test_the_callback_takes_its_port_exclusively_on_windows(
     assert (socket.SO_REUSEADDR in options) is not exclusive
 
 
+def test_the_callback_never_shares_its_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Python 3.14's first betas had HTTPServer set SO_REUSEPORT, with which
+    another program of the same user can listen on the callback's port too
+    and take the redirect, leaving sign-in to wait out its time. The
+    callback server keeps it off whatever HTTPServer's default is."""
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    import autogpt_local_executor.auth as auth_module
+
+    monkeypatch.setattr(HTTPServer, "allow_reuse_port", True, raising=False)
+    monkeypatch.setattr(socket, "SO_REUSEPORT", -8, raising=False)
+    server = auth_module._CallbackServer(
+        ("127.0.0.1", 0), BaseHTTPRequestHandler, bind_and_activate=False
+    )
+    real_socket = server.socket
+    fake_socket = MagicMock()
+    fake_socket.getsockname.return_value = ("127.0.0.1", 41899)
+    server.socket = fake_socket
+    try:
+        server.server_bind()
+    finally:
+        real_socket.close()
+
+    options = [option.args[1] for option in fake_socket.setsockopt.call_args_list]
+    assert -8 not in options
+
+
 def test_callback_uses_next_port_when_first_is_busy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
