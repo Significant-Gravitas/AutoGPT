@@ -52,3 +52,36 @@ async def test_file_read_chunks_each_row_without_rejoining(
         ]
 
     assert actual == [("content", chunk) for chunk in expected]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size_limit", [0, 3])
+async def test_file_read_emits_empty_content_for_blank_rows(tmp_path, size_limit):
+    file_path = tmp_path / "rows.txt"
+    file_path.write_text("one\n\nthree", encoding="utf-8")
+
+    block = FileReadBlock()
+    input_data = FileReadBlock.Input(
+        file_input="data:text/plain;base64,b25l",
+        delimiter="\n",
+        size_limit=size_limit,
+    )
+    context = ExecutionContext(user_id="test-user", graph_exec_id="test-exec")
+
+    with (
+        patch(
+            "backend.blocks.text.store_media_file",
+            new_callable=AsyncMock,
+            return_value="rows.txt",
+        ),
+        patch(
+            "backend.blocks.text.get_exec_file_path",
+            return_value=str(file_path),
+        ),
+    ):
+        actual = [
+            item async for item in block.run(input_data, execution_context=context)
+        ]
+
+    expected = ["one", "", "three"] if size_limit == 0 else ["one", "", "thr", "ee"]
+    assert actual == [("content", chunk) for chunk in expected]

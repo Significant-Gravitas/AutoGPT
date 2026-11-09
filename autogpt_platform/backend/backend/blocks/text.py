@@ -519,7 +519,9 @@ class FileReadBlock(Block):
             return
 
         for item in items:
-            for chunk in create_chunks(item, input_data.size_limit):
+            # A blank row still gets its own (empty) output so every selected
+            # row produces at least one event.
+            for chunk in create_chunks(item, input_data.size_limit) or [""]:
                 yield "content", chunk
 
 
