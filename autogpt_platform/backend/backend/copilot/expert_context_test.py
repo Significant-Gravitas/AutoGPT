@@ -42,7 +42,7 @@ _EC = "backend.copilot.expert_context"
 # Last re-pinned for the chief-of-staff triage (answer, or start_task) and the
 # "Asking the user" section.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "8adc7609eadd6020e76de86dac76fcd6b80f1de2c5543bbd06b910dd34e5d401"
+    "7a4a2af737af82e0f45b0c0176e19bc17e76f4d354ecc7a79cc3aba44fe7c7f6"
 )
 
 

@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.copilot.autopilot_mode import AutopilotMode
+from backend.copilot.config import ChatConfig
 from backend.copilot.eval.style.assembly import chat_system_prompt
 from backend.copilot.eval.style.generation import expert_tools
 from backend.copilot.prompting import approval_mode_supplement
@@ -145,7 +146,13 @@ def _cli_args(
         "--allowedTools", "mcp__otto", "--setting-sources", "",
         "--settings", str(workdir / "settings.json"),
         "--max-turns", str(MAX_MODEL_TURNS),
+        "--effort", _production_effort(),
     ]  # fmt: skip
+
+
+def _production_effort() -> str:
+    """The thinking effort production's SDK engine sets (``sdk/service.py``)."""
+    return ChatConfig().claude_agent_thinking_effort or "high"
 
 
 async def _turn(
