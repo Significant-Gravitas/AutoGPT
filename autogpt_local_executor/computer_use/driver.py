@@ -298,6 +298,9 @@ class CuaDriverBridge:
                 await self._turn.acquire()
         except TimeoutError as exc:
             raise CallNotStarted(f"{name} waited as long as it could for the driver") from exc
+        # A stop still under way when the caller gives up: the turn is let go
+        # only once it is done (below).
+        stopping: asyncio.Future[None] | None = None
         try:
             client = await self._client_by(start_by, name)
             remaining = deadline - loop.time()
@@ -309,10 +312,16 @@ class CuaDriverBridge:
                 self._last_failure = str(exc)
                 raise DriverUnavailable(f"cua-driver stopped during the call: {exc}") from exc
             except (TimeoutError, asyncio.CancelledError):
-                await asyncio.shield(self._stop_unfinished(client))
+                stopping = asyncio.ensure_future(self._stop_unfinished(client))
+                await asyncio.shield(stopping)
                 raise
         finally:
-            self._turn.release()
+            if stopping is not None and not stopping.done():
+                # Cancelled again while the driver stops: the next call would
+                # start another driver while this one still acts on the desktop.
+                stopping.add_done_callback(lambda _stopped: self._turn.release())
+            else:
+                self._turn.release()
 
     async def close(self) -> None:
         start = self._start

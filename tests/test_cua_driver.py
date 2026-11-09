@@ -1327,6 +1327,41 @@ async def test_a_cut_down_result_fits_the_negotiated_limit_as_json(make_handler)
     assert texts[0] and set(texts[0]) == {"\x00"}
 
 
+async def test_a_call_cancelled_again_while_its_driver_stops_keeps_the_turn(
+    fake_log, monkeypatch
+) -> None:
+    """A call past its deadline stops the driver to end it, shielded from a
+    further cancel. One cancelled again while the driver stopped let go of
+    the turn at once, and the next call could start a second driver while
+    the first still acted on the desktop."""
+    monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "30")
+    bridge = fake_bridge()
+    stopping = asyncio.Event()
+    stopped = asyncio.Event()
+    real_stop = bridge._stop_unfinished
+
+    async def slow_stop(client: Any) -> None:
+        stopping.set()
+        await stopped.wait()
+        await real_stop(client)
+
+    monkeypatch.setattr(bridge, "_stop_unfinished", slow_stop)
+    call = asyncio.ensure_future(bridge.call_tool("drag", {"pid": -2}, timeout=1))
+    try:
+        await asyncio.wait_for(stopping.wait(), timeout=30)
+        call.cancel()  # given up on again, while the driver stops
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert call.done()
+        assert bridge._turn.locked()
+    finally:
+        stopped.set()
+    async with asyncio.timeout(10):
+        while bridge._turn.locked():
+            await asyncio.sleep(0.01)
+    await bridge.close()
+
+
 async def test_a_call_past_its_timeout_is_stopped_at_the_driver(
     make_handler, fake_log, monkeypatch
 ) -> None:
