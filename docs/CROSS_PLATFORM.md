@@ -180,7 +180,9 @@ set, while there is no audit log yet that the keychain's key signed.
 An audit log that fails verification can't clear that way, so under
 launchd it exits 0 like the other permanent failures; check it with
 `autogpt-shim audit verify` and move it aside to start a new log. Nor can
-audit storage the shim may not write (permission denied, read-only) or
+a keyring backend that `PYTHON_KEYRING_BACKEND` or keyring's configuration
+file names but that can't be loaded (no such module or class): fix or
+remove the setting. Nor can audit storage the shim may not write (permission denied, read-only) or
 whose device failed or is gone (an I/O error): fix it, then start the
 shim again. A legacy session's `allowed_root` that can't be created is
 sorted the same way: a full disk restarts; no permission, a read-only

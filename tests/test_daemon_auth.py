@@ -629,6 +629,9 @@ async def test_a_keychain_failure_during_a_refresh_is_retried(
         # The same with the passphrase set, and a log the keychain's key
         # signed, which a new file key would never verify.
         ("no-keychain-yet-signed-log", False, True),
+        # PYTHON_KEYRING_BACKEND names a backend that isn't there: a
+        # setting, which no restart fixes.
+        ("keyring-backend-missing", True, False),
     ],
 )
 def test_an_audit_failure_at_start_says_whether_a_restart_can_fix_it(
@@ -671,6 +674,12 @@ def test_an_audit_failure_at_start_says_whether_a_restart_can_fix_it(
         if failure == "no-keychain-yet-signed-log":
             monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
             config.audit_log_path.write_text('{"seq": 1, "ts": 1.0, "op": "X", "hmac": "00"}\n')
+    elif failure == "keyring-backend-missing":
+        import keyring.core
+
+        monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.no_such_backend.Keyring")
+        # keyring picks its backend once per process; have it pick again.
+        monkeypatch.setattr(keyring.core, "_keyring_backend", None)
     else:
         monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda _log=None: b"k" * 32)
     if failure == "corrupt":

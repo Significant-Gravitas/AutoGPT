@@ -1309,6 +1309,51 @@ def test_a_locked_keychain_is_not_replaced_by_the_file_key(monkeypatch) -> None:
     fallback.assert_not_called()
 
 
+class _PriorityRaises(type):
+    @property
+    def priority(cls) -> float:
+        raise RuntimeError("The Secret Service daemon is neither running nor activatable")
+
+
+class KeyringNotUpYet(metaclass=_PriorityRaises):
+    """A backend keyring can load whose service isn't running yet, as
+    SecretService is before the desktop session starts it."""
+
+
+@pytest.mark.parametrize(
+    ("backend", "for_good"),
+    [
+        ("keyring.backends.no_such_backend.Keyring", True),  # no such module
+        ("keyring.backends.fail.NoSuchKeyring", True),  # no such class
+        ("NoModuleKeyring", True),  # a name without its module
+        (f"{__name__}.KeyringNotUpYet", False),
+    ],
+)
+def test_a_keyring_backend_that_cant_be_loaded_is_not_waited_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, backend: str, for_good: bool
+) -> None:
+    """A PYTHON_KEYRING_BACKEND naming a backend that isn't there raised
+    ModuleNotFoundError, AttributeError or ValueError from the key read,
+    which the shim took for a keychain still locked: the service exited to
+    be started again, every few seconds, over a setting no restart fixes.
+    A backend that is there but not running yet is still waited for."""
+    import keyring.core
+
+    from autogpt_local_executor.audit import AuditKeyError, AuditKeyUnavailableError
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", backend)
+    # keyring picks its backend once per process; have it pick again.
+    monkeypatch.setattr(keyring.core, "_keyring_backend", None)
+
+    expected = AuditKeyError if for_good else AuditKeyUnavailableError
+    with pytest.raises(expected) as raised:
+        get_or_create_audit_key(tmp_path / "audit.log")
+
+    assert ("PYTHON_KEYRING_BACKEND" in str(raised.value)) is for_good
+    assert not (tmp_path / "audit-key.enc").exists()
+
+
 @pytest.mark.parametrize("error", ["NoKeyringError", "InitError"])
 def test_no_usable_keychain_still_falls_back_to_the_file_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: str

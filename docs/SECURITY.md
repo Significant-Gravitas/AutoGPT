@@ -143,7 +143,8 @@ the daemon doesn't start rather than running in an unaudited degraded mode.
 A failure that can clear on its own (a keychain still locked or not up yet,
 audit storage full or not mounted) exits 75 (`EX_TEMPFAIL`), which the
 supplied systemd unit and LaunchAgent restart; one that can't (a malformed
-key, a log that fails verification, storage the shim may not write) exits
+key, a keyring backend `PYTHON_KEYRING_BACKEND` names that can't be loaded,
+a log that fails verification, storage the shim may not write) exits
 78 (`EX_CONFIG`), or 0 under the LaunchAgent, which would otherwise restart
 it every few seconds. See
 [CROSS_PLATFORM.md → Autostart](CROSS_PLATFORM.md#autostart--background-daemon).
