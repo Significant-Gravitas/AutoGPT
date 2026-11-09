@@ -155,11 +155,13 @@ retry, such as a protocol mismatch or a revoked session, already exit 0
 and are logged.
 
 A keychain that can't be read yet (still locked at login, say) is not a
-failed sign-in: the shim keeps retrying with its reconnect backoff. So is
+failed sign-in: the shim keeps retrying with its reconnect backoff. Nor is
 no keychain at all when it reads its sign-in, as with a Secret Service the
 desktop session starts after the systemd unit (once the audit key came from
 the file fallback, say): the shim couldn't have signed in without one, so it
-waits for it, logging why. The systemd unit doesn't restart on 78
+waits for it, by exiting 75 (below), since the keyring package picks its
+backend once per process and only a new one finds a keychain that started
+later. The systemd unit doesn't restart on 78
 either (`RestartPreventExitStatus=77 78`): a bad config or a preflight
 failure fails the same way every time, and Linux has no permission prompt
 to wait for. Under launchd, a bad config and a preflight failure no
@@ -170,9 +172,9 @@ the shim once it is granted.
 A failure at start that can clear on its own exits 75 (`EX_TEMPFAIL`),
 which systemd and launchd both restart: audit storage that is full or
 not mounted yet, or a keychain still locked when the audit key is read.
-So does no keychain at all when the audit key is read, as with a Secret
-Service the desktop session starts after the systemd unit: the shim can't
-run without one, so it waits for it. The audit-key file fallback stands
+So does no keychain at all when the audit key or the sign-in is read, as
+with a Secret Service the desktop session starts after the systemd unit:
+the shim can't run without one, so it waits for it. The audit-key file fallback stands
 in only once its key exists, or, with `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`
 set, while there is no audit log yet that the keychain's key signed.
 An audit log that fails verification can't clear that way, so under

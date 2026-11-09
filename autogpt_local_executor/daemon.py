@@ -243,16 +243,25 @@ class DaemonAuthenticationError(RuntimeError):
     """Terminal WebSocket authentication or session-authorization failure."""
 
 
-def _keychain_not_up_yet(exc: Exception) -> KeychainUnavailableError:
+class KeychainNotUpError(DaemonPreflightError):
     """No keychain to read the sign-in from. The shim couldn't have signed in
     without one, so it is most often one that hasn't started yet: a Secret
-    Service the desktop session starts after the autostart service, say. As
-    for the audit key, it is waited for rather than taken as gone, which
-    left the service stopped once it came up."""
-    return KeychainUnavailableError(
-        f"No OS keychain is available yet ({type(exc).__name__}); waiting for it. "
-        "If none is set up, set one up and run `autogpt-shim auth`."
-    )
+    Service the desktop session starts after the autostart service, say.
+    The keyring package picks its backend once per process, so this process
+    would never find one that starts later: `start` exits 75 (EX_TEMPFAIL)
+    for the service manager to start the shim again, as for the audit key."""
+
+    def __init__(self, exc: Exception) -> None:
+        super().__init__(
+            f"No OS keychain is available yet ({type(exc).__name__}), so the sign-in "
+            "can't be read; exiting to be started again once it is. If none is set "
+            "up, set one up and run `autogpt-shim auth`.",
+            transient=True,
+        )
+
+
+def _keychain_not_up_yet(exc: Exception) -> KeychainNotUpError:
+    return KeychainNotUpError(exc)
 
 
 # RFC 6455 §5.5: a control frame carries at most 125 bytes, two of them the
@@ -555,6 +564,11 @@ class ShimDaemon:
                 except DaemonAuthenticationError as exc:
                     logger.error("Authentication rejected; will not auto-reconnect: %s", exc)
                     self._disable_reconnect = True
+                    self._running = False
+                    raise
+                except KeychainNotUpError:
+                    # Retrying here would find the same backend; a new
+                    # process looks again.
                     self._running = False
                     raise
                 except ProtocolVersionMismatch as exc:
