@@ -119,6 +119,30 @@ def _with_driver(tmp_path: Path, plat: str = "linux", **overrides) -> ShimConfig
     return _config(tmp_path, enable_computer_use=True, cua_driver_path=str(FAKE), **overrides)
 
 
+def test_doctor_prints_what_stdout_cannot_encode_as_escapes(monkeypatch) -> None:
+    """A Windows console code page such as CP437 has no em dash, which the
+    UAC lines carry, nor most characters a path or a driver message can
+    hold: doctor raised UnicodeEncodeError before it reported anything."""
+    import io
+    import sys
+
+    raw = io.BytesIO()
+    stdout = io.TextIOWrapper(raw, encoding="cp437", errors="strict")
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    doctor._print_checks(
+        [
+            doctor.CheckResult("INFO", "UAC", "not elevated — can't drive admin windows"),
+            doctor.CheckResult("OK", "folder_browser", "C:\\Users\\Jürgen\\文档"),
+        ]
+    )
+    stdout.flush()
+
+    out = raw.getvalue().decode("cp437")
+    assert r"not elevated \u2014 can't drive admin windows" in out
+    assert r"C:\Users\Jürgen\\u6587\u6863" in out
+
+
 def test_doctor_fails_without_cua_driver(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
     monkeypatch.setattr(doctor, "find_driver_binary", lambda _path=None: None)

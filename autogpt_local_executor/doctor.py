@@ -10,7 +10,9 @@ prompts when they are missing. See docs/CUA_DRIVER.md.
 Returns exit 0 when everything required is healthy, 78 (EX_CONFIG) when
 computer use is requested but a prerequisite is missing.
 
-Output is plain ASCII (no emoji) — the markers are:
+Output has no emoji. A character stdout's encoding can't carry (a legacy
+Windows code page has no em dash, nor most of a path's characters) prints
+as an escape. The markers are:
   OK    everything good
   WARN  degraded but won't block (e.g. computer-use not requested)
   FAIL  required and missing
@@ -25,6 +27,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,7 +75,17 @@ def run_doctor(config: ShimConfig) -> int:
 def _print_checks(checks: list[CheckResult]) -> None:
     width = max(len(c.label) for c in checks) if checks else 0
     for c in checks:
-        print(f"[{c.marker:<4}] {c.label.ljust(width)}  {c.detail}")
+        print(_printable(f"[{c.marker:<4}] {c.label.ljust(width)}  {c.detail}"))
+
+
+def _printable(text: str) -> str:
+    """`text` with what stdout's encoding can't carry written as escapes, so
+    a path or a driver message can't stop doctor before it reports."""
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        return text.encode(encoding, "backslashreplace").decode(encoding)
+    except LookupError:
+        return text
 
 
 def _check_allowed_root(config: ShimConfig) -> CheckResult:
