@@ -47,9 +47,9 @@ def clamp_prompt(message: str, max_chars: int) -> str:
     room = max_chars - len(header)
     if room <= 0:
         # A header longer than the cap (never in practice): hard-cut the tail.
-        return message[-max_chars:]
+        return _kept_from(message, len(message) - max_chars)
     if room <= len(_TRUNCATION_NOTICE):
-        return header + body[len(body) - room :]
+        return header + _kept_from(body, len(body) - room)
     keep = room - len(_TRUNCATION_NOTICE)
     cut = len(body) - keep
     # In a batch, keep the label of the message the cut lands in so every
@@ -57,8 +57,24 @@ def clamp_prompt(message: str, max_chars: int) -> str:
     label, label_end = label_covering(body, cut)
     if label and len(label) < keep:
         start = max(label_end, len(body) - (keep - len(label)))
-        return header + _TRUNCATION_NOTICE + label + body[start:]
-    return header + _TRUNCATION_NOTICE + body[cut:]
+        return header + _TRUNCATION_NOTICE + label + _kept_from(body, start)
+    return header + _TRUNCATION_NOTICE + _kept_from(body, cut)
+
+
+# Marks kept text that starts mid-line. Escapes apply only at a line start,
+# so a fragment of a line must not begin one: it could read as a header,
+# label or section that its whole line, escaped, did not.
+_CUT_MARK = "…"
+
+
+def _kept_from(text: str, start: int) -> str:
+    """``text`` from ``start``, never longer than ``text[start:]``, whose
+    first line is either a whole line of ``text`` or marked as cut."""
+    if start <= 0 or start >= len(text) or text[start - 1] == "\n":
+        return text[start:]
+    if text[start] == "\n":
+        return text[start + 1 :]
+    return _CUT_MARK + text[start + 1 :]
 
 
 class PendingMessage(BaseModel):
@@ -94,12 +110,10 @@ _NOUNS: dict[str, _Nouns] = {
     "telegram": _Nouns(channel="group", channel_id="chat id", thread="topic"),
 }
 _NAME_MAX_CHARS = 60
-# Angle brackets would let a user-chosen name carry a server-only tag.
-_ANGLE_ESCAPES = {"<": "‹", ">": "›"}
-_NAMED_ANGLES = str.maketrans(_ANGLE_ESCAPES)
-# Characters that would let a user-chosen name close or fake a header field.
+# Characters that would let a user-chosen name close or fake a field of a
+# line the bridge writes, or carry a server-only tag.
 _NAME_ESCAPES = str.maketrans(
-    {'"': "'", "[": "(", "]": ")", "·": "-", **_ANGLE_ESCAPES}
+    {'"': "'", "[": "(", "]": ")", "·": "-", "<": "‹", ">": "›"}
 )
 
 
@@ -227,7 +241,9 @@ def build_message_text(
     only included on the first @-into a thread we don't own; a subscribed
     thread's prior turns already live in the session.
     """
-    text = ctx.text if current_text is None else current_text
+    text = _neutralize_context_labels(
+        ctx.text if current_text is None else current_text
+    )
     thread_history = ctx.thread_history if include_thread_history else ()
     if not thread_history and not ctx.referenced_conversations:
         return text
@@ -247,7 +263,7 @@ def build_message_text(
             f"the content.]"
         )
         for convo in ctx.referenced_conversations:
-            lines.append(f"\n[Content of #{convo.title.translate(_NAMED_ANGLES)}]")
+            lines.append(f"\n[Content of #{_sanitize(convo.title)}]")
             for entry in convo.messages:
                 lines.append(format_history_entry(entry, platform_display))
     if thread_history:
@@ -262,7 +278,7 @@ def build_message_text(
 
 
 def format_history_entry(entry: MessageHistoryEntry, platform_display: str) -> str:
-    name = entry.username.translate(_NAMED_ANGLES)
+    name = _sanitize(entry.username)
     user = (
         f"{name} ({platform_display} user ID: {entry.user_id})"
         if entry.user_id
@@ -272,9 +288,9 @@ def format_history_entry(entry: MessageHistoryEntry, platform_display: str) -> s
 
 
 def _neutralize_context_labels(text: str) -> str:
-    """Escape lines in another member's message that would read like a
-    section ``build_message_text`` writes, so earlier channel or thread
-    messages can't pose as the current message or a different speaker."""
+    """Escape lines in a message that would read like a section
+    ``build_message_text`` writes, so no message, earlier or current, can
+    pose as the current message or a different speaker."""
     return _CONTEXT_LABEL_RE.sub(r"\1\\[", _framed(text))
 
 
