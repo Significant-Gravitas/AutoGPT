@@ -22,6 +22,7 @@ from backend.copilot.autopilot_mode import AutopilotMode
 from backend.copilot.eval.style.assembly import chat_system_prompt
 from backend.copilot.eval.style.generation import expert_tools
 from backend.copilot.prompting import approval_mode_supplement
+from backend.copilot.untrusted_text import HOOK_CONTEXT, contains_instructions
 
 from ..models import Case, Run, TurnRecord, World
 from ..runner import (
@@ -47,6 +48,7 @@ class _Session:
         self.run = Run(case_id=case.id)
         self.record: TurnRecord | None = None
         self.session_id: str | None = None
+        self.last_result = ""
 
     async def handle(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -65,9 +67,22 @@ class _Session:
             result = execute_call(
                 message["name"], arguments, self.sim, self.mode, self.run, record
             )
+            self.last_result = result
             return {"result": result}
-        # post_tool: production's hook returns continue=false after a question
-        return {"output": {"continue": False} if record.ended_by == "question" else {}}
+        # post_tool: as production's hook (sdk/security_hooks.py): stop after a
+        # question, and warn about planted instructions in the last result.
+        if record.ended_by == "question":
+            return {"output": {"continue": False}}
+        if contains_instructions(self.last_result):
+            return {
+                "output": {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PostToolUse",
+                        "additionalContext": HOOK_CONTEXT,
+                    }
+                }
+            }
+        return {"output": {}}
 
 
 async def run_case_native(

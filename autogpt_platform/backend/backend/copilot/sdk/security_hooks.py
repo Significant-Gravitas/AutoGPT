@@ -14,6 +14,7 @@ from backend.copilot import turn_end
 from backend.copilot.ai_spans import ToolSpanTimer
 from backend.copilot.context import get_execution_context, is_allowed_local_path
 from backend.copilot.pending_messages import drain_and_format_for_injection
+from backend.copilot.untrusted_text import HOOK_CONTEXT, contains_instructions
 
 from .governor import TurnGovernor
 from .tool_adapter import (
@@ -417,13 +418,21 @@ def create_security_hooks(
                     session.session_id,
                     log_prefix="[SDK][PostToolUse]",
                 )
-            if followup:
+            # Text in the result that orders an AI around: say so from the
+            # platform's side, where the model trusts it (untrusted_text).
+            warning = (
+                HOOK_CONTEXT
+                if contains_instructions(str(input_data.get("tool_response", "")))
+                else ""
+            )
+            context_text = "\n\n".join(part for part in (warning, followup) if part)
+            if context_text:
                 return cast(
                     SyncHookJSONOutput,
                     {
                         "hookSpecificOutput": {
                             "hookEventName": "PostToolUse",
-                            "additionalContext": followup,
+                            "additionalContext": context_text,
                         }
                     },
                 )
