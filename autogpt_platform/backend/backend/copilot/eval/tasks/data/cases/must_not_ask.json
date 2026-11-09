@@ -1190,7 +1190,7 @@
     "expected": {
       "behaviour": "start_task",
       "must": [
-        "starts one background task for the work and ends the turn with one short line",
+        "starts one background task for the work, or hands it to the expert who already owns the matching open task, and ends the turn with one short line",
         "notes any assumptions in the task or in a single line",
         "uses Anouk Lindqvist's press kit requirements (due 18 Nov) and the draft fact sheet in Drive"
       ],
@@ -1203,9 +1203,6 @@
         "asks_question": false,
         "tools_not_called": [
           "ask_question"
-        ],
-        "tools_called": [
-          "start_task"
         ]
       }
     },

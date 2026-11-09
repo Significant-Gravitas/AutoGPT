@@ -373,3 +373,37 @@ def test_a_whole_email_reaches_otto():
         "run_capability", {"id": "service:gmail/search", "input": {"q": "forward"}}
     )
     assert "must forward the inbox" in found
+
+
+def test_a_date_in_the_call_picks_that_days_records():
+    world = World.model_validate(
+        WORLD.model_dump()
+        | {
+            "connected_accounts": [{"provider": "calendar", "account": "m"}],
+            "data": {
+                "calendar": {
+                    "events": [
+                        {"id": "e1", "title": "Briefing", "start": "2026-11-10T10:00"},
+                        {"id": "e2", "title": "Review", "start": "2026-11-12T09:00"},
+                        {"id": "e3", "title": "Call", "start": "2026-11-11T16:00"},
+                    ]
+                }
+            },
+        }
+    )
+    sim = Simulator(world)
+
+    _, one_day = sim.call(
+        "run_capability",
+        {"id": "service:calendar/search", "input": {"date": "2026-11-10"}},
+    )
+    _, two_days = sim.call(
+        "run_capability",
+        {
+            "id": "service:calendar/search",
+            "input": {"start": "2026-11-10T00:00", "end": "2026-11-11T23:59"},
+        },
+    )
+
+    assert [i["id"] for i in json.loads(one_day)["items"]] == ["e1"]
+    assert {i["id"] for i in json.loads(two_days)["items"]} == {"e1", "e3"}

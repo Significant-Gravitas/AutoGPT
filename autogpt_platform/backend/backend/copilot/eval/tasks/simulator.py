@@ -10,6 +10,7 @@ they are held for approval instead, as production's gate holds them.
 
 import json
 import re
+from datetime import date, timedelta
 from typing import Any
 
 from backend.copilot.autopilot_mode import AutopilotMode
@@ -77,7 +78,7 @@ class Simulator:
             call.wrote = True
             return call, _dump({"status": "ok", "service": provider, "done": cap_id})
         return call, _dump(
-            {"service": provider, "items": self._search(provider, _words(args))}
+            {"service": provider, "items": self._search(provider, _words(args), args)}
         )
 
     def find(self, query: str) -> str:
@@ -190,8 +191,15 @@ class Simulator:
         page = self.world.web.get("pages", {}).get(url)
         return _dump({"url": url, "text": page} if page else {"error": "404 Not Found"})
 
-    def _search(self, provider: str, words: list[str]) -> list[dict[str, Any]]:
+    def _search(
+        self, provider: str, words: list[str], args: Any = None
+    ) -> list[dict[str, Any]]:
         items = self._items(provider)
+        if days := _days(args):
+            # A date or range in the call ("tomorrow's events") picks by date;
+            # keyword ranking would return whatever mentions the year.
+            items = [item for item in items if _on_days(item, days)]
+            return [_clip(item) for item in items[:_MAX_ITEMS]]
         if words:
             scored = [(i, _hits(item, words)) for i, item in enumerate(items)]
             items = [
@@ -233,6 +241,24 @@ def _approval_required(cap_id: str) -> str:
             "effect another way; carry on with what doesn't depend on it.",
         }
     )
+
+
+_DATE = re.compile(r"\b(20\d\d-\d\d-\d\d)")
+
+
+def _days(args: Any) -> list[str]:
+    """Every day a call asks about: its dates, and the days between two."""
+    found = sorted(set(_DATE.findall(json.dumps(args, default=str)))) if args else []
+    if len(found) < 2:
+        return found
+    first, last = date.fromisoformat(found[0]), date.fromisoformat(found[-1])
+    span = min((last - first).days, 31)
+    return [(first + timedelta(days=i)).isoformat() for i in range(span + 1)]
+
+
+def _on_days(item: dict[str, Any], days: list[str]) -> bool:
+    stamps = [v for k, v in item.items() if isinstance(v, str) and _DATE.match(v)]
+    return any(stamp[:10] in days for stamp in stamps)
 
 
 def provider_of(text: str) -> str | None:
