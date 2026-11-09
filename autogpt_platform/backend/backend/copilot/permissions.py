@@ -327,6 +327,9 @@ _FULL_UUID_RE = re.compile(
 )
 _PARTIAL_UUID_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
 
+# Most entries an allow- or deny-list of blocks may hold.
+MAX_BLOCK_IDENTIFIERS = 1_000
+
 
 # Tools that a blacklist entry must deny alongside the capability named.
 #
@@ -715,20 +718,43 @@ async def validate_block_identifiers(
 
     Returns:
         List of identifiers that matched no known block.
+
+    Raises:
+        ValueError: More than ``MAX_BLOCK_IDENTIFIERS`` identifiers were given.
     """
     from backend.blocks import get_blocks
 
+    if len(identifiers) > MAX_BLOCK_IDENTIFIERS:
+        raise ValueError(
+            f"At most {MAX_BLOCK_IDENTIFIERS} block identifiers are allowed, "
+            f"got {len(identifiers)}."
+        )
+
     # get_blocks() returns dict[block_id_str, BlockClass]; instantiate once to get names.
     block_registry = get_blocks()
-    block_info = {bid: cls().name for bid, cls in block_registry.items()}
-    invalid: list[str] = []
-    for ident in identifiers:
-        matched = any(
-            _block_matches(ident, bid, bname) for bid, bname in block_info.items()
-        )
-        if not matched:
-            invalid.append(ident)
-    return invalid
+    block_ids = {bid.lower() for bid in block_registry}
+    id_prefixes = {bid[:8] for bid in block_ids}
+    block_names = {cls().name.lower() for cls in block_registry.values()}
+    return [
+        ident
+        for ident in identifiers
+        if not _resolves_to_known_block(ident, block_ids, id_prefixes, block_names)
+    ]
+
+
+def _resolves_to_known_block(
+    identifier: str,
+    block_ids: set[str],
+    id_prefixes: set[str],
+    block_names: set[str],
+) -> bool:
+    """Set-lookup form of :func:`_block_matches` over the whole registry."""
+    ident = identifier.strip().lower()
+    if _FULL_UUID_RE.match(ident):
+        return ident in block_ids
+    if _PARTIAL_UUID_RE.match(ident):
+        return ident in id_prefixes
+    return ident in block_names
 
 
 # ---------------------------------------------------------------------------

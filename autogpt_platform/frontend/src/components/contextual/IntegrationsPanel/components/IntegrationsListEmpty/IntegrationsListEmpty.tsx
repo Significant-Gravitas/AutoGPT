@@ -14,9 +14,11 @@ export function IntegrationsListEmpty({ query }: Props) {
   // is one quiet line rather than the full empty state.
   if (trimmed) {
     return (
-      <Text variant="body" tone="muted" className="px-4">
-        {`None of your connected integrations match "${trimmed}".`}
-      </Text>
+      <div className="px-4">
+        <Text variant="body" tone="muted">
+          {`None of your connected integrations match "${trimmed}".`}
+        </Text>
+      </div>
     );
   }
 

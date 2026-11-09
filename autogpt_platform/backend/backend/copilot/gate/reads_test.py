@@ -38,6 +38,7 @@ from backend.copilot.sdk.tool_adapter import (
 )
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
+from backend.copilot.tools.workspace_files import ReadWorkspaceFileTool
 from backend.copilot.trial_cost_context import (
     TrialCostContext,
     capture_cost_context,
@@ -319,6 +320,39 @@ async def test_a_workspace_text_file_is_judged_decoded(rows, mime):
     with patch(f"{_READS}.judge_content", judge):
         await _call(_Text("", name="read_workspace_file"), _session(), {"path": "a"})
     assert _MARKER in judge.await_args.kwargs["text"]
+
+
+@pytest.mark.parametrize("window", [{}, {"offset": 0, "length": 1_000}])
+async def test_a_text_file_the_reader_returns_as_text_is_judged(rows, window):
+    """The reader hands a text file over as ``content``, whole or ranged."""
+    raw = f"# Notes\n\n{_MARKER}\n".encode()
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(
+        return_value=SimpleNamespace(
+            id="f-1",
+            name="notes.md",
+            path="/notes.md",
+            mime_type="text/markdown",
+            size_bytes=len(raw),
+            metadata={},
+        )
+    )
+    manager.read_file_by_id = AsyncMock(return_value=raw)
+    manager.read_file_head_by_id = AsyncMock(side_effect=lambda _id, n: raw[:n])
+    judge = _judge(_HELD)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        patch(
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
+            AsyncMock(return_value=manager),
+        ),
+    ):
+        result = await ReadWorkspaceFileTool().execute(
+            "user-1", _session(), "call-1", file_id="f-1", **window
+        )
+
+    assert _MARKER in judge.await_args.kwargs["text"]
+    assert _MARKER not in result.output and len(rows.rows) == 1
 
 
 async def test_sdk_registry_tool_is_judged_on_the_text_the_model_receives(rows):
@@ -1364,11 +1398,21 @@ async def test_a_sandbox_files_lines_are_judged_and_an_empty_grep_is_not(
 
 
 async def _agent_without_credentials() -> ToolResponseBase | None:
+    from backend.copilot.tools.expert_scope import CredentialScopeSnapshot
     from backend.copilot.tools.run_agent import RunAgentInput, RunAgentTool
 
-    graph = MagicMock(id="graph-1", version=1, input_schema={})
+    graph = MagicMock(
+        id="graph-1",
+        version=1,
+        input_schema={},
+        regular_credentials_inputs={"credentials": MagicMock()},
+    )
     graph.name = "Daily Scraper"
     with (
+        patch(
+            "backend.copilot.tools.run_agent.resolve_credential_scope",
+            AsyncMock(return_value=CredentialScopeSnapshot([], None)),
+        ),
         patch(
             "backend.copilot.tools.run_agent.match_user_credentials_to_graph",
             AsyncMock(return_value=({}, ["credentials"])),

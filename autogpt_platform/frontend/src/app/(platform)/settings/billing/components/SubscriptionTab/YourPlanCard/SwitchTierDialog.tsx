@@ -98,18 +98,20 @@ export function SwitchTierDialog({
           </>
         )}
         {usageCarriesOver && (
-          <Text
-            variant="small"
-            tone="secondary"
-            // oxlint-disable-next-line design-system/no-restyle -- the carry-over note is a tinted block at a 24px line height
-            className="mt-4 rounded-xl bg-surface-muted p-4 leading-6"
-          >
-            You can keep going once payment goes through. What you’ve already
-            used counts toward Max’s limit
-            {usageMultiplier
-              ? `, which is ${usageMultiplier} times as high as Pro’s.`
-              : "."}
-          </Text>
+          <div className="mt-4 rounded-xl bg-surface-muted p-4">
+            <Text
+              variant="small"
+              tone="secondary"
+              // oxlint-disable-next-line design-system/no-restyle -- the carry-over note is set at a 24px line height; no Text variant has it
+              className="leading-6"
+            >
+              You can keep going once payment goes through. What you’ve already
+              used counts toward Max’s limit
+              {usageMultiplier
+                ? `, which is ${usageMultiplier} times as high as Pro’s.`
+                : "."}
+            </Text>
+          </div>
         )}
         <Dialog.Footer
           className={

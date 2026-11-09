@@ -63,11 +63,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
     <>
       <div className="flex items-center justify-between gap-2.5 border-b border-separator px-4 py-3">
         <span className="flex items-center gap-2.5">
-          <Icon
-            icon={Message01Icon}
-            size={18}
-            className="text-foreground-subtle"
-          />
+          <Icon icon={Message01Icon} size={18} tone="subtle" />
           <Text variant="body-medium-tight" as="span" tone="primary">
             Answer a few questions
           </Text>
@@ -75,7 +71,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
         <button
           type="button"
           onClick={() => requests.forEach((req) => req.onSkip())}
-          className="rounded-full px-2 py-0.5 text-xs text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
+          className="rounded-full px-2 py-0.5 text-caption text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
         >
           Skip
         </button>
@@ -90,7 +86,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
       >
         <span
           id={labelId}
-          className="text-lg leading-snug font-medium text-foreground-strong"
+          className="text-lead leading-snug font-medium text-foreground-strong"
         >
           {question.question}
         </span>

@@ -19,7 +19,8 @@ export function WalletTrialNote({ id, trial }: Props) {
         icon={CreditCardIcon}
         size={16}
         aria-hidden
-        className="shrink-0 text-foreground-tertiary"
+        tone="muted"
+        className="shrink-0"
       />
       <Text variant="small" tone="secondary">
         {line}

@@ -96,19 +96,19 @@ export function BotsContent() {
           </div>
 
           <Card>
-            <h2 className="mb-4 text-xl font-semibold">
+            <h2 className="mb-4 text-lead font-semibold">
               Server growth & sharding outlook
             </h2>
             <ServerGrowthChart data={state.servers} />
           </Card>
 
           <Card>
-            <h2 className="mb-4 text-xl font-semibold">Message volume</h2>
+            <h2 className="mb-4 text-lead font-semibold">Message volume</h2>
             <MessageVolumeChart data={state.messages} />
           </Card>
 
           <Card>
-            <h2 className="mb-4 text-xl font-semibold">
+            <h2 className="mb-4 text-lead font-semibold">
               Top servers by activity
             </h2>
             <SimpleTable
@@ -131,7 +131,7 @@ export function BotsContent() {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
-              <h2 className="mb-4 text-xl font-semibold">Command usage</h2>
+              <h2 className="mb-4 text-lead font-semibold">Command usage</h2>
               <SimpleTable
                 columns={[
                   ...(showPlatform ? ["Platform"] : []),
@@ -149,7 +149,7 @@ export function BotsContent() {
             </Card>
 
             <Card>
-              <h2 className="mb-4 text-xl font-semibold">Server roster</h2>
+              <h2 className="mb-4 text-lead font-semibold">Server roster</h2>
               <SimpleTable
                 columns={[
                   ...(showPlatform ? ["Platform"] : []),
