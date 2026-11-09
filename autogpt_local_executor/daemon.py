@@ -156,8 +156,9 @@ class DaemonPreflightError(RuntimeError):
     Per docs/COMPUTER_USE.md: when computer_use is requested but its
     Accessibility or Screen Recording grant is missing (macOS), the daemon
     emits a clear audit record and exits with EX_CONFIG (78). launchd's
-    KeepAlive: SuccessfulExit=false re-launches us on the next TCC
-    change.
+    KeepAlive: SuccessfulExit=false starts us again after each nonzero exit
+    (at most every ten seconds), each start checking again, so the one
+    after the grant comes up.
 
     `permanent` marks a failure no relaunch can fix (a preview that is
     turned on, a missing package, an audit log that fails verification): a

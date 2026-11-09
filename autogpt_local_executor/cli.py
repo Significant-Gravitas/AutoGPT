@@ -348,8 +348,9 @@ async def _cmd_start(config) -> int:
             # the user has fixed it. (The systemd unit won't restart on 78.)
             _print_launchagent_stopped("Fix the above")
             return 0
-        # Exit 78 (EX_CONFIG) so launchd's KeepAlive: SuccessfulExit=false
-        # re-launches us on the next TCC change. See COMPUTER_USE.md "macOS".
+        # Exit 78 (EX_CONFIG): launchd's KeepAlive: SuccessfulExit=false
+        # starts us again after any nonzero exit (at most every ten seconds),
+        # and the start after the grant comes up. See COMPUTER_USE.md "macOS".
         return 78
     except DaemonAuthenticationError as exc:
         print(f"Authentication failed: {exc}", file=sys.stderr, flush=True)

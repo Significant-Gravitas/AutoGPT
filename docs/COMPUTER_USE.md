@@ -55,8 +55,9 @@ installed for other tools (see [CUA_DRIVER.md](CUA_DRIVER.md#how-the-driver-runs
 `autogpt-shim doctor` reports both permissions and asks macOS to show the
 prompts for any that are missing. If computer use is on and a
 permission is missing when the shim starts, it exits with code 78 and
-launchd starts it again later; grant the permission in System Settings →
-Privacy & Security and it connects on the next try.
+launchd starts it again, every ten seconds or so, each time checking again;
+grant the permission in System Settings → Privacy & Security and it
+connects on the next try.
 
 ## Windows
 
