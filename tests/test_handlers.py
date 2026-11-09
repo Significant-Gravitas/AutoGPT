@@ -1353,12 +1353,15 @@ async def test_recursive_list_without_hidden_skips_what_is_inside_hidden_dirs(
 
 
 class _FullDisk:
-    """A file object whose writes fail the way a full disk does."""
+    """A file object whose writes fail the way a full disk does: part of the
+    data lands, then the disk is full."""
 
     def __init__(self, file) -> None:
         self._file = file
 
-    def write(self, _data: bytes) -> int:
+    def write(self, data: bytes) -> int:
+        self._file.write(data[:1])
+        self._file.flush()
         raise OSError(errno.ENOSPC, "No space left on device")
 
     def __getattr__(self, name: str):
