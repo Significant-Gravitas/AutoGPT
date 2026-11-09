@@ -447,9 +447,10 @@ model UserOnboarding {
   roleOther String?
 
   // The chat session of the user's onboarding interview, recorded the first
-  // time it is opened (backend/copilot/onboarding_interview.py). Not a
-  // relation: a session that is deleted leaves the id here, and the next
-  // start creates the interview again at it.
+  // time it is opened (backend/copilot/onboarding_interview.py) and cleared
+  // when that session is deleted, so the next start is a new interview. Not
+  // a relation: should the session go without the clear, the next start
+  // creates the interview again at the id.
   interviewSessionId String? @unique
 
   // The user's latest onboarding voice call, recorded when the call starts on

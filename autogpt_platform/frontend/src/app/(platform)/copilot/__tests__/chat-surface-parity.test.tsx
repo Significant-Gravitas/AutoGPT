@@ -5,6 +5,7 @@ import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BuilderChatPanel } from "@/app/(platform)/build/components/BuilderChatPanel/BuilderChatPanel";
 import { useBuilderChatPanel } from "@/app/(platform)/build/components/BuilderChatPanel/useBuilderChatPanel";
+import { InterviewChat } from "@/app/(no-navbar)/onboarding/steps/InterviewStep/components/InterviewChat";
 import { MemoryChatPanel } from "@/app/(platform)/settings/memory/components/MemoryChatPanel/MemoryChatPanel";
 import { ExpertChatDrawer } from "@/app/(platform)/team/components/ExpertChatDrawer/ExpertChatDrawer";
 import { useExpertChatDrawer } from "@/app/(platform)/team/components/ExpertChatDrawer/useExpertChatDrawer";
@@ -162,6 +163,30 @@ const OTHER_SURFACES: Surface[] = [
       );
     },
   },
+  {
+    name: "onboarding interview",
+    host: "app/(no-navbar)/onboarding/steps/InterviewStep/components/InterviewChat.tsx",
+    mount: (messages) =>
+      render(
+        <InterviewChat
+          sessionId={SESSION_ID}
+          messages={messages}
+          status="ready"
+          error={undefined}
+          queuedMessages={[]}
+          isHydrating={false}
+          isTurnSettling={false}
+          isTurnRunning={false}
+          isOver={false}
+          canFinishEarly={false}
+          isLeaving={false}
+          finishFailure={null}
+          onSend={async () => {}}
+          onStop={vi.fn()}
+          onFinish={async () => {}}
+        />,
+      ),
+  },
 ];
 
 /** Hosts that render the thread for an anonymous reader. They never show a
@@ -249,7 +274,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// Each card mounts four full chat surfaces and the coverage checks read every
+// Each card mounts five full chat surfaces and the coverage checks read every
 // source file under app/ — well past the 5s default on a loaded runner.
 describe("chat surface parity", { timeout: 30_000 }, () => {
   it("covers every chat that renders the shared thread", () => {

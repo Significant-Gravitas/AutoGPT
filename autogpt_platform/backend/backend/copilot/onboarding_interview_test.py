@@ -648,6 +648,12 @@ class _OnboardingRows:
     async def get(self, user_id: str) -> str | None:
         return self.ids.get(user_id)
 
+    async def reclaim(self, user_id: str, stale: str, candidate: str) -> str:
+        if self.ids.get(user_id) == stale:
+            self.ids[user_id] = candidate
+            self.stored.append(candidate)
+        return self.ids[user_id]
+
 
 @pytest.fixture
 def onboarding_rows(mocker: MockerFixture) -> _OnboardingRows:
@@ -661,6 +667,11 @@ def onboarding_rows(mocker: MockerFixture) -> _OnboardingRows:
         onboarding_interview,
         "get_onboarding_interview_session_id",
         new=AsyncMock(side_effect=rows.get),
+    )
+    mocker.patch.object(
+        onboarding_interview,
+        "reclaim_onboarding_interview_session_id",
+        new=AsyncMock(side_effect=rows.reclaim),
     )
     return rows
 
@@ -756,6 +767,29 @@ async def test_a_stored_id_with_no_session_row_is_created_again_at_that_id(
     )
     assert onboarding_rows.stored == []
     assert set(stored) == {"stored-interview"}
+
+
+@pytest.mark.asyncio
+async def test_a_plain_chat_at_the_recorded_id_makes_the_start_record_a_new_one(
+    mocker: MockerFixture, onboarding_rows: _OnboardingRows
+) -> None:
+    """The recorded id names a chat of another kind: the start records a new
+    id and opens the interview there, leaving that chat alone."""
+    stored, chat_db = _session_store(mocker)
+    plain = ChatSession.new("user-1", dry_run=False, session_id="plain-chat")
+    stored["plain-chat"] = plain
+    onboarding_rows.ids["user-1"] = "plain-chat"
+
+    session = await get_or_create_onboarding_interview_session("user-1")
+
+    assert session.session_id != "plain-chat"
+    assert is_onboarding_interview(session)
+    assert onboarding_rows.ids["user-1"] == session.session_id
+    assert stored["plain-chat"] is plain
+    assert not is_onboarding_interview(plain)
+    assert chat_db.create_chat_session.await_args.kwargs["session_id"] == (
+        session.session_id
+    )
 
 
 @pytest.mark.asyncio

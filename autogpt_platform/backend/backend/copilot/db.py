@@ -1255,10 +1255,27 @@ async def delete_chat_session(
                 f"(user_id validation: {user_id is not None})"
             )
             return False
+        await _forget_onboarding_interview(session_id)
         return True
     except Exception as e:
         logger.error(f"Failed to delete chat session {session_id}: {e}")
         return False
+
+
+async def _forget_onboarding_interview(session_id: str) -> None:
+    """A deleted onboarding interview is forgotten on its owner's onboarding
+    row, so their next start is a new interview and a new take. Best
+    effort: the session is already gone."""
+    # Lazy import: the onboarding module imports parts of the copilot package.
+    from backend.data.onboarding import forget_onboarding_interview_session
+
+    try:
+        await forget_onboarding_interview_session(session_id)
+    except Exception:
+        logger.error(
+            f"Deleted session {session_id} not cleared as an onboarding interview",
+            exc_info=True,
+        )
 
 
 async def get_next_sequence(session_id: str) -> int:

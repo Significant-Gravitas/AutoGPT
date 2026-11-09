@@ -344,6 +344,34 @@ async def test_handing_the_same_interview_over_twice_runs_the_pipeline_once(
 
 
 @pytest.mark.asyncio
+async def test_a_new_interview_after_the_old_one_was_deleted_is_a_new_take(
+    stored: StoredInterview, dumps: DumpStore, quality_gate: AsyncMock
+):
+    """Deleting the interview forgets its id, so the next start is a new
+    session: its words are handed off as a take of their own instead of the
+    old take coming back."""
+    await _finalize(stored.session.session_id)
+    old_take = dumps.row.recordingId if dumps.row else None
+    fresh = ChatSession.new(USER_ID, dry_run=False)
+    fresh.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    fresh.messages = [
+        _kickoff_row(fresh),
+        ChatMessage(role="assistant", content="Hi, I'm Otto, an AI. What do you do?"),
+        ChatMessage(role="user", content="We cater weddings now, not cafes."),
+    ]
+    stored.session = fresh
+
+    response, _ = await _finalize(fresh.session_id)
+
+    assert response.status != BrainDumpStatus.failed
+    assert dumps.row is not None
+    assert dumps.row.recordingId == f"interview-{fresh.session_id}"
+    assert dumps.row.recordingId != old_take
+    assert dumps.row.transcript == "We cater weddings now, not cafes."
+    assert quality_gate.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_a_take_made_after_the_hand_off_is_never_replaced_by_it(
     stored: StoredInterview, dumps: DumpStore
 ):

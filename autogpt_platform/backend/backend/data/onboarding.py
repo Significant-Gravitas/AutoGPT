@@ -128,6 +128,39 @@ async def claim_onboarding_interview_session_id(user_id: str, candidate: str) ->
     return stored
 
 
+async def reclaim_onboarding_interview_session_id(
+    user_id: str, stale: str, candidate: str
+) -> str:
+    """Record *candidate* in place of *stale*, an id that no longer names an
+    interview, and return the id recorded now.
+
+    Only replaces *stale* itself, in one statement, so when two requests
+    replace it at once one id is kept and both return it.
+    """
+    replaced = await UserOnboarding.prisma().update_many(
+        where={"userId": user_id, "interviewSessionId": stale},
+        data={"interviewSessionId": candidate},
+    )
+    if replaced:
+        return candidate
+    current = await get_onboarding_interview_session_id(user_id)
+    if current is None:
+        return await claim_onboarding_interview_session_id(user_id, candidate)
+    return current
+
+
+async def forget_onboarding_interview_session(session_id: str) -> None:
+    """Forget *session_id* as anyone's onboarding interview, once its session
+    is deleted, so the next start opens a new interview and a new take.
+
+    Clears the column only while it still holds *session_id*.
+    """
+    await UserOnboarding.prisma().update_many(
+        where={"interviewSessionId": session_id},
+        data={"interviewSessionId": None},
+    )
+
+
 async def get_onboarding_interview_session_id(user_id: str) -> str | None:
     """The session of *user_id*'s onboarding interview, if one was opened."""
     onboarding = await UserOnboarding.prisma().find_unique(where={"userId": user_id})

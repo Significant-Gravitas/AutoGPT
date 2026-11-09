@@ -29,8 +29,9 @@ onboarding pipeline) lives in ``backend.api.features.onboarding_dump.interview``
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
+
+from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.constants import (
     COMPACTION_TOOL_NAME,
@@ -51,6 +52,7 @@ from backend.data.db_accessors import chat_db
 from backend.data.onboarding import (
     claim_onboarding_interview_session_id,
     get_onboarding_interview_session_id,
+    reclaim_onboarding_interview_session_id,
 )
 
 if TYPE_CHECKING:
@@ -158,8 +160,7 @@ class InterviewTurnRefused(Exception):
         self.code = code
 
 
-@dataclass(frozen=True)
-class InterviewTurnPlan:
+class InterviewTurnPlan(BaseModel):
     """What the turn about to run is, in an interview capped at ``cap``.
 
     ``reply`` is the number of the reply that turn writes. The thresholds are
@@ -167,6 +168,8 @@ class InterviewTurnPlan:
     turns still reaches the wrap-up and the goodbye instead of stepping over
     them.
     """
+
+    model_config = ConfigDict(frozen=True)
 
     reply: int
     cap: int = INTERVIEW_TURN_CAP
@@ -384,12 +387,19 @@ async def get_or_create_onboarding_interview_session(user_id: str) -> "ChatSessi
 
     Its session id is recorded on the user's onboarding row the first time,
     so a retry, a second tab or a second visit all land in the same
-    interview, and an interview whose session was deleted is created again at
-    the recorded id. Created outside any organization or team, and on the
-    platform route: someone who just signed up has no other connection.
+    interview. Deleting the interview's session forgets the id, so the next
+    start is a new interview; an id whose session is gone all the same is
+    created again at it, and one that names a chat of another kind is
+    replaced by a new id. Created outside any organization or team, and on
+    the platform route: someone who just signed up has no other connection.
     """
     session_id = await claim_onboarding_interview_session_id(user_id, str(uuid.uuid4()))
     existing = await get_chat_session(session_id, user_id)
+    if existing is not None and not is_onboarding_interview(existing):
+        session_id = await reclaim_onboarding_interview_session_id(
+            user_id, session_id, str(uuid.uuid4())
+        )
+        existing = await get_chat_session(session_id, user_id)
     if existing is not None:
         return _as_interview(existing)
     try:
