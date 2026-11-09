@@ -1350,6 +1350,31 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(screen.queryByText(/What you said is kept/)).toBeNull();
   });
 
+  it.each([
+    ["quality_check_unavailable", "Try again"],
+    ["some_new_failure", "Call again"],
+    ["no_usable_speech", "Call again"],
+  ])(
+    "never says Otto had everything it needed when a finished call's hand-off failed (%s)",
+    async (code, wayOn) => {
+      callStates[CALL_ID] = [
+        callRecord({
+          status: "failed",
+          end_reason: "finished",
+          hand_off: { status: "failed", input_mode: "typed", error_code: code },
+        }),
+      ];
+      render(<OnboardingPage />);
+      const socket = await liveCall();
+
+      endCall(socket, "finished");
+
+      expect(await screen.findByRole("button", { name: wayOn })).toBeDefined();
+      expect(screen.getByText("Otto wrapped up the call.")).toBeDefined();
+      expect(screen.queryByText("That's everything Otto needed.")).toBeNull();
+    },
+  );
+
   it("says it did not hear the person, with another call or typing, after a call where nothing was heard", async () => {
     callStates[CALL_ID] = [
       callRecord({

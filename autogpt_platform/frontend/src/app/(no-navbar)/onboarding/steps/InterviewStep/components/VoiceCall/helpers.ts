@@ -352,7 +352,16 @@ const ENDED_COPY: Record<string, string> = {
   crashed: "Our server stopped during the call.",
 };
 
-export function endedCopy(reason: string | null | undefined) {
+// What ended the call, in a line. Otto's goodbye says it had everything it
+// needed, which is not so beside a hand-off that failed: then the line only
+// says Otto wrapped the call up.
+export function endedCopy(
+  reason: string | null | undefined,
+  { handOffFailed = false }: { handOffFailed?: boolean } = {},
+) {
+  if (reason === "finished" && handOffFailed) {
+    return "Otto wrapped up the call.";
+  }
   return (reason && ENDED_COPY[reason]) || "The call ended.";
 }
 

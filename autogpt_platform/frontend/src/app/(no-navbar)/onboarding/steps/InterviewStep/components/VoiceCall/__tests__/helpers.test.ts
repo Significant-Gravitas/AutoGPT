@@ -350,6 +350,17 @@ describe("the call's copy", () => {
     expect(endedCopy(null)).toBe("The call ended.");
   });
 
+  it("says only that Otto wrapped up a finished call whose hand-off failed", () => {
+    expect(endedCopy("finished")).toBe("That's everything Otto needed.");
+    expect(endedCopy("finished", { handOffFailed: true })).toBe(
+      "Otto wrapped up the call.",
+    );
+    // Any other end says what ended the call either way.
+    expect(endedCopy("user_hangup", { handOffFailed: true })).toBe(
+      "You ended the call.",
+    );
+  });
+
   it("never mentions typing while a lost call's words are being saved", () => {
     const saving = callStatusCopy({
       phase: "saving",
