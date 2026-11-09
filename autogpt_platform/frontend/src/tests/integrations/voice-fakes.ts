@@ -129,7 +129,8 @@ export class FakeAudioContext {
   }
 
   createMediaStreamDestination() {
-    return Object.assign(new FakeAudioNode(), { stream: fakeMediaStream() });
+    // A stream an audio element takes as its source.
+    return Object.assign(new FakeAudioNode(), { stream: new MediaStream() });
   }
 
   createAnalyser() {
@@ -168,6 +169,138 @@ export function fakeMediaStream() {
   } as unknown as MediaStream;
 }
 
+// --- LiveKit -----------------------------------------------------------------
+
+// The names and values `livekit-client` gives them, as the page reads them.
+const ROOM_EVENTS = {
+  TrackSubscribed: "trackSubscribed",
+  Reconnecting: "reconnecting",
+  Reconnected: "reconnected",
+  Disconnected: "disconnected",
+  ParticipantDisconnected: "participantDisconnected",
+} as const;
+export const DISCONNECT_REASON = {
+  CLIENT_INITIATED: 1,
+  DUPLICATE_IDENTITY: 2,
+  SIGNAL_CLOSE: 9,
+} as const;
+
+let liveKitRooms: FakeRoom[] = [];
+let roomJoin: { refuse: unknown } | "hang" | null = null;
+// While set, joins wait on it before they answer.
+let roomJoinGate: Promise<void> | null = null;
+
+// Otto's speech in a call's room.
+export class FakeRemoteTrack {
+  readonly kind = "audio";
+  readonly mediaStreamTrack = {
+    kind: "audio",
+    id: "otto-track",
+  } as unknown as MediaStreamTrack;
+  readonly attachedTo: HTMLMediaElement[] = [];
+
+  attach(element: HTMLMediaElement) {
+    this.attachedTo.push(element);
+    return element;
+  }
+}
+
+// A call's LiveKit room as `livekit-client` shows it to the page.
+export class FakeRoom {
+  url: string | null = null;
+  token: string | null = null;
+  // The tracks the page published, and those it took back.
+  readonly published: unknown[] = [];
+  readonly unpublished: unknown[] = [];
+  isLeft = false;
+  readonly remoteParticipants = new Map<string, { identity: string }>();
+  readonly localParticipant = {
+    publishTrack: async (track: unknown, _options?: unknown) => {
+      this.published.push(track);
+      return {};
+    },
+    unpublishTrack: async (track: unknown, _stopOnUnpublish?: boolean) => {
+      this.unpublished.push(track);
+      return undefined;
+    },
+  };
+  private readonly handlers = new Map<string, ((...args: never[]) => void)[]>();
+
+  constructor() {
+    liveKitRooms.push(this);
+  }
+
+  on(event: string, handler: (...args: never[]) => void) {
+    this.handlers.set(event, [...(this.handlers.get(event) ?? []), handler]);
+    return this;
+  }
+
+  async connect(url: string, token: string) {
+    this.url = url;
+    this.token = token;
+    if (roomJoinGate) await roomJoinGate;
+    if (roomJoin === "hang") await new Promise(() => undefined);
+    if (roomJoin && roomJoin !== "hang") throw roomJoin.refuse;
+  }
+
+  async disconnect(_stopTracks?: boolean) {
+    if (this.isLeft) return;
+    this.isLeft = true;
+    this.emit(ROOM_EVENTS.Disconnected, DISCONNECT_REASON.CLIENT_INITIATED);
+  }
+
+  // --- LiveKit's side ---
+
+  // The relay joins as Otto, and its speech reaches the page.
+  ottoJoins() {
+    const otto = { identity: "otto" };
+    this.remoteParticipants.set(otto.identity, otto);
+    const track = new FakeRemoteTrack();
+    this.emit(ROOM_EVENTS.TrackSubscribed, track, {}, otto);
+    return track;
+  }
+
+  ottoLeaves() {
+    const otto = this.remoteParticipants.get("otto");
+    this.remoteParticipants.delete("otto");
+    this.emit(ROOM_EVENTS.ParticipantDisconnected, otto);
+  }
+
+  // A track of *kind* from *identity* reaches the page.
+  trackFrom(identity: string, kind = "audio") {
+    const track = Object.assign(new FakeRemoteTrack(), { kind });
+    this.emit(ROOM_EVENTS.TrackSubscribed, track, {}, { identity });
+    return track;
+  }
+
+  reconnecting() {
+    this.emit(ROOM_EVENTS.Reconnecting);
+  }
+
+  reconnected() {
+    this.emit(ROOM_EVENTS.Reconnected);
+  }
+
+  // LiveKit gives the room up, for *reason*.
+  lose(reason: number = DISCONNECT_REASON.SIGNAL_CLOSE) {
+    this.emit(ROOM_EVENTS.Disconnected, reason);
+  }
+
+  private emit(event: string, ...args: unknown[]) {
+    (this.handlers.get(event) ?? []).forEach((handler) =>
+      (handler as (...values: unknown[]) => void)(...args),
+    );
+  }
+}
+
+// What the page imports from `livekit-client`, as fakes.
+export const fakeLiveKit = {
+  Room: FakeRoom,
+  RoomEvent: ROOM_EVENTS,
+  DisconnectReason: DISCONNECT_REASON,
+  Track: { Kind: { Audio: "audio" }, Source: { Microphone: "microphone" } },
+};
+
 export interface VoiceFakes {
   sockets: FakeWebSocket[];
   getUserMedia: Mock<() => Promise<MediaStream>>;
@@ -186,6 +319,16 @@ export interface VoiceFakes {
   denyMicrophonePermission(): void;
   // The audio worklets fail to load, as on a browser that cannot run them.
   failWorklets(): void;
+  // The LiveKit rooms the page made, and the one it made last.
+  rooms(): FakeRoom[];
+  room(): FakeRoom | undefined;
+  // The next joins of a call's room are refused with *error*, or never
+  // answer; `joinRooms` lets them through again.
+  refuseRoomJoins(error: unknown): void;
+  hangRoomJoins(): void;
+  joinRooms(): void;
+  // The next joins wait until the function this returns lets them in.
+  holdRoomJoins(): () => void;
   uninstall(): void;
 }
 
@@ -195,6 +338,9 @@ export function installVoiceFakes(): VoiceFakes {
   audioContexts = [];
   workletNodes = [];
   workletFailure = null;
+  liveKitRooms = [];
+  roomJoin = null;
+  roomJoinGate = null;
   PassThroughWebSocket = globalThis.WebSocket;
   vi.stubGlobal("WebSocket", FakeWebSocket);
   vi.stubGlobal("AudioContext", FakeAudioContext);
@@ -256,6 +402,27 @@ export function installVoiceFakes(): VoiceFakes {
     },
     failWorklets() {
       workletFailure = new Error("The audio worklet could not be loaded");
+    },
+    rooms: () => liveKitRooms,
+    room: () => liveKitRooms.at(-1),
+    refuseRoomJoins(error) {
+      roomJoin = { refuse: error };
+    },
+    hangRoomJoins() {
+      roomJoin = "hang";
+    },
+    joinRooms() {
+      roomJoin = null;
+    },
+    holdRoomJoins() {
+      let letIn = () => undefined as void;
+      roomJoinGate = new Promise<void>((resolve) => {
+        letIn = resolve;
+      });
+      return () => {
+        roomJoinGate = null;
+        letIn();
+      };
     },
     uninstall() {
       vi.unstubAllGlobals();

@@ -4,6 +4,7 @@ import {
   forgetCallTicket,
   forgetCallTickets,
   isCallId,
+  isCallRoomPass,
   isVoiceCallCaps,
   readCallTicket,
   saveCallTicket,
@@ -12,6 +13,7 @@ import {
 const USER = "ticket-user";
 const KEY = `autogpt:onboarding-voice-call:${USER}`;
 const CALL_ID = "c".repeat(32);
+const ROOM = { url: "wss://agpt.livekit.cloud", token: "room-token" };
 const CAPS = {
   max_call_s: 300,
   soft_wrap_s: 30,
@@ -27,6 +29,7 @@ function ticket(overrides: Partial<CallTicket> = {}): CallTicket {
     caps: CAPS,
     startedAt: Date.now(),
     turnsLeft: 9,
+    room: null,
     ...overrides,
   };
 }
@@ -51,7 +54,20 @@ describe("the call's ticket, kept for a reload", () => {
 
     expect(
       Object.keys(JSON.parse(sessionStorage.getItem(KEY) ?? "{}")),
-    ).toEqual(["callId", "ticket", "caps", "startedAt", "turnsLeft"]);
+    ).toEqual(["callId", "ticket", "caps", "startedAt", "turnsLeft", "room"]);
+  });
+
+  it("keeps the call's room on the LiveKit leg, so a reload joins it again", () => {
+    saveCallTicket(USER, ticket({ room: ROOM }));
+
+    expect(readCallTicket(USER, CALL_ID)?.room).toEqual(ROOM);
+  });
+
+  it("reads a ticket kept with no room as a call on the socket", () => {
+    const { room: _room, ...withoutRoom } = ticket();
+    keep(withoutRoom);
+
+    expect(readCallTicket(USER, CALL_ID)?.room).toBeNull();
   });
 
   it("gives nothing for another call or another person, and keeps the ticket", () => {
@@ -76,6 +92,12 @@ describe("the call's ticket, kept for a reload", () => {
     ["a call id that is not one", { ...ticket(), callId: "../../calls" }],
     ["an empty ticket", { ...ticket(), ticket: "" }],
     ["a start time that is not a time", { ...ticket(), startedAt: "now" }],
+    // Its audio is in a room this tab could not join again.
+    [
+      "a room that is no LiveKit project's",
+      { ...ticket(), room: { ...ROOM, url: "https://agpt.livekit.cloud" } },
+    ],
+    ["a room with no token", { ...ticket(), room: { ...ROOM, token: "" } }],
   ])("forgets a ticket with %s, without throwing", (_case, value) => {
     if (typeof value === "string") sessionStorage.setItem(KEY, value);
     else keep(value);
@@ -123,6 +145,19 @@ describe("the shapes a call's values come in", () => {
     expect(isCallId("c".repeat(31))).toBe(false);
     expect(isCallId("../voice/end")).toBe(false);
     expect(isCallId(42)).toBe(false);
+  });
+
+  it("knows a call's room only as a secure socket with a token", () => {
+    expect(isCallRoomPass(ROOM)).toBe(true);
+    expect(isCallRoomPass({ ...ROOM, url: "not a url" })).toBe(false);
+    expect(isCallRoomPass({ ...ROOM, token: "t".repeat(4_097) })).toBe(false);
+    expect(isCallRoomPass({ url: ROOM.url })).toBe(false);
+    expect(isCallRoomPass("wss://agpt.livekit.cloud")).toBe(false);
+  });
+
+  it("takes a plain room socket only on a page served over plain HTTP", () => {
+    const plain = { ...ROOM, url: "ws://localhost:7880" };
+    expect(isCallRoomPass(plain)).toBe(window.location.protocol === "http:");
   });
 
   it("knows a call's caps only with every limit a number", () => {

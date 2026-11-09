@@ -1,7 +1,12 @@
 import type { FinalizeResponse } from "@/app/api/__generated__/models/finalizeResponse";
+import type { VoiceCallLeg } from "@/app/api/__generated__/models/voiceCallLeg";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
 import type { VoiceCallStatusResponseStatus } from "@/app/api/__generated__/models/voiceCallStatusResponseStatus";
-import { isVoiceCallCaps } from "@/services/onboarding/voice-call-ticket";
+import {
+  type CallRoomPass,
+  isCallRoomPass,
+  isVoiceCallCaps,
+} from "@/services/onboarding/voice-call-ticket";
 import { describeWait, type Refusal } from "../../helpers";
 import type { CallLeg, RelayMessage } from "./protocol";
 
@@ -31,6 +36,45 @@ export const HANGUP_FALLBACK_MS = 5_000;
 // A read the step opens on that has not answered this soon is given up, and
 // the choice shows.
 export const OPENING_READ_TIMEOUT_MS = 8_000;
+// On the LiveKit leg the browser joins the call's room before it starts the
+// call; a join LiveKit has not let through this soon takes the call's audio
+// onto the socket instead.
+export const ROOM_JOIN_TIMEOUT_MS = 4_000;
+// Once the call ends, the browser stays in the room while Otto's last words
+// play, until the relay leaves it, for at most this long.
+export const ROOM_PLAYOUT_MS = 20_000;
+
+// --- The LiveKit leg ------------------------------------------------------
+
+// The room the start names for a call on the LiveKit leg, when it names one
+// the browser can join; null for the socket leg.
+export function roomPassOf(leg: VoiceCallLeg): CallRoomPass | null {
+  if (leg.kind !== "livekit") return null;
+  const pass = { url: leg.url, token: leg.token };
+  return isCallRoomPass(pass) ? pass : null;
+}
+
+export class RoomJoinTimeout extends Error {
+  constructor() {
+    super("The call's room did not let the browser in in time");
+    this.name = "RoomJoinTimeout";
+  }
+}
+
+export type LegFallbackWhy = "timeout" | "refused" | "failed" | "relay";
+
+// Why the browser could not join a call's room: it took too long, LiveKit
+// refused it (a full plan, a token it would not take), or it failed.
+export function legFallbackWhyOf(error: unknown): LegFallbackWhy {
+  if (error instanceof RoomJoinTimeout) return "timeout";
+  if (!error || typeof error !== "object") return "failed";
+  const failure = error as Record<string, unknown>;
+  if (failure.name !== "ConnectionError") return "failed";
+  const status = typeof failure.status === "number" ? failure.status : 0;
+  const isRefused =
+    failure.reasonName === "NotAllowed" || (status >= 400 && status < 500);
+  return isRefused ? "refused" : "failed";
+}
 
 // A message from the relay, read field by field, or null for anything the
 // relay does not send: a frame of another shape never reaches the handlers.
@@ -174,6 +218,8 @@ interface CallStatus {
   isWrappingUp: boolean;
   wasResumed: boolean;
   isHangingUp: boolean;
+  // LiveKit is getting the call's audio back after the network changed.
+  isAudioReconnecting: boolean;
 }
 
 // The line under Otto while a call runs or its words are being saved. After
@@ -183,12 +229,14 @@ export function callStatusCopy({
   isWrappingUp,
   wasResumed,
   isHangingUp,
+  isAudioReconnecting,
 }: CallStatus) {
   switch (phase) {
     case "starting":
       return "Calling Otto…";
     case "live":
       if (isHangingUp) return "Hanging up…";
+      if (isAudioReconnecting) return "Reconnecting…";
       if (wasResumed) return "Reconnected";
       if (isWrappingUp) return "Otto is wrapping up";
       return "You're on the call with Otto";

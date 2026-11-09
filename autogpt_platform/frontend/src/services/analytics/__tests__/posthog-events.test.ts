@@ -74,6 +74,7 @@ const LIVE_EVENT_NAMES = [
   "trial_offer_viewed",
   "trial_resume_clicked",
   "trial_subscribe_now_clicked",
+  "voice_interview_leg_fallback",
   "voice_interview_mic_denied",
   "voice_interview_reconnected",
   "voice_mode_error",
@@ -89,7 +90,7 @@ const LIVE_EVENT_NAMES = [
   "welcome_dialog_closed",
 ];
 
-const PLANNED_EVENT_NAMES: string[] = ["voice_interview_leg_fallback"];
+const PLANNED_EVENT_NAMES: string[] = [];
 
 // No longer sent, or renamed (SECRT-2722). The names stay reserved: reusing one would
 // splice a different action onto the history PostHog already holds for it.

@@ -9,10 +9,14 @@ import {
   ENDING_WINDOW_MS,
   endedCopy,
   isRelaySocketUrl,
+  legFallbackWhyOf,
   microphoneRefusalOf,
   parseRelayMessage,
   REATTACH_WINDOW_MS,
+  ROOM_JOIN_TIMEOUT_MS,
+  RoomJoinTimeout,
   ranToClose,
+  roomPassOf,
   secondsBetween,
   timeLeftCopy,
   turnsLeftCopy,
@@ -356,6 +360,7 @@ describe("the call's copy", () => {
       isWrappingUp: false,
       wasResumed: false,
       isHangingUp: false,
+      isAudioReconnecting: false,
     });
     expect(saving).toBe("We lost the call. Saving what you said…");
     expect(saving).not.toMatch(/typ/i);
@@ -368,24 +373,40 @@ describe("the call's copy", () => {
         isWrappingUp: false,
         wasResumed: false,
         isHangingUp: false,
+        isAudioReconnecting: false,
       }),
     ).toBe("Saving what you said…");
   });
 
   it("puts the live call's state in one line", () => {
-    const live = { phase: "live" as const, wasResumed: false };
+    const live = {
+      phase: "live" as const,
+      wasResumed: false,
+      isAudioReconnecting: false,
+    };
     expect(
       callStatusCopy({ ...live, isWrappingUp: false, isHangingUp: true }),
     ).toBe("Hanging up…");
     expect(
       callStatusCopy({ ...live, isWrappingUp: true, isHangingUp: false }),
     ).toBe("Otto is wrapping up");
+    // LiveKit getting the audio back says so over the rest, Hang up aside.
+    expect(
+      callStatusCopy({
+        ...live,
+        isWrappingUp: true,
+        isHangingUp: false,
+        wasResumed: true,
+        isAudioReconnecting: true,
+      }),
+    ).toBe("Reconnecting…");
     expect(
       callStatusCopy({
         phase: "ended",
         isWrappingUp: false,
         wasResumed: false,
         isHangingUp: false,
+        isAudioReconnecting: false,
       }),
     ).toBeNull();
   });
@@ -473,5 +494,63 @@ describe("the call's waits", () => {
     expect(REATTACH_WINDOW_MS).toBe(15_000);
     expect(ENDING_WINDOW_MS).toBe(30_000);
     expect(ENDING_POLL_MS).toBe(2_000);
+  });
+});
+
+describe("the LiveKit leg", () => {
+  const ROOM = "wss://agpt.livekit.cloud";
+
+  it("joins the room the start names on the LiveKit leg, and none on the socket", () => {
+    expect(roomPassOf({ kind: "livekit", url: ROOM, token: "jwt" })).toEqual({
+      url: ROOM,
+      token: "jwt",
+    });
+    expect(roomPassOf({ kind: "websocket", url: null, token: null })).toBe(
+      null,
+    );
+  });
+
+  it("joins no room a start names without a secure socket or a token", () => {
+    expect(
+      roomPassOf({
+        kind: "livekit",
+        url: "https://agpt.livekit.cloud",
+        token: "jwt",
+      }),
+    ).toBeNull();
+    expect(roomPassOf({ kind: "livekit", url: ROOM, token: "" })).toBeNull();
+    expect(roomPassOf({ kind: "livekit", url: ROOM, token: null })).toBeNull();
+    expect(roomPassOf({ kind: "livekit" })).toBeNull();
+  });
+
+  it("gives the join four seconds", () => {
+    expect(ROOM_JOIN_TIMEOUT_MS).toBe(4_000);
+  });
+
+  it("says why the browser's audio fell back to the socket", () => {
+    expect(legFallbackWhyOf(new RoomJoinTimeout())).toBe("timeout");
+    // LiveKit refusing the join: a plan past its allowance, or a token it
+    // would not take.
+    expect(
+      legFallbackWhyOf({ name: "ConnectionError", reasonName: "NotAllowed" }),
+    ).toBe("refused");
+    expect(
+      legFallbackWhyOf({
+        name: "ConnectionError",
+        reasonName: "ServerUnreachable",
+        status: 429,
+      }),
+    ).toBe("refused");
+    expect(
+      legFallbackWhyOf({
+        name: "ConnectionError",
+        reasonName: "ServerUnreachable",
+        status: 503,
+      }),
+    ).toBe("failed");
+    expect(legFallbackWhyOf(new Error("the SDK could not load"))).toBe(
+      "failed",
+    );
+    expect(legFallbackWhyOf(null)).toBe("failed");
   });
 });

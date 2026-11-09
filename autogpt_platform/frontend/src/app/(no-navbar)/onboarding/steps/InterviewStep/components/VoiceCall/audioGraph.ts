@@ -19,6 +19,9 @@ export interface CallAudio {
   // Drops what is queued, when the person talks over Otto.
   flush(): void;
   onFrame(listener: ((frame: ArrayBuffer) => void) | null): void;
+  // Mixes Otto's speech from the call's room into the levels; the room's
+  // player plays it.
+  listen(track: MediaStreamTrack): void;
   // Releases the microphone now, and keeps playing what Otto still says.
   mute(): void;
   // Releases the microphone and closes the context once Otto has finished.
@@ -32,6 +35,22 @@ export function createCallContext() {
   const context = new AudioContext({ latencyHint: "interactive" });
   void context.resume().catch(() => undefined);
   return context;
+}
+
+// On the LiveKit leg Otto's speech plays through an audio element, which a
+// browser lets play only once a gesture has started it: it is made, and
+// started on silence, inside the same click.
+export function createCallPlayer(context: AudioContext) {
+  const player = new Audio();
+  player.autoplay = true;
+  player.srcObject = context.createMediaStreamDestination().stream;
+  void player.play().catch(() => undefined);
+  return player;
+}
+
+export function releasePlayer(player: HTMLAudioElement) {
+  player.pause();
+  player.srcObject = null;
 }
 
 export function openMicrophone() {
@@ -77,6 +96,7 @@ export async function connectCallAudio(
   let bufferedS = 0;
   let isMicrophoneOpen = true;
   let isClosed = false;
+  const roomSources: MediaStreamAudioSourceNode[] = [];
 
   capture.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
     frameListener?.(event.data);
@@ -99,6 +119,7 @@ export async function connectCallAudio(
     isClosed = true;
     stopMicrophone();
     player.disconnect();
+    roomSources.forEach((source) => source.disconnect());
     void context.close().catch(() => undefined);
   }
 
@@ -112,6 +133,12 @@ export async function connectCallAudio(
     },
     onFrame(listener) {
       frameListener = isMicrophoneOpen ? listener : null;
+    },
+    listen(track) {
+      if (isClosed) return;
+      const source = context.createMediaStreamSource(new MediaStream([track]));
+      source.connect(mix);
+      roomSources.push(source);
     },
     mute: stopMicrophone,
     finish() {

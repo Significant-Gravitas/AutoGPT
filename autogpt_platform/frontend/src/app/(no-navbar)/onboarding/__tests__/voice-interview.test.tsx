@@ -33,7 +33,10 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import {
-  type FakeWebSocket,
+  DISCONNECT_REASON,
+  type FakeRemoteTrack,
+  type FakeRoom,
+  FakeWebSocket,
   installVoiceFakes,
   RELAY_URL,
   type VoiceFakes,
@@ -83,7 +86,14 @@ vi.mock(
     START_RETRY_MS: 20,
     HANGUP_FALLBACK_MS: 150,
     OPENING_READ_TIMEOUT_MS: 400,
+    ROOM_JOIN_TIMEOUT_MS: 150,
+    ROOM_PLAYOUT_MS: 300,
   }),
+);
+
+vi.mock(
+  "livekit-client",
+  async () => (await import("@/tests/integrations/voice-fakes")).fakeLiveKit,
 );
 
 vi.mock("../steps/InterviewStep/helpers", async (importOriginal) => ({
@@ -276,6 +286,15 @@ const STARTED: VoiceCallStartResponse = {
   caps: CAPS,
 };
 
+const ROOM_URL = "wss://agpt-test.livekit.cloud";
+const ROOM_TOKEN = "room-token";
+const ROOM = { url: ROOM_URL, token: ROOM_TOKEN };
+// A start on the LiveKit leg: the call's room, and the browser's token.
+const STARTED_IN_ROOM: VoiceCallStartResponse = {
+  ...STARTED,
+  leg: { kind: "livekit", ...ROOM },
+};
+
 type SessionMessages = NonNullable<SessionDetailResponse["messages"]>;
 
 function row(
@@ -309,6 +328,8 @@ const TYPED_GOODBYE = "Thanks! Your team starts on the order emails first.";
 const TYPED_GOODBYE_ROW = row(4, "assistant", TYPED_GOODBYE);
 
 let latestCall: CallRecord | null;
+// What the call's start answers.
+let mintAnswer: VoiceCallStartResponse;
 let callStates: Record<string, (CallRecord | "missing")[]>;
 let typedMessages: SessionMessages;
 let turnAnswer: Answer | null;
@@ -358,7 +379,7 @@ function handlers() {
     }),
     getStartOnboardingVoiceCallMockHandler200(() => {
       mints += 1;
-      return STARTED;
+      return mintAnswer;
     }),
     http.get(`${VOICE}/:callId`, ({ params }) => {
       const callId = String(params.callId);
@@ -456,7 +477,7 @@ function refuseTypedFinish(answer: Answer) {
   );
 }
 
-function keepTicket(callId = CALL_ID) {
+function keepTicket(callId = CALL_ID, room: typeof ROOM | null = null) {
   sessionStorage.setItem(
     TICKET_KEY,
     JSON.stringify({
@@ -465,6 +486,7 @@ function keepTicket(callId = CALL_ID) {
       caps: CAPS,
       startedAt: Date.now() - 30_000,
       turnsLeft: 12,
+      room,
     }),
   );
 }
@@ -502,6 +524,25 @@ async function liveCall() {
   );
   await screen.findByText("You're on the call with Otto");
   return socket;
+}
+
+// "Talk to Otto" on the LiveKit leg: the browser joins the call's room, then
+// the relay's socket opens and the call goes live.
+async function liveRoomCall() {
+  mintAnswer = STARTED_IN_ROOM;
+  const socket = await callOtto();
+  const room = fakes.room()!;
+  act(() =>
+    socket.relay({
+      type: "ready",
+      call_id: CALL_ID,
+      caps: CAPS,
+      resume: TICKET,
+      leg: "livekit",
+    }),
+  );
+  await screen.findByText("You're on the call with Otto");
+  return { socket, room };
 }
 
 function endCall(socket: FakeWebSocket, reason: string) {
@@ -560,6 +601,7 @@ beforeEach(() => {
     [FrontendFlag.ONBOARDING_INTERVIEW_VOICE]: true,
   };
   latestCall = null;
+  mintAnswer = STARTED;
   callStates = {};
   typedMessages = [KICKOFF_ROW, GREETING_ROW];
   turnAnswer = null;
@@ -2073,5 +2115,335 @@ describe("onboarding interview by voice: one interview, typed or spoken", () => 
       await screen.findByRole("button", { name: "Meet your team" }),
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+  });
+});
+
+describe("onboarding interview by voice: the LiveKit leg", () => {
+  async function talk() {
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Talk to Otto" }));
+  }
+
+  it("joins the call's room before it starts the call, and sends no audio on the socket", async () => {
+    render(<OnboardingPage />);
+    const { socket, room } = await liveRoomCall();
+
+    expect(room.url).toBe(ROOM_URL);
+    expect(room.token).toBe(ROOM_TOKEN);
+    // The microphone the call opened, published once.
+    expect(room.published).toHaveLength(1);
+    expect(fakes.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(socket.messages()[0]).toEqual({
+      type: "start",
+      token: TOKEN,
+      leg: "livekit",
+    });
+    act(() => fakes.speak());
+    expect(socket.frames()).toHaveLength(0);
+    expect(tracked("interview_started")).toEqual([
+      { mode: "voice", leg: "livekit" },
+    ]);
+    expect(tracked("voice_interview_leg_fallback")).toEqual([]);
+  });
+
+  it("plays Otto's speech from the room through the player the click started", async () => {
+    render(<OnboardingPage />);
+    const { room } = await liveRoomCall();
+
+    let otto: FakeRemoteTrack | undefined;
+    act(() => {
+      otto = room.ottoJoins();
+    });
+
+    expect(otto?.attachedTo).toHaveLength(1);
+    expect(otto?.attachedTo[0]).toBeInstanceOf(HTMLAudioElement);
+  });
+
+  it("takes the call's audio onto the socket when LiveKit refuses the join, telling only analytics", async () => {
+    mintAnswer = STARTED_IN_ROOM;
+    fakes.refuseRoomJoins({
+      name: "ConnectionError",
+      reasonName: "NotAllowed",
+      status: 403,
+    });
+    render(<OnboardingPage />);
+    await talk();
+
+    const socket = await relaySocketAfter();
+    act(() => socket.accept());
+    expect(socket.messages()[0]).toEqual({
+      type: "start",
+      token: TOKEN,
+      leg: "websocket",
+    });
+    expect(fakes.room()?.isLeft).toBe(true);
+    act(() =>
+      socket.relay({
+        type: "ready",
+        call_id: CALL_ID,
+        caps: CAPS,
+        resume: TICKET,
+        leg: "websocket",
+      }),
+    );
+    await screen.findByText("You're on the call with Otto");
+    act(() => fakes.speak());
+
+    expect(socket.frames()).toHaveLength(1);
+    expect(tracked("voice_interview_leg_fallback")).toEqual([
+      { why: "refused" },
+    ]);
+    expect(tracked("interview_started")).toEqual([
+      { mode: "voice", leg: "websocket" },
+    ]);
+  });
+
+  it("takes the call's audio onto the socket when the join takes too long", async () => {
+    mintAnswer = STARTED_IN_ROOM;
+    fakes.hangRoomJoins();
+    render(<OnboardingPage />);
+    await talk();
+
+    const socket = await relaySocketAfter();
+    act(() => socket.accept());
+
+    expect(socket.messages()[0]).toEqual({
+      type: "start",
+      token: TOKEN,
+      leg: "websocket",
+    });
+    // The join that never answered is let go.
+    expect(fakes.room()?.isLeft).toBe(true);
+    expect(tracked("voice_interview_leg_fallback")).toEqual([
+      { why: "timeout" },
+    ]);
+  });
+
+  it("leaves the room a join lets the browser into after the person moved on to typing", async () => {
+    mintAnswer = STARTED_IN_ROOM;
+    const letIn = fakes.holdRoomJoins();
+    render(<OnboardingPage />);
+    await talk();
+    await waitFor(() => expect(fakes.room()?.token).toBe(ROOM_TOKEN));
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Type instead" }));
+    expect(await screen.findByText(GREETING)).toBeDefined();
+    act(() => letIn());
+
+    await waitFor(() => expect(fakes.room()?.isLeft).toBe(true));
+    // The call never started on the relay.
+    expect(fakes.sockets).toEqual([]);
+    expect(tracked("voice_interview_leg_fallback")).toEqual([]);
+  });
+
+  it("shows Reconnecting while LiveKit gets the call's audio back, with captions still arriving", async () => {
+    render(<OnboardingPage />);
+    const { socket, room } = await liveRoomCall();
+
+    act(() => room.reconnecting());
+    expect(await screen.findByText("Reconnecting…")).toBeDefined();
+    act(() => socket.relay({ type: "agent_text", text: "Still with me?" }));
+    expect(await screen.findByText("Still with me?")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Hang up" }).hasAttribute("disabled"),
+    ).toBe(false);
+
+    act(() => room.reconnected());
+    expect(await screen.findByText("Reconnected")).toBeDefined();
+    // LiveKit's own reconnect is not the call's socket re-attaching.
+    expect(tracked("voice_interview_reconnected")).toEqual([]);
+  });
+
+  it("switches to the socket's audio when the relay could not join the room", async () => {
+    mintAnswer = STARTED_IN_ROOM;
+    render(<OnboardingPage />);
+    await talk();
+    const socket = await relaySocketAfter();
+    act(() => socket.accept());
+    const room = fakes.room()!;
+
+    act(() => {
+      socket.relay({ type: "leg", leg: "websocket" });
+      socket.relay({
+        type: "ready",
+        call_id: CALL_ID,
+        caps: CAPS,
+        resume: TICKET,
+        leg: "websocket",
+      });
+    });
+    await screen.findByText("You're on the call with Otto");
+
+    expect(room.isLeft).toBe(true);
+    act(() => fakes.speak());
+    expect(socket.frames()).toHaveLength(1);
+    act(() => socket.relayAudio());
+    expect(fakes.playerNode()!.port.postMessage).toHaveBeenLastCalledWith(
+      expect.any(ArrayBuffer),
+      [expect.any(ArrayBuffer)],
+    );
+    expect(tracked("voice_interview_leg_fallback")).toEqual([{ why: "relay" }]);
+    expect(tracked("interview_started")).toEqual([
+      { mode: "voice", leg: "websocket" },
+    ]);
+  });
+
+  it("stays in the room once the call ends, until Otto's last words have played", async () => {
+    callStates[CALL_ID] = [callRecord({ interview: "taken" })];
+    render(<OnboardingPage />);
+    const { socket, room } = await liveRoomCall();
+    act(() => {
+      room.ottoJoins();
+    });
+
+    endCall(socket, "finished");
+
+    // The microphone left the room with the call; the page stays to hear
+    // Otto out.
+    expect(room.unpublished).toHaveLength(1);
+    expect(room.isLeft).toBe(false);
+    act(() => room.ottoLeaves());
+    expect(room.isLeft).toBe(true);
+    expect(
+      await screen.findByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+  });
+
+  it("leaves the room once its wait for Otto's last words runs out", async () => {
+    callStates[CALL_ID] = [callRecord({ interview: "taken" })];
+    render(<OnboardingPage />);
+    const { socket, room } = await liveRoomCall();
+    act(() => {
+      room.ottoJoins();
+    });
+
+    endCall(socket, "finished");
+
+    await waitFor(() => expect(room.isLeft).toBe(true));
+  });
+
+  it("loses the call when LiveKit cannot get its audio back, then reads what became of the words", async () => {
+    callStates[CALL_ID] = [callRecord({ end_reason: "client_gone" })];
+    render(<OnboardingPage />);
+    const { socket, room } = await liveRoomCall();
+
+    act(() => room.lose());
+
+    expect(
+      await screen.findByText("We lost the call. Saving what you said…"),
+    ).toBeDefined();
+    expect(socket.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(await screen.findByText("The connection dropped.")).toBeDefined();
+    expect(statusReads).toContain(CALL_ID);
+  });
+
+  it("lets the call go on in the tab that took its room over", async () => {
+    render(<OnboardingPage />);
+    const { socket, room } = await liveRoomCall();
+
+    act(() => room.lose(DISCONNECT_REASON.DUPLICATE_IDENTITY));
+
+    expect(
+      await screen.findByText(
+        "Your call with Otto went on in another tab or on another device.",
+      ),
+    ).toBeDefined();
+    expect(socket.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(statusReads).toEqual([]);
+  });
+
+  it("keeps the call's room with its ticket, so a reload can join it again", async () => {
+    render(<OnboardingPage />);
+    await liveRoomCall();
+
+    const kept = JSON.parse(sessionStorage.getItem(TICKET_KEY) ?? "{}");
+    expect(kept.room).toEqual(ROOM);
+  });
+
+  it("rejoins the call's room kept in this tab after a reload, then its socket", async () => {
+    keepTicket(CALL_ID, ROOM);
+    latestCall = callRecord({
+      status: "live",
+      end_reason: null,
+      hand_off: null,
+      leg: "livekit",
+    });
+    callStates[CALL_ID] = [{ ...latestCall, relay_url: RELAY_URL }];
+
+    render(<OnboardingPage />);
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Rejoin" }));
+
+    const socket = await relaySocketAfter();
+    const room = fakes.room() as FakeRoom;
+    expect(room.token).toBe(ROOM_TOKEN);
+    act(() => socket.accept());
+    expect(socket.messages()[0]).toEqual({ type: "resume", ticket: TICKET });
+    act(() => socket.relay({ type: "resumed", gap_s: 4.1 }));
+    expect(await screen.findByText("Reconnected")).toBeDefined();
+    act(() => fakes.speak());
+    expect(socket.frames()).toHaveLength(0);
+    expect(mints).toBe(0);
+  });
+
+  it("offers Rejoin again when the call's room cannot be joined after a reload", async () => {
+    keepTicket(CALL_ID, ROOM);
+    latestCall = callRecord({
+      status: "live",
+      end_reason: null,
+      hand_off: null,
+      leg: "livekit",
+    });
+    callStates[CALL_ID] = [{ ...latestCall, relay_url: RELAY_URL }];
+    fakes.refuseRoomJoins(new Error("the network is gone"));
+
+    render(<OnboardingPage />);
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Rejoin" }));
+
+    await waitFor(() => expect(fakes.rooms()).toHaveLength(1));
+    expect(await screen.findByRole("button", { name: "Rejoin" })).toBeDefined();
+    expect(fakes.sockets).toEqual([]);
+    expect(tracked("voice_interview_leg_fallback")).toEqual([]);
+  });
+
+  it("takes the microphone out of the room as soon as the person hangs up", async () => {
+    render(<OnboardingPage />);
+    const { socket, room } = await liveRoomCall();
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Hang up" }));
+
+    expect(room.unpublished).toHaveLength(1);
+    expect(socket.messages().filter((m) => m.type === "hangup")).toEqual([
+      { type: "hangup" },
+    ]);
+  });
+
+  it("leaves the room when the person types instead", async () => {
+    render(<OnboardingPage />);
+    const { room } = await liveRoomCall();
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Type instead" }));
+
+    expect(await screen.findByText(GREETING)).toBeDefined();
+    expect(room.isLeft).toBe(true);
+  });
+
+  it("leaves the room when the step goes away mid-call", async () => {
+    const { unmount } = render(<OnboardingPage />);
+    const { room } = await liveRoomCall();
+
+    unmount();
+
+    expect(room.isLeft).toBe(true);
   });
 });

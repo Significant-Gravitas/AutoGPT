@@ -214,6 +214,8 @@ export const InterviewEvent = {
   // A dropped call's socket re-attached after `gap_s`.
   VOICE_INTERVIEW_RECONNECTED: "voice_interview_reconnected",
   VOICE_INTERVIEW_MIC_DENIED: "voice_interview_mic_denied",
+  // A call's audio fell from LiveKit to the control socket (`why`).
+  VOICE_INTERVIEW_LEG_FALLBACK: "voice_interview_leg_fallback",
   // A call's ending showed (`ending`), and what the person chose on it
   // (`action`).
   ENDING_SHOWN: "ending_shown",
@@ -250,11 +252,7 @@ export const PostHogEvent = {
 
 // In the tracking plan and NOT sent yet. Move a name into its group above in
 // the change that starts sending it.
-export const PlannedPostHogEvent: Record<string, string> = {
-  // A call's audio fell from LiveKit to the control socket (`why`); sent
-  // once calls have the LiveKit leg.
-  VOICE_INTERVIEW_LEG_FALLBACK: "voice_interview_leg_fallback",
-};
+export const PlannedPostHogEvent: Record<string, string> = {};
 
 export type EventName<Group extends Record<string, string>> =
   Group[keyof Group];

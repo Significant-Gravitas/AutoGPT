@@ -4,9 +4,12 @@ import {
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import type { VoiceCallCaps } from "@/app/api/__generated__/models/voiceCallCaps";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
+import type { CallRoomPass } from "@/services/onboarding/voice-call-ticket";
 import { refusalOf } from "../../helpers";
 import type { CallAudio } from "./audioGraph";
+import type { CallRoom } from "./callRoom";
 import { END_POLL_MS, END_WAIT_MS } from "./helpers";
+import type { CallLeg } from "./protocol";
 
 // The plumbing under useVoiceCall: what it keeps between renders without
 // rendering on it, and the reads and requests a call's lifecycle makes.
@@ -21,6 +24,10 @@ export interface OpenCall {
   startedAt: number | null;
   turnsLeft: number;
   turns: number;
+  // Where the call's audio travels; the socket carries the rest either way.
+  leg: CallLeg;
+  // On the LiveKit leg, the call's room and this browser's token for it.
+  room: CallRoomPass | null;
 }
 
 // What the hook keeps between renders without rendering on it: the socket,
@@ -33,6 +40,8 @@ export interface Connection {
   taken: boolean;
   socket: WebSocket | null;
   audio: CallAudio | null;
+  // The call's LiveKit room, while the browser is in it.
+  room: CallRoom | null;
   isReady: boolean;
   relayError: { error: string; callId: string | null } | null;
   startRetries: number;
@@ -63,6 +72,7 @@ export function newConnection(): Connection {
     taken: false,
     socket: null,
     audio: null,
+    room: null,
     isReady: false,
     relayError: null,
     startRetries: 0,
@@ -80,8 +90,9 @@ export function newConnection(): Connection {
   };
 }
 
-// The page is going: the socket closes without a word to the relay, which
-// holds the call for a re-attach and then ends it as the client gone.
+// The page is going: the socket closes, and the room is left, without a word
+// to the relay, which holds the call for a re-attach and then ends it as the
+// client gone.
 export function release(conn: Connection) {
   conn.attempt += 1;
   conn.poll += 1;
@@ -90,8 +101,15 @@ export function release(conn: Connection) {
   conn.call = null;
   clearTimers(conn);
   closeSocket(conn);
+  leaveRoom(conn);
   conn.audio?.close();
   conn.audio = null;
+}
+
+export function leaveRoom(conn: Connection) {
+  const room = conn.room;
+  conn.room = null;
+  room?.leave();
 }
 
 export function later(conn: Connection, run: () => void, ms: number) {
