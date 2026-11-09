@@ -10,6 +10,7 @@ Needs the database (``server`` starts the test stack). The unit tests in
 
 import asyncio
 import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -179,7 +180,7 @@ async def test_a_paused_expert_still_resumes(
 
         row = await memory_schedule.get_scope_schedule(user_id, scope.scope_key)
         assert row is not None and row.state == MemoryScopeScheduleState.ACTIVE
-        assert len(scheduler.jobs) == 2
+        assert set(scheduler.jobs) == {f"dream_nightly_batch_{scope.scope_key}"}
     finally:
         await _drop_users([user_id])
 
@@ -304,5 +305,57 @@ async def test_the_accounts_that_learn_are_listed_once_each_page_by_page(
         assert (first, second) == ([user_ids[0]], [user_ids[1]])
         assert user_ids[2] not in third
         assert together[:2] == user_ids[:2] and user_ids[2] not in together
+    finally:
+        await _drop_users(user_ids)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_community_sweep_lists_the_oldest_due_active_scopes(
+    server: SpinTestServer,
+):
+    """A scope is due a week after its last clean rebuild, or after its row's
+    creation before the first; both kinds come back in one order by that
+    time, and a row that is not ACTIVE never does. The dates are in 2001 so
+    that no other test's rows are due before the cut."""
+    stem = f"community-due-{uuid.uuid4().hex[:16]}"
+    rows = {
+        "never-oldest": ("2001-01-01", None, "ACTIVE"),
+        "ran-feb": ("2000-01-01", "2001-02-01", "ACTIVE"),
+        "never-march": ("2001-03-01", None, "ACTIVE"),
+        "ran-april": ("2000-01-01", "2001-04-01", "ACTIVE"),
+        "never-after-cut": ("2002-06-01", None, "ACTIVE"),
+        "old-but-ran-after-cut": ("2001-01-01", "2002-06-01", "ACTIVE"),
+        "paused": ("2000-01-01", "2000-01-01", "PAUSED"),
+    }
+    user_ids = [f"{stem}-{name}" for name in rows]
+    await prisma.models.User.prisma().create_many(
+        data=[{"id": uid, "email": f"{uid}@example.invalid"} for uid in user_ids]
+    )
+    try:
+        for user_id, (created, ran, state) in zip(user_ids, rows.values()):
+            await prisma.models.MemoryScopeSchedule.prisma().create(
+                data={
+                    "scopeKey": user_id,
+                    "userId": user_id,
+                    "timezone": "UTC",
+                    "state": MemoryScopeScheduleState(state),
+                    "createdAt": datetime.fromisoformat(f"{created}T00:00:00+00:00"),
+                    "lastCommunityRunAt": (
+                        datetime.fromisoformat(f"{ran}T00:00:00+00:00") if ran else None
+                    ),
+                }
+            )
+        cut = datetime(2002, 1, 1, tzinfo=UTC)
+
+        def names(listed: list[MemoryScopeSchedule]) -> list[str]:
+            return [row.scope_key.removeprefix(f"{stem}-") for row in listed]
+
+        every = await memory_schedule.list_due_community_scopes(
+            due_before=cut, limit=10
+        )
+        batch = await memory_schedule.list_due_community_scopes(due_before=cut, limit=3)
+
+        assert names(every) == ["never-oldest", "ran-feb", "never-march", "ran-april"]
+        assert names(batch) == ["never-oldest", "ran-feb", "never-march"]
     finally:
         await _drop_users(user_ids)

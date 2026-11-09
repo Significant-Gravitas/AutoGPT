@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import Any, Awaitable, Callable
-from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -25,6 +24,7 @@ from backend.util.service import get_service_client
 from . import deadline, registry, scope_crons, scope_jobs
 from .registry_fakes_test import (
     ACCOUNT,
+    ACTIVE,
     EXPERT,
     USER,
     Hang,
@@ -114,10 +114,7 @@ async def test_a_hanging_scheduler_is_cut_off_and_reported(env, monkeypatch):
         "skill_learning_disabled",
     }
     assert transport.cancelled == transport.paths
-    assert transport.paths == [
-        "/add_scope_community_rebuild_schedule",
-        "/add_scope_nightly_batch_schedule",
-    ]
+    assert transport.paths == ["/add_scope_nightly_batch_schedule"]
     assert env.db.rows[USER].nightly_job_id is None
 
 
@@ -129,11 +126,7 @@ async def test_a_lifecycle_change_is_bounded_as_a_whole(env, monkeypatch, active
     await registry.ensure_scope_scheduled(EXPERT)
     await registry.pause_scope(EXPERT)
     hang = Hang()
-    for rpc in (
-        "remove_scope_memory_jobs",
-        "add_scope_community_rebuild_schedule",
-        "add_scope_nightly_batch_schedule",
-    ):
+    for rpc in ("remove_scope_memory_jobs", "add_scope_nightly_batch_schedule"):
         monkeypatch.setattr(env.scheduler, rpc, hang.forever)
     started = time.monotonic()
 
@@ -148,18 +141,17 @@ async def test_a_lifecycle_change_is_bounded_as_a_whole(env, monkeypatch, active
 @pytest.mark.asyncio
 async def test_a_slow_resume_is_cut_off_as_a_whole_not_per_call(env, monkeypatch):
     """Every call answers well inside the deadline, so no single call times
-    out, but a resume makes about eight of them: the request waits for one
+    out, but a resume makes about six of them: the request waits for one
     deadline, not for their sum. (A longer deadline than the other tests, so
     Windows' ~16 ms timer granularity cannot push a step past it.)"""
     monkeypatch.setattr(deadline, "REGISTRY_CALL_TIMEOUT_SECONDS", 0.2)
     await registry.pause_scope(EXPERT)
-    step = 0.05
+    step = 0.06
     for owner, name in (
         (env.db, "set_scope_state"),
         (env.db, "get_scope_schedule"),
         (env.db, "claim_scope_schedule"),
         (env.db, "record_scope_jobs"),
-        (env.scheduler, "add_scope_community_rebuild_schedule"),
         (env.scheduler, "add_scope_nightly_batch_schedule"),
         (scope_jobs, "evaluate_feature_flag"),
         (registry, "resolve_user_timezone"),
@@ -169,7 +161,7 @@ async def test_a_slow_resume_is_cut_off_as_a_whole_not_per_call(env, monkeypatch
 
     await registry.sync_expert_scope(USER, "expert-1", active=True)
 
-    # One deadline is 0.2 s; the eight steps alone would take 0.4 s or more.
+    # One deadline is 0.2 s; the six steps alone would take 0.36 s or more.
     assert time.monotonic() - started < 0.3
 
 
@@ -191,9 +183,8 @@ async def test_a_new_expert_registration_is_bounded_when_flags_hang(env, monkeyp
 
     assert time.monotonic() - started < PROMPT
     assert hang.started == hang.cancelled == 1
-    assert env.db.rows[EXPERT.scope_key].community_job_id == (
-        f"community_rebuild_{EXPERT.scope_key}"
-    )
+    # The row the community sweep reads is claimed all the same.
+    assert env.db.rows[EXPERT.scope_key].state == ACTIVE
     assert env.db.rows[EXPERT.scope_key].nightly_job_id is None
 
 
@@ -214,35 +205,29 @@ async def test_a_timezone_change_is_bounded_when_the_listing_hangs(env, monkeypa
 async def test_a_step_at_the_deadline_does_not_extend_a_lifecycle_change(
     env, monkeypatch
 ):
-    """Codex's round-2 reproduction, scaled down: the community cron is
-    registered right at the deadline after a short loop stall, and the
-    nightly registration would then hang. The change must end at the
-    deadline; it used to register the nightly on a fresh deadline and
-    record it, taking twice as long."""
+    """Codex's round-2 reproduction, scaled down: the nightly cron is
+    registered right at the deadline after a short loop stall, and recording
+    it would then hang. The change must end at the deadline; it used to run
+    that record on a fresh deadline, taking twice as long."""
     budget = 0.3
     monkeypatch.setattr(deadline, "REGISTRY_CALL_TIMEOUT_SECONDS", budget)
     loop = asyncio.get_running_loop()
     started = loop.time()
-    add_community = env.scheduler.add_scope_community_rebuild_schedule
+    add_nightly = env.scheduler.add_scope_nightly_batch_schedule
 
-    async def community(**kwargs: Any) -> Any:
+    async def nightly(**kwargs: Any) -> Any:
         await asyncio.sleep(started + budget - 0.02 - loop.time())
-        added = await add_community(**kwargs)
+        added = await add_nightly(**kwargs)
         time.sleep(0.06)  # a short loop stall carries it past the deadline
         return added
 
     hang = Hang()
-    record = AsyncMock(side_effect=env.db.record_scope_jobs)
-    monkeypatch.setattr(
-        env.scheduler, "add_scope_community_rebuild_schedule", community
-    )
-    monkeypatch.setattr(env.scheduler, "add_scope_nightly_batch_schedule", hang.forever)
-    monkeypatch.setattr(env.db, "record_scope_jobs", record)
+    monkeypatch.setattr(env.scheduler, "add_scope_nightly_batch_schedule", nightly)
+    monkeypatch.setattr(env.db, "record_scope_jobs", hang.forever)
 
     await registry.sync_expert_scope(USER, "expert-1", active=True)
 
-    # Nothing ran on after the deadline: no nightly on a fresh deadline (that
-    # took twice the budget) and no recording of what it registered.
+    # Nothing ran on after the deadline: no record on a fresh deadline (that
+    # took twice the budget), and the one that started was cancelled.
     assert loop.time() - started < budget + 0.25
-    assert hang.cancelled == hang.started
-    record.assert_not_awaited()
+    assert hang.started == hang.cancelled == 1
