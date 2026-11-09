@@ -1,6 +1,7 @@
 """Score a run: code checks from the case, then a reviewer model that
 compares what Otto did with the human example."""
 
+import asyncio
 import json
 from typing import Any
 
@@ -8,6 +9,7 @@ import openai
 
 from .models import Case, CaseResult, CheckResult, Review, Run, Verdict
 
+_ATTEMPTS = 6
 _REVIEW_PROMPT = """You review an AI chief of staff called Otto. A user talked to Otto; you get
 the case (what the user asked, the behaviour expected, what a great human
 chief of staff would have done) and the transcript of what Otto did (replies,
@@ -97,7 +99,7 @@ async def review(
         "failed_checks": [c.model_dump() for c in checks if not c.passed],
         "run_error": run.error,
     }
-    for attempt in range(3):
+    for attempt in range(_ATTEMPTS):
         try:
             completion = await client.chat.completions.create(
                 model=model,
@@ -114,8 +116,9 @@ async def review(
                 completion.choices[0].message.content or ""
             )
         except Exception as e:
-            if attempt == 2:
+            if attempt == _ATTEMPTS - 1:
                 return Review(verdict="fail", score=0, reasons=[f"review failed: {e}"])
+            await asyncio.sleep(min(60, 4 * 2**attempt))
     raise AssertionError("unreachable")
 
 

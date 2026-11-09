@@ -31,6 +31,7 @@ from .simulator import Simulator
 
 MAX_ROUNDS = 10
 MAX_ANSWERS_PER_TURN = 2
+_ATTEMPTS = 7  # a rate-limited burst backs off for up to a minute
 TODAY = "Monday 2026-11-09"
 
 
@@ -174,7 +175,7 @@ async def _complete(
     tools: list[dict[str, Any]],
     run: Run,
 ) -> Any:
-    for attempt in range(3):
+    for attempt in range(_ATTEMPTS):
         try:
             completion = await models.client.chat.completions.create(
                 model=models.otto,
@@ -191,10 +192,11 @@ async def _complete(
             openai.RateLimitError,
             openai.APIConnectionError,
             openai.APITimeoutError,
+            openai.InternalServerError,
         ):
-            if attempt == 2:
+            if attempt == _ATTEMPTS - 1:
                 raise
-            await asyncio.sleep(5 * (attempt + 1))
+            await asyncio.sleep(min(60, 4 * 2**attempt))
 
 
 def _assistant(content: str | None, calls: list[Any]) -> dict[str, Any]:
