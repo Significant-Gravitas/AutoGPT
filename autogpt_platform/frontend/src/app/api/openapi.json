@@ -5212,7 +5212,7 @@
             }
           },
           "503": {
-            "description": "Chat service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+            "description": "Chat service degraded (queue state or pending-message history unavailable); client should honour the Retry-After header before retrying."
           }
         }
       }
@@ -5543,7 +5543,7 @@
             }
           },
           "503": {
-            "description": "Chat service degraded (Redis unavailable for rate limit or stream registry); client should honour the Retry-After header before retrying."
+            "description": "Chat service degraded (rate limits, stream registry, or pending-message history unavailable); client should honour the Retry-After header before retrying."
           }
         }
       }

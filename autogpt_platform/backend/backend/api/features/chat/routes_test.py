@@ -333,6 +333,10 @@ def _mock_stream_internals(
     mocker.patch.object(
         chat_routes, "pending_message_was_received", AsyncMock(return_value=False)
     )
+    mocker.patch(
+        "backend.copilot.briefing.scheduling.ensure_morning_briefing_scheduled",
+        new_callable=AsyncMock,
+    )
     mocker.patch.object(chat_routes, "check_rate_limit", AsyncMock())
     mocker.patch.object(
         chat_routes,
@@ -1655,6 +1659,61 @@ def test_stream_chat_returns_503_when_stream_registry_unavailable(
     assert response.status_code == 503
     assert response.headers.get("Retry-After") == "30"
     assert "degraded" in response.json()["detail"].lower()
+
+
+@pytest.mark.parametrize("endpoint", ["stream", "messages/pending"])
+def test_pending_history_outage_is_retryable_without_admitting_a_duplicate(
+    mocker: pytest_mock.MockerFixture, endpoint: str
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    push = _mock_pending_push(mocker, mocks.claims)
+    mocker.patch.object(chat_routes, "is_turn_in_flight", AsyncMock(return_value=True))
+    lookup = mocker.patch.object(
+        chat_routes,
+        "chat_message_has_assistant_reply",
+        AsyncMock(side_effect=ConnectionError("database unavailable")),
+    )
+    body = {"message": "Include the weekly totals", "message_id": "retry-after-db"}
+    with fastapi.testclient.TestClient(app, raise_server_exceptions=False) as requester:
+        response = requester.post(f"/sessions/sess-1/{endpoint}", json=body)
+        lookup.assert_awaited_once()
+        assert response.status_code == 503
+        assert response.headers["Retry-After"] == "30"
+        assert response.json() == {"detail": "Chat service degraded, retry shortly"}
+        push.assert_not_awaited()
+        mocks.enqueue.assert_not_awaited()
+
+        lookup.side_effect = None
+        lookup.return_value = None
+        for _ in range(2):
+            assert (
+                requester.post(f"/sessions/sess-1/{endpoint}", json=body).status_code
+                == 200
+            )
+
+    push.assert_awaited_once()
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_expert_kickoff_history_outage_returns_retryable_refusal(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
+    lookup = mocker.patch.object(
+        chat_routes,
+        "chat_message_has_assistant_reply",
+        AsyncMock(side_effect=ConnectionError("database unavailable")),
+    )
+    with fastapi.testclient.TestClient(app, raise_server_exceptions=False) as requester:
+        response = requester.post(
+            "/sessions/sess-1/stream",
+            json={"message": "You were just hired.", "expert_kickoff": True},
+        )
+    lookup.assert_awaited_once()
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"
+    mocks.enqueue.assert_not_awaited()
 
 
 # ─── Usage endpoint ───────────────────────────────────────────────────

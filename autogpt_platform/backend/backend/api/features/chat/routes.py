@@ -283,6 +283,20 @@ async def enforce_platform_allowance(user_id: str) -> None:
         ) from e
 
 
+async def _chat_message_reply_status_for_http(
+    message_id: str, session_id: str
+) -> bool | None:
+    try:
+        return await chat_message_has_assistant_reply(message_id, session_id)
+    except Exception as exc:
+        logger.warning(f"Chat message history lookup unavailable: {type(exc).__name__}")
+        raise HTTPException(
+            status_code=503,
+            detail="Chat service degraded, retry shortly",
+            headers={"Retry-After": "30"},
+        ) from exc
+
+
 async def _validate_and_get_session(
     session_id: str,
     user_id: str | None,
@@ -1923,9 +1937,9 @@ def _empty_ui_message_stream_response(
             "headers": PENDING_REFUSAL_HEADERS,
         },
         503: {
-            "description": "Chat service degraded (Redis unavailable for rate "
-            "limit or stream registry); client should honour the Retry-After "
-            "header before retrying."
+            "description": "Chat service degraded (rate limits, stream registry, "
+            "or pending-message history unavailable); client should honour the "
+            "Retry-After header before retrying."
         },
     },
 )
@@ -2036,7 +2050,7 @@ async def stream_chat_post(
             session.expert_id,
         )
         message_metadata = expert_kickoff_metadata(session.expert_id)
-        persisted_kickoff_has_reply = await chat_message_has_assistant_reply(
+        persisted_kickoff_has_reply = await _chat_message_reply_status_for_http(
             message_id,
             session_id,
         )
@@ -2074,7 +2088,8 @@ async def stream_chat_post(
         turn_in_flight
         and message_id is not None
         and not request.expert_kickoff
-        and await chat_message_has_assistant_reply(message_id, session_id) is not None
+        and await _chat_message_reply_status_for_http(message_id, session_id)
+        is not None
     ):
         turn_in_flight = False
 
@@ -2471,8 +2486,9 @@ async def stream_chat_post(
             "headers": PENDING_REFUSAL_HEADERS,
         },
         503: {
-            "description": "Chat service degraded (Redis unavailable); "
-            "client should honour the Retry-After header before retrying."
+            "description": "Chat service degraded (queue state or pending-message "
+            "history unavailable); client should honour the Retry-After header "
+            "before retrying."
         },
     },
 )
@@ -2511,7 +2527,7 @@ async def queue_pending_message(
         ) from exc
     if received or (
         client_message_id is not None
-        and await chat_message_has_assistant_reply(client_message_id, session_id)
+        and await _chat_message_reply_status_for_http(client_message_id, session_id)
         is not None
     ):
         return await already_accepted_response(session_id)
