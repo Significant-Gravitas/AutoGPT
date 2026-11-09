@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const getTokenMock = vi.fn();
 const cookiesMock = vi.fn();
 const headersMock = vi.fn();
+const captureExceptionMock = vi.fn();
 
 // Replaces the real auth instance so the module never pulls in `pg`, and so we
 // can assert the in-process token mint instead of the old HTTP self-fetch.
@@ -13,6 +14,10 @@ vi.mock("@/lib/auth/auth", () => ({
       getToken: (...args: unknown[]) => getTokenMock(...args),
     },
   },
+}));
+
+vi.mock("@sentry/nextjs", () => ({
+  captureException: (...args: unknown[]) => captureExceptionMock(...args),
 }));
 
 vi.mock("next/headers", () => ({
@@ -41,6 +46,7 @@ async function importModule() {
 
 beforeEach(() => {
   getTokenMock.mockReset();
+  captureExceptionMock.mockReset();
   cookiesMock.mockReset().mockResolvedValue(cookieStore([]));
   headersMock.mockReset().mockResolvedValue(new Headers());
   vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -146,6 +152,7 @@ describe("getServerAuthToken", () => {
     const token = await getServerAuthToken();
 
     expect(token).toBeNull();
+    expect(captureExceptionMock).not.toHaveBeenCalled();
   });
 
   it("throws a retryable 503 when a live session's token cannot be minted", async () => {
@@ -170,5 +177,8 @@ describe("getServerAuthToken", () => {
       status: 503,
       response: { code: "auth_token_unavailable" },
     });
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "53300" }),
+    );
   });
 });

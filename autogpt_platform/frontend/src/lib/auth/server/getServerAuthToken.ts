@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { auth } from "@/lib/auth/auth";
 import { isSessionRejection } from "@/lib/auth/server/getServerSession";
 import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
@@ -59,6 +60,7 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
   } catch (error) {
     if (isSessionRejection(error)) return null;
     console.error("Failed to get auth token:", error);
+    Sentry.captureException(error);
     throw new AuthTokenUnavailableError({ cause: error });
   }
 });

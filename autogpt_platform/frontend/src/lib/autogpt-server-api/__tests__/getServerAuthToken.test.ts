@@ -25,6 +25,11 @@ const nextHeadersCjs = cjsRequire(
 type CookieStore = Awaited<ReturnType<typeof nextHeadersCjs.cookies>>;
 
 const fetchMock = vi.fn();
+const captureExceptionMock = vi.fn();
+
+vi.mock("@sentry/nextjs", () => ({
+  captureException: (...args: unknown[]) => captureExceptionMock(...args),
+}));
 
 function makeJwt(expSecondsFromNow: number): string {
   const payload = Buffer.from(
@@ -46,6 +51,7 @@ beforeEach(() => {
   isClientSideMock.mockReset().mockReturnValue(false);
   getAllCookiesMock.mockReset().mockReturnValue([]);
   fetchMock.mockReset();
+  captureExceptionMock.mockReset();
   vi.spyOn(nextHeadersCjs, "cookies").mockImplementation(
     async () => ({ getAll: () => getAllCookiesMock() }) as CookieStore,
   );
@@ -168,6 +174,7 @@ describe("getServerAuthToken", () => {
     const token = await getServerAuthToken();
 
     expect(token).toBeNull();
+    expect(captureExceptionMock).not.toHaveBeenCalled();
   });
 
   it("throws a retryable 503 when the token endpoint fails for a live session", async () => {
@@ -189,6 +196,7 @@ describe("getServerAuthToken", () => {
       status: 503,
       response: { code: "auth_token_unavailable" },
     });
+    expect(captureExceptionMock).toHaveBeenCalledTimes(1);
   });
 
   it("returns null when the token endpoint responds without a token field", async () => {
@@ -216,6 +224,7 @@ describe("getServerAuthToken", () => {
       name: "AuthTokenUnavailableError",
       status: 503,
     });
+    expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(TypeError));
   });
 
   it("returns null when there are no request cookies to read", async () => {

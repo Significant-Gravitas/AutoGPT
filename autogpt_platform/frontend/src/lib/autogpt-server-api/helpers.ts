@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import {
   API_KEY_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
@@ -214,6 +215,7 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
     return token ?? null;
   } catch (error) {
     console.error("Failed to get auth token:", error);
+    Sentry.captureException(error);
     throw new AuthTokenUnavailableError({ cause: error });
   }
 });
