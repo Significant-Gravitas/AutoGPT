@@ -346,6 +346,11 @@ function toolCard(
           <ExecutionCard
             name={name}
             status={str(output, "status") ?? undefined}
+            run={
+              row.tool === "run_agent" && graphID && executionID
+                ? { graphID, executionID }
+                : undefined
+            }
             href={
               str(output, "library_agent_link") ??
               (graphID && executionID

@@ -54,17 +54,10 @@ class TestExaCodeContextBlockCostTracking:
             "outputTokens": 100,
         }
 
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = api_response
-
         accumulated: list[NodeExecutionStats] = []
 
         with (
-            patch(
-                "backend.blocks.exa.code_context.Requests.post",
-                new_callable=AsyncMock,
-                return_value=mock_resp,
-            ),
+            patch.object(block, "_fetch_context", AsyncMock(return_value=api_response)),
             patch.object(
                 block, "merge_stats", side_effect=lambda s: accumulated.append(s)
             ),
@@ -100,17 +93,10 @@ class TestExaCodeContextBlockCostTracking:
             "outputTokens": 0,
         }
 
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = api_response
-
         merge_calls: list[NodeExecutionStats] = []
 
         with (
-            patch(
-                "backend.blocks.exa.code_context.Requests.post",
-                new_callable=AsyncMock,
-                return_value=mock_resp,
-            ),
+            patch.object(block, "_fetch_context", AsyncMock(return_value=api_response)),
             patch.object(
                 block, "merge_stats", side_effect=lambda s: merge_calls.append(s)
             ),
@@ -144,17 +130,10 @@ class TestExaCodeContextBlockCostTracking:
             "outputTokens": 10,
         }
 
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = api_response
-
         accumulated: list[NodeExecutionStats] = []
 
         with (
-            patch(
-                "backend.blocks.exa.code_context.Requests.post",
-                new_callable=AsyncMock,
-                return_value=mock_resp,
-            ),
+            patch.object(block, "_fetch_context", AsyncMock(return_value=api_response)),
             patch.object(
                 block, "merge_stats", side_effect=lambda s: accumulated.append(s)
             ),
@@ -181,27 +160,19 @@ class TestExaCodeContextBlockCostTracking:
 class TestExaContentsBlockCostTracking:
     @pytest.mark.asyncio
     async def test_merge_stats_called_with_cost_dollars_total(self):
-        """provider_cost equals response.cost_dollars.total when present."""
+        """provider_cost equals the response's costDollars.total when present."""
         from backend.blocks.exa.contents import ExaContentsBlock
-        from backend.blocks.exa.helpers import CostDollars
 
         block = ExaContentsBlock()
-
-        cost_dollars = CostDollars(total=0.012)
-
-        mock_response = MagicMock()
-        mock_response.results = []
-        mock_response.context = None
-        mock_response.statuses = None
-        mock_response.cost_dollars = cost_dollars
 
         accumulated: list[NodeExecutionStats] = []
 
         with (
-            patch(
-                "backend.blocks.exa.contents.AsyncExa",
-                return_value=MagicMock(
-                    get_contents=AsyncMock(return_value=mock_response)
+            patch.object(
+                block,
+                "call_exa",
+                AsyncMock(
+                    return_value={"results": [], "costDollars": {"total": 0.012}}
                 ),
             ),
             patch.object(
@@ -223,26 +194,15 @@ class TestExaContentsBlockCostTracking:
 
     @pytest.mark.asyncio
     async def test_no_merge_stats_when_cost_dollars_absent(self):
-        """When response.cost_dollars is None, merge_stats is not called."""
+        """When the response carries no costDollars, merge_stats is not called."""
         from backend.blocks.exa.contents import ExaContentsBlock
 
         block = ExaContentsBlock()
 
-        mock_response = MagicMock()
-        mock_response.results = []
-        mock_response.context = None
-        mock_response.statuses = None
-        mock_response.cost_dollars = None
-
         accumulated: list[NodeExecutionStats] = []
 
         with (
-            patch(
-                "backend.blocks.exa.contents.AsyncExa",
-                return_value=MagicMock(
-                    get_contents=AsyncMock(return_value=mock_response)
-                ),
-            ),
+            patch.object(block, "call_exa", AsyncMock(return_value={"results": []})),
             patch.object(
                 block, "merge_stats", side_effect=lambda s: accumulated.append(s)
             ),
