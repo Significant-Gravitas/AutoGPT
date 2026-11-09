@@ -14,6 +14,8 @@ can't starve keepalive.
 from __future__ import annotations
 
 import asyncio
+import collections
+import contextlib
 import contextvars
 import errno
 import json
@@ -299,6 +301,56 @@ _request_received_at: contextvars.ContextVar[float | None] = contextvars.Context
 )
 
 
+class MachineSlots:
+    """The machine's request slots, which every chat's session shares.
+
+    A slot stays taken until its work ends, which can be after the session
+    that took it has ended (a thread can't be stopped), so the slots outlive
+    a control reconnect: the handshake only sets how many there are. Below
+    a lowered limit, new work waits for old work to end. Not reentrant."""
+
+    def __init__(self, limit: int) -> None:
+        self._limit = limit
+        self._taken = 0
+        self._waiters: collections.deque[asyncio.Future[None]] = collections.deque()
+
+    def set_limit(self, limit: int) -> None:
+        self._limit = limit
+        self._wake()
+
+    def locked(self) -> bool:
+        return self._taken >= self._limit
+
+    async def acquire(self) -> bool:
+        if self._taken < self._limit and not self._waiters:
+            self._taken += 1
+            return True
+        waiter: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        self._waiters.append(waiter)
+        try:
+            await waiter
+        except BaseException:
+            if waiter.done() and not waiter.cancelled():
+                # Handed a slot just as the wait ended: pass it on.
+                self.release()
+            raise
+        finally:
+            with contextlib.suppress(ValueError):
+                self._waiters.remove(waiter)
+        return True
+
+    def release(self) -> None:
+        self._taken -= 1
+        self._wake()
+
+    def _wake(self) -> None:
+        while self._waiters and self._taken < self._limit:
+            waiter = self._waiters.popleft()
+            if not waiter.done():
+                self._taken += 1
+                waiter.set_result(None)
+
+
 @dataclass
 class _ActiveChild:
     daemon: ShimDaemon
@@ -320,7 +372,7 @@ class ShimDaemon:
         *,
         manage_audit_lifecycle: bool = True,
         token_refresh_lock: asyncio.Lock | None = None,
-        machine_work_semaphore: asyncio.Semaphore | None = None,
+        machine_work_semaphore: MachineSlots | asyncio.Semaphore | None = None,
         computer_use_lock: asyncio.Lock | None = None,
     ) -> None:
         self.config = config
@@ -334,7 +386,7 @@ class ShimDaemon:
         self._token_refresh_lock = token_refresh_lock or asyncio.Lock()
         self._machine_work_semaphore = machine_work_semaphore
         if self._control_mode and self._machine_work_semaphore is None:
-            self._machine_work_semaphore = asyncio.Semaphore(config.max_concurrent)
+            self._machine_work_semaphore = MachineSlots(config.max_concurrent)
         self._computer_use_lock = computer_use_lock or asyncio.Lock()
         if self.audit is not None:
             self.audit.set_machine_id(config.machine_id)
@@ -991,7 +1043,12 @@ class ShimDaemon:
         self._granted_capabilities = frozenset(payload.granted_capabilities)
         self._semaphore = asyncio.Semaphore(self.config.max_concurrent)
         if self._control_mode:
-            self._machine_work_semaphore = asyncio.Semaphore(self.config.max_concurrent)
+            # The same slots: work the old connection's sessions left running
+            # keeps its slots until it ends.
+            if isinstance(self._machine_work_semaphore, MachineSlots):
+                self._machine_work_semaphore.set_limit(self.config.max_concurrent)
+            else:
+                self._machine_work_semaphore = MachineSlots(self.config.max_concurrent)
         # Tell the AuditWriter about the now-known session_id so subsequent
         # records get correctly attributed.
         if self.audit is not None:
@@ -1447,7 +1504,7 @@ class ShimDaemon:
             await self._emit_status(ws, source="capacity_edge")
 
     async def _handle_in_a_machine_slot(
-        self, slots: asyncio.Semaphore, msg: Any, send: Any
+        self, slots: MachineSlots | asyncio.Semaphore, msg: Any, send: Any
     ) -> BaseModel | None:
         """Handle `msg` in one of the machine's request slots, shared by every
         chat, or refuse it when none frees up in MACHINE_WORK_WAIT_SECONDS.

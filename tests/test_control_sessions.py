@@ -486,6 +486,70 @@ async def test_a_complete_control_hello_ack_connects(tmp_path: Path) -> None:
     assert daemon._connection_id == "connection-1"
 
 
+@pytest.mark.asyncio
+async def test_a_control_reconnect_keeps_the_machine_slots_old_work_holds(tmp_path: Path) -> None:
+    """Each control handshake made a new semaphore for the machine's request
+    slots. Work a session started can outlive it (a thread can't be
+    stopped), so after a reconnect it no longer counted, and the chats'
+    new requests could run past the negotiated limit beside it."""
+    daemon = _control_daemon(tmp_path)
+    await daemon._handshake(_AckSocket({**_CONTROL_ACK, "max_concurrent": 1}))
+    old_work = daemon._machine_work_semaphore
+    assert old_work is not None
+    await old_work.acquire()  # still running in a thread after its session ended
+
+    await daemon._handshake(_AckSocket({**_CONTROL_ACK, "max_concurrent": 1}))
+    slots = daemon._machine_work_semaphore
+    assert slots is not None
+
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.2):
+            await slots.acquire()
+    old_work.release()  # the old work ends
+    async with asyncio.timeout(10):
+        await slots.acquire()
+
+
+@pytest.mark.asyncio
+async def test_a_lower_limit_after_a_reconnect_counts_the_old_work(tmp_path: Path) -> None:
+    daemon = _control_daemon(tmp_path)
+    await daemon._handshake(_AckSocket({**_CONTROL_ACK, "max_concurrent": 2}))
+    slots = daemon._machine_work_semaphore
+    assert slots is not None
+    await slots.acquire()
+    await slots.acquire()
+
+    await daemon._handshake(_AckSocket({**_CONTROL_ACK, "max_concurrent": 1}))
+    slots.release()
+
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.2):
+            await daemon._machine_work_semaphore.acquire()  # type: ignore[union-attr]
+    slots.release()
+    async with asyncio.timeout(10):
+        await daemon._machine_work_semaphore.acquire()  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_a_machine_slot_handed_to_a_waiter_that_gives_up_goes_to_the_next() -> None:
+    from autogpt_local_executor.daemon import MachineSlots
+
+    slots = MachineSlots(1)
+    await slots.acquire()
+    first = asyncio.ensure_future(slots.acquire())
+    second = asyncio.ensure_future(slots.acquire())
+    await asyncio.sleep(0)
+
+    slots.release()  # hands the slot to `first`, which gives up before it runs
+    first.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    async with asyncio.timeout(10):
+        assert await second
+    assert slots.locked()
+
+
 def _idle_child(tmp_path: Path) -> tuple[ShimDaemon, list[str], list[str]]:
     """A child session idle past the reaper's limit, with its sends and the
     paths of the requests it starts recorded."""
