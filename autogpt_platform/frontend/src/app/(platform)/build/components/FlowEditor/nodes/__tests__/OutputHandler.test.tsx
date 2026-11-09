@@ -321,8 +321,8 @@ describe("OutputHandler with React Flow", () => {
     await waitFor(() => {
       expect(sourceHandles()).toContain("response_#_editor");
       expect(sourceHandles()).not.toContain("response_#_author");
+      expect(updateNodeInternals).toHaveBeenCalled();
     });
-    expect(updateNodeInternals).toHaveBeenCalled();
   });
 
   it("renders hostile dictionary keys as handles without prototype mutation", async () => {

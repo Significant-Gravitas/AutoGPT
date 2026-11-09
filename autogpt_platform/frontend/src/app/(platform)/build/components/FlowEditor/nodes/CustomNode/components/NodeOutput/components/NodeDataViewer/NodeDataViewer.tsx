@@ -93,8 +93,9 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
             <Dialog.Trigger>
               <Button
                 variant="secondary"
-                size="small"
-                className="h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-foreground-strong"
+                size="icon-sm"
+                shape="pill"
+                tone="base"
               >
                 <Icon
                   icon={ArrowExpand01Icon}
@@ -116,22 +117,20 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                 Full {dataType === "input" ? "Input" : "Output"} Preview
               </Text>
             </div>
-            <Text
-              variant="small-medium-tight"
-              as="div"
-              className="rounded-full border border-border-strong bg-surface-hover px-3 py-1.5"
-            >
-              {shouldGroupExecutions ? totalGroupedItems : dataArray.length}{" "}
-              item
-              {shouldGroupExecutions
-                ? totalGroupedItems !== 1
-                  ? "s"
-                  : ""
-                : dataArray.length !== 1
-                  ? "s"
-                  : ""}{" "}
-              total
-            </Text>
+            <div className="rounded-full border border-border-strong bg-surface-hover px-3 py-1.5">
+              <Text variant="small-medium-tight" as="div">
+                {shouldGroupExecutions ? totalGroupedItems : dataArray.length}{" "}
+                item
+                {shouldGroupExecutions
+                  ? totalGroupedItems !== 1
+                    ? "s"
+                    : ""
+                  : dataArray.length !== 1
+                    ? "s"
+                    : ""}{" "}
+                total
+              </Text>
+            </div>
           </div>
           <Text variant="body-tight" tone="secondary" as="div">
             {shouldGroupExecutions ? (
@@ -147,18 +146,16 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                   <Text variant="body" tone="secondary">
                     Execution ID:
                   </Text>
-                  <Text
-                    variant="small-medium-mono-tight"
-                    as="p"
-                    className="rounded-full border border-border-strong bg-surface-muted px-2 py-1"
-                  >
-                    {execId}
-                  </Text>
+                  <div className="rounded-full border border-border-strong bg-surface-muted px-2 py-1">
+                    <Text variant="small-medium-mono-tight" as="p">
+                      {execId}
+                    </Text>
+                  </div>
                   <Button
                     variant="ghost"
-                    size="small"
+                    size="icon-2xs"
+                    shape="pill"
                     onClick={copyExecutionId}
-                    className="h-6 w-6 min-w-0 p-0"
                   >
                     <Icon icon={Copy01Icon} size={14} />
                   </Button>
@@ -187,13 +184,11 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                       <Text variant="body" tone="secondary">
                         Execution ID:
                       </Text>
-                      <Text
-                        variant="small-medium-mono-tight"
-                        as="p"
-                        className="rounded-full border border-border-strong bg-surface-muted px-2 py-1"
-                      >
-                        {execution.execId}
-                      </Text>
+                      <div className="rounded-full border border-border-strong bg-surface-muted px-2 py-1">
+                        <Text variant="small-medium-mono-tight" as="p">
+                          {execution.execId}
+                        </Text>
+                      </div>
                     </div>
                     <div className="mt-2 space-y-4">
                       {execution.outputItems.length > 0 ? (
@@ -207,8 +202,9 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                             <div className="mt-2 flex gap-3">
                               <Button
                                 variant="secondary"
-                                className="min-w-0 p-1"
-                                size="icon"
+                                size="icon-xs"
+                                shape="pill"
+                                withTooltip={false}
                                 onClick={() =>
                                   handleCopyGroupedItem(
                                     execution.execId,
@@ -222,25 +218,29 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                                 `${execution.execId}-${index}` ? (
                                   <Icon
                                     icon={Tick02Icon}
-                                    className="size-4 text-success"
+                                    tone="success"
+                                    className="size-4"
                                   />
                                 ) : (
                                   <Icon
                                     icon={Copy01Icon}
-                                    className="size-4 text-foreground-base"
+                                    tone="base"
+                                    className="size-4"
                                   />
                                 )}
                               </Button>
                               <Button
                                 variant="secondary"
-                                size="icon"
-                                className="min-w-0 p-1"
+                                size="icon-xs"
+                                shape="pill"
+                                withTooltip={false}
                                 onClick={() => handleDownloadGroupedItem(item)}
                                 aria-label="Download item"
                               >
                                 <Icon
                                   icon={Download04Icon}
-                                  className="size-4 text-foreground-base"
+                                  tone="base"
+                                  className="size-4"
                                 />
                               </Button>
                             </div>
@@ -267,33 +267,38 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                     <div className="mt-2 flex gap-3">
                       <Button
                         variant="secondary"
-                        className="min-w-0 p-1"
-                        size="icon"
+                        size="icon-xs"
+                        shape="pill"
+                        withTooltip={false}
                         onClick={() => handleCopyItem(index)}
                         aria-label="Copy item"
                       >
                         {copiedIndex === index ? (
                           <Icon
                             icon={Tick02Icon}
-                            className="size-4 text-success"
+                            tone="success"
+                            className="size-4"
                           />
                         ) : (
                           <Icon
                             icon={Copy01Icon}
-                            className="size-4 text-foreground-base"
+                            tone="base"
+                            className="size-4"
                           />
                         )}
                       </Button>
                       <Button
                         variant="secondary"
-                        size="icon"
-                        className="min-w-0 p-1"
+                        size="icon-xs"
+                        shape="pill"
+                        withTooltip={false}
                         onClick={() => handleDownloadItem(index)}
                         aria-label="Download item"
                       >
                         <Icon
                           icon={Download04Icon}
-                          className="size-4 text-foreground-base"
+                          tone="base"
+                          className="size-4"
                         />
                       </Button>
                     </div>

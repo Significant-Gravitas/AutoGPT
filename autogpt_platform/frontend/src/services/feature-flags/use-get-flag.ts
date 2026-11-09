@@ -1,11 +1,9 @@
 "use client";
 
 import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/helpers";
-import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 import type { FeatureFlagsIntegration } from "@sentry/nextjs";
 import { useEffect, useState } from "react";
-import { FLAG_BACKEND, isPostHogFlagsEnabled } from "./flag-backend";
 import { FrontendFlag as Flag } from "@/app/api/__generated__/models/frontendFlag";
 import { useFlagResolutionStarted } from "./flag-resolution";
 import { useFlagSource } from "./flag-source";
@@ -19,13 +17,12 @@ const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 
 const defaultFlags = {
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
-  [Flag.ENABLE_PLATFORM_PAYMENT]: false,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
-  // Off by default so a LaunchDarkly outage or a missing key hides the card
+  // Off by default so a flag service outage or a missing flag hides the card
   // rather than exposing the in-progress design to everyone.
   [Flag.SETTINGS_NOTIFICATIONS]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
@@ -44,9 +41,9 @@ type FlagValues = typeof defaultFlags;
  * Read a per-flag override from the build-time env.
  *
  * Set ``NEXT_PUBLIC_FORCE_FLAG_<NAME>=true|false`` (``NAME`` = flag value
- * with ``-`` → ``_``, upper-cased) to bypass LaunchDarkly for that flag
+ * with ``-`` → ``_``, upper-cased) to bypass the flag service for that flag
  * in local dev.  Returns ``undefined`` when no override is configured so
- * the caller falls through to LaunchDarkly / ``defaultFlags``.
+ * the caller falls through to the flag service / ``defaultFlags``.
  *
  * Note: ``NEXT_PUBLIC_*`` env vars are baked into the bundle at build
  * time, so the frontend image must be rebuilt after changing them.
@@ -61,8 +58,6 @@ function readEnvOverride(flag: Flag): string | undefined {
   switch (flag) {
     case Flag.MARKETPLACE_SEARCH_TERMS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS;
-    case Flag.ENABLE_PLATFORM_PAYMENT:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_ENABLE_PLATFORM_PAYMENT;
     case Flag.CHAT_MODE_OPTION:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION;
     case Flag.GENERIC_TRIGGER_AGENTS:
@@ -96,7 +91,7 @@ function readEnvOverride(flag: Flag): string | undefined {
 // Array-typed flags (e.g. ``MARKETPLACE_SEARCH_TERMS``)
 // cannot be meaningfully overridden through a single boolean string env
 // var — returning ``true`` / ``false`` would clash with the array type
-// callers expect.  These flags are still subject to LaunchDarkly + the
+// callers expect.  These flags are still subject to the flag service + the
 // ``defaultFlags`` fallback; the env override path just skips them.
 const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
   Flag.MARKETPLACE_SEARCH_TERMS,
@@ -108,7 +103,7 @@ const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
 // boolean flag on without listing them individually. A per-flag
 // ``NEXT_PUBLIC_FORCE_FLAG_<NAME>`` still wins, so one flag can be excluded
 // with ``=false`` while the rest stay forced. Array/JSON-typed flags keep
-// their LaunchDarkly / default values.
+// their served / default values.
 //
 // Inert in a production build, mirroring the backend's app_env guard:
 // NEXT_PUBLIC_* vars are inlined at build time, so one stray value in a
@@ -174,7 +169,6 @@ export function useFlagStatus<T extends Flag>(
   flag: T,
 ): { enabled: FlagValues[T]; ready: boolean; answered: boolean } {
   const { value, resolved } = useFlagSource(flag);
-  const areFlagsEnabled = areFeatureFlagsEnabled();
   const pwOverrides = usePwFlagOverrides();
   const override = pwFlagOverride(pwOverrides, flag) ?? envFlagOverride(flag);
 
@@ -197,7 +191,7 @@ export function useFlagStatus<T extends Flag>(
   if (isPwMockEnabled && pwOverrides === null) {
     return { enabled: served, ready: false, answered: false };
   }
-  if (override !== undefined || !areFlagsEnabled || isPwMockEnabled) {
+  if (override !== undefined || isPwMockEnabled) {
     return { enabled: served, ready: true, answered: true };
   }
   return {
@@ -208,7 +202,7 @@ export function useFlagStatus<T extends Flag>(
 }
 
 function servedFlagValue<T extends Flag>(flag: T, value: unknown) {
-  if (!areFeatureFlagsEnabled() || isPwMockEnabled) return defaultFlags[flag];
+  if (isPwMockEnabled) return defaultFlags[flag];
   return resolveFlagValue(flag, value);
 }
 
@@ -233,22 +227,6 @@ export function resolveFlagValue<T extends Flag>(
   }
 
   return (typeof value === typeof fallback ? value : fallback) as FlagValues[T];
-}
-
-// ``environment.areFeatureFlagsEnabled`` only knows about LaunchDarkly, and
-// deliberately stays that way — it is what the provider and the flag test
-// mocks stub. This is the same question asked of whichever vendor is configured.
-function areFeatureFlagsEnabled() {
-  switch (FLAG_BACKEND) {
-    case "server":
-      return true;
-    case "posthog":
-      return isPostHogFlagsEnabled();
-    case "dual":
-      return environment.areFeatureFlagsEnabled() || isPostHogFlagsEnabled();
-    default:
-      return environment.areFeatureFlagsEnabled();
-  }
 }
 
 // Records the value served, not the vendor's; env overrides pass undefined.

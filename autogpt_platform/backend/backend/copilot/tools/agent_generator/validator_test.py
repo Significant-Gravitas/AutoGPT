@@ -1,5 +1,10 @@
 """Unit tests for AgentValidator."""
 
+import pytest
+
+from backend.blocks.data_manipulation import CreateListBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
     AGENT_INPUT_BLOCK_ID,
@@ -490,6 +495,32 @@ class TestValidateAgentExecutorBlocks:
 
         assert v.validate_agent_executor_blocks(agent, library_agents) is False
         assert any("missing required sub-agent input" in e for e in v.errors)
+
+    def test_required_list_input_linked_per_item_passes(self):
+        v = AgentValidator()
+        lib_id = generate_uuid()
+        node = _make_node(
+            node_id="n1",
+            block_id=AGENT_EXECUTOR_BLOCK_ID,
+            input_default={"graph_id": lib_id, "inputs": {}},
+        )
+        link = _make_link(
+            source_id="src", source_name="out", sink_id="n1", sink_name="items_$_0"
+        )
+        agent = _make_agent(nodes=[node], links=[link])
+        items = {"type": "array", "items": {"type": "string"}}
+        library_agents = [
+            {
+                "graph_id": lib_id,
+                "graph_version": 1,
+                "name": "Sub",
+                "input_schema": {"required": ["items"], "properties": {"items": items}},
+                "output_schema": {},
+            }
+        ]
+
+        assert v.validate_agent_executor_blocks(agent, library_agents) is True
+        assert v.errors == []
 
 
 # ============================================================================
@@ -1430,3 +1461,199 @@ class TestDeepDeclaredChains:
         v = AgentValidator()
         agent, blocks = self._agent_and_blocks("a_#_b_#_c_#_anything")
         assert v.validate_source_output_existence(agent, blocks) is True
+
+
+class TestListIndexLinks:
+    """Links into and out of a list item (``_$_``), which the executor resolves,
+    checked against the real blocks' schemas."""
+
+    def _blocks(self) -> list[dict]:
+        return [
+            block().get_info().model_dump()
+            for block in (AgentInputBlock, CreateListBlock, AgentOutputBlock)
+        ]
+
+    def _agent(
+        self,
+        sink_name: str = "values_$_1",
+        source_name: str = "list_$_0",
+        list_defaults: dict | None = None,
+    ) -> dict:
+        nodes = [
+            _make_node(
+                node_id="in-a",
+                block_id=AGENT_INPUT_BLOCK_ID,
+                input_default={"name": "first"},
+            ),
+            _make_node(
+                node_id="in-b",
+                block_id=AGENT_INPUT_BLOCK_ID,
+                input_default={"name": "second"},
+            ),
+            _make_node(
+                node_id="list",
+                block_id=CreateListBlock().id,
+                input_default=list_defaults,
+            ),
+            _make_node(
+                node_id="out",
+                block_id=AGENT_OUTPUT_BLOCK_ID,
+                input_default={"name": "first_item"},
+            ),
+        ]
+        links = [
+            _make_link(
+                source_id="in-a",
+                source_name="result",
+                sink_id="list",
+                sink_name="values_$_0",
+            ),
+            _make_link(
+                source_id="in-b",
+                source_name="result",
+                sink_id="list",
+                sink_name=sink_name,
+            ),
+            _make_link(
+                source_id="list",
+                source_name=source_name,
+                sink_id="out",
+                sink_name="value",
+            ),
+        ]
+        return _make_agent(nodes=nodes, links=links)
+
+    def test_list_items_linked_in_and_out_pass(self):
+        agent = self._agent(list_defaults={"values_$_2": "third"})
+        is_valid, error = AgentValidator().validate(agent, self._blocks())
+        assert error is None
+        assert is_valid is True
+
+    @pytest.mark.parametrize(
+        "sink_name, expected",
+        [
+            ("nonexistent_$_0", "Parent property 'nonexistent' does not exist"),
+            ("max_size_$_0", "Parent 'max_size' has type 'integer' and is not a list"),
+            ("values_$_10001", "list index out of range (0..10000)"),
+            # Graph save's check runs past an untyped level, where the walk stops.
+            ("values_$_0_#_key_$_first", "index must be an integer"),
+            ("values_$_first", "index must be an integer"),
+            # The executor refuses a path past its depth cap, so it is reported.
+            ("values" + "_$_0" * 33, "dynamic pin path deeper than 32 levels"),
+        ],
+    )
+    def test_invalid_list_item_sink_fails(self, sink_name: str, expected: str):
+        agent = self._agent(sink_name=sink_name)
+        is_valid, error = AgentValidator().validate(agent, self._blocks())
+        assert is_valid is False
+        assert error is not None and expected in error
+
+    @pytest.mark.parametrize(
+        "source_name, expected",
+        [
+            ("nonexistent_$_0", "Parent property 'nonexistent' does not exist"),
+            ("error_$_0", "Parent 'error' has type 'string' and is not a list"),
+        ],
+    )
+    def test_invalid_list_item_source_fails(self, source_name: str, expected: str):
+        agent = self._agent(source_name=source_name)
+        is_valid, error = AgentValidator().validate(agent, self._blocks())
+        assert is_valid is False
+        assert error is not None and expected in error
+
+    @pytest.mark.parametrize(
+        "source_name, valid",
+        [("rows_$_0_#_name", True), ("rows_$_0_#_missing", False)],
+    )
+    def test_declared_fields_of_a_list_item_stay_verified(
+        self, source_name: str, valid: bool
+    ):
+        v = AgentValidator()
+        rows = {
+            "type": "array",
+            "items": {"type": "object", "properties": {"name": {"type": "string"}}},
+        }
+        blocks = [
+            _make_block(block_id="src", output_schema={"properties": {"rows": rows}}),
+            _make_block(block_id="sink", input_schema={"properties": {"input": {}}}),
+        ]
+        nodes = [
+            _make_node(node_id="n1", block_id="src"),
+            _make_node(node_id="n2", block_id="sink"),
+        ]
+        link = _make_link(
+            source_id="n1", source_name=source_name, sink_id="n2", sink_name="input"
+        )
+        agent = _make_agent(nodes=nodes, links=[link])
+        assert v.validate_source_output_existence(agent, blocks) is valid
+
+    @pytest.mark.parametrize(
+        "sink_name, valid",
+        [
+            ("config_#_name", True),
+            ("config_@_name", False),
+            ("anything_@_name", True),
+            ("anything_@__secret", False),
+            ("anything_#_key_@__secret", False),
+        ],
+    )
+    def test_an_attribute_written_into_an_object_field_fails(
+        self, sink_name: str, valid: bool
+    ):
+        """The executor writes ``_@_`` onto a bare object, which replaces the
+        field's dict; an untyped field is left to the run."""
+        v = AgentValidator()
+        config = {"type": "object", "properties": {"name": {"type": "string"}}}
+        block = _make_block(
+            block_id="b1",
+            input_schema={"properties": {"config": config, "anything": {}}},
+        )
+        node = _make_node(node_id="n1", block_id="b1")
+        link = _make_link(
+            source_id="src", source_name="out", sink_id="n1", sink_name=sink_name
+        )
+        agent = _make_agent(nodes=[node], links=[link])
+
+        assert v.validate_sink_input_existence(agent, [block]) is valid
+
+    def test_an_optional_untyped_field_takes_a_list_item_link(self):
+        """Pydantic writes Optional[Any] as anyOf [{}, null]; its {} branch is untyped."""
+        v = AgentValidator()
+        optional_any = {"anyOf": [{}, {"type": "null"}]}
+        block = _make_block(
+            block_id="b1", input_schema={"properties": {"anything": optional_any}}
+        )
+        node = _make_node(node_id="n1", block_id="b1")
+        link = _make_link(
+            source_id="src", source_name="out", sink_id="n1", sink_name="anything_$_0"
+        )
+        agent = _make_agent(nodes=[node], links=[link])
+
+        assert v.validate_sink_input_existence(agent, [block]) is True
+
+    @pytest.mark.parametrize(
+        "source_name, valid", [("config_#_name", True), ("config_@_name", False)]
+    )
+    def test_an_attribute_read_from_an_object_output_fails(
+        self, source_name: str, valid: bool
+    ):
+        """An output reaches its links as a dict (``to_dict``), where ``_@_``
+        reads None and the link is dropped."""
+        v = AgentValidator()
+        config = {"type": "object", "properties": {"name": {"type": "string"}}}
+        blocks = [
+            _make_block(
+                block_id="src", output_schema={"properties": {"config": config}}
+            ),
+            _make_block(block_id="sink", input_schema={"properties": {"input": {}}}),
+        ]
+        nodes = [
+            _make_node(node_id="n1", block_id="src"),
+            _make_node(node_id="n2", block_id="sink"),
+        ]
+        link = _make_link(
+            source_id="n1", source_name=source_name, sink_id="n2", sink_name="input"
+        )
+        agent = _make_agent(nodes=nodes, links=[link])
+
+        assert v.validate_source_output_existence(agent, blocks) is valid

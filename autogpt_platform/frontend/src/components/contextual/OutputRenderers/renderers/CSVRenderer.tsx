@@ -118,12 +118,12 @@ function CSVTable({
   }
 
   if (headers.length === 0) {
-    return <p className="p-4 text-sm text-foreground-tertiary">Empty CSV</p>;
+    return <p className="p-4 text-body text-foreground-tertiary">Empty CSV</p>;
   }
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-sm">
+      <table className="w-full border-collapse text-body">
         <thead>
           <tr className="border-b border-border-base bg-surface-muted">
             {headers.map((header, i) => (

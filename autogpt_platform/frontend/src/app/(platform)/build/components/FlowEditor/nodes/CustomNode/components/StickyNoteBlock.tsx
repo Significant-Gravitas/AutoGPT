@@ -17,17 +17,15 @@ export const StickyNoteBlock = ({ data, nodeId }: StickyNoteBlockType) => {
       return char.charCodeAt(0) + ((acc << 5) - acc);
     }, 0);
 
-    /* oxlint-disable design-system/no-raw-colors -- sticky-note paper colours are data, one per note, not roles */
     const colors = [
-      "bg-orange-200",
-      "bg-red-200",
-      "bg-yellow-200",
-      "bg-green-200",
-      "bg-blue-200",
-      "bg-purple-200",
-      "bg-pink-200",
+      "bg-[#ffc88a]",
+      "bg-[#fac5c5]",
+      "bg-[#fae28a]",
+      "bg-[#94d5ac]",
+      "bg-[#bfdbfe]",
+      "bg-[#c0a1fa]",
+      "bg-[#f6abd0]",
     ];
-    /* oxlint-enable design-system/no-raw-colors */
 
     return {
       angle: (hash % 7) - 3,

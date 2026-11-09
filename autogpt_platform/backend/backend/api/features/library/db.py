@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import logging
+from collections.abc import Mapping
 from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
@@ -30,6 +31,7 @@ from backend.data.graph import GraphSettings
 from backend.data.includes import (
     AGENT_PRESET_INCLUDE,
     LIBRARY_FOLDER_INCLUDE,
+    MAX_NODE_INPUT_OUTPUT_FETCH,
     library_agent_include,
 )
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -48,9 +50,11 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 from backend.util.json import SafeJson
+from backend.util.json import dumps as json_dumps
 from backend.util.models import Pagination
 from backend.util.product_analytics import track_listing_added_to_library
 from backend.util.settings import Config
+from backend.util.text_limits import MAX_INSTRUCTIONS_LENGTH, MAX_LONG_NAME_LENGTH
 
 from . import model as library_model
 from ._add_to_library import (
@@ -65,6 +69,19 @@ from .embeddings import schedule_library_agent_embedding
 logger = logging.getLogger(__name__)
 config = Config()
 integration_creds_manager = IntegrationCredentialsManager()
+
+# What `create_preset` and `update_preset` will store. Bounded here rather than
+# on `LibraryAgentPresetCreatable`, because `LibraryAgentPreset` reads stored
+# rows through that model: a bound on it would make a row already over the
+# bound unreadable. The text bounds are the graph's own, because
+# `save_as_preset` and the legacy-trigger migration name a preset after its
+# graph, so anything a graph can carry has to be storable here. How MANY
+# inputs a preset holds is bounded by the read cap instead
+# (`check_preset_input_count`), so a stored preset always comes back whole.
+MAX_PRESET_INPUT_BYTES = 256 * 1024
+MAX_PRESETS_PER_PAGE = 100
+MAX_PRESET_NAME_LENGTH = MAX_LONG_NAME_LENGTH
+MAX_PRESET_DESCRIPTION_LENGTH = MAX_INSTRUCTIONS_LENGTH
 
 
 async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[str, int]:
@@ -100,6 +117,7 @@ async def list_library_agents(
     is_hidden: Optional[bool] = None,
     organization_id: Optional[str] = None,
     include_nodes: bool = False,
+    folder_ids: list[str] | None = None,
 ) -> library_model.LibraryAgentResponse:
     """
     Retrieves a paginated list of LibraryAgent records for a given user.
@@ -113,6 +131,7 @@ async def list_library_agents(
         page: Current page (1-indexed).
         page_size: Number of items per page.
         folder_id: Filter by folder ID. If provided, only returns agents in this folder.
+        folder_ids: Only returns agents in one of these folders.
         include_root_only: If True, only returns agents without a folder (root-level).
         include_executions: Whether to include execution data for status calculation.
             Defaults to False for performance (UI fetches status separately).
@@ -166,6 +185,8 @@ async def list_library_agents(
     # Apply folder filter (skip when searching — search spans all folders)
     if folder_id is not None and not search_term:
         where_clause["folderId"] = folder_id
+    elif folder_ids is not None and not search_term:
+        where_clause["folderId"] = {"in": folder_ids}
     elif include_root_only and not search_term:
         where_clause["folderId"] = None
 
@@ -230,26 +251,34 @@ async def list_library_agents(
             ],
         )
 
-    library_agents = await prisma.models.LibraryAgent.prisma().find_many(
-        where=where_clause,
-        include=library_agent_include(
-            user_id,
-            include_nodes=include_nodes,
-            include_executions=include_executions,
-        ),
-        order=order_by,
-        skip=(page - 1) * page_size,
-        take=page_size,
+    async def page_with_execution_counts() -> (
+        tuple[list[prisma.models.LibraryAgent], dict[str, int]]
+    ):
+        """The page, then its graphs' run counts, beside the total and the
+        schedules: the counts need only the page."""
+        agents = await prisma.models.LibraryAgent.prisma().find_many(
+            where=where_clause,
+            include=library_agent_include(
+                user_id,
+                include_nodes=include_nodes,
+                include_executions=include_executions,
+            ),
+            order=order_by,
+            skip=(page - 1) * page_size,
+            take=page_size,
+        )
+        graph_ids = [a.agentGraphId for a in agents if a.agentGraphId]
+        return agents, await _fetch_execution_counts(user_id, graph_ids)
+
+    (library_agents, execution_counts), agent_count, schedule_info = (
+        await asyncio.gather(
+            page_with_execution_counts(),
+            prisma.models.LibraryAgent.prisma().count(where=where_clause),
+            _fetch_schedule_info(user_id),
+        )
     )
-    agent_count = await prisma.models.LibraryAgent.prisma().count(where=where_clause)
 
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
-
-    graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts, schedule_info = await asyncio.gather(
-        _fetch_execution_counts(user_id, graph_ids),
-        _fetch_schedule_info(user_id),
-    )
 
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
@@ -514,8 +543,10 @@ async def get_library_agent_by_graph_id(
 
     assert agent.AgentGraph  # make type checker happy
     # Include sub-graphs so we can make a full credentials input schema
-    sub_graphs = await graph_db.get_sub_graphs(agent.AgentGraph)
-    schedule_info = await _fetch_schedule_info(user_id, graph_id=agent.agentGraphId)
+    sub_graphs, schedule_info = await asyncio.gather(
+        graph_db.get_sub_graphs(agent.AgentGraph),
+        _fetch_schedule_info(user_id, graph_id=agent.agentGraphId),
+    )
     return library_model.LibraryAgent.from_db(
         agent, sub_graphs=sub_graphs, schedule_info=schedule_info
     )
@@ -536,7 +567,7 @@ async def add_generated_agent_image(
     try:
         if not (image_url := await store_media.check_media_exists(user_id, filename)):
             # Generate agent image as JPEG
-            image = await store_image_gen.generate_agent_image(graph)
+            image = await store_image_gen.generate_agent_image(graph, user_id)
 
             # Create UploadFile with the correct filename and content_type
             image_file = fastapi.UploadFile(
@@ -889,7 +920,17 @@ async def update_graph_in_library(
     webhook presets.
     ``move_webhook_presets`` False leaves the user's webhook presets on the
     versions they run now.
+    A graph ID belonging to somebody else is saved as the caller's own copy.
     """
+    if await graph_db.graph_owner_id(graph.id) not in (None, user_id):
+        return await fork_graph_in_library(
+            graph,
+            user_id,
+            forked_from_version=graph.version,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
+
     organization_ids = (
         await writable_organization_ids(user_id, organization_id)
         if organization_id is not None
@@ -959,6 +1000,26 @@ async def update_graph_in_library(
             )
 
     return created_graph, library_agent
+
+
+async def fork_graph_in_library(
+    graph: graph_db.Graph,
+    user_id: str,
+    forked_from_version: int,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
+    """Save *graph* as a new graph in the user's library, forked from version
+    *forked_from_version* of the graph ID it carries."""
+    logger.info(
+        f"Saving graph {graph.id} v{forked_from_version} as a fork for user {user_id}"
+    )
+    graph.forked_from_id = graph.id
+    graph.forked_from_version = forked_from_version
+    graph.name = graph_db.fork_name(graph.name)
+    return await create_graph_in_library(
+        graph, user_id, organization_id=organization_id, team_id=team_id
+    )
 
 
 async def _assert_target_version(
@@ -1272,12 +1333,16 @@ async def _cleanup_webhooks_for_graph(graph_id: str, user_id: str) -> None:
             )
 
 
-async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
-    """
-    Deletes a library agent for the given user
-    """
-    await prisma.models.LibraryAgent.prisma().delete_many(
-        where={"agentGraphId": graph_id, "userId": user_id}
+async def cleanup_graph_for_permanent_delete(graph_id: str, user_id: str) -> None:
+    """Stop everything that drives the user's graph before it is permanently
+    deleted: the same schedule, webhook and trigger-agent cleanup that
+    `delete_library_agent` does for a library entry. The library entries and
+    presets themselves are removed with the graph by
+    `graph_db.delete_graph_permanently`."""
+    await _cleanup_schedules_for_graph(graph_id=graph_id, user_id=user_id)
+    await _cleanup_webhooks_for_graph(graph_id=graph_id, user_id=user_id)
+    await _cleanup_trigger_agents_for_graph(
+        action_graph_id=graph_id, user_id=user_id, soft_delete=False
     )
 
 
@@ -1357,14 +1422,23 @@ async def add_store_agent_to_library_in_transaction(
     store_listing_version_id: str,
     user_id: str,
     tx: prisma.Prisma,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
 ) -> library_model.LibraryAgent:
     """Add a marketplace agent using the caller's transaction.
 
     Sends no ``listing_added_to_library``: the caller may still roll back, and
-    the upsert cannot tell a first-time add from a restore.
+    the upsert cannot tell a first-time add from a restore. The caller resolves
+    the tenancy (``resolve_default_tenancy``) before opening the transaction.
     """
     return await _add_store_agent_to_library(
-        store_listing_version_id, user_id, tx=tx, track_listing_added=False
+        store_listing_version_id,
+        user_id,
+        tx=tx,
+        track_listing_added=False,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
 
@@ -1394,7 +1468,7 @@ async def _add_store_agent_to_library(
         if existing is not None:
             return existing
     graph_model = await resolve_graph_model_for_library(
-        store_listing_version, user_id, admin=False
+        store_listing_version, user_id, admin=False, tx=tx
     )
     library_agent = await add_graph_to_library(
         graph_model,
@@ -2061,26 +2135,6 @@ def collect_tree_ids(
     return ids
 
 
-async def get_folder_agent_summaries(
-    user_id: str, folder_id: str, organization_id: Optional[str] = None
-) -> list[dict[str, str | None]]:
-    """Get a lightweight list of agents in a folder (id, name, description)."""
-    all_agents: list[library_model.LibraryAgent] = []
-    for page in itertools.count(1):
-        resp = await list_library_agents(
-            user_id=user_id,
-            folder_id=folder_id,
-            page=page,
-            organization_id=organization_id,
-        )
-        all_agents.extend(resp.agents)
-        if page >= resp.pagination.total_pages:
-            break
-    return [
-        {"id": a.id, "name": a.name, "description": a.description} for a in all_agents
-    ]
-
-
 async def get_root_agent_summaries(
     user_id: str,
     organization_id: Optional[str] = None,
@@ -2102,17 +2156,52 @@ async def get_root_agent_summaries(
     ]
 
 
+_FOLDER_AGENTS_PAGE_SIZE = 250
+_FOLDER_AGENTS_MAX_PAGES = 8
+
+
 async def get_folder_agents_map(
     user_id: str, folder_ids: list[str], organization_id: Optional[str] = None
 ) -> dict[str, list[dict[str, str | None]]]:
-    """Get agent summaries for multiple folders concurrently."""
-    results = await asyncio.gather(
-        *(
-            get_folder_agent_summaries(user_id, fid, organization_id)
-            for fid in folder_ids
+    """Get a lightweight list of agents (id, name, description) per folder.
+
+    Pages through the agents in the requested folders once and groups them by
+    folder, so the number of queries follows the number of agents, not of
+    folders; it stops after ``_FOLDER_AGENTS_MAX_PAGES`` pages. Creation order
+    has an id tiebreak, so offset paging neither skips nor repeats.
+    """
+    agents_map: dict[str, list[dict[str, str | None]]] = {
+        folder_id: [] for folder_id in folder_ids
+    }
+    if not agents_map:
+        return agents_map
+    for page in range(1, _FOLDER_AGENTS_MAX_PAGES + 1):
+        resp = await list_library_agents(
+            user_id=user_id,
+            sort_by=library_model.LibraryAgentSort.CREATED_AT,
+            page=page,
+            page_size=_FOLDER_AGENTS_PAGE_SIZE,
+            organization_id=organization_id,
+            folder_ids=list(agents_map),
         )
-    )
-    return dict(zip(folder_ids, results))
+        for agent in resp.agents:
+            if agent.folder_id in agents_map:
+                agents_map[agent.folder_id].append(
+                    {
+                        "id": agent.id,
+                        "name": agent.name,
+                        "description": agent.description,
+                    }
+                )
+        if page >= resp.pagination.total_pages:
+            break
+    else:
+        logger.warning(
+            f"get_folder_agents_map for user {user_id} hit its "
+            f"{_FOLDER_AGENTS_MAX_PAGES}-page cap across {len(agents_map)} "
+            "folder(s); some folders' agents may be missing"
+        )
+    return agents_map
 
 
 ##############################################
@@ -2156,6 +2245,11 @@ async def list_presets(
             "Invalid pagination input: page=%d, page_size=%d", page, page_size
         )
         raise InvalidInputError("Invalid pagination parameters")
+    # Capped here rather than per route, so every caller is covered.
+    if page_size > MAX_PRESETS_PER_PAGE:
+        raise InvalidInputError(
+            f"At most {MAX_PRESETS_PER_PAGE} presets per page, got {page_size}"
+        )
 
     query_filter: prisma.types.AgentPresetWhereInput = {
         "userId": user_id,
@@ -2171,13 +2265,15 @@ async def list_presets(
             {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
         ]
 
-    presets_records = await prisma.models.AgentPreset.prisma().find_many(
-        where=query_filter,
-        skip=(page - 1) * page_size,
-        take=page_size,
-        include=AGENT_PRESET_INCLUDE,
+    presets_records, total_items = await asyncio.gather(
+        prisma.models.AgentPreset.prisma().find_many(
+            where=query_filter,
+            skip=(page - 1) * page_size,
+            take=page_size,
+            include=AGENT_PRESET_INCLUDE,
+        ),
+        prisma.models.AgentPreset.prisma().count(where=query_filter),
     )
-    total_items = await prisma.models.AgentPreset.prisma().count(where=query_filter)
     total_pages = (total_items + page_size - 1) // page_size
 
     presets = [
@@ -2269,6 +2365,10 @@ async def create_preset(
     logger.debug(
         f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
+    check_preset_text(preset.name, preset.description)
+    # Fast preflight; the count that actually gates the write is re-run
+    # locked, immediately before the insert, below.
+    await check_preset_count(user_id)
     # A preset may only reference a graph the caller can access (owned, or in
     # their library and submitted); get_graph() enforces that, None if not.
     # The preset then inherits the graph's org/team (resource-follows-parent)
@@ -2315,27 +2415,24 @@ async def create_preset(
         isActive=preset.is_active,
         webhookId=webhook_id,
         InputPresets={
-            "create": [
-                prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                    name=name, data=SafeJson(data)
-                )
-                for name, data in {
-                    **preset.inputs,
-                    **preset.credentials,
-                }.items()
-            ]
+            "create": preset_input_rows({**preset.inputs, **preset.credentials}),
         },
     )
     if organization_id:
         create_input["organizationId"] = organization_id
     if team_id:
         create_input["teamId"] = team_id
-    if expert_id:
-        # Re-resolve under a row lock so an archive or ownership change landing
-        # between the tenancy check above and this write can't be persisted.
-        # Experts are private and owner-only here, so a failed re-check is a
-        # not-found rather than a silently dropped attribution.
-        async with transaction() as tx:
+    # Locked so two concurrent creates can't both pass check_preset_count and
+    # both insert, landing the account over MAX_PRESETS_PER_USER.
+    async with transaction() as tx:
+        await _lock_preset_creation(tx, user_id)
+        await check_preset_count(user_id, tx=tx)
+        if expert_id:
+            # Re-resolve under a row lock so an archive or ownership change
+            # landing between the tenancy check above and this write can't be
+            # persisted. Experts are private and owner-only here, so a failed
+            # re-check is a not-found rather than a silently dropped
+            # attribution.
             attributed_expert_id = await resolve_attributable_expert(
                 tx,
                 user_id,
@@ -2345,12 +2442,7 @@ async def create_preset(
             if attributed_expert_id is None:
                 raise NotFoundError(f"Expert #{expert_id} not found")
             create_input["expertId"] = attributed_expert_id
-            new_preset = await prisma.models.AgentPreset.prisma(tx).create(
-                data=create_input,
-                include=AGENT_PRESET_INCLUDE,
-            )
-    else:
-        new_preset = await prisma.models.AgentPreset.prisma().create(
+        new_preset = await prisma.models.AgentPreset.prisma(tx).create(
             data=create_input,
             include=AGENT_PRESET_INCLUDE,
         )
@@ -2451,6 +2543,7 @@ async def update_preset(
     logger.debug(
         f"Updating preset #{preset_id} ({repr(current.name)}) for user #{user_id}",
     )
+    check_preset_text(name, description)
 
     expert_tenancy: tuple[str, str | None] | None = None
     if current.expert_id:
@@ -2478,19 +2571,35 @@ async def update_preset(
                 raise ValueError(
                     "Preset inputs and credentials must be provided together"
                 )
+            # Locked so two concurrent replacements of the same preset can't
+            # both pass the count below, then each delete and insert without
+            # seeing the other's rows — leaving more than the cap.
+            await _lock_preset_row(tx, preset_id)
+            # A caller's view of InputPresets is capped at the read bound
+            # (AGENT_PRESET_INCLUDE), so a preset already PAST it can't be
+            # replaced from that view — delete_many below would drop whatever
+            # the read never surfaced. At the bound exactly, the read still
+            # returns every row, so this matches check_preset_input_count's
+            # own ">" rather than refusing the boundary it allows writing.
+            stored_row_count = await prisma.models.AgentNodeExecutionInputOutput.prisma(
+                tx
+            ).count(where={"agentPresetId": preset_id})
+            if stored_row_count > MAX_NODE_INPUT_OUTPUT_FETCH:
+                raise InvalidInputError(
+                    f"Preset #{preset_id} holds {stored_row_count} inputs and "
+                    "credentials, past what a read returns; its inputs can't "
+                    "be replaced through this endpoint"
+                )
             update_data["InputPresets"] = {
-                "create": [
-                    prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                        name=name, data=SafeJson(data)
-                    )
-                    for name, data in {
+                "create": preset_input_rows(
+                    {
                         **inputs,
                         **{
                             key: creds_meta.model_dump(exclude_none=True)
                             for key, creds_meta in credentials.items()
                         },
-                    }.items()
-                ],
+                    }
+                ),
             }
             # Existing InputPresets must be deleted, in a separate query
             await prisma.models.AgentNodeExecutionInputOutput.prisma(tx).delete_many(
@@ -2505,6 +2614,95 @@ async def update_preset(
     if not updated:
         raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
     return library_model.LibraryAgentPreset.from_db(updated)
+
+
+MAX_PRESETS_PER_USER = 1000
+
+
+# A caller with a side effect of its own calls these before it, so a value
+# this would refuse never reaches a webhook registration.
+def check_preset_text(name: Optional[str], description: Optional[str]) -> None:
+    for field_name, value, max_length in (
+        ("name", name, MAX_PRESET_NAME_LENGTH),
+        ("description", description, MAX_PRESET_DESCRIPTION_LENGTH),
+    ):
+        if len(value or "") > max_length:
+            raise InvalidInputError(
+                f"Preset {field_name} is too long: "
+                f"at most {max_length} characters are allowed"
+            )
+
+
+def preset_input_rows(
+    entries: Mapping[str, object],
+) -> list[prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput]:
+    """One row per name, bounded here rather than at each caller."""
+    check_preset_inputs(entries)
+    return [
+        prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(
+            name=name, data=SafeJson(data)
+        )
+        for name, data in entries.items()
+    ]
+
+
+def check_preset_inputs(entries: Mapping[str, object]) -> None:
+    """Both bounds on what one preset's inputs may be: how many, and how big."""
+    check_preset_input_count(entries)
+    payload_bytes = len(json_dumps(entries).encode())
+    if payload_bytes > MAX_PRESET_INPUT_BYTES:
+        raise InvalidInputError(
+            f"A preset's inputs hold at most {MAX_PRESET_INPUT_BYTES} bytes, "
+            f"got {payload_bytes}"
+        )
+
+
+def check_preset_input_count(entries: Mapping[str, object]) -> None:
+    """Refuse a preset with more named inputs than one read brings back."""
+    if len(entries) > MAX_NODE_INPUT_OUTPUT_FETCH:
+        raise InvalidInputError(
+            f"A preset takes at most {MAX_NODE_INPUT_OUTPUT_FETCH} inputs and "
+            f"credentials together; got {len(entries)}"
+        )
+
+
+async def check_preset_count(user_id: str, tx: prisma.Prisma | None = None) -> None:
+    """Refuse a new preset once the user holds `MAX_PRESETS_PER_USER`.
+
+    Pass `tx` from inside `_lock_preset_creation`'s transaction so the count
+    and the insert it gates serialize per user.
+    """
+    held = await prisma.models.AgentPreset.prisma(tx).count(
+        where={"userId": user_id, "isDeleted": False}
+    )
+    if held >= MAX_PRESETS_PER_USER:
+        raise InvalidInputError(
+            f"An account holds at most {MAX_PRESETS_PER_USER} presets; "
+            "delete one to save another"
+        )
+
+
+async def _lock_preset_creation(tx: prisma.Prisma, user_id: str) -> None:
+    # execute_raw, not query_raw: pg_advisory_xact_lock returns void,
+    # which Prisma cannot deserialize as a result column.
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        f"preset-creation:{user_id}",
+    )
+
+
+async def _lock_preset_row(tx: prisma.Prisma, preset_id: str) -> None:
+    """Row lock on the AgentPreset, held through update_preset's count,
+    delete and insert so two concurrent input replacements serialize."""
+    schema = get_database_schema()
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+    await tx.query_raw(
+        cast(
+            LiteralString,
+            f'SELECT "id" FROM {schema_prefix}"AgentPreset" WHERE "id" = $1 FOR UPDATE',
+        ),
+        preset_id,
+    )
 
 
 async def set_preset_webhook(
@@ -2684,19 +2882,67 @@ async def migrate_webhook_presets_to_new_version(
     }
     if in_organizations:
         migrate_where["AND"] = in_organizations
-    count = await prisma.models.AgentPreset.prisma().update_many(
-        where=migrate_where,
-        data={"agentGraphVersion": new_graph.version},
-    )
+
+    # reassign_ids() gives every node a new UUID when an agent is edited, so a
+    # preset's stored `_node_input_mask_{old_prefix}` key would no longer match
+    # the new version's trigger node at execution (the mask would be dropped and
+    # the trigger would silently stop firing). Re-key the mask to the new node's
+    # prefix, in the same transaction as the version bump: a preset pinned to the
+    # new version with the old key is no longer a retry candidate, so a partial
+    # write kills the trigger for good.
+    async with transaction() as tx:
+        count = await prisma.models.AgentPreset.prisma(tx).update_many(
+            where=migrate_where,
+            data={"agentGraphVersion": new_graph.version},
+        )
+        # Scoped to presets now pinned to this version so a preset that a
+        # concurrent activation already bumped past it isn't re-keyed to the
+        # wrong node.
+        prefixed = await prisma.models.AgentNodeExecutionInputOutput.prisma(
+            tx
+        ).find_many(
+            where={
+                "agentPresetId": {"in": ids_to_migrate},
+                "name": {"startswith": library_model.NODE_INPUT_MASK_PREFIX},
+                "AgentPreset": {"is": {"agentGraphVersion": new_graph.version}},
+            },
+        )
+        await prisma.models.AgentNodeExecutionInputOutput.prisma(tx).update_many(
+            where={"id": {"in": _trigger_mask_row_ids(prefixed)}},
+            data={"name": library_model.node_input_mask_key(new_trigger_node.id)},
+        )
+
     if count > 0:
         logger.info(
             f"Migrated {count} webhook preset(s) for graph #{new_graph.id} "
             f"to version {new_graph.version} (user #{user_id})"
         )
+
     return library_model.WebhookPresetMigrationResult(
         migrated_count=count,
         skipped_presets=skipped_presets,
     )
+
+
+def _trigger_mask_row_ids(
+    rows: list[prisma.models.AgentNodeExecutionInputOutput],
+) -> list[str]:
+    """Each preset's trigger-config row, picked as its readers pick it: a graph
+    input may use the mask prefix too."""
+    by_preset: dict[
+        str | None, dict[str, prisma.models.AgentNodeExecutionInputOutput]
+    ] = {}
+    for row in rows:
+        by_preset.setdefault(row.agentPresetId, {})[row.name] = row
+    return [
+        named[key].id
+        for named in by_preset.values()
+        if (
+            key := library_model.stored_trigger_mask_key(
+                {name: row.data for name, row in named.items()}
+            )
+        )
+    ]
 
 
 async def delete_preset(user_id: str, preset_id: str) -> None:

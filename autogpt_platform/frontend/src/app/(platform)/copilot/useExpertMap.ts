@@ -127,10 +127,15 @@ export function useExpertMap() {
       : EMPTY_IDS,
     isLoadingExperts: expertsQuery.isFetching,
     hasExpertsErrored: expertsQuery.isError && !expertsQuery.isFetching,
+    // The last read failed, and stays so while a retry is in flight.
+    isExpertsError: expertsQuery.isError,
     // Settled = success OR error. resolveExpertIdentity keys off this so an
     // errored roster fetch fails closed (read-only) instead of open.
     hasExpertsSettled:
       !expertsQuery.isFetching &&
       (expertsQuery.isSuccess || expertsQuery.isError),
+    // The roster has answered once (a background refetch keeps it true):
+    // until then nobody can be told apart from "not on the team".
+    hasExpertsLoaded: expertsQuery.isSuccess || expertsQuery.isError,
   };
 }

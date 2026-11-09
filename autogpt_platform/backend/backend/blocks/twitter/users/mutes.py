@@ -42,7 +42,7 @@ class TwitterUnmuteUserBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["users.read", "users.write", "offline.access"]
+            ["users.read", "mute.write", "offline.access"]
         )
 
         target_user_id: str = SchemaField(
@@ -277,7 +277,7 @@ class TwitterMuteUserBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["users.read", "users.write", "offline.access"]
+            ["users.read", "mute.write", "offline.access"]
         )
 
         target_user_id: str = SchemaField(
