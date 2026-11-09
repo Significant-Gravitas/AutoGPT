@@ -6019,6 +6019,9 @@ def _interview_turn(mocker: pytest_mock.MockerFixture) -> SimpleNamespace:
         new_callable=AsyncMock,
         return_value=False,
     )
+    mocks.accepted = mocker.patch(
+        f"{_INTERVIEW}.typed_message_accepted", new_callable=AsyncMock
+    )
     return mocks
 
 
@@ -6080,6 +6083,100 @@ def test_an_interview_turn_its_budget_refuses_releases_the_send_for_a_retry(
     charge.side_effect = None
     assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
     mocks.enqueue.assert_awaited_once()
+
+
+def test_an_interview_message_supersedes_an_ended_call_once_dispatched(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """The message is the person's from its dispatch: a voice call of theirs
+    that ended before it is outranked then, and not before."""
+    mocks = _interview_turn(mocker)
+    order: list[str] = []
+    charge = _interview_charge(mocker)
+    charge.side_effect = lambda *_: order.append("charge")
+    mocks.accepted.side_effect = lambda *_: order.append("supersede")
+
+    async def dispatch(**_):
+        order.append("dispatch")
+        return "turn-id-mock"
+
+    mocks.enqueue.side_effect = dispatch
+
+    response = client.post(
+        "/sessions/sess-1/stream", json={"message": "We bake for cafes."}
+    )
+
+    assert response.status_code == 200
+    assert order == ["charge", "dispatch", "supersede"]
+    mocks.accepted.assert_awaited_once_with(test_user_id)
+
+
+def test_an_interview_message_its_budget_refuses_supersedes_nothing(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _interview_turn(mocker)
+    charge = _interview_charge(mocker)
+    charge.side_effect = fastapi.HTTPException(
+        status_code=429, detail="You have sent a lot of messages in a short time."
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream", json={"message": "We bake for cafes."}
+    )
+
+    assert response.status_code == 429
+    mocks.enqueue.assert_not_awaited()
+    mocks.accepted.assert_not_awaited()
+
+
+def _interview_follow_up(
+    mocker: pytest_mock.MockerFixture, *, call_count: int = 1
+) -> SimpleNamespace:
+    session = _mock_stream_queue_internals(mocker, call_count=call_count)
+    session.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    session.metadata.llm_auth_provider = "platform"
+    mocker.patch(
+        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        new_callable=AsyncMock,
+        return_value=InterviewTurnPlan(reply=3),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+    return SimpleNamespace(
+        accepted=mocker.patch(
+            f"{_INTERVIEW}.typed_message_accepted", new_callable=AsyncMock
+        )
+    )
+
+
+def test_a_follow_up_queued_in_an_interview_supersedes_an_ended_call(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    mocks = _interview_follow_up(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending", json={"message": "And weddings."}
+    )
+
+    assert response.status_code == 200
+    mocks.accepted.assert_awaited_once_with(test_user_id)
+
+
+def test_a_follow_up_the_queue_turns_away_supersedes_nothing(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    from backend.copilot.pending_message_helpers import PENDING_CALL_LIMIT
+
+    mocks = _interview_follow_up(mocker, call_count=PENDING_CALL_LIMIT + 1)
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending", json={"message": "And weddings."}
+    )
+
+    assert response.status_code == 429
+    mocks.accepted.assert_not_awaited()
 
 
 def test_attachments_in_an_interview_go_to_the_interview_s_admission(

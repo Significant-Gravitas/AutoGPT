@@ -129,16 +129,21 @@ def test_a_start_token_carries_the_persons_ending_arm():
 
 
 @pytest.mark.parametrize("ending", [7, "", "02 profile card", "x" * 65])
-def test_a_token_naming_an_arm_that_is_not_one_is_refused(ending):
+def test_a_token_naming_an_arm_that_is_not_one_starts_an_unenrolled_call(ending):
+    """The arm is the only claim a call can do without: the call goes ahead,
+    ending as an unenrolled one does."""
+    call_id = _call_id()
     token = tokens._sign(
         {
             "kind": "start",
             "uid": USER,
-            "call_id": _call_id(),
+            "call_id": call_id,
             "leg": "websocket",
             "exp": time.time() + 60,
             "ending": ending,
         }
     )
-    with pytest.raises(TokenError, match="token_invalid"):
-        tokens.verify_start(token)
+
+    claims = tokens.verify_start(token)
+
+    assert (claims.user_id, claims.call_id, claims.ending) == (USER, call_id, None)

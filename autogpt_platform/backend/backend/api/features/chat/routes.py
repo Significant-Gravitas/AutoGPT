@@ -299,9 +299,21 @@ async def _record_interview_turn_started(
     # Deferred: the onboarding interview's web module imports this one.
     from backend.api.features.onboarding_dump.interview import (
         record_onboarding_interview_turn_started,
+        typed_message_accepted,
     )
 
+    # The person's message is in the interview now, so it outranks a voice
+    # call of theirs that ended before it; a message refused before this
+    # point, at the budget or the queue, outranks nothing.
+    await typed_message_accepted(user_id)
     await record_onboarding_interview_turn_started(user_id, session_id, plan)
+
+
+async def _note_interview_message_queued(user_id: str) -> None:
+    # Deferred: the onboarding interview's web module imports this one.
+    from backend.api.features.onboarding_dump.interview import typed_message_accepted
+
+    await typed_message_accepted(user_id)
 
 
 async def _validate_and_get_session(
@@ -2556,7 +2568,7 @@ async def queue_pending_message(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",
         )
-    return await queue_pending_for_http(
+    queued = await queue_pending_for_http(
         session_id=session_id,
         user_id=user_id,
         message=request.message,
@@ -2566,6 +2578,9 @@ async def queue_pending_message(
         expert_id=session.expert_id,
         client_message_id=client_message_id,
     )
+    if is_onboarding_interview(session):
+        await _note_interview_message_queued(user_id)
+    return queued
 
 
 @router.get(

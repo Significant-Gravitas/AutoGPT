@@ -1738,7 +1738,11 @@ async def test_a_voice_call_where_nothing_was_said_has_nothing_to_confirm(
 async def test_a_voice_call_the_person_has_called_again_since_is_superseded(
     dumps: DumpStore, voice_calls: VoiceCalls
 ):
-    voice_calls.latest = "call-2"
+    """The later call has words of record: its take is the newer one."""
+    await voice_calls.ended("call-2", status="transcribed")
+    await locks.write_call_record(
+        voice_calls.redis, "call-2", {"prev": "call-1", "transcript_of_record": SAID}
+    )
 
     closure = await interview.close_voice_interview(
         USER_ID, "call-1", SAID, BackgroundTasks(), reason="confirmed"
@@ -1777,6 +1781,60 @@ async def test_a_voice_call_ending_after_the_typed_interview_is_over_is_supersed
 
     assert closure.hand_off == _take(interview.SUPERSEDED)
     assert dumps.row is None
+
+
+def _call(**fields: object) -> locks.CallRecord:
+    return locks.CallRecord.model_validate({"call_id": "call-2", **fields})
+
+
+@pytest.mark.parametrize(
+    ("record", "words"),
+    [
+        (_call(status="transcribed", transcript_of_record=SAID), "words"),
+        (
+            _call(
+                status="failed",
+                transcript_of_record="idk",
+                hand_off=_take(quality.INSUFFICIENT_CONTENT),
+            ),
+            "words",
+        ),
+        (_call(status="handed_off", hand_off=_take()), "words"),
+        (_call(status="ended", interview=locks.INTERVIEW_SUPERSEDED), "words"),
+        (_call(status="transcribed", transcript_of_record=" "), "no_words"),
+        (_call(status="failed", hand_off=_take(quality.NO_USABLE_SPEECH)), "no_words"),
+        (
+            _call(status="failed", hand_off=_take(locks.TRANSCRIPTION_UNAVAILABLE)),
+            "no_words",
+        ),
+        (
+            _call(status="failed", hand_off=_take(locks.RECORDING_UNAVAILABLE)),
+            "no_words",
+        ),
+        (_call(status="connecting"), "unsettled"),
+        (_call(status="live"), "unsettled"),
+        (_call(status="transcribing"), "unsettled"),
+    ],
+    ids=[
+        "transcript",
+        "judged-insufficient",
+        "accepted",
+        "claimed",
+        "empty-transcript",
+        "nothing-heard",
+        "no-transcript",
+        "no-recording",
+        "connecting",
+        "live",
+        "transcribing",
+    ],
+)
+def test_a_call_has_words_of_record_once_the_person_said_something(
+    record: locks.CallRecord, words: str
+) -> None:
+    """Words judged thin are still words, as a thin typed message is; a call
+    that settled with nothing heard, or nothing transcribed, has none."""
+    assert interview.call_words(record) == words
 
 
 @pytest.mark.parametrize(
@@ -1983,12 +2041,16 @@ async def test_which_call_took_the_interview_is_read_from_the_onboarding_row(
 
 
 @pytest.mark.asyncio
-async def test_the_first_message_after_a_call_ended_supersedes_the_call(
+async def test_the_first_message_after_a_call_ended_supersedes_it_once_dispatched(
     stored: StoredInterview, voice_calls: VoiceCalls
 ):
+    """A message refused at the budget, after its admission, supersedes
+    nothing; one dispatched or queued does."""
     await voice_calls.ended("call-1")
 
     await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+    assert await locks.interview_of(voice_calls.redis, "call-1") is None
+    await interview.typed_message_accepted(USER_ID)
 
     assert (
         await locks.interview_of(voice_calls.redis, "call-1")
@@ -1996,6 +2058,27 @@ async def test_the_first_message_after_a_call_ended_supersedes_the_call(
     )
     # The next message finds it so and is admitted too.
     await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+
+
+@pytest.mark.asyncio
+async def test_a_message_dispatched_after_the_call_took_the_interview_takes_nothing(
+    stored: StoredInterview, voice_calls: VoiceCalls
+):
+    """The call's words claimed the interview between the message's admission
+    and its dispatch: the message is the person's already, and the next one
+    is refused."""
+    await voice_calls.ended("call-1")
+    await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+    await locks.claim_interview(voice_calls.redis, "call-1", locks.INTERVIEW_TAKEN)
+
+    await interview.typed_message_accepted(USER_ID)
+
+    assert await locks.interview_of(voice_calls.redis, "call-1") == (
+        locks.INTERVIEW_TAKEN
+    )
+    with pytest.raises(HTTPException) as refused:
+        await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+    assert refused.value.detail == {"code": INTERVIEW_CLOSED, "call_id": "call-1"}
 
 
 @pytest.mark.asyncio
@@ -2034,6 +2117,7 @@ async def test_a_message_with_no_call_supersedes_nothing(
     stored: StoredInterview, voice_calls: VoiceCalls
 ):
     await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+    await interview.typed_message_accepted(USER_ID)
 
     assert await voice_calls.redis.keys("voice:call:*") == []
 
@@ -2045,6 +2129,7 @@ async def test_a_message_after_a_call_whose_record_expired_writes_no_record(
     voice_calls.latest = "call-1"
 
     await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+    await interview.typed_message_accepted(USER_ID)
 
     assert not await voice_calls.redis.exists(locks.call_record_key("call-1"))
 
@@ -2078,6 +2163,35 @@ async def test_the_typed_finish_after_a_call_ended_supersedes_the_call(
     )
     assert dumps.row is not None
     assert dumps.row.recordingId == f"interview-{stored.session.session_id}"
+
+
+@pytest.mark.asyncio
+async def test_a_typed_finish_that_finds_a_call_it_beat_on_the_row_is_handed_off_later(
+    stored: StoredInterview, dumps: DumpStore, voice_calls: VoiceCalls
+):
+    """The pipeline holds the call's words on the dump row while the finish
+    wins the interview from the call: the row answers the finish
+    ``superseded``, which is not final, so the interview stays closed until
+    the call's hand-off gives the row up and the next request hands it off."""
+    await voice_calls.ended("call-1", status="transcribed")
+    held = await dumps.start_dump(USER_ID, "interview-call-1", BrainDumpInputMode.typed)
+    held.status = BrainDumpStatus.transcribed
+
+    response, _ = await _finalize(stored.session.session_id)
+
+    assert response.error_code == interview.SUPERSEDED
+    assert stored.stages == [INTERVIEW_STAGE_CLOSED]
+    assert await locks.interview_of(voice_calls.redis, "call-1") == (
+        locks.INTERVIEW_SUPERSEDED
+    )
+
+    await dumps.mark_failed(USER_ID, "interview-call-1", interview.SUPERSEDED)
+    await interview.hand_off_closed_interview(USER_ID, stored.session.session_id)
+
+    assert stored.stages == [INTERVIEW_STAGE_CLOSED, INTERVIEW_STAGE_HANDED_OFF]
+    assert dumps.row is not None
+    assert dumps.row.recordingId == f"interview-{stored.session.session_id}"
+    assert dumps.row.status != BrainDumpStatus.failed
 
 
 @pytest.mark.asyncio

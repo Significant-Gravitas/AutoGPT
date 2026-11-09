@@ -276,13 +276,15 @@ async def running_relay(
 
     failures = [record_failures]
 
-    async def record_call(user_id: str, call_id: str) -> None:
+    async def record_call(user_id: str, call_id: str) -> str | None:
         if record_delay_s:
             await asyncio.sleep(record_delay_s)
         if failures[0] > 0:
             failures[0] -= 1
             raise ConnectionError("database is down")
+        replaced = recorded.get(user_id)
         recorded[user_id] = call_id
+        return replaced
 
     spool = tempfile.TemporaryDirectory()
     postcall = PostCall(

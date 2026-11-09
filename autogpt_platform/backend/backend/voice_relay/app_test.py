@@ -262,6 +262,31 @@ async def test_a_started_call_is_recorded_on_the_persons_onboarding_row(redis):
         await read_until(ws, "ended")
 
 
+async def test_a_call_names_the_call_it_replaced_on_the_persons_row(redis):
+    """The hand-off walks the person's calls back from the latest along it."""
+    vendor = FakeVendor([Reply(text="Hi"), Reply(text="Hi again")])
+    async with running_relay(redis, vendor) as running:
+        first = tokens.new_call_id()
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start(call_id=first)))
+        await read_until(ws, "ready")
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+
+        second = tokens.new_call_id()
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start(call_id=second)))
+        await read_until(ws, "ready")
+
+        assert running.recorded == {USER: second}
+        first_record = await locks.read_call(redis, first)
+        second_record = await locks.read_call(redis, second)
+        assert first_record is not None and first_record.prev is None
+        assert second_record is not None and second_record.prev == first
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+
+
 async def test_a_call_that_cannot_be_recorded_does_not_start(redis):
     vendor = FakeVendor([Reply(text="Hi")])
     async with running_relay(redis, vendor, record_failures=1) as running:

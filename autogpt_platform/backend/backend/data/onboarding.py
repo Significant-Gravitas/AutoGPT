@@ -167,12 +167,15 @@ async def get_onboarding_interview_session_id(user_id: str) -> str | None:
     return onboarding.interviewSessionId if onboarding else None
 
 
-async def record_onboarding_voice_call(user_id: str, call_id: str) -> None:
-    """Record *call_id* as *user_id*'s latest onboarding voice call."""
-    await ensure_user_onboarding(user_id)
+async def record_onboarding_voice_call(user_id: str, call_id: str) -> str | None:
+    """Record *call_id* as *user_id*'s latest onboarding voice call. Returns
+    the call it replaced there, or None."""
+    onboarding = await ensure_user_onboarding(user_id)
     await UserOnboarding.prisma().update(
         where={"userId": user_id}, data={"voiceCallId": call_id}
     )
+    replaced = onboarding.voiceCallId
+    return replaced if replaced != call_id else None
 
 
 async def get_onboarding_voice_call_id(user_id: str) -> str | None:

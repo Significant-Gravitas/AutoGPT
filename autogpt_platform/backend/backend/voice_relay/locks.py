@@ -76,6 +76,11 @@ DAILY_SPEND_TTL_S = 2 * 24 * 3600
 # person's is live. The refusal names the call.
 CALL_IN_PROGRESS = "call_in_progress"
 
+# What a call records when no transcript of it could be made: its job gave up,
+# or the relay took the person's audio and no recording of it was left.
+TRANSCRIPTION_UNAVAILABLE = "transcription_unavailable"
+RECORDING_UNAVAILABLE = "recording_unavailable"
+
 # A call's status on its record, as the call routes report it.
 CallStatus = VoiceCallStatus
 CONNECTING: CallStatus = "connecting"
@@ -426,6 +431,8 @@ class CallRecord(BaseModel):
     # The person's arm of the voice ending experiment, read by the start route
     # and carried in the start token; None for anyone not enrolled.
     ending: str | None = None
+    # The person's call the onboarding row named before this one, if any.
+    prev: str | None = None
     # The task Otto's end tool carried.
     first_task: str | None = None
     # The latest upload of the person's audio, until its transcript is made.
@@ -444,9 +451,11 @@ class CallRecord(BaseModel):
     # Whether the call's words took the person's interview or their typing
     # superseded them, as first claimed (:func:`claim_interview`).
     interview: VoiceCallInterview | None = None
-    # Attempts at the transcript job, and at the hand-off.
+    # Attempts at the transcript job, and at the hand-off, and when the
+    # hand-off's next attempt is due, in seconds since the epoch.
     postcall_attempts: int = 0
     handoff_attempts: int = 0
+    handoff_retry_at: float | None = None
 
     @property
     def took_interview(self) -> bool:

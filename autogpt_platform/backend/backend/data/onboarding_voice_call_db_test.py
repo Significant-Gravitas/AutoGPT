@@ -38,11 +38,19 @@ async def test_a_call_is_recorded_on_the_row_it_creates(new_user: str):
     assert row is not None and row.voiceCallId == call_id
 
 
-async def test_a_later_call_replaces_the_earlier_one(new_user: str):
+async def test_a_later_call_replaces_the_earlier_one_and_names_it(new_user: str):
     first, second = uuid.uuid4().hex, uuid.uuid4().hex
-    await record_onboarding_voice_call(new_user, first)
-    await record_onboarding_voice_call(new_user, second)
+    assert await record_onboarding_voice_call(new_user, first) is None
+    assert await record_onboarding_voice_call(new_user, second) == first
     assert await get_onboarding_voice_call_id(new_user) == second
+
+
+async def test_recording_the_same_call_again_names_no_call_it_replaced(
+    new_user: str,
+):
+    call_id = uuid.uuid4().hex
+    await record_onboarding_voice_call(new_user, call_id)
+    assert await record_onboarding_voice_call(new_user, call_id) is None
 
 
 async def test_a_call_leaves_the_typed_interview_on_the_row_alone(new_user: str):

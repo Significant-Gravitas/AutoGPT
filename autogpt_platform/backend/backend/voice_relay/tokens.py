@@ -134,10 +134,9 @@ def verify_start(token: object, *, now: float | None = None) -> StartClaims:
     if leg not in LEGS:
         raise TokenError("token_invalid")
     ending = claims.get("ending")
-    if ending is not None and not (
-        isinstance(ending, str) and ENDING.fullmatch(ending)
-    ):
-        raise TokenError("token_invalid")
+    if not (isinstance(ending, str) and ENDING.fullmatch(ending)):
+        # An arm this relay cannot read ends the call as an unenrolled one.
+        ending = None
     return StartClaims(
         user_id=claims["uid"],
         call_id=claims["call_id"],

@@ -86,7 +86,8 @@ class RelayDeps(BaseModel):
     # The display name on a user's account, or None.
     account_name: Callable[[str], Awaitable[str | None]]
     # Records a started call on the user's onboarding row: (user id, call id).
-    record_call: Callable[[str, str], Awaitable[None]]
+    # Returns the call it replaced there, or None.
+    record_call: Callable[[str, str], Awaitable[str | None]]
     live_model: str
     # Live calls the whole platform takes at once.
     max_concurrent: int
@@ -380,7 +381,7 @@ async def _start_call(
     if holder is not None:
         await _refuse(ws, "call_in_progress", CLOSE_POLICY, call_id=holder)
         return
-    refusal = await _admit(deps, redis, claims)
+    refusal, replaced = await _admit(deps, redis, claims)
     if refusal is not None:
         await _refuse_try_again(ws, store, claims, refusal)
         return
@@ -432,6 +433,9 @@ async def _start_call(
             leg=leg,
             started=round(time.time(), 3),
             ending=claims.ending,
+            # The person's call before this one, so their calls in between
+            # can be found from the latest without a scan.
+            prev=replaced,
         )
         await session.run()
     finally:
@@ -441,11 +445,12 @@ async def _start_call(
 
 async def _admit(
     deps: RelayDeps, redis: AsyncRedisClient, claims: tokens.StartClaims
-) -> str | None:
+) -> tuple[str | None, str | None]:
     """Take the call's place under the platform's live-call ceiling, then
     record the call on the person's onboarding row.
 
-    Returns the refusal to send when either fails, or None.
+    Returns the refusal to send when either fails, or None, and the call the
+    row named before this one.
     """
     try:
         admitted = await asyncio.wait_for(
@@ -458,13 +463,13 @@ async def _admit(
         logger.warning(
             f"Voice call {claims.call_id}: live calls unreadable", exc_info=True
         )
-        return "unavailable"
+        return "unavailable", None
     if not admitted:
-        return "busy"
+        return "busy", None
     # Recorded once the call holds its lock and its place, so the row names a
     # call that ran.
     try:
-        await asyncio.wait_for(
+        replaced = await asyncio.wait_for(
             deps.record_call(claims.user_id, claims.call_id),
             timeout=RECORD_CALL_TIMEOUT_S,
         )
@@ -473,8 +478,8 @@ async def _admit(
             f"Voice call {claims.call_id}: not recorded on the onboarding row",
             exc_info=True,
         )
-        return "unavailable"
-    return None
+        return "unavailable", None
+    return None, replaced
 
 
 def _hand_over(deps: RelayDeps, slot: CallSlot, session: Session) -> None:

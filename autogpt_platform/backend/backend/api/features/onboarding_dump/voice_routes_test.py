@@ -478,10 +478,15 @@ async def test_a_finish_hands_off_a_call_the_pipeline_never_ruled_on(
     hand_off.assert_awaited_once()
     record = hand_off.await_args.args[1]
     assert (record.call_id, record.uid) == (CALL, test_user_id)
-    assert hand_off.await_args.kwargs == {
-        "confirmed": True,
-        "corrections": "Eight staff.",
-    }
+    kwargs = hand_off.await_args.kwargs
+    # The person's own finish, under the finish's hold on the call.
+    assert (kwargs["confirmed"], kwargs["by_person"], kwargs["corrections"]) == (
+        True,
+        True,
+        "Eight staff.",
+    )
+    assert isinstance(kwargs["claim"], voice_handoff.HandOffClaim)
+    assert kwargs["claim"].call_id == CALL
     # The finish gave the call back once it was done with it.
     assert await redis.get(locks.postcall_claim_key(CALL)) is None
     again = await request("POST", f"/{CALL}/finish")
@@ -512,6 +517,27 @@ async def test_a_finish_already_running_holds_the_next_one_back(
 
     assert response.status_code == 409
     hand_off.assert_not_awaited()
+
+
+async def test_a_finish_whose_claim_reply_was_lost_gives_the_claim_back(
+    redis, test_user_id, hand_off: AsyncMock, mocker: MockerFixture
+):
+    """The claim was written and the wait for its reply gave up: left, the
+    claim would hold every finish back until it lapsed."""
+    await _record(redis, test_user_id, status="transcribed", transcript_of_record="Hi.")
+    claim = locks.claim_postcall
+
+    async def written_then_lost(redis, call_id: str, holder: str, **kwargs):
+        await claim(redis, call_id, holder, **kwargs)
+        await asyncio.sleep(10)
+
+    mocker.patch.object(locks, "claim_postcall", new=written_then_lost)
+
+    response = await request("POST", f"/{CALL}/finish")
+
+    assert response.status_code == 503
+    hand_off.assert_not_awaited()
+    assert await redis.get(locks.postcall_claim_key(CALL)) is None
 
 
 async def test_someone_else_cannot_finish_a_call(redis, hand_off: AsyncMock):
@@ -649,6 +675,26 @@ async def test_a_start_reads_the_persons_ending_arm_and_its_token_carries_it(
     assert voice_ending_flag[(test_user_id, VOICE_ENDING)].variant == (
         "02-profile-card"
     )
+
+
+@pytest.mark.parametrize(
+    "arm",
+    [
+        interview_endings.InterviewEnding.SUMMARY_CHIPS.value,
+        interview_endings.InterviewEnding.COVERAGE_RING.value,
+        "99-an-arm-from-a-later-release",
+    ],
+)
+async def test_a_start_carries_no_arm_the_voice_mode_does_not_offer(voice_on, arm):
+    """The call ends as an unenrolled one does, rather than on a screen the
+    call step does not have."""
+    voice_on.ending.return_value = arm
+
+    body = (await start()).json()
+
+    assert tokens.verify_start(body["token"]).ending is None
+    voice_on.ending.assert_awaited_once()
+    assert voice_on.ending.await_args.args[1] == "voice"
 
 
 # ---------- a call that no longer runs ----------
