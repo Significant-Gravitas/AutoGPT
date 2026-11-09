@@ -608,12 +608,23 @@ async def test_run_stops_the_driver_a_failed_preflight_started(
         return policies[-1]
 
     monkeypatch.setattr(bridge, "_write_policy", write_policy)
+    clients: list = []
+    real_factory = bridge._client_factory
+
+    def client_factory(*args, **kwargs):
+        clients.append(real_factory(*args, **kwargs))
+        return clients[-1]
+
+    monkeypatch.setattr(bridge, "_client_factory", client_factory)
 
     with pytest.raises(DaemonPreflightError):
         await daemon.run()
 
     assert policies and not policies[0].parent.exists()
     assert bridge._client is None
+    # Not just let go: the driver the preflight started has exited.
+    [client] = clients
+    assert client._process is not None and client._process.returncode is not None
 
 
 async def test_daemon_preflight_on_macos_fails_cleanly_on_a_driver_error(
