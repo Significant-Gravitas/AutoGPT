@@ -5936,6 +5936,14 @@ def test_a_refused_message_writes_nothing_first(
 _INTERVIEW = "backend.api.features.onboarding_dump.interview"
 
 
+def _interview_charge(mocker: pytest_mock.MockerFixture) -> AsyncMock:
+    """The interview's turn budget, charged when a turn is dispatched."""
+    return mocker.patch(
+        f"{_INTERVIEW}.enforce_onboarding_interview_allowance",
+        new_callable=AsyncMock,
+    )
+
+
 def test_an_interview_turn_is_admitted_by_the_interview_alone(
     mocker: pytest_mock.MockerFixture, test_user_id: str
 ) -> None:
@@ -5957,6 +5965,7 @@ def test_an_interview_turn_is_admitted_by_the_interview_alone(
         "backend.api.features.chat.routes.enforce_platform_allowance",
         new_callable=AsyncMock,
     )
+    charge = _interview_charge(mocker)
 
     response = client.post(
         "/sessions/sess-1/stream", json={"message": "Yes, that's right."}
@@ -5970,6 +5979,7 @@ def test_an_interview_turn_is_admitted_by_the_interview_alone(
     }
     mocks.paywall.assert_not_awaited()
     platform_allowance.assert_not_awaited()
+    charge.assert_awaited_once_with(test_user_id)
     mocks.enqueue.assert_awaited_once()
     # The goodbye turn is dispatched: its hand-off is lined up behind it.
     started.assert_awaited_once_with(test_user_id, "sess-1", plan)
@@ -5990,6 +6000,86 @@ def test_a_turn_the_interview_refuses_is_never_stored(
 
     assert response.status_code == 409
     mocks.enqueue.assert_not_awaited()
+
+
+def _interview_turn(mocker: pytest_mock.MockerFixture) -> SimpleNamespace:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    mocker.patch(
+        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        new_callable=AsyncMock,
+        return_value=InterviewTurnPlan(reply=3),
+    )
+    mocker.patch(
+        f"{_INTERVIEW}.record_onboarding_interview_turn_started",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    return mocks
+
+
+def test_an_interview_turn_is_charged_just_before_it_is_dispatched(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _interview_turn(mocker)
+    order: list[str] = []
+    charge = _interview_charge(mocker)
+    charge.side_effect = lambda *_: order.append("charge")
+
+    async def dispatch(**_):
+        order.append("dispatch")
+        return "turn-id-mock"
+
+    mocks.enqueue.side_effect = dispatch
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "We bake for cafes.", "message_id": "click-1"},
+    )
+
+    assert response.status_code == 200
+    assert order == ["charge", "dispatch"]
+
+
+def test_a_retransmit_of_an_interview_turn_already_taken_costs_nothing(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _interview_turn(mocker)
+    charge = _interview_charge(mocker)
+    body = {"message": "We bake for cafes.", "message_id": "click-1"}
+
+    assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+    assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+
+    charge.assert_awaited_once()
+    mocks.enqueue.assert_awaited_once()
+
+
+def test_an_interview_turn_its_budget_refuses_releases_the_send_for_a_retry(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Refused at the charge: nothing is stored, and the same send can be
+    tried again once the budget allows it."""
+    mocks = _interview_turn(mocker)
+    charge = _interview_charge(mocker)
+    charge.side_effect = fastapi.HTTPException(
+        status_code=429, detail="You have sent a lot of messages in a short time."
+    )
+    body = {"message": "We bake for cafes.", "message_id": "click-1"}
+
+    refused = client.post("/sessions/sess-1/stream", json=body)
+
+    assert refused.status_code == 429
+    mocks.enqueue.assert_not_awaited()
+    assert mocks.claims.keys == set()
+
+    charge.side_effect = None
+    assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+    mocks.enqueue.assert_awaited_once()
 
 
 def test_attachments_in_an_interview_go_to_the_interview_s_admission(
@@ -6029,6 +6119,8 @@ def test_a_follow_up_queued_in_an_interview_is_admitted_by_the_interview(
         new_callable=AsyncMock,
     )
 
+    charge = _interview_charge(mocker)
+
     response = client.post(
         "/sessions/sess-1/messages/pending", json={"message": "And weddings."}
     )
@@ -6036,6 +6128,8 @@ def test_a_follow_up_queued_in_an_interview_is_admitted_by_the_interview(
     assert response.status_code == 200
     assert admit.await_args.kwargs == {"has_attachments": False}
     paywall.assert_not_awaited()
+    # It rides the running turn and starts nothing, so it costs nothing.
+    charge.assert_not_awaited()
 
 
 def test_an_interview_turn_ignores_the_request_s_model_voice_and_approval_mode(
@@ -6055,6 +6149,7 @@ def test_an_interview_turn_ignores_the_request_s_model_voice_and_approval_mode(
         f"{_INTERVIEW}.record_onboarding_interview_turn_started",
         new_callable=AsyncMock,
     )
+    _interview_charge(mocker)
     entitled = mocker.patch(
         "backend.api.features.chat.routes.advanced_tier_entitled",
         new_callable=AsyncMock,

@@ -13007,7 +13007,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Start Onboarding Interview",
-        "description": "Open the person's onboarding interview, with Otto speaking first.\n\nThe first call starts Otto's greeting; every later one adopts the same\ninterview, so Back, a reload and a second tab land in one conversation.\n``turn_id`` is set only when this call started the greeting. A greeting\nalready being written is answered without one, like an interview under\nway: the client reads the session, which resumes the running turn.\n\n409 once the interview is over, 429 at its turn budget (with\n``Retry-After``), 503 while the budget or the chat stream cannot be read.",
+        "description": "Open the person's onboarding interview, with Otto speaking first.\n\nThe first call starts Otto's greeting; every later one adopts the same\ninterview, so Back, a reload and a second tab land in one conversation.\n``turn_id`` is set only when this call started the greeting. A greeting\nalready being written is answered without one, like an interview under\nway: the client reads the session, which resumes the running turn. An\ninterview that is over is answered the same way, with its ``stage``, so\nthe client shows how it ended and the finish button.\n\n429 at its turn budget, 503 while the budget or the chat stream cannot be\nread. A 429 carries its wait in the body (``retry_after_seconds``) as\nwell as in ``Retry-After``: the browser's API client keeps a refusal's\nbody, not its headers.",
         "operationId": "start_onboarding_interview",
         "responses": {
           "200": {
@@ -13031,7 +13031,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Finish Onboarding Interview",
-        "description": "The person ends the interview on screen: close it if it is still\nopen, and hand what they said to the onboarding pipeline.\n\nIdempotent: an interview already handed off is not handed off again, and\nthe response describes its take as it stands. The pipeline's jobs run\nafter the response, as a typed brain dump's do. 404 when the person has\nno interview.",
+        "description": "The person ends the interview on screen: close it if it is still\nopen, and hand what they said to the onboarding pipeline.\n\nIdempotent: an interview already handed off is not handed off again, and\nthe response describes its take as it stands. A take that failed without\na ruling on the words (``quality_check_unavailable``, or no code) leaves\nthe interview to be handed off again on the next call. The pipeline's\njobs run after the response, as a typed brain dump's do. 404 when the\nperson has no interview. A 429 carries its wait in the body\n(``retry_after_seconds``), as the start route's does.",
         "operationId": "finish_onboarding_interview",
         "responses": {
           "200": {

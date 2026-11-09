@@ -92,6 +92,7 @@ from backend.copilot.service import (
     strip_injected_context_for_display,
     strip_server_injected_tags,
 )
+from backend.data.db_accessors import chat_db
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import NotFoundError
 
@@ -103,6 +104,16 @@ INTERVIEW_RECORDING_PREFIX = "interview-"
 # as the chat continuation route words it. The start route answers it with
 # the interview to follow, since that turn is usually Otto's greeting.
 TURN_IN_PROGRESS = "turn_in_progress"
+
+# The take a hand-off answers with when a newer take owns the user's row
+# (``service.finalize_typed_dump``).
+SUPERSEDED = "superseded"
+
+# Failed takes that are still the pipeline's last word on an interview's
+# words: a verdict on them, or a newer take that must not be replaced.
+_FINAL_FAILURES = frozenset(
+    {quality.NO_USABLE_SPEECH, quality.INSUFFICIENT_CONTENT, SUPERSEDED}
+)
 
 # How long a close waits for the turn that ends the interview to finish
 # before leaving the interview to the next request that touches it.
@@ -129,9 +140,11 @@ async def enforce_onboarding_interview_allowance(user_id: str) -> None:
     interview's turns past its own allowance gate, ``budget_gate.refusal_for``,
     the same way). It is bounded instead by:
 
-    - its own turn budget, on the personalization budget's rules
-      (``rate_limit.enforce_interview_turn_budget``), charged here;
-    - one interview per user (``onboarding_interview_session_id``);
+    - its own turn budget, on the personalization budget's rules and on
+      every tier (``rate_limit.enforce_interview_turn_budget``), charged here
+      once a turn is about to be dispatched;
+    - one interview per user (its session id, recorded on the user's
+      onboarding row);
     - the code-owned reply cap (``INTERVIEW_TURN_CAP``);
     - no turn once it is closed or handed off (409 here, a refused turn on
       the executor);
@@ -152,36 +165,37 @@ class StartedInterview:
     turn_id: str | None
 
 
-async def start_onboarding_interview(
-    user_id: str,
-    *,
-    organization_id: str | None = None,
-    team_id: str | None = None,
-) -> StartedInterview:
+async def start_onboarding_interview(user_id: str) -> StartedInterview:
     """Open the user's onboarding interview and have Otto speak first.
 
     The one call a route makes to start or reopen an interview. The user has
     one interview, so a second call adopts it; an interview the user has
     already spoken in, or whose greeting was written, is reopened with
-    nothing new started. Otto's first turn, once this call dispatches it, is
-    settled when it ends, as every dispatched turn is
-    (:func:`record_onboarding_interview_turn_started`).
+    nothing new started. So is one that is over, so the person sees how it
+    ended and the way on; one over but not yet handed off is handed off in
+    the background, as the chat routes do. The greeting is charged to the
+    interview's budget only once nothing else is running in it. Otto's first
+    turn, once this call dispatches it, is settled when it ends, as every
+    dispatched turn is (:func:`record_onboarding_interview_turn_started`).
 
     Raises:
-        HTTPException: 409 when the interview is over or a turn is already
-            running in it (the client follows that turn's stream instead),
-            429 at the cap on turns running at once, and whatever
+        HTTPException: 409 when a turn is already running in it (the client
+            follows that turn's stream instead), 429 at the cap on turns
+            running at once, and whatever
             :func:`enforce_onboarding_interview_allowance` raises.
     """
-    session = await get_or_create_onboarding_interview_session(
-        user_id, organization_id=organization_id, team_id=team_id
-    )
+    session = await get_or_create_onboarding_interview_session(user_id)
     if interview_is_over(session):
-        raise HTTPException(status_code=409, detail=INTERVIEW_CLOSED)
+        if session.metadata.onboarding_interview_stage != INTERVIEW_STAGE_HANDED_OFF:
+            spawn_background_task(
+                hand_off_closed_interview(user_id, session.session_id),
+                name=f"interview-hand-off-{session.session_id[:12]}",
+            )
+        return StartedInterview(session=session, turn_id=None)
     if user_has_spoken(session) or count_answered_turns(session.messages) > 0:
         return StartedInterview(session=session, turn_id=None)
-    await enforce_onboarding_interview_allowance(user_id)
     await _refuse_if_busy(session.session_id)
+    await enforce_onboarding_interview_allowance(user_id)
     try:
         turn_id = await kick_off_onboarding_interview(session)
     except ConcurrentTurnLimitError as exc:
@@ -225,16 +239,19 @@ async def admit_onboarding_interview_turn(
     has_attachments: bool = False,
 ) -> InterviewTurnPlan:
     """Admit a message into an onboarding interview, as a new turn or queued
-    on the running one, and charge it to the interview's budget.
+    on the running one.
 
     Every route that takes a message into an interview calls this in place of
     its own paywall and allowance checks. ``session`` is the route's own
-    read of the session row, so the stage it holds is the database's.
+    read of the session row, so the stage it holds is the database's. The
+    interview's budget is charged later, by the route, once the message is
+    about to start a turn (:func:`enforce_onboarding_interview_allowance`): a
+    message that rides a running turn, or a retransmit of one already taken,
+    starts nothing and costs nothing.
 
     Raises:
         HTTPException: 409 once the interview is over, 422 for a request an
-            interview never takes (a non-user turn, an expert kickoff, files),
-            and whatever :func:`enforce_onboarding_interview_allowance` raises.
+            interview never takes (a non-user turn, an expert kickoff, files).
     """
     full = await get_chat_session(session.session_id, user_id)
     if full is None:
@@ -259,7 +276,6 @@ async def admit_onboarding_interview_turn(
                 name=f"interview-hand-off-{session.session_id[:12]}",
             )
         raise HTTPException(status_code=409, detail=refused.code) from refused
-    await enforce_onboarding_interview_allowance(user_id)
     return plan
 
 
@@ -431,10 +447,13 @@ async def close_onboarding_interview(
     *corrections* reach the hand-off as the person's own words.
 
     Safe to call again: an interview closes and is handed off once, and a
-    call on one already handed off describes its take as it stands. A
-    hand-off that fails leaves the interview closed but not handed off, for
-    the next call to retry. *background_tasks* runs the pipeline's jobs after
-    a route's response; without it they run before this returns.
+    call on one already handed off describes its take as it stands. It is
+    handed off once the pipeline has ruled on its words
+    (:func:`hand_off_is_final`); a hand-off the pipeline never ruled on
+    leaves it closed but not handed off, for the next call to retry. Closing
+    also drops any question Otto left waiting, so Home never lists it.
+    *background_tasks* runs the pipeline's jobs after a route's response;
+    without it they run before this returns.
 
     Raises:
         NotFoundError: no onboarding interview of *user_id*'s has this id.
@@ -449,6 +468,8 @@ async def close_onboarding_interview(
         session_id, user_id, INTERVIEW_STAGE_CLOSED
     ):
         logger.info(f"Onboarding interview {session_id[:12]} closed: {reason}")
+    if stored.metadata.pending_question is not None:
+        await _drop_pending_question(user_id, session_id)
     if ending is None:
         ending = await _stamp_ending(user_id, session_id, "text")
     if not (confirmed or hands_off_on_close(ending)):
@@ -460,12 +481,39 @@ async def close_onboarding_interview(
         with_corrections(interview_transcript(session.messages), corrections),
         tasks,
     )
-    await update_session_interview_stage(
-        session_id, user_id, INTERVIEW_STAGE_HANDED_OFF
-    )
+    if hand_off_is_final(response):
+        await update_session_interview_stage(
+            session_id, user_id, INTERVIEW_STAGE_HANDED_OFF
+        )
     if background_tasks is None:
         await tasks()
     return InterviewClosure(ending=ending, hand_off=response)
+
+
+def hand_off_is_final(response: FinalizeResponse) -> bool:
+    """Whether the pipeline's answer to a hand-off is final for the
+    interview's words, so the interview is handed off.
+
+    It is unless the take failed without a ruling on the words: a failure
+    with a verdict on them (``no_usable_speech``, ``insufficient_content``)
+    is final, and so is ``superseded``, since a newer take owns the row and
+    this one must never replace it. A failure the pipeline never ruled on
+    (the judge could not be asked, or no code at all) is not; nor is a
+    refusal it raised (429, 503), which never reaches here.
+    """
+    if response.status != BrainDumpStatus.failed:
+        return True
+    return response.error_code in _FINAL_FAILURES
+
+
+async def _drop_pending_question(user_id: str, session_id: str) -> None:
+    try:
+        await chat_db().clear_session_pending_question(session_id, user_id)
+    except Exception:
+        logger.warning(
+            f"Onboarding interview {session_id[:12]}: waiting question not cleared",
+            exc_info=True,
+        )
 
 
 async def finalize_onboarding_interview(
@@ -559,8 +607,9 @@ def interview_transcript(messages: Sequence[ChatMessage]) -> str:
     """The user's own words from an interview, one message per line.
 
     Otto's side is left out, and so are rows the user never saw (the hidden
-    kickoff) and the blocks the server put in front of a message
-    (``<user_context>``, ``<voice_turn>``, ...). An answer given on an
+    kickoff), rows sent from another session (``from_session_id``), and the
+    blocks the server put in front of a message (``<user_context>``,
+    ``<voice_turn>``, ...). An answer given on an
     ``ask_question`` card keeps only the answer: the stored row also quotes
     Otto's questions and the platform's framing (:func:`_own_answers`). The
     pipeline treats the whole text as something the user said: the greeting
@@ -569,7 +618,11 @@ def interview_transcript(messages: Sequence[ChatMessage]) -> str:
     """
     lines: list[str] = []
     for message in messages:
-        if message.role != "user" or is_hidden_chat_message(message.metadata):
+        if (
+            message.role != "user"
+            or is_hidden_chat_message(message.metadata)
+            or _sent_from_another_session(message.metadata)
+        ):
             continue
         text = _own_answers(
             strip_injected_context_for_display(message.content or "").strip()
@@ -577,6 +630,10 @@ def interview_transcript(messages: Sequence[ChatMessage]) -> str:
         if text:
             lines.append(text)
     return "\n".join(lines)[:MAX_TYPED_CHARS]
+
+
+def _sent_from_another_session(metadata: dict | None) -> bool:
+    return bool((metadata or {}).get("from_session_id"))
 
 
 def _own_answers(text: str) -> str:
@@ -634,11 +691,19 @@ async def hand_off_interview_transcript(
 
 async def _handed_off_take(user_id: str, session_id: str) -> FinalizeResponse:
     dump = await dump_db.get_dump(user_id)
-    if dump is None or dump.recordingId != interview_recording_id(session_id):
+    if dump is None:
+        # The only hand-off that leaves no row is one where nothing was said
+        # (:func:`hand_off_interview_transcript`).
         return FinalizeResponse(
             status=BrainDumpStatus.failed,
             input_mode=BrainDumpInputMode.typed,
-            error_code="superseded",
+            error_code=quality.NO_USABLE_SPEECH,
+        )
+    if dump.recordingId != interview_recording_id(session_id):
+        return FinalizeResponse(
+            status=BrainDumpStatus.failed,
+            input_mode=BrainDumpInputMode.typed,
+            error_code=SUPERSEDED,
         )
     return FinalizeResponse(
         status=dump.status,
