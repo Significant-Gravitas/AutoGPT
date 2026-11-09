@@ -772,6 +772,25 @@ export function useVoiceCall(args: Args) {
       return;
     }
     if (attempt !== conn.attempt) return;
+    if (outcome === "superseded") {
+      // Another take owns the interview, and the call's record says whose:
+      // the person's typing opens the typed interview; any other leads on.
+      const call = await readStatus(callId);
+      if (attempt !== conn.attempt) return;
+      if (call === null) {
+        conn.isLeaving = false;
+        setIsLeaving(false);
+        setFinishFailure({ kind: "failed" });
+        return;
+      }
+      if (call !== "missing" && answerOf(call) === "typed") {
+        conn.isLeaving = false;
+        setIsLeaving(false);
+        openTypedForLaterTake();
+        return;
+      }
+      outcome = "A";
+    }
     if (outcome === "A") {
       await argsRef.current.onLeave("A");
       return;

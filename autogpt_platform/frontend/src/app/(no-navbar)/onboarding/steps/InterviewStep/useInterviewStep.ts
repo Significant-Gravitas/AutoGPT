@@ -305,6 +305,15 @@ export function useInterviewStep() {
       const response = await finishOnboardingInterview();
       path = response.status === 200 ? finishPathOf(response.data) : null;
     } catch (finishError) {
+      // Refused because a voice call holds the interview: the call shows,
+      // as it does for the typed start.
+      const heldBy = refusalOf(finishError).heldBy;
+      if (heldBy?.callId) {
+        isLeavingRef.current = false;
+        setIsLeaving(false);
+        showCallThatHolds(heldBy);
+        return;
+      }
       failure = finishFailureOf(finishError);
     }
     if (path === null) {

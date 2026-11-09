@@ -231,11 +231,8 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
 
 // --- The server's side -------------------------------------------------------
 
-// A call's record as the call-state routes answer it, with its word on who
-// owns the interview.
-type CallRecord = VoiceCallStatusResponse & {
-  interview?: "taken" | "superseded" | null;
-};
+// A call's record as the call-state routes answer it.
+type CallRecord = VoiceCallStatusResponse;
 
 interface Answer {
   status: number;
@@ -245,6 +242,13 @@ interface Answer {
 const ACCEPTED: FinalizeResponse = {
   status: "transcribed",
   input_mode: "typed",
+};
+
+// The finish's answer for a call whose take another take beat.
+const SUPERSEDED_TAKE: FinalizeResponse = {
+  status: "failed",
+  input_mode: "typed",
+  error_code: "superseded",
 };
 
 function callRecord(overrides: Partial<CallRecord> = {}): CallRecord {
@@ -435,6 +439,14 @@ function refuseTypedStartOnce(answer: Answer) {
         return HttpResponse.json(answer.body ?? {}, { status: answer.status });
       },
       { once: true },
+    ),
+  );
+}
+
+function refuseTypedFinish(answer: Answer) {
+  server.use(
+    http.post("/api/proxy/api/onboarding/brain-dump/interview/finish", () =>
+      HttpResponse.json(answer.body ?? {}, { status: answer.status }),
     ),
   );
 }
@@ -1411,6 +1423,53 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
   });
 
+  it("opens the typed interview when the call's finish answers that the person's typing superseded it", async () => {
+    callStates[CALL_ID] = [callRecord({ end_reason: "vendor_error" })];
+    server.use(
+      getFinishOnboardingVoiceCallMockHandler200(({ params }) => {
+        finishes.push(String(params.callId));
+        // The person typed into their interview after the call ended.
+        callStates[CALL_ID] = [
+          callRecord({ end_reason: "vendor_error", interview: "superseded" }),
+        ];
+        return SUPERSEDED_TAKE;
+      }),
+    );
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "vendor_error");
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Meet your team" }));
+
+    expect(await screen.findByText(GREETING)).toBeDefined();
+    expect(finishes).toEqual([CALL_ID]);
+    expect(screen.queryByTestId("step-plan")).toBeNull();
+    expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
+  });
+
+  it("moves on as path A when the call's finish answers that another take beat it", async () => {
+    callStates[CALL_ID] = [callRecord({ end_reason: "vendor_error" })];
+    server.use(
+      getFinishOnboardingVoiceCallMockHandler200(({ params }) => {
+        finishes.push(String(params.callId));
+        return SUPERSEDED_TAKE;
+      }),
+    );
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "vendor_error");
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Meet your team" }));
+
+    await expectPlanStep();
+    expect(finishes).toEqual([CALL_ID]);
+    expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
+  });
+
   it("reads a lost call's words before saying anything about typing, then shows the lost screen", async () => {
     const transcribing = callRecord({
       status: "transcribing",
@@ -1473,15 +1532,10 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(mints).toBe(2);
   });
 
-  it.each([["transcribing"], ["handing_off"]])(
+  it.each(["transcribing", "handing_off"] as const)(
     "keeps Wrapping up beside Type instead past the wait while the call is %s, and stops reading the call once the person types",
     async (status) => {
-      callStates[CALL_ID] = [
-        callRecord({
-          status: status as CallRecord["status"],
-          hand_off: null,
-        }),
-      ];
+      callStates[CALL_ID] = [callRecord({ status, hand_off: null })];
       render(<OnboardingPage />);
       const socket = await liveCall();
 
@@ -1629,6 +1683,58 @@ describe("onboarding interview by voice: one interview, typed or spoken", () => 
     ).toBeDefined();
     expect(screen.queryByPlaceholderText("Type your answer…")).toBeNull();
     expect(screen.queryByText(/onboarding_interview_closed/)).toBeNull();
+  });
+
+  it("shows the call's ending when the typed finish is refused for a call that took the interview", async () => {
+    typedMessages = [KICKOFF_ROW, GREETING_ROW, TYPED_ANSWER_ROW];
+    callStates[CALL_ID] = [callRecord({ interview: "taken" })];
+    refuseTypedFinish({
+      status: 409,
+      body: {
+        detail: { code: "onboarding_interview_closed", call_id: CALL_ID },
+      },
+    });
+    render(<OnboardingPage />);
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Type instead" }),
+    );
+    await user.click(await screen.findByRole("button", { name: "I'm done" }));
+
+    expect(
+      await screen.findByText("That's everything Otto needed."),
+    ).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Meet your team" }));
+
+    await expectPlanStep();
+    expect(finishes).toEqual([]);
+    expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
+  });
+
+  it("offers End that call when the typed finish is refused for a live call", async () => {
+    typedMessages = [KICKOFF_ROW, GREETING_ROW, TYPED_ANSWER_ROW];
+    callStates[OTHER_CALL_ID] = [
+      callRecord({ call_id: OTHER_CALL_ID, status: "live", end_reason: null }),
+    ];
+    refuseTypedFinish({
+      status: 409,
+      body: { detail: { code: "call_in_progress", call_id: OTHER_CALL_ID } },
+    });
+    render(<OnboardingPage />);
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Type instead" }),
+    );
+    await user.click(await screen.findByRole("button", { name: "I'm done" }));
+
+    expect(
+      await screen.findByText(
+        "Your call with Otto is still going in another tab or on another device.",
+      ),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "End that call" })).toBeDefined();
+    expect(screen.queryByText("That didn't go through. Try again.")).toBeNull();
+    expect(screen.queryByTestId("step-plan")).toBeNull();
   });
 
   it("opens the typed interview with no call screen when a later take superseded the latest call", async () => {

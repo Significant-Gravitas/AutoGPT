@@ -8,7 +8,6 @@ import {
   ENDING_POLL_MS,
   ENDING_WINDOW_MS,
   endedCopy,
-  interviewOf,
   isRelaySocketUrl,
   microphoneRefusalOf,
   parseRelayMessage,
@@ -25,9 +24,7 @@ const CALL_ID = "c".repeat(32);
 const ACCEPTED = { status: "transcribed", input_mode: "typed" } as const;
 
 function call(
-  overrides: Partial<VoiceCallStatusResponse> & {
-    interview?: "taken" | "superseded" | null;
-  } = {},
+  overrides: Partial<VoiceCallStatusResponse> = {},
 ): VoiceCallStatusResponse {
   return {
     call_id: CALL_ID,
@@ -36,7 +33,7 @@ function call(
     leg: "websocket",
     hand_off: ACCEPTED,
     ...overrides,
-  } as VoiceCallStatusResponse;
+  };
 }
 
 function failed(errorCode: string | null) {
@@ -128,21 +125,15 @@ describe("the relay socket the server names", () => {
 describe("what a call's record answers", () => {
   it("waits while the call runs or its words are on their way to a take", () => {
     // `handing_off` is how the call routes report a call owed a hand-off.
-    for (const status of [
+    const unsettled: VoiceCallStatusResponse["status"][] = [
       "connecting",
       "live",
       "ended",
       "transcribing",
       "handing_off",
-    ]) {
-      expect(
-        answerOf(
-          call({
-            status: status as VoiceCallStatusResponse["status"],
-            hand_off: null,
-          }),
-        ),
-      ).toBeNull();
+    ];
+    for (const status of unsettled) {
+      expect(answerOf(call({ status, hand_off: null }))).toBeNull();
     }
   });
 
@@ -289,11 +280,11 @@ describe("what a call's record answers", () => {
     },
   );
 
-  it("knows only the two words the record can say on the interview", () => {
-    expect(interviewOf(call({ interview: "taken" }))).toBe("taken");
-    expect(interviewOf(call({ interview: "superseded" }))).toBe("superseded");
-    expect(interviewOf(call({ interview: null }))).toBeNull();
-    expect(interviewOf(call())).toBeNull();
+  it("leads on as path A from a closed call whose take another take beat", () => {
+    expect(answerOf(call({ hand_off: failed("superseded") }))).toEqual({
+      kind: "team",
+      path: "A",
+    });
   });
 
   it("tells a call that ran to its close from one cut off", () => {
@@ -304,9 +295,12 @@ describe("what a call's record answers", () => {
 });
 
 describe("what a finish of a call answers", () => {
-  it("leads on for an accepted take, or one a newer take owns", () => {
+  it("leads on for an accepted take", () => {
     expect(voiceFinishOutcome(ACCEPTED)).toBe("A");
-    expect(voiceFinishOutcome(failed("superseded"))).toBe("A");
+  });
+
+  it("says when another take owns the interview, for the call's record to tell whose", () => {
+    expect(voiceFinishOutcome(failed("superseded"))).toBe("superseded");
   });
 
   it("keeps the interview open for a verdict on the words", () => {

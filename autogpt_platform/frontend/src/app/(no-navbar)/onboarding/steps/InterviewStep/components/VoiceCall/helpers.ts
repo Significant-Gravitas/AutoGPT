@@ -1,5 +1,6 @@
 import type { FinalizeResponse } from "@/app/api/__generated__/models/finalizeResponse";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
+import type { VoiceCallStatusResponseStatus } from "@/app/api/__generated__/models/voiceCallStatusResponseStatus";
 import { isVoiceCallCaps } from "@/services/onboarding/voice-call-ticket";
 import { describeWait, type Refusal } from "../../helpers";
 import type { CallLeg, RelayMessage } from "./protocol";
@@ -17,8 +18,9 @@ export const ENDING_SLOW_POLL_MS = 5_000;
 // A call someone asked to end leaves the live state within a second or so.
 export const END_POLL_MS = 1_000;
 export const END_WAIT_MS = 10_000;
-// A relay that asks the browser to try again (1013) leaves the start token
-// good, so the same token is tried again, a few times.
+// A relay that refuses a start with "try again" (1013) gives the start token
+// back first, or never spent it, so the same token is tried again, a few
+// times. A retry the relay refuses outright (1008) is a start that failed.
 export const START_RETRIES = 3;
 export const START_RETRY_MS = 1_500;
 // "Reconnected" stays up this long after a re-attach.
@@ -217,7 +219,7 @@ const RAN_TO_CLOSE = new Set([
 // The call is running, or its words are still on their way to a take: being
 // transcribed, or handed off (the call routes report a call owed a hand-off
 // as `handing_off`). `transcribed` alone means a confirm is awaited.
-const UNSETTLED = new Set([
+const UNSETTLED = new Set<VoiceCallStatusResponseStatus>([
   "connecting",
   "live",
   "ended",
@@ -262,31 +264,20 @@ export function isSettled(call: VoiceCallStatusResponse) {
   return !UNSETTLED.has(call.status);
 }
 
-// Who owns the interview, as the call's record says: its words took it, or
-// a take the person made after it did. Absent while neither has happened.
-export type CallInterview = "taken" | "superseded";
-
-export function interviewOf(
-  call: VoiceCallStatusResponse,
-): CallInterview | null {
-  const value = (call as { interview?: unknown }).interview;
-  return value === "taken" || value === "superseded" ? value : null;
-}
-
-// How the step answers a call it reads. The record's word on the interview
-// comes first: a call a later take superseded is no screen, so the typed
-// interview opens. Then, once the words have an answer, the end reason and
-// the status decide the call's ending; null while the words are on their
-// way. `taken` says the server named this call as the one that took the
-// interview.
+// How the step answers a call it reads. The record's word on who owns the
+// interview comes first: a call the person's typing superseded is no screen,
+// so the typed interview opens. Then, once the words have an answer, the end
+// reason and the status decide the call's ending; null while the words are
+// on their way. `taken` says the server named this call as the one that took
+// the interview.
 export function answerOf(
   call: VoiceCallStatusResponse,
   { taken = false }: { taken?: boolean } = {},
 ): CallEnding | "typed" | null {
-  const interview = interviewOf(call);
-  if (interview === "superseded") return "typed";
+  if (call.interview === "superseded") return "typed";
   if (!isSettled(call)) return null;
-  const closed = taken || interview === "taken" || ranToClose(call.end_reason);
+  const closed =
+    taken || call.interview === "taken" || ranToClose(call.end_reason);
   const reason = call.end_reason ?? null;
   if (call.status === "failed") {
     const failure = failureOf(call.hand_off?.error_code ?? null);
@@ -295,24 +286,28 @@ export function answerOf(
     return { kind: "unsaved", reason };
   }
   if (closed && call.status === "handed_off") {
-    const path = call.hand_off ? voiceFinishOutcome(call.hand_off) : null;
-    return { kind: "team", path: path === "A" ? "A" : null };
+    const outcome = call.hand_off ? voiceFinishOutcome(call.hand_off) : null;
+    // Not the person's typing, read above: another take that beat this one
+    // owns the interview, and leads on as an accepted take does.
+    const leadsOn = outcome === "A" || outcome === "superseded";
+    return { kind: "team", path: leadsOn ? "A" : null };
   }
   if (closed && call.status === "transcribed")
     return { kind: "team", path: null };
   return { kind: "lost", reason };
 }
 
-// What a finish of a call answers, read for a call: an accepted take, or one
-// a newer take owns, leads on to the team; a verdict on the words keeps the
-// interview open for another call or for typing; anything else is tried
-// again.
+// What a finish of a call answers, read for a call: an accepted take leads
+// on to the team; `superseded` says another take owns the interview, which
+// the call's record tells apart (the person's typing, or a take that leads
+// on); a verdict on the words keeps the interview open for another call or
+// for typing; a hand-off nobody ruled on is tried again (null).
 export function voiceFinishOutcome(
   response: FinalizeResponse,
-): "A" | "insufficient" | "unsaved" | null {
+): "A" | "superseded" | "insufficient" | "unsaved" | null {
   if (response.status !== "failed") return "A";
   const code = response.error_code ?? null;
-  if (code === SUPERSEDED) return "A";
+  if (code === SUPERSEDED) return "superseded";
   const failure = failureOf(code);
   return failure === "retry" ? null : failure;
 }
