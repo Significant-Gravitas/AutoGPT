@@ -1005,8 +1005,10 @@ Error codes:
   the call already did stays done. Neither is retried automatically (see
   [Idempotency](#idempotency)); the model decides, and may send a call that
   didn't start again. `EXECUTE_COMMAND` doesn't use this code: on timeout it
-  returns `COMMAND_RESULT` with `timed_out: true` and `exit_code = -1`, so
-  callers branch on the `timed_out` flag.
+  returns `COMMAND_RESULT` with `timed_out: true`, and `exit_code` is the
+  stopped process's own status (on POSIX the negated signal that ended it,
+  such as -15 or -9), or -1 when there is none to read, so callers branch on
+  the `timed_out` flag, not the code.
 - `SHELL_NOT_AVAILABLE` — `shell` selector requested a shell not installed on this OS
 - `UNSUPPORTED_ARCH` — HELLO `arch` value not recognized
 - `CAPABILITY_NOT_GRANTED` — requested capability not in granted_capabilities
