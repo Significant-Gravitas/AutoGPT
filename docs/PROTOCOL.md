@@ -166,10 +166,10 @@ ceiling but cannot expand access beyond the user's local policy.
 
 The ACK must carry the same message ID as `HELLO` and only capabilities
 advertised by the shim. On a data connection it must carry the exact selected
-session ID. On the base control connection it must carry a null/empty session
-ID, an opaque `connection_id`, a 2.x protocol version (named in
-`protocol_version`, not left to its default), and the `directory_browse`
-capability. A control
+session ID. On the base control connection it must carry a `session_id`
+that is null or empty (named, not left out), an opaque `connection_id`, a
+2.x protocol version (named in `protocol_version`, not left to its
+default), and the `directory_browse` capability. A control
 daemon fails terminally when any of those fields are missing, closing with
 4426, or when the ACK doesn't parse at all, closing with 4400. The shim
 enforces the granted subset on every subsequent request.

@@ -947,10 +947,12 @@ class ShimDaemon:
             )
             raise RuntimeError("HELLO_ACK contained an invalid protocol version") from exc
         # The model fills in an omitted protocol_version as this shim's own
-        # version, so whether the platform named one is asked separately.
-        # Every 2.x platform speaks the machine-control protocol.
+        # version, and an omitted session_id as null, so whether the platform
+        # named them is asked separately. Every 2.x platform speaks the
+        # machine-control protocol.
         if self._control_mode and (
-            "protocol_version" not in payload.model_fields_set
+            "session_id" not in payload.model_fields_set
+            or "protocol_version" not in payload.model_fields_set
             or "directory_browse" not in payload.granted_capabilities
             or not payload.connection_id
         ):

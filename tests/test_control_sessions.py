@@ -434,7 +434,9 @@ class _AckSocket:
             raise OSError("the connection was reset")
 
 
+# As the platform sends it: a control ACK names its null session.
 _CONTROL_ACK: dict[str, Any] = {
+    "session_id": None,
     "connection_id": "connection-1",
     "granted_capabilities": ["files", "directory_browse"],
     "protocol_version": "2.0",
@@ -449,6 +451,7 @@ _CONTROL_ACK: dict[str, Any] = {
         ("granted_capabilities", 4400),
         ("protocol_version", 4426),
         ("connection_id", 4426),
+        ("session_id", 4426),
     ],
 )
 async def test_a_control_hello_ack_missing_a_required_field_stops_the_daemon(
@@ -457,8 +460,9 @@ async def test_a_control_hello_ack_missing_a_required_field_stops_the_daemon(
     """PROTOCOL.md: a control daemon fails terminally when its HELLO_ACK
     lacks a required field. One without granted_capabilities failed to parse
     before the flag was set, so run() reconnected with backoff; one without
-    protocol_version was taken for the shim's own; and a close that raised skipped the
-    flag on every path."""
+    protocol_version was taken for the shim's own; one without session_id
+    was taken for a null one; and a close that raised skipped the flag on
+    every path."""
     daemon = _control_daemon(tmp_path)
     payload = {key: value for key, value in _CONTROL_ACK.items() if key != missing}
     websocket = _AckSocket(payload, close_fails=close_fails)
