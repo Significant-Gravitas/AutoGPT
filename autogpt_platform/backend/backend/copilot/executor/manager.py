@@ -15,13 +15,12 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import AMQPChannelError, AMQPConnectionError
 from pika.spec import Basic, BasicProperties
-from prometheus_client import Counter, Gauge, start_http_server
+from prometheus_client import Gauge, start_http_server
 from pydantic import BaseModel, ValidationError
 
 import backend.data.llm_registry
 from backend.blocks import get_blocks
-from backend.copilot import after_turn, engine_switch, stream_registry
-from backend.copilot.executor.utils import schedule_turn
+from backend.copilot import after_turn, stream_registry
 from backend.copilot.turn_metrics import turns_counter
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
@@ -660,128 +659,22 @@ class CoPilotExecutor(AppProcess):
 
 
 def _dispatch_after_turn(session_id: str, turn_id: str, error_msg: str | None) -> None:
-    """Start what a turn left for after it: an engine-switch continuation, then
-    the work it deferred (``after_turn``), such as the held-call wake.
-
-    Called from the turn future's done-callback: the turn thread has fully
-    finished (fail-close ran, message acked, cluster lock released,
-    active_tasks cleaned), so neither the fail-close CAS nor the RMQ
-    same-session duplicate rejection can kill a turn started here.
-    """
-    switch = engine_switch.pop_switch(session_id)
-    if switch is not None and error_msg is not None:
-        # Turn failed — the persisted history (and thus the derived
-        # building-mode signal) can't be trusted, so no continuation fires.
-        # Not silent: the session is idle and the user's next message
-        # re-resolves the engine.
-        logger.info(
-            f"Engine-switch continuation for {session_id} not "
-            f"dispatched — turn ended with error: {error_msg}"
-        )
-        switch = None
     deferred = after_turn.turn_finished(turn_id)
-    if switch is None and not deferred:
+    if not deferred:
         return
-    # One short-lived thread, one event loop: the async RabbitMQ client is
-    # @thread_cached and loop-bound, so a pool thread or a second loop on
-    # the same thread would reuse a client bound to a closed loop.
     threading.Thread(
-        target=lambda: asyncio.run(_after_turn(session_id, switch, deferred)),
+        target=lambda: asyncio.run(_after_turn(session_id, deferred)),
         name=f"after-turn-{session_id[:8]}",
         daemon=True,
     ).start()
 
 
-async def _after_turn(
-    session_id: str,
-    switch: engine_switch.SwitchRequest | None,
-    deferred: list[after_turn.Work],
-) -> None:
-    # The continuation first: a wake after it finds the chat running and
-    # leaves its answered cards to that turn's start.
-    if switch is not None:
-        await _dispatch_engine_switch_continuation(session_id, switch)
+async def _after_turn(session_id: str, deferred: list[after_turn.Work]) -> None:
     for work in deferred:
         try:
             await work()
         except Exception as work_err:
             logger.error(f"After-turn work for {session_id} failed: {work_err}")
-
-
-_SWITCH_DISPATCH_ATTEMPTS = 3
-
-
-async def _dispatch_engine_switch_continuation(
-    session_id: str, switch: engine_switch.SwitchRequest
-) -> None:
-    """Dispatch the SDK continuation turn after an engine switch.
-
-    Best-effort with bounded retry (transient queue/redis blips): if all
-    attempts fail, the session is left idle (not stranded) with a
-    user-visible marker — building mode is derived from persisted message
-    history, so the user's next message still lands on the SDK engine with
-    the guide in the prefix.
-    """
-    from backend.copilot.model import get_chat_session
-
-    for attempt in range(1, _SWITCH_DISPATCH_ATTEMPTS + 1):
-        try:
-            session = await get_chat_session(session_id, switch.user_id)
-            if session is None:
-                raise RuntimeError("copilot_session_not_found")
-            await schedule_turn(
-                session_id=session_id,
-                user_id=switch.user_id,
-                turn_id=str(uuid.uuid4()),
-                message=engine_switch.CONTINUATION_MESSAGE,
-                is_user_message=False,
-                # No engine is named here: the processor pins a building-mode
-                # session to the SDK from its message history, which is what
-                # made this argument redundant even while it existed.
-                organization_id=switch.organization_id,
-                team_id=switch.team_id,
-                llm_auth_provider=session.metadata.llm_auth_provider,
-                llm_credential_id=session.metadata.llm_credential_id,
-            )
-            logger.info(f"Dispatched engine-switch continuation for {session_id}")
-            return
-        except Exception as switch_err:
-            logger.error(
-                f"Engine-switch continuation dispatch failed for {session_id} "
-                f"(attempt {attempt}/{_SWITCH_DISPATCH_ATTEMPTS}): {switch_err}"
-            )
-            if attempt < _SWITCH_DISPATCH_ATTEMPTS:
-                await asyncio.sleep(attempt)
-    await _persist_switch_failure_marker(session_id)
-
-
-async def _persist_switch_failure_marker(session_id: str) -> None:
-    """Leave a user-visible error in the session when every dispatch attempt
-    failed — the user was told building continues automatically, so a silent
-    drop would strand them on that promise. Best-effort: building mode
-    itself survives (derived from history), so their next message recovers.
-    """
-    # Lazy imports: manager must stay importable without the model chain.
-    from backend.copilot.constants import COPILOT_ERROR_PREFIX
-    from backend.copilot.model import ChatMessage, append_and_save_message
-
-    try:
-        await append_and_save_message(
-            session_id,
-            ChatMessage(
-                role="assistant",
-                content=(
-                    f"{COPILOT_ERROR_PREFIX} Could not start the "
-                    "agent-building engine automatically. Building mode "
-                    "is still active — send a message to continue."
-                ),
-            ),
-        )
-    except Exception as marker_err:
-        logger.error(
-            f"Failed to persist engine-switch failure marker for "
-            f"{session_id}: {marker_err}"
-        )
 
 
 _REJECTED_TURN_MESSAGE = "This reply could not start. Please try again."

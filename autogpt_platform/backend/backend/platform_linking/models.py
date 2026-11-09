@@ -295,11 +295,13 @@ class TurnDenial(BaseModel):
     directly into the executor.
     """
 
+    # busy: the owner is at their concurrent-task cap (running + queued).
     reason: Literal[
         "banned",
         "paywalled",
         "rate_limited",
         "unavailable",
+        "busy",
         "empty_message",
         "invalid_message",
     ]

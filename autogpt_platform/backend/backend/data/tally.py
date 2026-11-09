@@ -44,7 +44,7 @@ _LLM_TIMEOUT = 30
 # Cloud-transport model for ``extract_business_understanding``. Frozen at the
 # historical pick so existing OpenRouter / direct-Anthropic deployments don't
 # see a silent model swap (and cost change) when the local-transport plumbing
-# rolls out — local transport routes through ``chat_cfg.title_model`` instead.
+# rolls out — local transport routes through the local server's standard tier instead.
 _EXTRACTION_MODEL_CLOUD = "openai/gpt-4o-mini"
 
 SUGGESTION_THEMES = ["Learn", "Create", "Automate", "Organize"]
@@ -361,15 +361,14 @@ async def extract_business_understanding(
 
     Raises on timeout or unparseable response so the caller can handle it.
     Routes through ``get_openai_client(prefer_openrouter=True)`` so a
-    self-hosted ``CHAT_USE_LOCAL=true`` deployment hits the operator's
+    self-hosted ``CHAT_PLATFORM_ROUTE=local`` deployment hits the operator's
     Ollama / vLLM / LiteLLM endpoint instead of unauthenticated OpenRouter
     (the previous direct ``AsyncOpenAI(api_key=settings.secrets.open_router_api_key,
     base_url=OPENROUTER_BASE_URL)`` returned a 401 on the very first signup
     of any no-API-key install).
 
-    Model picks ``ChatConfig.title_model`` only under the local transport so
-    the auto-derivation from ``fast_standard_model`` flows through here too —
-    one less env to remember for self-hosted operators. Cloud transports
+    Under the local route the model is the server's standard tier — one
+    less setting to remember for self-hosted operators. Cloud routes
     (OpenRouter / direct-Anthropic) keep the historical ``openai/gpt-4o-mini``
     pick so existing deployments don't see a silent model swap (different
     pricing, different output shape). Reuses the module-level ``ChatConfig``
@@ -382,13 +381,13 @@ async def extract_business_understanding(
     if client is None:
         raise RuntimeError(
             "Tally extraction needs an LLM client but none is configured. "
-            "Set OPEN_ROUTER_API_KEY (cloud) or CHAT_USE_LOCAL=true with "
-            "CHAT_BASE_URL + CHAT_API_KEY (local). See "
+            "Set OPEN_ROUTER_API_KEY (cloud) or CHAT_PLATFORM_ROUTE=local with "
+            "CHAT_LOCAL_BASE_URL (local). See "
             "docs/platform/copilot-local-llm.md."
         )
     model = (
-        chat_cfg.title_model
-        if chat_cfg.transport.name == "local"
+        chat_cfg.tier_model("standard") or _EXTRACTION_MODEL_CLOUD
+        if chat_cfg.platform_route == "local"
         else _EXTRACTION_MODEL_CLOUD
     )
 
@@ -397,12 +396,11 @@ async def extract_business_understanding(
     # (`qwen3:0.6b` on a 4-core VM is typical of the no-API-key install
     # target), so the fixed cloud timeout fires before the model finishes
     # and every Tally submission raises ``TimeoutError`` under local
-    # transport. Track the operator's already-tuned
-    # ``local_request_timeout_s`` instead — the same knob that gates the
-    # AsyncOpenAI client timeout, so the two stay aligned.
+    # route. Use the local route's request timeout instead, the same one
+    # the AsyncOpenAI client gets, so the two stay aligned.
     timeout_s = (
         chat_cfg.local_request_timeout_s
-        if chat_cfg.transport.name == "local"
+        if chat_cfg.platform_route == "local"
         else _LLM_TIMEOUT
     )
 
@@ -483,7 +481,7 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
         # Tally extraction needs an LLM. ``extract_business_understanding``
         # routes through ``get_openai_client(prefer_openrouter=True)``,
         # which returns the local-transport client when
-        # ``CHAT_USE_LOCAL=true`` (no OpenRouter key required) and the
+        # ``CHAT_PLATFORM_ROUTE=local`` (no OpenRouter key required) and the
         # OpenRouter / direct-Anthropic client otherwise. The guard only
         # bails when no LLM client is available at all — gating on
         # ``open_router_api_key`` alone would silently skip Tally for
@@ -491,7 +489,7 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
         from backend.copilot.sdk.env import config as chat_cfg
 
         if (
-            chat_cfg.transport.name != "local"
+            chat_cfg.platform_route != "local"
             and not settings.secrets.open_router_api_key
         ):
             logger.debug("Tally: no LLM client configured, skipping")

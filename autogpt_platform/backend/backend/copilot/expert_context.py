@@ -15,10 +15,11 @@ Two layers with different prompt weights:
 Expert identity lookup fails closed for an expert-scoped session: if its
 persisted expert is missing, archived, or unavailable, the turn raises
 ``ExpertSessionUnavailableError`` instead of silently running as Otto.
-Plain-session team context and expert workflow context still degrade to ``""``.
+Plain-session team context and expert workflow context still degrade to no
+block.
 
-Returned strings carry their own separators so callers can concatenate
-directly (suffix: leading ``\\n\\n``; message blocks: trailing ``\\n\\n``).
+The suffix carries its own leading ``\\n\\n``; the message blocks are
+``ContextBlock``s, rendered where the message is written.
 """
 
 import asyncio
@@ -29,15 +30,17 @@ from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.api.features.experts.models import ExpertRoutine as ExpertRoutineModel
 from backend.blocks.desktop._api import DISPLAY, SHARED_PATH, WORKSPACE_PATH
 from backend.copilot.config import ChatConfig
+from backend.copilot.context_blocks import ContextBlock
 from backend.copilot.expert_check import checked_expert
 from backend.data.db_accessors import experts_db
 from backend.util.exceptions import ExpertNotFoundError
 
 logger = logging.getLogger(__name__)
 
-# Every top-level block this module renders into a prompt. The display strip in
-# ``service.py`` peels these off the front of a stored user message by name, so
-# a new block missing from this tuple renders verbatim as if the user typed it.
+# Every top-level block this module renders into a prompt. The inbound sanitizer
+# in ``service.py`` reserves these by name, so a new block missing from this
+# tuple can be forged by a user. One that lands in the stored first row must also
+# join ``STORED_ROW_BLOCK_TAGS`` there, or it shows as if the user typed it.
 OWNED_BLOCK_TAGS = (
     "expert_identity",
     "expert_workflows",
@@ -182,21 +185,21 @@ async def build_expert_context(
     expert_id: str | None,
     *,
     include_teammates: bool = True,
-) -> str:
-    """Build the expert/team context prefix for the first user message.
+) -> list[ContextBlock]:
+    """Build the expert/team context blocks for the first user message.
 
     ``include_teammates=False`` drops the roster from an expert session's
     prefix. The kickoff turn uses it: the card must come from the expert's
     own role, and a teammate's workflows are the easiest thing for the model
     to borrow questions from. Plain sessions always get their roster.
 
-    Returns ``""`` when there is nothing to inject or any lookup fails, except
+    Returns ``[]`` when there is nothing to inject or any lookup fails, except
     that an expert session always keeps its computer block: the system prompt
     leaves the plain chat's computer note out for every expert session, so
     this is the only place the expert hears about its machine.
     """
     if not user_id:
-        return ""
+        return []
     try:
         if expert_id:
             return await _expert_session_context(
@@ -205,14 +208,14 @@ async def build_expert_context(
                 include_teammates=include_teammates,
             )
         team = await _team_context(user_id)
-        return (
-            team
-            + render_account_standing_work_block()
-            + await _routines_block(user_id, None)
+        return _present(
+            team,
+            render_account_standing_work_block(),
+            await _routines_block(user_id, None),
         )
     except Exception as e:
         logger.warning(f"Failed to build expert context: {e}")
-        return render_expert_computer_block() if expert_id else ""
+        return _present(render_expert_computer_block()) if expert_id else []
 
 
 async def _expert_session_context(
@@ -220,10 +223,10 @@ async def _expert_session_context(
     expert_id: str,
     *,
     include_teammates: bool,
-) -> str:
-    async def _load_teammates() -> str:
+) -> list[ContextBlock]:
+    async def _load_teammates() -> ContextBlock | None:
         if not include_teammates:
-            return ""
+            return None
         # The roster is an optional extra here; a failed lookup must not cost
         # the expert its own workflow block, which is the load-bearing half.
         try:
@@ -233,7 +236,7 @@ async def _expert_session_context(
             )
         except Exception as e:
             logger.warning(f"Failed to build teammate context: {e}")
-            return ""
+            return None
 
     # Independent lookups — run concurrently rather than paying their
     # latency serially on every expert-session turn.
@@ -244,16 +247,20 @@ async def _expert_session_context(
     # Identity validation already failed closed before this context lookup.
     # If the expert changes between those reads, omit only the optional blocks.
     if expert is None or expert.is_archived:
-        return render_expert_computer_block()
-    return (
-        render_expert_workflows_block(expert)
-        + await _routines_block(user_id, expert_id)
-        + render_expert_computer_block()
-        + teammates
+        return _present(render_expert_computer_block())
+    return _present(
+        render_expert_workflows_block(expert),
+        await _routines_block(user_id, expert_id),
+        render_expert_computer_block(),
+        teammates,
     )
 
 
-def render_account_standing_work_block() -> str:
+def _present(*blocks: ContextBlock | None) -> list[ContextBlock]:
+    return [block for block in blocks if block is not None]
+
+
+def render_account_standing_work_block() -> ContextBlock:
     """Tell Otto that standing work is a thing it owns, not only experts.
 
     Without this the model reaches for ``schedule_followup``, because that is
@@ -262,10 +269,13 @@ def render_account_standing_work_block() -> str:
     It is right for a deferral and wrong for everything that repeats, and the
     difference is invisible at the moment of choosing.
     """
-    return "<standing_work>\nWork that repeats, or that the user will want to find and change later, belongs in a routine: `tool:schedule_routine` creates a named record they can switch off, with its own thread so each run remembers the last. `tool:list_routines` shows what you hold. Offer one when you notice work repeating. Never say a routine is running before the call that schedules it has returned.\n</standing_work>\n\n"
+    return ContextBlock(
+        tag="standing_work",
+        head="Work that repeats, or that the user will want to find and change later, belongs in a routine: `tool:schedule_routine` creates a named record they can switch off, with its own thread so each run remembers the last. `tool:list_routines` shows what you hold. Offer one when you notice work repeating. Never say a routine is running before the call that schedules it has returned.",
+    )
 
 
-async def _routines_block(user_id: str, expert_id: str | None) -> str:
+async def _routines_block(user_id: str, expert_id: str | None) -> ContextBlock | None:
     """The standing work this expert offers, and what is actually running.
 
     Without this the model has no idea its own routines exist, so it never
@@ -277,10 +287,9 @@ async def _routines_block(user_id: str, expert_id: str | None) -> str:
         routines = await experts_db().list_routines(user_id, expert_id)
     except Exception as e:
         logger.warning(f"Failed to load routines for expert context: {e}")
-        return ""
+        return None
     if not routines:
-        return ""
-    lines = "\n".join(_routine_line(routine) for routine in routines)
+        return None
     # Only a proposal somebody else wrote needs resolving before it runs. Said
     # about the user's own words it would be nonsense — and worse, it would
     # send the model back to re-ask questions they have already answered.
@@ -291,7 +300,17 @@ async def _routines_block(user_id: str, expert_id: str | None) -> str:
         if any(r.source == "TEMPLATE" for r in routines)
         else ""
     )
-    return f"<routines>\nStanding work you can do unattended. Each runs as a turn of yours at its own time, in the user's timezone. Switch one on with `tool:schedule_routine`, only after the user has chosen it:\n{lines}\n{proposal_rule}</routines>\n\n"
+    return ContextBlock(
+        tag="routines",
+        head=(
+            "Standing work you can do unattended. Each runs as a turn of yours at "
+            "its own time, in the user's timezone. Switch one on with "
+            "`tool:schedule_routine` — never silently, always after the user has "
+            "chosen it:"
+        ),
+        items=tuple(_routine_line(routine) for routine in routines),
+        tail=proposal_rule,
+    )
 
 
 def _routine_line(routine: ExpertRoutineModel) -> str:
@@ -324,21 +343,38 @@ def _routine_line(routine: ExpertRoutineModel) -> str:
     return f"- {title} (id: {routine.id}) — ON, {when}, {reach}"
 
 
-def render_expert_workflows_block(expert: Expert) -> str:
-    if expert.workflows:
-        workflow_lines = "\n".join(
-            f"- {escape_prompt_xml_tags(w.name or 'Unnamed workflow')} (library_agent_id: {w.library_agent_id}, graph_id: {w.graph_id}): {escape_prompt_xml_tags(w.description or 'No description')}"
-            for w in expert.workflows
-        )
-    else:
-        workflow_lines = "- No workflows installed yet."
+def render_expert_workflows_block(expert: Expert) -> ContextBlock:
+    workflows = tuple(
+        f"- {escape_prompt_xml_tags(w.name or 'Unnamed workflow')} "
+        f"(library_agent_id: {w.library_agent_id}, graph_id: {w.graph_id})"
+        f": {escape_prompt_xml_tags(w.description or 'No description')}"
+        for w in expert.workflows
+    )
+    installed = (
+        "Workflows installed on this expert — the only ones you can run, edit, "
+        "or schedule (`run_agent` with the IDs below). To use another workflow, "
+        "install it first with `tool:install_expert_workflow` from the marketplace "
+        "or the owner's library — `find_library_agent` lists what the library "
+        "holds; workflows you build here are installed for you:"
+    )
+    return ContextBlock(
+        tag="expert_workflows",
+        head=installed if workflows else f"{installed}\n- No workflows installed yet.",
+        items=workflows,
+        # The skip comes after the kickoff message's ask, so the rule lives in
+        # session context, which every later turn sees, not in that message.
+        tail=(
+            "If the user skips or declines a connection a workflow needs, do the "
+            "part of the job public data allows (research, drafts) and save it as "
+            "a workspace file with its sources; say what stays blocked and which "
+            "one connection would unlock it. If public data does not support "
+            "useful work, say so. Never report a workflow as run, or a step as "
+            "completed, when it was blocked or failed."
+        ),
+    )
 
-    # The skip comes after the kickoff message's ask, so the rule lives in
-    # session context, which every later turn sees, not in that message.
-    return f"<expert_workflows>\nWorkflows installed on this expert. Only these can be run, edited or scheduled (`run_agent` with the ids below). To use another workflow, install it with `tool:install_expert_workflow` from the marketplace or the owner's library (`find_library_agent` lists the library); workflows you build here are installed for you:\n{workflow_lines}\nIf the user skips or declines a connection a workflow needs, do what public data allows (research, drafts), save it as a workspace file with its sources, and say what stays blocked and which one connection would unlock it. If public data does not support useful work, say so. Never report a workflow as run, or a step as completed, when it was blocked or failed.\n</expert_workflows>\n\n"
 
-
-def render_expert_computer_block() -> str:
+def render_expert_computer_block() -> ContextBlock | None:
     """Tell an expert about its own machine — only when E2B actually backs it.
 
     Lives in the first user message with the other expert blocks so the
@@ -346,18 +382,42 @@ def render_expert_computer_block() -> str:
     """
     try:
         if not ChatConfig().e2b_active:
-            return ""
+            return None
     except Exception as e:
         logger.warning(f"Failed to resolve E2B config for expert context: {e}")
-        return ""
-    return f"<expert_computer>\nYou have your own cloud computer. It is suspended, not deleted, when idle, so what you install stays.\n- {WORKSPACE_PATH}: your durable home for notes, configs, scripts and tools.\n- {SHARED_PATH}: the user's shared folder, when mounted. Put deliverables there so the user sees them. Trust the tool output on whether it is mounted; if not, say where the file really is.\n- Files the user uploaded or saved are in workspace storage, on neither path: find them with list_workspace_files(include_all_sessions=true).\n- start_desktop turns your screen on for browser or GUI work. Launch apps with bash_exec in the background with DISPLAY={DISPLAY}. browser_* tools run elsewhere and never appear on it.\n- The user sees the desktop too. Never ask them to sign into personal accounts on it; use their connected integrations.\n</expert_computer>\n\n"
+        return None
+    return ContextBlock(
+        tag="expert_computer",
+        head=(
+            "You have your own persistent cloud computer. It is suspended, not "
+            "destroyed, when idle, so what you install stays.\n"
+            f"- {WORKSPACE_PATH}: your durable home. Keep your notes, configs, "
+            "scripts and tools here and customise it freely.\n"
+            f"- {SHARED_PATH}: the user's shared workspace, when mounted. Put "
+            "deliverables there so they show up on the user's desktop and in "
+            "their other sessions. Trust the tool output on whether it is "
+            "mounted: without the mount, say where the file really is instead "
+            "of calling it shared.\n"
+            "- Files the user uploaded or saved are in workspace storage, on neither path: find them with list_workspace_files(include_all_sessions=true).\n"
+            "- Use start_desktop to turn your screen on when a task needs a browser "
+            "or GUI app; it is the same machine your commands run in. The desktop "
+            "is shared with the user, not private from either of you: you can see "
+            "everything on it, and so can they.\n"
+            "- The screen shows only what runs on this machine's display: launch "
+            "the app or browser with bash_exec, in the background with "
+            f"DISPLAY={DISPLAY}. browser_* tools run elsewhere and never appear on "
+            "it.\n"
+            "- Never ask the user to sign into personal accounts on this "
+            "desktop; use their connected integrations instead."
+        ),
+    )
 
 
 async def _team_context(
     user_id: str,
     *,
     exclude_expert_id: str | None = None,
-) -> str:
+) -> ContextBlock | None:
     """Roster block for the first user message.
 
     Plain sessions may delegate to a listed expert or suggest opening their
@@ -393,26 +453,27 @@ def render_team_context(
     *,
     exclude_expert_id: str | None = None,
     hiring_roster: list[Expert] | None = None,
-) -> str:
+) -> ContextBlock | None:
     """Pure renderer; ``hiring_roster`` is the template list for the
     Head-of-AI block and is only passed when the caller found nobody hired. ``None`` keeps the empty roster silent.
     """
     teammates = [e for e in experts if e.id != exclude_expert_id]
     if not teammates:
         if hiring_roster is None:
-            return ""
+            return None
         return _empty_team_context(hiring_roster)
-
-    lines = "\n".join(_team_line(e) for e in teammates)
-    rule = _team_rule(
-        exclude_expert_id=exclude_expert_id,
+    return ContextBlock(
+        tag="team_context",
+        head=(
+            "The user has hired these experts:"
+            if exclude_expert_id is None
+            else "Your teammates on this user's team:"
+        ),
+        items=tuple(_team_line(e) for e in teammates),
+        tail=_team_rule(
+            exclude_expert_id=exclude_expert_id,
+        ),
     )
-    header = (
-        "The user has hired these experts:"
-        if exclude_expert_id is None
-        else "Your teammates on this user's team:"
-    )
-    return f"<team_context>\n{header}\n{lines}\n{rule}\n</team_context>\n\n"
 
 
 def _team_rule(*, exclude_expert_id: str | None) -> str:
@@ -430,18 +491,23 @@ def _team_line(expert: Expert) -> str:
     return f"- {escape_prompt_xml_tags(expert.name)} — {escape_prompt_xml_tags(expert.role)} (expert id: {expert.id}); installed workflows: {workflow_names}"
 
 
-def _empty_team_context(templates: list[Expert]) -> str:
+def _empty_team_context(templates: list[Expert]) -> ContextBlock:
     """Head-of-AI block for a user who has hired nobody yet.
 
     The roster is inlined rather than exposed as a tool: the tool schema has
     a character budget, and this block is only ever built once per session.
+    So the templates are not ``items``: ``list_team`` lists hires, and a copy
+    short of room must not point at it for the rest.
     """
     roster = (
         "Roster:\n" + "\n".join(_template_line(t) for t in templates)
         if templates
         else "Roster: none available yet — offer to raise a custom expert."
     )
-    return f"<team_context>\nThe user has not hired any experts yet. You are their Head of AI. When the user wants a specialist or recurring work shows up, recommend one template from the roster below with a reason, via `tool:hire_expert` (`template_id`). Offer a custom expert (`tool:raise_expert`) only after that, or when nothing fits. Propose one hire at a time. Both tools show the user an approval card; don't describe it.\n{roster}\n</team_context>\n\n"
+    return ContextBlock(
+        tag="team_context",
+        head=f"The user has not hired any experts yet. You are their Head of AI. When the user wants a specialist or recurring work shows up, recommend one template from the roster below with a reason, via `tool:hire_expert` (`template_id`). Offer a custom expert (`tool:raise_expert`) only after that, or when nothing fits. Propose one hire at a time. Both tools show the user an approval card; don't describe it.\n{roster}",
+    )
 
 
 def _template_line(template: Expert) -> str:

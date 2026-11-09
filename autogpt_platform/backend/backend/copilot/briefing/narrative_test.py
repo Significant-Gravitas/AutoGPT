@@ -50,7 +50,16 @@ def route():
         cost_log_provider="open_router",
         reason="test",
     )
-    with patch.object(narrative_module, "resolve_route", return_value=decision) as mock:
+    with (
+        patch.object(narrative_module, "resolve_route", return_value=decision) as mock,
+        patch.object(
+            narrative_module,
+            "config",
+            ChatConfig(
+                platform_route="openrouter", openrouter_api_key="narrative-test-key"
+            ),
+        ),
+    ):
         yield mock
 
 
@@ -139,6 +148,18 @@ async def test_the_lede_is_ottos_bounded_aux_job(route):
     assert (first.job.latency_class, first.job.tier) == ("bounded", "aux")
     assert first.job.correlation_id == second.job.correlation_id
     assert first.route.model == "aux-model"
+
+
+@pytest.mark.asyncio
+async def test_no_platform_api_falls_back_without_a_call_or_a_warning(caplog):
+    with (
+        patch.object(narrative_module.ChatConfig, "has_platform_api", False),
+        patch_llm(return_value=completion("Unreachable.")) as mock,
+        caplog.at_level("WARNING", logger=narrative_module.logger.name),
+    ):
+        assert await compose_narrative(USER, make_content()) is None
+    mock.assert_not_awaited()
+    assert not caplog.records
 
 
 @pytest.mark.asyncio
@@ -378,7 +399,8 @@ usage_snapshot = usage_activation_fixtures.usage_snapshot
 
 def test_the_lede_runs_without_reasoning_on_the_aux_model():
     # Haiku 5.5's thinking spent the whole 200-token cap on 2 ledes in 12.
-    model = ChatConfig.model_fields["title_model"].default
+    model = ChatConfig(platform_route="openrouter").aux_model
+    assert model is not None
     assert small_call_reasoning(model, narrative_module._MAX_OUTPUT_TOKENS) == {
         "reasoning": {"enabled": False}
     }

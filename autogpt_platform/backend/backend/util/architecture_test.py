@@ -125,7 +125,6 @@ _DATACLASS_KNOWN_OFFENDERS = frozenset(
         "api/features/store/content_handlers.py",
         "api/features/store/hybrid_search.py",
         "blocks/codex.py",
-        "copilot/baseline/service.py",
         "copilot/bot/adapters/base.py",
         "copilot/bot/bot_backend.py",
         "copilot/sdk/compaction.py",
@@ -213,7 +212,6 @@ _GLOBAL_CLOCK_PATCH_OFFENDERS = {
     "blocks/desktop/desktop_api_test.py asyncio.sleep": 1,
     "blocks/rss_test.py asyncio.sleep": 2,
     "blocks/time_blocks_test.py asyncio.sleep": 2,
-    "copilot/baseline/reasoning_test.py time.monotonic": 1,
     "copilot/bot/handler_test.py asyncio.sleep": 3,
     "copilot/bot/turn_stream_test.py time.monotonic": 6,
     "copilot/executor/manager_block_warmup_test.py time.sleep": 1,
@@ -582,10 +580,6 @@ _WHOLE_DIR = "a whole directory; shutil.rmtree follows no link inside it"
 _CLI_TMPDIR = "the CLI's temp directory, beside the working directory"
 _CREATES_IT = "creates the working directory itself"
 _WORKDIR_FILE_CALL_OFFENDERS: dict[str, tuple[int, str]] = {
-    "copilot/baseline/service.py stream_chat_completion_baseline shutil.rmtree": (
-        1,
-        _WHOLE_DIR,
-    ),
     "copilot/sdk/cost_tracking.py read_cli_session_usage .read_text": (
         1,
         _CLI_PROJECTS,
@@ -622,18 +616,20 @@ _WORKDIR_FILE_CALL_OFFENDERS: dict[str, tuple[int, str]] = {
         1,
         "default skill bodies shipped with the backend",
     ),
-    "copilot/transcript.py cleanup_stale_project_dirs .is_dir": (2, _CLI_PROJECTS),
-    "copilot/transcript.py cleanup_stale_project_dirs .iterdir": (1, _CLI_PROJECTS),
+    "copilot/transcript.py cleanup_stale_project_dirs .is_dir": (1, _CLI_PROJECTS),
     "copilot/transcript.py cleanup_stale_project_dirs os.path.isdir": (
         1,
         _CLI_PROJECTS,
     ),
     "copilot/transcript.py cleanup_stale_project_dirs shutil.rmtree": (
-        2,
+        1,
         _CLI_PROJECTS,
     ),
-    "copilot/transcript.py cleanup_stale_project_dirs .stat": (2, _CLI_PROJECTS),
-    "copilot/transcript.py read_compacted_entries .read_text": (1, _CLI_PROJECTS),
+    "copilot/transcript.py cleanup_stale_project_dirs .stat": (1, _CLI_PROJECTS),
+    "copilot/transcript.py read_compacted_entries_detailed .read_text": (
+        1,
+        _CLI_PROJECTS,
+    ),
 }
 
 

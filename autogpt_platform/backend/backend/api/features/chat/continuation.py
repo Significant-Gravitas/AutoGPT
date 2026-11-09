@@ -5,13 +5,14 @@ size limit while the account still has budget. The continuation runs as a
 turn whose message is a system note (see ``backend.copilot.continuation``),
 so the chat shows what happened without a user bubble. It is admitted like
 any message the user sends: the same paywall, the same allowance check, and
-one turn per chat at a time.
+one turn per chat at a time. It carries on the paused turn's work, so it
+starts with that turn's taint, read off the pause marker.
 """
 
 import logging
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Security
+from fastapi import APIRouter, HTTPException, Request, Security
 from pydantic import BaseModel, Field
 
 from backend.api.features.chat.routes import (
@@ -25,7 +26,8 @@ from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.config import CopilotLLMModel
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.executor.utils import schedule_chat_turn
-from backend.copilot.model import ChatSessionInfo
+from backend.copilot.llm_attribution import is_impersonated_request
+from backend.copilot.model import ChatSessionInfo, get_chat_session
 from backend.copilot.pending_message_helpers import (
     StreamRegistryUnavailable,
     is_turn_in_flight,
@@ -33,6 +35,7 @@ from backend.copilot.pending_message_helpers import (
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.response_model import StreamStatus
 from backend.copilot.session_permissions import resolve_session_permissions
+from backend.copilot.turn_pause import continues_tainted
 from backend.integrations.codex.access import enforce_codex_access_http
 
 logger = logging.getLogger(__name__)
@@ -68,6 +71,7 @@ class ContinueSessionResponse(BaseModel):
 )
 async def continue_session(
     session_id: str,
+    http_request: Request,
     request: ContinueSessionRequest | None = None,
     user_id: str = Security(auth.get_user_id),
     ctx: auth.RequestContext = Security(auth.get_request_context),
@@ -78,6 +82,7 @@ async def continue_session(
     await enforce_model_entitlement(model, session, user_id)
     await _admit(session, user_id)
     await _refuse_if_busy(session_id)
+    tainted = await _continues_tainted(session_id, user_id)
     try:
         # Every note is the same text, so the trailing-text dedupe would refuse
         # a Keep going after a continuation that wrote only assistant rows, or
@@ -98,6 +103,8 @@ async def continue_session(
             llm_auth_provider=session.metadata.llm_auth_provider,
             llm_credential_id=session.metadata.llm_credential_id,
             permissions=resolve_session_permissions(session),
+            impersonated=is_impersonated_request(http_request),
+            tainted=tainted,
         )
     except ConcurrentTurnLimitError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
@@ -123,6 +130,15 @@ async def _admit(session: ChatSessionInfo, user_id: str) -> None:
         # AutoPilot's tools and never saw the task, so it has nothing to pick
         # up, and the note would reach Microsoft as the user's message.
         raise HTTPException(status_code=409, detail="unsupported_connection")
+
+
+async def _continues_tainted(session_id: str, user_id: str) -> bool:
+    """Whether the turn that paused ran tainted, as its marker recorded.
+
+    Read once the chat is idle, so the paused turn has saved its rows.
+    """
+    session = await get_chat_session(session_id, user_id)
+    return session is not None and continues_tainted(session.messages)
 
 
 async def _refuse_if_busy(session_id: str) -> None:

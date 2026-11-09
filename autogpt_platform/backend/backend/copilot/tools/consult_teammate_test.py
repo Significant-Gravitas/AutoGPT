@@ -506,7 +506,7 @@ def _completion(verdict):
 def test_the_verdict_runs_without_reasoning_on_the_aux_model():
     # Haiku 5.5's thinking hit the 400-token cap on 7 verdicts in 9 and cut
     # the JSON off.
-    model = ChatConfig.model_fields["title_model"].default
+    model = ChatConfig(platform_route="openrouter").aux_model
     assert small_call_reasoning(model, consult_audit.MAX_OUTPUT_TOKENS) == {
         "reasoning": {"enabled": False}
     }

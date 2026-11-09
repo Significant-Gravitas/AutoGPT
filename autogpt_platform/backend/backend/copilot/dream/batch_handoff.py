@@ -56,7 +56,7 @@ async def submit_dream_pass_batch(
     lock_handle: DreamLockHandle,
 ) -> DreamPassResult:
     """Submit phase 1 and hand the pass, and its lock, to the callbacks."""
-    api_key = config.direct_anthropic_api_key
+    api_key = config.batch_anthropic_api_key
     if not api_key:
         # Shouldn't happen — routing.py only picks anthropic_batch when
         # the key is present. Guard for type-narrowing + future safety.

@@ -29,8 +29,9 @@ async def test_partial_registry_outage_preserves_unseen_updates(
 ):
     head = await fake_learning_store.ensure_head("user-1", expert_id, "private-checks")
     head.current_version_id = "v1"
-    context = await skills.build_skills_context("user-1", expert_id)
-    history = [f"<available_skills>{context}</available_skills>"]
+    index = await skills.skills_context_block("user-1", expert_id)
+    assert index is not None
+    history = [index.text]
     await skills.build_skills_update_notice(
         "user-1", expert_id, history, session_id="session-1"
     )

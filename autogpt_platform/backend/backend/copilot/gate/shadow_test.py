@@ -392,3 +392,16 @@ async def test_judgements_past_the_cap_are_dropped_not_queued(rows, events):
         pending = await _cancel_once_judging(hanging)
     assert len(pending) == 1
     hanging.assert_awaited_once()
+
+
+@pytest.fixture(autouse=True)
+def shadow_model_route(monkeypatch):
+    from backend.copilot.config import ChatConfig
+
+    monkeypatch.setattr(
+        shadow,
+        "config",
+        ChatConfig(
+            platform_route="openrouter", openrouter_api_key="shadow-unit-test-key"
+        ),
+    )

@@ -1,7 +1,7 @@
 """Shared tool-calling conversation loop.
 
-Provides a generic, provider-agnostic conversation loop that both
-the OrchestratorBlock and copilot baseline can use. The loop:
+Provides a generic, provider-agnostic conversation loop for the
+OrchestratorBlock. The loop:
 
 1. Calls the LLM with tool definitions
 2. Extracts tool calls from the response

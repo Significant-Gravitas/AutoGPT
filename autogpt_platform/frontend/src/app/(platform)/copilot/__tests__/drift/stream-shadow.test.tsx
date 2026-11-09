@@ -66,7 +66,7 @@ function driftKinds() {
 
 // The shadow folds the stream the AI SDK renders, off the same response.
 describe("the stream shadow inside the chat", () => {
-  it.each(["dummy-text-turn", "baseline-tool-turn", "sdk-late-tool-result"])(
+  it.each(["dummy-text-turn", "sdk-tool-turn", "sdk-late-tool-result"])(
     "folds a sent turn to the persisted rows and reports nothing (%s)",
     { timeout: 60_000 },
     async (name) => {

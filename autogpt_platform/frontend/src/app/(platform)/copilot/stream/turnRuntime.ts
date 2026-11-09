@@ -6,11 +6,7 @@ import type { FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
 import { streamRequestBody } from "../copilotStreamTransport";
-import {
-  CopilotAuthError,
-  getCopilotAuthHeaders,
-  isEngineSwitchPart,
-} from "../helpers";
+import { CopilotAuthError, getCopilotAuthHeaders } from "../helpers";
 import type { CopilotLlmModel } from "../store";
 import { isTokenDevtoolEnabled } from "../tokenDevtool/gate";
 import { createUsageCapturingFetch } from "../tokenDevtool/usageTap";
@@ -178,7 +174,6 @@ interface TurnBookkeeping {
   verified: number;
   reportedErrors: number;
   resyncs: number;
-  sawModeChange: boolean;
 }
 
 /**
@@ -596,7 +591,7 @@ export class TurnRuntime {
           marker?.key === `error:terminal:${turnId}` ? marker : null,
       };
     });
-    this.onChunk(seg.key, { type: "error", errorText });
+    this.onChunk({ type: "error", errorText });
     this.endTurn(seg.key);
   }
 
@@ -618,7 +613,7 @@ export class TurnRuntime {
     else this.reveal.clear();
     const key = seg.key;
     this.updateTurn(key, (s) => ({ ...s, log: next }));
-    this.onChunk(key, entry.chunk);
+    this.onChunk(entry.chunk);
     this.checkProtocol(key);
     void this.verifyCheckpoints(key);
     // The turn is over at an id-bearing finish, and failed at an id-bearing error.
@@ -627,10 +622,9 @@ export class TurnRuntime {
     }
   }
 
-  private onChunk(key: string, chunk: WireChunk) {
+  private onChunk(chunk: WireChunk) {
     if (chunk.type === "data-provider-failure")
       this.providerFailure = chunk.data;
-    if (isEngineSwitchPart(chunk)) this.bookkeeping(key).sawModeChange = true;
     if (chunk.type === "error") {
       const failure = this.providerFailure;
       this.providerFailure = null;
@@ -882,8 +876,7 @@ export class TurnRuntime {
     this.handlers.onTurnEnd?.({ expired: false });
     const seg = this.segmentByKey(key);
     if (seg?.kind !== "turn") return;
-    const continuation =
-      this.bookkeeping(key).sawModeChange || this.followPending;
+    const continuation = this.followPending;
     this.followPending = false;
     void this.probe(
       seg.log.turnId,
@@ -1394,7 +1387,6 @@ export class TurnRuntime {
         verified: 0,
         reportedErrors: 0,
         resyncs: 0,
-        sawModeChange: false,
       };
       this.turns.set(key, book);
     }

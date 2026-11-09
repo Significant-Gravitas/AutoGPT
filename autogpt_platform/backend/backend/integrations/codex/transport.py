@@ -16,8 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Awaitable, Callable
 from typing import cast
 
 from backend.data.model import Credentials, OAuth2Credentials
@@ -306,9 +305,6 @@ class CodexTransport:
         if seen is not None:
             self._last_rate_limits[session.credential_id] = seen
 
-    async def models(self, lease: CredentialLease) -> list[CodexModelInfo]:
-        return await fetch_models(codex_credentials(lease))
-
     async def invoke(
         self, lease: CredentialLease, request: CodexInvocationRequest
     ) -> CodexInvocationResult:
@@ -323,32 +319,6 @@ class CodexTransport:
                 request.model_copy(update={"model": resolved_model}), [], _no_tools
             )
             return result.model_copy(update={"resolved_model": resolved_model})
-        finally:
-            self._record_rate_limits(session)
-
-    async def invoke_agent(
-        self,
-        lease: CredentialLease,
-        request: CodexInvocationRequest,
-        dynamic_tools: list[CodexDynamicToolSpec],
-        tool_handler: ToolHandler,
-        event_handler: EventHandler = None,
-    ) -> CodexInvocationResult:
-        session = self._session_for(codex_credentials(lease))
-        try:
-            return await session.invoke(
-                request, dynamic_tools, tool_handler, event_handler
-            )
-        finally:
-            self._record_rate_limits(session)
-
-    @asynccontextmanager
-    async def agent_session(
-        self, lease: CredentialLease
-    ) -> AsyncIterator[CodexAgentSession]:
-        session = self._session_for(codex_credentials(lease))
-        try:
-            yield session
         finally:
             self._record_rate_limits(session)
 

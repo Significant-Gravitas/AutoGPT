@@ -33,6 +33,7 @@ from backend.copilot.expert_context import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamTextDelta
+from backend.copilot.route_table import platform_row
 from backend.copilot.turn_pause import TurnPause
 from backend.util.exceptions import ExpertNotFoundError
 
@@ -90,8 +91,12 @@ class _Balance:
 @pytest.fixture(autouse=True)
 def _credits_pay_block_turns(mocker):
     mocker.patch("backend.copilot.credit_billing.settings.config.enable_credit", True)
+    # A route whose engine gives the turn a dollar ceiling, so credits can pay.
     mocker.patch.object(
-        ChatConfig, "thinking_available", new_callable=PropertyMock, return_value=True
+        ChatConfig,
+        "route_row",
+        new_callable=PropertyMock,
+        return_value=platform_row("openrouter"),
     )
 
 

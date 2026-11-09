@@ -562,7 +562,6 @@ def _largest_session_wire_chars() -> int:
         _READ_TOOL_DESCRIPTION,
         _READ_TOOL_NAME,
         _READ_TOOL_SCHEMA,
-        BASELINE_ONLY_MCP_TOOLS,
         MCP_TOOL_PREFIX,
         _build_input_schema,
     )
@@ -585,7 +584,7 @@ def _largest_session_wire_chars() -> int:
             expert_tool_disabled_groups(experts_enabled=True, expert_id=None)
         )
     )
-    hidden |= set(BASELINE_ONLY_MCP_TOOLS) | {"get_agent_building_guide"}
+    hidden |= {"get_agent_building_guide"}
     hidden |= origin_disabled_tools("interactive")
 
     total = sum(
@@ -631,7 +630,6 @@ def test_get_available_tools_hides_graphiti_when_disabled() -> None:
     ), f"graphiti disabled but memory_* still present: {memory_tool_names & filtered}"
     # Non-graphiti tools stay visible.
     assert "find_capability" in filtered
-    assert "TodoWrite" in filtered
 
 
 def test_get_copilot_tool_names_hides_graphiti_when_disabled() -> None:

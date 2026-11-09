@@ -69,7 +69,7 @@ async def test_chat_text_reaches_the_model_as_written(
     pod from the stored session."""
     _require_cli()
     async with _RecordingProvider() as provider:
-        turns = SdkTurns(tmp_path, monkeypatch, provider, _config())
+        turns = SdkTurns(tmp_path, monkeypatch, provider, _config(provider.url))
         elsewhere = _write_files(tmp_path)
         prompts = [
             f"compare @note.txt with @{(elsewhere / 'note.txt').as_posix()}",
@@ -106,7 +106,9 @@ async def test_a_session_stored_earlier_resumes_without_what_its_text_named(
     resumed, it keeps the turn and drops those attachments."""
     _require_cli()
     async with _RecordingProvider() as provider:
-        turns = _StoredEarlierTurns(tmp_path, monkeypatch, provider, _config())
+        turns = _StoredEarlierTurns(
+            tmp_path, monkeypatch, provider, _config(provider.url)
+        )
         elsewhere = _write_files(tmp_path)
         note = elsewhere / "note.txt"
         earlier = f"compare @{note.as_posix()} with @{elsewhere.as_posix()}/"
@@ -137,7 +139,9 @@ async def test_a_session_is_stored_without_what_its_text_named_or_not_at_all(
     from the chat's messages."""
     _require_cli()
     async with _RecordingProvider() as provider:
-        turns = _UnreadableSecondTurn(tmp_path, monkeypatch, provider, _config())
+        turns = _UnreadableSecondTurn(
+            tmp_path, monkeypatch, provider, _config(provider.url)
+        )
         named = _naming_a_file_and_a_directory(_write_files(tmp_path))
         session = _session()
         await _run_turn(turns, provider, ledger, session, 0, named, new_pod=False)
@@ -172,7 +176,7 @@ async def test_a_stored_copy_that_cannot_be_deleted_stays_until_a_turn_replaces_
     _require_cli()
     async with _RecordingProvider() as provider:
         turns = _UnreadableSecondTurn(
-            tmp_path, monkeypatch, provider, _config(), delete_fails=True
+            tmp_path, monkeypatch, provider, _config(provider.url), delete_fails=True
         )
         named = _naming_a_file_and_a_directory(_write_files(tmp_path))
         session = _session()
@@ -283,21 +287,18 @@ def _session_file_as_written(sdk_cwd: str, session_id: str, _log_prefix: str) ->
     return Path(cli_session_path(sdk_cwd, session_id)).read_bytes()
 
 
-def _config() -> ChatConfig:
+def _config(provider_url: str) -> ChatConfig:
     """A direct-Anthropic deployment, pinned so the deployment's own settings
     cannot change the path a turn takes, on the CLI ``_require_cli`` found."""
     cli = _resolve_cli_path()
     return sdk_service.config.model_copy(
         update={
-            "use_local": False,
-            "use_claude_code_subscription": False,
             "use_e2b_sandbox": False,
-            "use_openrouter": False,
-            "api_key": "sk-ant-chat-text-e2e",
-            "claude_agent_model": SONNET,
-            "claude_agent_fallback_model": None,
+            "platform_route": "direct_anthropic",
+            "anthropic_base_url": f"{provider_url}/anthropic",
+            "anthropic_api_key": "sk-ant-chat-text-e2e",
+            "standard_model": SONNET,
             "claude_agent_cli_path": str(cli) if cli else None,
-            "claude_agent_use_resume": True,
         }
     )
 

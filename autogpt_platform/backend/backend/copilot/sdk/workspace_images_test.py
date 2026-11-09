@@ -7,16 +7,12 @@ import pypdfium2
 import pytest
 from PIL import Image
 
-from backend.copilot.baseline import service as baseline
 from backend.copilot.google_data_redaction import GOOGLE_DATA_METADATA_KEY
 from backend.copilot.model import ChatSession
-from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.sdk import e2b_file_tools, tool_adapter
 from backend.copilot.tool_image import MAX_IMAGE_BYTES
 from backend.copilot.tools import workspace_files
 from backend.copilot.tools.base import BaseTool
-from backend.copilot.transcript_builder import TranscriptBuilder
-from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall
 
 
 @pytest.fixture
@@ -84,47 +80,6 @@ async def test_working_directory_image_reaches_sdk(
     images = [block for block in result["content"] if block["type"] == "image"]
     assert len(images) == 1
     assert base64.b64decode(images[0]["data"], validate=True) == png_bytes
-
-
-async def test_workspace_image_reaches_baseline_request_and_transcript(
-    workspace, png_bytes
-):
-    session = ChatSession.new("image-test-user", dry_run=False)
-    state = baseline._BaselineStreamState()
-    call = LLMToolCall(
-        id="call-image",
-        name="read_workspace_file",
-        arguments='{"file_id":"image-file"}',
-    )
-    result = await baseline._baseline_tool_executor(
-        call,
-        [],
-        state=state,
-        user_id=session.user_id,
-        session=session,
-        disabled_groups=[],
-        disabled_tools=frozenset(),
-    )
-    messages = []
-    response = LLMLoopResponse(response_text=None, tool_calls=[call], raw_response=None)
-    baseline._mutate_openai_messages(messages, response, [result])
-    assert [message["role"] for message in messages] == ["assistant", "tool", "user"]
-    url = messages[-1]["content"][1]["image_url"]["url"]
-    assert base64.b64decode(url.split(",", 1)[1], validate=True) == png_bytes
-    outputs = [
-        event
-        for event in state.emitted_events
-        if isinstance(event, StreamToolOutputAvailable)
-    ]
-    assert len(outputs) == 1
-    assert len(outputs[0].to_sse()) < 2000
-    assert base64.b64encode(png_bytes).decode() not in outputs[0].model_dump_json()
-    assert "content_base64" not in result.content
-    builder = TranscriptBuilder()
-    baseline._record_turn_to_transcript(
-        response, [result], transcript_builder=builder, model="test-model"
-    )
-    assert result.image_blocks[0]["source"]["data"] in builder.to_jsonl()
 
 
 async def test_sandbox_image_reaches_sdk_wrapper(monkeypatch, png_bytes):

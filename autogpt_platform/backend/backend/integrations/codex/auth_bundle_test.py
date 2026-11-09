@@ -6,16 +6,14 @@ import pytest
 from cryptography.fernet import Fernet
 from pydantic import SecretStr
 
+from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.auth_bundle import (
     CodexAuthBundleError,
-    auth_bundle_fingerprint,
-    materialize_auth_bundle,
     read_auth_bundle,
 )
 from backend.integrations.codex.credential_codec import (
     bundle_from_credentials,
     credentials_from_bundle,
-    restore_credentials,
 )
 from backend.util.encryption import JSONCryptor
 
@@ -94,34 +92,11 @@ def test_provider_state_round_trips_through_existing_encryption(tmp_path: Path):
     cryptor = JSONCryptor(Fernet.generate_key().decode())
 
     encrypted = cryptor.encrypt(credentials.model_dump())
-    restored = restore_credentials(cryptor.decrypt(encrypted))
+    restored = OAuth2Credentials.model_validate(cryptor.decrypt(encrypted))
 
     assert all(token not in encrypted for token in tokens)
     assert restored.id == credentials.id
     assert bundle_from_credentials(restored) == bundle_from_credentials(credentials)
-
-
-def test_materialized_bundles_do_not_cross_users(tmp_path: Path):
-    source_a = tmp_path / "source-a.json"
-    source_b = tmp_path / "source-b.json"
-    tokens_a = _write_auth(source_a, "alpha")
-    tokens_b = _write_auth(source_b, "bravo")
-    bundle_a = read_auth_bundle(source_a, "0.144.4")
-    bundle_b = read_auth_bundle(source_b, "0.144.4")
-    target_a = tmp_path / "a" / "auth.json"
-    target_b = tmp_path / "b" / "auth.json"
-
-    materialize_auth_bundle(bundle_a, target_a)
-    materialize_auth_bundle(bundle_b, target_b)
-
-    assert auth_bundle_fingerprint(
-        read_auth_bundle(target_a, "0.144.4")
-    ) == auth_bundle_fingerprint(bundle_a)
-    assert auth_bundle_fingerprint(
-        read_auth_bundle(target_b, "0.144.4")
-    ) == auth_bundle_fingerprint(bundle_b)
-    assert tokens_a[2] not in target_b.read_text(encoding="utf-8")
-    assert tokens_b[2] not in target_a.read_text(encoding="utf-8")
 
 
 def test_auth_bundle_rejects_api_key_auth(tmp_path: Path):

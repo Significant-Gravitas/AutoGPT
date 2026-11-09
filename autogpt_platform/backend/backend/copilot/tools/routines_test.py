@@ -16,6 +16,7 @@ from backend.copilot.tools.routines import (
     RoutinesResponse,
     ScheduleRoutineTool,
 )
+from backend.copilot.tree import root_envelope
 
 _PATH = "backend.copilot.tools.routines"
 _SCOPE = "backend.copilot.tools.expert_scope"
@@ -315,6 +316,44 @@ async def test_creating_and_switching_on_together_enables_the_new_row(experts):
     # delay against a later now.
     assert experts.enable_routine.await_args.kwargs["crons"] is None
     assert experts.enable_routine.await_args.kwargs["run_at"] is None
+
+
+@pytest.mark.parametrize("tainted", [True, False], ids=["tainted-turn", "owners-turn"])
+async def test_a_routine_takes_the_taint_of_the_turn_that_set_it_up(
+    experts, tainted: bool
+):
+    """It goes on the row for good, so every fire starts with it however the
+    routine is switched on later."""
+    with patch(
+        "backend.copilot.tree.get_current_envelope",
+        return_value=root_envelope("turn-1", tainted=tainted),
+    ):
+        await ScheduleRoutineTool()._execute(
+            "user-1",
+            _session("expert-a"),
+            enabled=True,
+            title="Morning triage",
+            prompt="Read overnight tickets.",
+            crons=["H 8 * * 1-5"],
+        )
+    assert experts.create_routine.await_args.kwargs["tainted"] is tainted
+    assert experts.enable_routine.await_args.kwargs["tainted"] is tainted
+
+
+async def test_switching_one_on_from_a_chat_platform_chat_marks_it(experts):
+    """A chat started on a chat platform runs its turns tainted, envelope or
+    not."""
+    session = _session("expert-a")
+    session.metadata.source_platform = "slack"
+    with patch("backend.copilot.tree.get_current_envelope", return_value=None):
+        await ScheduleRoutineTool()._execute(
+            "user-1",
+            session,
+            routine_id="routine-1",
+            enabled=True,
+            prompt="Read the support queue.",
+        )
+    assert experts.enable_routine.await_args.kwargs["tainted"] is True
 
 
 async def test_a_call_naming_neither_a_routine_nor_a_title_is_refused(experts):

@@ -16,7 +16,7 @@ from backend.copilot.token_tracking import persist_and_record_usage
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import CodexCredentialLease
 
-from .codex_usage_test import PAYLOAD, run_conversation, usage_gateway
+from .codex_usage_test import run_conversation, usage_gateway
 from .retry_scenarios_test import _make_sdk_patches
 
 _SVC = "backend.copilot.sdk.service"
@@ -79,8 +79,7 @@ def _session_and_lease():
 def _client(gateway, ending, waiting, session_id):
     async def receive():
         if ending in ("cancel", "generator_close"):
-            conversation = gateway._start_conversation(PAYLOAD)
-            await asyncio.wait_for(conversation.queue.get(), timeout=2)
+            await run_conversation(gateway, cancel_at_tool=True)
             waiting.set()
             if ending == "cancel":
                 await asyncio.Event().wait()
@@ -88,7 +87,9 @@ def _client(gateway, ending, waiting, session_id):
             await run_conversation(gateway)
             if ending == "failure":
                 raise ValueError("scripted transport failure")
-        yield AssistantMessage(content=[TextBlock(text="partial")], model=gateway.model)
+        yield AssistantMessage(
+            content=[TextBlock(text="partial")], model=gateway.route.model
+        )
         yield ResultMessage(
             subtype="success",
             duration_ms=1,
@@ -120,17 +121,33 @@ def _stub_sdk(stack, session, gateway, client):
         stack.enter_context(patch(target, **kwargs))
     stack.enter_context(patch(f"{_SVC}.resolve_answered", new=_no_answered_cards))
     for name, value in (
-        ("inject_user_context", None),
+        ("inject_context_blocks", None),
         ("build_session_context", ""),
-        ("first_message_expert_context", ""),
+        ("build_expert_context", []),
         ("build_skills_update_notice", None),
         ("capture_chat_turn", None),
-        ("resolve_codex_model_route", (gateway.model, None, "env")),
     ):
         stack.enter_context(
             patch(f"{_SVC}.{name}", new_callable=AsyncMock, return_value=value)
         )
-    stack.enter_context(patch(f"{_SVC}.gateway_for_lease", return_value=gateway))
+    from backend.copilot.route_profile import codex_profile
+
+    stack.enter_context(
+        patch(
+            f"{_SVC}.resolve_turn_profile",
+            new=AsyncMock(
+                return_value=codex_profile(
+                    gateway.route.model,
+                    effort=None,
+                    routing_source="env",
+                    codex_engine=None,
+                )
+            ),
+        )
+    )
+    stack.enter_context(
+        patch(f"{_SVC}.start_route_gateway", new=AsyncMock(return_value=gateway))
+    )
 
 
 async def _no_answered_cards(*_, **__):

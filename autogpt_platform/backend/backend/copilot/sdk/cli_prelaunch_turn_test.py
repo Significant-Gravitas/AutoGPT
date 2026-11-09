@@ -56,6 +56,7 @@ def _patched_turn(client_factory, session, *, resolve=None, persist=None):
         ),
         client_side_effect=client_factory,
     )
+    patches = [p for p in patches if p[0] != f"{_SVC}.CLIPrelaunch.start"]
     with contextlib.ExitStack() as stack:
         for target, kwargs in patches:
             stack.enter_context(patch(target, **kwargs))
@@ -82,7 +83,7 @@ def _patched_turn(client_factory, session, *, resolve=None, persist=None):
             )
         stack.enter_context(
             patch(
-                f"{_SVC}.inject_user_context",
+                f"{_SVC}.inject_context_blocks",
                 new=AsyncMock(
                     side_effect=lambda _understanding, message, *_args, **_kwargs: (
                         message

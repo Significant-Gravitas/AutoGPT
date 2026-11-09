@@ -514,27 +514,8 @@ function computeContentFingerprint(parts: UIMessage["parts"]): string {
   );
 }
 
-/**
- * True when the server reports it moved a turn to a different execution
- * engine. Nothing displays the engine and nothing can request one — the only
- * consumer widens its post-finish refetch window, because a switch takes
- * longer to settle. The named engine is deliberately not returned.
- */
-export function isEngineSwitchPart(dataPart: {
-  type: string;
-  data?: unknown;
-}): boolean {
-  if (dataPart.type !== "data-mode-changed") return false;
-  const mode = (dataPart.data as { mode?: string } | undefined)?.mode;
-  return mode === "extended_thinking" || mode === "fast";
-}
-
 export const CREATE_SESSION_RETRY_DELAY_MS = 500;
 
-// A network error on create ("Load failed" on Safari, "Failed to fetch" on
-// Chrome) can mean the server committed and only the response was lost. The
-// request names its session id, so one retry adopts that session instead of
-// bouncing the message back to the composer.
 export function retryLostCreateResponse(failureCount: number, error: unknown) {
   return failureCount < 1 && error instanceof TypeError;
 }

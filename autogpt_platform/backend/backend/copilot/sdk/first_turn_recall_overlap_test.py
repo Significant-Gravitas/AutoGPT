@@ -20,7 +20,7 @@ _WAIT = 20
 
 def _noting_the_build(building: asyncio.Event):
     """``inject_user_context`` that marks the first turn's query build."""
-    inject = service.inject_user_context
+    inject = service.inject_context_blocks
 
     async def inject_noting_the_build(*args, **kwargs):
         building.set()
@@ -58,7 +58,7 @@ async def test_a_first_turn_builds_its_query_while_its_memories_are_recalled():
         queries,
         [
             (f"{_SVC}.fetch_warm_context", dict(new=recall)),
-            (f"{_SVC}.inject_user_context", dict(new=_noting_the_build(building))),
+            (f"{_SVC}.inject_context_blocks", dict(new=_noting_the_build(building))),
         ],
     )
 
@@ -112,7 +112,7 @@ async def test_a_first_turn_that_ends_before_its_query_stops_its_recall():
                 queries,
                 [
                     (f"{_SVC}.fetch_warm_context", dict(new=stuck_recall)),
-                    (f"{_SVC}.inject_user_context", dict(new=build_fails)),
+                    (f"{_SVC}.inject_context_blocks", dict(new=build_fails)),
                 ],
             ),
             _WAIT * 5,
@@ -264,9 +264,9 @@ async def test_failed_setup_and_persistence_stop_context_and_recall():
                     queries,
                     [
                         (f"{_SVC}.build_session_context", dict(new=held_read(0))),
-                        (f"{_SVC}.build_skills_context", dict(new=held_read(1))),
+                        (f"{_SVC}.skills_context_block", dict(new=held_read(1))),
                         (
-                            f"{_SVC}.first_message_expert_context",
+                            f"{_SVC}.build_expert_context",
                             dict(new=held_read(2)),
                         ),
                         (f"{_SVC}._fetch_graphiti_context", dict(new=held_read(3))),

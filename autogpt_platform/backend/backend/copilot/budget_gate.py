@@ -91,12 +91,15 @@ async def refusal_for(user_id: str | None) -> TurnPause | None:
     return None
 
 
-async def record_refusal(session: ChatSession, pause: TurnPause) -> None:
-    """Leave the pause in the chat so its card survives a reload.
+async def record_refusal(
+    session: ChatSession, pause: TurnPause, *, tainted: bool = False
+) -> None:
+    """Leave the pause in the chat so its card survives a reload, with the
+    refused turn's taint for the resume that picks it up.
 
     Best effort: the live stream carries the pause even if this fails.
     """
-    if not append_pause_marker(session, pause):
+    if not append_pause_marker(session, pause, tainted=tainted):
         return
     try:
         await upsert_chat_session(session)
@@ -109,13 +112,18 @@ async def record_refusal(session: ChatSession, pause: TurnPause) -> None:
 
 
 async def gate_auto_continue(
-    session: ChatSession, user_id: str | None, *, platform_billed: bool
+    session: ChatSession,
+    user_id: str | None,
+    *,
+    platform_billed: bool,
+    tainted: bool = False,
 ) -> AutoContinueGate:
     """Check the allowance before a finished turn answers queued messages.
 
     Only when something is queued. Refused, or with the allowance unreadable,
     the messages stay queued for the next turn instead of being drained; a
-    refusal is also recorded in the chat, as the executor records its own.
+    refusal is also recorded in the chat, as the executor records its own,
+    with the taint of the turn that would have continued (*tainted*).
     """
     if not platform_billed or not user_id:
         return AutoContinueGate(proceed=True)
@@ -132,5 +140,5 @@ async def gate_auto_continue(
         return AutoContinueGate(proceed=False)
     if pause is None:
         return AutoContinueGate(proceed=True)
-    await record_refusal(session, pause)
+    await record_refusal(session, pause, tainted=tainted)
     return AutoContinueGate(proceed=False, pause=pause)

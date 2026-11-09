@@ -20,12 +20,12 @@ from backend.copilot.tools.skills import (
     ReadSkillTool,
     StoreSkillResponse,
     StoreSkillTool,
-    build_skills_context,
     copy_skill_to_expert,
     find_user_skill_slugs,
     invalidate_skills_index_cache,
     list_user_skills,
     render_skill_markdown,
+    skills_context_block,
 )
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.workspace_scope import WorkspaceScope
@@ -126,9 +126,9 @@ async def test_expert_index_heals_an_assignment_made_before_it_owned_skills(worl
         )
     )
 
-    ctx = await build_skills_context("user-1", expert_id="expert-a")
+    index = await skills_context_block("user-1", expert_id="expert-a")
 
-    assert "name: mine" in ctx
+    assert index is not None and "name: mine" in index.body
     assert "/experts/expert-a/skills/mine/SKILL.md" in fake.files
     # Otto keeps its own copy; ownership is a copy, never a move.
     assert AUTOPILOT in fake.files
@@ -170,9 +170,9 @@ async def test_expert_index_leaves_a_name_with_no_library_folder_on_the_row(worl
         )
     )
 
-    ctx = await build_skills_context("user-1", expert_id="expert-a")
+    index = await skills_context_block("user-1", expert_id="expert-a")
 
-    assert "name: a-marketplace-skill" not in ctx
+    assert index is not None and "name: a-marketplace-skill" not in index.body
     experts.remove_expert_skill_name.assert_not_awaited()
 
 
@@ -313,7 +313,9 @@ def _counting_slug_lookup():
 
 
 async def test_expert_index_holds_defaults_plus_its_own_skills_only(world):
-    ctx = await build_skills_context("user-1", expert_id="expert-a")
+    index = await skills_context_block("user-1", expert_id="expert-a")
+    assert index is not None
+    ctx = index.body
     assert "agent_building_guide" in ctx
     assert "name: own" in ctx
     assert "mine" not in ctx
@@ -321,7 +323,9 @@ async def test_expert_index_holds_defaults_plus_its_own_skills_only(world):
 
 
 async def test_autopilot_index_holds_defaults_plus_its_own_skills_only(world):
-    ctx = await build_skills_context("user-1")
+    index = await skills_context_block("user-1")
+    assert index is not None
+    ctx = index.body
     assert "name: mine" in ctx
     assert "own" not in ctx.replace("agent_building_guide", "")
     assert "theirs" not in ctx

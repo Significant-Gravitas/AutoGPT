@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultError, ResultMessage, TextBlock
 
+from backend.copilot.anthropic_rate_card import anthropic_usage_cost_usd
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamError, StreamTextDelta
 from backend.copilot.sdk.service import (
@@ -189,7 +190,9 @@ _ROUNDS_USAGE = {
 )
 async def test_billing_refusal_still_records_the_turns_usage(messages):
     # Rounds the provider already served in this turn are billed on the
-    # final ResultMessage, which must still be read after the refusal.
+    # final ResultMessage, which must still be read after the refusal:
+    # priced on the rate card for the model that served them, never the
+    # CLI's own figure or the model it names on its own error message.
     with patch(
         "backend.copilot.sdk.service.persist_and_record_usage",
         new_callable=AsyncMock,
@@ -204,7 +207,15 @@ async def test_billing_refusal_still_records_the_turns_usage(messages):
     assert usage["completion_tokens"] == 300
     assert usage["cache_read_tokens"] == 50
     assert usage["cache_creation_tokens"] == 10
-    assert usage["cost_usd"] == 0.042
+    assert usage["cost_usd"] == pytest.approx(
+        anthropic_usage_cost_usd(
+            model="claude-sonnet-4-6",
+            input_tokens=1200,
+            output_tokens=300,
+            cache_read_tokens=50,
+            cache_write_5m_tokens=10,
+        )
+    )
 
 
 def _raised_402() -> ResultError:

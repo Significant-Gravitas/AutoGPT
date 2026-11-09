@@ -10,6 +10,7 @@ import re
 import stat
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -2112,6 +2113,89 @@ def _replace_config_value(content: str, name: str, value: str) -> str:
         for line in content.splitlines()
     ]
     return "\n".join(lines) + "\n"
+
+
+_STUB_CHAT_ENV = """
+class ChatEnvironmentError(ValueError):
+    pass
+
+
+def check_chat_environment(environ, dotenv_paths):
+    paths = list(dotenv_paths)
+    if environ.get("CHAT_PLATFORM_ROUTE") != "disabled":
+        raise ChatEnvironmentError("CHAT_PLATFORM_ROUTE is not set")
+    return [f"files={len(paths)}"]
+"""
+
+
+def _read_plain_dotenv(path: str | os.PathLike[str]) -> dict[str, str]:
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    return dict(line.split("=", 1) for line in lines if "=" in line)
+
+
+def _dotenv_where_missing() -> dict[str, object]:
+    """python-dotenv for the backend's real check, where it is not installed.
+
+    The image runs check-chat-env on the backend's virtualenv, which has
+    python-dotenv, but this suite runs on a bare python3. Where the package is
+    missing, the plain KEY=VALUE files these tests write are read here; the
+    migration is still the backend's own."""
+    if importlib.util.find_spec("dotenv") is not None:
+        return {}
+    return {"dotenv": types.SimpleNamespace(dotenv_values=_read_plain_dotenv)}
+
+
+class CheckChatEnvTest(unittest.TestCase):
+    """check-chat-env runs the backend's own check from its source."""
+
+    def test_legacy_settings_use_the_real_migration(self) -> None:
+        backend = Path(__file__).resolve().parents[2] / "backend"
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(sys.modules, _dotenv_where_missing()),
+        ):
+            env_file = Path(tmp) / ".env"
+            env_file.write_text("CHAT_API_KEY=synthetic-route-key\n", encoding="utf-8")
+            notes = runtime_config.check_chat_env(
+                env_file, {"AUTOGPT_BACKEND_DIR": str(backend)}
+            )
+            self.assertEqual(len(notes), 1)
+            self.assertIn("CHAT_API_KEY deprecated", notes[0])
+            self.assertNotIn("synthetic-route-key", notes[0])
+
+    def _backend(self, root: Path) -> Path:
+        module = root / "backend" / "copilot" / "chat_env.py"
+        module.parent.mkdir(parents=True)
+        module.write_text(_STUB_CHAT_ENV, encoding="utf-8")
+        return root
+
+    def test_runs_the_backends_check_with_its_dotenv_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._backend(Path(tmp))
+            env_file = root / ".env"
+            env_file.write_text("X=1\n", encoding="utf-8")
+            warnings = runtime_config.check_chat_env(
+                env_file,
+                {"AUTOGPT_BACKEND_DIR": str(root), "CHAT_PLATFORM_ROUTE": "disabled"},
+            )
+        self.assertEqual(warnings, ["files=1"])
+
+    def test_a_missing_dotenv_file_is_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._backend(Path(tmp))
+            warnings = runtime_config.check_chat_env(
+                root / ".env",
+                {"AUTOGPT_BACKEND_DIR": str(root), "CHAT_PLATFORM_ROUTE": "disabled"},
+            )
+        self.assertEqual(warnings, ["files=0"])
+
+    def test_problems_stop_startup_as_a_configuration_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._backend(Path(tmp))
+            with self.assertRaisesRegex(ValueError, "CHAT_PLATFORM_ROUTE is not set"):
+                runtime_config.check_chat_env(
+                    root / ".env", {"AUTOGPT_BACKEND_DIR": str(root)}
+                )
 
 
 if __name__ == "__main__":

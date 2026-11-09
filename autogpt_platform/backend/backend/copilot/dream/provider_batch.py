@@ -34,7 +34,7 @@ def anthropic_api_key() -> str | None:
     """The copilot config's direct Anthropic key, else the shared settings
     key; ``None`` when neither is set or can be read."""
     try:
-        key = ChatConfig().direct_anthropic_api_key
+        key = ChatConfig().batch_anthropic_api_key
         if key:
             return key
     except Exception:

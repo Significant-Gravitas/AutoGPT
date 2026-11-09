@@ -44,7 +44,9 @@ class Price(BaseModel):
         ) / 1_000_000
 
 
-# Anthropic's list prices. The bundled CLI prices its calls from its own copy.
+# Anthropic's list prices. Sonnet 5.5 cache reads cost 0.05x input, $0.10 per
+# million, not the usual 0.1x; the bundled CLI's own copy still says $0.20,
+# which the platform never charges.
 ANTHROPIC_PRICES: dict[str, Price] = {
     SONNET: Price(
         input=2.0, output=10.0, cache_read=0.1, cache_write_5m=2.5, cache_write_1h=4.0

@@ -8,6 +8,7 @@ from pydantic import SecretStr
 
 from backend.api.features.library import db as library_db_module
 from backend.copilot.context import set_turn_unattended
+from backend.copilot.session_kind import SessionKind
 from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionMeta,
@@ -2205,7 +2206,7 @@ async def test_validation_race_on_a_scheduled_turn_fails_instead_of_asking():
     session.metadata.origin = "automation"
 
     async def turn():
-        set_turn_unattended(session, scheduled=False)
+        set_turn_unattended(SessionKind.for_turn(session, scheduled=False).unattended)
         return await RunAgentTool()._handle_graph_validation_race(
             error=error,
             graph=graph,

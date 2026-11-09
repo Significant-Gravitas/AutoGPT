@@ -185,7 +185,12 @@ def test_blank_lines_do_not_stop_the_strip():
 
 
 @pytest.mark.parametrize("attachment_type", _KEPT_ATTACHMENT_TYPES)
-def test_attachment_types_a_resumed_session_needs_are_kept(attachment_type: str):
+def test_attachment_types_a_resumed_session_needs_are_kept(
+    attachment_type: str, monkeypatch
+):
+    monkeypatch.setattr(
+        "backend.copilot.transcript.config.claude_agent_strip_prompt_snapshots", False
+    )
     content = _jsonl(
         _user("u1", None),
         _attachment("k2", "u1", attachment_type),

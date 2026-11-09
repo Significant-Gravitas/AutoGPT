@@ -510,7 +510,7 @@ async def _run_turn(
     with (
         patch(
             "backend.copilot.executor.processor.ChatConfig",
-            return_value=MagicMock(test_mode=True, use_claude_agent_sdk=True),
+            return_value=MagicMock(test_mode=True),
         ),
         patch(
             "backend.copilot.executor.processor.stream_chat_completion_dummy",

@@ -525,12 +525,14 @@ async def test_extract_business_understanding_timeout():
 async def test_extract_business_understanding_missing_openrouter_key():
     """When no LLM client is configured, raise a clear RuntimeError pointing
     operators at both the cloud (``OPEN_ROUTER_API_KEY``) and local
-    (``CHAT_USE_LOCAL=true``) escape hatches."""
+    (``CHAT_PLATFORM_ROUTE=local``) escape hatches."""
     with (
         patch(
             "backend.data.tally.get_openai_client", return_value=None
         ) as mock_get_client,
-        pytest.raises(RuntimeError, match=r"OPEN_ROUTER_API_KEY.*CHAT_USE_LOCAL"),
+        pytest.raises(
+            RuntimeError, match=r"OPEN_ROUTER_API_KEY.*CHAT_PLATFORM_ROUTE=local"
+        ),
     ):
         await extract_business_understanding("Q: Name?\nA: Alice")
     mock_get_client.assert_called_once_with(prefer_openrouter=True)

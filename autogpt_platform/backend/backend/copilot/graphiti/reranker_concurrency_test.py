@@ -93,7 +93,7 @@ async def test_rank_cancels_and_drains_siblings_after_provider_error(recwarn):
     reranker = CompatOpenAIRerankerClient(
         config=LLMConfig(api_key="k", model="gpt-4.1-nano"), client=client
     )
-    baseline_tasks = asyncio.all_tasks()
+    baseline_tasks = _tasks_after_collecting_garbage()
     ranking = asyncio.create_task(
         reranker.rank(
             "query",
@@ -156,7 +156,7 @@ async def test_rank_cancellation_drains_active_and_queued_requests(recwarn):
     reranker = CompatOpenAIRerankerClient(
         config=LLMConfig(api_key="k", model="gpt-4.1-nano"), client=client
     )
-    baseline_tasks = asyncio.all_tasks()
+    baseline_tasks = _tasks_after_collecting_garbage()
     ranking = asyncio.create_task(
         reranker.rank(
             "query",
@@ -228,6 +228,14 @@ async def test_rank_preserves_passage_scores_when_responses_finish_in_reverse():
     assert completion_order == list(reversed(scores))
     assert dict(ranked) == pytest.approx(scores)
     assert [passage for passage, _ in ranked] == ["passage b", "passage c", "passage a"]
+
+
+def _tasks_after_collecting_garbage() -> set[asyncio.Task]:
+    """The running tasks, once garbage from earlier tests is collected: an SDK
+    client one of them left open closes itself from ``__del__`` by scheduling
+    ``aclose()``, which the end-of-test collection would otherwise count."""
+    gc.collect()
+    return asyncio.all_tasks()
 
 
 def _logprob_response(logprob: float = -0.1) -> SimpleNamespace:

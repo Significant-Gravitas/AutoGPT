@@ -30,6 +30,7 @@ from typing import Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot.service import strip_server_injected_tags
 from backend.copilot.tool_image import ToolImage
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import (
@@ -109,6 +110,15 @@ class PendingMessage(BaseModel):
     # never forwards it, so a human message stays metadata-free.
     metadata: dict[str, Any] | None = None
     model_image: ToolImage | None = None
+
+    def text_for_model(self) -> str:
+        """``content`` as the model reads it.
+
+        What a person or another session sent gets the same inbound cleanup
+        as a message sent to an idle chat. The platform's own labels and
+        wrapper are added around the cleaned text, never before it.
+        """
+        return strip_server_injected_tags(_escape_follow_up_tags(self.content))
 
 
 def _buffer_key(session_id: str) -> str:
@@ -586,12 +596,12 @@ def format_pending_as_followup(pending: list[PendingMessage]) -> str:
     total_chars = 0
     dropped = 0
     for idx, pm in enumerate(pending, start=1):
-        text = _escape_follow_up_tags(pm.content)
+        text = _escape_follow_up_tags(pm.text_for_model())
         if len(text) > _FOLLOWUP_CONTENT_MAX_CHARS:
             text = text[:_FOLLOWUP_CONTENT_MAX_CHARS] + "… [truncated]"
         entry = f"Message {idx}:\n{text}"
-        if pm.context and pm.context.url:
-            entry += f"\n[Page URL: {pm.context.url}]"
+        if pm.context and (url := strip_server_injected_tags(pm.context.url or "")):
+            entry += f"\n[Page URL: {url}]"
         if pm.file_ids:
             entry += "\n[Attached files: " + ", ".join(pm.file_ids) + "]"
         if total_chars + len(entry) > _FOLLOWUP_TOTAL_MAX_CHARS:
@@ -620,7 +630,7 @@ async def drain_and_format_for_injection(
     """Drain the pending buffer and produce a ``<user_follow_up>`` block.
 
     Shared entry point for every mid-turn injection site (``PostToolUse``
-    hook for MCP + built-in tools, baseline between-rounds drain, etc.).
+    hook for MCP + built-in tools, etc.).
     Also stashes the drained messages on the persist queue so the service
     layer appends a real user row after the tool_result it rode in on —
     giving the UI a correctly-ordered bubble.
@@ -655,9 +665,8 @@ async def drain_and_format_for_injection(
 def format_pending_as_user_message(message: PendingMessage) -> dict[str, Any]:
     """Shape a ``PendingMessage`` into the OpenAI-format user message dict.
 
-    Used by the baseline tool-call loop when injecting the buffered
-    message into the conversation.  Context/file metadata (if any) is
-    embedded into the content so the model sees everything in one block.
+    Context/file metadata (if any) is embedded into the content so the
+    model sees everything in one block.
     """
     text = pending_message_text(message)
     content = (
@@ -669,12 +678,12 @@ def format_pending_as_user_message(message: PendingMessage) -> dict[str, Any]:
 
 
 def pending_message_text(message: PendingMessage) -> str:
-    parts: list[str] = [message.content]
+    parts: list[str] = [message.text_for_model()]
     if message.context:
-        if message.context.url:
-            parts.append(f"\n\n[Page URL: {message.context.url}]")
-        if message.context.content:
-            parts.append(f"\n\n[Page content]\n{message.context.content}")
+        if url := strip_server_injected_tags(message.context.url or ""):
+            parts.append(f"\n\n[Page URL: {url}]")
+        if page := strip_server_injected_tags(message.context.content or ""):
+            parts.append(f"\n\n[Page content]\n{page}")
     if message.file_ids:
         parts.append(
             "\n\n[Attached files]\n"

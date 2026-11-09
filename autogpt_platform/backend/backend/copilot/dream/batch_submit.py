@@ -137,12 +137,12 @@ def phase_models_for_config(config: "ChatConfig") -> dict[str, str]:
     later.
     """
     standard = _native_phase_model(
-        config.fast_standard_model, "CHAT_FAST_STANDARD_MODEL"
+        config.job_tier_model("standard"), "CHAT_STANDARD_MODEL"
     )
     return {
         "consolidate": standard,
         "recombine": _native_phase_model(
-            config.fast_advanced_model, "CHAT_FAST_ADVANCED_MODEL"
+            config.job_tier_model("advanced"), "CHAT_ADVANCED_MODEL"
         ),
         "sanitize": standard,
     }

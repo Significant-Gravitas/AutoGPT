@@ -106,6 +106,13 @@ def _stub_route(mocker):
 
 
 @pytest.fixture(autouse=True)
+def _platform_api(mocker):
+    """These tests run the pass itself, so the route has an API; the skip
+    on a route without one has its own test."""
+    mocker.patch.object(orchestrator_mod.ChatConfig, "has_platform_api", new=True)
+
+
+@pytest.fixture(autouse=True)
 def force_sync_baseline(mocker):
     """Pin the orchestrator to the sync_baseline path for every test
     in this file.
@@ -2137,7 +2144,7 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     handle.token = "tok"
 
     config = mocker.MagicMock()
-    config.direct_anthropic_api_key = "key"
+    config.batch_anthropic_api_key = "key"
 
     run = DreamPassRun.begin("u-lock-lost", "anthropic_batch")
 
@@ -2397,7 +2404,7 @@ def _batch_route(mocker, *, lock_extends: bool) -> MagicMock:
         return_value="anthropic_batch",
     )
     config = MagicMock()
-    config.direct_anthropic_api_key = "key"
+    config.batch_anthropic_api_key = "key"
     mocker.patch.object(orchestrator_mod, "ChatConfig", return_value=config)
     handle = MagicMock()
     handle.token = "tok"
@@ -2946,6 +2953,24 @@ async def test_each_phase_cost_is_charged_under_the_passs_trial_attribution(
 
     assert result.error is None
     assert charged_under == ["trial-1", "trial-1", "trial-1"]
+
+
+@pytest.mark.asyncio
+async def test_a_route_without_a_platform_api_skips_before_any_call(mocker):
+    """A Claude login or a disabled route: the pass skips with its reason
+    before taking the lock, reading memory or calling any model."""
+    mocker.patch.object(orchestrator_mod.ChatConfig, "has_platform_api", new=False)
+    complete = mocker.patch.object(orchestrator_mod, "structured_complete")
+    gather = mocker.patch.object(orchestrator_mod, "gather_dream_input")
+    lock = mocker.patch.object(orchestrator_mod, "dream_lock")
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.skipped is True
+    assert result.skip_reason == "no_platform_api"
+    complete.assert_not_called()
+    gather.assert_not_called()
+    lock.assert_not_called()
 
 
 usage_snapshot = usage_activation_fixtures.usage_snapshot

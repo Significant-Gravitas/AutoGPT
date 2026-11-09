@@ -18,6 +18,7 @@ import json
 import sys
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 _SOURCE_URL = (
     "https://raw.githubusercontent.com/BerriAI/litellm/main/"
@@ -26,6 +27,32 @@ _SOURCE_URL = (
 _OUT_PATH = (
     Path(__file__).resolve().parents[1] / "backend" / "copilot" / "anthropic_rates.json"
 )
+
+# Rates checked by hand against Anthropic's pricing page. A refresh that would
+# change one stops without writing, so a person confirms the new price first.
+# Sonnet 5.5 and Opus 5.5 cache reads cost 0.05x input, not the usual 0.1x.
+CHECKED_RATES: dict[str, dict[str, float]] = {
+    "claude-sonnet-5-5": {
+        "cache_read_input_token_cost": 1e-07,
+        "cache_read_input_token_cost_batches": 5e-08,
+    },
+    "claude-opus-5-5": {
+        "cache_read_input_token_cost": 2e-07,
+        "cache_read_input_token_cost_batches": 1e-07,
+    },
+}
+
+
+def checked_rate_changes(rates: dict[str, Any]) -> list[str]:
+    """The hand-checked rates *rates* would change, one line each."""
+    changes = []
+    for model, fields in CHECKED_RATES.items():
+        entry = rates.get(model)
+        for field, expected in fields.items():
+            actual = entry.get(field) if isinstance(entry, dict) else None
+            if actual != expected:
+                changes.append(f"{model} {field}: {expected} -> {actual}")
+    return changes
 
 
 def main() -> int:
@@ -42,6 +69,16 @@ def main() -> int:
         and (k.startswith("claude") or k.startswith("anthropic/claude"))
         and isinstance(v, dict)
     }
+    changes = checked_rate_changes(rates)
+    if changes:
+        print(
+            "Upstream changes rates checked by hand. Confirm them against "
+            "Anthropic's pricing page, then update CHECKED_RATES:",
+            file=sys.stderr,
+        )
+        for line in changes:
+            print(f"  {line}", file=sys.stderr)
+        return 1
     out = {
         "_source": _SOURCE_URL,
         "_filter": "keys starting with claude or anthropic/claude",

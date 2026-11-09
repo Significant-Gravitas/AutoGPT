@@ -16,17 +16,29 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 import pytest
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.continuation import KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE
 from backend.copilot.executor.processor import (
     RATE_LIMIT_UNAVAILABLE_CODE,
     RATE_LIMIT_UNAVAILABLE_MESSAGE,
     CoPilotProcessor,
 )
-from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.executor.utils import (
+    CoPilotExecutionEntry,
+    CoPilotLogMetadata,
+    ScheduledTurnOrigin,
+)
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import StreamStart, StreamTurnPaused
+from backend.copilot.route_table import PlatformRoute, platform_row
 from backend.copilot.token_tracking import persist_and_record_usage
-from backend.copilot.turn_pause import TurnPause, pause_of
+from backend.copilot.tree import root_envelope
+from backend.copilot.turn_pause import (
+    TurnPause,
+    append_pause_marker,
+    continues_tainted,
+    pause_of,
+)
 
 _PROC = "backend.copilot.executor.processor"
 PAUSE = TurnPause(
@@ -145,6 +157,57 @@ async def test_a_refused_turn_ends_paused_without_running():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "origin, tainted",
+    [
+        (dict(from_chat_platform=True), True),
+        (dict(envelope=root_envelope("turn-1", tainted=True)), True),
+        (dict(envelope=root_envelope("turn-1")), False),
+        ({}, False),
+    ],
+    ids=["a-bots-message", "a-tainted-tree", "the-owners-message", "no-envelope"],
+)
+async def test_a_refused_turns_marker_keeps_the_taint_it_would_have_run_with(
+    origin: dict, tainted: bool
+):
+    """The resume at the budget reset picks this pause up, in a web chat too."""
+    turn = _Turn(_session(ChatMessage(role="assistant", content="Earlier.")))
+
+    await turn.run(_entry(**origin), AsyncMock(return_value=PAUSE))
+
+    turn.engine.assert_not_called()
+    assert pause_of(turn.session.messages[-1]) == PAUSE
+    assert continues_tainted(turn.session.messages) is tainted
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("note", [KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE])
+@pytest.mark.parametrize(
+    "paused_tainted", [True, False], ids=["paused-tainted", "paused-untainted"]
+)
+async def test_a_refused_pickup_keeps_the_paused_turns_taint(
+    note: str, paused_tainted: bool
+):
+    """Keep going, or the resume at the reset, queued without the taint (by an
+    API or a scheduler from before the field): the not-started marker still
+    says how the paused turn ran, for the resume that picks this one up."""
+    session = _session(ChatMessage(role="user", content="Build the report"))
+    append_pause_marker(
+        session, TurnPause(reason="steps", steps=450), tainted=paused_tainted
+    )
+    turn = _Turn(session)
+
+    await turn.run(
+        _entry(message=note, is_user_message=False, envelope=root_envelope("turn-1")),
+        AsyncMock(return_value=PAUSE),
+    )
+
+    turn.engine.assert_not_called()
+    assert pause_of(turn.session.messages[-1]) == PAUSE
+    assert continues_tainted(turn.session.messages) is paused_tainted
+
+
+@pytest.mark.asyncio
 async def test_a_message_the_route_already_saved_is_not_saved_twice():
     turn = _Turn(_session(ChatMessage(role="user", content="summarise my inbox")))
 
@@ -154,6 +217,35 @@ async def test_a_message_the_route_already_saved_is_not_saved_twice():
         "summarise my inbox"
     ]
     assert pause_of(turn.session.messages[-1]) == PAUSE
+
+
+@pytest.mark.asyncio
+async def test_a_refused_scheduled_fire_keeps_its_own_stamped_row():
+    """As a fire that runs does: the prompt row carries the schedule's stamp,
+    so this fire has a row of its own beside the last fire's identical one."""
+    earlier = ScheduledTurnOrigin(
+        schedule_id="sched-1", fired_at=datetime(2026, 11, 4, 9, tzinfo=UTC)
+    )
+    fired = earlier.model_copy(
+        update={"fired_at": datetime(2026, 11, 5, 9, tzinfo=UTC)}
+    )
+    turn = _Turn(
+        _session(
+            ChatMessage(
+                role="user",
+                content="summarise my inbox",
+                prompt_origin=earlier.prompt_origin(),
+            )
+        )
+    )
+
+    await turn.run(_entry(scheduled=fired), AsyncMock(return_value=PAUSE))
+
+    turn.engine.assert_not_called()
+    asked, marker = turn.session.messages[-2:]
+    assert asked.content == "summarise my inbox"
+    assert asked.prompt_origin == fired.prompt_origin()
+    assert pause_of(marker) == PAUSE
 
 
 @pytest.mark.asyncio
@@ -250,10 +342,14 @@ def credits(mocker) -> MagicMock:
     db.spend_org_credits = AsyncMock(return_value=0)
     db.get_personal_org_owner = AsyncMock(return_value=None)
     mocker.patch("backend.copilot.credit_billing.credit_db", return_value=db)
-    # A deployment that bills credits, on a route the SDK engine can take.
+    # A deployment that bills credits, on a route whose engine caps a turn's
+    # dollars.
     mocker.patch(_CREDITS_ON, True)
     mocker.patch.object(
-        ChatConfig, "thinking_available", new_callable=PropertyMock, return_value=True
+        ChatConfig,
+        "route_row",
+        new_callable=PropertyMock,
+        return_value=platform_row("openrouter"),
     )
     return db
 
@@ -407,3 +503,43 @@ async def test_an_unreadable_balance_fails_a_block_turn_closed(credits):
         turn_id="turn-1",
         skip_error_publish=False,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "route, on_credits",
+    [
+        ("openrouter", True),
+        ("direct_anthropic", True),
+        ("subscription", True),
+        ("local", False),
+    ],
+)
+async def test_only_a_route_that_caps_a_turns_dollars_runs_a_block_turn_on_credits(
+    credits, windows, mocker, route: PlatformRoute, on_credits: bool
+):
+    """A turn on the credit balance mustn't overdraw it, so it runs only on a
+    route whose engine gives the turn a dollar ceiling; elsewhere it is refused
+    as any other turn past the allowance is."""
+    mocker.patch.object(
+        ChatConfig,
+        "route_row",
+        new_callable=PropertyMock,
+        return_value=platform_row(route),
+    )
+    turn = _Turn(_session())
+    turn.stream = MagicMock(return_value=_SpendingStream(cost_usd=0.1234))
+
+    await turn.run(_entry(tool_name="autopilot_block"), AsyncMock(return_value=PAUSE))
+
+    if on_credits:
+        turn.engine.assert_called_once()
+        assert _paused(turn) == []
+        assert (
+            sum(c.kwargs["cost"] for c in credits.spend_credits.await_args_list) == 13
+        )
+    else:
+        turn.engine.assert_not_called()
+        assert _paused(turn) == [PAUSE.as_part()]
+        credits.get_credits.assert_not_awaited()
+        credits.spend_credits.assert_not_awaited()

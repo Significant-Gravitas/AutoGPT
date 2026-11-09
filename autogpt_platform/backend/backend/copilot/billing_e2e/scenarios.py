@@ -4,10 +4,10 @@ A row names the engine, how the deployment is configured, and the basis its
 charge is expected to rest on:
 
 - ``invoice``: what the provider billed for the call.
-- ``cli_estimate``: the CLI's own price for the tokens, which the platform
-  falls back to when it has no invoice to read.
-- ``moonshot_estimate``: the platform's Kimi rate card, the fallback where
-  the CLI's price (Anthropic rates) would be far off.
+- ``rate_card``: Anthropic's list price for the tokens, which the platform
+  charges where it has no invoice to read. Never the CLI's own estimate.
+- ``moonshot_estimate``: the platform's Kimi rate card, the fallback for a
+  Kimi call with no invoice.
 - ``none``: the user's own subscription pays, or nobody does; the platform
   must not charge the user's spend budgets at all.
 
@@ -21,11 +21,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from .invoice import CLI_ESTIMATE_PRICES, KIMI, MOONSHOT_FALLBACK, SONNET, Call
+from .invoice import ANTHROPIC_PRICES, KIMI, MOONSHOT_FALLBACK, SONNET, Call
 from .ledger import CreditBilling, PlannedDrain
 from .provider import PlannedFault
 
-ChargeBasis = Literal["invoice", "cli_estimate", "moonshot_estimate", "none"]
+ChargeBasis = Literal["invoice", "rate_card", "moonshot_estimate", "none"]
 # What a finding is about: whether the thread took its planned path, what the
 # turn was charged, the tokens recorded against it, or the live spend the SDK
 # turn's governor lands tasks on.
@@ -45,14 +45,12 @@ class KnownGap(BaseModel):
 
 class Scenario(BaseModel):
     id: str
-    engine: Literal["sdk", "baseline", "microsoft_365"]
+    engine: Literal["sdk", "microsoft_365"]
     model: str
     charge: ChargeBasis
     cost_log_provider: str
     # ChatConfig fields; ``{provider}`` in a string is the fake's base URL.
     config: dict[str, Any] = {}
-    # Where the baseline's OpenAI client points, under the fake's base URL.
-    client_path: str = ""
     codex: bool = False
     generation_lookups_fail: bool = False
     # Calls the provider bills per turn: one, a tool round of two, one.
@@ -92,19 +90,28 @@ class Scenario(BaseModel):
         return self.engine == "sdk"
 
     @property
+    def through_gateway(self) -> bool:
+        """Whether the CLI reaches the provider through the model gateway, so
+        the provider sees the gateway's requests rather than the CLI's."""
+        return self.codex or self.config.get("platform_route") == "local"
+
+    @property
     def reports_usage(self) -> bool:
         """Whether the upstream reports token counts the platform logs as is."""
         return self.engine != "microsoft_365"
 
 
 _OPENROUTER = {
-    "use_openrouter": True,
-    "api_key": "sk-or-billing-e2e",
-    "base_url": "{provider}/openrouter/api/v1",
+    "platform_route": "openrouter",
+    "openrouter_api_key": "sk-or-billing-e2e",
+    "openrouter_base_url": "{provider}/openrouter/api",
 }
-# The CLI reads its key from ANTHROPIC_API_KEY; the platform only checks one
-# is configured.
-_DIRECT = {"use_openrouter": False, "api_key": "sk-ant-billing-e2e"}
+# The fake provider never checks the key.
+_DIRECT = {
+    "platform_route": "direct_anthropic",
+    "anthropic_api_key": "sk-ant-billing-e2e",
+    "anthropic_base_url": "{provider}/anthropic",
+}
 
 # Anthropic reports no cost, so a direct turn is charged the CLI's own
 # estimate rather than the invoice (see ``CLI_ESTIMATE_PRICES``).
@@ -112,9 +119,9 @@ _SDK_ANTHROPIC = Scenario(
     id="sdk-anthropic",
     engine="sdk",
     model=SONNET,
-    charge="cli_estimate",
+    charge="rate_card",
     cost_log_provider="anthropic",
-    config={**_DIRECT, "claude_agent_model": SONNET},
+    config={**_DIRECT, "standard_model": SONNET},
 )
 _SDK_OPENROUTER = Scenario(
     id="sdk-openrouter",
@@ -122,7 +129,7 @@ _SDK_OPENROUTER = Scenario(
     model=f"anthropic/{SONNET}",
     charge="invoice",
     cost_log_provider="open_router",
-    config={**_OPENROUTER, "claude_agent_model": f"anthropic/{SONNET}"},
+    config={**_OPENROUTER, "standard_model": f"anthropic/{SONNET}"},
 )
 
 
@@ -187,22 +194,10 @@ SCENARIOS = [
         id="sdk-openrouter-lookups-refused",
         engine="sdk",
         model=f"anthropic/{SONNET}",
-        charge="cli_estimate",
+        charge="rate_card",
         cost_log_provider="open_router",
-        config={**_OPENROUTER, "claude_agent_model": f"anthropic/{SONNET}"},
+        config={**_OPENROUTER, "standard_model": f"anthropic/{SONNET}"},
         generation_lookups_fail=True,
-    ),
-    Scenario(
-        id="sdk-openrouter-no-reconcile",
-        engine="sdk",
-        model=f"anthropic/{SONNET}",
-        charge="cli_estimate",
-        cost_log_provider="open_router",
-        config={
-            **_OPENROUTER,
-            "claude_agent_model": f"anthropic/{SONNET}",
-            "sdk_reconcile_openrouter_cost": False,
-        },
     ),
     Scenario(
         id="sdk-openrouter-kimi",
@@ -210,19 +205,16 @@ SCENARIOS = [
         model=KIMI,
         charge="invoice",
         cost_log_provider="open_router",
-        config={**_OPENROUTER, "claude_agent_model": KIMI},
+        config={**_OPENROUTER, "standard_model": KIMI},
     ),
     Scenario(
-        id="sdk-openrouter-kimi-no-reconcile",
+        id="sdk-openrouter-kimi-lookups-refused",
         engine="sdk",
         model=KIMI,
         charge="moonshot_estimate",
         cost_log_provider="open_router",
-        config={
-            **_OPENROUTER,
-            "claude_agent_model": KIMI,
-            "sdk_reconcile_openrouter_cost": False,
-        },
+        config={**_OPENROUTER, "standard_model": KIMI},
+        generation_lookups_fail=True,
     ),
     Scenario(
         id="sdk-codex",
@@ -233,6 +225,8 @@ SCENARIOS = [
         config=_DIRECT,
         codex=True,
     ),
+    # The local route runs on the SDK engine through the shared model
+    # gateway: the operator's server is never charged, through either adapter.
     # On OpenRouter, the default route, the turn's charge waits for the
     # reconcile's invoice; direct, the CLI's own price lands as the stream ends.
     _SDK_OPENROUTER.model_copy(
@@ -250,47 +244,34 @@ SCENARIOS = [
         }
     ),
     Scenario(
-        id="baseline-openrouter",
-        engine="baseline",
-        model=f"anthropic/{SONNET}",
-        charge="invoice",
-        cost_log_provider="open_router",
-        config=_OPENROUTER,
-        client_path="/openrouter/api/v1",
-    ),
-    Scenario(
-        # The OpenAI client retries the refused request itself: the turn
-        # completes, and the retry is billed once.
-        id="baseline-openrouter-overloaded-once",
-        engine="baseline",
-        model=f"anthropic/{SONNET}",
-        charge="invoice",
-        cost_log_provider="open_router",
-        config=_OPENROUTER,
-        client_path="/openrouter/api/v1",
-        fault=PlannedFault(kind="overloaded", turn=1, request=2),
-    ),
-    Scenario(
-        id="baseline-anthropic",
-        engine="baseline",
-        model=SONNET,
-        charge="invoice",
-        cost_log_provider="anthropic",
-        config=_DIRECT,
-        client_path="/anthropic/v1",
-    ),
-    Scenario(
-        id="baseline-ollama",
-        engine="baseline",
+        id="sdk-local-openai-chat",
+        engine="sdk",
         model="llama3.1:8b",
         charge="none",
-        cost_log_provider="ollama",
+        cost_log_provider="local",
         config={
-            "use_local": True,
-            "api_key": "ollama",
-            "base_url": "{provider}/ollama/v1",
+            "platform_route": "local",
+            "local_base_url": "{provider}/ollama/v1",
+            "local_adapter": "openai_chat",
+            "local_context_tokens": 131_072,
+            "standard_model": "llama3.1:8b",
+            "advanced_model": "llama3.1:8b",
         },
-        client_path="/ollama/v1",
+    ),
+    Scenario(
+        id="sdk-local-anthropic-passthrough",
+        engine="sdk",
+        model="llama3.1:8b",
+        charge="none",
+        cost_log_provider="local",
+        config={
+            "platform_route": "local",
+            "local_base_url": "{provider}/ollama",
+            "local_adapter": "anthropic_passthrough",
+            "local_context_tokens": 131_072,
+            "standard_model": "llama3.1:8b",
+            "advanced_model": "llama3.1:8b",
+        },
     ),
     Scenario(
         id="microsoft-365-copilot",
@@ -307,9 +288,9 @@ SCENARIOS = [
 def expected_charge_usd(basis: ChargeBasis, call: Call) -> float:
     if basis == "invoice":
         return call.invoice_usd
-    if basis == "cli_estimate":
-        cli_price = CLI_ESTIMATE_PRICES[call.model.removeprefix("anthropic/")]
-        return cli_price.of(call.usage, call.cache_ttl)
+    if basis == "rate_card":
+        list_price = ANTHROPIC_PRICES[call.model.removeprefix("anthropic/")]
+        return list_price.of(call.usage, call.cache_ttl)
     if basis == "moonshot_estimate":
         return MOONSHOT_FALLBACK.of(call.usage, None)
     return 0.0

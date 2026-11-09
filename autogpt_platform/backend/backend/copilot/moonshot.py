@@ -2,8 +2,8 @@
 
 Moonshot's Kimi K2.x family is routed through OpenRouter's Anthropic-compat
 shim — it speaks Anthropic's API shape but its pricing and cache behaviour
-diverge from Anthropic in ways the Claude Agent SDK CLI and our baseline
-cache-control gating don't handle on their own:
+diverge from Anthropic in ways the Claude Agent SDK CLI doesn't handle
+on its own:
 
 * **Rate card** — NOT the canonical cost source.  The authoritative number
   for every OpenRouter-routed turn is the reconcile task
@@ -14,21 +14,15 @@ cache-control gating don't handle on their own:
   pricing table only knows Anthropic) isn't left wildly wrong before the
   reconcile fires AND so the reconcile's lookup-fail fallback records a
   plausible Moonshot estimate rather than a Sonnet-rate overcharge.
-  Signal authority: reconcile >> this module's rate card >> CLI.
+  Signal authority: reconcile >> this module's rate card; the CLI's
+  number is never charged.
 
-* **Cache-control** — Anthropic and Moonshot both accept the
-  ``cache_control: {type: ephemeral}`` breakpoint on message blocks, but
-  our baseline path currently gates cache markers on an
-  ``anthropic/`` / ``claude`` name match because non-Anthropic providers
-  (OpenAI, Grok, Gemini) 400 on the unknown field.  Moonshot's
-  Anthropic-compat endpoint silently accepts and honours the marker —
-  empirically boosts cache hit rate on continuation turns — but was
-  caught in the non-Anthropic branch of the original gate.
-  :func:`moonshot_supports_cache_control` lets callers widen the gate
-  to include Moonshot without weakening the ``false`` answer for
-  OpenAI et al.  (The predicate is intentionally narrow — Moonshot-only
-  — so callers combine it with an explicit Anthropic check at the call
-  site; see ``baseline/service.py::_supports_prompt_cache_markers``.)
+* **Cache-control** — Moonshot's Anthropic-compat endpoint accepts and
+  honours the ``cache_control: {type: ephemeral}`` breakpoint, which
+  empirically boosts cache hit rate on continuation turns, while OpenAI,
+  Grok and Gemini 400 on the unknown field. Callers that place markers
+  themselves (the style eval) let Moonshot through with
+  :func:`is_moonshot_model`.
 
 Detection is prefix-based (``moonshotai/``).  Moonshot routes every Kimi
 SKU through the same Anthropic-compat surface, so a new slug transparently
@@ -109,66 +103,32 @@ def rate_card_usd(model: str | None) -> tuple[float, float] | None:
     return _RATE_OVERRIDES_USD_PER_MTOK.get(model, _DEFAULT_MOONSHOT_RATE_USD_PER_MTOK)
 
 
-def override_cost_usd(
+def moonshot_cost_usd(
     *,
     model: str | None,
-    sdk_reported_usd: float,
     prompt_tokens: int,
     completion_tokens: int,
     cache_read_tokens: int,
     cache_creation_tokens: int,
-) -> float:
-    """Recompute SDK turn cost from the Moonshot rate card.
+) -> float | None:
+    """The platform's Moonshot rate card for this usage; None if not Moonshot.
 
-    Not the canonical cost source — the OpenRouter ``/generation``
-    reconcile (:mod:`openrouter_cost`) lands the authoritative billed
-    amount post-turn.  This helper exists only to improve the CLI's
-    in-turn ``ResultMessage.total_cost_usd``:
+    Not the canonical cost source — the OpenRouter ``/generation`` reconcile
+    (:mod:`openrouter_cost`) lands the billed amount post-turn. This prices
+    the turn before the reconcile and when its lookup fails, instead of the
+    CLI's estimate, which prices Kimi at Sonnet rates (~5x the real bill).
 
-    1. So the ``cost_usd`` the client sees before the reconcile completes
-       isn't wildly wrong (the CLI would otherwise ship a Sonnet-rate
-       estimate, ~5x the real Moonshot bill).
-    2. So the reconcile's own lookup-fail fallback records a plausible
-       Moonshot estimate rather than the CLI's Sonnet number.
-
-    For Moonshot slugs we compute cost from the reported token counts;
-    for anything else (including Anthropic) we return the SDK number
-    unchanged — Anthropic slugs are priced accurately by the CLI.
-
-    Cache read / creation tokens are folded into ``prompt_tokens`` at
-    the full input rate because Moonshot's rate card doesn't distinguish
-    them at the OpenRouter surface; the reconcile has the authoritative
-    discount accounting for turns where Moonshot's cache engaged.
+    Cache read / creation tokens are folded into ``prompt_tokens`` at the
+    full input rate because Moonshot's rate card doesn't distinguish them at
+    the OpenRouter surface; the reconcile has the authoritative discount
+    accounting for turns where Moonshot's cache engaged.
     """
-    if model is None:
-        return sdk_reported_usd
     rates = rate_card_usd(model)
     if rates is None:
-        return sdk_reported_usd
+        return None
     input_rate, output_rate = rates
     total_prompt = prompt_tokens + cache_read_tokens + cache_creation_tokens
     return (total_prompt * input_rate + completion_tokens * output_rate) / 1_000_000
-
-
-def moonshot_supports_cache_control(model: str | None) -> bool:
-    """True when a Moonshot *model* accepts Anthropic-style ``cache_control``.
-
-    Narrow, Moonshot-specific predicate — callers that need the full
-    "does this route accept cache markers" answer combine this with an
-    Anthropic check (see ``baseline/service.py::_supports_prompt_cache_markers``).
-    Named ``moonshot_*`` deliberately so the call site can't mistake it
-    for a universal predicate that answers correctly for Anthropic
-    (which also supports cache_control — this function would return
-    False for Anthropic slugs).
-
-    Moonshot's Anthropic-compat endpoint honours the marker.  Without
-    it Moonshot falls back to its own automatic prefix caching, which
-    drifts more readily between turns (internal testing saw 0/4 cache
-    hits across two continuation sessions).  With explicit
-    ``cache_control`` the upstream cache hit rate rises to the same
-    ballpark as Anthropic's ~60-95% on continuations.
-    """
-    return is_moonshot_model(model)
 
 
 def moonshot_context_window(model: str | None) -> int | None:

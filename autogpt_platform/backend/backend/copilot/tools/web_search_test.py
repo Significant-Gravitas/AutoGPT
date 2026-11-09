@@ -12,6 +12,7 @@ the handler plumbs through to ``persist_and_record_usage`` with
 import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -26,6 +27,7 @@ from openai.types.chat.chat_completion_message import (
 )
 
 from backend.copilot import credit_billing
+from backend.copilot.config import ChatConfig
 from backend.copilot.credit_billing import CreditBilledTurn
 from backend.copilot.model import ChatSession
 from backend.copilot.turn_pause import TurnPause
@@ -37,6 +39,8 @@ from .web_search import (
     _extract_cost_usd,
     _extract_results,
 )
+
+pytestmark = pytest.mark.usefixtures("clean_chat_settings")
 
 _SPENT_TODAY = TurnPause(
     reason="daily", resets_at=None, checkpoint_saved=False, started=False
@@ -267,6 +271,11 @@ def _cited_numbers(answer: str) -> set[int]:
     return {int(n) for n in re.findall(r"\[(\d+)\]", answer)}
 
 
+def _openrouter_route() -> ChatConfig:
+    """The platform chat on OpenRouter: search uses the route's own key."""
+    return ChatConfig(platform_route="openrouter", openrouter_api_key="sk-test")
+
+
 class TestCitedSources:
     """Sonar's answer cites its sources as ``[n]`` markers that index
     the annotation list (annotation i is ``[i+1]``).  Every number the
@@ -285,11 +294,7 @@ class TestCitedSources:
         )
         monkeypatch.setattr(
             "backend.copilot.tools.web_search._chat_config",
-            type(
-                "C",
-                (),
-                {"api_key": "sk-test", "base_url": "https://openrouter.ai/api/v1"},
-            )(),
+            _openrouter_route(),
         )
         with (
             patch(
@@ -402,14 +407,7 @@ class TestWebSearchToolDispatch:
 
         monkeypatch.setattr(
             "backend.copilot.tools.web_search._chat_config",
-            type(
-                "C",
-                (),
-                {
-                    "api_key": "sk-test",
-                    "base_url": "https://openrouter.ai/api/v1",
-                },
-            )(),
+            _openrouter_route(),
         )
 
         with (
@@ -460,14 +458,7 @@ class TestWebSearchToolDispatch:
 
         monkeypatch.setattr(
             "backend.copilot.tools.web_search._chat_config",
-            type(
-                "C",
-                (),
-                {
-                    "api_key": "sk-test",
-                    "base_url": "https://openrouter.ai/api/v1",
-                },
-            )(),
+            _openrouter_route(),
         )
 
         with (
@@ -497,11 +488,71 @@ class TestWebSearchToolDispatch:
         assert kwargs["model"] == "perplexity/sonar-deep-research"
         assert kwargs["cost_usd"] == pytest.approx(0.087)
 
+    @pytest.mark.parametrize(
+        ("chat_config", "integration_key", "used_key"),
+        [
+            (_openrouter_route, "sk-or-integration", "sk-test"),
+            (ChatConfig, "sk-or-integration", "sk-or-integration"),
+        ],
+        ids=["openrouter-route", "other-route"],
+    )
+    @pytest.mark.asyncio
+    async def test_search_takes_the_openrouter_route_key_else_the_integration_key(
+        self, monkeypatch, chat_config, integration_key, used_key
+    ):
+        """On the OpenRouter route search runs on the route's own key; on any
+        other route (search is served only by OpenRouter) on the deployment's
+        OpenRouter integration key."""
+        mock_client = self._mock_client(
+            _fake_response(
+                citations=[{"title": "t", "url": "https://example.com"}],
+                answer="A [1].",
+                cost=0.01,
+            )
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.web_search._chat_config", chat_config()
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.web_search.Settings",
+            lambda: SimpleNamespace(
+                secrets=SimpleNamespace(open_router_api_key=integration_key)
+            ),
+        )
+        with (
+            patch(
+                "backend.copilot.tools.web_search.AsyncOpenAI",
+                return_value=mock_client,
+            ) as client_ctor,
+            patch(
+                "backend.copilot.tools.web_search.persist_and_record_usage",
+                new=AsyncMock(return_value=160),
+            ),
+        ):
+            result = await WebSearchTool()._execute(
+                user_id="u1",
+                session=self._session(),
+                query="q",
+                max_results=5,
+                deep=False,
+            )
+
+        assert isinstance(result, WebSearchResponse)
+        assert client_ctor.call_args.kwargs == {
+            "api_key": used_key,
+            "base_url": "https://openrouter.ai/api/v1",
+        }
+
     @pytest.mark.asyncio
     async def test_missing_credentials_returns_error(self, monkeypatch):
+        """No OpenRouter route and no integration key: nothing can search."""
         monkeypatch.setattr(
             "backend.copilot.tools.web_search._chat_config",
-            type("C", (), {"api_key": "", "base_url": ""})(),
+            ChatConfig(),
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.web_search.Settings",
+            lambda: SimpleNamespace(secrets=SimpleNamespace(open_router_api_key="")),
         )
         openai_stub = AsyncMock()
         with (
@@ -530,14 +581,7 @@ class TestWebSearchToolDispatch:
     async def test_empty_query_rejected_without_api_call(self, monkeypatch):
         monkeypatch.setattr(
             "backend.copilot.tools.web_search._chat_config",
-            type(
-                "C",
-                (),
-                {
-                    "api_key": "sk-test",
-                    "base_url": "https://openrouter.ai/api/v1",
-                },
-            )(),
+            _openrouter_route(),
         )
         openai_stub = AsyncMock()
         with patch(
@@ -563,8 +607,11 @@ class TestWebSearchToolDispatch:
                 "C",
                 (),
                 {
-                    "api_key": "sk-test",
-                    "base_url": "https://openrouter.ai/api/v1",
+                    "platform_route": "openrouter",
+                    "main_client_credentials": (
+                        "sk-test",
+                        "https://openrouter.ai/api/v1",
+                    ),
                 },
             )(),
         )
@@ -596,8 +643,11 @@ class TestWebSearchToolDispatch:
                 "C",
                 (),
                 {
-                    "api_key": "sk-test",
-                    "base_url": "https://openrouter.ai/api/v1",
+                    "platform_route": "openrouter",
+                    "main_client_credentials": (
+                        "sk-test",
+                        "https://openrouter.ai/api/v1",
+                    ),
                 },
             )(),
         )

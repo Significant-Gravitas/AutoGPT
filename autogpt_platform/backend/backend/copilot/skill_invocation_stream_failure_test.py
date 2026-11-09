@@ -1,10 +1,8 @@
-from contextlib import nullcontext
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from backend.copilot import stream_registry
-from backend.copilot.baseline import service_unit_test as baseline_tests
 from backend.copilot.executor.processor_error_code_test import _run
 from backend.copilot.executor.processor_error_code_test import (
     allowance_admits_every_turn as allowance_admits_every_turn,
@@ -20,12 +18,11 @@ from backend.copilot.tools.skills import ParsedSkill
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("engine", ["baseline", "sdk"])
-async def test_command_persistence_failure_completes_the_turn_with_stream_error(engine):
+async def test_command_persistence_failure_completes_the_turn_with_stream_error():
     captured = []
     queries = []
-    module = baseline_tests if engine == "baseline" else sdk_tests
-    entrypoint = f"stream_chat_completion_{engine}"
+    module = sdk_tests
+    entrypoint = "stream_chat_completion_sdk"
     original = getattr(module, entrypoint)
 
     async def capture(*args, **kwargs):
@@ -51,27 +48,20 @@ async def test_command_persistence_failure_completes_the_turn_with_stream_error(
         with pytest.raises(
             RuntimeError, match="Cannot persist the current user message"
         ) as raised:
-            if engine == "baseline":
-                session = baseline_tests._baseline_session("/report weekly")
-                session.messages[0].sequence = None
-                await baseline_tests._run_baseline_turn(
-                    session, first_block=None, refresh=baseline_tests._refresh_nothing
-                )
-            else:
-                helper = sdk_tests.TestFirstTurnWarmContextIsEphemeral()
-                session = helper._first_turn("/report weekly")
-                session.messages[0].sequence = None
-                await helper._run(
-                    session,
-                    sdk_tests.TestFollowUpWarmContextCallSite._clients(queries),
-                    first_block=None,
-                    refresh=helper._no_refresh,
-                    expect_error=True,
-                )
+            helper = sdk_tests.TestFirstTurnWarmContextIsEphemeral()
+            session = helper._first_turn("/report weekly")
+            session.messages[0].sequence = None
+            await helper._run(
+                session,
+                sdk_tests.TestFollowUpWarmContextCallSite._clients(queries),
+                first_block=None,
+                refresh=helper._no_refresh,
+                expect_error=True,
+            )
     assert not queries
     assert "<skill_invocation>" not in (session.messages[0].content or "")
     errors = [event for event in captured if isinstance(event, StreamError)]
-    assert len(errors) == (1 if engine == "sdk" else 0)
+    assert len(errors) == 1
     if errors:
         assert errors[0].code == "sdk_error"
 
@@ -104,13 +94,7 @@ async def test_command_persistence_failure_completes_the_turn_with_stream_error(
             AsyncMock(return_value=False),
         ),
     ):
-        expectation = (
-            pytest.raises(RuntimeError, match="Cannot persist the current user message")
-            if engine == "baseline"
-            else nullcontext()
-        )
-        with expectation:
-            await _run(FailedTurn(), completed)
+        await _run(FailedTurn(), completed)
 
     events = [call.args[1] for call in published.await_args_list]
     assert any(
