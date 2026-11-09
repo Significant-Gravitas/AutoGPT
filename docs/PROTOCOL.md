@@ -504,16 +504,18 @@ The shim creates parents only after both checks pass.
 target, which is then renamed over it, so a write that fails part way (a
 full disk, say) leaves the old contents whole (on the in-place fallback
 below, it leaves a partial file instead). An existing file keeps its
-mode, except set-user-ID and set-group-ID, which a write drops so that new
-contents never run with the file owner's privileges (Linux drops them for an
-unprivileged writer; the shim drops them whatever it runs as); a new one gets
-the usual default (0o666 less the umask). An existing file with more than
+owner and group, and its mode, except set-user-ID and set-group-ID, which a
+write drops so that new contents never run with the file owner's privileges
+(Linux drops them for an unprivileged writer; the shim drops them whatever
+it runs as); a new one gets the usual default (0o666 less the umask). An existing file with more than
 one hard link is refused with `PATH_OUTSIDE_ALLOWED_ROOT`, as `FILE_READ`
 refuses one: its other names may be outside the root, and the shim can't
 tell, so the write neither succeeds nor replaces it. Because a target the
 write does replace gets a new inode, extended attributes and ACLs on the
-old file don't carry over. Where the directory takes no new entries, or (on Windows) another
-program has the file open, the shim overwrites the file in place instead:
+old file don't carry over. Where the directory takes no new entries, (on
+Windows) another program has the file open, or the shim may not give the new
+file the old one's owner and group (a file another account owns, a group the
+shim isn't in), the shim overwrites the file in place instead:
 it truncates the file and writes the content, so a write that fails part way
 there leaves a partial file, and the old contents are gone.
 
