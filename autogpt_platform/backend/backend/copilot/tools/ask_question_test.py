@@ -32,6 +32,20 @@ def task_store() -> Iterator[MagicMock]:
         yield store
 
 
+@pytest.fixture(autouse=True)
+def any_question_allowed(request: pytest.FixtureRequest) -> Iterator[None]:
+    """These tests cover parsing; ``question_rules_test`` covers which
+    questions may be asked. A test marked ``question_rules`` keeps the rules."""
+    if request.node.get_closest_marker("question_rules"):
+        yield
+        return
+    with patch(
+        "backend.copilot.tools.ask_question.question_rules.refusal",
+        MagicMock(return_value=None),
+    ):
+        yield
+
+
 @pytest.fixture()
 def tool() -> AskQuestionTool:
     return AskQuestionTool()
@@ -668,3 +682,25 @@ async def test_asking_parks_the_chats_tasks_and_replying_resumes_them(
             TaskStatus.IN_PROGRESS,
         ),
     ]
+
+
+@pytest.mark.question_rules
+@pytest.mark.asyncio
+async def test_a_question_that_does_not_block_is_refused_and_parks_nothing(
+    tool: AskQuestionTool, session: ChatSession, quiet_db, task_store: MagicMock
+):
+    with pytest.raises(ValueError, match="preference is not asked"):
+        await tool._execute(
+            user_id=None,
+            session=session,
+            questions=[
+                {
+                    "question": "Formal or casual tone?",
+                    "reason": "preference",
+                    "default_guess": "Casual",
+                }
+            ],
+        )
+
+    assert not turn_end.is_ending(session.session_id)
+    task_store.move_session_tasks.assert_not_awaited()

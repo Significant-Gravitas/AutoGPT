@@ -7,9 +7,11 @@ from typing import Any
 from prisma.enums import TaskStatus
 
 from backend.copilot import turn_end
+from backend.copilot.gate import resolve_mode
 from backend.copilot.model import ChatSession, PendingQuestion
 from backend.data.db_accessors import chat_db, task_db
 
+from . import question_rules
 from .base import BaseTool
 from .models import (
     QUESTION_REASONS,
@@ -132,6 +134,15 @@ class AskQuestionTool(BaseTool):
             raise ValueError(
                 "ask_question requires at least one valid question in 'questions'"
             )
+
+        if session and (
+            refused := question_rules.refusal(
+                questions,
+                resolve_mode(session),
+                question_rules.questions_in_a_row(session.messages),
+            )
+        ):
+            raise ValueError(refused)
 
         text = "; ".join(q.question for q in questions)
         if session:
