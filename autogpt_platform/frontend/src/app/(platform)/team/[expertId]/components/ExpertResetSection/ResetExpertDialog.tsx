@@ -41,8 +41,8 @@ export function ResetExpertDialog({
       <Dialog.Content>
         <div className="flex flex-col gap-4">
           <Text variant="body" tone="secondary">
-            {expertName} goes back to how they were the day you hired them.
-            This can&apos;t be undone.
+            {expertName} goes back to how they were the day you hired them. This
+            can&apos;t be undone.
           </Text>
           <ResetGroup label="Erased">
             <ResetLine>Everything {expertName} remembers</ResetLine>
@@ -60,7 +60,9 @@ export function ResetExpertDialog({
             <ResetLine>
               Their workflows, connections, budget and run history
             </ResetLine>
-            <ResetLine>Your files, and what the rest of your team knows</ResetLine>
+            <ResetLine>
+              Your files, and what the rest of your team knows
+            </ResetLine>
           </ResetGroup>
           <Dialog.Footer>
             <Button

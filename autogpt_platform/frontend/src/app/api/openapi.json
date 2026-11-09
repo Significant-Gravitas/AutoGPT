@@ -8512,6 +8512,48 @@
         }
       }
     },
+    "/api/experts/{expert_id}/reset": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Reset Expert",
+        "description": "Factory-reset a hired expert. Cannot be undone, unlike firing.",
+        "operationId": "reset_expert",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertResetResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "The reset did not finish; it is safe to retry"
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/runs": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -26028,6 +26070,28 @@
         "type": "object",
         "title": "ExpertRecommendations",
         "description": "The team Otto proposes after the dump.\n\n``source`` says where it came from: \"llm\" for a real read of the\ntranscript, \"fallback\" for the deterministic role/pain-point mapping,\nand \"disabled\" for a run where the feature flag was off (recorded so\nthe reader can tell it apart from a job that never finished)."
+      },
+      "ExpertResetResult": {
+        "properties": {
+          "memory_nodes_erased": {
+            "type": "integer",
+            "title": "Memory Nodes Erased"
+          },
+          "computer_erased": { "type": "boolean", "title": "Computer Erased" },
+          "soul_reset": { "type": "boolean", "title": "Soul Reset" },
+          "routines_reset": { "type": "integer", "title": "Routines Reset" },
+          "chats_archived": { "type": "integer", "title": "Chats Archived" }
+        },
+        "type": "object",
+        "required": [
+          "memory_nodes_erased",
+          "computer_erased",
+          "soul_reset",
+          "routines_reset",
+          "chats_archived"
+        ],
+        "title": "ExpertResetResult",
+        "description": "What one reset did."
       },
       "ExpertRun": {
         "properties": {

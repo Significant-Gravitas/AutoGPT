@@ -19,9 +19,21 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
   return { ...actual, toast: toastMock };
 });
 
-vi.mock("@/lib/auth/hooks/useAuthStore", () => ({
-  useAuthStore: (selector: (state: typeof auth) => unknown) => selector(auth),
-}));
+vi.mock("@/lib/auth/hooks/useAuthStore", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/auth/hooks/useAuthStore")>();
+  type State = ReturnType<typeof actual.useAuthStore.getState>;
+  function useAuthStore<T>(selector: (state: State) => T): T {
+    return selector({
+      ...actual.useAuthStore.getState(),
+      user: auth.user as State["user"],
+    });
+  }
+  return {
+    ...actual,
+    useAuthStore: Object.assign(useAuthStore, actual.useAuthStore),
+  };
+});
 
 const maria: Expert = {
   id: "expert-maria",
@@ -72,7 +84,9 @@ describe("Reset expert", () => {
     const dialog = await screen.findByRole("dialog", { name: "Reset Maria?" });
     expect(dialog.textContent).toContain("can't be undone");
     expect(dialog.textContent).toContain("Everything Maria remembers");
-    expect(dialog.textContent).toContain("Maria's computer and the notes on it");
+    expect(dialog.textContent).toContain(
+      "Maria's computer and the notes on it",
+    );
     expect(dialog.textContent).toContain("leave your chat list");
     expect(dialog.textContent).toContain("what the rest of your team knows");
     expect(reset).not.toHaveBeenCalled();
