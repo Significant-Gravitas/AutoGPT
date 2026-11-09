@@ -284,9 +284,11 @@ where one of another release fails the same way, and asks
 `check_permissions` for Accessibility and Screen Recording without
 prompting; if either is missing it exits 78 and launchd starts it again
 later, as before. Each chat's session checks again when it starts,
-through the same driver. If another chat's call is holding the driver past
-the check's 30 s, the new session goes ahead: the grants are the app's,
-checked when the shim started, and a busy driver is a working one.
+through the same driver. The platform gives a new chat's session a few
+seconds to connect, so if another chat's call holds the driver for more
+than two of them, the new session goes ahead unchecked: the grants are the
+app's, checked when the shim started, and a busy driver is a working one.
+Its HELLO waits as briefly for the screen size, and leaves it out instead.
 `autogpt-shim doctor` runs cua-driver's own
 `doctor`, starts the driver as the daemon does, reads the screen size, and on
 macOS reports both grants and, when one is missing, asks macOS to show its

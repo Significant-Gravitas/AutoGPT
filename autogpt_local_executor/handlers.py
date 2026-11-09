@@ -1462,7 +1462,10 @@ class ComputerUseHandler:
         """The main display's logical size, from the driver, for HELLO."""
         try:
             raw = await self.driver.call_tool(
-                "get_screen_size", {"session": self.session_label}, timeout=SCREEN_SIZE_SECONDS
+                "get_screen_size",
+                {"session": self.session_label},
+                timeout=SCREEN_SIZE_SECONDS,
+                start_within=CHILD_DRIVER_WAIT_SECONDS if self.shares_a_driver else None,
             )
         except (DriverUnavailable, McpError, TimeoutError):
             # HELLO goes out without the size rather than not at all.
@@ -1862,6 +1865,11 @@ class ComputerUseHandler:
 
 # How long HELLO waits for the driver's screen size.
 SCREEN_SIZE_SECONDS = 10.0
+# How long a chat's session, starting, waits for the driver another chat's
+# call may hold (its permission check, HELLO's screen size) before going on
+# without it: the platform gives a new chat's session a few seconds (eight)
+# to connect, and undoes the chat when it doesn't.
+CHILD_DRIVER_WAIT_SECONDS = 2.0
 
 # How long one computer tool call may run unless the platform asks for less
 # or more. The driver's own bounded waits (verify_state, run_script) fit.

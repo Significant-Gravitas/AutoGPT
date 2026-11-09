@@ -37,7 +37,7 @@ import websockets
 from pydantic import BaseModel, ValidationError
 from websockets.asyncio.client import connect
 
-from . import platform_info
+from . import handlers, platform_info
 from .audit import (
     AuditKeyUnavailableError,
     AuditLogCorruptError,
@@ -2196,12 +2196,23 @@ class ShimDaemon:
         if platform_info.detect_platform() != "darwin":
             return
         driver = self._computer_handler.driver
+        child = self._computer_handler.shares_a_driver
         try:
-            await driver.snapshot()
+            if child:
+                # Another chat's call can hold the shared driver far longer
+                # than the platform waits for this session to connect: wait
+                # briefly, then go ahead unchecked (below).
+                start_by = asyncio.get_running_loop().time() + handlers.CHILD_DRIVER_WAIT_SECONDS
+                await driver.snapshot(deadline=start_by)
+                start_within: float | None = max(start_by - asyncio.get_running_loop().time(), 0)
+            else:
+                await driver.snapshot()
+                start_within = None
             result = await driver.call_tool(
                 "check_permissions",
                 {"prompt": False, "session": self._computer_handler.session_label},
                 timeout=PERMISSION_CHECK_SECONDS,
+                start_within=start_within,
             )
         except CallNotStarted:
             if not self._computer_handler.shares_a_driver:

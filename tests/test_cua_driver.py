@@ -1584,6 +1584,36 @@ async def test_text_one_chat_wrote_is_readable_from_another(make_handler) -> Non
 # ── Daemon ───────────────────────────────────────────────────────────────
 
 
+async def test_a_child_session_waits_only_briefly_for_a_busy_shared_driver(
+    tmp_path, fake_log, monkeypatch
+) -> None:
+    """The platform waits a few seconds (eight) for a chat's session to
+    connect, then undoes the chat. A new chat's permission check waited up
+    to 30 s for the shared driver, which another chat's call can hold far
+    longer, and its HELLO up to 10 s more for the screen size."""
+    from autogpt_local_executor import handlers, platform_info
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setattr(handlers, "CHILD_DRIVER_WAIT_SECONDS", 0.2, raising=False)
+    parent = _daemon(tmp_path, session_id=None)
+    child = _daemon(tmp_path, session_id="child-1")
+    parent._computer_handler.share_with(child._computer_handler)
+    driver = parent._computer_handler.driver
+    await driver.snapshot()
+    await driver._turn.acquire()  # another chat's call, running
+    starting = asyncio.ensure_future(
+        asyncio.gather(child._preflight_computer_use(), child._computer_handler.screen_size())
+    )
+    try:
+        done, _ = await asyncio.wait({starting}, timeout=5)
+        assert starting in done
+        assert starting.result() == [None, None]
+    finally:
+        starting.cancel()
+        driver._turn.release()
+        await parent._computer_handler.close()
+
+
 def _daemon(tmp_path: Path, **overrides: Any):
     from autogpt_local_executor.daemon import ShimDaemon
 

@@ -255,11 +255,18 @@ class CuaDriverBridge:
         return self._snapshot
 
     async def call_tool(
-        self, name: str, arguments: dict[str, Any], *, timeout: float
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        *,
+        timeout: float,
+        start_within: float | None = None,
     ) -> dict[str, Any]:
         """One tool call, which waits for its turn and runs within `timeout`
         seconds in all. Raises CallNotStarted when the deadline passes before
-        the call reaches the driver.
+        the call reaches the driver. `start_within` bounds the wait for the
+        turn and the driver's start alone, for a caller that would rather not
+        run than wait long; the run then has what is left of `timeout`.
 
         cua-driver 0.38 runs one request at a time and drops MCP's cancel
         notice, so a call past its deadline, or one its caller gave up on,
@@ -269,13 +276,14 @@ class CuaDriverBridge:
         end it; the next call starts a new one."""
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
+        start_by = deadline if start_within is None else min(deadline, loop.time() + start_within)
         try:
-            async with asyncio.timeout_at(deadline):
+            async with asyncio.timeout_at(start_by):
                 await self._turn.acquire()
         except TimeoutError as exc:
-            raise CallNotStarted(f"{name} waited its whole deadline for the driver") from exc
+            raise CallNotStarted(f"{name} waited as long as it could for the driver") from exc
         try:
-            client = await self._client_by(deadline, name)
+            client = await self._client_by(start_by, name)
             remaining = deadline - loop.time()
             if remaining <= 0:
                 raise CallNotStarted(f"{name}'s deadline passed while the driver started")
