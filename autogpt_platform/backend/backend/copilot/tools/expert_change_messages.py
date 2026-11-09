@@ -46,7 +46,7 @@ def _chat_note(name: str, *, has_chat: bool, on_card: bool) -> str:
         f"The card shows a Chat with {name} button that opens their first "
         "chat, where they introduce themselves: point the user to it."
         if on_card
-        else f"The user can start it in AutoGPT, where {name} introduces " "themselves."
+        else f"The user can start it in AutoGPT, where {name} introduces themselves."
     )
     return (
         f"{name} has no chat yet. {where} Never say a thread or chat with them "
