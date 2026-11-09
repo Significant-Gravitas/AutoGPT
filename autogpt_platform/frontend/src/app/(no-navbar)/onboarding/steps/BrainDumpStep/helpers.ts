@@ -175,6 +175,6 @@ export function toOrbScreen(screen: ScreenState): OrbScreen | null {
   // take, and re-submitting a rejected take can only be rejected again.
   // Typing keeps the resting avatar and swaps only the control under it.
   if (screen === "recovery" || screen === "insufficient") return null;
-  if (screen === "typing") return "rest";
+  if (screen === "typing" || screen === "skip-reason") return "rest";
   return screen;
 }

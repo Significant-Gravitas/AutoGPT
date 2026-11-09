@@ -65,7 +65,12 @@ const CARDS: Card[] = [
 ];
 
 const SLOTS = CARDS.map((card) => card.slot);
-const HIDDEN_ON: ScreenState[] = ["recovery", "failed", "insufficient"];
+const HIDDEN_ON: ScreenState[] = [
+  "recovery",
+  "failed",
+  "insufficient",
+  "skip-reason",
+];
 
 // Starter ideas around the column on wide screens (see useIsWideLayout). Text,
 // not controls: no border, shadow, hover or focus, and hidden from assistive

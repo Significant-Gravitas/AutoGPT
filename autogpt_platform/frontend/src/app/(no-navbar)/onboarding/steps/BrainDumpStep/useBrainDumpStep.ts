@@ -25,6 +25,7 @@ import {
   saveMeta,
 } from "./recordingStore";
 import { promptSetNameForRole } from "./prompts";
+import { useFeedbackPrompt } from "@/components/organisms/FeedbackPrompts/useFeedbackPrompt";
 import { useBrainDumpRecorder } from "./useBrainDumpRecorder";
 import { useMicrophoneRetry } from "./useMicrophoneRetry";
 import { usePromptRotation } from "./usePromptRotation";
@@ -47,9 +48,11 @@ export type ScreenState =
   | "typing"
   | "recovery"
   | "failed"
-  | "insufficient";
+  | "insufficient"
+  | "skip-reason";
 
 export function useBrainDumpStep() {
+  const skipPrompt = useFeedbackPrompt("brain_dump_skip");
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const setStepBusy = useOnboardingWizardStore((s) => s.setStepBusy);
   // Picked on the step before; "Other" is matched as an id, not its free text.
@@ -423,6 +426,19 @@ export function useBrainDumpStep() {
     await completeAndAdvance(recordingId, "A");
   }
 
+  // Every skip passes through the reason tiles; the answer is optional and
+  // can't hold the step up, so the skip itself runs the moment one is given.
+  function openSkipReason() {
+    if (isSubmittingRef.current) return;
+    void skipPrompt.claim();
+    setScreen("skip-reason");
+  }
+
+  function skipWithReason(reason: string) {
+    skipPrompt.save({ reason });
+    void handleSkip();
+  }
+
   async function handleSkip() {
     // A skip that lands while the dump is being submitted, or behind
     // another skip, would advance the wizard a second time, past Hire.
@@ -613,6 +629,8 @@ export function useBrainDumpStep() {
     handleRestart,
     handleRetry,
     handleSkip,
+    openSkipReason,
+    skipWithReason,
     handleSubmitTyped,
     isTypedTooLong,
     handleResumeRecovered,

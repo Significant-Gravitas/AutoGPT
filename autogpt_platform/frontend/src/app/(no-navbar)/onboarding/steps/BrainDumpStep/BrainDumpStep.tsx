@@ -1,6 +1,8 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
+import { OnboardingSkipPrompt } from "@/components/organisms/FeedbackPrompts/OnboardingSkipPrompt";
+import { BRAIN_DUMP_SKIP_REASONS } from "@/components/organisms/FeedbackPrompts/helpers";
 import { cn } from "@/lib/utils";
 import { AmbientPrompts } from "./components/AmbientPrompts";
 import { FailureState } from "./components/FailureState";
@@ -31,10 +33,12 @@ export function BrainDumpStep() {
   const isRecording = dump.screen === "recording";
   const isProcessing = dump.screen === "processing";
   const isTyping = dump.screen === "typing";
+  const isAskingWhySkipped = dump.screen === "skip-reason";
   const showPrivacyNote =
     dump.screen !== "failed" &&
     dump.screen !== "recovery" &&
-    dump.screen !== "insufficient";
+    dump.screen !== "insufficient" &&
+    !isAskingWhySkipped;
   // rest → recording → processing all share one orb, so it is never
   // unmounted between them: only the glyph and the ring change.
   const orbScreen = toOrbScreen(dump.screen);
@@ -52,9 +56,9 @@ export function BrainDumpStep() {
   return (
     <>
       <SkipButton
-        isHidden={isRecording}
+        isHidden={isRecording || isAskingWhySkipped}
         isProcessing={isProcessing}
-        onSkip={dump.handleSkip}
+        onSkip={dump.openSkipReason}
       />
 
       {/* Wide enough that the starter ideas clear the typing composer. */}
@@ -133,6 +137,13 @@ export function BrainDumpStep() {
                       isOffline={dump.isOffline}
                     />
                   </>
+                ) : isAskingWhySkipped ? (
+                  <OnboardingSkipPrompt
+                    question="No problem. Mind telling us why?"
+                    reasons={BRAIN_DUMP_SKIP_REASONS}
+                    onReason={dump.skipWithReason}
+                    onContinue={dump.handleSkip}
+                  />
                 ) : orbScreen === "rest" ? (
                   <>
                     <RestActions
@@ -187,7 +198,7 @@ export function BrainDumpStep() {
                 mode={dump.submittedMode}
                 reason={dump.failureReason}
                 onDownload={dump.handleDownloadRecording}
-                onSkip={dump.handleSkip}
+                onSkip={dump.openSkipReason}
               />
             </RevealItem>
           )}
@@ -199,7 +210,7 @@ export function BrainDumpStep() {
                 canRecord={!dump.isMicBlocked}
                 onRecordAgain={dump.handleRestart}
                 onTypeInstead={dump.showTyping}
-                onSkip={dump.handleSkip}
+                onSkip={dump.openSkipReason}
               />
             </RevealItem>
           )}
