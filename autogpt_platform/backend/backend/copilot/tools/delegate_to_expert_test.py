@@ -438,6 +438,41 @@ class TestValidation:
 
 class TestDelegation:
     @pytest.mark.asyncio
+    async def test_an_experts_first_chat_opens_with_an_introduction(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """SECRT-3401: the card's Try again reaches a new expert through
+        here, so a first turn is told by the expert having no chat yet, not
+        by which path delegated."""
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id=None),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        message = mock_turn.await_args.kwargs["message"]
+        assert "open with one line introducing yourself" in message
+        assert "Don't run a workflow, create a schedule or send anything" in message
+
+    @pytest.mark.asyncio
+    async def test_a_later_chat_gets_no_introduction(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.copilot.tools.expert_delegation.get_user_sessions",
+            AsyncMock(return_value=([MagicMock()], 1)),
+        )
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id=None),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert "introducing yourself" not in mock_turn.await_args.kwargs["message"]
+
+    @pytest.mark.asyncio
     async def test_sub_runs_in_target_scope_with_provenance(
         self, roster, mock_turn, mock_sessions
     ):

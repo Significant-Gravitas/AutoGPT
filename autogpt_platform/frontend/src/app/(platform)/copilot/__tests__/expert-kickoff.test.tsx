@@ -22,6 +22,9 @@ import {
   markKickoffDone,
   markKickoffPending,
 } from "../expertKickoff";
+import { getGetV2ListSessionsQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useQueryClient } from "@tanstack/react-query";
+import { latestExpertSessionParams } from "../expertSessionQuery";
 import { useCopilotUIStore } from "../store";
 import { useChatSession } from "../useChatSession";
 import { useExpertKickoff } from "../useExpertKickoff";
@@ -68,11 +71,31 @@ beforeEach(() => {
 interface HarnessProps {
   /** Clear the kickoff param on settle, as the copilot page does. */
   clearKickoffOnSettle?: boolean;
+  /** Arm the kickoff only once "Roster settled" is pressed, as the copilot
+   *  page does after the roster query, over a list cached as empty. */
+  armAfterMount?: boolean;
 }
 
-function KickoffHarness({ clearKickoffOnSettle = false }: HarnessProps) {
+function KickoffHarness({
+  clearKickoffOnSettle = false,
+  armAfterMount = false,
+}: HarnessProps) {
   const [expertId] = useQueryState("expertId", parseAsString);
   const [kickoff, setKickoff] = useQueryState("kickoff", parseAsString);
+  const [isRosterSettled, setIsRosterSettled] = useState(!armAfterMount);
+  const queryClient = useQueryClient();
+  useState(() => {
+    if (!armAfterMount || !expertId) return;
+    // The app's client keeps a list fresh for a minute; the test client
+    // doesn't, which would hide a cached empty list.
+    queryClient.setQueryDefaults(getGetV2ListSessionsQueryKey(), {
+      staleTime: 60_000,
+    });
+    queryClient.setQueryData(
+      getGetV2ListSessionsQueryKey(latestExpertSessionParams(expertId)),
+      { status: 200, data: { sessions: [], total: 0 } },
+    );
+  });
   const [clientMessages, setClientMessages] = useState<UIMessage[]>([]);
   const [settledCount, setSettledCount] = useState(0);
   const {
@@ -110,7 +133,7 @@ function KickoffHarness({ clearKickoffOnSettle = false }: HarnessProps) {
 
   const { isKickoffStarting } = useExpertKickoff({
     userId: USER_ID,
-    expertId,
+    expertId: isRosterSettled ? expertId : null,
     kickoff: kickoff === "1",
     sessionId,
     sessionExpertId,
@@ -140,6 +163,9 @@ function KickoffHarness({ clearKickoffOnSettle = false }: HarnessProps) {
       <div data-testid="client-message-count">{clientMessages.length}</div>
       <button type="button" onClick={() => void refetchSession()}>
         Refresh session
+      </button>
+      <button type="button" onClick={() => setIsRosterSettled(true)}>
+        Roster settled
       </button>
     </div>
   );
@@ -304,62 +330,69 @@ describe("useExpertKickoff", () => {
     expect(screen.getByTestId("session-id").textContent).toBe("none");
   });
 
-  it("opens the chat a finished kickoff made when its link is opened again", async () => {
-    // SECRT-3401: the card's "Chat with <name>" link opens the same kickoff
-    // URL every time. The second time, the expert already introduced
-    // themselves: open that chat, don't land on an empty new chat.
-    const attemptToken = markKickoffPending(USER_ID, EXPERT_ID);
-    markKickoffDone(USER_ID, EXPERT_ID, attemptToken);
-    // Already adopted once in this tab, so only the kickoff can open it.
-    useCopilotUIStore.setState({
-      adoptedExpertThreads: new Set<string>([EXPERT_ID]),
-    });
-    let createCount = 0;
-    server.use(
-      stubTransports(),
-      http.get("*/api/chat/sessions", () =>
-        HttpResponse.json({
-          sessions: [
-            {
-              id: EXISTING_SESSION_ID,
-              created_at: "2026-01-01T00:00:00Z",
-              updated_at: "2026-01-02T00:00:00Z",
-              is_processing: false,
-              expert_id: EXPERT_ID,
-            },
-          ],
-          total: 1,
-        }),
-      ),
-      http.get(`*/api/chat/sessions/${EXISTING_SESSION_ID}`, () =>
-        HttpResponse.json(
-          makeSessionPayload(EXISTING_SESSION_ID, [
-            persistedKickoffMessage(),
-            persistedAssistantMessage(),
-          ]),
+  it.each([false, true])(
+    "opens the chat a finished kickoff made when its link is opened again (armed after mount: %s)",
+    async (armAfterMount) => {
+      // SECRT-3401: the card's "Chat with <name>" link opens the same kickoff
+      // URL every time. The second time, the expert already introduced
+      // themselves: open that chat, don't land on an empty new chat.
+      const attemptToken = markKickoffPending(USER_ID, EXPERT_ID);
+      markKickoffDone(USER_ID, EXPERT_ID, attemptToken);
+      // Already adopted once in this tab, so only the kickoff can open it.
+      useCopilotUIStore.setState({
+        adoptedExpertThreads: new Set<string>([EXPERT_ID]),
+      });
+      let createCount = 0;
+      server.use(
+        stubTransports(),
+        http.get("*/api/chat/sessions", () =>
+          HttpResponse.json({
+            sessions: [
+              {
+                id: EXISTING_SESSION_ID,
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-02T00:00:00Z",
+                is_processing: false,
+                expert_id: EXPERT_ID,
+              },
+            ],
+            total: 1,
+          }),
         ),
-      ),
-      http.post("*/api/chat/sessions", () => {
-        createCount += 1;
-        return HttpResponse.json({ id: "should-not-happen" });
-      }),
-    );
+        http.get(`*/api/chat/sessions/${EXISTING_SESSION_ID}`, () =>
+          HttpResponse.json(
+            makeSessionPayload(EXISTING_SESSION_ID, [
+              persistedKickoffMessage(),
+              persistedAssistantMessage(),
+            ]),
+          ),
+        ),
+        http.post("*/api/chat/sessions", () => {
+          createCount += 1;
+          return HttpResponse.json({ id: "should-not-happen" });
+        }),
+      );
 
-    renderKickoff(`?expertId=${EXPERT_ID}&kickoff=1`, {
-      clearKickoffOnSettle: true,
-    });
+      renderKickoff(`?expertId=${EXPERT_ID}&kickoff=1`, {
+        clearKickoffOnSettle: true,
+        armAfterMount,
+      });
+      if (armAfterMount) {
+        fireEvent.click(screen.getByRole("button", { name: "Roster settled" }));
+      }
 
-    await waitFor(() =>
-      expect(screen.getByTestId("session-id").textContent).toBe(
-        EXISTING_SESSION_ID,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("kickoff-param").textContent).toBe("none"),
-    );
-    expect(sendSpy).not.toHaveBeenCalled();
-    expect(createCount).toBe(0);
-  });
+      await waitFor(() =>
+        expect(screen.getByTestId("session-id").textContent).toBe(
+          EXISTING_SESSION_ID,
+        ),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("kickoff-param").textContent).toBe("none"),
+      );
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(createCount).toBe(0);
+    },
+  );
 
   it("stands down while another tab holds a fresh pending latch", async () => {
     markKickoffPending(USER_ID, EXPERT_ID);

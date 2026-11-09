@@ -16,7 +16,7 @@ import logging
 from typing import Any
 
 from backend.api.features.experts.models import Expert
-from backend.copilot.model import ChatSession, get_chat_session
+from backend.copilot.model import ChatSession, get_chat_session, get_user_sessions
 from backend.copilot.tree import MAX_DEPTH
 from backend.data.db_accessors import experts_db
 
@@ -63,6 +63,24 @@ def safe_caller_name(caller: str) -> str:
     """
     one_line = " ".join(caller.split()).translate(_FRAMING_DELIMITERS)
     return one_line[:CALLER_NAME_LIMIT].strip() or "a teammate"
+
+
+async def has_chat_with(user_id: str, expert_id: str) -> bool:
+    """Whether the user has any chat with *expert_id* yet, delegated ones
+    included: until they do, the expert's next turn is their first.
+
+    A read that fails counts as "yes", the claim that can't mislead: a first
+    turn without its introduction is a missed hello, while a "no chat yet"
+    that isn't true sends the expert into a chat already under way.
+    """
+    try:
+        sessions, _ = await get_user_sessions(
+            user_id, limit=1, expert_id=expert_id, pinned_first=False
+        )
+    except Exception:
+        logger.warning("Could not read whether an expert has a chat", exc_info=True)
+        return True
+    return bool(sessions)
 
 
 async def resolve_target_expert(user_id: str, reference: str) -> Expert | None:

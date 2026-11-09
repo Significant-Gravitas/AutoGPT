@@ -159,6 +159,16 @@ def _env(
         )
 
 
+@contextmanager
+def _has_chats():
+    """The expert already has a chat with the user (a re-hire)."""
+    with patch(
+        "backend.copilot.tools.expert_delegation.get_user_sessions",
+        AsyncMock(return_value=([SimpleNamespace(session_id="old")], 1)),
+    ):
+        yield
+
+
 def _approve(session):
     session.messages.append(
         ChatMessage(role="user", content="approved", sequence=len(session.messages))
@@ -285,6 +295,33 @@ class TestHireAndHandOffInOneApproval:
         assert "James has no chat yet" in resp.message
         assert "Chat with James button" in resp.message
         assert "Never say a thread or chat with them already exists" in resp.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_rehire_with_chats_is_not_told_it_has_none(self):
+        """Hiring a template already on the team, or fired from it, brings
+        back the expert with their chats: Otto must not say there is none."""
+        with _env(), _has_chats():
+            session = make_session(_USER)
+            preview = await _hire(session, template_id="tpl-james")
+            assert isinstance(preview, ExpertChangeProposedResponse)
+            resp = await _confirm(_approve(session), preview.confirmation_id)
+
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        assert "James already has a chat with the user" in resp.message
+        assert "the card's Chat with James button opens it" in resp.message
+        assert "no chat yet" not in resp.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_rehire_with_chats_gets_the_task_without_an_introduction(self):
+        with _env() as env, _has_chats():
+            session = make_session(_USER)
+            preview = await _propose_with_task(session)
+            assert preview.handoff_confirmation_id
+            await _confirm(_approve(session), preview.handoff_confirmation_id)
+
+        message = env.turn.await_args.kwargs["message"]
+        assert _BRIEF in message
+        assert "introducing yourself" not in message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_hire_only_hires_without_handing_anything_off(self):

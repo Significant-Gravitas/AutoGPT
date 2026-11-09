@@ -652,6 +652,29 @@ describe("refreshing the team when a new expert lands", () => {
     );
   });
 
+  it("refreshes when a held confirm lands on an earlier message", async () => {
+    // Approved in text, the confirm is held and its result swaps into the
+    // older message later, with nothing streaming there.
+    const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    const { rerender } = render(
+      <ExpertChangeGroup
+        parts={[expertPart("input-available", undefined, "call-confirm")]}
+      />,
+    );
+    expect(invalidate).not.toHaveBeenCalled();
+
+    rerender(<ExpertChangeGroup parts={[appliedRaise]} />);
+
+    await waitFor(() =>
+      expect(invalidations(invalidate.mock.calls)).toEqual(
+        expect.arrayContaining([
+          JSON.stringify(getListExpertIdentitiesQueryKey()),
+          JSON.stringify(SESSION_LIST_QUERY_KEY),
+        ]),
+      ),
+    );
+  });
+
   it("leaves the team alone when an old chat opens on an applied card", async () => {
     const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries");
     render(<ExpertChangeGroup parts={[appliedRaise]} />);

@@ -36,8 +36,8 @@ from .delegate_to_expert import (
     paused_refusal,
     run_delegated_turn,
 )
-from .expert_change_messages import applied_message, joined_verb
-from .expert_delegation import chain_refusal, resolve_target_expert
+from .expert_change_messages import joined_verb
+from .expert_delegation import chain_refusal, has_chat_with, resolve_target_expert
 from .models import (
     ExpertChangeAppliedResponse,
     ExpertHandoffOutcome,
@@ -74,6 +74,8 @@ async def hand_off_to_new_hire(
     expert = applied.expert
     try:
         target = await _target(user_id, session, expert.id)
+        # A re-hire comes back with the chats it already had.
+        first_task = not await has_chat_with(user_id, target.id)
         thread = await open_delegation_thread(user_id, session, target)
     except _NotStarted as e:
         return _report(applied, task, "failed", None, e.reason, e.retry)
@@ -89,7 +91,7 @@ async def hand_off_to_new_hire(
             prompt=task.brief,
             opened_here=True,
             wait_for_result=0,
-            first_task=True,
+            first_task=first_task,
         )
     except TurnNotDispatched:
         logger.warning("Hand-off to a new hire was not sent", exc_info=True)
@@ -111,14 +113,13 @@ def with_hire_only(
     """The plain id was confirmed for a hire or new expert proposed with a
     task: the user asked in chat to add them without starting it (the card
     itself offers only Hire/Create and start, or Not now)."""
-    kind = _kind(applied)
-    only = "hire only" if kind == "hire" else "create only"
+    only = "hire only" if _kind(applied) == "hire" else "create only"
     return applied.model_copy(
         update={
             "message": (
-                f"{applied_message(kind, applied.expert.name)} The user chose "
-                f"{only}, without handing over {task.title}: don't hand it "
-                "over, and don't ask about it unless they bring it up."
+                f"{applied.message} The user chose {only}, without handing "
+                f"over {task.title}: don't hand it over, and don't ask about it "
+                "unless they bring it up."
             )
         }
     )

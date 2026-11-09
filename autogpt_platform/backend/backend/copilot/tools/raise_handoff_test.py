@@ -358,6 +358,24 @@ class TestANewExpertWithNoTask:
         assert "Never say a thread or chat with them already exists" in resp.message
 
 
+class TestAChatPlatformConversation:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_is_pointed_at_autogpt_not_at_a_card(self):
+        """A chat-platform bot renders no card, so there is no button to
+        point the user at there."""
+        with _env():
+            session = make_session(_USER)
+            session.metadata.source_platform = "slack"
+            preview = await _raise(session)
+            assert isinstance(preview, ExpertChangeProposedResponse)
+            resp = await _confirm(_approve(session), preview.confirmation_id)
+
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        assert "Nadia has no chat yet" in resp.message
+        assert "The user can start it in AutoGPT" in resp.message
+        assert "button" not in resp.message
+
+
 class TestHandOffTaskValidation:
     @pytest.mark.asyncio(loop_scope="session")
     @pytest.mark.parametrize(

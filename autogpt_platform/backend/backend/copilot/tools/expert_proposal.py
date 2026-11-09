@@ -35,6 +35,7 @@ from backend.util.exceptions import (
 )
 
 from .expert_change_messages import applied_message
+from .expert_delegation import has_chat_with
 from .models import (
     ErrorResponse,
     ExpertChangeAppliedResponse,
@@ -356,12 +357,16 @@ async def apply_proposal(
     user_id: str,
     session_id: str,
     proposal: ExpertChangeProposal,
+    *,
+    on_card: bool = True,
 ) -> ToolResponseBase:
+    """Apply *proposal*. *on_card*: the confirm renders as a card the user
+    can act on, which a chat-platform conversation does not show."""
     preview = proposal.preview
     if preview.kind == "hire":
-        return await _apply_hire(user_id, session_id, preview)
+        return await _apply_hire(user_id, session_id, preview, on_card=on_card)
     if preview.kind == "raise":
-        return await _apply_raise(user_id, session_id, preview)
+        return await _apply_raise(user_id, session_id, preview, on_card=on_card)
     if preview.kind == "update":
         return await _apply_update(user_id, session_id, proposal)
     logger.error(
@@ -382,6 +387,8 @@ async def _apply_hire(
     user_id: str,
     session_id: str,
     preview: ExpertChangePreview,
+    *,
+    on_card: bool,
 ) -> ToolResponseBase:
     if preview.template_id is None:
         return _discarded_proposal_error(session_id, "template", "hire_expert")
@@ -394,8 +401,13 @@ async def _apply_hire(
         )
     except Exception as e:
         return _hire_failure_response(e, session_id)
+    # Hiring a template already on the team, or fired from it, returns that
+    # expert with the chats they had.
+    has_chat = await has_chat_with(user_id, result.expert.id)
     return ExpertChangeAppliedResponse(
-        message=applied_message("hire", result.expert.name),
+        message=applied_message(
+            "hire", result.expert.name, has_chat=has_chat, on_card=on_card
+        ),
         session_id=session_id,
         kind="hire",
         expert=_summary(result.expert),
@@ -406,6 +418,8 @@ async def _apply_raise(
     user_id: str,
     session_id: str,
     preview: ExpertChangePreview,
+    *,
+    on_card: bool,
 ) -> ToolResponseBase:
     try:
         result: RaiseResult = await experts_db().create_raised_expert(
@@ -424,7 +438,9 @@ async def _apply_raise(
     except Exception as e:
         return _raise_failure_response(e, session_id)
     return ExpertChangeAppliedResponse(
-        message=applied_message("raise", result.expert.name),
+        message=applied_message(
+            "raise", result.expert.name, has_chat=False, on_card=on_card
+        ),
         session_id=session_id,
         kind="raise",
         expert=_summary(result.expert),

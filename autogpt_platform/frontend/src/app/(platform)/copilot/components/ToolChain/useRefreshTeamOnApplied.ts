@@ -26,7 +26,9 @@ export function useRefreshTeamOnApplied({ parts, isLive, readOnly }: Args) {
   useEffect(() => {
     if (isLive) sawLive.current = true;
     const ids = applied ? applied.split(" ") : [];
-    seen.current ??= new Set(sawLive.current ? [] : ids);
+    if (seen.current === null) {
+      seen.current = new Set(sawLive.current ? [] : ids);
+    }
     const known = seen.current;
     const fresh = ids.filter((id) => !known.has(id));
     if (readOnly || fresh.length === 0) return;

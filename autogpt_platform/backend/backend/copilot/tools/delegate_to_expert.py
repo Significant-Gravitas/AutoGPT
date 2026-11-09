@@ -54,6 +54,7 @@ from backend.data.db_accessors import experts_db
 from .base import BaseTool
 from .expert_delegation import (
     chain_refusal,
+    has_chat_with,
     resolve_target_expert,
     safe_caller_name,
     sent_from_metadata,
@@ -252,6 +253,10 @@ async def start_delegation(
     The part of ``delegate_to_expert`` after its checks. The caller has
     already resolved *target* and cleared ``chain_refusal``.
     """
+    # Read before the thread opens: once it exists, every expert has a chat.
+    first_task = not delegated_session_id and not await has_chat_with(
+        user_id, target.id
+    )
     inner_session_id = await _resolve_session(
         user_id=user_id,
         session=session,
@@ -269,6 +274,7 @@ async def start_delegation(
         system_context=system_context,
         opened_here=not delegated_session_id,
         wait_for_result=wait_for_result,
+        first_task=first_task,
     )
 
 
@@ -291,8 +297,8 @@ async def run_delegated_turn(
     task handed to a new hire runs exactly like any other delegation: same
     provenance, permissions, mode and result contract. ``opened_here``
     drops a thread this call opened when its turn never reached it
-    (``TurnNotDispatched`` is re-raised after). ``first_task`` marks the new
-    hire's first turn ever (see ``_FIRST_TASK_NOTE``).
+    (``TurnNotDispatched`` is re-raised after). ``first_task`` marks the
+    expert's first turn ever, in any chat (see ``_FIRST_TASK_NOTE``).
     """
     caller = await _caller_name(user_id, session.expert_id)
     started_at = time.monotonic()
@@ -464,11 +470,12 @@ async def _caller_name(user_id: str, caller_expert_id: str | None) -> str:
     return caller.name if caller else "a teammate"
 
 
-# A new hire's first task is also the user's first look at them: the thread
-# opens from the card, so the expert says who they are before the work. Their
-# first turn stays ask-first, as the kickoff does (SECRT-2622): the user
-# approved the task on Otto's card and has not yet seen how the expert means
-# to do it.
+# An expert's first task is also the user's first look at them: the thread
+# opens from Otto's card, so the expert says who they are before the work.
+# Their first turn stays ask-first, as the kickoff does (SECRT-2622): the
+# user approved the task on Otto's card and has not yet seen how the expert
+# means to do it. Decided by whether the expert has any chat yet, not by who
+# delegates, so a hand-off the card retries through Otto gets it too.
 _FIRST_TASK_NOTE = (
     "[This is your first task since joining the team, and the user reads this "
     "thread: open with one line introducing yourself to them, then work on it "

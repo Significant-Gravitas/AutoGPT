@@ -104,7 +104,13 @@ class ConfirmExpertChangeTool(BaseTool):
         )
         if isinstance(proposal, ErrorResponse):
             return proposal
-        applied = await apply_proposal(user_id, session_id, proposal)
+        applied = await apply_proposal(
+            user_id,
+            session_id,
+            proposal,
+            # A chat-platform conversation renders no card to point at.
+            on_card=session.metadata.source_platform is None,
+        )
         task = proposal.handoff
         if task is None or not isinstance(applied, ExpertChangeAppliedResponse):
             return applied
