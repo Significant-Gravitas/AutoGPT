@@ -14,10 +14,12 @@ import logging
 import signal
 import socket
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from types import FrameType
+from typing import Any, cast
 
+import sentry_sdk
 import uvicorn
 from google import genai
 
@@ -31,13 +33,14 @@ from backend.copilot.onboarding_interview_voice import (
 from backend.data import db, redis_client
 from backend.data.onboarding import record_onboarding_voice_call
 from backend.data.user import get_user_by_id
+from backend.executor.cost_tracking import drain_pending_cost_logs
 from backend.monitoring.instrumentation import start_metrics_server
-from backend.util.process import AppProcess
+from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.settings import Settings
 from backend.voice_relay import tokens
 from backend.voice_relay.app import Relay, RelayDeps, create_app, first_name_of
 from backend.voice_relay.config import TRANSCRIBE_MODEL, WS_MAX_MESSAGE_BYTES, price_of
-from backend.voice_relay.metering import drain_cost_logs
+from backend.voice_relay.metering import warn_if_prices_out_of_date, watch_prices
 from backend.voice_relay.postcall import GeminiTranscriber, PostCall
 from backend.voice_relay.record import CloudRecordings
 from backend.voice_relay.scope import GeminiScopeClassifier
@@ -87,6 +90,8 @@ class DrainingServer(uvicorn.Server):
     async def drain(self) -> None:
         relay = self.relay
         started = relay.drain_started or time.monotonic()
+        # Busy counts calls still starting as well as live ones, and the
+        # post-call jobs of calls that ended.
         while relay.busy and time.monotonic() - started < self.drain_max_s:
             await asyncio.sleep(POLL_S)
         for session in list(relay.sessions.values()):
@@ -106,6 +111,7 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
     # A call is priced as it runs, so a model with no price cannot take one.
     price_of(model)
     price_of(TRANSCRIBE_MODEL)
+    warn_if_prices_out_of_date()
     if not settings.secrets.gemini_api_key:
         raise RuntimeError("GEMINI_API_KEY is not set")
     if not tokens.is_configured():
@@ -116,34 +122,41 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
     await db.connect()
     await redis_client.get_redis_async()
     client = genai.Client(api_key=settings.secrets.gemini_api_key)
-    try:
-        yield RelayDeps(
-            vendor=GeminiLive(
-                client,
-                model=model,
-                voice=settings.config.voice_interview_voice,
-                system_prompt=VOICE_INTERVIEW_PROMPT,
-                tool_name=VOICE_INTERVIEW_END_TOOL,
-                tool_description=END_TOOL_DESCRIPTION,
-                tool_parameters=VOICE_INTERVIEW_END_TOOL_PARAMETERS,
-            ),
-            classifier=GeminiScopeClassifier(client),
+    deps = RelayDeps(
+        vendor=GeminiLive(
+            client,
+            model=model,
+            voice=settings.config.voice_interview_voice,
+            system_prompt=VOICE_INTERVIEW_PROMPT,
+            tool_name=VOICE_INTERVIEW_END_TOOL,
+            tool_description=END_TOOL_DESCRIPTION,
+            tool_parameters=VOICE_INTERVIEW_END_TOOL_PARAMETERS,
+        ),
+        classifier=GeminiScopeClassifier(client),
+        redis=redis_client.get_redis_async,
+        account_name=_account_name,
+        record_call=record_onboarding_voice_call,
+        live_model=model,
+        max_concurrent=settings.config.voice_interview_max_concurrent,
+        postcall=PostCall(
             redis=redis_client.get_redis_async,
-            account_name=_account_name,
-            record_call=record_onboarding_voice_call,
+            recordings=CloudRecordings(),
+            transcriber=GeminiTranscriber(client),
+            first_name=_first_name,
             live_model=model,
-            postcall=PostCall(
-                redis=redis_client.get_redis_async,
-                recordings=CloudRecordings(),
-                transcriber=GeminiTranscriber(client),
-                first_name=_first_name,
-                live_model=model,
-                pod=socket.gethostname(),
-            ),
-            spool_dir=settings.config.voice_interview_spool_dir,
-        )
+            pod=socket.gethostname(),
+        ),
+        spool_dir=settings.config.voice_interview_spool_dir,
+    )
+    # Startup's objects stay out of full collections, which would otherwise
+    # pause every live call's event loop.
+    freeze_startup_heap()
+    price_watch = asyncio.create_task(watch_prices())
+    try:
+        yield deps
     finally:
-        await drain_cost_logs()
+        price_watch.cancel()
+        await drain_pending_cost_logs()
         try:
             await redis_client.disconnect_async()
         except Exception:
@@ -169,11 +182,42 @@ async def _first_name(user_id: str) -> str | None:
         return None
 
 
+def strip_frame_locals(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any]:
+    """A Sentry event without its stack frames' local variables.
+
+    The relay's frames, and the library frames under them, hold the content
+    of calls, which stays out of error reports; the call id in the log
+    message is what an investigation starts from.
+    """
+    for frames in _event_frames(event):
+        for frame in frames:
+            if isinstance(frame, dict):
+                frame.pop("vars", None)
+    return event
+
+
+def _event_frames(event: dict[str, Any]) -> Iterator[list[Any]]:
+    for section in ("exception", "threads"):
+        for value in (event.get(section) or {}).get("values") or []:
+            frames = (value.get("stacktrace") or {}).get("frames")
+            if frames:
+                yield frames
+    frames = (event.get("stacktrace") or {}).get("frames")
+    if frames:
+        yield frames
+
+
+def keep_frame_locals_out_of_sentry() -> None:
+    """Send every Sentry event from this process without frame locals."""
+    sentry_sdk.get_global_scope().add_event_processor(cast(Any, strip_frame_locals))
+
+
 class VoiceRelay(AppProcess):
     # The start route decides who may call; the relay reads no flags.
     reads_feature_flags = False
 
     def run(self) -> None:
+        keep_frame_locals_out_of_sentry()
         config = Settings().config
         relay = Relay(
             max_calls=config.voice_relay_max_calls,

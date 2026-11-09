@@ -23,9 +23,12 @@ from backend.voice_relay.config import CLASSIFIER_MODEL
 
 logger = logging.getLogger(__name__)
 
-# The classifier's labels as the interview's rule reads them.
+# The classifier's labels as the interview's rule reads them. A turn about
+# their work clears the count; a turn that is neither work nor a request
+# leaves it as it is.
 LABELS: dict[str, ScopeLabel] = {
     "work": "work",
+    "other": "other",
     "task": "request",
     "harmful": "harmful",
 }
@@ -43,7 +46,8 @@ PROMPT = """\
 You label one turn of a voice onboarding call. Otto, an AI, is on the call only to learn about the user's work.
 
 Label the USER turn:
-- "work": the user talks about their own work, business, job search, team or tools; answers, corrects or confirms Otto; greets or says goodbye; asks how the call works or what happens with their information; or anything unclear.
+- "work": the user tells Otto something about their own work, business, job search, team, customers or tools, or corrects what Otto said about it.
+- "other": a turn that says nothing about their work and asks for nothing: a greeting or goodbye, a bare yes, no, ok or "hmm", a confirmation with nothing new in it, a question about how the call works or what happens with their information, or anything unclear.
 - "task": the user asks Otto to do something now instead of describing their work, such as write, code, debug, research, give advice or answer a general question.
 - "harmful": the user asks for help with something that harms someone else, such as getting into another person's account, tracking or exposing a person, or harassment; or the user abuses Otto.
 

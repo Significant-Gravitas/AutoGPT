@@ -14,6 +14,7 @@ from backend.voice_relay.scope import GeminiScopeClassifier, parse_label
         ({"label": "work", "why": "describes their bakery"}, "work"),
         ({"label": "task", "why": "asks for code"}, "request"),
         ({"label": "harmful", "why": "wants a stranger's address"}, "harmful"),
+        ({"label": "other", "why": "a bare ok"}, "other"),
     ],
 )
 def test_the_classifiers_labels_are_the_interviews_own(answer, label):
@@ -29,9 +30,35 @@ def test_an_answer_that_cannot_be_read_leaves_the_turn_unjudged(text):
     assert parse_label(text) is None
 
 
-def test_voice_and_text_end_on_the_same_rule():
-    assert scope_verdict([parse_label(json.dumps({"label": "task"}))] * 3) == "scope"
-    assert scope_verdict([parse_label(json.dumps({"label": "harmful"}))] * 2) == "scope"
+@pytest.mark.parametrize(
+    "said,verdict",
+    [
+        (["task", "task", "task"], "scope"),
+        (["task", "other", "task", "other", "task"], "scope"),
+        (["harmful", "other", "harmful"], "scope"),
+        (["harmful", "harmful"], "scope"),
+        (["task", "task", "work", "task"], None),
+        (["harmful", "work", "harmful"], None),
+        (["other", "other", "other"], None),
+        (["task", "harmful", "other"], None),
+    ],
+    ids=[
+        "three-requests",
+        "requests-between-fillers",
+        "harmful-around-a-filler",
+        "two-harmful",
+        "work-clears-the-count",
+        "work-clears-harm",
+        "fillers-alone",
+        "two-strikes-then-a-filler",
+    ],
+)
+def test_voice_and_text_end_on_the_same_rule(said, verdict):
+    """The classifier's labels, through the typed interview's own rule: a
+    turn about their work clears the count, and a filler leaves it."""
+    labels = [parse_label(json.dumps({"label": label})) for label in said]
+    assert None not in labels
+    assert scope_verdict(labels) == verdict
 
 
 async def test_the_classifier_labels_a_turn_and_reports_its_tokens():
