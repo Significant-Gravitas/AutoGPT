@@ -1541,23 +1541,9 @@ class ComputerUseHandler:
         the computer, which every session's calls take turns at, and the
         driver's work. A call whose deadline passes while it waits never
         reaches the driver."""
-        loop = asyncio.get_running_loop()
-        seconds = float(msg.payload.timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
-        deadline = (loop.time() if received_at is None else received_at) + seconds
+        deadline = self.call_deadline(msg, received_at)
         start = time.monotonic()
-        tool = msg.payload.tool
-        arguments = dict(msg.payload.arguments)
-        approved = msg.payload.approved_arguments
-        details: dict[str, Any] = {
-            "tool": tool,
-            # What launches, and the paths the person approved, are kept
-            # whole, as EXECUTE_COMMAND keeps argv.
-            "arguments": _audit_arguments(
-                arguments, truncate=tool != "launch_app" and not approved
-            ),
-        }
-        if approved:
-            details["approved_arguments"] = sorted(approved)
+        details = self._call_details(msg)
         try:
             async with asyncio.timeout_at(deadline):
                 await self._machine_turn.acquire()
@@ -1567,6 +1553,37 @@ class ComputerUseHandler:
             return await self._run_call(msg, details, start, deadline)
         finally:
             self._machine_turn.release()
+
+    @staticmethod
+    def call_deadline(msg: ComputerToolCallMessage, received_at: float | None = None) -> float:
+        """When a call's `timeout_seconds` runs out (loop time), counted from
+        when the shim received it."""
+        seconds = float(msg.payload.timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
+        return (asyncio.get_running_loop().time() if received_at is None else received_at) + seconds
+
+    async def refuse_unstarted(self, msg: ComputerToolCallMessage) -> Any:
+        """Answer a call whose deadline passed before it could be taken (it
+        waited for one of the machine's request slots), as one whose
+        deadline passed waiting for the computer is answered."""
+        if not self.config.enable_computer_use:
+            return await self.handle(msg)
+        return await self._not_started(msg, self._call_details(msg), time.monotonic())
+
+    @staticmethod
+    def _call_details(msg: ComputerToolCallMessage) -> dict[str, Any]:
+        tool = msg.payload.tool
+        approved = msg.payload.approved_arguments
+        details: dict[str, Any] = {
+            "tool": tool,
+            # What launches, and the paths the person approved, are kept
+            # whole, as EXECUTE_COMMAND keeps argv.
+            "arguments": _audit_arguments(
+                dict(msg.payload.arguments), truncate=tool != "launch_app" and not approved
+            ),
+        }
+        if approved:
+            details["approved_arguments"] = sorted(approved)
+        return details
 
     async def _run_call(
         self,

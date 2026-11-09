@@ -389,6 +389,47 @@ async def test_a_request_that_finds_every_machine_slot_held_is_refused(
     assert machine.locked()  # the held slot stays held
 
 
+async def test_a_computer_call_waiting_for_a_machine_slot_stops_at_its_deadline(
+    shim_config: ShimConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A computer tool call waited the machine's whole limit for a request
+    slot, whatever its own deadline, then got SHIM_OVERLOADED: a call given
+    one second was answered nine seconds late, as if the machine had
+    refused it rather than its time having run out."""
+    import autogpt_local_executor.daemon as daemon_module
+    from autogpt_local_executor.protocol import ComputerToolCallMessage, ComputerToolCallPayload
+
+    monkeypatch.setattr(daemon_module, "MACHINE_WORK_WAIT_SECONDS", 60)
+    machine = asyncio.Semaphore(1)
+    await machine.acquire()  # held by another chat's work
+    shim_config.enable_computer_use = True
+    child = _child(shim_config, machine)
+    child._granted_capabilities = frozenset({"computer_use"})
+    call = ComputerToolCallMessage(
+        id="req",
+        ts=now_ts(),
+        payload=ComputerToolCallPayload(tool="click", arguments={"pid": 7}, timeout_seconds=1),
+    )
+    ws = _FakeWS()
+    task = asyncio.ensure_future(child._dispatch(ws, call))
+    try:
+        done, _ = await asyncio.wait({task}, timeout=20)
+        assert task in done
+    finally:
+        task.cancel()
+
+    [answer] = [parse_message(raw) for raw in ws.sent]
+    assert answer.payload.code == "COMMAND_TIMEOUT"
+    assert answer.payload.details == {"tool": "click", "timeout_seconds": 1, "started": False}
+    [record] = [
+        json.loads(line)
+        for line in shim_config.audit_log_path.read_text().splitlines()
+        if json.loads(line)["op"] == "COMPUTER_TOOL_CALL"
+    ]
+    assert record["result"]["error_code"] == "COMMAND_TIMEOUT"
+    assert machine.locked()  # never taken
+
+
 async def test_a_request_takes_a_machine_slot_freed_while_it_waits(
     shim_config: ShimConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
