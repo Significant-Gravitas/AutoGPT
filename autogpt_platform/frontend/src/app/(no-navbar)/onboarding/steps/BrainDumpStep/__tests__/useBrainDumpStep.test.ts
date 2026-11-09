@@ -923,6 +923,17 @@ describe("useBrainDumpStep — Otto replies", () => {
     });
   });
 
+  it("says when no kind fit, apart from when there was no pick", async () => {
+    const { result } = await rejectVoiceTake(
+      "insufficient_content",
+      "I like pizza.",
+      "other",
+    );
+
+    expect(result.current.replyKind).toBe("other");
+    expect(shown()[0]?.[1]).toMatchObject({ heard: true, reply_kind: "other" });
+  });
+
   it("drops a pick when no words came through", async () => {
     const { result } = await rejectVoiceTake(
       "insufficient_content",

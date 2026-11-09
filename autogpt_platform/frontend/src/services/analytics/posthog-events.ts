@@ -77,8 +77,8 @@ export const BrainDumpEvent = {
   BRAIN_DUMP_TYPED_FALLBACK: "brain_dump_typed_fallback",
   // The "not enough" screen showed, after a voice or typed take, with the
   // `mode`, the gate's `error_code`, whether "You" showed any text (`heard`),
-  // which of Otto's fixed first lines was picked for it (`reply_kind`, null
-  // for the default) and the role's `prompt_set`. Talk, Write and a skip on that screen
+  // the kind of take Jev picked for it (`reply_kind`; `other` and null both
+  // show the default line) and the role's `prompt_set`. Talk, Write and a skip on that screen
   // (Continue without it or Skip for now) send `from: "insufficient"` on
   // `brain_dump_restarted`, `brain_dump_typed_fallback` and
   // `brain_dump_skipped`, and a take or text completed after it sends

@@ -108,8 +108,7 @@ class FinalizeResponse(BaseModel):
     reject; never on ``no_usable_speech``."""
     otto_reply_kind: OttoReplyKind | None = None
     """Which of Otto's fixed first lines fits what was said, on an
-    ``insufficient_content`` reject (``otto_reply``). ``None`` means the
-    screen's default line."""
+    ``insufficient_content`` reject. ``None`` and ``"other"`` get the default."""
     error_code: str | None = None
     error_reason: str | None = None
     """What decided a quality-gate rejection (``quality.QualityRejection``)."""
