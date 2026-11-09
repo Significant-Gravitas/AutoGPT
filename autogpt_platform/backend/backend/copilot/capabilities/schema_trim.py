@@ -43,7 +43,10 @@ def collapse_nested_objects(node: Any, depth: int = OUTPUT_FIELD_DEPTH) -> Any:
     if not isinstance(node, dict):
         return node
     properties = node.get("properties")
-    collapse = depth <= 0 and isinstance(properties, dict)
+    field_names = (
+        list(properties) if depth <= 0 and isinstance(properties, dict) else None
+    )
+    collapse = field_names is not None
     cleaned: dict[str, Any] = {}
     for key, value in node.items():
         if key in _DATA_KEYWORDS:
@@ -58,6 +61,6 @@ def collapse_nested_objects(node: Any, depth: int = OUTPUT_FIELD_DEPTH) -> Any:
             # A collapsed object's other schemas (``additionalProperties``,
             # ``items``, ``anyOf``) are trimmed too, not kept whole.
             cleaned[key] = collapse_nested_objects(value, depth)
-    if collapse:
-        cleaned["field_names"] = list(properties)
+    if field_names is not None:
+        cleaned["field_names"] = field_names
     return cleaned
