@@ -28,6 +28,7 @@ from backend.data.model import APIKeyCredentials
 
 from ._test_data import make_session
 from .bash_exec import _KILL_TREE_SCRIPT, BashExecTool
+from .e2b_sandbox import SandboxOwner
 from .models import BashExecResponse, ErrorResponse
 
 _USER = "user-bash-exec-test"
@@ -142,10 +143,12 @@ class TestBashExecE2BTokenInjection:
             )
 
         # The session's picks reach the token lookup, not just its scopes.
-        mock_get_env.assert_awaited_once_with(_USER, None, _PICKED, None)
+        mock_get_env.assert_awaited_once_with(
+            _USER, None, _PICKED, None, allowed_ids=None
+        )
         # And the commit identity comes from that same GitHub account, so a
         # commit made with one account's token is not signed as another's.
-        mock_identity.assert_awaited_once_with(_USER, "cred-picked")
+        mock_identity.assert_awaited_once_with(_USER, "cred-picked", allowed_ids=None)
         call_kwargs = sandbox.commands.run.call_args[1]
         assert call_kwargs["envs"]["GH_TOKEN"] == "gh-secret"
         assert call_kwargs["envs"]["GITHUB_TOKEN"] == "gh-secret"
@@ -500,6 +503,113 @@ class TestBashExecSdkToolResultRedirect:
         sandbox.commands.run.assert_called_once()
 
 
+class TestBashExecOnAnExpertsBox:
+    """An expert's box is handed only the accounts its owner granted that
+    expert, with or without the swap proxy; a personal chat's box keeps every
+    account the user connected."""
+
+    _GRANTED = "ghp_the_granted_value"
+    _UNGRANTED = "ghp_the_ungranted_value"
+
+    @pytest.fixture(autouse=True)
+    def stored_and_granted(self):
+        # Stored first, so it is the default pick when nothing narrows the lookup.
+        stored = [
+            APIKeyCredentials(
+                id="cred-ungranted",
+                provider="github",
+                api_key=SecretStr(self._UNGRANTED),
+                title="GitHub",
+            ),
+            APIKeyCredentials(
+                id="cred-granted",
+                provider="github",
+                api_key=SecretStr(self._GRANTED),
+                title="GitHub",
+            ),
+        ]
+        manager = MagicMock()
+        manager.store.get_creds_by_provider = AsyncMock(
+            side_effect=lambda _user, provider: stored if provider == "github" else []
+        )
+        self.db = MagicMock()
+        self.db.expert_allowed_credential_ids = AsyncMock(return_value=["cred-granted"])
+        caches = (
+            integration_creds._token_cache,
+            integration_creds._null_cache,
+            integration_creds._credential_id_cache,
+        )
+        with (
+            patch.object(integration_creds, "_manager", manager),
+            patch.object(integration_creds, "_ensure_cache_invalidation_listener"),
+            patch.object(integration_creds, "experts_db", return_value=self.db),
+            patch(
+                "backend.copilot.tools.bash_exec.selected_credentials",
+                new=AsyncMock(return_value={}),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.grant_to_box", new=AsyncMock()
+            ) as grant,
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ) as identity,
+        ):
+            self.grant, self.identity = grant, identity
+            for cache in caches:
+                cache.clear()
+            yield
+            for cache in caches:
+                cache.clear()
+
+    async def _envs(self, owner: SandboxOwner) -> dict[str, str]:
+        sandbox = _make_sandbox(stdout="ok")
+        sandbox.sandbox_id = "sb-1"
+        await _make_tool()._execute_on_e2b(
+            sandbox=sandbox,
+            command="gh repo list",
+            timeout=10,
+            session_id="session-of-an-expert",
+            user_id=_USER,
+            owner=owner,
+        )
+        return sandbox.commands.run.call_args[1]["envs"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_without_the_proxy_only_the_granted_token_is_injected(self):
+        envs = await self._envs(SandboxOwner(kind="expert", id="expert-1"))
+        assert envs["GH_TOKEN"] == envs["GITHUB_TOKEN"] == self._GRANTED
+        assert all(self._UNGRANTED not in value for value in envs.values())
+        self.db.expert_allowed_credential_ids.assert_awaited_once_with(
+            _USER, "expert-1"
+        )
+        self.identity.assert_awaited_once_with(
+            _USER, None, allowed_ids=frozenset({"cred-granted"})
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_behind_the_proxy_only_the_granted_credential_is_granted(self):
+        with patch(
+            "backend.copilot.tools.bash_exec.proxy_address", return_value="proxy:1080"
+        ):
+            envs = await self._envs(SandboxOwner(kind="expert", id="expert-1"))
+        assert envs["GH_TOKEN"] == "hsurr:github:cred-granted"
+        self.grant.assert_awaited_once_with("sb-1", {"github": "cred-granted"})
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_expert_with_no_grant_gets_no_account(self):
+        self.db.expert_allowed_credential_ids.return_value = []
+        envs = await self._envs(SandboxOwner(kind="expert", id="expert-1"))
+        assert "GH_TOKEN" not in envs
+        assert all(self._UNGRANTED not in value for value in envs.values())
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_personal_chats_box_is_not_narrowed(self):
+        envs = await self._envs(SandboxOwner(kind="session", id="session-1"))
+        assert envs["GH_TOKEN"] == self._UNGRANTED
+        self.db.expert_allowed_credential_ids.assert_not_awaited()
+
+
 class TestBashExecBehindTheSwapProxy:
     """With the box's egress through the swap proxy, the command gets
     placeholders: the stored value never reaches the box."""
@@ -561,7 +671,7 @@ class TestBashExecBehindTheSwapProxy:
                 user_id=_USER,
             )
         # Commits stay attributed to the picked account.
-        identity.assert_awaited_once_with(_USER, "cred-picked")
+        identity.assert_awaited_once_with(_USER, "cred-picked", allowed_ids=None)
         assert isinstance(result, BashExecResponse)
         return result
 
@@ -806,6 +916,10 @@ class _FakeHandle:
             )
         return result
 
+    async def disconnect(self) -> None:
+        self._task.cancel()
+        self._box.disconnects += 1
+
 
 class _FakeCommands:
     def __init__(self, box: "_FakeBox"):
@@ -865,6 +979,7 @@ class _FakeBox:
         self.paused = False
         self.next_process = process
         self.processes: dict[int, _FakeProcess] = {}
+        self.disconnects = 0
         self.sandbox_id = "box-under-test"
         self.set_timeout = AsyncMock(side_effect=self._set_timeout)
         self.get_info = AsyncMock(side_effect=self._get_info)
@@ -1144,6 +1259,68 @@ class TestBashExecE2BTimeouts:
         )
         # E2B's deadline only closes the stream; the tool kills the command.
         assert proc.killed is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("stream", ["stdout", "stderr"])
+    async def test_command_that_keeps_printing_is_killed(self, kill_tree, stream):
+        proc = _FakeProcess(
+            [(0.1 * i, stream, "123456") for i in range(1, 100)], runtime=60, code=0
+        )
+        box = _FakeBox(limit=30, process=proc)
+
+        with patch("backend.copilot.tools.bash_exec.MAX_OUTPUT_SIZE", 10):
+            result = await _run(box, timeout=20)
+
+        assert isinstance(result, BashExecResponse)
+        assert (result.timed_out, result.exit_code) == (False, -1)
+        kept = {"stdout": "", "stderr": "", stream: "1234561234"}
+        assert result.stdout == kept["stdout"]
+        note = (
+            "Printed more than 10 characters; redirect output to a file and read "
+            "parts of it"
+        )
+        assert result.stderr == f"{note}\n{kept['stderr']}".rstrip("\n")
+        assert (
+            result.message == f"{note}; it was killed, with every process it started."
+        )
+        # Stopped at the chunk that did not fit, not at the timeout.
+        assert proc.printed == 2
+        assert box.disconnects == 1
+        kill_tree.assert_awaited_once()
+        assert proc.killed is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_detach_that_fails_still_stops_the_command(self, kill_tree):
+        proc = _FakeProcess(
+            [(0.1 * i, "stdout", "123456") for i in range(1, 100)], runtime=60, code=0
+        )
+        box = _FakeBox(limit=30, process=proc)
+
+        with (
+            patch("backend.copilot.tools.bash_exec.MAX_OUTPUT_SIZE", 10),
+            patch.object(
+                _FakeHandle, "disconnect", AsyncMock(side_effect=RuntimeError("gone"))
+            ),
+        ):
+            result = await _run(box, timeout=20)
+
+        assert isinstance(result, BashExecResponse)
+        assert result.exit_code == -1
+        assert proc.killed is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_output_up_to_the_limit_is_returned_whole(self):
+        proc = _FakeProcess(
+            [(0.1, "stdout", "12345"), (0.2, "stdout", "67890")], runtime=0.3, code=0
+        )
+        box = _FakeBox(limit=30, process=proc)
+
+        with patch("backend.copilot.tools.bash_exec.MAX_OUTPUT_SIZE", 10):
+            result = await _run(box, timeout=20)
+
+        assert isinstance(result, BashExecResponse)
+        assert (result.stdout, result.exit_code) == ("1234567890", 0)
+        assert proc.killed is False
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_timeout_kills_the_children_before_the_shell(self, kill_tree):

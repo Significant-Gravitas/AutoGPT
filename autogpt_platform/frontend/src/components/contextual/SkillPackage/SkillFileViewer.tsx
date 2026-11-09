@@ -20,7 +20,7 @@ export function SkillFileViewer({ source, path, onClose }: Props) {
 
   return (
     <Dialog
-      title={<span className="font-mono text-sm break-all">{path}</span>}
+      title={<span className="font-mono text-body break-all">{path}</span>}
       styling={{ width: "760px" }}
       controlled={{
         isOpen: path !== null,

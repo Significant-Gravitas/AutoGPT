@@ -40,7 +40,7 @@ export function ReferenceCard({ reference }: Props) {
           <p
             translate="no"
             data-slot="reference-card-name"
-            className="text-sm font-semibold text-foreground-strong"
+            className="text-body font-semibold text-foreground-strong"
           >
             {reference.name}
           </p>

@@ -62,10 +62,10 @@ export function VoicePicker({
           <h2
             data-slot="voice-picker-title"
             className={cn(
-              "text-foreground",
+              "text-foreground-base",
               compact
-                ? "text-base font-medium"
-                : "text-2xl font-semibold tracking-heading",
+                ? "text-body-lg font-medium"
+                : "text-heading-md font-semibold tracking-heading",
             )}
           >
             {name
@@ -75,8 +75,8 @@ export function VoicePicker({
           <p
             data-slot="voice-picker-description"
             className={cn(
-              "text-muted-foreground",
-              compact ? "text-sm" : "text-base",
+              "text-foreground-tertiary",
+              compact ? "text-body" : "text-body-lg",
             )}
           >
             Pick the voice that feels right. You can fine-tune it anytime in the
@@ -140,7 +140,6 @@ export function VoicePicker({
           onClick={submit}
           disabled={!canSubmit}
           loading={isSubmitting}
-          className="rounded-full"
         >
           Use this voice
         </Button>

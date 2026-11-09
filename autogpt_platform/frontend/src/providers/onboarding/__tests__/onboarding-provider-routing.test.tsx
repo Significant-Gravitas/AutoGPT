@@ -258,6 +258,67 @@ describe("OnboardingProvider routing — logged-in user", () => {
     );
   });
 
+  // SECRT-3384: `?next=/home` is only the default landing. The auth pages
+  // drop it, so the provider must route the user itself instead of waiting on
+  // a deep-link redirect that never comes.
+  test.each(["/signup", "/login"])(
+    "incomplete user on %s?next=/home is redirected to /onboarding, not left waiting",
+    async (path) => {
+      mockPathname = path;
+      window.history.replaceState(null, "", `${path}?next=%2Fhome`);
+      mockIsCompleted = false;
+
+      render(
+        <OnboardingProvider>
+          <div data-testid="child" />
+        </OnboardingProvider>,
+      );
+
+      await waitFor(() =>
+        expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+      );
+      expect(routerReplace).not.toHaveBeenCalledWith("/home");
+    },
+  );
+
+  test.each([
+    [false, "/signup", "/onboarding?utm_source=newsletter"],
+    [true, "/login", "/home?utm_source=newsletter"],
+  ])(
+    "leaving an auth page keeps a campaign link's tracking params (completed: %s, %s)",
+    async (isCompleted, path, expected) => {
+      mockPathname = path;
+      window.history.replaceState(
+        null,
+        "",
+        `${path}?next=${encodeURIComponent("/home?utm_source=newsletter")}`,
+      );
+      mockIsCompleted = isCompleted;
+
+      render(
+        <OnboardingProvider>
+          <div data-testid="child" />
+        </OnboardingProvider>,
+      );
+
+      await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(expected));
+    },
+  );
+
+  test("completed user on /login?next=/copilot is redirected to /home", async () => {
+    mockPathname = "/login";
+    window.history.replaceState(null, "", "/login?next=%2Fcopilot");
+    mockIsCompleted = true;
+
+    render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
+  });
+
   test("incomplete user on /reset-password stays put (recovery session must set password first)", async () => {
     // A Supabase recovery link signs the user in and lands them on
     // /reset-password. Bouncing them to /onboarding would skip the password
@@ -274,6 +335,47 @@ describe("OnboardingProvider routing — logged-in user", () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(routerReplace).not.toHaveBeenCalled();
     expect(completedCallCount.value).toBe(0);
+  });
+
+  test.each(["/link/abc123", "/link/slack/installed"])(
+    "incomplete user on %s stays put (link token must not be lost to onboarding)",
+    async (path) => {
+      mockPathname = path;
+      mockIsCompleted = false;
+
+      render(
+        <OnboardingProvider>
+          <div data-testid="child" />
+        </OnboardingProvider>,
+      );
+
+      await new Promise((r) => setTimeout(r, 30));
+      expect(routerReplace).not.toHaveBeenCalled();
+      expect(completedCallCount.value).toBe(0);
+    },
+  );
+
+  test("leaving /link/<token> for another page still redirects to /onboarding", async () => {
+    mockPathname = "/link/abc123";
+    mockIsCompleted = false;
+    const { rerender } = render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+    await new Promise((r) => setTimeout(r, 30));
+    expect(routerReplace).not.toHaveBeenCalled();
+
+    mockPathname = "/home";
+    rerender(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+    );
   });
 
   test("incomplete user already on /onboarding stays put", async () => {

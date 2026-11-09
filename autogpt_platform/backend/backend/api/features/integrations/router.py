@@ -21,11 +21,13 @@ from pydantic import BaseModel, Field, model_validator
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
-from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.features.library.model import LibraryAgentPreset, split_trigger_inputs
+from backend.api.middleware.body_limit import MiB, request_body_limit
 from backend.copilot.rate_limit import enforce_payment_paywall, is_user_paywalled
 from backend.copilot.scheduled_chats.reconnect import (
     resume_after_reconnect_in_background,
 )
+from backend.data.credential_scope import scope_error
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
@@ -43,6 +45,7 @@ from backend.data.model import (
     HostScopedCredentials,
     OAuth2Credentials,
     OAuthState,
+    UserPasswordCredentials,
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
@@ -91,6 +94,7 @@ from backend.integrations.oauth.microsoft_identity import (
 )
 from backend.integrations.oauth.microsoft_recovery import MicrosoftAuthError
 from backend.integrations.oauth.microsoft_tokens import browser_sign_in_available
+from backend.integrations.oauth.refresh_failure import without_reconnect_required
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.service_identity import (
     service_for_catalog_entry,
@@ -103,6 +107,7 @@ from backend.util.exceptions import (
     ExpertRunPausedError,
     GraphNotAccessibleError,
     GraphNotInLibraryError,
+    InvalidInputError,
     NeedConfirmation,
     NotFoundError,
 )
@@ -295,6 +300,11 @@ class CredentialsMetaResponse(BaseModel):
         default=None,
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
     )
+    scope: str | None = Field(
+        default=None,
+        description="What a user/password login may be used for, e.g. "
+        "smtp://host[:port]; null for a login saved before scopes existed",
+    )
     mcp_auth_scheme: MCPAuthScheme | None = Field(
         default=None,
         description="Manual authorization scheme for MCP credentials",
@@ -354,6 +364,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
         username=cred.username if isinstance(cred, OAuth2Credentials) else None,
         host=CredentialsMetaResponse.get_host(cred),
+        scope=cred.scope if isinstance(cred, UserPasswordCredentials) else None,
         mcp_auth_scheme=mcp_auth_scheme,
         is_managed=cred.is_managed,
         service=identity.service,
@@ -1175,9 +1186,15 @@ async def create_credentials(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Provider-runtime credentials cannot be created directly",
         )
+    if isinstance(credentials, UserPasswordCredentials) and (
+        error := scope_error(provider.value, credentials.scope)
+    ):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
+    except InvalidInputError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception:
         logger.exception("Failed to store credentials")
         raise HTTPException(
@@ -1312,11 +1329,15 @@ async def delete_credentials_and_dependents(
 
 # ------------------------- WEBHOOK STUFF -------------------------- #
 
+# GitHub caps its payloads at 25 MB, the largest of the providers.
+WEBHOOK_PAYLOAD_LIMIT = 25 * MiB
+
 
 # ⚠️ Note
 # No user auth check because this endpoint is for webhook ingress and relies on
 # validation by the provider-specific `WebhooksManager`.
 @router.post("/{provider}/webhooks/{webhook_id}/ingress")
+@request_body_limit(WEBHOOK_PAYLOAD_LIMIT)
 async def webhook_ingress_generic(
     request: Request,
     provider: Annotated[
@@ -1381,7 +1402,9 @@ async def webhook_ingress_generic(
     # Only after the signature: loading can refresh the owner's OAuth token.
     try:
         credentials = (
-            await creds_manager.get(user_id, webhook.credentials_id)
+            await creds_manager.get(
+                user_id, webhook.credentials_id, allow_sdk_default=True
+            )
             if webhook.credentials_id
             else None
         )
@@ -1450,7 +1473,7 @@ async def webhook_ping(
     webhook_manager = get_webhook_manager(webhook.provider)
 
     credentials = (
-        await creds_manager.get(user_id, webhook.credentials_id)
+        await creds_manager.get(user_id, webhook.credentials_id, allow_sdk_default=True)
         if webhook.credentials_id
         else None
     )
@@ -1585,10 +1608,20 @@ async def _execute_webhook_preset_trigger(
         )
         await set_preset_webhook(preset.user_id, preset.id, None)
         return
-    if not trigger_node.block.is_triggered_by_event_type(preset.inputs, event_type):
+    graph_inputs, mask = split_trigger_inputs(preset.inputs, trigger_node.id)
+    # dict(): `mask` may be the dict `preset.inputs` holds, and `payload` is
+    # written into it below.
+    trigger_inputs = dict(mask)
+
+    # The event filter lives in the trigger config, so check it against the
+    # unwrapped mask rather than the full preset inputs.
+    if not trigger_node.block.is_triggered_by_event_type(trigger_inputs, event_type):
         logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
         return
     logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
+
+    # Add webhook payload to trigger inputs
+    trigger_inputs["payload"] = payload
 
     try:
         # Expert resources survive personal-org conversion: active ownership
@@ -1609,9 +1642,10 @@ async def _execute_webhook_preset_trigger(
             user_id=webhook.user_id,
             graph_id=preset.graph_id,
             preset_id=preset.id,
+            inputs=graph_inputs,
             graph_version=preset.graph_version,
             graph_credentials_inputs=preset.credentials,
-            nodes_input_masks={trigger_node.id: {**preset.inputs, "payload": payload}},
+            nodes_input_masks={trigger_node.id: trigger_inputs},
             organization_id=org_id,
             team_id=ws_id,
             expert_id=preset.expert_id,
@@ -1852,10 +1886,10 @@ async def _upgrade_existing_credential(
     merged.id = existing.id
     merged.title = existing.title
     merged.scopes = list(set(existing.scopes) | set(new_credentials.scopes))
-    merged.metadata = {
-        **(existing.metadata or {}),
-        **(new_credentials.metadata or {}),
-    }
+    # A fresh grant supersedes a refresh the provider refused for good.
+    merged.metadata = without_reconnect_required(
+        {**(existing.metadata or {}), **(new_credentials.metadata or {})}
+    )
     # Preserve the existing refresh_token and username if the incremental
     # response doesn't carry them.  Providers like Google only return a
     # refresh_token on first authorization — dropping it here would orphan
@@ -2005,7 +2039,9 @@ async def _cleanup_orphaned_webhook_for_graph(
                         ProviderName(webhook.provider)
                     )
                     credentials = (
-                        await creds_manager.get(user_id, webhook.credentials_id)
+                        await creds_manager.get(
+                            user_id, webhook.credentials_id, allow_sdk_default=True
+                        )
                         if webhook.credentials_id
                         else None
                     )

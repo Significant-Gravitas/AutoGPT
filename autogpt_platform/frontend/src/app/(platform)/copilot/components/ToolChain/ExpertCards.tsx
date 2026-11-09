@@ -352,7 +352,7 @@ export function ExpertChangeCard({
   return (
     <div className={SHELL}>
       <div className={HEADER}>
-        <Icon icon={header.icon} size={18} className="text-foreground-subtle" />
+        <Icon icon={header.icon} size={18} tone="subtle" />
         <Text
           variant="body-medium-tight"
           as="span"
@@ -396,11 +396,11 @@ export function ExpertChangeCard({
           {showDetails && (
             <Button
               variant="secondary"
-              size="small"
+              size="row"
               aria-expanded={panelAvailable ? undefined : showCharter}
               onClick={handleShowMore}
               leftIcon={<Icon icon={InformationCircleIcon} size={16} />}
-              className="h-8 !min-w-0 shrink-0 px-3"
+              className="shrink-0"
             >
               {showCharter ? "Hide details" : "Details"}
             </Button>
@@ -411,7 +411,7 @@ export function ExpertChangeCard({
             key={`${artifactId ?? name}-summary`}
             className={cn(
               // oxlint-disable-next-line design-system/no-arbitrary-values -- aligns the details with the name after the 42px avatar column
-              "pt-2 pl-[42px] text-sm text-foreground-tertiary",
+              "pt-2 pl-[42px] text-body text-foreground-tertiary",
               stepDirection &&
                 "delay-75 duration-300 animate-in fade-in fill-mode-both motion-reduce:animate-none",
               stepDirection === "forward" && "slide-in-from-right-4",
@@ -475,11 +475,7 @@ function SoulChangeCard({
   return (
     <div className={SHELL}>
       <div className={HEADER}>
-        <Icon
-          icon={PencilEdit02Icon}
-          size={18}
-          className="text-foreground-subtle"
-        />
+        <Icon icon={PencilEdit02Icon} size={18} tone="subtle" />
         <Text
           variant="body-medium-tight"
           as="span"
@@ -557,10 +553,9 @@ function DecisionFooter({
         {decision && onUndo && (
           <Button
             variant="secondary"
-            size="small"
+            size="row"
             onClick={onUndo}
             leftIcon={<Icon icon={UndoIcon} size={14} />}
-            className="h-8 !min-w-0 px-3"
           >
             {chosen
               ? "Change"
@@ -573,19 +568,17 @@ function DecisionFooter({
           <>
             <Button
               variant="ghost"
-              size="small"
+              size="row"
               disabled={waiting}
               onClick={() => onDecide("declined")}
-              className="h-8 !min-w-0 px-3"
             >
               Decline
             </Button>
             <Button
               variant="primary"
-              size="small"
+              size="row"
               disabled={waiting}
               onClick={() => onDecide("approved")}
-              className="h-8 !min-w-0 px-3"
             >
               Approve
             </Button>
@@ -621,11 +614,7 @@ export function ExpertChangeCardSkeleton() {
   return (
     <div className={SHELL}>
       <div className={HEADER}>
-        <Icon
-          icon={UserAdd01Icon}
-          size={18}
-          className="text-foreground-subtle"
-        />
+        <Icon icon={UserAdd01Icon} size={18} tone="subtle" />
         <Text variant="body-medium-tight" as="span" tone="primary">
           Create an Expert
         </Text>
@@ -865,17 +854,18 @@ export function ExpertChangeGroup({
 
   const canSend = sendable && allDecided;
   const action = sent ? (
-    <span className="flex items-center gap-1 text-xs text-foreground-subtle">
+    <span className="flex items-center gap-1 text-caption text-foreground-subtle">
       <Icon icon={Tick02Icon} size={14} />
       Sent
     </span>
   ) : canSend ? (
     <Button
       variant="primary"
-      size="icon"
+      size="icon-sm"
+      shape="pill"
+      withTooltip={false}
       aria-label="Send decisions"
       onClick={() => send(decisions)}
-      className="size-8 p-0"
     >
       <Icon icon={SentIcon} size={15} />
     </Button>

@@ -91,7 +91,7 @@ export const AnyOfField = (props: FieldProps) => {
       placeholder={props.placeholder}
       autocomplete={props.autocomplete}
       className={cn(
-        "-ml-1 h-[22px] w-fit gap-1 px-1 pl-2 text-xs font-medium",
+        "-ml-1 h-[22px] w-fit gap-1 px-1 pl-2 text-caption font-medium",
         isAnyOfInputBroken &&
           "border-error bg-error-surface text-error-foreground line-through",
       )}

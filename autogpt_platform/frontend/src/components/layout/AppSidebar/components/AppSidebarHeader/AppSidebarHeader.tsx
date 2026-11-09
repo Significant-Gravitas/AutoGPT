@@ -37,7 +37,8 @@ export function AppSidebarHeader() {
         >
           <Icon
             icon={SidebarLeftIcon}
-            className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5 max-md:size-5"
+            tone="emphasis-soft"
+            className="size-4 group-data-[collapsible=icon]:size-4.5 max-md:size-5"
           />
         </button>
       </TooltipTrigger>
@@ -50,7 +51,7 @@ export function AppSidebarHeader() {
   );
 
   return (
-    <SidebarHeader className="sticky top-0 z-10 mb-1 flex shrink-0 animate-fade-in flex-row items-center justify-between gap-2 bg-sidebar p-2 group-data-[collapsible=icon]:flex-col">
+    <SidebarHeader className="sticky top-0 z-10 mb-1 flex shrink-0 animate-fade-in flex-row items-center justify-between gap-2 bg-surface-muted p-2 group-data-[collapsible=icon]:flex-col">
       <div
         className={cn(
           "relative flex items-center",
