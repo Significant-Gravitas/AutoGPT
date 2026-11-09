@@ -297,13 +297,22 @@ def test_a_frame_with_ordinary_numbers_parses() -> None:
     assert parse_message(frame).payload.arguments == {"x": -12.5, "y": 3, "z": 1e300}
 
 
-def test_a_frame_nested_within_the_limit_parses() -> None:
+def test_a_frame_nested_exactly_to_the_limit_parses() -> None:
     from autogpt_local_executor.protocol import MAX_FRAME_NESTING
 
-    # The envelope, the payload and the arguments object take three levels.
-    message = parse_message(_computer_call_frame(MAX_FRAME_NESTING - 3))
+    # The envelope and the payload add two levels to the arguments' own.
+    message = parse_message(_computer_call_frame(MAX_FRAME_NESTING - 2))
 
     assert message.payload.tool == "click"
+
+
+def test_a_frame_nested_one_level_past_the_limit_is_refused() -> None:
+    """The deep cases start hundreds of levels down, so the limit could move
+    by one, or be off by one, with every test passing."""
+    from autogpt_local_executor.protocol import MAX_FRAME_NESTING
+
+    with pytest.raises(ValueError, match="nested"):
+        parse_message(_computer_call_frame(MAX_FRAME_NESTING - 1))
 
 
 def test_parse_rejects_missing_id() -> None:
