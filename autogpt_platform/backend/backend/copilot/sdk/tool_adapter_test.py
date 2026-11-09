@@ -1060,8 +1060,29 @@ class TestReadFileHandlerWorkspaceToolOutputs:
 
         assert result["isError"] is True
         text = result["content"][0]["text"]
-        assert 'read_workspace_file(path="tool-outputs/sdk-abc.json"' in text
+        assert (
+            'read_workspace_file(path="tool-outputs/sdk-abc.json", '
+            "offset=0, length=50000)" in text
+        )
         assert "Path not allowed" not in text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "range_args, expected",
+        [
+            ({"char_offset": 1200, "char_limit": 300}, "offset=1200, length=300"),
+            ({"char_offset": 1200}, "offset=1200, length=50000"),
+            ({"char_limit": 300}, "offset=0, length=300"),
+        ],
+    )
+    async def test_redirect_keeps_requested_char_range(self, range_args, expected):
+        from .tool_adapter import _read_file_handler
+
+        result = await _read_file_handler(
+            {"file_path": "tool-outputs/sdk-abc.json", **range_args}
+        )
+
+        assert expected in result["content"][0]["text"]
 
     @pytest.mark.asyncio
     async def test_other_paths_still_rejected(self):

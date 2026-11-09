@@ -554,7 +554,8 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
             return _mcp_err(
                 f"{workspace_path} is a workspace file, not an SDK tool-result "
                 f"file. Read it with read_workspace_file("
-                f'path="{workspace_path}", offset=0, length=50000).'
+                f'path="{workspace_path}", offset={char_offset or 0}, '
+                f"length={char_limit or 50000})."
             )
         return _mcp_err(f"Path not allowed: {os.path.basename(file_path)}")
 
@@ -653,8 +654,10 @@ _READ_TOOL_DESCRIPTION = (
     "Use this tool only for host paths under ~/.claude/projects/.../tool-results/ or .../tool-outputs/, and for workspace:// URIs returned by other tools. "
     "Workspace tool-outputs/<id>.json: use read_workspace_file. "
     "For files in the working directory use read_file instead. "
-    "MCP envelopes are auto-unwrapped and JSON payloads pretty-printed, so offset/limit (line-based) slice into the actual payload, not the envelope wrapper. "
-    "To pipe a slice into another tool, use `@@agptfile:<absolute-path>[<start>-<end>]` in its argument (works in bash_exec)."
+    "In SDK result files, MCP envelopes are auto-unwrapped and JSON payloads pretty-printed, so offset/limit (line-based) slice into the actual payload, not the envelope wrapper. "
+    "workspace:// URIs return raw lines; for character ranges use read_workspace_file. "
+    "To pipe a slice into another tool, use `@@agptfile:<absolute-path>[<start>-<end>]` in its argument (works in bash_exec). "
+    "Ranges are 1-indexed, inclusive raw file lines, which can differ from the lines shown here."
 )
 _READ_TOOL_SCHEMA = {
     "type": "object",
