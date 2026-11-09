@@ -119,9 +119,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description=(
-            "How many of an executor's graph workers one user's top-level runs "
-            "may hold at once; kept below `num_graph_workers` when that is 2 or "
-            "more, and 1 when it is 1."
+            "How many of an executor's graph workers one user's runs may hold "
+            "at once; kept below `num_graph_workers` when that is 2 or more, "
+            "and 1 when it is 1. Each level of sub-workflow nesting may hold "
+            "one more, so a run waiting on a sub-workflow never keeps it from "
+            "starting."
         ),
     )
 

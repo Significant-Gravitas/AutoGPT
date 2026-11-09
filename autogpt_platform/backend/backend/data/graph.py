@@ -82,6 +82,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+SUB_WORKFLOW_RUNS_ITSELF = (
+    "A workflow can't run itself as a sub-workflow, directly or through other "
+    "workflows"
+)
+
 
 class GraphSettings(BaseModel):
     # Use Annotated with BeforeValidator to coerce None to default values.
@@ -971,6 +976,10 @@ class GraphModel(Graph, GraphMeta):
         self._validate_graph(self, for_run, nodes_input_masks)
         for sub_graph in self.sub_graphs:
             self._validate_graph(sub_graph, for_run, nodes_input_masks)
+        if cycle_errors := self._sub_workflow_cycle_errors():
+            raise GraphValidationError(
+                SUB_WORKFLOW_RUNS_ITSELF, node_errors=cycle_errors
+            )
 
     @staticmethod
     def _validate_graph(
@@ -996,7 +1005,7 @@ class GraphModel(Graph, GraphMeta):
 
         Returns: dict[node_id, dict[field_name, error_message]]
         """
-        return {
+        errors = {
             **self._validate_graph_get_errors(self, for_run, nodes_input_masks),
             **{
                 node_id: error
@@ -1005,6 +1014,32 @@ class GraphModel(Graph, GraphMeta):
                     sub_graph, for_run, nodes_input_masks
                 ).items()
             },
+        }
+        for node_id, cycle_error in self._sub_workflow_cycle_errors().items():
+            errors[node_id] = {**errors.get(node_id, {}), **cycle_error}
+        return errors
+
+    def _sub_workflow_cycle_errors(self) -> dict[str, dict[str, str]]:
+        """Sub-workflow nodes that would start a workflow their run is part
+        of, so that it starts itself again without end. Only this graph and
+        the sub-graphs it was saved or loaded with are known here; the
+        executor refuses a run of any other workflow already in its chain
+        (see `backend.executor.nesting`)."""
+        agent_block_id = AgentExecutorBlock().id
+        calls: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        for graph in (self, *self.sub_graphs):
+            calls[graph.id].extend(
+                (node.id, target)
+                for node in graph.nodes
+                if node.block_id == agent_block_id
+                and isinstance(target := node.input_default.get("graph_id"), str)
+                and target
+            )
+        return {
+            node_id: {"graph_id": SUB_WORKFLOW_RUNS_ITSELF}
+            for graph_id, targets in calls.items()
+            for node_id, target in targets
+            if _runs_into(calls, target, graph_id)
         }
 
     @staticmethod
@@ -1437,6 +1472,23 @@ def _describe_node_errors(
     if len(problems) > 1:
         return f"{problems[0]} (and {len(problems) - 1} more)"
     return problems[0]
+
+
+def _runs_into(
+    calls: Mapping[str, Sequence[tuple[str, str]]], start: str, goal: str
+) -> bool:
+    """Whether a run of graph `start` would come to run graph `goal`, by the
+    (node id, graph id) sub-workflow calls each known graph makes."""
+    seen: set[str] = set()
+    pending = [start]
+    while pending:
+        graph_id = pending.pop()
+        if graph_id == goal:
+            return True
+        if graph_id not in seen:
+            seen.add(graph_id)
+            pending.extend(target for _, target in calls.get(graph_id, ()))
+    return False
 
 
 def _is_blank_io_name(block: "AnyBlockSchema", field: str, value: Any) -> bool:
