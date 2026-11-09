@@ -252,6 +252,7 @@ model User {
   NotificationBatches   UserNotificationBatch[]
   AlertConditions       AlertCondition[]
   PushSubscriptions     PushSubscription[]
+  FeedbackPrompts       FeedbackPrompt[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
   PlatformCostLogs      PlatformCostLog[]
@@ -1078,9 +1079,13 @@ model ChatMessageFeedback {
   // Copied from the message so a chat's ratings read without a join.
   sessionId String
 
-  scoreName  String // "user-feedback" (1 = up, 0 = down) or "copy" (always 1)
+  // "user-feedback" (1 = up, 0 = down), "copy" (always 1), "work_check"
+  // (0 = bad, 1 = okay, 2 = great) or "otto_mistake" (always 0).
+  scoreName  String
   scoreValue Int
   comment    String?
+  // The picked option on a work check or mistake card; see REASONS_BY_KIND.
+  reason     String?
 
   // Legacy: the trace the rating's Langfuse score was attached to. Nothing
   // writes it (SECRT-2711); it is dropped with the rest of Langfuse
@@ -1316,6 +1321,30 @@ model UserNotificationBatch {
   // Each user can only have one batch of a notification type at a time
   @@unique([userId, type])
   @@index([organizationId])
+}
+
+// One row per showing of an in-app feedback prompt. The row is what enforces
+// each prompt's limit, across tabs and devices (backend/data/feedback_prompts.py).
+model FeedbackPrompt {
+  id String @id @default(uuid())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  kind      String
+  sessionId String?
+  messageId String?
+
+  shownAt     DateTime  @default(now())
+  answeredAt  DateTime?
+  dismissedAt DateTime?
+
+  reason     String?
+  note       String?
+  score      Int?
+  offerTaken Boolean?
+
+  @@index([userId, kind, shownAt])
 }
 
 model PushSubscription {
