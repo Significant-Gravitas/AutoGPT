@@ -99,7 +99,9 @@ async def _erase_computer(expert_id: str) -> bool:
 
     Returns False when no computer is configured (no E2B key) or it never
     had a volume. E2B has no delete-by-name, so the volume is found by its
-    name in the account's list.
+    name in the account's list. That list is whole: ``GET /volumes`` takes no
+    limit or page token and answers one array (e2b 2.49.1), unlike the
+    sandbox list, which pages.
     """
     api_key = ChatConfig().active_e2b_api_key
     if not api_key:
