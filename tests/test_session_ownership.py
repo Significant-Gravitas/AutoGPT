@@ -619,6 +619,50 @@ async def test_work_queued_by_a_revoked_session_never_starts(
     assert ws.sent == []
 
 
+async def test_a_change_queued_for_a_thread_never_starts_once_its_session_is_revoked(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cancel reaches a task only when it next runs. A worker thread that
+    freed up between SESSION_REVOKED cancelling a request and the request's
+    task taking in the cancel started its queued change anyway: a write,
+    move or delete after revocation."""
+    import autogpt_local_executor.handlers as handlers_module
+
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(4)
+    loop = asyncio.get_running_loop()
+    a_thread_frees_up: asyncio.Future[None] = loop.create_future()
+    queued: list[Any] = []
+    ran: list[str] = []
+
+    async def busy_pool(func, /, *args, **kwargs):
+        queued.append(func)
+        await a_thread_frees_up
+        return func(*args, **kwargs)
+
+    async def handle(msg, *, send):
+        await handlers_module._run_to_completion(lambda: ran.append("write"))
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(handlers_module.asyncio, "to_thread", busy_pool)
+    monkeypatch.setattr(daemon, "_handle", handle)
+    request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
+    await daemon._on_frame(ws, dump_message(request))
+    async with asyncio.timeout(10):
+        while not queued:
+            await asyncio.sleep(0)
+    work = tuple(daemon._dispatch_tasks)
+
+    # A thread frees up, and the revocation cancels the request, before the
+    # request's task runs again: the thread takes the change first.
+    a_thread_frees_up.set_result(None)
+    daemon._cancel_dispatch_requests()
+    await asyncio.wait(work, timeout=10)
+
+    assert ran == []
+    assert ws.sent == []
+
+
 async def test_an_unsupported_architecture_stops_at_preflight(
     daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
 ) -> None:

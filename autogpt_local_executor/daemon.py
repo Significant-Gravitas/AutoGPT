@@ -23,6 +23,7 @@ import logging
 import math
 import random
 import secrets
+import threading
 import urllib.parse
 from collections import OrderedDict
 from collections.abc import AsyncIterator
@@ -428,6 +429,8 @@ class ShimDaemon:
         self._granted_capabilities: frozenset[str] = frozenset()
         self._pending_requests = 0
         self._dispatch_tasks: set[asyncio.Task[None]] = set()
+        # Each request's handlers.work_refused, set before its task is cancelled.
+        self._work_refused: dict[asyncio.Task[None], threading.Event] = {}
         self._shim_start_logged = False
         # Effective negotiated protocol version, populated on HELLO_ACK.
         # `None` before handshake completes.
@@ -813,11 +816,19 @@ class ShimDaemon:
         await self._drain_dispatch_tasks(self._cancel_dispatch_requests())
 
     def _cancel_dispatch_requests(self) -> tuple[asyncio.Task[None], ...]:
-        """Cancel the session's requests, without waiting for them."""
+        """Cancel the session's requests, without waiting for them. A change
+        still waiting for a worker thread is refused first, so it can't start
+        before its task takes in the cancel (handlers.work_refused)."""
         tasks = tuple(self._dispatch_tasks)
         for task in tasks:
+            refused = self._work_refused.get(task)
+            if refused is not None:
+                refused.set()
             task.cancel()
         return tasks
+
+    def _forget_work_refused(self, task: asyncio.Task[None]) -> None:
+        self._work_refused.pop(task, None)
 
     async def _drain_dispatch_tasks(self, tasks: tuple[asyncio.Task[None], ...]) -> None:
         """Wait up to DISPATCH_DRAIN_SECONDS for cancelled requests to stop,
@@ -1254,9 +1265,14 @@ class ShimDaemon:
 
         self._pending_requests += 1
         self._queue_depth += 1
-        task = asyncio.create_task(self._dispatch(ws, msg, prequeued=True, received_at=received_at))
+        refused = threading.Event()
+        task = asyncio.create_task(
+            self._dispatch(ws, msg, prequeued=True, received_at=received_at, refused=refused)
+        )
         self._dispatch_tasks.add(task)
+        self._work_refused[task] = refused
         task.add_done_callback(self._dispatch_tasks.discard)
+        task.add_done_callback(self._forget_work_refused)
 
     async def _handle_session_revoked(self, ws, msg: SessionRevokedMessage) -> None:
         """Per PROTOCOL.md → Session ownership: log, stop sending, close,
@@ -1438,9 +1454,17 @@ class ShimDaemon:
         )
 
     async def _dispatch(
-        self, ws, msg: Any, *, prequeued: bool = False, received_at: float | None = None
+        self,
+        ws,
+        msg: Any,
+        *,
+        prequeued: bool = False,
+        received_at: float | None = None,
+        refused: threading.Event | None = None,
     ) -> None:
         assert self._semaphore is not None
+        if refused is not None:
+            handlers.work_refused.set(refused)
         # A computer-use call's deadline counts from when the frame arrived
         # (_on_frame), else from here, through every wait. Each dispatch runs
         # in its own task, so this is the request's own.

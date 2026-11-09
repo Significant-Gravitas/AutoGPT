@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import contextvars
 import hashlib
 import json
 import logging
@@ -315,6 +316,17 @@ class _NeverStarted(Exception):
     """The job was cancelled while it still waited for a worker thread."""
 
 
+# Set for a request whose session is ending, or was revoked, before its task
+# is cancelled (the daemon's _cancel_dispatch_requests). A cancel reaches the
+# task only when it next runs, and a worker thread freed up in between would
+# start a change still queued for one: a write, a move or a delete after
+# revocation. Checked as the thread starts, so a change already running
+# finishes and is recorded, and one still queued never starts.
+work_refused: contextvars.ContextVar[threading.Event | None] = contextvars.ContextVar(
+    "work_refused", default=None
+)
+
+
 async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:
     """Run a side effect in a worker thread, and finish it even if the task
     awaiting it is cancelled (SESSION_REVOKED, session teardown).
@@ -324,14 +336,17 @@ async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: A
     would never be written. The cancellation is held until the thread is
     done, then dropped, so the handler records what happened. Its reply
     goes nowhere: a revoked session refuses sends and a closed one fails
-    them. A job still waiting for a thread when the cancel lands never
-    starts, and the task stays cancelled: nothing ran, so there is nothing
-    to record. Requests still queued for a slot never get here either.
+    them. A job still waiting for a thread when the cancel lands, or when
+    the daemon refuses its request's work (work_refused) just before the
+    cancel, never starts, and the task stays cancelled: nothing ran, so
+    there is nothing to record. Requests still queued for a slot never get
+    here either.
     """
     cancelled = threading.Event()
+    refused = work_refused.get()
 
     def run() -> _T:
-        if cancelled.is_set():
+        if cancelled.is_set() or (refused is not None and refused.is_set()):
             raise _NeverStarted
         return func(*args, **kwargs)
 
