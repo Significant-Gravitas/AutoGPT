@@ -1095,7 +1095,9 @@ def _print_record_line(raw: bytes) -> None:
         return
     try:
         rec = json.loads(s)
-    except ValueError:  # an integer past Python's limit raises a plain one
+    except (ValueError, RecursionError):
+        # ValueError too for an integer past Python's limit; RecursionError
+        # for a line nested past it.
         rec = None
     if not isinstance(rec, dict):
         print(f"[unparseable] {s}")
