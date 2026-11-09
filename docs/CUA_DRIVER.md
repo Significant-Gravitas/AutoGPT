@@ -267,7 +267,11 @@ With computer use on, the daemon checks before it connects that a usable
 cua-driver is installed (exit 78, permanent, if not). On macOS it starts the
 driver and asks `check_permissions` for Accessibility and Screen Recording
 without prompting; if either is missing it exits 78 and launchd starts it
-again later, as before. `autogpt-shim doctor` runs cua-driver's own
+again later, as before. Each chat's session checks again when it starts,
+through the same driver. If another chat's call is holding the driver past
+the check's 30 s, the new session goes ahead: the grants are the app's,
+checked when the shim started, and a busy driver is a working one.
+`autogpt-shim doctor` runs cua-driver's own
 `doctor`, starts the driver as the daemon does, reads the screen size, and on
 macOS reports both grants and, when one is missing, asks macOS to show its
 prompt for the shim's app (the driver leaves prompting to its host).

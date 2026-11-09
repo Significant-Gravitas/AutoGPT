@@ -1516,6 +1516,48 @@ async def test_a_call_queued_behind_another_chats_call_gives_up_unstarted(
     assert _records(fake_log, "call") == []
 
 
+async def test_a_child_session_starts_while_another_chats_call_holds_the_driver(
+    tmp_path, fake_log, monkeypatch
+) -> None:
+    """On macOS every session checked the grants through the shared driver,
+    within 30 s. A call from another chat that held the driver longer failed
+    the new session's preflight, so it ended after activation had reported it
+    ready."""
+    from autogpt_local_executor import daemon as daemon_module
+    from autogpt_local_executor import platform_info
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setattr(daemon_module, "PERMISSION_CHECK_SECONDS", 0.3)
+    monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "1.5")
+    parent = _daemon(tmp_path, session_id=None)
+    child = _daemon(tmp_path, session_id="child-1")
+    parent._computer_handler.share_with(child._computer_handler)
+    driver = parent._computer_handler.driver
+    try:
+        slow = asyncio.create_task(driver.call_tool("drag", {"pid": -2}, timeout=30))
+        for _ in range(250):
+            if _records(fake_log, "call"):
+                break
+            await asyncio.sleep(0.02)
+
+        await child._preflight_computer_use()  # doesn't raise
+        result = await slow
+        # The parent, which owns the driver, still fails a check that can't run.
+        busy = asyncio.create_task(driver.call_tool("drag", {"pid": -2}, timeout=30))
+        for _ in range(250):
+            if len(_records(fake_log, "call")) >= 2:
+                break
+            await asyncio.sleep(0.02)
+        with pytest.raises(daemon_module.DaemonPreflightError):
+            await parent._preflight_computer_use()
+        await busy
+    finally:
+        await parent._computer_handler.close()
+
+    assert result["content"] == [{"type": "text", "text": "slow"}]
+    assert [r["tool"] for r in _records(fake_log, "call")] == ["drag", "drag"]
+
+
 async def test_the_tool_list_does_not_wait_for_a_running_action(tmp_path, fake_log) -> None:
     """Calls take turns on the one GUI; listing tools touches no window."""
     daemon = _daemon(tmp_path)

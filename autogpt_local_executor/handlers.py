@@ -1433,6 +1433,12 @@ class ComputerUseHandler:
         self.clipboard_writeback = ClipboardWritebackRegistry()
 
     @property
+    def shares_a_driver(self) -> bool:
+        """Whether this is a child session's handler, using its parent's
+        driver (share_with)."""
+        return not self._owns_driver
+
+    @property
     def driver(self) -> CuaDriverBridge:
         if self._driver is None:
             self._driver = CuaDriverBridge(

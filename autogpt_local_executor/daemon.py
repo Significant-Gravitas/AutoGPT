@@ -43,7 +43,7 @@ from .audit import (
     get_or_create_audit_key,
 )
 from .auth import CredentialScope, CredentialScopeError, KeychainTokenStore
-from .computer_use import DriverUnavailable, find_driver_binary
+from .computer_use import CallNotStarted, DriverUnavailable, find_driver_binary
 from .computer_use.driver import COMPUTER_USE_INSTALL
 from .computer_use.mcp_client import McpError
 from .config import ShimConfig
@@ -2110,6 +2110,22 @@ class ShimDaemon:
                 {"prompt": False, "session": self._computer_handler.session_label},
                 timeout=PERMISSION_CHECK_SECONDS,
             )
+        except CallNotStarted:
+            if not self._computer_handler.shares_a_driver:
+                await self._fail_preflight(
+                    "cua-driver did not report its permissions in time. Run `autogpt-shim doctor`.",
+                    missing_permissions=["accessibility_probe", "screen_recording_probe"],
+                    error_code=ErrorCode.PERMISSION_PENDING,
+                )
+            # A child session's check waited behind another chat's call on the
+            # shared driver, which is busy working: the grants are the app's,
+            # checked when the parent started, so the session goes ahead rather
+            # than end after activation reported it ready.
+            logger.info(
+                "Skipped the computer-use permission check: the shared driver is busy "
+                "with another session's call"
+            )
+            return
         except DriverUnavailable as exc:
             await self._fail_preflight(
                 f"Could not check computer-use permissions: {exc.message} "
