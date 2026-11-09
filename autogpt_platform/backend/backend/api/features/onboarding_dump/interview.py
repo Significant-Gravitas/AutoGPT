@@ -99,6 +99,11 @@ logger = logging.getLogger(__name__)
 
 INTERVIEW_RECORDING_PREFIX = "interview-"
 
+# The 409 detail for an interview with a turn already running in it, worded
+# as the chat continuation route words it. The start route answers it with
+# the interview to follow, since that turn is usually Otto's greeting.
+TURN_IN_PROGRESS = "turn_in_progress"
+
 # How long a close waits for the turn that ends the interview to finish
 # before leaving the interview to the next request that touches it.
 GOODBYE_WAIT_SECONDS = 600.0
@@ -191,7 +196,7 @@ async def start_onboarding_interview(
             return StartedInterview(session=latest, turn_id=None)
         # Another request took the session between the busy check and here,
         # most often the first click of a double click.
-        raise HTTPException(status_code=409, detail="turn_in_progress")
+        raise HTTPException(status_code=409, detail=TURN_IN_PROGRESS)
     await record_onboarding_interview_turn_started(
         user_id, session.session_id, plan_interview_turn(session)
     )
@@ -208,7 +213,7 @@ async def _refuse_if_busy(session_id: str) -> None:
             headers={"Retry-After": "30"},
         ) from exc
     if busy:
-        raise HTTPException(status_code=409, detail="turn_in_progress")
+        raise HTTPException(status_code=409, detail=TURN_IN_PROGRESS)
 
 
 async def admit_onboarding_interview_turn(

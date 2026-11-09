@@ -27,18 +27,16 @@ InterviewMode = Literal["text", "voice"]
 
 
 class InterviewEnding(str, Enum):
-    """The ten endings; each value is the variant key of the PostHog flag."""
+    """The endings; each value is the variant key of the PostHog flag."""
 
     SPOKEN_YES = "01-spoken-yes"
     PROFILE_CARD = "02-profile-card"
     SUMMARY_CHIPS = "03-summary-chips"
     TEAM_REVEAL = "04-team-reveal"
-    SOFT_COUNTDOWN = "05-soft-countdown"
     COVERAGE_RING = "06-coverage-ring"
     HANG_UP = "07-hang-up"
     TRANSCRIPT_HIGHLIGHTS = "08-transcript-highlights"
     FIRST_TASK = "09-first-task"
-    BACKGROUND_HAND_OFF = "10-background-hand-off"
 
 
 ENDING_EXPERIMENTS: dict[InterviewMode, Experiment] = {
@@ -62,11 +60,9 @@ MODE_ENDINGS: dict[InterviewMode, frozenset[InterviewEnding]] = {
             InterviewEnding.SPOKEN_YES,
             InterviewEnding.PROFILE_CARD,
             InterviewEnding.TEAM_REVEAL,
-            InterviewEnding.SOFT_COUNTDOWN,
             InterviewEnding.COVERAGE_RING,
             InterviewEnding.HANG_UP,
             InterviewEnding.FIRST_TASK,
-            InterviewEnding.BACKGROUND_HAND_OFF,
         }
     ),
 }

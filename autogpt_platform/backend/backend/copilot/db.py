@@ -881,6 +881,13 @@ def exclude_dream_sessions_sql(column: str = "metadata") -> str:
 
 _EXCLUDE_DREAM_SESSIONS_SQL = exclude_dream_sessions_sql()
 
+# The onboarding interview is the sign-up conversation, not a chat the person
+# returns to, so the list and its count leave it out the same NULL-safe way
+# and it stays fetchable by id. Built from our own constant, never from input.
+_EXCLUDE_ONBOARDING_INTERVIEW_SQL = (
+    f"(metadata->>'kind' IS DISTINCT FROM '{ONBOARDING_INTERVIEW_KIND}')"
+)
+
 
 async def get_user_chat_sessions(
     user_id: str,
@@ -897,7 +904,9 @@ async def get_user_chat_sessions(
 
     Dream-pass sessions (``metadata.kind == "dream"``) are hidden from
     this LIST path — they are pipeline artifacts, not user chats, until
-    the UI grows a dedicated surface for them (P6). Fetch-by-id paths
+    the UI grows a dedicated surface for them (P6). So is the onboarding
+    interview (``ONBOARDING_INTERVIEW_KIND``), which belongs to sign-up.
+    Fetch-by-id paths
     (:func:`get_chat_session_metadata`, :func:`get_chat_messages_paginated`)
     intentionally still return them.
 
@@ -922,7 +931,11 @@ async def get_user_chat_sessions(
         )
 
     params: list[Any] = [user_id]
-    conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    conditions = [
+        '"userId" = $1',
+        _EXCLUDE_DREAM_SESSIONS_SQL,
+        _EXCLUDE_ONBOARDING_INTERVIEW_SQL,
+    ]
     if organization_id is not None:
         params.append(organization_id)
         # Same carve-out as _own_org_scope: the owner's expert sessions are
@@ -967,9 +980,9 @@ async def get_user_session_count(
 ) -> int:
     """Get the total number of chat sessions for a user.
 
-    Applies the same dream-session exclusion, org scoping, and expert
-    filter as :func:`get_user_chat_sessions` so pagination totals always
-    match the visible list.
+    Applies the same dream-session and onboarding-interview exclusions, org
+    scoping, and expert filter as :func:`get_user_chat_sessions` so
+    pagination totals always match the visible list.
     """
     if expert_id == "":
         raise ValueError("expert_id must be non-empty")
@@ -977,7 +990,11 @@ async def get_user_session_count(
         raise ValueError("expert_id and autopilot_only are mutually exclusive")
 
     params: list[Any] = [user_id]
-    conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    conditions = [
+        '"userId" = $1',
+        _EXCLUDE_DREAM_SESSIONS_SQL,
+        _EXCLUDE_ONBOARDING_INTERVIEW_SQL,
+    ]
     if organization_id is not None:
         params.append(organization_id)
         # Keep in lockstep with get_user_chat_sessions so pagination totals

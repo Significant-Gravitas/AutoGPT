@@ -56,6 +56,9 @@ class FrontendFlag(str, Enum):
     # The share of chat sessions whose stream is shadowed and checked, 0 to 1.
     COPILOT_STREAM_SHADOW = "copilot-stream-shadow"
     COPILOT_STREAM_RUNTIME = "copilot-stream-runtime"
+    # The onboarding wizard's typed interview with Otto, in place of the brain
+    # dump step. The backend serves any interview it is asked to.
+    ONBOARDING_INTERVIEW = "onboarding-interview"
 
     @classmethod
     def __get_pydantic_json_schema__(

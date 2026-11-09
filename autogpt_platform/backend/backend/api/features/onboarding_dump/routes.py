@@ -12,6 +12,7 @@ from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 
 from backend.api.features.onboarding_dump import (
     db,
+    interview,
     plan_hire,
     plan_service,
     service,
@@ -27,6 +28,7 @@ from backend.api.features.onboarding_dump.models import (
     FinalizeRequest,
     FinalizeResponse,
     GreetingDoneResponse,
+    InterviewStartResponse,
     IntroCardResponse,
     RecommendedExpertsResponse,
     RecommendedProvidersResponse,
@@ -39,7 +41,9 @@ from backend.api.features.onboarding_dump.plan_models import (
     PlanResponse,
 )
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.onboarding_interview import onboarding_interview_session_id
 from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +182,84 @@ async def finalize_brain_dump(
     except VirusScanError as e:
         await db.mark_failed(user_id, request.recording_id, "virus_scan_failed")
         raise fastapi.HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/interview", operation_id="start_onboarding_interview")
+async def start_onboarding_interview(
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[
+        autogpt_auth_lib.RequestContext,
+        Security(autogpt_auth_lib.get_request_context),
+    ],
+) -> InterviewStartResponse:
+    """Open the person's onboarding interview, with Otto speaking first.
+
+    The first call starts Otto's greeting; every later one adopts the same
+    interview, so Back, a reload and a second tab land in one conversation.
+    ``turn_id`` is set only when this call started the greeting. A greeting
+    already being written is answered without one, like an interview under
+    way: the client reads the session, which resumes the running turn.
+
+    409 once the interview is over, 429 at its turn budget, 503 while the
+    budget or the chat stream cannot be read. A 429 carries its wait in the
+    body (``retry_after_seconds``) as well as in ``Retry-After``: the
+    browser's API client keeps a refusal's body, not its headers.
+    """
+    try:
+        started = await interview.start_onboarding_interview(
+            user_id, organization_id=ctx.org_id, team_id=ctx.team_id
+        )
+    except fastapi.HTTPException as e:
+        if e.status_code == 429:
+            raise _with_wait_in_body(e) from e
+        if e.status_code != 409 or e.detail != interview.TURN_IN_PROGRESS:
+            raise
+        # Only the greeting can be running before the person has said
+        # anything, and the interview cannot be over yet.
+        return InterviewStartResponse(
+            session_id=onboarding_interview_session_id(user_id)
+        )
+    return InterviewStartResponse(
+        session_id=started.session.session_id,
+        turn_id=started.turn_id,
+        stage=started.session.metadata.onboarding_interview_stage,
+    )
+
+
+def _with_wait_in_body(refusal: fastapi.HTTPException) -> fastapi.HTTPException:
+    """*refusal* with its message and its ``Retry-After`` wait in the body."""
+    retry_after = (refusal.headers or {}).get("Retry-After", "")
+    return fastapi.HTTPException(
+        status_code=refusal.status_code,
+        detail={
+            "message": refusal.detail,
+            "retry_after_seconds": int(retry_after) if retry_after.isdigit() else None,
+        },
+        headers=refusal.headers,
+    )
+
+
+@router.post("/interview/finish", operation_id="finish_onboarding_interview")
+async def finish_onboarding_interview(
+    user_id: Annotated[str, Security(get_user_id)],
+    background_tasks: fastapi.BackgroundTasks,
+) -> FinalizeResponse:
+    """The person ends the interview on screen: close it if it is still
+    open, and hand what they said to the onboarding pipeline.
+
+    Idempotent: an interview already handed off is not handed off again, and
+    the response describes its take as it stands. The pipeline's jobs run
+    after the response, as a typed brain dump's do. 404 when the person has
+    no interview.
+    """
+    try:
+        return await interview.finalize_onboarding_interview(
+            user_id, onboarding_interview_session_id(user_id), background_tasks
+        )
+    except NotFoundError as e:
+        raise fastapi.HTTPException(
+            status_code=404, detail="No onboarding interview"
+        ) from e
 
 
 @router.get("/status", operation_id="get_brain_dump_status")

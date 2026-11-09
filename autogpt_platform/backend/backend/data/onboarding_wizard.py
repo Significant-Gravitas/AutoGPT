@@ -17,6 +17,8 @@ WizardStep = Literal[
     "autopilot",
     "role",
     "painPoints",
+    # The onboarding interview, laid out in the brain dump's place.
+    "interview",
     "hire",
     "subscription",
     "connect",

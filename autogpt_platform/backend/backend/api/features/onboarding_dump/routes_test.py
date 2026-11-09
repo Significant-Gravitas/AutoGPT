@@ -13,6 +13,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock
 import fastapi
 import fastapi.testclient
 import pytest
+from autogpt_libs.auth.dependencies import get_request_context
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
@@ -22,6 +23,7 @@ from pytest_mock import MockerFixture
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert, HireResult
 from backend.api.features.onboarding_dump import (
+    interview,
     intro,
     plan,
     plan_hire,
@@ -37,15 +39,29 @@ from backend.api.features.onboarding_dump.models import (
     MAX_PART_BYTES,
     MAX_RECORDING_BYTES,
     ExpertRecommendations,
+    FinalizeResponse,
     RecommendedExpert,
     SuggestedPrompt,
 )
 from backend.api.features.onboarding_dump.role_task_sets import ROLE_FALLBACK_TASKS
 from backend.api.features.store.exceptions import VirusDetectedError
 from backend.blocks.typesafe._client import JevCallResult
+from backend.copilot.model import (
+    INTERVIEW_STAGE_WRAP_UP_ISSUED,
+    ONBOARDING_INTERVIEW_KIND,
+    ChatSession,
+)
+from backend.copilot.onboarding_interview import (
+    INTERVIEW_CLOSED,
+    onboarding_interview_session_id,
+)
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.understanding import BusinessUnderstandingInput
-from backend.util.exceptions import ConflictError, ExpertLimitExceededError
+from backend.util.exceptions import (
+    ConflictError,
+    ExpertLimitExceededError,
+    NotFoundError,
+)
 from backend.util.gcs_utils_test import _gcs_http_error
 from backend.util.posthog_events import PostHogEvent
 
@@ -281,6 +297,7 @@ class DumpStore:
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     # A paid-up user, unless a test says otherwise.
     app.dependency_overrides[enforce_payment_paywall] = lambda: None
     yield
@@ -2108,3 +2125,178 @@ def test_a_roster_read_that_fails_leaves_the_plan_hire_to_hire_expert(
         "tpl-maria",
         "tpl-mina",
     ]
+
+
+# ---------- the onboarding interview ----------
+
+INTERVIEW_URL = "/onboarding/brain-dump/interview"
+INTERVIEW_FINISH_URL = "/onboarding/brain-dump/interview/finish"
+
+
+def _interview(user_id: str, stage: str | None = None) -> ChatSession:
+    session = ChatSession.new(user_id, dry_run=False)
+    session.session_id = onboarding_interview_session_id(user_id)
+    session.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    session.metadata.onboarding_interview_stage = stage
+    return session
+
+
+@pytest.fixture
+def start_interview(mocker: MockerFixture) -> AsyncMock:
+    return mocker.patch.object(interview, "start_onboarding_interview", new=AsyncMock())
+
+
+@pytest.fixture
+def finalize_interview(mocker: MockerFixture) -> AsyncMock:
+    return mocker.patch.object(
+        interview, "finalize_onboarding_interview", new=AsyncMock()
+    )
+
+
+def test_starting_the_interview_answers_it_with_otto_s_first_turn(
+    start_interview: AsyncMock, test_user_id: str
+):
+    session = _interview(test_user_id)
+    start_interview.return_value = interview.StartedInterview(
+        session=session, turn_id="turn-1"
+    )
+
+    response = client.post(INTERVIEW_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": session.session_id,
+        "turn_id": "turn-1",
+        "stage": None,
+    }
+    # Opened in the org and team the request runs in.
+    start_interview.assert_awaited_once_with(
+        test_user_id, organization_id="test-org", team_id="test-team"
+    )
+
+
+def test_reopening_an_interview_under_way_starts_no_turn(
+    start_interview: AsyncMock, test_user_id: str
+):
+    session = _interview(test_user_id, stage=INTERVIEW_STAGE_WRAP_UP_ISSUED)
+    start_interview.return_value = interview.StartedInterview(
+        session=session, turn_id=None
+    )
+
+    response = client.post(INTERVIEW_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": session.session_id,
+        "turn_id": None,
+        "stage": INTERVIEW_STAGE_WRAP_UP_ISSUED,
+    }
+
+
+def test_a_greeting_already_being_written_is_followed_not_refused(
+    start_interview: AsyncMock, test_user_id: str
+):
+    """A reload or a second tab while Otto greets: the client reads the
+    session, which resumes the turn still running."""
+    start_interview.side_effect = fastapi.HTTPException(
+        status_code=409, detail=interview.TURN_IN_PROGRESS
+    )
+
+    response = client.post(INTERVIEW_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": onboarding_interview_session_id(test_user_id),
+        "turn_id": None,
+        "stage": None,
+    }
+
+
+def test_an_interview_that_is_over_is_a_409(start_interview: AsyncMock):
+    start_interview.side_effect = fastapi.HTTPException(
+        status_code=409, detail=INTERVIEW_CLOSED
+    )
+
+    response = client.post(INTERVIEW_URL)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == INTERVIEW_CLOSED
+
+
+def test_a_spent_interview_budget_is_a_429_with_its_wait_in_the_body(
+    start_interview: AsyncMock,
+):
+    """The browser's API client keeps a refusal's body, not its headers, so
+    the wait is in both."""
+    start_interview.side_effect = fastapi.HTTPException(
+        status_code=429,
+        detail="You have sent a lot of messages in a short time.",
+        headers={"Retry-After": "1200"},
+    )
+
+    response = client.post(INTERVIEW_URL)
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "1200"
+    assert response.json()["detail"] == {
+        "message": "You have sent a lot of messages in a short time.",
+        "retry_after_seconds": 1200,
+    }
+
+
+def test_a_429_with_no_wait_names_none(start_interview: AsyncMock):
+    """The cap on turns running at once sets no ``Retry-After``."""
+    start_interview.side_effect = fastapi.HTTPException(
+        status_code=429, detail="Too many chats running at once."
+    )
+
+    response = client.post(INTERVIEW_URL)
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == {
+        "message": "Too many chats running at once.",
+        "retry_after_seconds": None,
+    }
+
+
+def test_an_unreadable_budget_or_stream_is_a_503(start_interview: AsyncMock):
+    start_interview.side_effect = fastapi.HTTPException(
+        status_code=503,
+        detail="The interview is temporarily unavailable.",
+        headers={"Retry-After": "30"},
+    )
+
+    response = client.post(INTERVIEW_URL)
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "30"
+
+
+def test_finishing_hands_the_interview_off_and_answers_its_take(
+    finalize_interview: AsyncMock, test_user_id: str
+):
+    finalize_interview.return_value = FinalizeResponse(
+        status=BrainDumpStatus.transcribed,
+        input_mode=BrainDumpInputMode.typed,
+        transcript_preview="I run a bakery with five staff.",
+    )
+
+    response = client.post(INTERVIEW_FINISH_URL)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "transcribed"
+    assert response.json()["input_mode"] == "typed"
+    # The person's own interview, found from who they are, never from the
+    # request; the pipeline's jobs run after the response.
+    user_id, session_id, background_tasks = finalize_interview.await_args.args
+    assert user_id == test_user_id
+    assert session_id == onboarding_interview_session_id(test_user_id)
+    assert isinstance(background_tasks, fastapi.BackgroundTasks)
+
+
+def test_finishing_without_an_interview_is_a_404(finalize_interview: AsyncMock):
+    finalize_interview.side_effect = NotFoundError("Onboarding interview not found")
+
+    response = client.post(INTERVIEW_FINISH_URL)
+
+    assert response.status_code == 404

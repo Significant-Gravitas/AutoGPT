@@ -287,3 +287,17 @@ class GreetingDoneResponse(BaseModel):
 class RecordingUrlResponse(BaseModel):
     url: str
     mime_type: str | None = None
+
+
+class InterviewStartResponse(BaseModel):
+    """The person's onboarding interview, open on the onboarding step."""
+
+    session_id: str
+    """The interview's chat session; each person has one."""
+    turn_id: str | None = None
+    """Otto's first turn, when this call started it. None when there was
+    nothing to start: the client then reads the session, which resumes any
+    turn still running in it."""
+    stage: str | None = None
+    """``ChatSessionMetadata.onboarding_interview_stage``; None while Otto is
+    still asking."""

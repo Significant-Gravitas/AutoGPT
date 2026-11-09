@@ -20,31 +20,35 @@ from backend.api.features.onboarding_dump.interview_endings import (
 from backend.data.experiments import Experiment, ExperimentAssignment
 
 
-def test_all_ten_endings_are_arms() -> None:
-    assert [ending.value[:2] for ending in InterviewEnding] == [
-        f"{n:02d}" for n in range(1, 11)
-    ]
+def test_every_ending_is_an_arm_of_a_mode() -> None:
     offered = MODE_ENDINGS["text"] | MODE_ENDINGS["voice"]
     assert offered == set(InterviewEnding)
 
 
-def test_each_mode_offers_only_the_arms_that_fit_it() -> None:
-    # Text first, never offered by voice.
-    for text_only in (
-        InterviewEnding.SUMMARY_CHIPS,
-        InterviewEnding.TRANSCRIPT_HIGHLIGHTS,
-    ):
-        assert text_only in MODE_ENDINGS["text"]
-        assert text_only not in MODE_ENDINGS["voice"]
-    # Voice first, never offered by text.
-    for voice_only in (
-        InterviewEnding.SPOKEN_YES,
-        InterviewEnding.SOFT_COUNTDOWN,
-        InterviewEnding.HANG_UP,
-        InterviewEnding.BACKGROUND_HAND_OFF,
-    ):
-        assert voice_only in MODE_ENDINGS["voice"]
-        assert voice_only not in MODE_ENDINGS["text"]
+def test_each_mode_offers_exactly_the_arms_that_fit_it() -> None:
+    """The variant keys each mode's flag carries."""
+    offered = {
+        mode: {ending.value for ending in endings}
+        for mode, endings in MODE_ENDINGS.items()
+    }
+    assert offered == {
+        "text": {
+            "02-profile-card",
+            "03-summary-chips",
+            "04-team-reveal",
+            "06-coverage-ring",
+            "08-transcript-highlights",
+            "09-first-task",
+        },
+        "voice": {
+            "01-spoken-yes",
+            "02-profile-card",
+            "04-team-reveal",
+            "06-coverage-ring",
+            "07-hang-up",
+            "09-first-task",
+        },
+    }
 
 
 def test_each_mode_has_its_own_experiment() -> None:

@@ -950,7 +950,6 @@ async def test_an_unenrolled_person_is_handed_off_as_the_interview_closes(
     [
         InterviewEnding.TEAM_REVEAL,
         InterviewEnding.COVERAGE_RING,
-        InterviewEnding.BACKGROUND_HAND_OFF,
     ],
 )
 async def test_an_automatic_arm_is_handed_off_as_the_interview_closes(
