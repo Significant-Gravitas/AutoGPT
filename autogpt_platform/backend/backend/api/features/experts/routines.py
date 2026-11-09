@@ -36,10 +36,9 @@ import prisma
 import prisma.enums
 import prisma.models
 import prisma.types
-from apscheduler.triggers.cron import CronTrigger
 from pydantic import ValidationError
 
-from backend.api.features.experts.models import ExpertRoutine
+from backend.api.features.experts.models import MAX_ROUTINE_CRONS, ExpertRoutine
 from backend.api.features.experts.routine_jobs import (
     create_routine_schedules,
     delete_routine_schedules,
@@ -49,6 +48,7 @@ from backend.copilot.credential_selection import CredentialPin, CredentialPins
 from backend.copilot.scheduled_chats.forget import forget_routine
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
+from backend.util.cron import validate_cron
 from backend.util.exceptions import RoutineNotFoundError, RoutineUnansweredAsksError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
@@ -232,17 +232,22 @@ async def enable_routine(
     # Resolved on every path, so an ``H`` that reaches here from the template
     # or straight back from the model never gets as far as APScheduler, which
     # has no idea what it means.
-    resolved_crons = [
-        spread_cron(cron, seed=f"{user_id}:{row.key or row.id}:{index}")
-        for index, cron in enumerate(source_crons)
-    ]
+    _check_cron_count(source_crons)
+    # Each distinct cron is one scheduler job; a repeated one adds a job, not a run.
+    # Repeats collapse before ``H`` resolves, which picks a minute per position.
+    resolved_crons = list(
+        dict.fromkeys(
+            spread_cron(cron, seed=f"{user_id}:{row.key or row.id}:{index}")
+            for index, cron in enumerate(dict.fromkeys(source_crons))
+        )
+    )
     if bool(resolved_crons) == (resolved_run_at is not None):
         raise ValueError(
             "A routine runs either on a cadence or once at a time, not both "
             "and not neither."
         )
     for cron in resolved_crons:
-        CronTrigger.from_crontab(cron, timezone=user_timezone)
+        validate_cron(cron, user_timezone)
     # A spent one-shot switched on again needs a new time: re-arming it at the
     # old one would either fire immediately or never, and neither is a thing
     # the owner asked for.
@@ -280,6 +285,7 @@ async def enable_routine(
         run_at=resolved_run_at,
         session_id=pinned,
         user_timezone=user_timezone,
+        replaces=list(row.scheduleIds),
     )
     now = datetime.now(timezone.utc)
     data: prisma.types.ExpertRoutineUpdateInput = {
@@ -382,6 +388,7 @@ async def create_routine(
         )
     if run_at is not None and run_at <= datetime.now(timezone.utc):
         raise ValueError("That time has already passed; give a future one.")
+    _check_cron_count(crons or [])
     mode = _session_mode(session_mode or "THREAD")
     data: prisma.types.ExpertRoutineCreateInput = {
         "title": title.strip(),
@@ -509,3 +516,10 @@ async def _owned_routine(
     if row is None:
         raise RoutineNotFoundError(routine_id)
     return row
+
+
+def _check_cron_count(crons: list[str]) -> None:
+    if len(crons) > MAX_ROUTINE_CRONS:
+        raise ValueError(
+            f"A routine can have at most {MAX_ROUTINE_CRONS} repeat times."
+        )

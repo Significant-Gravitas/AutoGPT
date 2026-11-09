@@ -67,10 +67,7 @@ export function TextGenerateEffect({
   return (
     <div className={cn("font-bold", className)}>
       <div className="mt-4">
-        <div
-          // TODO(tokens): no role holds 24px (text-2xl); the type scale goes 22px (heading-sm) to 28px (heading). SECRT-3152
-          className="text-2xl leading-snug tracking-wide text-foreground-base"
-        >
+        <div className="text-heading-md leading-snug tracking-wide text-foreground-base">
           {renderWords()}
         </div>
       </div>

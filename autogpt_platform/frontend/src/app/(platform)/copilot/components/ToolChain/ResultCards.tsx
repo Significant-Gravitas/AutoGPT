@@ -103,7 +103,7 @@ export function StatusCard({ label, ok }: StatusCardProps) {
 export function StatCard({ value, label }: StatCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-baseline gap-2 p-2.5`}>
-      <span className="text-lg leading-none font-semibold text-foreground-emphasis">
+      <span className="text-lead leading-none font-semibold text-foreground-emphasis">
         {value.toLocaleString()}
       </span>
       <Text
@@ -128,7 +128,7 @@ export function ChipList({ label, items }: ChipListProps) {
         {Array.from(new Set(items)).map((item) => (
           <span
             key={item}
-            className="max-w-full truncate rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-secondary"
+            className="max-w-full truncate rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
           >
             {item}
           </span>

@@ -72,7 +72,7 @@ export function InstallSkillButton({
           aria-label={MENU_LABEL}
           disabled={isAdding}
           // oxlint-disable-next-line design-system/no-restyle -- the right half of a split button; Button has no split variant
-          className="!min-w-0 !rounded-l-none border-l border-l-white/25"
+          className="!min-w-0 !rounded-l-none border-l border-l-action-foreground/25"
         >
           <Icon icon={ArrowDown01Icon} size={16} aria-hidden />
         </Button>
@@ -122,7 +122,7 @@ export function ExpertInstallMenu({
                 {expert.name}
               </span>
               {expert.role ? (
-                <span className="block truncate text-xs text-foreground-tertiary">
+                <span className="block truncate text-caption text-foreground-tertiary">
                   {expert.role}
                 </span>
               ) : null}

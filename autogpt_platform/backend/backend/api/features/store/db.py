@@ -413,6 +413,8 @@ async def get_available_graph(
         graph.clear_auto_credentials()
         return graph
 
+    except NotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
         raise DatabaseError("Failed to fetch workflow") from e
@@ -1540,8 +1542,14 @@ async def review_store_submission(
     external_comments: str,
     internal_comments: str,
     reviewer_id: str,
+    *,
+    notify_creator: bool = True,
 ) -> store_model.StoreSubmissionAdminView:
-    """Review a store listing submission as an admin."""
+    """Review a store listing submission as an admin.
+
+    ``notify_creator=False`` records the verdict without queueing the creator's
+    verdict email, for listings whose creator is synthetic (the preview seed).
+    """
     try:
         submission = await prisma.models.StoreListingVersion.prisma().find_unique(
             where={"id": store_listing_version_id},
@@ -1685,16 +1693,17 @@ async def review_store_submission(
         if is_approved:
             reviewed_submission = await _publish_approved_media(reviewed_submission)
 
-        try:
-            await _send_submission_review_notification(
-                creator_user_id,
-                is_approved,
-                external_comments,
-                reviewed_submission,
-            )
-        except Exception as e:
-            logger.error(f"Failed to send email notification for agent review: {e}")
-            # Don't fail the review process if email sending fails
+        if notify_creator:
+            try:
+                await _send_submission_review_notification(
+                    creator_user_id,
+                    is_approved,
+                    external_comments,
+                    reviewed_submission,
+                )
+            except Exception as e:
+                logger.error(f"Failed to send email notification for agent review: {e}")
+                # Don't fail the review process if email sending fails
 
         return store_model.StoreSubmissionAdminView.from_listing_version(
             reviewed_submission

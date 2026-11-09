@@ -1,0 +1,94 @@
+import { useEffect, useRef } from "react";
+
+// How long a switch of the composer's recipient may take before the task
+// gives up instead of going to whoever is selected. A roster read still
+// running does not count against it.
+const RECIPIENT_SWITCH_MS = 3000;
+
+interface Args {
+  recipientID: string | null;
+  selectRecipient: (id: string | null) => void;
+  /** The page can start a task now: false while it is still resolving the
+   *  new recipient, or the composer is locked. */
+  canSend: boolean;
+  /** The page is still reading the roster for the composer's recipient. */
+  isResolving: boolean;
+}
+
+interface Pending {
+  id: string | null;
+  send: () => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+// Sends a task to its owner the way the recipient picker would: the
+// composer's recipient becomes the owner (the ?expertId= param), and the
+// task goes out once the page has picked that up and can send, so the chat
+// is created for the owner. `restore` puts back the recipient the user had
+// when a task does not start after all, unless they have since picked
+// someone else.
+export function useTaskRecipient({
+  recipientID,
+  selectRecipient,
+  canSend,
+  isResolving,
+}: Args) {
+  const pending = useRef<Pending | null>(null);
+  const previous = useRef<string | null>(null);
+  const target = useRef<string | null>(null);
+  // `restore` runs from a promise or a timer with an older render's closure.
+  const live = useRef(recipientID);
+  const resolving = useRef(isResolving);
+
+  useEffect(() => {
+    live.current = recipientID;
+    resolving.current = isResolving;
+  }, [recipientID, isResolving]);
+
+  useEffect(() => {
+    const next = pending.current;
+    if (!next || next.id !== recipientID || !canSend) return;
+    clearTimeout(next.timer);
+    pending.current = null;
+    next.send();
+  }, [recipientID, canSend]);
+
+  useEffect(() => {
+    return () => {
+      if (pending.current) clearTimeout(pending.current.timer);
+    };
+  }, []);
+
+  function sendTo(id: string | null, send: () => void, onGiveUp: () => void) {
+    previous.current = recipientID;
+    target.current = id;
+    if (id === recipientID && canSend) {
+      send();
+      return;
+    }
+    if (pending.current) clearTimeout(pending.current.timer);
+    pending.current = { id, send, timer: armGiveUp(onGiveUp) };
+    if (id !== recipientID) selectRecipient(id);
+  }
+
+  function armGiveUp(onGiveUp: () => void) {
+    const timer = setTimeout(() => {
+      const next = pending.current;
+      if (next?.timer !== timer) return;
+      if (resolving.current) {
+        next.timer = armGiveUp(onGiveUp);
+        return;
+      }
+      pending.current = null;
+      onGiveUp();
+    }, RECIPIENT_SWITCH_MS);
+    return timer;
+  }
+
+  function restore() {
+    if (live.current !== target.current) return;
+    if (live.current !== previous.current) selectRecipient(previous.current);
+  }
+
+  return { sendTo, restore };
+}

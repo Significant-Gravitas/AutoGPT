@@ -500,7 +500,7 @@ function renderIconButtons() {
           aria-label="More actions"
         />
       </div>
-      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gradient-to-r from-violet-200 to-sky-200 p-4">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gradient-to-r from-brand/20 to-sky/30 p-4">
         <Button
           variant="floating"
           size="icon-xs"
@@ -564,7 +564,7 @@ function renderContextualLoadingExamples() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="mb-4 text-base font-medium text-foreground-strong">
+        <h3 className="mb-4 text-body-lg font-medium text-foreground-strong">
           ✅ Good Examples - Contextual Loading Text
         </h3>
         <div className="flex flex-wrap gap-4">
@@ -596,7 +596,7 @@ function renderContextualLoadingExamples() {
       </div>
 
       <div>
-        <h3 className="mb-4 text-base font-medium text-error-foreground">
+        <h3 className="mb-4 text-body-lg font-medium text-error-foreground">
           ❌ Avoid - Generic Loading Text
         </h3>
         <div className="flex flex-wrap gap-4">
@@ -610,7 +610,7 @@ function renderContextualLoadingExamples() {
             Working...
           </Button>
         </div>
-        <p className="mt-2 text-sm text-foreground-secondary">
+        <p className="mt-2 text-body text-foreground-secondary">
           These examples are disabled to show what NOT to do. Use specific
           action-based text instead.
         </p>
@@ -690,13 +690,13 @@ function renderAllVariants() {
     <div className="space-y-12 p-8">
       {/* Large buttons section */}
       <div className="space-y-8">
-        <h2 className="text-3xl font-semibold text-foreground-strong">
+        <h2 className="text-heading font-semibold text-foreground-strong">
           Large buttons
         </h2>
         <div className="flex flex-wrap gap-20">
           {/* Primary */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Primary
             </div>
             <div className="flex flex-col gap-8">
@@ -723,7 +723,7 @@ function renderAllVariants() {
 
           {/* Secondary */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Secondary
             </div>
             <div className="flex flex-col gap-8">
@@ -750,7 +750,7 @@ function renderAllVariants() {
 
           {/* Destructive */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Destructive
             </div>
             <div className="flex flex-col gap-8">
@@ -777,7 +777,7 @@ function renderAllVariants() {
 
           {/* Outline */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Outline
             </div>
             <div className="flex flex-col gap-8">
@@ -804,7 +804,7 @@ function renderAllVariants() {
 
           {/* Ghost */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Save
             </div>
             <div className="flex flex-col gap-8">
@@ -833,13 +833,13 @@ function renderAllVariants() {
 
       {/* Small buttons section */}
       <div className="space-y-8">
-        <h2 className="text-3xl font-semibold text-foreground-strong">
+        <h2 className="text-heading font-semibold text-foreground-strong">
           Small buttons
         </h2>
         <div className="flex flex-wrap gap-20">
           {/* Primary Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Primary
             </div>
             <div className="flex flex-col gap-8">
@@ -866,7 +866,7 @@ function renderAllVariants() {
 
           {/* Secondary Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Secondary
             </div>
             <div className="flex flex-col gap-8">
@@ -893,7 +893,7 @@ function renderAllVariants() {
 
           {/* Destructive Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Destructive
             </div>
             <div className="flex flex-col gap-8">
@@ -920,7 +920,7 @@ function renderAllVariants() {
 
           {/* Outline Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Outline
             </div>
             <div className="flex flex-col gap-8">
@@ -947,7 +947,7 @@ function renderAllVariants() {
 
           {/* Ghost Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-foreground-strong">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Ghost
             </div>
             <div className="flex flex-col gap-8">
@@ -976,12 +976,12 @@ function renderAllVariants() {
 
       {/* Other button types */}
       <div className="space-y-8">
-        <h2 className="text-3xl font-semibold text-foreground-strong">
+        <h2 className="text-heading font-semibold text-foreground-strong">
           Other button types
         </h2>
         <div className="flex gap-20">
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-foreground-emphasis">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-emphasis">
               Icon
             </div>
             <div className="flex flex-col gap-8">
@@ -997,7 +997,7 @@ function renderAllVariants() {
             </div>
           </div>
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-foreground-emphasis">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-emphasis">
               Link
             </div>
             <div className="flex flex-col gap-8">

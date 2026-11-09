@@ -36,7 +36,7 @@ export function SkillPackageFileList({ files, onOpenFile }: Props) {
                 executable
               </span>
             ) : null}
-            <span className="shrink-0 text-xs text-foreground-subtle tabular-nums">
+            <span className="shrink-0 text-caption text-foreground-subtle tabular-nums">
               {formatFileSize(file.size_bytes)}
             </span>
           </button>
