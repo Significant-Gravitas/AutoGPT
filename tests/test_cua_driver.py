@@ -415,6 +415,25 @@ def test_the_driver_inherits_only_the_reviewed_cua_settings() -> None:
     assert env["DBUS_SESSION_BUS_ADDRESS"] == base["DBUS_SESSION_BUS_ADDRESS"]
 
 
+def test_the_driver_inherits_none_of_the_shims_own_settings() -> None:
+    """The driver took the shim's settings with the rest of its environment,
+    and an app it launched by name (a terminal, say) inherited them, the
+    keychain passphrase for the file fallback among them, where the agent
+    could show them with `env`."""
+    base = {
+        "PATH": "/usr/bin",
+        "DISPLAY": ":0",
+        "AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE": "secret",
+        "AUTOGPT_SHIM_PLATFORM_URL": "https://platform.example",
+        "autogpt_shim_supervisor": "systemd",
+    }
+
+    env = driver.driver_environment(Path("/tmp/policy.yaml"), base)
+
+    assert not [name for name in env if name.upper().startswith("AUTOGPT_SHIM_")]
+    assert env["PATH"] == "/usr/bin" and env["DISPLAY"] == ":0"
+
+
 async def test_the_policy_file_is_private_and_removed_with_the_bridge(fake_log: Path) -> None:
     bridge = _bridge()
     await bridge.snapshot()

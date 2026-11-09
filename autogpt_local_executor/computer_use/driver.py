@@ -74,6 +74,9 @@ _INHERITED_CUA_SETTINGS = frozenset(
     }
 )
 
+# The shim's own settings, its configuration and the keychain passphrase.
+_SHIM_SETTINGS_PREFIX = "AUTOGPT_SHIM_"
+
 Runtime = Literal["direct", "service"]
 
 
@@ -182,11 +185,15 @@ def driver_environment(
     """The driver's environment: the shim's own, which the driver and the
     apps it launches need (the display, the session bus, the locale), with
     only the reviewed cua settings, telemetry and update checks off and, for
-    `mcp`, the shim's policy."""
+    `mcp`, the shim's policy. The shim's own settings (`AUTOGPT_SHIM_*`, the
+    keychain passphrase among them) stay out: nothing the driver starts
+    needs them, and an app it launches by name would inherit them, where a
+    terminal shows its environment to anyone who looks."""
     env = {
         name: value
         for name, value in (os.environ if base is None else base).items()
-        if not name.upper().startswith("CUA") or name.upper() in _INHERITED_CUA_SETTINGS
+        if not name.upper().startswith(_SHIM_SETTINGS_PREFIX)
+        and (not name.upper().startswith("CUA") or name.upper() in _INHERITED_CUA_SETTINGS)
     }
     env.update(
         {

@@ -64,6 +64,11 @@ so it shows on Windows and Linux but not on macOS.
 **Environment.** The driver gets the shim's environment (it and the apps it
 launches need `DISPLAY`, the session bus and the rest), with these changes:
 
+- The shim's own settings (`AUTOGPT_SHIM_*`, among them
+  `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`) are dropped: nothing the driver starts
+  needs them, and an app it launches would inherit them. That keeps them
+  out of a terminal's `env`, not out of reach: any program running as the
+  user can read the shim's own environment.
 - Of cua's own settings (`CUA*`), only those cua's SDK hands a driver it
   embeds pass: `CUA_LOG`, `CUA_DRIVER_RS_HOME`, the accessibility and
   Wayland switches (`CUA_DRIVER_RS_ENABLE_WAYLAND`,
