@@ -97,7 +97,7 @@ export function ScheduleList({ schedules }: SchedulesProps) {
                 {str(schedule, "name", "message") ?? inline(schedule)}
               </Text>
               {next && (
-                <p className="flex items-center gap-1 text-xs text-foreground-tertiary">
+                <p className="flex items-center gap-1 text-caption text-foreground-tertiary">
                   {recurring && <Icon icon={RepeatIcon} size={11} />}
                   {formatWhen(next)}
                 </p>
@@ -131,7 +131,7 @@ export function ScheduleCreatedCard({ output }: OutputProps) {
           Follow-up scheduled
         </Text>
         {next && (
-          <p className="flex items-center gap-1 text-xs text-foreground-tertiary">
+          <p className="flex items-center gap-1 text-caption text-foreground-tertiary">
             {output.is_recurring === true && (
               <Icon icon={RepeatIcon} size={11} />
             )}

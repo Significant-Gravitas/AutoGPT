@@ -107,7 +107,7 @@ export function ActivityDropdown({
             </div>
           ) : (
             <div className={`${styles.headerContainer} py-0.5`}>
-              <span className="text-xs font-medium text-foreground-tertiary uppercase">
+              <span className="text-caption font-medium text-foreground-tertiary uppercase">
                 Workflow Activity
               </span>
               {withSearch ? (
@@ -147,7 +147,7 @@ export function ActivityDropdown({
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pt-6 pb-8">
-            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">
+            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-surface-hover p-6">
               <Icon icon={BellIcon} tone="disabled" className="h-6 w-6" />
             </div>
             <div className="flex flex-col items-center justify-center">

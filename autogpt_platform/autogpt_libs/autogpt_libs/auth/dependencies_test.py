@@ -689,6 +689,18 @@ class TestRequestContextProvisioning:
         request.url = "http://test/api/library/agents"
         return request
 
+    @staticmethod
+    def _membership(org_id: str, status: str = "ACTIVE", org_deleted: bool = False):
+        member = Mock(
+            orgId=org_id,
+            status=status,
+            isOwner=True,
+            isAdmin=False,
+            isBillingManager=False,
+        )
+        member.Org = Mock(deletedAt="2026-10-01T00:00:00Z" if org_deleted else None)
+        return member
+
     @pytest.fixture
     def wiring(self, mocker: MockerFixture):
         """Stub the deferred backend imports and record call order."""
@@ -766,14 +778,97 @@ class TestRequestContextProvisioning:
         from autogpt_libs.auth.dependencies import get_request_context
 
         ensure, _ = wiring
-        member = Mock(orgId="org-existing")
         sys.modules["backend.data.db"].prisma.orgmember.find_first = AsyncMock(
-            return_value=member
+            return_value=self._membership("org-existing")
         )
 
         await get_request_context(self._request(), {"sub": "user-1", "email": "a@b.c"})
 
         ensure.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_the_personal_org_membership_is_read_once(self, wiring):
+        """The lookup that finds the personal org returns the user's membership
+        of it, so validating that membership must not read the row again."""
+        import sys
+
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        prisma = sys.modules["backend.data.db"].prisma
+        prisma.orgmember.find_first = AsyncMock(
+            return_value=self._membership("org-personal")
+        )
+        prisma.orgmember.find_unique = AsyncMock()
+
+        ctx = await get_request_context(
+            self._request(), {"sub": "user-1", "email": "a@b.c"}
+        )
+
+        assert ctx.org_id == "org-personal"
+        assert ctx.is_org_owner is True
+        assert prisma.orgmember.find_first.await_args is not None
+        assert prisma.orgmember.find_first.await_args.kwargs["include"] == {"Org": True}
+        prisma.orgmember.find_unique.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "status, org_deleted",
+        [
+            ("INVITED", False),
+            ("SUSPENDED", False),
+            ("REMOVED", False),
+            ("ACTIVE", True),
+        ],
+    )
+    async def test_a_personal_membership_that_grants_no_access_is_refused(
+        self, wiring, status, org_deleted
+    ):
+        """The membership read once is still checked: one that is not active,
+        or whose org was deleted, refuses the request."""
+        import sys
+
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        prisma = sys.modules["backend.data.db"].prisma
+        prisma.orgmember.find_first = AsyncMock(
+            return_value=self._membership("org-personal", status, org_deleted)
+        )
+
+        with pytest.raises(HTTPException) as refused:
+            await get_request_context(
+                self._request(), {"sub": "user-1", "email": "a@b.c"}
+            )
+
+        assert refused.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_an_org_header_reads_that_orgs_membership(self, wiring):
+        """A request naming its org skips the personal-org lookup and checks
+        the membership of the org it named."""
+        import sys
+
+        from autogpt_libs.auth.dependencies import (
+            ORG_HEADER_NAME,
+            get_request_context,
+        )
+
+        prisma = sys.modules["backend.data.db"].prisma
+        prisma.orgmember.find_first = AsyncMock()
+        prisma.orgmember.find_unique = AsyncMock(
+            return_value=self._membership("org-named")
+        )
+
+        ctx = await get_request_context(
+            self._request({ORG_HEADER_NAME: "org-named"}),
+            {"sub": "user-1", "email": "a@b.c"},
+        )
+
+        assert ctx.org_id == "org-named"
+        prisma.orgmember.find_first.assert_not_awaited()
+        assert prisma.orgmember.find_unique.await_args is not None
+        assert prisma.orgmember.find_unique.await_args.kwargs["where"] == {
+            "orgId_userId": {"orgId": "org-named", "userId": "user-1"}
+        }
 
     @pytest.fixture
     def bootstrap(self, mocker: MockerFixture, wiring):

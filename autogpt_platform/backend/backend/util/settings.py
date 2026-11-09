@@ -114,9 +114,30 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum number of workers to use for graph execution.",
     )
 
+    max_graph_workers_per_user: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+        description=(
+            "How many of an executor's graph workers one user's top-level runs "
+            "may hold at once; kept below `num_graph_workers` when that is 2 or "
+            "more, and 1 when it is 1."
+        ),
+    )
+
     requeue_by_republishing: bool = Field(
         default=True,
         description="Send rate-limited messages to back of queue by republishing instead of front requeue to prevent blocking other users.",
+    )
+
+    graph_run_requeue_delay_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=3600,
+        description=(
+            "How long a run refused for want of a worker waits in the delay "
+            "queue before it is offered to an executor again."
+        ),
     )
 
     # FastAPI Thread Pool Configuration
@@ -228,12 +249,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "this is the only per-call wall-clock bound."
         ),
     )
-    auth_legacy_token_deadline: int = Field(
-        default=0,
+    auth_legacy_token_deadline: int | None = Field(
+        default=None,
         ge=0,
         description=(
             "Exclusive Unix timestamp cutoff for accepting user JWTs without sid "
-            "during auth rollout. Zero rejects them immediately."
+            "during auth rollout. Unset preserves legacy signature/expiry validation; "
+            "zero rejects them immediately. Tokens with sid always require an active session."
         ),
     )
     enable_subscription_credit_grant: bool = Field(
@@ -250,6 +272,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     enable_credit: bool = Field(
         default=False,
         description="If user credit system is enabled or not",
+    )
+    enable_platform_payment: bool = Field(
+        default=False,
+        description="Whether the platform is paid for: an account without a plan "
+        "is paywalled and the billing pages offer plans. Off for self-hosted "
+        "installs; the hosted platform sets it.",
     )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
@@ -661,6 +689,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The pool size for the scheduler database connection pool",
     )
 
+    max_schedules_per_user: int = Field(
+        default=200,
+        ge=1,
+        description="How many schedules one user may hold on the scheduler.",
+    )
+
     schedule_read_timeout_seconds: float = Field(
         default=5.0,
         gt=0,
@@ -1001,6 +1035,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1024,
         description="Maximum file size in MB for workspace files (1-1024 MB)",
+    )
+
+    max_total_file_size_mb: int = Field(
+        default=500,
+        ge=1,
+        le=10240,
+        description="Maximum combined size in MB of the files a block run loads (1-10240 MB)",
     )
 
     max_request_body_mb: int = Field(

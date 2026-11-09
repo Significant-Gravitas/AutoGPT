@@ -18,6 +18,24 @@ from fastapi.testclient import TestClient
 from jwt.algorithms import ECAlgorithm
 
 from backend.api import session_auth, ws_api
+from backend.util.settings import Config
+
+
+async def test_rollout_default_accepts_preexisting_signed_tokens(
+    client: TestClient,
+    signing_key: ec.EllipticCurvePrivateKey,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        session_auth.settings.config,
+        "auth_legacy_token_deadline",
+        Config.model_fields["auth_legacy_token_deadline"].default,
+    )
+    token = _sign(signing_key, {"sub": "user", "aud": "authenticated"})
+    assert (
+        client.get("/user", headers={"Authorization": f"Bearer {token}"}).status_code
+        == 200
+    )
 
 
 async def test_sidless_user_token_requires_a_migration_window(
@@ -98,7 +116,8 @@ async def test_signed_legacy_token_cutoff_applies_to_http_and_websocket(
     else:
         assert identity == ""
         assert send.await_args is not None
-        assert send.await_args.args[0]["code"] == 4003
+        assert send.await_args.args[0]["code"] == 1013
+        assert response.headers["X-Error-Code"] == "session_token_renewal_required"
 
 
 def test_service_token_remains_separate_from_user_cutoff(

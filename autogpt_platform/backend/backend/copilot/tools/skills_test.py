@@ -1915,6 +1915,8 @@ async def test_list_user_skills_uses_metadata_fast_path(mocker):
     fake_manager.metadata["/skills/oauth_flow/SKILL.md"] = {
         "kind": "copilot_skill",
         "description": "OAuth handshake recipe",
+        "invocation": {},
+        "aliases": [],
         "triggers": ["auth", "oauth"],
     }
     # Spy on read_file so the test asserts the fast path skipped it.
@@ -1981,6 +1983,8 @@ async def test_list_user_skills_returns_redis_cache_when_warm():
         {
             "name": "cached_skill",
             "description": "from cache",
+            "invocation": {},
+            "aliases": [],
             "triggers": ["t1"],
             "version": None,
         }
@@ -3330,3 +3334,217 @@ async def test_a_file_changed_in_place_is_still_picked_up():
         )
         with open(materialised, "rb") as f:
             assert f.read() == b"after!"
+
+
+@pytest.mark.asyncio
+async def test_legacy_invocation_metadata_reads_non_invocable_skill():
+    from backend.copilot.tools.skills import list_user_skills
+
+    fake = _FakeWorkspaceManager()
+    path = "/skills/legacy/SKILL.md"
+    fake.files[path] = render_skill_markdown(
+        ParsedSkill(
+            name="legacy",
+            description="old skill",
+            body="ok",
+            extra={"user-invocable": False},
+        )
+    ).encode()
+    fake.metadata[path] = {"kind": "copilot_skill", "description": "old skill"}
+    with (
+        _patch_skills_path(fake),
+        patch(
+            "backend.copilot.tools.skills._read_skills_cache",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("backend.copilot.tools.skills._write_skills_cache", new=AsyncMock()),
+    ):
+        skills = await list_user_skills("user-1")
+    assert skills[0].extra.get("user-invocable") is False
+
+
+@pytest.mark.asyncio
+async def test_ordinary_skill_write_retains_index_fast_path():
+    fake = _FakeWorkspaceManager()
+    parsed = ParsedSkill(
+        name="ordinary", description="ordinary skill", body="instructions"
+    )
+    prepared = skills._PreparedSkill(
+        parsed, render_skill_markdown(parsed), None, frozenset()
+    )
+    await skills._write_skill(
+        fake, prepared, None, SKILL_ORIGIN_USER, set(), set(), {}, MagicMock()
+    )
+    assert fake.metadata["/skills/ordinary/SKILL.md"]["invocation"] == {}
+    fake.read_file = AsyncMock(side_effect=AssertionError("fast path must not read"))
+    with _patch_skills_path(fake):
+        listed = await _list_user_skills_from_workspace("user-1")
+    assert listed[0].name == "ordinary"
+    fake.read_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invocable", [False, True])
+async def test_legacy_index_fallback_preserves_every_fast_path_field(invocable):
+    fake = _FakeWorkspaceManager()
+    path = "/skills/legacy/SKILL.md"
+    parsed = ParsedSkill(
+        name="legacy",
+        description="old skill",
+        body="instructions",
+        triggers=("daily",),
+        version="7",
+        extra={"user-invocable": invocable},
+    )
+    fake.files[path] = render_skill_markdown(parsed).encode()
+    baseline = skills.SkillBaseline(
+        "listing", "version", "hash", "previous", ("notes.md",)
+    )
+    meta = {
+        "kind": "copilot_skill",
+        "description": parsed.description,
+        "triggers": list(parsed.triggers),
+        "version": parsed.version,
+        "skill_origin": "marketplace",
+        **skills._baseline_metadata(baseline),
+    }
+    fake.metadata[path] = meta
+    expected = skills._index_entry_from_metadata(
+        "legacy",
+        {
+            **meta,
+            "invocation": skills.invocation_frontmatter(parsed.extra),
+            "aliases": [],
+        },
+    )
+    with _patch_skills_path(fake):
+        listed = await _list_user_skills_from_workspace("user-1")
+    assert listed == [expected]
+    assert (listed[0].extra.get("user-invocable") is False) == (not invocable)
+
+
+@pytest.mark.asyncio
+async def test_old_cached_index_cannot_offer_a_non_invocable_skill():
+    fake = _FakeWorkspaceManager()
+    path = "/skills/internal/SKILL.md"
+    fake.files[path] = render_skill_markdown(
+        ParsedSkill(
+            name="internal",
+            description="Internal",
+            body="Instructions",
+            extra={"user-invocable": False},
+        )
+    ).encode()
+    fake.metadata[path] = {"kind": "copilot_skill", "description": "Internal"}
+    cached = {
+        "copilot:skills_index:v2:user-1": json.dumps(
+            [{"name": "internal", "description": "Internal", "origin": "user"}]
+        )
+    }
+    redis = AsyncMock()
+    redis.get.side_effect = cached.get
+    with (
+        _patch_skills_path(fake),
+        patch.object(skills, "get_redis_async", AsyncMock(return_value=redis)),
+    ):
+        listed = await skills.list_user_skills("user-1")
+    assert len(listed) == 1
+    assert listed[0].extra.get("user-invocable") is False
+    redis.set.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_alias_index_survives_storage_fallback_and_cache(legacy):
+    fake = _FakeWorkspaceManager()
+    parsed = ParsedSkill(
+        name="vendored",
+        description="Vendored",
+        body="Instructions",
+        extra={
+            "metadata": {
+                "original-name": "Report",
+                "source": "vendor/team/skills/report",
+            },
+            "user-invocable": False,
+        },
+    )
+    prepared = skills._PreparedSkill(
+        parsed, render_skill_markdown(parsed), None, frozenset()
+    )
+    await skills._write_skill(
+        fake, prepared, None, SKILL_ORIGIN_USER, set(), set(), {}, MagicMock()
+    )
+    path = "/skills/vendored/SKILL.md"
+    if legacy:
+        fake.metadata[path].pop("aliases", None)
+    else:
+        assert fake.metadata[path]["aliases"] == ["report", "team:report"]
+    read = AsyncMock(wraps=fake.read_file)
+    fake.read_file = read
+    with _patch_skills_path(fake):
+        entries = await skills._list_user_skills_from_workspace("user-1")
+    assert entries[0].aliases == ("report", "team:report")
+    assert entries[0].extra["user-invocable"] is False
+    assert read.await_count == int(legacy)
+    redis = AsyncMock()
+    with patch.object(skills, "get_redis_async", AsyncMock(return_value=redis)):
+        await skills._write_skills_cache("user-1", entries)
+        redis.get.return_value = redis.set.await_args.args[1]
+        assert await skills._read_skills_cache("user-1") == entries
+
+
+@pytest.mark.asyncio
+async def test_pre_alias_v3_cache_is_rebuilt():
+    redis = AsyncMock()
+    redis.get.return_value = json.dumps(
+        [{"name": "vendored", "description": "Vendored", "invocation": {}}]
+    )
+    with patch.object(skills, "get_redis_async", AsyncMock(return_value=redis)):
+        assert await skills._read_skills_cache("user-1") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("warm_cache", [False, True])
+async def test_unknown_command_does_not_read_workspace_skill_files(warm_cache):
+    from backend.copilot import skill_invocation as si
+
+    fake = _FakeWorkspaceManager()
+    path = "/skills/vendored/SKILL.md"
+    fake.files[path] = b"the index is sufficient"
+    fake.metadata[path] = {
+        "kind": "copilot_skill",
+        "description": "Vendored",
+        "invocation": {},
+        "aliases": ["original", "team:original"],
+    }
+    fake.read_file = AsyncMock(side_effect=AssertionError("no skill body needed"))
+    redis = AsyncMock()
+    redis.get.return_value = (
+        json.dumps(
+            [
+                {
+                    "name": "vendored",
+                    "description": "Vendored",
+                    "invocation": {},
+                    "aliases": ["original", "team:original"],
+                }
+            ]
+        )
+        if warm_cache
+        else None
+    )
+    with (
+        _patch_skills_path(fake),
+        patch.object(skills, "get_redis_async", AsyncMock(return_value=redis)),
+        patch.object(si, "resolve_skill_scope", AsyncMock(return_value=None)),
+        patch.object(si, "is_skills_feature_enabled", AsyncMock(return_value=True)),
+    ):
+        for message in ("/me", "/done", "/typo", "/foo:bar"):
+            assert (
+                await si.inject_skill_invocation(
+                    message, "session", [], user_id="user-1", expert_id=None
+                )
+                is None
+            )
+    fake.read_file.assert_not_awaited()

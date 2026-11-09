@@ -76,7 +76,9 @@ async def sign_in_native(client: AsyncClient, email: str) -> str:
     assert signup.status_code == 200
     client.cookies.clear()
     signin = await client.post(
-        "/api/auth/sign-in/email", json={"email": email, "password": password}
+        "/api/auth/sign-in/email",
+        headers={"X-AutoGPT-Native": "1"},
+        json={"email": email, "password": password},
     )
     assert signin.status_code == 200
     bearer = signin.headers.get("set-auth-token")
@@ -93,6 +95,35 @@ async def access_token(client: AsyncClient, bearer: str) -> str:
     assert response.status_code == 200
     client.cookies.clear()
     return response.json()["token"]
+
+
+@pytest.mark.asyncio
+async def test_browser_cookie_session_never_exports_a_native_bearer(
+    auth_service: tuple[AsyncClient, str],
+) -> None:
+    client, prefix = auth_service
+    password = secrets.token_urlsafe(24)
+    response = await client.post(
+        "/api/auth/sign-up/email",
+        headers={"Origin": str(client.base_url).rstrip("/"), "Sec-Fetch-Mode": "cors"},
+        json={
+            "name": "Browser test",
+            "email": f"{prefix}@example.test",
+            "password": password,
+        },
+    )
+    assert response.status_code == 200
+    assert "HttpOnly" in response.headers["set-cookie"]
+    assert "set-auth-token" not in response.headers
+    session = await client.get(
+        "/api/auth/get-session", headers={"X-AutoGPT-Native": "1"}
+    )
+    assert session.status_code == 200
+    assert session.json()["user"]["email"] == f"{prefix}@example.test"
+    assert "set-auth-token" not in session.headers
+    token = await client.get("/api/auth/token")
+    assert token.status_code == 200
+    assert "token" in token.json()
 
 
 @pytest.mark.asyncio

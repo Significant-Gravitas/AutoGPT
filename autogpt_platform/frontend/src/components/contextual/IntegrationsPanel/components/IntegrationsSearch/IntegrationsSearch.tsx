@@ -25,7 +25,7 @@ export function IntegrationsSearch({ value, onChange, disabled }: Props) {
         placeholder="Search integrations..."
         aria-label="Search integrations"
         disabled={disabled}
-        className="h-[46px] w-full rounded-3xl border border-border-base bg-surface pr-4 pl-12 text-sm leading-5.5 text-foreground-base placeholder:text-placeholder focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+        className="h-[46px] w-full rounded-3xl border border-border-base bg-surface pr-4 pl-12 text-body leading-5.5 text-foreground-base placeholder:text-placeholder focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
       />
     </div>
   );

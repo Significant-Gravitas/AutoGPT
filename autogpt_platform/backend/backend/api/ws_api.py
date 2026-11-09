@@ -16,7 +16,10 @@ from backend.api.model import (
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
-from backend.api.session_auth import require_active_auth_session
+from backend.api.session_auth import (
+    SESSION_TOKEN_RENEWAL_REQUIRED,
+    require_active_auth_session,
+)
 from backend.api.utils.cors import build_cors_params
 from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.data import redis_client
@@ -96,7 +99,11 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
         )
         return ""
     except HTTPException as exc:
-        if exc.status_code == 503:
+        if (exc.headers or {}).get("X-Error-Code") == SESSION_TOKEN_RENEWAL_REQUIRED:
+            await _close_authentication_failure(
+                websocket, code=1013, reason="Session token requires renewal"
+            )
+        elif exc.status_code == 503:
             await _close_authentication_failure(
                 websocket, code=1013, reason="Authentication service unavailable"
             )

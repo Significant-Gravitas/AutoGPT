@@ -107,7 +107,7 @@ export const AgentInfo = ({
               Version {versionInfo.version}.0
             </Text>
             {versionInfo.isCurrentVersion && (
-              <span className="rounded bg-info/20 px-1.5 py-0.5 text-xs font-medium text-info-foreground">
+              <span className="rounded bg-info/20 px-1.5 py-0.5 text-caption font-medium text-info-foreground">
                 Current
               </span>
             )}
@@ -137,10 +137,7 @@ export const AgentInfo = ({
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-0">
-      <div
-        // oxlint-disable-next-line design-system/no-raw-colors -- indigo has no role; info or brand would change the frame's hue (deferred)
-        className="mb-8 rounded-2xl bg-gradient-to-r from-info/30 to-indigo-200 p-px"
-      >
+      <div className="mb-8 rounded-2xl bg-gradient-to-r from-info/30 to-indigo/30 p-px">
         <div className="flex flex-col rounded-large bg-surface-muted p-4">
           {/* Title */}
           <Text variant="h2" data-testid="agent-title" className="mb-3 w-full">
@@ -168,7 +165,7 @@ export const AgentInfo = ({
           </div>
 
           {/* Short Description */}
-          <div className="mb-4 line-clamp-2 w-full text-base leading-normal font-normal text-foreground-secondary sm:text-lg lg:mb-5 lg:text-xl lg:leading-7">
+          <div className="mb-4 line-clamp-2 w-full text-body-lg leading-normal font-normal text-foreground-secondary sm:text-lead lg:mb-5 lg:text-lead lg:leading-7">
             {shortDescription}
           </div>
 

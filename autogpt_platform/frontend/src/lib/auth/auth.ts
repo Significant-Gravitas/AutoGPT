@@ -6,12 +6,13 @@ import {
   isAPIError,
 } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
-import { admin, bearer, jwt } from "better-auth/plugins";
+import { admin, jwt } from "better-auth/plugins";
+import { nativeSessionBearer } from "./native-session-bearer";
 import { compare, hash } from "bcryptjs";
 import { PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
-import { getTrustedClientIP } from "./client-ip";
+import { getTrustedClientIP, trustedProxies } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
 import { assertNotDisposableEmail } from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
@@ -317,6 +318,9 @@ export const auth = betterAuth({
     },
   },
   advanced: {
+    // Behind a proxy chain the client IP is only resolvable from the hops the
+    // operator lists; without them every such caller shares one rate-limit bucket.
+    ipAddress: { trustedProxies: trustedProxies() },
     database: {
       // Keep UUID ids: platform User rows reuse the auth user id, and all
       // pre-migration ids are Supabase UUIDs.
@@ -447,6 +451,7 @@ export const auth = betterAuth({
       updateEmailWithoutVerification: true,
       sendChangeEmailConfirmation: async ({
         user,
+        newEmail,
         url,
       }: {
         user: { email: string };
@@ -458,6 +463,7 @@ export const auth = betterAuth({
           to: user.email,
           type: "change_email",
           url,
+          newEmail,
         });
       },
     },
@@ -465,7 +471,7 @@ export const auth = betterAuth({
   socialProviders: getSocialProviders(),
   plugins: [
     admin(),
-    bearer({ requireSignature: true }),
+    nativeSessionBearer(),
     jwt({
       schema: {
         jwks: { modelName: "UserAuthJwks" },

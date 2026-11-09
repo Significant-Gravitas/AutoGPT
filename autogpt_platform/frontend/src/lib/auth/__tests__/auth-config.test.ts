@@ -9,7 +9,7 @@ vi.mock("better-auth/next-js", () => ({
 }));
 vi.mock("better-auth/plugins", () => ({
   admin: vi.fn(() => ({ id: "admin" })),
-  bearer: vi.fn(() => ({ id: "bearer" })),
+  bearer: vi.fn(() => ({ id: "bearer", hooks: { before: [], after: [] } })),
   jwt: vi.fn((opts: unknown) => ({ id: "jwt", opts })),
 }));
 vi.mock("../supabase-bridge", () => ({
@@ -382,6 +382,7 @@ describe("change email", () => {
       to: "old@example.com",
       type: "change_email",
       url: "https://app/approve?token=t",
+      newEmail: "new@example.com",
     });
   });
 

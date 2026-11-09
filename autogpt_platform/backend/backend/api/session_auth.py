@@ -14,6 +14,7 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 _SESSION_LOOKUP_TIMEOUT = 5.0
+SESSION_TOKEN_RENEWAL_REQUIRED = "session_token_renewal_required"
 
 
 class SessionTokenClaims(BaseModel):
@@ -25,9 +26,14 @@ class SessionTokenClaims(BaseModel):
 
 async def require_active_auth_session(payload: dict[str, Any]) -> None:
     if "sid" not in payload:
-        if time() < settings.config.auth_legacy_token_deadline:
+        deadline = settings.config.auth_legacy_token_deadline
+        if deadline is None or time() < deadline:
             return
-        raise HTTPException(status_code=401, detail="Session token requires renewal")
+        raise HTTPException(
+            status_code=401,
+            detail="Session token requires renewal",
+            headers={"X-Error-Code": SESSION_TOKEN_RENEWAL_REQUIRED},
+        )
     try:
         claims = SessionTokenClaims.model_validate(payload)
     except ValidationError as exc:

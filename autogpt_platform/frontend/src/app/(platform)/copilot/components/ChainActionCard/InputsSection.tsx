@@ -66,7 +66,7 @@ export function InputsSection({ requests }: Props) {
             {request.hasAdvanced && (
               <button
                 type="button"
-                className="mt-1 mb-2 text-xs text-muted-foreground underline"
+                className="mt-1 mb-2 text-caption text-foreground-tertiary underline"
                 onClick={request.onToggleAdvanced}
               >
                 {request.showAdvanced

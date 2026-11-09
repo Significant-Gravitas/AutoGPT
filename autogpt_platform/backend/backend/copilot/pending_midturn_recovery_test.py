@@ -1,11 +1,15 @@
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
 from prisma.models import ChatMessage as StoredMessage
 
 from backend.copilot import db as chat_db
 from backend.copilot import pending_message_helpers as helpers
-from backend.copilot.model import ChatSession
+from backend.copilot.baseline import service
+from backend.copilot.baseline.pending_recovery_test import _final_stream
+from backend.copilot.baseline.pending_recovery_test import baseline_io as baseline_io
+from backend.copilot.model import ChatMessage, ChatSession, get_chat_session
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
@@ -15,9 +19,76 @@ from backend.copilot.pending_messages import (
     stash_pending_for_persist,
 )
 from backend.copilot.pending_retries_db_test import persisted_session
+from backend.copilot.tool_image import ToolImage
 from backend.copilot.transcript_builder import TranscriptBuilder
 
-__all__ = ["persisted_session"]
+__all__ = ["persisted_session", "baseline_io"]
+
+
+@pytest.mark.parametrize("with_image", [False, True])
+async def test_cancel_after_commit_delivers_recovered_content_once_to_next_model_turn(
+    persisted_session: ChatSession,
+    baseline_io: None,
+    monkeypatch: pytest.MonkeyPatch,
+    with_image: bool,
+) -> None:
+    session = persisted_session
+    pending = PendingMessage(
+        content="Recovered accounting follow-up",
+        model_image=(
+            ToolImage(mime_type="image/png", data_base64="cGl4ZWxz")
+            if with_image
+            else None
+        ),
+    )
+    await push_pending_message(session.session_id, pending)
+    drained = await drain_pending_messages(session.session_id)
+    committed = asyncio.Event()
+    real_persist = helpers.persist_session_safe
+
+    async def stop_after_commit(*args):
+        result = await real_persist(*args)
+        assert result.messages[-1].sequence is not None
+        committed.set()
+        await asyncio.Event().wait()
+
+    with monkeypatch.context() as interrupted:
+        interrupted.setattr(helpers, "persist_session_safe", stop_after_commit)
+        task = asyncio.create_task(
+            helpers.persist_pending_as_user_rows(
+                session, None, drained, log_prefix="test"
+            )
+        )
+        try:
+            await asyncio.wait_for(committed.wait(), 10)
+        finally:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+    restored = await get_chat_session(session.session_id)
+    assert restored is not None
+    restored.title = "Existing conversation"
+    restored.messages.append(ChatMessage(role="user", content="Continue", sequence=1))
+    provider = AsyncMock(return_value=_final_stream())
+    monkeypatch.setattr(service, "call_provider_stream", provider)
+    async for _ in service.stream_chat_completion_baseline(
+        session.session_id,
+        user_id=session.user_id,
+        session=restored,
+        is_user_message=False,
+    ):
+        pass
+    assert provider.await_args is not None
+    messages = provider.await_args.kwargs["messages"]
+    assert sum(pending.content in str(row["content"]) for row in messages) == 1
+    assert str(messages).count("data:image/png;base64,cGl4ZWxz") == int(with_image)
+    assert await drain_pending_messages(session.session_id) == []
+    assert (
+        await StoredMessage.prisma().count(
+            where={"sessionId": session.session_id, "id": pending.id}
+        )
+        == 1
+    )
 
 
 @pytest.mark.parametrize("interrupted", ["lookup", "write", "committed"])

@@ -2,7 +2,9 @@
 
 The backend foundation in [#15384](https://github.com/Significant-Gravitas/AutoGPT/pull/15384) can be reviewed and landed before the native client in [#15392](https://github.com/Significant-Gravitas/AutoGPT/pull/15392). This boundary covers email session authentication and pending-message identity. The remaining server work and native acceptance gates below still apply to the full experiment.
 
-The hosted-web shell in [#15495](https://github.com/Significant-Gravitas/AutoGPT/pull/15495) has a narrower immediate server dependency. See its [separate backend audit](shell-backend-dependencies.md) for the existing login handoff, integration OAuth return gap and later push/purchase work. It reuses the web cards and does not require the native renderer contract before basic chat.
+The same session and retry contracts can be used by installed mobile and desktop clients. Client interfaces, browser login returns and distribution remain separate work.
+
+The pending-message changes ship with session authentication because reconnecting clients retry accepted sends. Preserving their IDs requires recovery to retain the same IDs through cancellation, database failure and buffer refill. The engine changes preserve existing approval results and transient-error behavior when those recovery boundaries are introduced.
 
 ## Foundation landing boundary
 
@@ -19,7 +21,7 @@ The foundation targets `dev` directly. Landing requires current-base checks and 
 
 | Boundary                 | Client behavior                                                                                                                                                                                                                                            |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Email sign-in            | Use the selected server's production `/api/auth/sign-in/email`. Store the signed `set-auth-token` response header in Keychain, partitioned by server and account. The unsigned token in the JSON body is not a bearer credential.                          |
+| Email sign-in            | Use the selected server's production `/api/auth/sign-in/email` with `X-AutoGPT-Native: 1`, without cookies, Origin or browser Fetch Metadata headers. Store the signed `set-auth-token` response header in Keychain, partitioned by server and account. The unsigned token in the JSON body is not a bearer credential.                          |
 | Access token             | Send the signed session credential only to that server's auth service. Exchange it at `GET /api/auth/token`; send the returned JWT to backend APIs. Renew through the auth service when needed.                                                            |
 | Sign-out and revocation  | Sign out through the auth service. A revoked, expired, banned or mismatched session is rejected on subsequent backend authentication. Clear local credentials and account-scoped state. Existing streams are not forcibly terminated.                      |
 | Auth service unavailable | HTTP 503 with `Retry-After: 5` means retry authentication later, without treating the account as signed out. New WebSocket authentication closes with 1013 for this condition.                                                                             |
@@ -42,13 +44,21 @@ JWKS connection failures follow the retryable authentication-outage contract abo
 | Push                          | Authoritative session/device registration, revocation and minimal notification content; real provider delivery remains a separate test.                         |
 | Subscription entitlements     | Verified provider events, account binding, retry/order handling and reconciliation of Stripe/App Store grants before native purchases are enabled.              |
 
-These are follow-up backend changes, not claims about functionality already present in #15384. The detailed product scope remains in the [implementation plan](implementation-plan.md) and [card catalog](card-catalog.md).
+These are follow-up backend changes, not claims about functionality already present in #15384. Product planning is tracked in [SECRT-2881](https://linear.app/autogpt/issue/SECRT-2881).
 
 ## Validation and rollout
 
 Use the isolated database and Redis instructions in [server validation](server-validation.md). The foundation regression set covers real signed email sessions, token renewal, logout, expiry, bans, ownership mismatch, lookup failure/timeout, unsigned bearer rejection, concurrent retry, overflow, receipt/list expiry and real PostgreSQL primary-key collision recovery.
 
-User JWTs must contain `sid` by default. For a rolling deployment, set `AUTH_LEGACY_TOKEN_DEADLINE` to one fixed Unix timestamp shared by all REST and WebSocket servers, then deploy the backend validator before or with the signer change. Complete the signer rollout at least one access-token lifetime (currently one hour) before that deadline. Tokens without `sid` retain signature/expiry validation only before the configured cutoff; at the cutoff they are rejected automatically, without a restart. Unset or `0` disables this compatibility window. Never move the deadline forward on worker restarts. Service tokens keep their separate audience and verification path.
+Unset `AUTH_LEGACY_TOKEN_DEADLINE` preserves signature/expiry validation for existing JWTs without `sid`, so independently deployed auth and API services remain compatible. Tokens containing `sid` always receive session checks, including during rollout. Deploy the signer, then choose one fixed Unix cutoff shared by all REST and WebSocket servers at least one access-token lifetime (currently one hour) after the signer rollout completes. Set `AUTH_LEGACY_TOKEN_DEADLINE` to that cutoff; `0` enforces session IDs immediately. Never move the cutoff on worker restarts.
+
+**Breaking change when the cutoff is enabled:** JWTs without `sid` receive HTTP 401 with `X-Error-Code: session_token_renewal_required`, or WebSocket 1013. Renew through the auth service; the web client obtains a fresh JWT on reconnect. Invalid or revoked sessions still receive terminal authentication rejection. Service tokens retain their separate audience and verification path.
+
+Browser requests retain HttpOnly session cookies and never receive the native `set-auth-token` response header. Native credential export requires the explicit header above and refuses cookie-bearing or browser-originated requests. Native clients should keep sending that header when renewing their session and keep bearer credentials in OS secure storage.
+
+Session authority uses an uncached indexed PostgreSQL lookup per authenticated request and new WebSocket connection. The same bearer shares validation within one request only. An unavailable auth database returns 503/1013 instead of allowing a request through with signature validation alone; provision and monitor database capacity accordingly.
+
+Rejected WebSocket authentication now completes the protocol upgrade before sending its close code. Proxy access logs therefore count those attempts as upgraded connections; authenticated-connection metrics still start only after authentication. Existing perimeter rate limits should include the WebSocket route.
 
 The signer change affects web-issued JWTs too, so include existing web sign-in, token renewal and request flows in rollout checks. Rolling back the validator removes the new revocation guarantee for already issued tokens; treat that explicitly as a rollback limitation.
 

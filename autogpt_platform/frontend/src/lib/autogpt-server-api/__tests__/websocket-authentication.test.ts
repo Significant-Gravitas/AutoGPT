@@ -58,6 +58,33 @@ describe("WebSocket authentication and recovery", () => {
     },
   );
 
+  it("renews a legacy token after the server cutoff without losing a waiting subscription", async () => {
+    vi.mocked(getWebSocketToken)
+      .mockResolvedValueOnce({ token: "legacy-token" })
+      .mockResolvedValueOnce({ token: "renewed-session-token" });
+    const connected = vi.fn();
+    api.onWebSocketConnect(connected);
+    const executionID =
+      "00000000-0000-4000-8000-000000000001" as GraphExecutionID;
+    const subscription = api.subscribeToGraphExecution(executionID);
+    const legacy = await socketAt();
+    legacy.open();
+    legacy.serverClose(1013);
+    await vi.advanceTimersByTimeAsync(1000);
+    const renewed = await socketAt(1);
+    renewed.open();
+    renewed.pong();
+    await subscription;
+    expect(getWebSocketToken).toHaveBeenCalledTimes(2);
+    expect(connected).toHaveBeenCalledTimes(1);
+    expect(renewed.send).toHaveBeenLastCalledWith(
+      JSON.stringify({
+        method: "subscribe_graph_execution",
+        data: { graph_exec_id: executionID },
+      }),
+    );
+  });
+
   it("waits for a pong before subscriptions and connects exactly once", async () => {
     const connected = vi.fn();
     api.onWebSocketConnect(connected);

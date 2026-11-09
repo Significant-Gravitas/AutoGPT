@@ -310,3 +310,34 @@ async def test_missing_receipt_does_not_leave_an_accepted_claim(
     assert [message.id for message in await drain_pending_messages(session_id)] == [
         message_id
     ]
+
+
+async def test_retry_keeps_one_queued_message_even_when_the_queue_has_no_expiry(
+    pending_client: tuple[AsyncClient, str, str],
+) -> None:
+    client, user_id, session_id = pending_client
+    path = f"/sessions/{session_id}/messages/pending"
+    body = {"message": "Keep the queued copy", "message_id": str(uuid4())}
+    assert (await client.post(path, json=body)).status_code == 200
+    message_id = scoped_client_message_id(user_id, session_id, body["message_id"])
+    redis = await get_redis_async()
+    await redis.delete(_client_message_key(session_id, message_id))
+    await redis.delete(pending_message_receipt_key(session_id, message_id))
+    await redis.persist(f"copilot:pending:{{{session_id}}}")
+    for _ in range(2):
+        assert (await client.post(path, json=body)).status_code == 200
+    assert [message.id for message in await drain_pending_messages(session_id)] == [
+        message_id
+    ]
+
+
+@pytest.mark.parametrize("endpoint", ["messages/pending", "stream"])
+def test_pending_refusal_contract_is_in_openapi(endpoint: str) -> None:
+    response = _test_app("user").openapi()["paths"][
+        f"/sessions/{{session_id}}/{endpoint}"
+    ]["post"]["responses"]["429"]
+    assert "pending" in response["description"]
+    assert response["headers"]["X-Error-Code"]["schema"]["enum"] == [
+        "pending_buffer_full"
+    ]
+    assert response["headers"]["Retry-After"]["schema"]["type"] == "integer"

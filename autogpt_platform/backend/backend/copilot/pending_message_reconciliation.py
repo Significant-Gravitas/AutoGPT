@@ -8,6 +8,18 @@ from backend.data.db_accessors import chat_db
 logger = logging.getLogger(__name__)
 
 
+def partition_pending_by_history(
+    session: ChatSession, pending: list[PendingMessage]
+) -> tuple[list[PendingMessage], list[PendingMessage]]:
+    persisted_ids = {
+        message.id for message in session.messages if message.sequence is not None
+    }
+    return (
+        [message for message in pending if message.id not in persisted_ids],
+        [message for message in pending if message.id in persisted_ids],
+    )
+
+
 async def reconcile_pending_rows(
     session: ChatSession,
     pending: list[PendingMessage],

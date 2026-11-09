@@ -141,7 +141,7 @@ describe("queueFollowUpMessage", () => {
     );
   });
 
-  it("reports a full buffer as an unsent message with retry guidance", async () => {
+  it("reports a full buffer with guidance to wait for earlier messages", async () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(
       new Response(
         JSON.stringify({ detail: "Pending message buffer is full." }),
@@ -158,7 +158,9 @@ describe("queueFollowUpMessage", () => {
       queueFollowUpMessage("sess-1", "keep this"),
     ).rejects.toMatchObject({
       name: "QueueFollowUpFullError",
-      message: expect.stringMatching(/not sent.*try again/),
+      message: expect.stringMatching(
+        /too many messages waiting; wait for earlier/,
+      ),
     });
   });
 });

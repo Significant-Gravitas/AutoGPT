@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { toNodeHandler } from "better-auth/node";
+import { describeNativeAuthError } from "../src/lib/auth/native-harness-error";
 
 async function main() {
   if (!process.env.DATABASE_URL || !process.env.BETTER_AUTH_SECRET) {
@@ -18,11 +19,15 @@ async function main() {
       response.end();
     });
   });
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
     server.listen(
       Number(process.env.NATIVE_AUTH_PORT || "0"),
       "127.0.0.1",
-      resolve,
+      () => {
+        server.off("error", reject);
+        resolve();
+      },
     );
   });
   const address = server.address();
@@ -37,7 +42,10 @@ async function main() {
   process.on("SIGTERM", () => server.close(() => process.exit(0)));
 }
 
-main().catch(() => {
-  console.error("Native auth harness startup failed");
+main().catch((error) => {
+  console.error(
+    "Native auth harness startup failed",
+    describeNativeAuthError(error),
+  );
   process.exit(1);
 });

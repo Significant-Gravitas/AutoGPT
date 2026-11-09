@@ -45,6 +45,6 @@ test("marketplace happy path: user can add a Marketplace agent to Library and ru
 
   const runStatus = await libraryPage.getRunStatus();
   expect(runStatus).toBe("completed");
-  await libraryPage.assertRunProducedOutput();
-  await libraryPage.assertFirstRunOutputValue(/^\d+(?:\.0+)?$/);
+  // The seeded listing adds 34 to its input, which defaults to 8.
+  await libraryPage.assertRunOutputValue("Output", /^42(?:\.0+)?$/);
 });

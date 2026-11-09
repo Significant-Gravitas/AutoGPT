@@ -9,7 +9,7 @@ from backend.copilot.baseline.pending_preflight_recovery_test import (
     queued_session as queued_session,
 )
 from backend.copilot.budget_gate import AutoContinueGate
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.pending_message_recovery import restore_pending_messages
 from backend.copilot.pending_messages import (
     PendingMessage,
@@ -19,6 +19,7 @@ from backend.copilot.pending_messages import (
 from backend.copilot.response_model import StreamError, StreamFinish
 from backend.copilot.sdk import service
 from backend.copilot.sdk.cli_prelaunch_turn_test import _patched_turn, _turns
+from backend.copilot.tool_image import ToolImage
 
 __all__ = ["queued_session"]
 
@@ -65,6 +66,66 @@ async def test_sdk_consumes_recovered_backlog_and_accepts_new_followups(
     for message in pending:
         assert message.content in query
     assert await drain_pending_messages(session_id) == [newer]
+
+
+@pytest.mark.parametrize("with_image", [False, True])
+async def test_sdk_does_not_refold_recovered_history_but_preserves_its_image(
+    queued_session: ChatSession,
+    monkeypatch: pytest.MonkeyPatch,
+    with_image: bool,
+) -> None:
+    pending = PendingMessage(
+        content="Recovered SDK follow-up",
+        model_image=(
+            ToolImage(mime_type="image/png", data_base64="cGl4ZWxz")
+            if with_image
+            else None
+        ),
+    )
+    queued_session.messages.insert(
+        -1,
+        ChatMessage(
+            id=pending.id,
+            role="user",
+            content=pending.content,
+            sequence=2,
+        ),
+    )
+    await restore_pending_messages(queued_session.session_id, [pending])
+    client = _turns._make_client_mock(result_message=_turns._make_result_message())
+    with _patched_turn(
+        lambda **_kwargs: client, queued_session
+    ), monkeypatch.context() as scoped:
+        scoped.setattr(
+            service, "drain_pending_safe", pending_message_helpers.drain_pending_safe
+        )
+        scoped.setattr(service, "download_transcript", AsyncMock(return_value=None))
+        scoped.setattr(
+            service,
+            "gate_auto_continue",
+            AsyncMock(return_value=AutoContinueGate(proceed=False)),
+        )
+        events = [
+            event
+            async for event in service.stream_chat_completion_sdk(
+                session_id=queued_session.session_id,
+                message="Continue",
+                user_id="user-1",
+                session=queued_session,
+                is_user_message=False,
+            )
+        ]
+    assert any(isinstance(event, StreamFinish) for event in events)
+    assert not any(isinstance(event, StreamError) for event in events)
+    connection = client.__aenter__.return_value
+    if with_image:
+        prompt = connection._transport.write.await_args.args[0]
+    else:
+        query_args = connection.query.call_args
+        prompt = query_args.kwargs.get("prompt") or query_args.args[0]
+    assert prompt.count(pending.content) == 1
+    assert prompt.count("cGl4ZWxz") == int(with_image)
+    assert await drain_pending_messages(queued_session.session_id) == []
 
 
 async def test_empty_sdk_turn_leaves_accepted_followups_queued(

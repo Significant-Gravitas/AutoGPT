@@ -83,7 +83,7 @@ export function TrialCardContent({
         <p
           role="alert"
           data-slot="trial-card-content-error"
-          className="mt-3 text-sm text-destructive"
+          className="mt-3 text-body text-error"
         >
           {error}
         </p>

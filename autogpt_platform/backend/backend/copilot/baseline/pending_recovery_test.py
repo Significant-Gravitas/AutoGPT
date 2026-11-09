@@ -13,6 +13,7 @@ from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.pending_messages import MAX_PENDING_MESSAGES, PendingMessage
 from backend.copilot.response_model import StreamFinish
+from backend.copilot.tool_image import ToolImage
 
 
 @pytest.mark.parametrize("count", [MAX_PENDING_MESSAGES + 3, 2 * MAX_PENDING_MESSAGES])
@@ -85,6 +86,55 @@ async def test_final_baseline_turn_consumes_all_recovered_messages(
     messages = provider.await_args.kwargs["messages"]
     for message in pending:
         assert sum(message.content in str(row["content"]) for row in messages) == 1
+
+
+@pytest.mark.parametrize("with_image", [False, True])
+async def test_recovered_message_already_in_history_reaches_model_once(
+    monkeypatch: pytest.MonkeyPatch, baseline_io: None, with_image: bool
+) -> None:
+    session = ChatSession.new("user-1", dry_run=False)
+    session.title = "Existing conversation"
+    pending = PendingMessage(
+        content="Include these recovered weekly totals",
+        model_image=(
+            ToolImage(mime_type="image/png", data_base64="cGl4ZWxz")
+            if with_image
+            else None
+        ),
+    )
+    session.messages = [
+        ChatMessage(role="user", content="Earlier task", sequence=0),
+        ChatMessage(id=pending.id, role="user", content=pending.content, sequence=1),
+        ChatMessage(role="user", content="Continue", sequence=2),
+    ]
+    monkeypatch.setattr(
+        pending_message_helpers, "peek_pending_count", AsyncMock(return_value=1)
+    )
+    monkeypatch.setattr(
+        pending_message_helpers,
+        "drain_pending_messages",
+        AsyncMock(return_value=[pending]),
+    )
+    monkeypatch.setattr(service, "drain_pending_messages", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        service, "persist_pending_as_user_rows", AsyncMock(return_value=True)
+    )
+    provider = AsyncMock(return_value=_final_stream())
+    monkeypatch.setattr(service, "call_provider_stream", provider)
+    events = [
+        event
+        async for event in service.stream_chat_completion_baseline(
+            session.session_id,
+            user_id="user-1",
+            session=session,
+            is_user_message=False,
+        )
+    ]
+    assert isinstance(events[-1], StreamFinish)
+    assert provider.await_args is not None
+    messages = provider.await_args.kwargs["messages"]
+    assert sum(pending.content in str(row["content"]) for row in messages) == 1
+    assert str(messages).count("data:image/png;base64,cGl4ZWxz") == int(with_image)
 
 
 @pytest.fixture

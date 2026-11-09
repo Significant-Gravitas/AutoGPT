@@ -43,6 +43,18 @@ def stub_user_lookup_in_helpers(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def stub_background_task_store(monkeypatch):
+    """``get_sub_session_result`` asks the background-task store whether a sub
+    is a background child. Without a connected Prisma client that accessor is
+    the DatabaseManager RPC client, whose connection retries would stall every
+    sub-session test; the real-database handoff suite covers the store."""
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result.background_task_db",
+        lambda: MagicMock(background_child_result=AsyncMock(return_value=None)),
+    )
+
+
+@pytest.fixture(autouse=True)
 def stub_learning_registry(monkeypatch):
     """Route the skill registry's learning hooks to an in-memory store.
 

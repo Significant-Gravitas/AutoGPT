@@ -177,5 +177,5 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          flags: platform-backend
+          flags: native-server
           files: autogpt_platform/backend/native-server-coverage.xml

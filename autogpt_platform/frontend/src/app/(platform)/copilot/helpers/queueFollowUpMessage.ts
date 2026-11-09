@@ -19,7 +19,7 @@ export class QueueFollowUpNotActiveError extends Error {
 export class QueueFollowUpFullError extends Error {
   constructor() {
     super(
-      "This conversation has too many messages waiting. Your message was not sent. Wait for earlier messages to be processed, then try again.",
+      "This conversation has too many messages waiting; wait for earlier ones to be processed",
     );
     this.name = "QueueFollowUpFullError";
   }
