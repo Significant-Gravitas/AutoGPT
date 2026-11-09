@@ -220,26 +220,19 @@ describe("what a call's record answers", () => {
     }
   });
 
-  it.each([
-    ["no_usable_speech"],
-    ["transcription_unavailable"],
-    ["recording_unavailable"],
-  ])(
-    "says it did not hear the person on a call that settled without words (%s), however it ended",
-    (code) => {
-      for (const reason of ["finished", "client_gone"]) {
-        expect(
-          answerOf(
-            call({
-              status: "failed",
-              end_reason: reason,
-              hand_off: failed(code),
-            }),
-          ),
-        ).toEqual({ kind: "no_words" });
-      }
-    },
-  );
+  it("says it did not hear the person on a call where nothing was heard, however it ended", () => {
+    for (const reason of ["finished", "client_gone"]) {
+      expect(
+        answerOf(
+          call({
+            status: "failed",
+            end_reason: reason,
+            hand_off: failed("no_usable_speech"),
+          }),
+        ),
+      ).toEqual({ kind: "no_words" });
+    }
+  });
 
   it("offers Try again for a hand-off the pipeline never ruled on, with the other ways on after a cut-off call", () => {
     const unruled = failed("quality_check_unavailable");
@@ -259,19 +252,26 @@ describe("what a call's record answers", () => {
     ).toEqual({ kind: "retry", cutOff: true, reason: "vendor_error" });
   });
 
-  it("offers another call or typing for a call whose failure it does not know", () => {
-    for (const reason of ["finished", "client_gone"]) {
-      expect(
-        answerOf(
-          call({
-            status: "failed",
-            end_reason: reason,
-            hand_off: failed("some_new_failure"),
-          }),
-        ),
-      ).toEqual({ kind: "unsaved", reason });
-    }
-  });
+  it.each([
+    ["transcription_unavailable"],
+    ["recording_unavailable"],
+    ["some_new_failure"],
+  ])(
+    "offers another call or typing after a failure of ours saving the call (%s), never as though nothing was heard",
+    (code) => {
+      for (const reason of ["finished", "client_gone"]) {
+        expect(
+          answerOf(
+            call({
+              status: "failed",
+              end_reason: reason,
+              hand_off: failed(code),
+            }),
+          ),
+        ).toEqual({ kind: "unsaved", reason });
+      }
+    },
+  );
 
   it.each([
     ["quality_check_unavailable"],
@@ -314,17 +314,11 @@ describe("what a finish of a call answers", () => {
     expect(voiceFinishOutcome(failed("superseded"))).toBe("superseded");
   });
 
-  it("keeps the interview open for a call with no words, or too few", () => {
+  it("keeps the interview open for a call where nothing was heard, or too little", () => {
     expect(voiceFinishOutcome(failed("insufficient_content"))).toBe(
       "insufficient",
     );
-    for (const code of [
-      "no_usable_speech",
-      "transcription_unavailable",
-      "recording_unavailable",
-    ]) {
-      expect(voiceFinishOutcome(failed(code))).toBe("no_words");
-    }
+    expect(voiceFinishOutcome(failed("no_usable_speech"))).toBe("no_words");
   });
 
   it("asks to try again when the pipeline never ruled", () => {
@@ -332,8 +326,14 @@ describe("what a finish of a call answers", () => {
     expect(voiceFinishOutcome(failed(null))).toBeNull();
   });
 
-  it("says when the call kept nothing it knows how to hand off", () => {
-    expect(voiceFinishOutcome(failed("some_new_failure"))).toBe("unsaved");
+  it("says when a failure of ours kept nothing of the call to hand off", () => {
+    for (const code of [
+      "transcription_unavailable",
+      "recording_unavailable",
+      "some_new_failure",
+    ]) {
+      expect(voiceFinishOutcome(failed(code))).toBe("unsaved");
+    }
   });
 });
 

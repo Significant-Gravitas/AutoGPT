@@ -253,6 +253,8 @@ const SUPERSEDED_TAKE: FinalizeResponse = {
 
 const DIDNT_HEAR_YOU =
   "We didn't hear you on that call. You can call again or type instead.";
+const SAVE_FAILED =
+  "Something went wrong saving that call. You can call again or type instead.";
 
 function callRecord(overrides: Partial<CallRecord> = {}): CallRecord {
   return {
@@ -1341,23 +1343,39 @@ describe("onboarding interview by voice: how a call ends", () => {
 
     endCall(socket, "finished");
 
-    expect(
-      await screen.findByText(
-        "We couldn't keep what you said on that call. You can call again or type instead.",
-      ),
-    ).toBeDefined();
+    expect(await screen.findByText(SAVE_FAILED)).toBeDefined();
     expect(screen.getByRole("button", { name: "Call again" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Type instead" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
     expect(screen.queryByText(/What you said is kept/)).toBeNull();
   });
 
-  it.each([
-    ["no_usable_speech"],
-    ["transcription_unavailable"],
-    ["recording_unavailable"],
-  ])(
-    "says it did not hear the person, with another call or typing, after a call that settled without words (%s)",
+  it("says it did not hear the person, with another call or typing, after a call where nothing was heard", async () => {
+    callStates[CALL_ID] = [
+      callRecord({
+        status: "failed",
+        end_reason: "user_hangup",
+        hand_off: {
+          status: "failed",
+          input_mode: "typed",
+          error_code: "no_usable_speech",
+        },
+      }),
+    ];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "user_hangup");
+
+    expect(await screen.findByText(DIDNT_HEAR_YOU)).toBeDefined();
+    expect(screen.getByRole("button", { name: "Call again" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Type instead" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(screen.queryByText(/We heard you/)).toBeNull();
+  });
+
+  it.each([["transcription_unavailable"], ["recording_unavailable"]])(
+    "says something went wrong saving the call, never that the person was not heard, after %s",
     async (code) => {
       callStates[CALL_ID] = [
         callRecord({
@@ -1371,13 +1389,15 @@ describe("onboarding interview by voice: how a call ends", () => {
 
       endCall(socket, "user_hangup");
 
-      expect(await screen.findByText(DIDNT_HEAR_YOU)).toBeDefined();
+      expect(await screen.findByText(SAVE_FAILED)).toBeDefined();
       expect(screen.getByRole("button", { name: "Call again" })).toBeDefined();
       expect(
         screen.getByRole("button", { name: "Type instead" }),
       ).toBeDefined();
       expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
-      expect(screen.queryByText(/We heard you/)).toBeNull();
+      expect(
+        screen.queryByText(/didn't hear|heard you|nothing was heard/i),
+      ).toBeNull();
     },
   );
 

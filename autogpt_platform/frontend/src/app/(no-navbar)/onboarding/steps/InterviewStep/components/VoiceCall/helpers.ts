@@ -233,17 +233,15 @@ const UNSETTLED = new Set<VoiceCallStatusResponseStatus>([
 ]);
 
 const SUPERSEDED = "superseded";
-// The call settled without words: nothing was heard, or nothing could be
-// made of the recording. Such a call is no take, and an earlier call stands.
-const NO_WORDS = new Set([
-  "no_usable_speech",
-  "transcription_unavailable",
-  "recording_unavailable",
-]);
+// Nothing the person said was heard on the call.
+const NOTHING_HEARD = "no_usable_speech";
 // Words were heard, and judged too few to set up from.
 const NOT_ENOUGH_WORDS = "insufficient_content";
 // The pipeline never ruled on words the call kept: the finish route hands
-// them off again. Any other failure kept nothing to hand off.
+// them off again. Any other failure kept nothing to hand off, and is ours:
+// the recording or its transcript could not be made
+// (`recording_unavailable`, `transcription_unavailable`), or a failure the
+// step does not know.
 const HANDED_OFF_AGAIN = new Set([
   "quality_check_unavailable",
   "rate_limited",
@@ -257,13 +255,14 @@ export type CallEnding =
   // Cut off with the words saved: "Meet your team" (a finish of this call),
   // "Call again" and "Type instead".
   | { kind: "lost"; reason: string | null }
-  // Nothing was heard on the call: "Call again" and "Type instead".
+  // Nothing the person said was heard: "Call again" and "Type instead".
   | { kind: "no_words" }
   | { kind: "insufficient" }
   // The pipeline never ruled on the words: "Try again" through the finish
   // route, beside the other ways on after a cut-off call.
   | { kind: "retry"; cutOff: boolean; reason: string | null }
-  // The call kept nothing to hand off: "Call again" and "Type instead".
+  // Something went wrong on our side saving the call, so it kept nothing to
+  // hand off: "Call again" and "Type instead".
   | { kind: "unsaved"; reason: string | null }
   // Nothing is left to read of the call.
   | { kind: "missing" };
@@ -326,13 +325,13 @@ export function voiceFinishOutcome(
   return failure === "retry" ? null : failure;
 }
 
-// A failed hand-off, read for what the person can do next: no words, or a
-// verdict that they were too few; words kept to hand off again; or nothing
-// kept.
+// A failed hand-off, read for what the person can do next: nothing heard,
+// or a verdict that the words were too few; words kept to hand off again;
+// or nothing kept, through a failure of ours.
 function failureOf(
   code: string | null,
 ): "no_words" | "insufficient" | "retry" | "unsaved" {
-  if (code !== null && NO_WORDS.has(code)) return "no_words";
+  if (code === NOTHING_HEARD) return "no_words";
   if (code === NOT_ENOUGH_WORDS) return "insufficient";
   if (code === null || HANDED_OFF_AGAIN.has(code)) return "retry";
   return "unsaved";

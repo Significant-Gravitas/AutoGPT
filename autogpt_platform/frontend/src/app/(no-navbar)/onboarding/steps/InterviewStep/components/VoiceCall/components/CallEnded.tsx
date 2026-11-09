@@ -100,8 +100,8 @@ export function CallEnded({
       )}
       {ending.kind === "unsaved" && (
         <Text variant="body" align="center">
-          We couldn&apos;t keep what you said on that call. You can call again
-          or type instead.
+          Something went wrong saving that call. You can call again or type
+          instead.
         </Text>
       )}
 
