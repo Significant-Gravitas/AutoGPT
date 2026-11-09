@@ -1,12 +1,12 @@
 """How an onboarding interview ends: the arms of the ending experiment.
 
 Every ending is an arm of a PostHog multivariate flag, one flag per mode
-(``Experiment.ONBOARDING_INTERVIEW_ENDING_TEXT`` for the typed interview), so
-each arm is offered only in the mode it fits and a person is enrolled only in
-the experiment for the mode they use. The arm is read through
-``backend.data.experiments``, which stores it on first read: it stays the same
-whether or not the browser may report analytics, and the ``analytics.*`` views
-split by it.
+(``Experiment.ONBOARDING_INTERVIEW_ENDING_TEXT`` for the typed interview,
+``..._VOICE`` for the voice call), so each arm is offered only in the mode it
+fits and a person is enrolled only in the experiment for the mode they use.
+The arm is read through ``backend.data.experiments``, which stores it on
+first read: it stays the same whether or not the browser may report
+analytics, and the ``analytics.*`` views split by it.
 
 The arms are almost entirely frontend. The backend's part is when the answers
 reach the onboarding pipeline: on the person's confirm for the arms that end
@@ -29,18 +29,17 @@ InterviewMode = Literal["text", "voice"]
 class InterviewEnding(str, Enum):
     """The endings; each value is the variant key of the PostHog flag."""
 
-    SPOKEN_YES = "01-spoken-yes"
     PROFILE_CARD = "02-profile-card"
     SUMMARY_CHIPS = "03-summary-chips"
     TEAM_REVEAL = "04-team-reveal"
     COVERAGE_RING = "06-coverage-ring"
-    HANG_UP = "07-hang-up"
     TRANSCRIPT_HIGHLIGHTS = "08-transcript-highlights"
     FIRST_TASK = "09-first-task"
 
 
 ENDING_EXPERIMENTS: dict[InterviewMode, Experiment] = {
     "text": Experiment.ONBOARDING_INTERVIEW_ENDING_TEXT,
+    "voice": Experiment.ONBOARDING_INTERVIEW_ENDING_VOICE,
 }
 
 # The arms each mode's flag offers: the ones that fit that mode.
@@ -57,11 +56,8 @@ MODE_ENDINGS: dict[InterviewMode, frozenset[InterviewEnding]] = {
     ),
     "voice": frozenset(
         {
-            InterviewEnding.SPOKEN_YES,
             InterviewEnding.PROFILE_CARD,
             InterviewEnding.TEAM_REVEAL,
-            InterviewEnding.COVERAGE_RING,
-            InterviewEnding.HANG_UP,
             InterviewEnding.FIRST_TASK,
         }
     ),

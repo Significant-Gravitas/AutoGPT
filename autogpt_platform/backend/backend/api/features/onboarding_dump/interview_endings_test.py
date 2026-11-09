@@ -41,11 +41,8 @@ def test_each_mode_offers_exactly_the_arms_that_fit_it() -> None:
             "09-first-task",
         },
         "voice": {
-            "01-spoken-yes",
             "02-profile-card",
             "04-team-reveal",
-            "06-coverage-ring",
-            "07-hang-up",
             "09-first-task",
         },
     }
@@ -54,9 +51,13 @@ def test_each_mode_offers_exactly_the_arms_that_fit_it() -> None:
 def test_each_mode_has_its_own_experiment() -> None:
     assert ENDING_EXPERIMENTS == {
         "text": Experiment.ONBOARDING_INTERVIEW_ENDING_TEXT,
+        "voice": Experiment.ONBOARDING_INTERVIEW_ENDING_VOICE,
     }
     assert Experiment.ONBOARDING_INTERVIEW_ENDING_TEXT.value == (
         "onboarding-interview-ending-text"
+    )
+    assert Experiment.ONBOARDING_INTERVIEW_ENDING_VOICE.value == (
+        "onboarding-interview-ending-voice"
     )
 
 
@@ -86,18 +87,25 @@ def _assignment(variant: str) -> ExperimentAssignment:
 
 
 @pytest.mark.asyncio
-async def test_the_arm_is_read_for_the_mode_in_use_only(mocker: MockerFixture) -> None:
+@pytest.mark.parametrize(
+    ("mode", "experiment", "arm"),
+    [
+        ("text", Experiment.ONBOARDING_INTERVIEW_ENDING_TEXT, "03-summary-chips"),
+        ("voice", Experiment.ONBOARDING_INTERVIEW_ENDING_VOICE, "04-team-reveal"),
+    ],
+)
+async def test_the_arm_is_read_for_the_mode_in_use_only(
+    mocker: MockerFixture, mode, experiment: Experiment, arm: str
+) -> None:
     assign = mocker.patch.object(
         interview_endings.experiments,
         "assign",
-        new=AsyncMock(return_value=_assignment("03-summary-chips")),
+        new=AsyncMock(return_value=_assignment(arm)),
     )
 
-    assert await assigned_ending("user-1", "text") == "03-summary-chips"
+    assert await assigned_ending("user-1", mode) == arm
 
-    assign.assert_awaited_once_with(
-        "user-1", Experiment.ONBOARDING_INTERVIEW_ENDING_TEXT
-    )
+    assign.assert_awaited_once_with("user-1", experiment)
 
 
 @pytest.mark.asyncio

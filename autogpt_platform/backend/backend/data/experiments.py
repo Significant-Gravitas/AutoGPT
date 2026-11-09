@@ -36,6 +36,7 @@ class Experiment(str, Enum):
     # reads it when the interview closes, and it decides when the answers are
     # handed off (``onboarding_dump.interview_endings``).
     ONBOARDING_INTERVIEW_ENDING_TEXT = "onboarding-interview-ending-text"
+    ONBOARDING_INTERVIEW_ENDING_VOICE = "onboarding-interview-ending-voice"
 
     @classmethod
     def __get_pydantic_json_schema__(
