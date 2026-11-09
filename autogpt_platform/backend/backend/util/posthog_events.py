@@ -41,6 +41,8 @@ class PostHogEvent(StrEnum):
     EXPERT_MODE_SET_UNSUPERVISED = "expert_mode_set_unsupervised"
     BRIEFING_GENERATED = "briefing_generated"
     BRIEFING_DELIVERED = "briefing_delivered"
+    # backend/api/features/onboarding_dump/plan_hire.py
+    PLAN_EXPERTS_HIRED = "plan_experts_hired"
 
     # Chat (Autopilot): backend/copilot/tracking.py
     CHAT_TOOL_CALLED = "chat_tool_called"
