@@ -521,6 +521,9 @@ async def test_a_keychain_read_failure_is_retried_unless_there_is_no_keychain(
         ("timeout", True),
         (503, True),
         (429, True),
+        # The server gave up waiting for the request, so it never read the
+        # refresh token: sending it again is safe.
+        (408, True),
         (400, False),
     ],
 )

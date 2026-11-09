@@ -204,7 +204,8 @@ _PERMANENT_STORAGE_ERRNOS = frozenset(
 
 
 class TokenRefreshUnavailableError(RuntimeError):
-    """The token endpoint couldn't be reached, or answered with a server error.
+    """The token endpoint couldn't be reached, or answered with a server error,
+    408 (it stopped waiting for the request) or 429.
 
     That says nothing about the credentials, so the reconnect loop retries;
     only a refresh token the platform refuses ends the session for good.
@@ -808,7 +809,9 @@ class ShimDaemon:
                 ) from None
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
-                if status == 429 or status >= 500:
+                # 408: the server gave up waiting for the request, so it never
+                # read the refresh token.
+                if status in (408, 429) or status >= 500:
                     raise TokenRefreshUnavailableError(
                         f"The token endpoint answered {status}; retrying."
                     ) from None
