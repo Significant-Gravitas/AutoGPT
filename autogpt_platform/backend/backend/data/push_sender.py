@@ -1,6 +1,7 @@
 """Fire-and-forget Web Push delivery for notification events."""
 
 import asyncio
+import functools
 import json
 import logging
 import re
@@ -13,6 +14,7 @@ from pywebpush import WebPushException, webpush
 from backend.api.model import NotificationPayload
 from backend.data.push_subscription import PushSubscriptionDTO, validate_push_endpoint
 from backend.util.clients import get_database_manager_async_client
+from backend.util.secrets_guard import VAPID_HINT, vapid_private_key_is_published
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -57,6 +59,16 @@ def _build_push_payload(payload: NotificationPayload) -> str:
     return json.dumps(compact)
 
 
+@functools.cache
+def _warn_published_vapid_key_once() -> None:
+    # A key anyone can read signs nothing on this site's behalf. Once per
+    # process: this runs for every notification, and startup already warned.
+    logger.warning(
+        f"Refusing to send Web Push with the VAPID key pair published in "
+        f".env.default. {VAPID_HINT}"
+    )
+
+
 async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None:
     """Send push notifications to all of a user's subscriptions.
 
@@ -69,6 +81,9 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
     vapid_claim_email = _settings.secrets.vapid_claim_email
     if not vapid_private or not vapid_public or not vapid_claim_email:
         logger.debug("VAPID keys not fully configured, skipping push")
+        return
+    if vapid_private_key_is_published(vapid_private):
+        _warn_published_vapid_key_once()
         return
     # py_vapid rejects unprefixed strings deep in webpush(), where they'd
     # surface once per subscription as an "Unexpected error". Catch the
