@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from .. import platform_info
 from ..protocol import ComputerDriverInfo, ErrorCode
 from .catalog import REVIEWED_DRIVER_VERSION, policy_document, same_minor
 from .mcp_client import McpClosedError, McpError, StdioMcpClient
@@ -234,6 +235,8 @@ class CuaDriverBridge:
         self._last_failure: str | None = None
         self._policy_dir: Path | None = None
         self._closed = False
+        # The display variables the running driver started with.
+        self._display: tuple[str | None, ...] | None = None
 
     @property
     def offered_tools(self) -> frozenset[str]:
@@ -321,8 +324,9 @@ class CuaDriverBridge:
         who gets CallNotStarted: stopping it part way would count against
         the restart budget, and the next call finds the driver ready. Every
         caller in the meantime waits for that one start."""
+        await asyncio.to_thread(platform_info.session_display.follow)
         client = self._client
-        if client is not None and client.alive:
+        if client is not None and client.alive and self._same_display():
             return client
         start = self._start
         if start is None or start.done():
@@ -338,9 +342,19 @@ class CuaDriverBridge:
         return start.result()
 
     async def _ensure_client(self) -> StdioMcpClient:
+        await asyncio.to_thread(platform_info.session_display.follow)
         async with self._lock:
             if self._client is not None and self._client.alive:
-                return self._client
+                if self._same_display():
+                    return self._client
+                # A new login brought another display (on GNOME, another
+                # XAUTHORITY too), and a driver keeps the environment it
+                # started with. Stopping it is the shim's own doing, so its
+                # start comes off the restart budget.
+                logger.info("The desktop's display changed; restarting cua-driver")
+                await self._stop_client()
+                if self._starts:
+                    self._starts.pop()
             if self._closed:
                 raise DriverUnavailable("the local executor is stopping")
             if self._client is not None:
@@ -367,6 +381,7 @@ class CuaDriverBridge:
                     f"could not write the cua-driver policy file: {exc}",
                     code=ErrorCode.INTERNAL_ERROR,
                 ) from exc
+            self._display = platform_info.session_display_values()
             client = self._client_factory(
                 driver_argv(binary, runtime, self._platform),
                 env=driver_environment(policy),
@@ -429,6 +444,9 @@ class CuaDriverBridge:
                 len(tools),
             )
             return client
+
+    def _same_display(self) -> bool:
+        return self._display == platform_info.session_display_values()
 
     def _check_restart_budget(self) -> None:
         now = time.monotonic()

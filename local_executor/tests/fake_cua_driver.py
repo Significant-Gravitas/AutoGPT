@@ -198,6 +198,8 @@ def handle(message: dict) -> None:
                     "CUA_DRIVER_RS_UPDATE_CHECK",
                     "CUA_DRIVER_DANGEROUSLY_BYPASS_APPROVALS",
                     "CUA_DRIVER_CAPABILITY_MANIFEST_FILE",
+                    "DISPLAY",
+                    "XAUTHORITY",
                 )
             },
             policy=sorted(allowed_tools() or []),
