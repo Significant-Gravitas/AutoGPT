@@ -327,6 +327,19 @@ class ConfigFileError(ValueError):
     AUTOGPT_SHIM_* environment variable can't be read."""
 
 
+def _non_directory_ancestor(path: Path) -> Path | None:
+    """The nearest of `path`'s ancestors that exists, if it isn't a folder."""
+    for parent in path.parents:
+        try:
+            info = parent.stat()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return None
+        return None if stat.S_ISDIR(info.st_mode) else parent
+    return None
+
+
 def load_config(
     config_path: Path | None = None,
     overrides: dict[str, Any] | None = None,
@@ -349,6 +362,11 @@ def load_config(
             # without a word. (Without --config, a missing default file
             # means defaults.)
             raise ConfigFileError(f"{path}: no such config file") from None
+        # Windows reports a file where one of the path's folders belongs as a
+        # missing path, where POSIX raises NotADirectoryError (below).
+        blocker = _non_directory_ancestor(path)
+        if blocker is not None:
+            raise ConfigFileError(f"{path}: {blocker} is a file, not a folder") from None
     except OSError as exc:
         # NotADirectoryError among them: a file where one of the path's
         # directories belongs, such as the config written to the directory's
