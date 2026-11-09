@@ -28,6 +28,10 @@ import {
 } from "@/services/analytics/monetization-analytics";
 
 import { AutomationCreditsTab } from "./components/AutomationCreditsTab/AutomationCreditsTab";
+import {
+  CheckoutAbandonedPrompt,
+  type AbandonedCheckout,
+} from "./components/CheckoutAbandonedPrompt/CheckoutAbandonedPrompt";
 import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
 
 type BillingTab = "subscription" | "automation-credits";
@@ -63,6 +67,9 @@ function SettingsBillingPage() {
   const { mutateAsync: fulfillCheckout } = usePatchV1FulfillCheckoutSession();
   const handledTopupRef = useRef<string | null>(null);
   const handledSubscriptionRef = useRef<string | null>(null);
+  const handledTrialRef = useRef<string | null>(null);
+  const [abandonedCheckout, setAbandonedCheckout] =
+    useState<AbandonedCheckout | null>(null);
   const [isExplainerOpen, setIsExplainerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<BillingTab>(() =>
     resolveInitialTab(searchParams),
@@ -135,11 +142,7 @@ function SettingsBillingPage() {
           checkout_kind: "subscription",
           surface: "billing",
         });
-        toast({
-          title: "Checkout cancelled",
-          description: "Your plan was not changed.",
-          variant: "destructive",
-        });
+        setAbandonedCheckout("upgrade");
       }
 
       router.replace("/settings/billing");
@@ -148,10 +151,16 @@ function SettingsBillingPage() {
   );
 
   useEffect(
-    function reportTrialCheckoutCancelled() {
-      if (trialStatus === "cancelled") trackTrialCheckoutAbandoned("billing");
+    function handleTrialRedirect() {
+      if (trialStatus !== "cancelled") return;
+      if (handledTrialRef.current === trialStatus) return;
+      handledTrialRef.current = trialStatus;
+
+      trackTrialCheckoutAbandoned("billing");
+      setAbandonedCheckout("trial");
+      router.replace("/settings/billing");
     },
-    [trialStatus],
+    [trialStatus, router],
   );
 
   return (
@@ -198,6 +207,12 @@ function SettingsBillingPage() {
         onOpenChange={setIsExplainerOpen}
         showBillingLink={false}
       />
+      {abandonedCheckout ? (
+        <CheckoutAbandonedPrompt
+          key={abandonedCheckout}
+          kind={abandonedCheckout}
+        />
+      ) : null}
     </div>
   );
 }
