@@ -23,10 +23,12 @@ from .local_pc_shim import (
     ShimHello,
     ShimOverloadedError,
     ShimProtocolError,
+    ShimRecordingError,
     WriteUnconfirmedError,
     _CommandsProxy,
     _ComputerProxy,
     _FilesProxy,
+    _RecordingProxy,
     _RpcAttemptFailed,
 )
 
@@ -886,6 +888,50 @@ class TestFilesStat:
 # ---------------------------------------------------------------------------
 # _ComputerProxy — wire-op contract for computer-use surface
 # ---------------------------------------------------------------------------
+
+
+class TestRecordingProxy:
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        ("error", "code"),
+        [
+            (TimeoutError("RPC timed out (retry also failed)"), "COMMAND_TIMEOUT"),
+            (OpUnconfirmedError("STOP_RECORDING", "id-1"), "OP_UNCONFIRMED"),
+            (ShimOverloadedError("no capacity"), "SHIM_OVERLOADED"),
+            (ShimProtocolError("unexpected reply"), "INTERNAL_ERROR"),
+        ],
+        ids=["timeout", "disconnected", "overloaded", "malformed"],
+    )
+    async def test_a_transport_failure_comes_back_as_a_recording_error(
+        self, error: Exception, code: str
+    ):
+        """The recording routes and tools catch ShimRecordingError only, so
+        these escaped them as a 500 with no code to act on."""
+        shim = _make_shim_with_rpc({})
+        shim._rpc = AsyncMock(side_effect=error)
+        shim.recording_channels = ["floor"]
+        shim.recording_routes = ["extract_then_cloud"]
+        recording = _RecordingProxy(shim)
+        calls = {
+            "REQUEST_RECORDING_CONSENT": recording.request_consent,
+            "START_RECORDING": lambda: recording.start(
+                mode="copilot",
+                interpretation_route="extract_then_cloud",
+                channels=["floor"],
+                consent_token="token",
+            ),
+            "STOP_RECORDING": lambda: recording.stop("rec-1"),
+            "APPLY_RECORDING_REVIEW": lambda: recording.apply_review(
+                "rec-1", removed_step_seqs=[], redacted_step_seqs=[]
+            ),
+            "RECORDING_FETCH": lambda: recording.fetch("rec-1"),
+        }
+
+        for op, call in calls.items():
+            with pytest.raises(ShimRecordingError) as caught:
+                await call()
+            assert caught.value.code == code
+            assert caught.value.details == {"op": op}
 
 
 class TestComputerProxy:
