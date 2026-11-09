@@ -1518,8 +1518,8 @@ def _calls_by_function(tree: ast.Module):
 # quote-heavy text, and the Python the backend image installs has neither fix.
 # `re` holds the GIL while it matches, so a few KB of crafted CSV parsed for
 # AutoPilot stopped the whole process, worker thread or not. Guess a delimiter
-# by parsing a sample with csv.reader instead
-# (file_content_parser._guess_delimiter).
+# by parsing the first rows with csv.reader instead
+# (backend.util.csv_delimiter.guess_delimiter).
 
 
 def test_no_csv_sniffer():
@@ -1535,7 +1535,7 @@ def test_no_csv_sniffer():
     assert not offenders, (
         "Don't use csv.Sniffer: its regular expressions can take hours on a few "
         "KB of crafted text while holding the GIL. Guess a delimiter by parsing "
-        "a sample with csv.reader (see file_content_parser._guess_delimiter):\n"
+        "the first rows with csv.reader (see backend.util.csv_delimiter):\n"
         + "\n".join(sorted(offenders))
     )
 

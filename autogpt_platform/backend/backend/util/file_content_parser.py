@@ -31,7 +31,6 @@ exception from the public API when ``strict=False``.
 
 import csv
 import io
-import itertools
 import json
 import logging
 import tomllib
@@ -47,6 +46,7 @@ import sentry_sdk
 import yaml
 
 from backend.util.bounded_yaml import load_bounded_yaml
+from backend.util.csv_delimiter import guess_delimiter
 from backend.util.zip_member import ZipMemberTooLarge, check_unpacked_size
 
 logger = logging.getLogger(__name__)
@@ -290,11 +290,7 @@ def _parse_delimited(content: str, *, delimiter: str) -> Any:
     # other common delimiters — catches misidentified files (e.g. a
     # tab-delimited file with a .csv extension).
     if len(rows[0]) == 1:
-        guessed = _guess_delimiter(
-            content[:_DELIMITER_SAMPLE_CHARS],
-            delimiter,
-            truncated=len(content) > _DELIMITER_SAMPLE_CHARS,
-        )
+        guessed = guess_delimiter(content, delimiter)
         if guessed is not None:
             try:
                 reader = csv.reader(io.StringIO(content), delimiter=guessed)
@@ -304,52 +300,6 @@ def _parse_delimited(content: str, *, delimiter: str) -> Any:
     if rows and len(rows[0]) >= 2:
         return rows
     return content
-
-
-# csv.Sniffer is not used to guess a delimiter: before CPython 3.13.15 its
-# regular expressions backtrack catastrophically on quote-heavy text
-# (gh-109638), and `re` holds the GIL while it matches, so a few KB of crafted
-# CSV stopped the whole process. Parsing a sample with csv.reader takes time
-# in proportion to the sample. Like the Sniffer, a delimiter is only taken when
-# at least nine in ten sampled rows agree on the number of fields.
-_FALLBACK_DELIMITERS = (",", "\t", ";", "|")
-_DELIMITER_SAMPLE_CHARS = 8192
-_DELIMITER_SAMPLE_ROWS = 50
-
-
-def _guess_delimiter(sample: str, declared: str, *, truncated: bool) -> str | None:
-    """The fallback delimiter that splits the sample's first row into at least
-    two fields and at least nine in ten of its rows into that many, or None.
-
-    When the sample was cut from a longer text (`truncated`), its last row may
-    be cut short, so that row isn't counted.
-    """
-    best: tuple[float, int] = (0.0, 0)
-    guessed = None
-    for candidate in _FALLBACK_DELIMITERS:
-        if candidate == declared or candidate not in sample:
-            continue
-        reader = csv.reader(io.StringIO(sample), delimiter=candidate)
-        try:
-            rows = [
-                row
-                for row in itertools.islice(reader, _DELIMITER_SAMPLE_ROWS)
-                if _row_has_content(row)
-            ]
-        except csv.Error:
-            continue
-        if truncated and len(rows) > 1:
-            rows.pop()
-        if not rows or len(rows[0]) < 2:
-            continue
-        width = len(rows[0])
-        consistent = sum(len(row) == width for row in rows)
-        if consistent * 10 < len(rows) * 9:
-            continue
-        score = (consistent / len(rows), width)
-        if score > best:
-            best, guessed = score, candidate
-    return guessed
 
 
 def _row_has_content(row: list[str]) -> bool:
