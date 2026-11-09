@@ -9,6 +9,7 @@ routes.py stays free of Redis/Lua details.
 
 import asyncio
 import logging
+import time
 import uuid
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -41,6 +42,7 @@ from backend.copilot.response_model import (
     StreamPendingDrainedMessage,
 )
 from backend.copilot.service import EmptyUserMessage, normalise_user_message
+from backend.copilot.stream_registry import STOP_REQUESTED_FIELD
 from backend.copilot.stream_registry import get_session as get_active_session_meta
 from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.db_accessors import chat_db
@@ -131,6 +133,31 @@ async def is_turn_in_flight(session_id: str) -> bool:
     return chat_status in (CHAT_STATUS_QUEUED, CHAT_STATUS_RUNNING)
 
 
+# The cancel route confirms a stop within 5 s or completes the turn itself.
+_STOPPED_TURN_WAIT_SECONDS = 10.0
+_STOPPED_TURN_POLL_SECONDS = 0.1
+
+
+async def wait_for_stopped_turn(session_id: str) -> None:
+    """Wait until a turn the user stopped has given the session up.
+
+    A message sent while a stopped turn winds down starts the next turn, which
+    can only be admitted once the stopped one has left both the stream registry
+    and the session's ``chatStatus``. Returns at once when no stopped turn holds
+    the session, and gives up after ``_STOPPED_TURN_WAIT_SECONDS``.
+    """
+    deadline = time.monotonic() + _STOPPED_TURN_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        active = await get_active_session_meta(session_id)
+        if active is None or not active.stop_requested:
+            return
+        if active.status != "running":
+            status = await chat_db().get_chat_session_status(session_id)
+            if status != CHAT_STATUS_RUNNING:
+                return
+        await asyncio.sleep(_STOPPED_TURN_POLL_SECONDS)
+
+
 class QueuePendingMessageResponse(BaseModel):
     """Response returned when a message is queued because the session already
     has a turn in flight.
@@ -184,6 +211,7 @@ async def queue_user_message(
             session_id,
             pending,
             session_meta_key=get_session_meta_key(session_id),
+            stop_field=STOP_REQUESTED_FIELD,
         )
         return QueuePendingMessageResponse(
             buffer_length=new_len or 0,

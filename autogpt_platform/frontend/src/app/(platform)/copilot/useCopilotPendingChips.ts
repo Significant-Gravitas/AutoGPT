@@ -84,8 +84,21 @@ export function useCopilotPendingChips({
   useEffect(() => {
     queueRef.current = queue;
   }, [queue]);
+  // Peeks overlap: Strict Mode mounts the peek effect twice, and two idle
+  // edges can land within one round trip.  Only the newest peek's answer is
+  // applied — an older one resolving later would rebase over fresher
+  // server truth (and, before this guard, the two answers each carried the
+  // other's copy of a buffered message forward, doubling the strip).
+  const latestPeekSeqRef = useRef(0);
 
-  usePeekOnBoundary({ sessionId, status, queueRef, promote, setQueue });
+  usePeekOnBoundary({
+    sessionId,
+    status,
+    queueRef,
+    latestPeekSeqRef,
+    promote,
+    setQueue,
+  });
 
   useAutoContinuePromotion({
     sessionId,
@@ -112,7 +125,23 @@ export function useCopilotPendingChips({
     setQueue((prev) => [...prev, { id: uuidv4({}), text }]);
   }
 
-  return { queuedMessages, queueMessage };
+  /** Drop chips the server no longer holds; a peek already in flight read it before. */
+  function dropQueued(texts: readonly string[]) {
+    latestPeekSeqRef.current += 1;
+    setQueue((prev) => withoutTexts(prev, texts));
+  }
+
+  return { queuedMessages, queueMessage, dropQueued };
+}
+
+function withoutTexts(queue: QueuedMessage[], texts: readonly string[]) {
+  const left = [...texts];
+  return queue.filter((entry) => {
+    const index = left.indexOf(entry.text);
+    if (index === -1) return true;
+    left.splice(index, 1);
+    return false;
+  });
 }
 
 // ── 1. Peek sync ───────────────────────────────────────────────────────
@@ -125,12 +154,14 @@ function usePeekOnBoundary({
   sessionId,
   status,
   queueRef,
+  latestPeekSeqRef,
   promote,
   setQueue,
 }: {
   sessionId: string | null;
   status: ChatStatus;
   queueRef: { current: QueuedMessage[] };
+  latestPeekSeqRef: { current: number };
   promote: Promote;
   setQueue: (updater: QueueUpdater) => void;
 }) {
@@ -140,12 +171,6 @@ function usePeekOnBoundary({
   });
   const prevSessionIdRef = useRef<string | null>(sessionId);
   const prevStatusRef = useRef<ChatStatus>(status);
-  // Peeks overlap: Strict Mode mounts this effect twice, and two idle edges
-  // can land within one round trip.  Only the newest peek's answer is
-  // applied — an older one resolving later would rebase over fresher
-  // server truth (and, before this guard, the two answers each carried the
-  // other's copy of a buffered message forward, doubling the strip).
-  const latestPeekSeqRef = useRef(0);
 
   useEffect(() => {
     const prevStatus = prevStatusRef.current;
@@ -247,7 +272,7 @@ function usePeekOnBoundary({
       });
     });
     void peek.catch(ignoreMissingSession);
-  }, [sessionId, status, queueRef, setQueue]);
+  }, [sessionId, status, queueRef, latestPeekSeqRef, setQueue]);
 }
 
 // A deleted chat, or another account's, answers 404: nothing is pending. Any

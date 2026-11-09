@@ -417,7 +417,7 @@ function useCopilotPageChat(
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+  const { queuedMessages, queueMessage, dropQueued } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
@@ -428,6 +428,24 @@ function useCopilotPageChat(
           drainedCount: stream.drainedCount,
         }),
   });
+
+  // Stop discards the follow-ups queued before it on the server, so their
+  // text goes back to the composer rather than vanishing.
+  const restoreDraft = useCopilotUIStore((s) => s.restoreDraft);
+  async function stopAndGiveBackQueued() {
+    const discarded = queuedMessages;
+    if (!(await stop()) || discarded.length === 0) return;
+    dropQueued(discarded);
+    restoreDraft(discarded.join("\n\n"));
+    toast({
+      title:
+        discarded.length === 1
+          ? "Queued message not sent"
+          : "Queued messages not sent",
+      description:
+        "Stop cancels what Otto hadn't read yet. It's back in the composer.",
+    });
+  }
 
   useCopilotNotifications(sessionId);
 
@@ -587,7 +605,7 @@ function useCopilotPageChat(
     messages: displayMessages,
     status,
     error,
-    stop,
+    stop: stopAndGiveBackQueued,
     isReconnecting,
     isFinishProbing,
     isRestoringActiveSession,

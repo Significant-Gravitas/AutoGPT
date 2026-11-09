@@ -84,6 +84,7 @@ return redis.call('DEL', KEYS[1])
 #   ARGV[3]  list value
 #   ARGV[4]  max list length
 #   ARGV[5]  list TTL seconds
+#   ARGV[6]  hash field that must be unset or empty, or "" for none
 # Compare-and-set on a string key.  Returns 1 if swapped, 0 otherwise.
 #
 #   KEYS[1]  key
@@ -118,6 +119,12 @@ _GATED_CAPPED_RPUSH_LUA = """
 local current = redis.call('HGET', KEYS[1], ARGV[1])
 if current ~= ARGV[2] then
     return -1
+end
+if ARGV[6] ~= '' then
+    local blocker = redis.call('HGET', KEYS[1], ARGV[6])
+    if blocker and blocker ~= '' then
+        return -1
+    end
 end
 redis.call('RPUSH', KEYS[2], ARGV[3])
 redis.call('LTRIM', KEYS[2], -tonumber(ARGV[4]), -1)
@@ -313,11 +320,13 @@ async def capped_rpush_if_hash_field(
     value: str,
     max_len: int,
     ttl_seconds: int,
+    unless_field: str = "",
 ) -> int | None:
-    """Atomically RPUSH to a bounded list iff a hash field matches.
+    """Atomically RPUSH to a bounded list iff a hash field matches and,
+    when ``unless_field`` is given, that field is unset or empty.
 
     Returns the new list length when the push happens, or ``None`` when the
-    hash field does not currently match ``expected``.
+    guard fails.
     """
     result = await cast(
         "Any",
@@ -331,6 +340,7 @@ async def capped_rpush_if_hash_field(
             value,
             str(max_len),
             str(ttl_seconds),
+            unless_field,
         ),
     )
     length = int(result)

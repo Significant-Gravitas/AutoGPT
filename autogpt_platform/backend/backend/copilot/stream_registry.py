@@ -87,6 +87,9 @@ logger = logging.getLogger(__name__)
 
 # The error a turn ends with when the user stopped it.
 CANCELLED_MESSAGE = "Operation cancelled"
+# Set on a running turn's meta by the user's Stop; the pending-message gate
+# refuses that turn's follow-ups, so a message sent after Stop starts the next.
+STOP_REQUESTED_FIELD = "stop_requested"
 config = ChatConfig()
 _notification_bus = AsyncRedisNotificationEventBus()
 
@@ -170,6 +173,7 @@ class ActiveSession:
     turn_id: str = ""
     blocking: bool = False  # If True, HTTP request is waiting for completion
     status: Literal["running", "completed", "failed"] = "running"
+    stop_requested: bool = False
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     asyncio_task: asyncio.Task | None = None
     checkpoint: TurnCheckpoint | None = None
@@ -232,6 +236,7 @@ def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSes
         turn_id=meta.get("turn_id", "") or session_id,
         blocking=meta.get("blocking") == "1",
         status=meta.get("status", "running"),  # type: ignore[arg-type]
+        stop_requested=bool(meta.get(STOP_REQUESTED_FIELD)),
         created_at=created_at,
     )
 
@@ -305,6 +310,7 @@ async def create_session(
             "turn_id": turn_id,
             "blocking": "1" if blocking else "0",
             "status": session.status,
+            STOP_REQUESTED_FIELD: "",
             "error_message": "",
             "error_code": "",
             "created_at": session.created_at.isoformat(),
@@ -1120,6 +1126,24 @@ async def _stream_listener(
             },
         )
         _listener_sessions.pop(queue_id, None)
+
+
+async def mark_stop_requested(session_id: str) -> bool:
+    """Flag the session's running turn as stopped by the user.
+
+    Its follow-up buffer refuses new messages from then on, so a message sent
+    while the turn winds down starts the next turn instead of feeding this
+    one. Returns ``False`` when no turn is running.
+    """
+    redis = await get_redis_async()
+    return await hash_compare_and_set(
+        redis,
+        _get_session_meta_key(session_id),
+        "status",
+        expected="running",
+        new="running",
+        updates={STOP_REQUESTED_FIELD: "1"},
+    )
 
 
 async def mark_session_completed(

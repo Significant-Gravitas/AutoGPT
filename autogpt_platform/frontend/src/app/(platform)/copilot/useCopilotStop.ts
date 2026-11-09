@@ -33,6 +33,9 @@ interface UseCopilotStopArgs {
  *   3. asynchronously tell the backend executor to actually stop the task,
  *      surfacing a toast when the cancel was published but not yet
  *      confirmed (the task should stop shortly) or failed outright.
+ *
+ * Resolves `true` once the backend took the cancel, which also discarded the
+ * follow-ups queued before it.
  */
 export function useCopilotStop({
   sessionId,
@@ -45,7 +48,7 @@ export function useCopilotStop({
     setIsUserStopping(true);
     stopStream();
 
-    if (!sessionId) return;
+    if (!sessionId) return false;
     try {
       const res = await postV2CancelSessionTask(sessionId);
       if (
@@ -59,12 +62,14 @@ export function useCopilotStop({
             "The cancel was sent but not yet confirmed. The task should stop shortly.",
         });
       }
+      return res.status === 200;
     } catch {
       toast({
         title: "Could not stop the task",
         description: "The task may still be running in the background.",
         variant: "destructive",
       });
+      return false;
     }
   }
 

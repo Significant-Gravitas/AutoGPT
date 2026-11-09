@@ -332,8 +332,10 @@ async def push_pending_message_if_session_running(
     message: PendingMessage,
     *,
     session_meta_key: str,
+    stop_field: str,
 ) -> int | None:
-    """Append a pending message only while the stream meta is still running."""
+    """Append a pending message only while the stream meta is still running
+    and no Stop was requested for that turn (``stop_field`` unset)."""
     redis = await get_redis_async()
     key = _buffer_key(session_id)
     payload = message.model_dump_json()
@@ -347,11 +349,12 @@ async def push_pending_message_if_session_running(
         value=payload,
         max_len=MAX_PENDING_MESSAGES,
         ttl_seconds=_PENDING_TTL_SECONDS,
+        unless_field=stop_field,
     )
     if new_length is None:
         logger.info(
-            "pending_messages: skipped push to session=%s because no running turn exists",
-            session_id,
+            f"pending_messages: skipped push to session={session_id} because "
+            "no running turn takes follow-ups"
         )
         return None
 

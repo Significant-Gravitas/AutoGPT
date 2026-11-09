@@ -4243,10 +4243,9 @@ def test_cancel_session_reclears_pending_buffer_after_running_settles(
 ) -> None:
     """The running path must clear the buffer a second time after the turn
     is confirmed stopped.  The first clear only drops what existed when
-    cancel started; a follow-up CAS-pushed during the 0-5s cancel window
-    (stream meta still ``status='running'``) would otherwise survive and
-    leak into the next turn.  Re-clearing once status flips out of running —
-    when the CAS gate rejects new writes — closes that race."""
+    cancel started; the stop flag keeps HTTP sends out after it, but an
+    internal sender writes past that gate during the 0-5s cancel window and
+    would otherwise leak into the next turn."""
     from backend.copilot.stream_registry import ActiveSession
 
     _mock_validate_session(mocker)
