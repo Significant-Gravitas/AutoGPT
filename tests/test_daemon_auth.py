@@ -484,13 +484,21 @@ async def test_a_legacy_session_creates_its_allowed_root_on_start(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("error", "terminal"),
-    [("KeyringLocked", False), ("KeyringError", False), ("NoKeyringError", True)],
+    [
+        ("KeyringLocked", False),
+        ("KeyringError", False),
+        ("NoKeyringError", False),
+        ("InitError", False),
+    ],
 )
-async def test_a_keychain_read_failure_is_retried_unless_there_is_no_keychain(
+async def test_a_keychain_read_failure_is_retried(
     tmp_path: Path, error: str, terminal: bool
 ) -> None:
     """A keychain that is still locked at login used to stop the LaunchAgent
-    for good; only a missing keychain backend is a setup problem."""
+    for good. So did one that hadn't started yet (a Secret Service the
+    desktop session starts after the autostart service), whose audit key
+    the shim waits for, or reads from the file fallback: the sign-in read
+    then exited 77, and the service stayed stopped once it came up."""
     import keyring.errors
 
     from autogpt_local_executor.daemon import KeychainUnavailableError
@@ -565,11 +573,12 @@ async def test_a_refresh_that_could_not_reach_the_server_is_retried(
     [
         ("refresh", "KeyringLocked", False),
         ("refresh", "PasswordSetError", False),
-        ("refresh", "NoKeyringError", True),
+        ("refresh", "NoKeyringError", False),
+        ("refresh", "InitError", False),
         ("reread", "KeyringLocked", False),
     ],
 )
-async def test_a_keychain_failure_during_a_refresh_is_retried_unless_there_is_no_keychain(
+async def test_a_keychain_failure_during_a_refresh_is_retried(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str, error: str, terminal: bool
 ) -> None:
     """The refresh's catch-all took a keychain that locked during the refresh

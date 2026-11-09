@@ -155,9 +155,11 @@ retry, such as a protocol mismatch or a revoked session, already exit 0
 and are logged.
 
 A keychain that can't be read yet (still locked at login, say) is not a
-failed sign-in: the shim keeps retrying with its reconnect backoff. Only a
-keychain backend missing once the shim runs stops it; one missing at start
-is waited for (below). The systemd unit doesn't restart on 78
+failed sign-in: the shim keeps retrying with its reconnect backoff. So is
+no keychain at all when it reads its sign-in, as with a Secret Service the
+desktop session starts after the systemd unit (once the audit key came from
+the file fallback, say): the shim couldn't have signed in without one, so it
+waits for it, logging why. The systemd unit doesn't restart on 78
 either (`RestartPreventExitStatus=77 78`): a bad config or a preflight
 failure fails the same way every time, and Linux has no permission prompt
 to wait for. Under launchd, a bad config and a preflight failure no

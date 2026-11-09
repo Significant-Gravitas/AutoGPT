@@ -242,6 +242,18 @@ class DaemonAuthenticationError(RuntimeError):
     """Terminal WebSocket authentication or session-authorization failure."""
 
 
+def _keychain_not_up_yet(exc: Exception) -> KeychainUnavailableError:
+    """No keychain to read the sign-in from. The shim couldn't have signed in
+    without one, so it is most often one that hasn't started yet: a Secret
+    Service the desktop session starts after the autostart service, say. As
+    for the audit key, it is waited for rather than taken as gone, which
+    left the service stopped once it came up."""
+    return KeychainUnavailableError(
+        f"No OS keychain is available yet ({type(exc).__name__}); waiting for it. "
+        "If none is set up, set one up and run `autogpt-shim auth`."
+    )
+
+
 # RFC 6455 §5.5: a control frame carries at most 125 bytes, two of them the
 # close code. A longer reason fails to send, and the close code with it.
 MAX_CLOSE_REASON_BYTES = 123
@@ -857,11 +869,8 @@ class ShimDaemon:
                 raise
             except CredentialScopeError as exc:
                 raise DaemonAuthenticationError(str(exc)) from None
-            except (keyring.errors.NoKeyringError, keyring.errors.InitError):
-                raise DaemonAuthenticationError(
-                    "No usable OS keychain is configured. Set one up, then run "
-                    "`autogpt-shim auth` with the intended deployment configuration."
-                ) from None
+            except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
+                raise _keychain_not_up_yet(exc) from None
             except keyring.errors.KeyringError as exc:
                 # Reading the refresh token or storing the new pair failed: a
                 # keychain that locked, say, which can clear on its own.
@@ -898,11 +907,8 @@ class ShimDaemon:
             token = await self.token_store.get_access_token()
         except CredentialScopeError as exc:
             raise DaemonAuthenticationError(str(exc)) from None
-        except (keyring.errors.NoKeyringError, keyring.errors.InitError):
-            raise DaemonAuthenticationError(
-                "No usable OS keychain is configured. Set one up, then run "
-                "`autogpt-shim auth` with the intended deployment configuration."
-            ) from None
+        except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
+            raise _keychain_not_up_yet(exc) from None
         except Exception as exc:
             raise KeychainUnavailableError(
                 f"The OS keychain could not be read ({type(exc).__name__}); "
