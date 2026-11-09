@@ -223,6 +223,14 @@ class DumpStore:
 
 
 @pytest.fixture(autouse=True)
+def reply_kind(mocker: MockerFixture) -> AsyncMock:
+    """Jev's pick of Otto's line on a not-enough reject: none by default."""
+    return mocker.patch.object(
+        service.otto_reply, "pick_reply_kind", new=AsyncMock(return_value=None)
+    )
+
+
+@pytest.fixture(autouse=True)
 def personalization_admission(mocker: MockerFixture) -> AsyncMock:
     return mocker.patch.object(
         service, "enforce_personalization_budget", new=AsyncMock()
@@ -1270,6 +1278,156 @@ async def test_quality_rejected_typed_dump_records_the_error(
     assert dumps.row.transcript == "hello hello testing"
     assert background.tasks == []
     extraction["upsert_business_understanding"].assert_not_awaited()
+
+
+async def _rejected_with(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    transcribe: AsyncMock,
+    rejection: quality.QualityRejection,
+    input_mode: BrainDumpInputMode,
+    text: str,
+):
+    """Finalize one take of ``text`` that the gate rejects with ``rejection``."""
+    quality_gate.return_value = rejection
+    if input_mode == BrainDumpInputMode.typed:
+        return await service.finalize_typed_dump(
+            USER_ID, RECORDING_ID, text, BackgroundTasks()
+        )
+    transcribe.return_value = transcription.TranscriptionResult(
+        text=text, language="en", model="gpt-4o-transcribe"
+    )
+    await start_voice_take(dumps)
+    return await finalize_voice()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input_mode", [BrainDumpInputMode.voice, BrainDumpInputMode.typed]
+)
+async def test_an_insufficient_take_sends_back_what_was_heard(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    transcribe: AsyncMock,
+    input_mode: BrainDumpInputMode,
+):
+    # The not-enough screen shows the person what Otto heard.
+    response = await _rejected_with(
+        dumps,
+        quality_gate,
+        transcribe,
+        JUDGED_UNUSABLE,
+        input_mode,
+        "  Um, okay. Hi. Is this working?\n",
+    )
+
+    assert response.error_code == "insufficient_content"
+    assert response.transcript_preview == "Um, okay. Hi. Is this working?"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input_mode", [BrainDumpInputMode.voice, BrainDumpInputMode.typed]
+)
+async def test_an_insufficient_take_preview_is_cut_to_the_preview_length(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    transcribe: AsyncMock,
+    input_mode: BrainDumpInputMode,
+):
+    long_text = "  " + "hello there " * 60
+
+    response = await _rejected_with(
+        dumps, quality_gate, transcribe, JUDGED_UNUSABLE, input_mode, long_text
+    )
+
+    assert response.transcript_preview is not None
+    assert len(response.transcript_preview) == service.TRANSCRIPT_PREVIEW_CHARS == 280
+    assert response.transcript_preview == long_text.strip()[:280]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input_mode", [BrainDumpInputMode.voice, BrainDumpInputMode.typed]
+)
+async def test_no_usable_speech_sends_back_no_text(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    transcribe: AsyncMock,
+    input_mode: BrainDumpInputMode,
+):
+    # Empty, symbol-only, looping or invented text: never shown back.
+    response = await _rejected_with(
+        dumps, quality_gate, transcribe, DETERMINISTIC, input_mode, "Thank you."
+    )
+
+    assert response.error_code == "no_usable_speech"
+    assert response.transcript_preview is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input_mode", [BrainDumpInputMode.voice, BrainDumpInputMode.typed]
+)
+async def test_an_insufficient_take_sends_back_which_line_otto_says(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    transcribe: AsyncMock,
+    reply_kind: AsyncMock,
+    input_mode: BrainDumpInputMode,
+):
+    reply_kind.return_value = "wants_to_skip"
+
+    response = await _rejected_with(
+        dumps, quality_gate, transcribe, JUDGED_UNUSABLE, input_mode, " Can I skip? "
+    )
+
+    assert response.otto_reply_kind == "wants_to_skip"
+    reply_kind.assert_awaited_once_with(
+        "Can I skip?", typed=input_mode == BrainDumpInputMode.typed
+    )
+    # The pick is for the screen only; the row keeps the verdict as before.
+    assert dumps.row is not None and dumps.row.errorReason == "judge_unusable"
+
+
+@pytest.mark.asyncio
+async def test_no_pick_leaves_the_default_line(
+    dumps: DumpStore, quality_gate: AsyncMock, transcribe: AsyncMock
+):
+    response = await _rejected_with(
+        dumps,
+        quality_gate,
+        transcribe,
+        JUDGED_UNUSABLE,
+        BrainDumpInputMode.voice,
+        "Hello?",
+    )
+
+    assert response.otto_reply_kind is None
+
+
+@pytest.mark.asyncio
+async def test_only_an_insufficient_reject_asks_for_a_line(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    transcribe: AsyncMock,
+    reply_kind: AsyncMock,
+):
+    # Nothing the person said can be answered on a no-words reject.
+    reply_kind.return_value = "mic_check"
+
+    response = await _rejected_with(
+        dumps,
+        quality_gate,
+        transcribe,
+        DETERMINISTIC,
+        BrainDumpInputMode.voice,
+        "Thank you.",
+    )
+
+    assert response.error_code == "no_usable_speech"
+    assert response.otto_reply_kind is None
+    reply_kind.assert_not_awaited()
 
 
 @pytest.mark.asyncio
