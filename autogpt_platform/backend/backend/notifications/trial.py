@@ -14,6 +14,7 @@ from backend.data.credit import (
     sync_subscription_from_stripe,
 )
 from backend.data.db_accessors import credit_db, user_db
+from backend.data.model import User
 from backend.data.notifications import (
     NotificationEventModel,
     SubscriptionPlan,
@@ -21,7 +22,7 @@ from backend.data.notifications import (
 )
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import TrialState
-from backend.notifications.dedupe import claim_once, release_claim
+from backend.notifications.dedupe import claim_once, is_claimed, release_claim
 from backend.notifications.lifecycle_plan import currency_symbol, format_amount
 from backend.notifications.queue import queue_notification_async
 from backend.notifications.recipient import first_name
@@ -38,14 +39,44 @@ logger = logging.getLogger(__name__)
 # trial_end. The extra day absorbs an event created or handled a little early;
 # a delayed or replayed event for a trial since extended further still drops.
 TRIAL_REMINDER_WINDOW = timedelta(days=4)
+# The last-call notice says access ends tomorrow, so it goes out only while
+# the trial has between these two lead times left. The hourly pass opens the
+# window; a notice still unsent at the near edge is dropped, not sent late.
+LAST_CALL_WINDOW = timedelta(hours=25)
+# The not-renewing three-day reminder says "ends in 3 days", so it goes out
+# only within half a day of that. A trial_will_end handled later (after an
+# outage, say) is dropped and the last call covers the trial instead.
+EXPIRING_MIN_LEAD = timedelta(days=2, hours=12)
+EXPIRING_MAX_LEAD = timedelta(days=3, hours=12)
+LAST_CALL_MIN_LEAD = timedelta(hours=18)
+# Someone who canceled this recently has just had the cancellation notice,
+# which gives the same end date and the same way back.
+RECENT_CANCEL = timedelta(days=1)
 
+# "expiring" is the three-day reminder for a trial set not to renew, and
+# "last_call" the one-day reminder; "ending" is the three-day reminder for a
+# trial that will convert.
 TrialNoticeKind = Literal[
-    "started", "ending", "canceled", "resumed", "ended", "converted", "payment_failed"
+    "started",
+    "ending",
+    "expiring",
+    "last_call",
+    "canceled",
+    "resumed",
+    "ended",
+    "converted",
+    "payment_failed",
 ]
+# Notices that only describe a trial set not to renew.
+CANCEL_PENDING_KINDS = ("canceled", "expiring", "last_call")
+# The reminders for a trial set not to renew.
+NOT_RENEWING_KINDS = ("expiring", "last_call")
 
 TRIAL_NOTICE_EVENTS: dict[TrialNoticeKind, PostHogEvent] = {
     "started": PostHogEvent.TRIAL_STARTED,
     "ending": PostHogEvent.TRIAL_ENDING,
+    "expiring": PostHogEvent.TRIAL_EXPIRING,
+    "last_call": PostHogEvent.TRIAL_LAST_CALL,
     "canceled": PostHogEvent.TRIAL_CANCELED,
     "resumed": PostHogEvent.TRIAL_RESUMED,
     "ended": PostHogEvent.TRIAL_ENDED,
@@ -69,6 +100,9 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
         raise ValueError("Trial notification has no matching enrollment")
     if not _owns_subscription(trial, current):
         raise ValueError("Trial notification ownership does not match the enrollment")
+    if kind == "ending" and current.get("cancel_at_period_end"):
+        # Stripe's trial_will_end also fires for a trial set not to renew.
+        kind = "expiring"
     attempt = (current.get("metadata") or {}).get("trial_checkout_attempt", "")
     if attempt.isdecimal() and int(attempt) < trial.checkout_attempt:
         return True
@@ -81,6 +115,8 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if trial.converted_at is not None and kind in (
         "ended",
         "canceled",
+        "expiring",
+        "last_call",
         "resumed",
         "payment_failed",
     ):
@@ -88,29 +124,10 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if skip := _notice_skip_reason(trial, kind, current):
         logger.info(f"Dropped trial {kind} notice for user {user_id}: {skip}")
         return True
-    user = await user_db().get_user_by_id(user_id)
-    if kind == "ended" and await _another_plan_is_live(trial, current):
-        await leave_trial_group(user)
+    queue = _queue_not_renewing if kind in NOT_RENEWING_KINDS else _queue_notice
+    user = await queue(trial, kind, current, user_id)
+    if user is None:
         return True
-    data = trial_notice_data(
-        trial, kind, first_name(user.name, user.email) or "there", current
-    )
-    claim = trial_notice_key(trial, kind)
-    data.notice_key = claim
-    if not await claim_once(claim):
-        return True
-    try:
-        await queue_trial_audience_change(kind, user)
-        result = await queue_notification_async(
-            NotificationEventModel[TrialUpdateData](
-                user_id=user_id, type=NotificationType.TRIAL_UPDATE, data=data
-            )
-        )
-        if not result.success:
-            raise RuntimeError(f"Could not queue trial notice: {result.message}")
-    except Exception:
-        await release_claim(claim)
-        raise
     if kind == "converted":
         await join_paying_audience(user)
     plan = notice_plan(trial, kind, current)
@@ -126,6 +143,33 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
         },
     )
     return True
+
+
+async def send_trial_last_calls() -> int:
+    """Queue the last-call notice for each trial set not to renew whose end
+    is inside the last-call window. Runs hourly; each notice is claimed once
+    per trial end, so a later pass skips it. Returns how many trials were
+    checked."""
+    now = datetime.now(UTC)
+    trials = await credit_db().list_trials_ending_unrenewed(
+        now + LAST_CALL_MIN_LEAD, now + LAST_CALL_WINDOW
+    )
+    for trial in trials:
+        # Most due trials were notified on an earlier run: skip their Stripe
+        # retrieve. notify_trial's own claim still decides.
+        if await is_claimed(trial_notice_key(trial, "last_call")):
+            continue
+        subscription = {
+            "id": trial.subscription_id,
+            "metadata": {"trial_enrollment_id": trial.id},
+        }
+        try:
+            await notify_trial(subscription, "last_call")
+        except Exception:
+            # One broken trial must not hold back everyone else's notice;
+            # the next hourly pass tries it again.
+            logger.exception(f"Trial last call for user {trial.user_id} failed")
+    return len(trials)
 
 
 async def on_trial_invoice(invoice: dict, *, paid: bool) -> bool:
@@ -183,6 +227,8 @@ async def trial_notice_disposition(
     ):
         return "obsolete"
     if data.notice_key != trial_notice_key(trial, data.kind):
+        return "obsolete"
+    if data.kind in NOT_RENEWING_KINDS and await _another_plan_outlives(trial, current):
         return "obsolete"
     expected = trial_notice_data(trial, data.kind, data.user_name, current)
     if not _notice_matches_current_terms(data, expected, trial, current):
@@ -265,7 +311,7 @@ def trial_notice_key(trial: TrialState, kind: TrialNoticeKind) -> str:
     key = f"trial:{trial.id}:{kind}"
     if kind in ("canceled", "resumed"):
         return f"{key}:{trial.notification_revision}"
-    if kind == "ending":
+    if kind in ("ending", "expiring", "last_call"):
         if trial.ends_at is None:
             raise ValueError("Trial reminder requires an end date")
         return f"{key}:{int(trial.ends_at.timestamp())}"
@@ -311,6 +357,71 @@ def trial_notice_data(
     )
 
 
+async def _queue_not_renewing(
+    trial: TrialState, kind: TrialNoticeKind, current: dict, user_id: str
+) -> User | None:
+    """Queue an expiring or last_call notice; None when it was not queued.
+
+    Claimed before the plan listing: the hourly pass sees a due trial on
+    several runs, and one already notified should cost no more Stripe calls.
+    For the same reason the last call's claim fails closed: open, a Redis
+    outage would send it on every run."""
+    claim = trial_notice_key(trial, kind)
+    if not await claim_once(claim, fail_open=kind != "last_call"):
+        return None
+    try:
+        if await _another_plan_outlives(trial, current):
+            # A newer plan keeps their access past the trial's end, so the
+            # notice would be wrong.
+            logger.info(f"Dropped trial {kind} notice for user {user_id}: another plan")
+            await release_claim(claim)
+            return None
+        user = await user_db().get_user_by_id(user_id)
+        await _publish_notice(trial, kind, current, user, claim)
+    except Exception:
+        await release_claim(claim)
+        raise
+    return user
+
+
+async def _queue_notice(
+    trial: TrialState, kind: TrialNoticeKind, current: dict, user_id: str
+) -> User | None:
+    """Queue any other trial notice; None when it was not queued."""
+    user = await user_db().get_user_by_id(user_id)
+    if kind == "ended" and await _another_plan_is_live(trial, current):
+        await leave_trial_group(user)
+        return None
+    claim = trial_notice_key(trial, kind)
+    if not await claim_once(claim):
+        return None
+    try:
+        await _publish_notice(trial, kind, current, user, claim)
+    except Exception:
+        await release_claim(claim)
+        raise
+    return user
+
+
+async def _publish_notice(
+    trial: TrialState, kind: TrialNoticeKind, current: dict, user: User, claim: str
+) -> None:
+    """Queue the notice and its trial-group change. Raises when either
+    cannot be queued, so the caller gives the claim back."""
+    data = trial_notice_data(
+        trial, kind, first_name(user.name, user.email) or "there", current
+    )
+    data.notice_key = claim
+    await queue_trial_audience_change(kind, user)
+    result = await queue_notification_async(
+        NotificationEventModel[TrialUpdateData](
+            user_id=trial.user_id, type=NotificationType.TRIAL_UPDATE, data=data
+        )
+    )
+    if not result.success:
+        raise RuntimeError(f"Could not queue trial notice: {result.message}")
+
+
 def _notice_applies(trial: TrialState, kind: TrialNoticeKind, current: dict) -> bool:
     return _notice_skip_reason(trial, kind, current) is None
 
@@ -342,17 +453,36 @@ def _running_trial_skip_reason(
     now = datetime.now(UTC).timestamp()
     if current.get("status") != "trialing" or trial_end <= now:
         return "trial is no longer running"
-    if kind == "ending" and trial_end > now + TRIAL_REMINDER_WINDOW.total_seconds():
+    if (
+        kind in ("ending", "expiring")
+        and trial_end > now + TRIAL_REMINDER_WINDOW.total_seconds()
+    ):
         return "trial ends after the reminder window"
+    if kind == "expiring":
+        if trial_end > now + EXPIRING_MAX_LEAD.total_seconds():
+            return "trial ends after the reminder window"
+        if trial_end < now + EXPIRING_MIN_LEAD.total_seconds():
+            return "too little of the trial is left for a three-day reminder"
+    if kind == "last_call":
+        if trial_end > now + LAST_CALL_WINDOW.total_seconds():
+            return "trial ends after the last-call window"
+        if trial_end < now + LAST_CALL_MIN_LEAD.total_seconds():
+            return "too little of the trial is left for a last call"
     # A canceled notice promises access until trial_end, which only a verified
     # card gives.
     if trial.card_verified_at is None:
         return "card is not verified"
     cancel_pending = bool(current.get("cancel_at_period_end"))
-    if cancel_pending and kind != "canceled":
+    if cancel_pending and kind not in CANCEL_PENDING_KINDS:
         return "cancellation is scheduled"
-    if not cancel_pending and kind == "canceled":
+    if not cancel_pending and kind in CANCEL_PENDING_KINDS:
         return "cancellation is not scheduled"
+    # Stripe sets canceled_at when the cancellation is requested.
+    canceled_at = current.get("canceled_at") or 0
+    if kind in ("expiring", "last_call") and (
+        canceled_at > now - RECENT_CANCEL.total_seconds()
+    ):
+        return "canceled within the last day"
     return None
 
 
@@ -360,6 +490,16 @@ async def _another_plan_is_live(trial: TrialState, current: dict) -> bool:
     """A trial ended by buying another plan is not news, and its trial_canceled
     status must not overwrite the new plan's. The person still leaves the
     trial group."""
+    return await _another_plan(trial, current, until=None)
+
+
+async def _another_plan_outlives(trial: TrialState, current: dict) -> bool:
+    """Another live plan keeps access past the trial's end, so a notice that
+    says access ends then would be wrong. A plan set to end first does not."""
+    return await _another_plan(trial, current, until=current.get("trial_end") or 0)
+
+
+async def _another_plan(trial: TrialState, current: dict, until: int | None) -> bool:
     for status in ("active", "trialing"):
         page = await stripe_call(
             stripe.Subscription.list_async,
@@ -368,6 +508,9 @@ async def _another_plan_is_live(trial: TrialState, current: dict) -> bool:
             limit=100,
         )
         async for other in stripe_list_items(page):
-            if other.id != current.get("id"):
+            if other.id == current.get("id"):
+                continue
+            # Stripe sets cancel_at on a plan scheduled to end.
+            if until is None or other.cancel_at is None or other.cancel_at > until:
                 return True
     return False
