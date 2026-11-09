@@ -876,7 +876,11 @@ refused call again, once (it never ran). Element tokens and other state
 from the ended label are gone, so the model takes a fresh snapshot, as
 after any stale state. The
 list doesn't change while the shim runs; the platform may cache it per
-connection. Listing tools never waits for a running action.
+connection. Listing tools doesn't wait for a running action: it never takes
+the turn computer tool calls take. Like any request, though, it needs one of
+the session's and the machine's request slots (see
+[Concurrency](#concurrency)), and waits up to ten seconds for a machine slot
+other chats' work holds, then gets `SHIM_OVERLOADED`.
 
 #### `COMPUTER_TOOL_CALL` (platform → shim)
 ```json
