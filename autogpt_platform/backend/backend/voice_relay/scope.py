@@ -93,6 +93,10 @@ class GeminiScopeClassifier:
                 thinking_config=types.ThinkingConfig(
                     thinking_level=types.ThinkingLevel.LOW
                 ),
+                # A label call has no tools to run.
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                    disable=True
+                ),
             ),
         )
         usage = response.usage_metadata

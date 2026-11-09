@@ -61,3 +61,4 @@ async def test_the_classifier_labels_a_turn_and_reports_its_tokens():
     assert "OTTO BEFORE: What do you do?" in prompt
     assert "USER: write me a poem" in prompt
     assert calls[0]["config"].response_json_schema == scope.SCHEMA
+    assert calls[0]["config"].automatic_function_calling.disable is True
