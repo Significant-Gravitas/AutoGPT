@@ -693,6 +693,8 @@ def test_install_carries_the_deployment_flags_into_the_service(
         "argv",
         [
             "autogpt-shim",
+            "--config",
+            str(_empty_config(tmp_path)),
             "--platform-url",
             "https://platform.example.com",
             "--platform-oauth-url",
