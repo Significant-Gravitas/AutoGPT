@@ -11,10 +11,17 @@ import type { ProviderTiers } from "@/app/api/__generated__/models/providerTiers
 export function hasLinkedSubscription(
   offers: AIConnectionOffer[] | undefined,
 ): boolean {
-  return (offers ?? []).some(
+  return linkedSubscriptionName(offers) !== null;
+}
+
+export function linkedSubscriptionName(
+  offers: AIConnectionOffer[] | undefined,
+): string | null {
+  const linked = (offers ?? []).find(
     (offer) =>
       offer.auth_method !== "deployment" && Boolean(offer.credential_id),
   );
+  return linked?.display_name ?? null;
 }
 
 /**

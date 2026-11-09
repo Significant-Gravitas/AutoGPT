@@ -2,12 +2,20 @@ import { expect, test } from "./coverage-fixture";
 import { getSeededTestUser } from "./credentials/accounts";
 import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
-import {
-  completeOnboardingWizard,
-  dismissConnectStepIfPresent,
-  skipOnboardingIfPresent,
-} from "./utils/onboarding";
+import { advanceToRoleStep, skipOnboardingIfPresent } from "./utils/onboarding";
 import { signupTestUser } from "./utils/signup";
+
+const PHONE = { width: 390, height: 844 };
+const ROLE_LABELS = [
+  "Founder / CEO",
+  "Operations",
+  "Sales / BD",
+  "Marketing",
+  "Product / PM",
+  "Engineering",
+  "HR / People",
+  "Other",
+];
 
 test("auth happy path: user can sign up with a fresh account", async ({
   page,
@@ -16,9 +24,8 @@ test("auth happy path: user can sign up with a fresh account", async ({
 
   await signupTestUser(page, undefined, undefined, false);
   await expect(page).toHaveURL(/\/onboarding/);
-  // A self-host build opens on the connect step; Welcome is behind it.
-  await dismissConnectStepIfPresent(page);
-  await expect(page.getByText("Welcome to AutoGPT")).toBeVisible();
+  await advanceToRoleStep(page);
+  await expect(page.getByText("What best describes you")).toBeVisible();
 });
 
 test("auth happy path: user can sign up, enter the app, and log out", async ({
@@ -28,9 +35,8 @@ test("auth happy path: user can sign up, enter the app, and log out", async ({
 
   await signupTestUser(page, undefined, undefined, false);
   await expect(page).toHaveURL(/\/onboarding/);
-  // A self-host build opens on the connect step; Welcome is behind it.
-  await dismissConnectStepIfPresent(page);
-  await expect(page.getByText("Welcome to AutoGPT")).toBeVisible();
+  await advanceToRoleStep(page);
+  await expect(page.getByText("What best describes you")).toBeVisible();
 
   await skipOnboardingIfPresent(page, "/marketplace");
   await expect(page).toHaveURL(/\/marketplace/);
@@ -43,6 +49,32 @@ test("auth happy path: user can sign up, enter the app, and log out", async ({
 
   await page.goto("/library");
   await expect(page).toHaveURL(/\/login\?next=%2Flibrary/);
+});
+
+test("auth happy path: on a phone, every onboarding role is on screen", async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+  await page.setViewportSize(PHONE);
+
+  await signupTestUser(page, undefined, undefined, false);
+  await expect(page).toHaveURL(/\/onboarding/);
+  await advanceToRoleStep(page);
+
+  for (const label of ROLE_LABELS) {
+    const box = await page
+      .getByRole("button", { name: label, exact: true })
+      .boundingBox();
+    expect(box, `${label} is not rendered`).not.toBeNull();
+    expect(box!.x, `${label} starts off-screen`).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width, `${label} ends off-screen`).toBeLessThanOrEqual(
+      PHONE.width,
+    );
+  }
+  const pageWidth = await page.evaluate(
+    () => document.documentElement.scrollWidth,
+  );
+  expect(pageWidth).toBeLessThanOrEqual(PHONE.width);
 });
 
 test("auth happy path: seeded user can log in", async ({ page }) => {
@@ -75,26 +107,9 @@ test("auth happy path: seeded user can log out and protected routes redirect to 
 
   await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
 
+  // /profile redirects to /settings/profile in next.config.mjs, before auth runs.
   await page.goto("/profile");
-  await expect(page).toHaveURL(/\/login\?next=%2Fprofile/);
-});
-
-test("auth happy path: user can complete onboarding and land in the app", async ({
-  page,
-}) => {
-  test.setTimeout(60000);
-
-  await signupTestUser(page, undefined, undefined, false);
-  await expect(page).toHaveURL(/\/onboarding/);
-
-  await completeOnboardingWizard(page, {
-    name: "Smoke User",
-    role: "Engineering",
-    painPoints: ["Research", "Reports & data"],
-  });
-
-  await expect(page).toHaveURL(/\/copilot/);
-  await expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible();
+  await expect(page).toHaveURL(/\/login\?next=%2Fsettings%2Fprofile/);
 });
 
 test("auth happy path: multi-tab logout clears shared builder sessions", async ({

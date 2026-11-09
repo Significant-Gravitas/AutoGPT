@@ -1,18 +1,17 @@
 import type { Variants } from "framer-motion";
 
 // Column template shared by the header and every row so cells line up.
-// Modified and Size collapse on narrow screens; the trailing column sizes to
-// the row actions.
+// Modified and Size collapse on narrow screens. The trailing column has a
+// fixed width (room for two icon buttons) so rows with a different number of
+// actions don't shift the other columns.
 export const ROW_GRID_CLASS =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_7rem_auto] md:grid-cols-[minmax(0,1fr)_8rem_6rem_auto]";
-export const DATE_CELL_CLASS = "hidden truncate sm:block";
-export const SIZE_CELL_CLASS = "hidden tabular-nums md:block";
-export const ACTIONS_CELL_CLASS = "flex min-w-10 justify-end";
+  "grid grid-cols-[minmax(0,1fr)_4.5rem] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_7rem_4.5rem] md:grid-cols-[minmax(0,1fr)_8rem_6rem_4.5rem]";
+export const ACTIONS_CELL_CLASS = "flex justify-end";
 
 // Sized to its content (its wrapper is not stretched across the column) so
 // the hover preview, which anchors to this button, opens beside the name.
 export const NAME_BUTTON_CLASS =
-  "flex min-w-0 items-center gap-4 rounded-xl py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-zinc-400";
+  "flex min-w-0 items-center gap-4 rounded-xl py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle";
 
 // Rows animate on their own mount (not via the list's orchestration) so a row
 // added by an upload or a refetch is never left in its hidden start state.

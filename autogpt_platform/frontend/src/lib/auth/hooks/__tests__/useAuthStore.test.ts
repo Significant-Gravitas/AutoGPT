@@ -1,22 +1,41 @@
 import type BackendAPI from "@/lib/autogpt-server-api/client";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-const resetQueryCache = vi.hoisted(() => vi.fn());
-const listenerCleanup = vi.hoisted(() => vi.fn());
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The store imports a chain of modules (server actions, auth helpers,
 // react-query). Stub them so we can exercise `setCurrentRequestContext`
 // in isolation, without pulling in next/headers or the Better Auth server
 // instance at test time.
 vi.mock("../../actions", () => ({
-  serverLogout: vi.fn(async () => ({ success: true })),
+  serverLogout: vi.fn(),
 }));
 vi.mock("../../helpers", () => ({
   broadcastLogout: vi.fn(),
-  clearWebSocketDisconnectIntent: vi.fn(),
+  navigateWithFullLoad: vi.fn(),
   setWebSocketDisconnectIntent: vi.fn(),
-  setupSessionEventListeners: vi.fn(() => ({ cleanup: listenerCleanup })),
+  setupSessionEventListeners: vi.fn(() => ({ cleanup: vi.fn() })),
+}));
+vi.mock("../../deployment-reload", () => ({
+  reloadForNewDeployment: vi.fn(() => true),
+}));
+vi.mock("@/lib/react-query/queryClient", () => ({
+  getQueryClient: () => ({ clear: vi.fn() }),
+}));
+vi.mock("@/services/analytics/reset-identity", () => ({
+  resetAnalyticsIdentity: vi.fn(),
+}));
+vi.mock("@/services/push-notifications/helpers", () => ({
+  teardownPushSubscriptionBeforeLogout: vi.fn(),
+}));
+const { mockClearAllCompletedSessions } = vi.hoisted(() => ({
+  mockClearAllCompletedSessions: vi.fn(),
+}));
+vi.mock("@/app/(platform)/copilot/store", () => ({
+  useCopilotUIStore: {
+    getState: () => ({
+      clearAllCompletedSessions: mockClearAllCompletedSessions,
+    }),
+  },
 }));
 vi.mock("../helpers", () => ({
   fetchUser: vi.fn(),
@@ -24,20 +43,20 @@ vi.mock("../helpers", () => ({
   refreshSession: vi.fn(),
   validateSession: vi.fn(),
 }));
-vi.mock("@/lib/react-query/queryClient", () => ({
-  resetQueryClientForIdentityChange: resetQueryCache,
-}));
 
-import type { User } from "../../types";
+import { IMPERSONATION_STORAGE_KEY } from "@/lib/constants";
+import { ImpersonationState } from "@/lib/impersonation";
+import { teardownPushSubscriptionBeforeLogout } from "@/services/push-notifications/helpers";
 import { serverLogout } from "../../actions";
+import { reloadForNewDeployment } from "../../deployment-reload";
 import {
-  broadcastLogout,
-  clearWebSocketDisconnectIntent,
+  navigateWithFullLoad,
   setupSessionEventListeners,
 } from "../../helpers";
+import type { User } from "../../types";
 import {
   fetchUser,
-  handleStorageEvent as handleStorageEventHelper,
+  handleStorageEvent,
   refreshSession as refreshSessionHelper,
   validateSession as validateSessionHelper,
 } from "../helpers";
@@ -55,7 +74,7 @@ function makeRouter() {
 }
 
 function makeApi() {
-  return { disconnectWebSocket: vi.fn() } as unknown as BackendAPI;
+  return {} as BackendAPI;
 }
 
 function snapshot() {
@@ -144,13 +163,13 @@ describe("useAuthStore.validateSession", () => {
     useAuthStore.setState({
       user: null,
       hasLoadedUser: false,
-      hasCompletedInitialAuthHydration: false,
       isUserLoading: false,
-      initializationPromise: null,
       isValidating: false,
       lastValidation: 0,
     });
+    useAuthStore.getState().cleanup();
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it("clears the user and redirects when the server says the session is invalid", async () => {
@@ -197,622 +216,347 @@ describe("useAuthStore.validateSession", () => {
     expect(useAuthStore.getState().user).toBe(user);
     expect(router.push).not.toHaveBeenCalled();
   });
+
+  it("keeps the user signed in through a network failure and retries", async () => {
+    vi.useFakeTimers();
+    const router = makeRouter();
+    const user = { id: "user-1" } as User;
+    vi.mocked(validateSessionHelper)
+      .mockResolvedValueOnce({
+        isValid: true,
+        shouldUpdateUser: false,
+        unavailable: "network",
+      })
+      .mockResolvedValueOnce({
+        user: null,
+        isValid: false,
+        redirectPath: "/login?next=%2Fbuild",
+        shouldUpdateUser: true,
+      });
+    useAuthStore.setState({ user, hasLoadedUser: true });
+
+    const stillValid = await useAuthStore.getState().validateSession({
+      router,
+      path: "/build",
+      force: true,
+    });
+
+    expect(stillValid).toBe(true);
+    expect(useAuthStore.getState().user).toBe(user);
+    expect(router.push).not.toHaveBeenCalled();
+
+    useAuthStore.setState({ routerRef: router, currentPath: "/build" });
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(validateSessionHelper).toHaveBeenCalledTimes(2);
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(router.push).toHaveBeenCalledWith("/login?next=%2Fbuild");
+  });
+
+  it("reloads onto the new deployment instead of logging out on deploy skew", async () => {
+    const router = makeRouter();
+    const user = { id: "user-1" } as User;
+    vi.mocked(validateSessionHelper).mockResolvedValue({
+      isValid: true,
+      shouldUpdateUser: false,
+      unavailable: "deployment-skew",
+    });
+    useAuthStore.setState({ user, hasLoadedUser: true });
+
+    await useAuthStore.getState().validateSession({
+      router,
+      path: "/build",
+      force: true,
+    });
+
+    expect(reloadForNewDeployment).toHaveBeenCalled();
+    expect(useAuthStore.getState().user).toBe(user);
+    expect(router.push).not.toHaveBeenCalled();
+  });
 });
 
-describe("useAuthStore identity cache isolation", () => {
+describe("useAuthStore resilience", () => {
+  const user = { id: "user-1" } as User;
+
   afterEach(() => {
     useAuthStore.getState().cleanup();
     useAuthStore.setState({
       user: null,
       hasLoadedUser: false,
-      hasCompletedInitialAuthHydration: false,
-      isUserLoading: false,
-      initializationPromise: null,
+      isValidating: false,
+      lastValidation: 0,
       routerRef: null,
       apiRef: null,
       currentPath: "",
-      isValidating: false,
-      lastValidation: 0,
     });
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
-  it("preserves hydrated queries when loading the first identity", async () => {
-    useAuthStore.setState({
-      user: null,
-      hasLoadedUser: false,
-      hasCompletedInitialAuthHydration: false,
-      isUserLoading: true,
-      initializationPromise: null,
-    });
-    vi.mocked(fetchUser).mockResolvedValue({
-      user: { id: "user-a" } as User,
-      hasLoadedUser: true,
-      isUserLoading: false,
-    });
-    resetQueryCache.mockClear();
-
-    await useAuthStore.getState().initialize({
-      router: makeRouter(),
-      api: makeApi(),
-      path: "/library",
-    });
-
-    expect(resetQueryCache).not.toHaveBeenCalled();
-    expect(clearWebSocketDisconnectIntent).toHaveBeenCalledOnce();
-    expect(useAuthStore.getState().hasCompletedInitialAuthHydration).toBe(true);
-  });
-
-  it("clears cached queries when an authenticated identity changes", () => {
-    useAuthStore.setState({ hasCompletedInitialAuthHydration: true });
-    resetQueryCache.mockClear();
-    useAuthStore.setState({
-      user: { id: "user-a" } as User,
-      hasLoadedUser: true,
-    });
-    expect(resetQueryCache).toHaveBeenLastCalledWith("user-a");
-
-    useAuthStore.setState({ user: { id: "user-b" } as User });
-    expect(resetQueryCache).toHaveBeenLastCalledWith("user-b");
-
-    useAuthStore.setState({ user: null });
-    expect(resetQueryCache).toHaveBeenLastCalledWith(null);
-    expect(resetQueryCache).toHaveBeenCalledTimes(3);
-  });
-
-  it("refetches when an identity arrives after initial anonymous hydration", () => {
-    useAuthStore.setState({
-      user: null,
-      hasCompletedInitialAuthHydration: true,
-    });
-    resetQueryCache.mockClear();
-
-    useAuthStore.setState({ user: { id: "user-b" } as User });
-
-    expect(resetQueryCache).toHaveBeenCalledOnce();
-    expect(resetQueryCache).toHaveBeenCalledWith("user-b");
-  });
-
-  it("does not restore a user when logout wins an initial fetch race", async () => {
-    let resolveFetch:
-      | ((value: {
-          user: User | null;
-          hasLoadedUser: boolean;
-          isUserLoading: boolean;
-        }) => void)
-      | undefined;
-    vi.mocked(fetchUser).mockReturnValue(
-      new Promise((resolve) => {
-        resolveFetch = resolve;
-      }),
-    );
-    const api = makeApi();
-
-    const initialization = useAuthStore
-      .getState()
-      .initialize({ api, router: makeRouter(), path: "/logout" });
-    await vi.waitFor(() => expect(fetchUser).toHaveBeenCalledOnce());
-    await useAuthStore.getState().logOut({ api });
-
-    resolveFetch?.({
-      user: { id: "user-a" } as User,
-      hasLoadedUser: true,
-      isUserLoading: false,
-    });
-    await initialization;
-
-    expect(useAuthStore.getState().user).toBeNull();
-    expect(clearWebSocketDisconnectIntent).not.toHaveBeenCalled();
-    expect(setupSessionEventListeners).toHaveBeenCalledOnce();
-    expect(listenerCleanup).toHaveBeenCalledOnce();
-    expect(resetQueryCache).toHaveBeenCalledWith(null);
-  });
-
-  it("clears cached queries when logout lands before hydration completes", async () => {
-    useAuthStore.setState({
-      user: { id: "user-a" } as User,
-      hasLoadedUser: true,
-      hasCompletedInitialAuthHydration: false,
-    });
-    resetQueryCache.mockClear();
-
-    await useAuthStore.getState().logOut({ api: makeApi() });
-
-    expect(resetQueryCache).toHaveBeenCalledOnce();
-    expect(resetQueryCache).toHaveBeenCalledWith(null);
-  });
-
-  it("keeps a fresh post-logout initialization when an older one finishes", async () => {
-    let resolveOldFetch:
-      | ((value: {
-          user: User | null;
-          hasLoadedUser: boolean;
-          isUserLoading: boolean;
-        }) => void)
-      | undefined;
-    vi.mocked(fetchUser)
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
-          resolveOldFetch = resolve;
-        }),
-      )
-      .mockResolvedValueOnce({
-        user: { id: "user-b" } as User,
-        hasLoadedUser: true,
-        isUserLoading: false,
-      });
-    const api = makeApi();
+  it("stops retrying after the budget is spent and never stacks timers", async () => {
+    vi.useFakeTimers();
     const router = makeRouter();
-
-    const oldInitialization = useAuthStore
-      .getState()
-      .initialize({ api, router, path: "/logout" });
-    await vi.waitFor(() => expect(fetchUser).toHaveBeenCalledOnce());
-    await useAuthStore.getState().logOut({ api });
-
-    await useAuthStore.getState().initialize({ api, router, path: "/library" });
-    resolveOldFetch?.({
-      user: { id: "user-a" } as User,
-      hasLoadedUser: true,
-      isUserLoading: false,
-    });
-    await oldInitialization;
-
-    expect(useAuthStore.getState().user?.id).toBe("user-b");
-    expect(useAuthStore.getState().initializationPromise).toBeNull();
-    expect(clearWebSocketDisconnectIntent).toHaveBeenCalledOnce();
-    expect(resetQueryCache).toHaveBeenCalledWith("user-b");
-    expect(setupSessionEventListeners).toHaveBeenCalledTimes(2);
-  });
-
-  it("waits for a pending logout before starting a new initialization", async () => {
-    let resolveLogout: ((value: { success: boolean }) => void) | undefined;
-    vi.mocked(serverLogout).mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveLogout = resolve;
-      }),
-    );
-    vi.mocked(fetchUser).mockResolvedValue({
-      user: { id: "user-b" } as User,
-      hasLoadedUser: true,
-      isUserLoading: false,
-    });
-    const api = makeApi();
-    const router = makeRouter();
-    useAuthStore.setState({
-      user: { id: "user-a" } as User,
-      hasLoadedUser: true,
-      hasCompletedInitialAuthHydration: true,
-    });
-
-    const logout = useAuthStore.getState().logOut({ api });
-    const initialization = useAuthStore
-      .getState()
-      .initialize({ api, router, path: "/library" });
-    await Promise.resolve();
-
-    expect(fetchUser).not.toHaveBeenCalled();
-    expect(broadcastLogout).not.toHaveBeenCalled();
-    resolveLogout?.({ success: true });
-    await logout;
-    await initialization;
-
-    expect(fetchUser).toHaveBeenCalledOnce();
-    expect(broadcastLogout).toHaveBeenCalledOnce();
-    expect(useAuthStore.getState().user?.id).toBe("user-b");
-  });
-
-  it("stops loading when a pending logout fails before initialization", async () => {
-    let rejectLogout: ((reason?: unknown) => void) | undefined;
-    vi.mocked(serverLogout).mockReturnValueOnce(
-      new Promise<{ success: boolean }>((_resolve, reject) => {
-        rejectLogout = reject;
-      }),
-    );
-    const api = makeApi();
-
-    const logout = useAuthStore.getState().logOut({ api });
-    const initialization = useAuthStore.getState().initialize({
-      api,
-      router: makeRouter(),
-      path: "/library",
-    });
-    await Promise.resolve();
-
-    expect(useAuthStore.getState().isUserLoading).toBe(true);
-    const logoutAssertion = expect(logout).rejects.toThrow("logout failed");
-    rejectLogout?.(new Error("logout failed"));
-    await logoutAssertion;
-    await initialization;
-
-    expect(fetchUser).not.toHaveBeenCalled();
-    expect(useAuthStore.getState().user).toBeNull();
-    expect(useAuthStore.getState().isUserLoading).toBe(false);
-    expect(useAuthStore.getState().initializationPromise).toBeNull();
-  });
-
-  it("stops loading when refresh supersedes initialization and logout fails", async () => {
-    let rejectLogout: ((reason?: unknown) => void) | undefined;
-    vi.mocked(serverLogout).mockReturnValueOnce(
-      new Promise<{ success: boolean }>((_resolve, reject) => {
-        rejectLogout = reject;
-      }),
-    );
-    const api = makeApi();
-    const router = makeRouter();
-
-    const logout = useAuthStore.getState().logOut({ api });
-    const initialization = useAuthStore
-      .getState()
-      .initialize({ api, router, path: "/library" });
-    const refresh = useAuthStore.getState().refreshSession();
-    await Promise.resolve();
-
-    const logoutAssertion = expect(logout).rejects.toThrow("logout failed");
-    rejectLogout?.(new Error("logout failed"));
-    await logoutAssertion;
-    await initialization;
-    await refresh;
-
-    expect(fetchUser).not.toHaveBeenCalled();
-    expect(refreshSessionHelper).not.toHaveBeenCalled();
-    expect(useAuthStore.getState().user).toBeNull();
-    expect(useAuthStore.getState().isUserLoading).toBe(false);
-  });
-
-  it("keeps listeners when refresh supersedes initialization during logout", async () => {
-    let resolveLogout: ((value: { success: boolean }) => void) | undefined;
-    vi.mocked(serverLogout).mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveLogout = resolve;
-      }),
-    );
-    vi.mocked(refreshSessionHelper).mockResolvedValue({
-      user: { id: "user-b" } as User,
-    });
-    const api = makeApi();
-    const router = makeRouter();
-    useAuthStore.setState({
-      user: { id: "user-a" } as User,
-      hasLoadedUser: true,
-      hasCompletedInitialAuthHydration: true,
-    });
-
-    const logout = useAuthStore.getState().logOut({ api });
-    const initialization = useAuthStore
-      .getState()
-      .initialize({ api, router, path: "/library" });
-    const refresh = useAuthStore.getState().refreshSession();
-    await Promise.resolve();
-
-    expect(setupSessionEventListeners).toHaveBeenCalledOnce();
-    expect(fetchUser).not.toHaveBeenCalled();
-    expect(refreshSessionHelper).not.toHaveBeenCalled();
-
-    resolveLogout?.({ success: true });
-    await logout;
-    await initialization;
-    await refresh;
-
-    expect(fetchUser).not.toHaveBeenCalled();
-    expect(refreshSessionHelper).toHaveBeenCalledOnce();
-    expect(useAuthStore.getState().user?.id).toBe("user-b");
-    expect(useAuthStore.getState().listenersCleanup).toBe(listenerCleanup);
-  });
-
-  it("does not restore a user when logout wins fallback validation", async () => {
-    let resolveValidation:
-      | ((value: {
-          user: User | null;
-          isValid: boolean;
-          shouldUpdateUser: boolean;
-        }) => void)
-      | undefined;
-    vi.mocked(fetchUser).mockResolvedValue({
-      user: null,
-      hasLoadedUser: false,
-      isUserLoading: false,
-    });
-    vi.mocked(validateSessionHelper).mockReturnValue(
-      new Promise((resolve) => {
-        resolveValidation = resolve;
-      }),
-    );
-    const api = makeApi();
-
-    const initialization = useAuthStore
-      .getState()
-      .initialize({ api, router: makeRouter(), path: "/logout" });
-    await vi.waitFor(() =>
-      expect(validateSessionHelper).toHaveBeenCalledOnce(),
-    );
-    await useAuthStore.getState().logOut({ api });
-
-    resolveValidation?.({
-      user: { id: "user-a" } as User,
-      isValid: true,
-      shouldUpdateUser: true,
-    });
-    await initialization;
-
-    expect(useAuthStore.getState().user).toBeNull();
-    expect(clearWebSocketDisconnectIntent).not.toHaveBeenCalled();
-    expect(setupSessionEventListeners).toHaveBeenCalledOnce();
-    expect(listenerCleanup).toHaveBeenCalledOnce();
-  });
-
-  it("does not restore a user when logout wins session validation", async () => {
-    let resolveValidation:
-      | ((value: {
-          user: User | null;
-          isValid: boolean;
-          shouldUpdateUser: boolean;
-        }) => void)
-      | undefined;
-    vi.mocked(validateSessionHelper).mockReturnValue(
-      new Promise((resolve) => {
-        resolveValidation = resolve;
-      }),
-    );
-    const api = makeApi();
-    const router = makeRouter();
-    useAuthStore.setState({
-      user: { id: "user-a" } as User,
-      hasLoadedUser: true,
-      hasCompletedInitialAuthHydration: true,
-    });
-
-    const validation = useAuthStore
-      .getState()
-      .validateSession({ router, path: "/library", force: true });
-    await vi.waitFor(() =>
-      expect(validateSessionHelper).toHaveBeenCalledOnce(),
-    );
-    await useAuthStore.getState().logOut({ api });
-
-    resolveValidation?.({
-      user: { id: "user-a" } as User,
-      isValid: true,
-      shouldUpdateUser: true,
-    });
-
-    await expect(validation).resolves.toBe(false);
-    expect(useAuthStore.getState().user).toBeNull();
-    expect(clearWebSocketDisconnectIntent).not.toHaveBeenCalled();
-  });
-
-  it("does not restore a user when logout wins session refresh", async () => {
-    let resolveRefresh:
-      | ((value: { user?: User | null; error?: string }) => void)
-      | undefined;
-    vi.mocked(refreshSessionHelper).mockReturnValue(
-      new Promise((resolve) => {
-        resolveRefresh = resolve;
-      }),
-    );
-    const api = makeApi();
-    useAuthStore.setState({
-      user: { id: "user-a" } as User,
-      hasLoadedUser: true,
-      hasCompletedInitialAuthHydration: true,
-    });
-
-    const refresh = useAuthStore.getState().refreshSession();
-    await vi.waitFor(() => expect(refreshSessionHelper).toHaveBeenCalledOnce());
-    await useAuthStore.getState().logOut({ api });
-
-    resolveRefresh?.({ user: { id: "user-a" } as User });
-    await refresh;
-
-    expect(useAuthStore.getState().user).toBeNull();
-    expect(clearWebSocketDisconnectIntent).not.toHaveBeenCalled();
-  });
-
-  it("rejects an initial fetch after a cross-tab logout broadcast", async () => {
-    let resolveFetch:
-      | ((value: {
-          user: User | null;
-          hasLoadedUser: boolean;
-          isUserLoading: boolean;
-        }) => void)
-      | undefined;
-    vi.mocked(fetchUser).mockReturnValue(
-      new Promise((resolve) => {
-        resolveFetch = resolve;
-      }),
-    );
-    vi.mocked(handleStorageEventHelper).mockReturnValueOnce({
-      shouldLogout: true,
-    });
-
-    const initialization = useAuthStore.getState().initialize({
-      api: makeApi(),
-      router: makeRouter(),
-      path: "/library",
-    });
-    await vi.waitFor(() => expect(fetchUser).toHaveBeenCalledOnce());
-    const storageHandler = vi.mocked(setupSessionEventListeners).mock
-      .calls[0]?.[1];
-
-    storageHandler?.(new StorageEvent("storage", { key: "auth-logout" }));
-    resolveFetch?.({
-      user: { id: "user-a" } as User,
-      hasLoadedUser: true,
-      isUserLoading: false,
-    });
-    await initialization;
-
-    expect(useAuthStore.getState().user).toBeNull();
-    expect(clearWebSocketDisconnectIntent).not.toHaveBeenCalled();
-    expect(resetQueryCache).toHaveBeenCalledWith(null);
-  });
-
-  it("keeps the newest auth operation when an older refresh finishes", async () => {
-    let resolveRefresh:
-      | ((value: { user?: User | null; error?: string }) => void)
-      | undefined;
-    vi.mocked(refreshSessionHelper).mockReturnValue(
-      new Promise((resolve) => {
-        resolveRefresh = resolve;
-      }),
-    );
     vi.mocked(validateSessionHelper).mockResolvedValue({
-      user: { id: "user-b" } as User,
       isValid: true,
-      shouldUpdateUser: true,
+      shouldUpdateUser: false,
+      unavailable: "network",
     });
     useAuthStore.setState({
-      user: { id: "user-a" } as User,
+      user,
       hasLoadedUser: true,
-      hasCompletedInitialAuthHydration: true,
+      routerRef: router,
+      currentPath: "/library",
     });
 
-    const refresh = useAuthStore.getState().refreshSession();
-    await vi.waitFor(() => expect(refreshSessionHelper).toHaveBeenCalledOnce());
-    await expect(
-      useAuthStore.getState().validateSession({
-        router: makeRouter(),
-        path: "/library",
-        force: true,
-      }),
-    ).resolves.toBe(true);
+    await useAuthStore.getState().validateSession({ force: true });
+    await useAuthStore.getState().validateSession({ force: true });
+    expect(vi.getTimerCount()).toBe(1);
 
-    resolveRefresh?.({ user: { id: "user-a" } as User });
-    await refresh;
+    for (let i = 0; i < 10; i++) await vi.runOnlyPendingTimersAsync();
 
-    expect(useAuthStore.getState().user?.id).toBe("user-b");
+    // The first check, the second forced one, then six retries.
+    expect(validateSessionHelper).toHaveBeenCalledTimes(8);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(useAuthStore.getState().user).toBe(user);
+    expect(router.push).not.toHaveBeenCalled();
   });
 
-  it("does not let a loaded-user initialize supersede validation", async () => {
-    let resolveValidation:
-      | ((value: {
-          user: User | null;
-          isValid: boolean;
-          redirectPath?: string;
-          shouldUpdateUser: boolean;
-        }) => void)
-      | undefined;
+  it("doesn't start a second check when the network returns mid-check", async () => {
+    vi.mocked(fetchUser).mockResolvedValue({
+      user,
+      hasLoadedUser: true,
+      isUserLoading: false,
+    });
+    await useAuthStore.getState().initialize({
+      api: makeApi(),
+      router: makeRouter(),
+      path: "/library",
+    });
+    const [, , onOnline] = vi.mocked(setupSessionEventListeners).mock.calls[0];
+    let finish!: (
+      result: Awaited<ReturnType<typeof validateSessionHelper>>,
+    ) => void;
     vi.mocked(validateSessionHelper).mockReturnValue(
       new Promise((resolve) => {
-        resolveValidation = resolve;
+        finish = resolve;
       }),
     );
-    const router = makeRouter();
-    const api = makeApi();
-    useAuthStore.setState({
-      user: { id: "user-a" } as User,
-      hasLoadedUser: true,
-      hasCompletedInitialAuthHydration: true,
-    });
 
-    const validation = useAuthStore
-      .getState()
-      .validateSession({ router, path: "/library", force: true });
-    await vi.waitFor(() =>
-      expect(validateSessionHelper).toHaveBeenCalledOnce(),
-    );
-    await useAuthStore.getState().initialize({
-      api,
-      router,
-      path: "/library",
-    });
+    const inFlight = useAuthStore.getState().validateSession({ force: true });
+    onOnline?.();
+    finish({ user, isValid: true, shouldUpdateUser: false });
+    await inFlight;
 
-    resolveValidation?.({
-      user: null,
-      isValid: false,
-      redirectPath: "/login?next=%2Flibrary",
-      shouldUpdateUser: true,
-    });
-
-    await expect(validation).resolves.toBe(false);
-    expect(useAuthStore.getState().user).toBeNull();
-    expect(router.push).toHaveBeenCalledWith("/login?next=%2Flibrary");
+    expect(validateSessionHelper).toHaveBeenCalledTimes(1);
   });
 
-  it("does not let a loaded-user initialize supersede refresh", async () => {
-    let resolveRefresh:
-      | ((value: { user?: User | null; error?: string }) => void)
-      | undefined;
-    vi.mocked(refreshSessionHelper).mockReturnValue(
-      new Promise((resolve) => {
-        resolveRefresh = resolve;
-      }),
-    );
-    const router = makeRouter();
-    const api = makeApi();
-    useAuthStore.setState({
-      user: { id: "user-a" } as User,
-      hasLoadedUser: true,
-      hasCompletedInitialAuthHydration: true,
-    });
-
-    const refresh = useAuthStore.getState().refreshSession();
-    await vi.waitFor(() => expect(refreshSessionHelper).toHaveBeenCalledOnce());
-    await useAuthStore.getState().initialize({
-      api,
-      router,
-      path: "/library",
-    });
-
-    resolveRefresh?.({ user: { id: "user-b" } as User });
-    await refresh;
-
-    expect(useAuthStore.getState().user?.id).toBe("user-b");
-  });
-
-  it("keeps the validation flag owned by the newest validation", async () => {
-    let resolveFirst:
-      | ((value: {
-          user: User | null;
-          isValid: boolean;
-          shouldUpdateUser: boolean;
-        }) => void)
-      | undefined;
-    let resolveSecond:
-      | ((value: {
-          user: User | null;
-          isValid: boolean;
-          shouldUpdateUser: boolean;
-        }) => void)
-      | undefined;
-    vi.mocked(validateSessionHelper)
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
-          resolveFirst = resolve;
-        }),
-      )
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
-          resolveSecond = resolve;
-        }),
-      );
-    const user = { id: "user-a" } as User;
+  it("doesn't spend a retry when its timer fires while a check is already running", async () => {
+    vi.useFakeTimers();
     const router = makeRouter();
     useAuthStore.setState({
       user,
       hasLoadedUser: true,
-      hasCompletedInitialAuthHydration: true,
+      routerRef: router,
+      currentPath: "/library",
+    });
+    vi.mocked(validateSessionHelper).mockResolvedValueOnce({
+      isValid: true,
+      shouldUpdateUser: false,
+      unavailable: "network",
+    });
+    await useAuthStore.getState().validateSession({ force: true });
+    expect(useAuthStore.getState().retryAttempt).toBe(1);
+
+    let finish!: (
+      result: Awaited<ReturnType<typeof validateSessionHelper>>,
+    ) => void;
+    vi.mocked(validateSessionHelper).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const inFlight = useAuthStore
+      .getState()
+      .validateSession({ force: true, router, path: "/library" });
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(validateSessionHelper).toHaveBeenCalledTimes(2);
+    expect(useAuthStore.getState().retryAttempt).toBe(0);
+    finish({ user, isValid: true, shouldUpdateUser: false });
+    await inFlight;
+  });
+
+  it("sends the tab to login with a full page load when another tab signs out", async () => {
+    vi.mocked(fetchUser).mockResolvedValue({
+      user,
+      hasLoadedUser: true,
+      isUserLoading: false,
+    });
+    vi.mocked(handleStorageEvent).mockReturnValue({
+      shouldLogout: true,
+      redirectPath: "/login?next=%2Flibrary",
+    });
+    await useAuthStore.getState().initialize({
+      api: makeApi(),
+      router: makeRouter(),
+      path: "/library",
+    });
+    const [, onStorage] = vi.mocked(setupSessionEventListeners).mock.calls[0];
+
+    onStorage(new StorageEvent("storage", { key: "supabase-logout" }));
+
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(navigateWithFullLoad).toHaveBeenCalledWith("/login?next=%2Flibrary");
+  });
+
+  it("keeps the user when a session refresh can't reach the auth backend", async () => {
+    useAuthStore.setState({ user, hasLoadedUser: true });
+    vi.mocked(refreshSessionHelper).mockResolvedValue({
+      user: null,
+      error: "connection reset",
+      isUnavailable: true,
     });
 
-    const first = useAuthStore
-      .getState()
-      .validateSession({ router, path: "/library", force: true });
-    await vi.waitFor(() =>
-      expect(validateSessionHelper).toHaveBeenCalledTimes(1),
-    );
-    const second = useAuthStore
-      .getState()
-      .validateSession({ router, path: "/library", force: true });
-    await vi.waitFor(() =>
-      expect(validateSessionHelper).toHaveBeenCalledTimes(2),
-    );
+    await useAuthStore.getState().refreshSession();
 
-    resolveFirst?.({ user, isValid: true, shouldUpdateUser: false });
-    await expect(first).resolves.toBe(false);
-    expect(useAuthStore.getState().isValidating).toBe(true);
+    expect(useAuthStore.getState().user).toBe(user);
+  });
 
-    resolveSecond?.({ user, isValid: true, shouldUpdateUser: false });
-    await expect(second).resolves.toBe(true);
-    expect(useAuthStore.getState().isValidating).toBe(false);
+  it("clears the user when a session refresh finds no session", async () => {
+    useAuthStore.setState({ user, hasLoadedUser: true });
+    vi.mocked(refreshSessionHelper).mockResolvedValue({
+      user: null,
+      error: "No active session",
+    });
+
+    await useAuthStore.getState().refreshSession();
+
+    expect(useAuthStore.getState().user).toBeNull();
+  });
+});
+
+describe("useAuthStore.logOut", () => {
+  afterEach(async () => {
+    useAuthStore.setState({ user: null, hasLoadedUser: false });
+    await vi.dynamicImportSettled();
+    vi.clearAllMocks();
+  });
+
+  it("clears admin impersonation so the next user doesn't act as someone else", async () => {
+    ImpersonationState.set("impersonated-user", "admin-1");
+    expect(ImpersonationState.read()?.target).toBe("impersonated-user");
+
+    await useAuthStore.getState().logOut();
+
+    expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBeNull();
+    expect(document.cookie).not.toContain(`${IMPERSONATION_STORAGE_KEY}=`);
+    expect(ImpersonationState.read()).toBeNull();
+  });
+
+  it("waits for this browser's push subscription to go before the server signs out", async () => {
+    let finishTeardown: () => void = () => {};
+    vi.mocked(teardownPushSubscriptionBeforeLogout).mockReturnValue(
+      new Promise<void>((resolve) => (finishTeardown = resolve)),
+    );
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+
+    const loggingOut = useAuthStore.getState().logOut();
+    await Promise.resolve();
+
+    expect(teardownPushSubscriptionBeforeLogout).toHaveBeenCalledOnce();
+    expect(serverLogout).not.toHaveBeenCalled();
+
+    finishTeardown();
+    await loggingOut;
+
+    expect(serverLogout).toHaveBeenCalledOnce();
+  });
+});
+
+describe("useAuthStore onboarding handoff", () => {
+  // The wizard's handoff to Home lives in this tab's sessionStorage, which
+  // outlives a sign-out: the next account to sign in here must not inherit
+  // "just finished onboarding" (and get the first-run walkthrough).
+  const WELCOME = "autogpt:onboarding-welcome-pending";
+  const INTRO = "autogpt:onboarding-intro-path";
+
+  beforeEach(() => {
+    window.sessionStorage.setItem(WELCOME, "1");
+    window.sessionStorage.setItem(INTRO, "A");
+  });
+
+  afterEach(async () => {
+    window.sessionStorage.clear();
+    useAuthStore.setState({ user: null, hasLoadedUser: false });
+    await vi.dynamicImportSettled();
+    vi.clearAllMocks();
+  });
+
+  it("is cleared when the user signs out", async () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+
+    await useAuthStore.getState().logOut();
+
+    expect(window.sessionStorage.getItem(WELCOME)).toBeNull();
+    expect(window.sessionStorage.getItem(INTRO)).toBeNull();
+  });
+
+  it("is cleared when another account takes over the tab", () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: { id: "user-2" } as User });
+
+    expect(window.sessionStorage.getItem(WELCOME)).toBeNull();
+  });
+
+  it("is cleared when the next account signs in after a session ended some other way", () => {
+    // A sign-out in another tab or a failed session check drops the user
+    // without logOut(); the next sign-in still must not inherit the flags.
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: null });
+    useAuthStore.setState({ user: { id: "user-2" } as User });
+
+    expect(window.sessionStorage.getItem(WELCOME)).toBeNull();
+    expect(window.sessionStorage.getItem(INTRO)).toBeNull();
+  });
+
+  it("survives the same user signing back in after a dropped session", () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: null });
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+
+    expect(window.sessionStorage.getItem(WELCOME)).toBe("1");
+  });
+
+  it("survives the same user being refreshed", () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+
+    expect(window.sessionStorage.getItem(WELCOME)).toBe("1");
+    expect(window.sessionStorage.getItem(INTRO)).toBe("A");
+  });
+});
+
+describe("useAuthStore account change", () => {
+  afterEach(async () => {
+    useAuthStore.setState({ user: null });
+    await vi.dynamicImportSettled();
+    vi.clearAllMocks();
+  });
+
+  it("clears the finished-chats list when the user signs out", async () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: null });
+
+    await vi.waitFor(() =>
+      expect(mockClearAllCompletedSessions).toHaveBeenCalledOnce(),
+    );
+  });
+
+  it("keeps the finished-chats list when the same user is refreshed", async () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    await vi.dynamicImportSettled();
+
+    expect(mockClearAllCompletedSessions).not.toHaveBeenCalled();
   });
 });

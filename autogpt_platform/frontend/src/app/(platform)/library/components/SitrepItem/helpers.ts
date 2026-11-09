@@ -12,6 +12,8 @@ export function buildAutoPilotPrompt(item: SitrepItemData): string {
       return `Give me a status update on the ${item.agentName} run — what has it found so far?${idHint}`;
     case "stale":
       return `${item.agentName} hasn't run recently. Should I keep it or update and re-run it?${idHint}`;
+    case "warning":
+      return `${item.agentName}'s last run finished, but it says "${item.message}". Which step failed, why, and how do I fix it?${idHint}`;
     case "success":
       return `Show me what ${item.agentName} found in its last run — summarize the results and any key takeaways.${idHint}`;
     case "listening":

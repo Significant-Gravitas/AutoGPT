@@ -2,12 +2,15 @@
 
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.api.features.library import model as library_model
 from backend.api.features.library.db import collect_tree_ids
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db
 
 from .base import BaseTool
+from .external_scope import error_detail, external_tenancy, external_tenant
 from .models import (
     AgentsMovedToFolderResponse,
     ErrorResponse,
@@ -87,6 +90,10 @@ class CreateFolderTool(BaseTool):
         return "create_folder"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    @property
     def description(self) -> str:
         return "Create a library folder. Use parent_id to nest inside another folder."
 
@@ -106,10 +113,13 @@ class CreateFolderTool(BaseTool):
                 "parent_id": {
                     "type": "string",
                     "description": "Parent folder ID (omit for root).",
+                    "title": "Inside folder",
+                    "entity": "library_folder",
                 },
                 "icon": {
                     "type": "string",
                     "description": "Icon identifier.",
+                    "entity": None,
                 },
                 "color": {
                     "type": "string",
@@ -142,16 +152,19 @@ class CreateFolderTool(BaseTool):
             )
 
         try:
+            organization_id, team_id = external_tenancy(session)
             folder = await library_db().create_folder(
                 user_id=user_id,
                 name=name,
                 parent_id=parent_id,
                 icon=icon,
                 color=color,
+                organization_id=organization_id,
+                team_id=team_id,
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to create folder: {e}",
+                message=f"Failed to create folder: {error_detail(e, session)}",
                 error="create_folder_failed",
                 session_id=session_id,
             )
@@ -169,6 +182,10 @@ class ListFoldersTool(BaseTool):
     @property
     def name(self) -> str:
         return "list_folders"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -210,15 +227,16 @@ class ListFoldersTool(BaseTool):
         """List folders as a flat list (by parent) or full tree."""
         assert user_id is not None  # guaranteed by requires_auth
         session_id = session.session_id if session else None
+        tenant = external_tenant(session)
 
         try:
             if parent_id:
                 folders = await library_db().list_folders(
-                    user_id=user_id, parent_id=parent_id
+                    user_id=user_id, parent_id=parent_id, organization_id=tenant
                 )
                 raw_map = (
                     await library_db().get_folder_agents_map(
-                        user_id, [f.id for f in folders]
+                        user_id, [f.id for f in folders], tenant
                     )
                     if include_agents
                     else None
@@ -234,15 +252,19 @@ class ListFoldersTool(BaseTool):
                     session_id=session_id,
                 )
             else:
-                tree = await library_db().get_folder_tree(user_id=user_id)
+                tree = await library_db().get_folder_tree(
+                    user_id=user_id, organization_id=tenant
+                )
                 all_ids = collect_tree_ids(tree)
                 agents_map = None
                 root_agents = None
                 if include_agents:
-                    raw_map = await library_db().get_folder_agents_map(user_id, all_ids)
+                    raw_map = await library_db().get_folder_agents_map(
+                        user_id, all_ids, tenant
+                    )
                     agents_map = _to_agent_summaries_map(raw_map)
                     root_agents = _to_agent_summaries(
-                        await library_db().get_root_agent_summaries(user_id)
+                        await library_db().get_root_agent_summaries(user_id, tenant)
                     )
                 return FolderListResponse(
                     message=f"Found {len(all_ids)} folder(s) in your library.",
@@ -253,7 +275,7 @@ class ListFoldersTool(BaseTool):
                 )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to list folders: {e}",
+                message=f"Failed to list folders: {error_detail(e, session)}",
                 error="list_folders_failed",
                 session_id=session_id,
             )
@@ -265,6 +287,10 @@ class UpdateFolderTool(BaseTool):
     @property
     def name(self) -> str:
         return "update_folder"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -282,6 +308,7 @@ class UpdateFolderTool(BaseTool):
                 "folder_id": {
                     "type": "string",
                     "description": "ID of the folder to update.",
+                    "entity": "library_folder",
                 },
                 "name": {
                     "type": "string",
@@ -290,6 +317,7 @@ class UpdateFolderTool(BaseTool):
                 "icon": {
                     "type": "string",
                     "description": "New icon identifier.",
+                    "entity": None,
                 },
                 "color": {
                     "type": "string",
@@ -331,7 +359,7 @@ class UpdateFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to update folder: {e}",
+                message=f"Failed to update folder: {error_detail(e, session)}",
                 error="update_folder_failed",
                 session_id=session_id,
             )
@@ -351,6 +379,10 @@ class MoveFolderTool(BaseTool):
         return "move_folder"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    @property
     def description(self) -> str:
         return "Move a folder. Set target_parent_id to null for root."
 
@@ -366,10 +398,13 @@ class MoveFolderTool(BaseTool):
                 "folder_id": {
                     "type": "string",
                     "description": "Folder ID.",
+                    "entity": "library_folder",
                 },
                 "target_parent_id": {
                     "type": ["string", "null"],
                     "description": "New parent folder ID (null for root).",
+                    "title": "Into folder",
+                    "entity": "library_folder",
                 },
             },
             "required": ["folder_id"],
@@ -403,7 +438,7 @@ class MoveFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to move folder: {e}",
+                message=f"Failed to move folder: {error_detail(e, session)}",
                 error="move_folder_failed",
                 session_id=session_id,
             )
@@ -425,6 +460,10 @@ class DeleteFolderTool(BaseTool):
         return "delete_folder"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    @property
     def description(self) -> str:
         return "Delete a folder. Agents inside move to root (not deleted)."
 
@@ -440,6 +479,7 @@ class DeleteFolderTool(BaseTool):
                 "folder_id": {
                     "type": "string",
                     "description": "ID of the folder to delete.",
+                    "entity": "library_folder",
                 },
             },
             "required": ["folder_id"],
@@ -472,13 +512,13 @@ class DeleteFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to delete folder: {e}",
+                message=f"Failed to delete folder: {error_detail(e, session)}",
                 error="delete_folder_failed",
                 session_id=session_id,
             )
 
         return FolderDeletedResponse(
-            message="Folder deleted. Any agents inside were moved to root level.",
+            message="Folder deleted. Any workflows inside were moved to root level.",
             folder_id=folder_id,
             session_id=session_id,
         )
@@ -490,6 +530,10 @@ class MoveAgentsToFolderTool(BaseTool):
     @property
     def name(self) -> str:
         return "move_agents_to_folder"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -508,10 +552,12 @@ class MoveAgentsToFolderTool(BaseTool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Library agent IDs to move.",
+                    "entity": "library_agent",
                 },
                 "folder_id": {
                     "type": ["string", "null"],
                     "description": "Target folder ID (null for root).",
+                    "entity": "library_folder",
                 },
             },
             "required": ["agent_ids"],
@@ -533,7 +579,7 @@ class MoveAgentsToFolderTool(BaseTool):
 
         if not agent_ids:
             return ErrorResponse(
-                message="Please provide at least one agent ID.",
+                message="Please provide at least one workflow ID.",
                 error="missing_agent_ids",
                 session_id=session_id,
             )
@@ -546,7 +592,7 @@ class MoveAgentsToFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to move agents: {e}",
+                message=f"Failed to move workflows: {error_detail(e, session)}",
                 error="move_agents_failed",
                 session_id=session_id,
             )
@@ -555,7 +601,7 @@ class MoveAgentsToFolderTool(BaseTool):
         agent_names = [a.name for a in moved]
         dest = "the folder" if folder_id else "root level"
         names_str = (
-            ", ".join(agent_names) if agent_names else f"{len(agent_ids)} agent(s)"
+            ", ".join(agent_names) if agent_names else f"{len(agent_ids)} workflow(s)"
         )
         return AgentsMovedToFolderResponse(
             message=f"Moved {names_str} to {dest}.",

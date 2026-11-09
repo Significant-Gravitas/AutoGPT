@@ -10,6 +10,7 @@ from zerobouncesdk.zb_validate_response import (
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -158,6 +159,7 @@ class ValidateEmailsBlock(Block):
                     )
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

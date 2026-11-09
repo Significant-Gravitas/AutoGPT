@@ -46,6 +46,17 @@ describe("SettingsApiKeysPage - list rendering", () => {
     expect(createButtons.length).toBeGreaterThan(0);
   });
 
+  test("links the API docs", async () => {
+    server.use(getGetV1ListUserApiKeysMockHandler([]));
+
+    render(<SettingsApiKeysPage />);
+
+    const link = await screen.findByRole("link", { name: "API docs" });
+    expect(link.getAttribute("href")).toBe(
+      "https://agpt.co/docs/platform/api-and-integrations/api-guide",
+    );
+  });
+
   test("shows empty state when the user has no keys", async () => {
     server.use(getGetV1ListUserApiKeysMockHandler([]));
 

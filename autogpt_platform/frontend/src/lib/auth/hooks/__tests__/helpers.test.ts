@@ -1,10 +1,13 @@
 import type BackendAPI from "@/lib/autogpt-server-api/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { IMPERSONATION_STORAGE_KEY } from "@/lib/constants";
+import { ImpersonationState } from "@/lib/impersonation";
 import type { User } from "../../types";
 
 const getCurrentUserMock = vi.fn();
 const validateSessionActionMock = vi.fn();
 const refreshSessionActionMock = vi.fn();
+const clearWebSocketDisconnectIntentMock = vi.fn();
 const setWebSocketDisconnectIntentMock = vi.fn();
 const getRedirectPathMock = vi.fn();
 const isLogoutEventMock = vi.fn();
@@ -16,6 +19,7 @@ vi.mock("../../actions", () => ({
 }));
 
 vi.mock("../../helpers", () => ({
+  clearWebSocketDisconnectIntent: () => clearWebSocketDisconnectIntentMock(),
   setWebSocketDisconnectIntent: () => setWebSocketDisconnectIntentMock(),
   getRedirectPath: (...args: unknown[]) => getRedirectPathMock(...args),
   isLogoutEvent: (...args: unknown[]) => isLogoutEventMock(...args),
@@ -41,6 +45,7 @@ beforeEach(() => {
   getCurrentUserMock.mockReset();
   validateSessionActionMock.mockReset();
   refreshSessionActionMock.mockReset();
+  clearWebSocketDisconnectIntentMock.mockReset();
   setWebSocketDisconnectIntentMock.mockReset();
   getRedirectPathMock.mockReset();
   isLogoutEventMock.mockReset();
@@ -52,7 +57,7 @@ afterEach(() => {
 });
 
 describe("fetchUser", () => {
-  it("returns the user", async () => {
+  it("returns the user and clears the websocket disconnect intent", async () => {
     const user = makeUser("user-1");
     getCurrentUserMock.mockResolvedValue({ user });
 
@@ -63,6 +68,7 @@ describe("fetchUser", () => {
       hasLoadedUser: true,
       isUserLoading: false,
     });
+    expect(clearWebSocketDisconnectIntentMock).toHaveBeenCalled();
   });
 
   it("keeps hasLoadedUser false when there is no user and no error", async () => {
@@ -75,6 +81,7 @@ describe("fetchUser", () => {
       hasLoadedUser: false,
       isUserLoading: false,
     });
+    expect(clearWebSocketDisconnectIntentMock).not.toHaveBeenCalled();
   });
 
   it("marks the user as loaded when the action reports an error", async () => {
@@ -99,7 +106,36 @@ describe("fetchUser", () => {
       hasLoadedUser: true,
       isUserLoading: false,
     });
+    expect(console.error).toHaveBeenCalledWith(
+      "Get user error:",
+      expect.any(Error),
+    );
   });
+
+  // A login reloads the page, which cuts off a check still in flight. That is
+  // a warning, not an error: the journeys guard fails any run on console.error.
+  it.each([
+    new TypeError("Failed to fetch"),
+    new DOMException("The operation was aborted.", "AbortError"),
+  ])(
+    "reports a check cut off by navigation (%s) as a warning",
+    async (error) => {
+      const warn = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => undefined);
+      getCurrentUserMock.mockRejectedValue(error);
+
+      const result = await fetchUser();
+
+      expect(result).toEqual({
+        user: null,
+        hasLoadedUser: true,
+        isUserLoading: false,
+      });
+      expect(warn).toHaveBeenCalledWith("Get user deferred:", error);
+      expect(console.error).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("validateSession", () => {
@@ -139,6 +175,7 @@ describe("validateSession", () => {
       user: newUser,
       shouldUpdateUser: true,
     });
+    expect(clearWebSocketDisconnectIntentMock).toHaveBeenCalled();
   });
 
   it("skips the user update when the session user is unchanged", async () => {
@@ -165,35 +202,68 @@ describe("validateSession", () => {
     expect(result).toEqual({ isValid: true, shouldUpdateUser: false });
   });
 
-  it("falls back to the helper redirect path when the action throws", async () => {
-    validateSessionActionMock.mockRejectedValue(new Error("server gone"));
-    getRedirectPathMock.mockReturnValue("/login?next=%2Fcopilot");
+  it("keeps the session when the action call fails on the network", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    validateSessionActionMock.mockRejectedValue(new TypeError("Load failed"));
 
     const result = await validateSession({
       path: "/copilot",
       currentUser: makeUser("user-1"),
     });
 
-    expect(getRedirectPathMock).toHaveBeenCalledWith("/copilot");
     expect(result).toEqual({
-      isValid: false,
-      redirectPath: "/login?next=%2Fcopilot",
-      shouldUpdateUser: true,
+      isValid: true,
+      shouldUpdateUser: false,
+      unavailable: "network",
     });
+  });
+
+  it("keeps the session when the auth backend reports itself unavailable", async () => {
+    validateSessionActionMock.mockResolvedValue({
+      user: null,
+      isValid: false,
+      isUnavailable: true,
+    });
+
+    const result = await validateSession({
+      path: "/copilot",
+      currentUser: makeUser("user-1"),
+    });
+
+    expect(result.isValid).toBe(true);
+    expect(result.unavailable).toBe("network");
+  });
+
+  it("flags deployment skew when the server no longer knows the action", async () => {
+    const { UnrecognizedActionError } = await import(
+      "next/dist/client/components/unrecognized-action-error"
+    );
+    validateSessionActionMock.mockRejectedValue(
+      new UnrecognizedActionError("Server Action was not found"),
+    );
+
+    const result = await validateSession({
+      path: "/copilot",
+      currentUser: makeUser("user-1"),
+    });
+
+    expect(result.isValid).toBe(true);
+    expect(result.unavailable).toBe("deployment-skew");
   });
 });
 
 describe("refreshSession", () => {
-  it("returns the refreshed user", async () => {
+  it("clears the websocket disconnect intent when a user is returned", async () => {
     const user = makeUser("user-1");
     refreshSessionActionMock.mockResolvedValue({ user });
 
     const result = await refreshSession();
 
     expect(result).toEqual({ user });
+    expect(clearWebSocketDisconnectIntentMock).toHaveBeenCalled();
   });
 
-  it("returns the refresh error when no user is returned", async () => {
+  it("leaves the websocket disconnect intent alone when no user is returned", async () => {
     refreshSessionActionMock.mockResolvedValue({
       user: null,
       error: "No active session",
@@ -202,6 +272,7 @@ describe("refreshSession", () => {
     const result = await refreshSession();
 
     expect(result).toEqual({ user: null, error: "No active session" });
+    expect(clearWebSocketDisconnectIntentMock).not.toHaveBeenCalled();
   });
 });
 
@@ -242,6 +313,22 @@ describe("handleStorageEvent", () => {
       shouldLogout: true,
       redirectPath: "/login?next=%2Fcopilot",
     });
+  });
+
+  it("drops this tab's admin impersonation when another tab logs out", () => {
+    isLogoutEventMock.mockReturnValue(true);
+    getRedirectPathMock.mockReturnValue(null);
+    ImpersonationState.set("impersonated-user", "admin-1");
+
+    handleStorageEvent({
+      event: new StorageEvent("storage", { key: "supabase-logout" }),
+      api: null,
+      router: null,
+      path: "/marketplace",
+    });
+
+    expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBeNull();
+    expect(ImpersonationState.get()).toBeNull();
   });
 
   it("handles logout without an api client", () => {

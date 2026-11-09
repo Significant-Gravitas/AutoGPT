@@ -101,7 +101,8 @@ export function ExpertWorkflowCardMenu({
           {libraryHref && expertId ? <DropdownMenuSeparator /> : null}
           {expertId ? (
             <DropdownMenuItem
-              className="flex items-center gap-2 text-red-600 focus:text-red-600"
+              // oxlint-disable-next-line design-system/no-restyle -- DropdownMenuItem has no destructive variant (src/components is P9's)
+              className="flex items-center gap-2 text-error-foreground focus:text-error-foreground"
               onSelect={() => setIsRemoveOpen(true)}
             >
               <Icon icon={Delete02Icon} size={16} />
@@ -133,7 +134,7 @@ export function ExpertWorkflowCardMenu({
               <Button
                 type="button"
                 variant="ghost"
-                size="xs"
+                size="small"
                 disabled={isRemoving}
                 onClick={() => setIsRemoveOpen(false)}
               >
@@ -142,7 +143,7 @@ export function ExpertWorkflowCardMenu({
               <Button
                 type="button"
                 variant="destructive"
-                size="xs"
+                size="small"
                 loading={isRemoving}
                 onClick={handleRemove}
               >

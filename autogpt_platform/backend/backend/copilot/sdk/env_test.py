@@ -1,10 +1,12 @@
 """Tests for build_sdk_env() — the SDK subprocess environment builder."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.sdk.env import build_sdk_env, cli_prompt_text, cli_user_message
 
 # ---------------------------------------------------------------------------
 # Helpers — build a ChatConfig with explicit field values so tests don't
@@ -46,6 +48,44 @@ def _make_config(**overrides) -> ChatConfig:
 class TestBuildSdkEnvSubscription:
     """When ``use_claude_code_subscription`` is True, keys are blanked."""
 
+    @pytest.mark.parametrize(
+        "source",
+        ["constructor", "dotenv", "prefixed", "alias", "both", "empty-prefixed"],
+    )
+    def test_passes_effective_cli_setting_to_subscription_validation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+    ):
+        for name in ("CHAT_CLAUDE_AGENT_CLI_PATH", "CLAUDE_AGENT_CLI_PATH"):
+            monkeypatch.delenv(name, raising=False)
+        cli = tmp_path / "2.1.284.exe"
+        cli.write_bytes(b"stand-in executable")
+        cli.chmod(0o755)
+        options = {"use_claude_code_subscription": True, "_env_file": None}
+        if source == "constructor":
+            options["claude_agent_cli_path"] = str(cli)
+        elif source == "dotenv":
+            dotenv = tmp_path / ".env"
+            dotenv.write_text(f"CHAT_CLAUDE_AGENT_CLI_PATH={cli}\n", encoding="utf-8")
+            options["_env_file"] = dotenv
+        elif source == "prefixed":
+            monkeypatch.setenv("CHAT_CLAUDE_AGENT_CLI_PATH", str(cli))
+        elif source == "alias":
+            monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", str(cli))
+        elif source == "both":
+            monkeypatch.setenv("CHAT_CLAUDE_AGENT_CLI_PATH", str(cli))
+            monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", "missing-alias")
+        else:
+            monkeypatch.setenv("CHAT_CLAUDE_AGENT_CLI_PATH", "")
+            monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", str(cli))
+        cfg = _make_config(**options)
+        assert cfg.claude_agent_cli_path == str(cli)
+        with (
+            patch("backend.copilot.sdk.env.config", cfg),
+            patch("backend.copilot.sdk.env.validate_subscription") as validate,
+        ):
+            build_sdk_env()
+        validate.assert_called_once_with(str(cli))
+
     @patch("backend.copilot.sdk.env.validate_subscription")
     def test_returns_blanked_keys(self, mock_validate):
         """Subscription mode clears API_KEY, AUTH_TOKEN, and BASE_URL."""
@@ -61,6 +101,22 @@ class TestBuildSdkEnvSubscription:
         assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
         assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
         mock_validate.assert_called_once()
+
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_carries_the_login_the_host_holds_in_a_variable(
+        self, mock_validate, monkeypatch
+    ):
+        """The launch keeps nothing else of the backend's environment."""
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-host-login")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "sk-ant-ort01-host")
+        cfg = _make_config(use_claude_code_subscription=True)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert result["CLAUDE_CODE_OAUTH_TOKEN"] == "sk-ant-oat01-host-login"
+        assert result["CLAUDE_CODE_OAUTH_REFRESH_TOKEN"] == "sk-ant-ort01-host"
 
     @patch(
         "backend.copilot.sdk.env.validate_subscription",
@@ -82,9 +138,44 @@ class TestBuildSdkEnvSubscription:
 
 
 class TestBuildSdkEnvDirectAnthropic:
-    """When OpenRouter is inactive, no ANTHROPIC_* overrides (inherit parent env)."""
+    """When OpenRouter is inactive, the deployment's Anthropic key, and where
+    it is sent, are carried over from the parent environment: the launch
+    keeps nothing else of it."""
 
-    def test_no_anthropic_key_overrides_when_openrouter_inactive(self):
+    @pytest.fixture(autouse=True)
+    def _deployment_key(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-deployment-key")
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://anthropic-proxy.example")
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+
+    def test_carries_the_deployments_key_when_openrouter_inactive(self):
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert result["ANTHROPIC_API_KEY"] == "sk-ant-deployment-key"
+        assert result["ANTHROPIC_BASE_URL"] == "https://anthropic-proxy.example"
+        assert "ANTHROPIC_AUTH_TOKEN" not in result
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+
+    def test_carries_an_auth_token_set_beside_the_key(self, monkeypatch):
+        """A bearer-authenticated Anthropic proxy keeps working."""
+        monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "sk-ant-proxy-bearer")
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert result["ANTHROPIC_AUTH_TOKEN"] == "sk-ant-proxy-bearer"
+        assert result["ANTHROPIC_API_KEY"] == "sk-ant-deployment-key"
+
+    def test_sets_no_key_the_parent_does_not_hold(self, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_API_KEY")
+        monkeypatch.delenv("ANTHROPIC_BASE_URL")
         cfg = _make_config(use_openrouter=False)
         with patch("backend.copilot.sdk.env.config", cfg):
             from backend.copilot.sdk.env import build_sdk_env
@@ -92,12 +183,9 @@ class TestBuildSdkEnvDirectAnthropic:
             result = build_sdk_env()
 
         assert "ANTHROPIC_API_KEY" not in result
-        assert "ANTHROPIC_AUTH_TOKEN" not in result
         assert "ANTHROPIC_BASE_URL" not in result
-        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
-        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
 
-    def test_no_anthropic_key_overrides_when_openrouter_flag_true_but_no_key(self):
+    def test_carries_the_deployments_key_when_openrouter_flag_true_but_no_key(self):
         """OpenRouter flag is True but no api_key => openrouter_active is False."""
         cfg = _make_config(use_openrouter=True, base_url="https://openrouter.ai/api/v1")
         # Force api_key to None after construction (field_validator may pick up env vars)
@@ -108,9 +196,9 @@ class TestBuildSdkEnvDirectAnthropic:
 
             result = build_sdk_env()
 
-        assert "ANTHROPIC_API_KEY" not in result
+        assert result["ANTHROPIC_API_KEY"] == "sk-ant-deployment-key"
+        assert result["ANTHROPIC_BASE_URL"] == "https://anthropic-proxy.example"
         assert "ANTHROPIC_AUTH_TOKEN" not in result
-        assert "ANTHROPIC_BASE_URL" not in result
         assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
         assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
 
@@ -312,14 +400,14 @@ class TestClaudeCodeTmpdir:
     """Verify build_sdk_env() sets CLAUDE_CODE_TMPDIR from *sdk_cwd*."""
 
     def test_tmpdir_set_when_sdk_cwd_is_truthy(self):
-        """CLAUDE_CODE_TMPDIR is set to sdk_cwd when sdk_cwd is truthy."""
+        """CLAUDE_CODE_TMPDIR is a directory beside sdk_cwd, not inside it."""
         cfg = _make_config(use_openrouter=False)
         with patch("backend.copilot.sdk.env.config", cfg):
             from backend.copilot.sdk.env import build_sdk_env
 
             result = build_sdk_env(sdk_cwd="/tmp/copilot-workspace")
 
-        assert result["CLAUDE_CODE_TMPDIR"] == "/tmp/copilot-workspace"
+        assert result["CLAUDE_CODE_TMPDIR"] == "/tmp/copilot-workspace.cli"
 
     def test_tmpdir_not_set_when_sdk_cwd_is_none(self):
         """CLAUDE_CODE_TMPDIR is NOT in the env when sdk_cwd is None."""
@@ -350,8 +438,52 @@ class TestClaudeCodeTmpdir:
 
             result = build_sdk_env(sdk_cwd="/tmp/sub-workspace")
 
-        assert result["CLAUDE_CODE_TMPDIR"] == "/tmp/sub-workspace"
+        assert result["CLAUDE_CODE_TMPDIR"] == "/tmp/sub-workspace.cli"
         assert result["ANTHROPIC_API_KEY"] == ""
+
+
+# ---------------------------------------------------------------------------
+# CLAUDE_CODE_DISABLE_BACKGROUND_TASKS — sub-agents run in the foreground
+# ---------------------------------------------------------------------------
+
+
+class TestBackgroundTasksDisabled:
+    """A background sub-agent is killed when the turn closes the CLI, so every
+    mode must keep sub-agents in the foreground (subagent_turn_end_test.py)."""
+
+    @pytest.mark.parametrize(
+        "overrides, kwargs",
+        [
+            pytest.param({"use_openrouter": False}, {}, id="direct"),
+            pytest.param(
+                {
+                    "use_openrouter": True,
+                    "api_key": "sk-or-test-key",
+                    "base_url": "https://openrouter.ai/api/v1",
+                },
+                {},
+                id="openrouter",
+            ),
+            pytest.param({"use_claude_code_subscription": True}, {}, id="subscription"),
+            pytest.param(
+                {"use_openrouter": False},
+                {
+                    "codex_gateway_url": "http://127.0.0.1:43210",
+                    "codex_gateway_token": "loopback-capability",
+                },
+                id="codex-gateway",
+            ),
+        ],
+    )
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_set_in_every_mode(self, _mock_validate, overrides, kwargs):
+        cfg = _make_config(**overrides)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(**kwargs)
+
+        assert result["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
 
 
 # ---------------------------------------------------------------------------
@@ -633,7 +765,8 @@ class TestContextWindowPin:
     """The window the CLI compacts against is ours, not the CLI's guess.
 
     At or below the default, ``CLAUDE_CODE_DISABLE_1M_CONTEXT`` holds the model
-    window itself at 200K too, making the default a real cap.
+    window itself at 200K too, making the default a real cap.  On Moonshot
+    routes the pin is capped at the catalog's real window for the SKU.
     """
 
     @pytest.mark.parametrize(
@@ -658,6 +791,43 @@ class TestContextWindowPin:
         assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == expected
         assert ("CLAUDE_CODE_DISABLE_1M_CONTEXT" in result) is kill_switch
 
+    @pytest.mark.parametrize(
+        "model, window, expected, kill_switch",
+        [
+            # Kimi K2.x really serves 262,144: a 1M pin would put the trigger
+            # at ~967K, past the point the provider rejects the request.
+            ("moonshotai/kimi-k2.5", 1_000_000, "262144", False),
+            ("moonshotai/kimi-k2-thinking", 500_000, "262144", False),
+            # K3 really does serve 1M, so the raise survives there.
+            ("moonshotai/kimi-k3", 1_000_000, "1000000", False),
+            # A SKU the catalog does not carry falls back to the window the
+            # CLI assumes anyway, rather than to an unbounded raise.
+            ("moonshotai/kimi-k3.0", 1_000_000, "200000", True),
+            # At or below the real window the configured pin is untouched.
+            ("moonshotai/kimi-k2.5", 262_144, "262144", False),
+            ("moonshotai/kimi-k2.5", 200_000, "200000", True),
+        ],
+    )
+    def test_pin_capped_at_moonshot_real_window(
+        self, model, window, expected, kill_switch
+    ):
+        """The CLI's model table has no Moonshot entry, so the pin is the only
+        thing holding the trigger inside Kimi's real window."""
+        cfg = _make_config(
+            use_openrouter=True,
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+            thinking_standard_model=model,
+            claude_agent_context_window=window,
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model=model)
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == expected
+        assert ("CLAUDE_CODE_DISABLE_1M_CONTEXT" in result) is kill_switch
+
     def test_context_window_rejects_out_of_range(self):
         """Pydantic bounds (ge=100_000, le=1_000_000) are the only guard between
         a typo'd env var and the CLI's own clamps."""
@@ -667,3 +837,84 @@ class TestContextWindowPin:
             _make_config(claude_agent_context_window=99_999)
         with pytest.raises(ValidationError):
             _make_config(claude_agent_context_window=1_000_001)
+
+
+class TestCliPromptText:
+    """The text the CLI receives must never parse as one of its commands."""
+
+    @pytest.mark.parametrize(
+        "text", ["/compact", "/model claude-opus-4-1", "/", "/dataviz chart"]
+    )
+    def test_leading_slash_gets_a_leading_space(self, text: str):
+        assert cli_prompt_text(text) == f" {text}"
+
+    @pytest.mark.parametrize(
+        "text", ["hello", "", " /compact", "a/b", "<user_context>x</user_context>"]
+    )
+    def test_other_text_is_unchanged(self, text: str):
+        assert cli_prompt_text(text) == text
+
+
+class TestCliUserMessage:
+    """A user message written straight to the CLI's transport."""
+
+    def test_carries_the_mark_the_sdk_sets_for_verbatim_prompts(self):
+        content = [
+            {"type": "image", "source": {"type": "base64", "data": "x"}},
+            {"type": "text", "text": "hello"},
+        ]
+
+        assert cli_user_message(content, "s1") == {
+            "type": "user",
+            "message": {"role": "user", "content": content},
+            "parent_tool_use_id": None,
+            "session_id": "s1",
+            "client_composed": True,
+        }
+
+
+class TestBuildSdkEnvStandInModel:
+    """A load-test account's turn talks to the scripted model, never to the
+    deployment's provider with the deployment's key."""
+
+    def test_the_cli_talks_to_the_stand_in_without_the_deployment_key(self):
+        cfg = _make_config(
+            use_openrouter=True,
+            api_key="sk-or-deployment-key",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            result = build_sdk_env(
+                session_id="sess-1",
+                user_id="user-1",
+                stand_in_model_url=(
+                    "http://pr-1-scripted-model.pr-1.svc.cluster.local:4010/api/v1"
+                ),
+            )
+
+        assert (
+            result["ANTHROPIC_BASE_URL"]
+            == "http://pr-1-scripted-model.pr-1.svc.cluster.local:4010/api"
+        )
+        assert result["ANTHROPIC_AUTH_TOKEN"] == "load-test"
+        assert result["ANTHROPIC_API_KEY"] == ""
+        assert result["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+        assert "sk-or-deployment-key" not in result.values()
+        # OpenRouter Broadcast's attribution is for OpenRouter only.
+        assert "x-user-id" not in result.get("ANTHROPIC_CUSTOM_HEADERS", "")
+        assert "pr-1-scripted-model.pr-1.svc.cluster.local" in result["NO_PROXY"].split(
+            ","
+        )
+        assert result["no_proxy"] == result["NO_PROXY"]
+
+    def test_a_turn_has_one_model_endpoint(self):
+        with pytest.raises(ValueError, match="one model endpoint"):
+            build_sdk_env(
+                codex_gateway_url="http://127.0.0.1:43210",
+                codex_gateway_token="loopback-capability",
+                stand_in_model_url="http://scripted-model:4010/api/v1",
+            )
+
+    def test_the_stand_in_must_be_an_http_url(self):
+        with pytest.raises(ValueError, match="http"):
+            build_sdk_env(stand_in_model_url="scripted-model:4010/api/v1")

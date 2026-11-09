@@ -250,7 +250,7 @@ describe("useCredits identity scope", () => {
       ({ identityKey }: Props) => useCredits({ identityKey }),
       { initialProps: { identityKey: "user-a" } as Props },
     );
-    let request: Promise<void> | undefined;
+    let request: Promise<boolean> | undefined;
 
     act(() => {
       request = view.result.current.requestTopUp(500);
@@ -263,6 +263,7 @@ describe("useCredits identity scope", () => {
       await request;
     });
 
+    await expect(request).resolves.toBe(false);
     expect(routerPush).not.toHaveBeenCalled();
   });
 
@@ -281,7 +282,7 @@ describe("useCredits identity scope", () => {
     );
 
     const view = renderHook(() => useCredits({ identityKey: "user-a" }));
-    let request: Promise<void> | undefined;
+    let request: Promise<boolean> | undefined;
     act(() => {
       request = view.result.current.requestTopUp(500);
     });
@@ -289,8 +290,8 @@ describe("useCredits identity scope", () => {
 
     view.unmount();
     releaseRequest?.();
-    await request;
 
+    await expect(request).resolves.toBe(false);
     expect(routerPush).not.toHaveBeenCalled();
   });
 
@@ -363,10 +364,12 @@ describe("useCredits identity scope", () => {
     });
     expect(updated).toBe(true);
 
+    let redirected = false;
     await act(async () => {
-      await view.result.current.requestTopUp(500);
+      redirected = await view.result.current.requestTopUp(500);
       await view.result.current.openBillingPortal();
     });
+    expect(redirected).toBe(true);
     expect(routerPush).toHaveBeenNthCalledWith(
       1,
       "https://checkout.example/current",

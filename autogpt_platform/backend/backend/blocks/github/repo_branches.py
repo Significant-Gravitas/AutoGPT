@@ -6,6 +6,7 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -109,6 +110,7 @@ class GithubListBranchesBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -197,6 +199,7 @@ class GithubMakeBranchBlock(Block):
             test_mock={
                 "create_branch": lambda *args, **kwargs: "Branch created successfully"
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -275,7 +278,8 @@ class GithubDeleteBranchBlock(Block):
             test_mock={
                 "delete_branch": lambda *args, **kwargs: "Branch deleted successfully"
             },
-            is_sensitive_action=True,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -410,6 +414,7 @@ class GithubCompareBranchesBlock(Block):
                     ],
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

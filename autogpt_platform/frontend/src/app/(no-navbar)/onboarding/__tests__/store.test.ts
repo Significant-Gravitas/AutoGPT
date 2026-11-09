@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useOnboardingWizardStore } from "../store";
+import { buildStepLayout, MAX_STEP, useOnboardingWizardStore } from "../store";
 
 beforeEach(() => {
   useOnboardingWizardStore.getState().reset();
@@ -10,7 +10,6 @@ describe("useOnboardingWizardStore", () => {
     it("starts at step 1 with empty fields", () => {
       const state = useOnboardingWizardStore.getState();
       expect(state.currentStep).toBe(1);
-      expect(state.name).toBe("");
       expect(state.role).toBe("");
       expect(state.otherRole).toBe("");
       expect(state.painPoints).toEqual([]);
@@ -52,13 +51,6 @@ describe("useOnboardingWizardStore", () => {
       const state = useOnboardingWizardStore.getState();
       expect(state.selectedBilling).toBe("yearly");
       expect(state.hasUserSelectedBilling).toBe(true);
-    });
-  });
-
-  describe("setName", () => {
-    it("updates the name", () => {
-      useOnboardingWizardStore.getState().setName("Alice");
-      expect(useOnboardingWizardStore.getState().name).toBe("Alice");
     });
   });
 
@@ -143,10 +135,10 @@ describe("useOnboardingWizardStore", () => {
       expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
     });
 
-    it("clamps at step 5", () => {
-      useOnboardingWizardStore.getState().goToStep(5);
+    it("clamps at the last step", () => {
+      useOnboardingWizardStore.getState().goToStep(7);
       useOnboardingWizardStore.getState().nextStep();
-      expect(useOnboardingWizardStore.getState().currentStep).toBe(5);
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(7);
     });
   });
 
@@ -172,22 +164,88 @@ describe("useOnboardingWizardStore", () => {
 
   describe("reset", () => {
     it("resets all fields to defaults", () => {
-      useOnboardingWizardStore.getState().setName("Alice");
       useOnboardingWizardStore.getState().setRole("Engineer");
       useOnboardingWizardStore.getState().setOtherRole("Other");
       useOnboardingWizardStore.getState().togglePainPoint("slow builds");
       useOnboardingWizardStore.getState().setOtherPainPoint("flaky CI");
+      useOnboardingWizardStore.setState({ hiredTemplateIds: ["tpl-maria"] });
       useOnboardingWizardStore.getState().goToStep(3);
 
       useOnboardingWizardStore.getState().reset();
 
       const state = useOnboardingWizardStore.getState();
       expect(state.currentStep).toBe(1);
-      expect(state.name).toBe("");
       expect(state.role).toBe("");
       expect(state.otherRole).toBe("");
       expect(state.painPoints).toEqual([]);
       expect(state.otherPainPoint).toBe("");
+      expect(state.hiredTemplateIds).toEqual([]);
     });
+  });
+});
+
+describe("buildStepLayout", () => {
+  it("puts the plan + trial step straight after the brain dump", () => {
+    expect(buildStepLayout({ hasPaywall: true })).toEqual({
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      painPoints: 4,
+      subscription: 5,
+      preparing: 6,
+    });
+  });
+
+  it("never lays out the retired hire step", () => {
+    for (const layout of [
+      buildStepLayout({ hasPaywall: true }),
+      buildStepLayout({ hasPlan: true }),
+      buildStepLayout({ hasPlan: true, hasConnect: true }),
+      buildStepLayout({}),
+    ]) {
+      expect(layout.hire).toBeUndefined();
+    }
+  });
+
+  it("shows the plan alone, under the same key, without a paywall", () => {
+    expect(buildStepLayout({ hasPlan: true })).toEqual({
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      painPoints: 4,
+      subscription: 5,
+      preparing: 6,
+    });
+  });
+
+  it("skips the plan once it is paid for", () => {
+    expect(buildStepLayout({})).toEqual({
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      painPoints: 4,
+      preparing: 5,
+    });
+  });
+
+  it("closes with the connection on self-host, never beside a paywall", () => {
+    expect(buildStepLayout({ hasPlan: true, hasConnect: true })).toEqual({
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      painPoints: 4,
+      subscription: 5,
+      connect: 6,
+      preparing: 7,
+    });
+    expect(
+      buildStepLayout({ hasPaywall: true, hasConnect: true }).connect,
+    ).toBeUndefined();
+  });
+
+  it("fits every layout under MAX_STEP", () => {
+    expect(buildStepLayout({ hasPlan: true, hasConnect: true }).preparing).toBe(
+      MAX_STEP,
+    );
   });
 });

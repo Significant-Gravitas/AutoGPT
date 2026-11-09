@@ -23,6 +23,8 @@ describe("isBookkeepingPart", () => {
     expect(isBookkeepingPart({ type: "data-status" })).toBe(true);
     expect(isBookkeepingPart({ type: "data-dream-operations" })).toBe(true);
     expect(isBookkeepingPart({ type: "data-compaction" })).toBe(true);
+    expect(isBookkeepingPart({ type: "data-tool-display" })).toBe(true);
+    expect(isBookkeepingPart({ type: "data-pending-drained" })).toBe(true);
   });
 
   it("leaves content alone", () => {

@@ -1,13 +1,30 @@
 "use client";
 
 import type BackendAPI from "@/lib/autogpt-server-api/client";
-import { resetQueryClientForIdentityChange } from "@/lib/react-query/queryClient";
+import { setAnalyticsIdentitySignedIn } from "@/services/analytics/anonymous-id";
+import { resetAnalyticsIdentity } from "@/services/analytics/reset-identity";
+import {
+  clearImpersonationEverywhere,
+  ImpersonationState,
+  isImpersonationChangedEvent,
+  isImpersonationClearedEvent,
+  isImpersonationUsableBy,
+  hasImpersonation,
+  setImpersonationViewer,
+} from "@/lib/impersonation";
+import {
+  claimOnboardingHandoff,
+  clearOnboardingHandoff,
+} from "@/services/onboarding/brain-dump-handoff";
+import { teardownPushSubscriptionBeforeLogout } from "@/services/push-notifications/helpers";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
+import { reloadForNewDeployment } from "../deployment-reload";
 import {
   broadcastLogout,
-  clearWebSocketDisconnectIntent,
+  navigateWithFullLoad,
+  reloadPage,
   setupSessionEventListeners,
   setWebSocketDisconnectIntent,
 } from "../helpers";
@@ -17,7 +34,52 @@ import {
   handleStorageEvent as handleStorageEventHelper,
   refreshSession as refreshSessionHelper,
   validateSession as validateSessionHelper,
+  type SessionUnavailableReason,
 } from "./helpers";
+
+const RETRY_BASE_DELAY_MS = 1_000;
+const RETRY_MAX_DELAY_MS = 30_000;
+const MAX_RETRY_ATTEMPTS = 6;
+
+const SIGN_OUT_ATTEMPTS = 3;
+const SIGN_OUT_RETRY_DELAY_MS = 1_000;
+
+async function refetchEverything(): Promise<void> {
+  try {
+    const { getQueryClient } = await import("@/lib/react-query/queryClient");
+    await getQueryClient().invalidateQueries();
+  } catch (error) {
+    console.debug("Couldn't refetch after impersonation resumed:", error);
+  }
+}
+
+// The sign-out action itself never throws once delivered (it expires the
+// cookies even if revoking the session fails), so a throw means the request
+// didn't get through. Retry those before giving up.
+async function signOutOnServer(options: ServerLogoutOptions): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await serverLogout(options);
+      return;
+    } catch (error) {
+      if (attempt >= SIGN_OUT_ATTEMPTS) throw error;
+      await new Promise((resolve) =>
+        setTimeout(resolve, SIGN_OUT_RETRY_DELAY_MS * attempt),
+      );
+    }
+  }
+}
+
+async function afterSignOut(
+  step: string,
+  run: () => void | Promise<void>,
+): Promise<void> {
+  try {
+    await run();
+  } catch (error) {
+    console.error(`Signed out, but couldn't ${step}:`, error);
+  }
+}
 
 interface InitializeParams {
   api: BackendAPI;
@@ -42,13 +104,18 @@ interface AuthStoreState {
   isUserLoading: boolean;
   isValidating: boolean;
   hasLoadedUser: boolean;
-  hasCompletedInitialAuthHydration: boolean;
   lastValidation: number;
   initializationPromise: Promise<void> | null;
   listenersCleanup: (() => void) | null;
   routerRef: AppRouterInstance | null;
   apiRef: BackendAPI | null;
   currentPath: string;
+  retryTimer: ReturnType<typeof setTimeout> | null;
+  retryAttempt: number;
+  // Bumped whenever the signed-in identity ends or changes (sign-out, a
+  // rejected session, another account or role). An auth request started in
+  // an earlier epoch has its answer dropped rather than applied.
+  sessionEpoch: number;
   initialize: (params: InitializeParams) => Promise<void>;
   setCurrentRequestContext: (params: InitializeParams) => void;
   logOut: (params?: LogOutParams) => Promise<void>;
@@ -57,59 +124,7 @@ interface AuthStoreState {
   cleanup: () => void;
 }
 
-let authRequestGeneration = 0;
-let validationRequestGeneration = 0;
-let pendingLogoutPromise: ReturnType<typeof serverLogout> | null = null;
-
-function beginAuthRequest(): number {
-  authRequestGeneration += 1;
-  return authRequestGeneration;
-}
-
-function beginNonValidationAuthRequest(): number {
-  validationRequestGeneration += 1;
-  return beginAuthRequest();
-}
-
-async function waitForPendingLogout(): Promise<boolean> {
-  while (pendingLogoutPromise) {
-    const pendingLogout = pendingLogoutPromise;
-    try {
-      await pendingLogout;
-    } catch {
-      return false;
-    }
-    if (pendingLogoutPromise === pendingLogout) {
-      pendingLogoutPromise = null;
-    }
-  }
-  return true;
-}
-
 export const useAuthStore = create<AuthStoreState>((set, get) => {
-  function stopLoadingIfCurrent(requestGeneration: number): void {
-    if (requestGeneration === authRequestGeneration) {
-      set({ isUserLoading: false });
-    }
-  }
-
-  function clearAuthenticatedState(): void {
-    const state = get();
-    const identityChangeWillResetQueries =
-      state.user !== null && state.hasCompletedInitialAuthHydration;
-    set({
-      user: null,
-      hasLoadedUser: false,
-      hasCompletedInitialAuthHydration: true,
-      isUserLoading: false,
-      isValidating: false,
-      initializationPromise: null,
-    });
-    if (!identityChangeWillResetQueries) {
-      void resetQueryClientForIdentityChange(null);
-    }
-  }
-
   function setCurrentRequestContext(params: InitializeParams): void {
     const state = get();
     if (
@@ -133,6 +148,8 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 
     if (!initializationPromise) {
       initializationPromise = (async () => {
+        // Listen first: a sign-out in another tab while this tab's first
+        // lookup is in flight must still reach it (and void that lookup).
         const existingCleanup = get().listenersCleanup;
         if (existingCleanup) {
           existingCleanup();
@@ -141,46 +158,73 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
         const cleanup = setupSessionEventListeners(
           handleVisibilityChange,
           handleStorageEventInternal,
+          handleOnline,
         );
         set({ listenersCleanup: cleanup.cleanup });
 
-        if (get().hasLoadedUser && get().user) {
-          set({ isUserLoading: false });
-          return;
-        }
-
-        const requestGeneration = beginNonValidationAuthRequest();
-        set({ isUserLoading: true, isValidating: false });
-        if (pendingLogoutPromise && !(await waitForPendingLogout())) {
-          stopLoadingIfCurrent(requestGeneration);
-          return;
-        }
-        if (requestGeneration !== authRequestGeneration) return;
-
         // Always fetch user if we haven't loaded it yet, or if user is null but hasLoadedUser is true
         // This handles the case where hasLoadedUser might be stale after logout/login
-        const result = await fetchUser();
-        if (requestGeneration !== authRequestGeneration) return;
-        if (result.user) clearWebSocketDisconnectIntent();
-        set(result);
-
-        // If fetchUser didn't return a user, validate the session to ensure we have the latest state
-        // This handles race conditions after login where cookies might not be immediately available
-        if (!result.user) {
-          const validationResult = await validateSessionHelper({
-            path: params.path,
-            currentUser: null,
-          });
-          if (requestGeneration !== authRequestGeneration) return;
-
-          if (validationResult.user && validationResult.isValid) {
-            clearWebSocketDisconnectIntent();
-            set({
-              user: validationResult.user,
-              hasLoadedUser: true,
-              isUserLoading: false,
-            });
+        if (!get().hasLoadedUser || !get().user) {
+          set({ isUserLoading: true });
+          // A check already running for this session answers for start-up
+          // too; only look again if it didn't find anyone.
+          while (checkRunning()) await currentCheck?.done;
+          if (get().user) {
+            set({ isUserLoading: false });
+            return;
           }
+          const finishCheck = beginCheck();
+          try {
+            const epoch = get().sessionEpoch;
+            const { user, ...result } = await fetchUser();
+            if (get().sessionEpoch !== epoch) return;
+            set(result);
+            if (user) adoptUser(user);
+            else set({ user: null });
+
+            // If fetchUser didn't return a user, validate the session to ensure we have the latest state
+            // This handles race conditions after login where cookies might not be immediately available
+            if (!user) {
+              const validationResult = await validateSessionHelper({
+                path: params.path,
+                currentUser: null,
+              });
+              if (get().sessionEpoch !== epoch) return;
+
+              if (validationResult.unavailable) {
+                handleUnavailable(validationResult.unavailable);
+              } else if (validationResult.user && validationResult.isValid) {
+                adoptUser(validationResult.user);
+                set({ hasLoadedUser: true, isUserLoading: false });
+              } else {
+                // fetchUser answered without an error that there is no
+                // session, and the fallback found none either. Only then is
+                // the visitor known to be signed out; after an error the
+                // session stays unknown, so an older account can't take the
+                // marketing site's visitor id (anonymous-id.ts).
+                if (!result.hasLoadedUser) setAnalyticsIdentitySignedIn(false);
+                if (!validationResult.isValid) {
+                  // No session at startup: a target left from the last one
+                  // goes, and a protected page sends the user to sign in (the
+                  // middleware only checks that a session cookie exists, which
+                  // an expired or revoked one still does).
+                  if (hasImpersonation()) {
+                    endSessionEpoch();
+                    clearImpersonationEverywhere();
+                  }
+                  // Replace, like the middleware's redirect: the page the
+                  // dead session landed on isn't somewhere to come back to.
+                  if (validationResult.redirectPath) {
+                    params.router.replace(validationResult.redirectPath);
+                  }
+                }
+              }
+            }
+          } finally {
+            finishCheck();
+          }
+        } else {
+          set({ isUserLoading: false });
         }
       })();
 
@@ -190,44 +234,60 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     try {
       await initializationPromise;
     } finally {
-      if (get().initializationPromise === initializationPromise) {
-        set({
-          initializationPromise: null,
-          hasCompletedInitialAuthHydration: true,
-        });
-      }
+      set({ initializationPromise: null });
     }
   }
 
   async function logOut(params?: LogOutParams): Promise<void> {
-    beginNonValidationAuthRequest();
     const api = params?.api ?? get().apiRef;
     const options = params?.options ?? {};
 
-    setWebSocketDisconnectIntent();
+    cancelRetry();
+    // Whatever the outcome, answers to auth requests already in flight
+    // belong to the session being signed out of, and must not be applied.
+    endSessionEpoch();
 
-    if (api) {
-      api.disconnectWebSocket();
-    }
+    // Needs the session, so it runs before the sign-out (bounded, never throws).
+    await teardownPushSubscriptionBeforeLogout();
 
-    const existingCleanup = get().listenersCleanup;
-    if (existingCleanup) {
-      existingCleanup();
-      set({ listenersCleanup: null });
-    }
+    // Drop any admin impersonation (sessionStorage + cookie, in every tab) so
+    // the next user signing in on this browser doesn't send X-Act-As-User-Id.
+    clearImpersonationEverywhere();
 
-    clearAuthenticatedState();
+    // Only a sign-out the server received ends the session. If the request
+    // never got through, the cookies are still live, so this tab stays signed
+    // in and no other tab is told otherwise; the caller reports the failure.
+    await signOutOnServer(options);
+    // Anything answered while the sign-out was in flight described the
+    // session that has now ended, including a target set meanwhile.
+    endSessionEpoch();
+    clearImpersonationEverywhere();
 
-    const logoutPromise = serverLogout(options);
-    pendingLogoutPromise = logoutPromise;
-    try {
-      await logoutPromise;
-      broadcastLogout();
-    } finally {
-      if (pendingLogoutPromise === logoutPromise) {
-        pendingLogoutPromise = null;
-      }
-    }
+    // The server has ended the session, so the user is signed out whatever
+    // happens next: a local cleanup step that fails is logged and skipped.
+    await afterSignOut("disconnect the WebSocket", () => {
+      setWebSocketDisconnectIntent();
+      api?.disconnectWebSocket();
+    });
+    // The session listeners stay: this tab must keep hearing other tabs'
+    // sign-outs and impersonation clears after it signs in again.
+    // Clear React Query cache to prevent stale data from old user
+    await afterSignOut("clear cached data", async () => {
+      if (typeof window === "undefined") return;
+      const { getQueryClient } = await import("@/lib/react-query/queryClient");
+      getQueryClient().clear();
+    });
+
+    set({
+      user: null,
+      hasLoadedUser: false,
+      isUserLoading: false,
+    });
+
+    // Other tabs act on this at once. Sent only now that the server has
+    // expired the session cookies, or a tab could reload into the old session.
+    broadcastLogout();
+    clearOnboardingHandoff();
   }
 
   async function validateSessionInternal(
@@ -237,33 +297,39 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     const pathname = params?.path ?? get().currentPath;
 
     if (!router || !pathname) return true;
-    if (!params?.force && get().isValidating) return true;
+    // Even a forced check waits its turn: one that lands mid-check would
+    // race it and act on a stale answer.
+    if (checkRunning()) return true;
 
     const now = Date.now();
     if (!params?.force && now - get().lastValidation < 2000) return true;
 
-    const requestGeneration = beginAuthRequest();
-    const validationGeneration = ++validationRequestGeneration;
-    set({
-      isValidating: true,
-      lastValidation: now,
-    });
+    set({ lastValidation: now });
+    const finishCheck = beginCheck();
 
+    const epoch = get().sessionEpoch;
     try {
-      if (pendingLogoutPromise && !(await waitForPendingLogout())) {
-        stopLoadingIfCurrent(requestGeneration);
-        return false;
-      }
-      if (requestGeneration !== authRequestGeneration) return false;
       const result = await validateSessionHelper({
         path: pathname,
         currentUser: get().user,
       });
-      if (requestGeneration !== authRequestGeneration) return false;
-      if (result.user) clearWebSocketDisconnectIntent();
+      if (get().sessionEpoch !== epoch) return true;
+
+      if (result.unavailable) {
+        handleUnavailable(result.unavailable);
+        return true;
+      }
+
+      cancelRetry();
 
       if (!result.isValid) {
-        clearAuthenticatedState();
+        endSessionEpoch();
+        clearImpersonationEverywhere();
+        set({
+          user: null,
+          hasLoadedUser: false,
+          isUserLoading: false,
+        });
 
         if (result.redirectPath) {
           router.push(result.redirectPath);
@@ -273,7 +339,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       }
 
       if (result.user && result.shouldUpdateUser) {
-        set({ user: result.user });
+        adoptUser(result.user);
       }
 
       if (result.user) {
@@ -285,18 +351,139 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 
       return true;
     } finally {
-      if (validationGeneration === validationRequestGeneration) {
-        set({ isValidating: false });
-      }
+      finishCheck();
     }
   }
 
+  // Focus and `online` are fresh chances to reach the backend, so each one
+  // restores the full retry budget for whatever it runs into.
   function handleVisibilityChange(): void {
     if (document.visibilityState !== "visible") return;
+    // Back while a retry is waiting: check now rather than waiting it out,
+    // the same as when the network returns.
+    if (get().retryTimer) {
+      cancelRetry();
+      void validateSessionInternal({ force: true });
+      return;
+    }
+    set({ retryAttempt: 0 });
     void validateSessionInternal();
   }
 
+  function handleOnline(): void {
+    cancelRetry();
+    void validateSessionInternal({ force: true });
+  }
+
+  // A validation that couldn't reach the auth backend says nothing about the
+  // session, so the user stays signed in. Retry with backoff; the next focus
+  // or `online` event also revalidates.
+  function handleUnavailable(reason: SessionUnavailableReason): void {
+    if (reason === "deployment-skew" && reloadForNewDeployment()) return;
+
+    const attempt = get().retryAttempt;
+    // Once the budget is spent, backoff stops; the next focus or `online`
+    // event restores it and tries again.
+    if (get().retryTimer || attempt >= MAX_RETRY_ATTEMPTS) return;
+
+    const delay = Math.min(
+      RETRY_BASE_DELAY_MS * 2 ** attempt,
+      RETRY_MAX_DELAY_MS,
+    );
+    const retryTimer = setTimeout(() => {
+      set({ retryTimer: null });
+      // A check already in flight answers for this retry (and reschedules if
+      // it's still unavailable), so this one isn't spent.
+      if (checkRunning()) {
+        set({ retryAttempt: Math.max(0, get().retryAttempt - 1) });
+        return;
+      }
+      void validateSessionInternal({ force: true });
+    }, delay);
+    set({ retryTimer, retryAttempt: attempt + 1 });
+  }
+
+  function cancelRetry(): void {
+    const retryTimer = get().retryTimer;
+    if (retryTimer) clearTimeout(retryTimer);
+    set({ retryTimer: null, retryAttempt: 0 });
+  }
+
+  function endSessionEpoch(): void {
+    set({ sessionEpoch: get().sessionEpoch + 1 });
+  }
+
+  // One session check at a time per epoch: start-up's lookups and every
+  // validation go through here. A check from an earlier epoch doesn't block
+  // a new one, since its answer will be dropped anyway.
+  let currentCheck: { epoch: number; done: Promise<void> } | null = null;
+
+  function checkRunning(): boolean {
+    return currentCheck !== null && currentCheck.epoch === get().sessionEpoch;
+  }
+
+  function beginCheck(): () => void {
+    let finished!: () => void;
+    const check = {
+      epoch: get().sessionEpoch,
+      done: new Promise<void>((resolve) => {
+        finished = resolve;
+      }),
+    };
+    currentCheck = check;
+    set({ isValidating: true });
+    return () => {
+      if (currentCheck === check) {
+        currentCheck = null;
+        set({ isValidating: false });
+      }
+      finished();
+    };
+  }
+
+  // An impersonation target belongs to the admin session that chose it. When
+  // this tab takes on a different account, or one that may not use it, the
+  // target goes. That includes a tab starting from an empty store, which can
+  // hold a target from a session that ended while it wasn't listening.
+  function adoptUser(user: User): void {
+    const previous = get().user;
+    const switchedAccount = previous !== null && previous.id !== user.id;
+    if (switchedAccount || (previous !== null && previous.role !== user.role)) {
+      endSessionEpoch();
+    }
+    if (
+      hasImpersonation() &&
+      (switchedAccount || !isImpersonationUsableBy(user))
+    ) {
+      clearImpersonationEverywhere();
+    }
+    set({ user });
+    // Requests sent before this tab knew who was signed in went out without
+    // the admin's target; fetch them again as the user they're acting as.
+    if (previous === null && isImpersonationUsableBy(user)) {
+      void refetchEverything();
+    }
+  }
+
   function handleStorageEventInternal(event: StorageEvent): void {
+    if (isImpersonationClearedEvent(event)) {
+      ImpersonationState.clear();
+      return;
+    }
+    if (isImpersonationChangedEvent(event)) {
+      // Another tab started impersonating someone else, or stopped: this
+      // tab's page belongs to the old choice. Only the owning admin's tabs
+      // follow a new target; once none is left, an admin's tab reloads onto
+      // their own account.
+      const user = get().user;
+      if (!user) return;
+      const following = ImpersonationState.read()
+        ? isImpersonationUsableBy(user)
+        : user.role === "admin";
+      if (following) reloadPage();
+      return;
+    }
+
     const result = handleStorageEventHelper({
       event,
       api: get().apiRef,
@@ -306,44 +493,58 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 
     if (!result.shouldLogout) return;
 
-    beginNonValidationAuthRequest();
-    clearAuthenticatedState();
+    cancelRetry();
+    endSessionEpoch();
+    set({
+      user: null,
+      hasLoadedUser: false,
+      isUserLoading: false,
+    });
 
-    const router = get().routerRef;
-    if (router) {
-      router.refresh();
-      if (result.redirectPath) {
-        router.push(result.redirectPath);
-      }
+    // Full page load: navigates away from the protected page and drops this
+    // tab's cached data for the account that just signed out.
+    if (result.redirectPath) {
+      navigateWithFullLoad(result.redirectPath);
+      return;
     }
+    get().routerRef?.refresh();
   }
 
   async function refreshSessionInternal() {
-    const requestGeneration = beginNonValidationAuthRequest();
-    set({ isValidating: false });
-    if (pendingLogoutPromise && !(await waitForPendingLogout())) {
-      stopLoadingIfCurrent(requestGeneration);
-      return {};
+    // A refresh is asked for explicitly, so it isn't skipped like a
+    // background check: it waits its turn, then holds the one-at-a-time slot.
+    while (checkRunning()) await currentCheck?.done;
+    const finishCheck = beginCheck();
+    try {
+      return await refreshOnce();
+    } finally {
+      finishCheck();
     }
-    if (requestGeneration !== authRequestGeneration) return {};
+  }
+
+  async function refreshOnce() {
+    const epoch = get().sessionEpoch;
     const result = await refreshSessionHelper();
-    if (requestGeneration !== authRequestGeneration) return {};
+    if (get().sessionEpoch !== epoch) return result;
 
     if (result.user) {
-      clearWebSocketDisconnectIntent();
+      adoptUser(result.user);
+      set({ hasLoadedUser: true, isUserLoading: false });
+    } else if (result.error && !result.isUnavailable) {
+      endSessionEpoch();
+      clearImpersonationEverywhere();
       set({
-        user: result.user,
-        hasLoadedUser: true,
+        user: null,
+        hasLoadedUser: false,
         isUserLoading: false,
       });
-    } else if (result.error) {
-      clearAuthenticatedState();
     }
 
     return result;
   }
 
   function cleanup(): void {
+    cancelRetry();
     const existingCleanup = get().listenersCleanup;
     if (existingCleanup) {
       existingCleanup();
@@ -356,13 +557,15 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     isUserLoading: true,
     isValidating: false,
     hasLoadedUser: false,
-    hasCompletedInitialAuthHydration: false,
     lastValidation: 0,
     initializationPromise: null,
     listenersCleanup: null,
     routerRef: null,
     apiRef: null,
     currentPath: "",
+    retryTimer: null,
+    retryAttempt: 0,
+    sessionEpoch: 0,
     initialize,
     setCurrentRequestContext,
     logOut,
@@ -372,12 +575,36 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
   };
 });
 
-if (typeof window !== "undefined") {
-  useAuthStore.subscribe((state, previousState) => {
-    const previousIdentityKey = previousState.user?.id ?? null;
-    const identityKey = state.user?.id ?? null;
-    if (previousIdentityKey === identityKey) return;
-    if (!previousState.hasCompletedInitialAuthHydration) return;
-    void resetQueryClientForIdentityChange(identityKey);
-  });
+useAuthStore.subscribe((state, previousState) => {
+  // Signing out is reported here; the signed-out state on load once
+  // initialize() is done.
+  if (state.user) setAnalyticsIdentitySignedIn(true);
+  else if (previousState.user) setAnalyticsIdentitySignedIn(false);
+  if (previousState.user && previousState.user.id !== state.user?.id) {
+    resetAnalyticsIdentity();
+    clearCopilotCompletedSessions();
+  }
+  // Whoever signs in claims the onboarding handoff: a different account
+  // than this tab last had starts without it, however the last session
+  // ended. Not on a sign-out itself: a failed refresh also drops the user,
+  // and a brand-new one must keep their walkthrough.
+  if (state.user && state.user.id !== previousState.user?.id)
+    claimOnboardingHandoff(state.user.id);
+});
+
+// Headers are built only for the user this store has signed in, so keep the
+// impersonation module told who that is.
+useAuthStore.subscribe((state, previousState) => {
+  if (state.user !== previousState.user) setImpersonationViewer(state.user);
+});
+
+// Loaded lazily: the copilot store pulls in React hooks the auth store
+// otherwise has no reason to load.
+function clearCopilotCompletedSessions() {
+  if (typeof window === "undefined") return;
+  import("@/app/(platform)/copilot/store")
+    .then(({ useCopilotUIStore }) =>
+      useCopilotUIStore.getState().clearAllCompletedSessions(),
+    )
+    .catch(() => {});
 }

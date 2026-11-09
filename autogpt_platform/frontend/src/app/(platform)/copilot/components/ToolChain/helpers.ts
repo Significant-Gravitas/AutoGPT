@@ -1,12 +1,21 @@
 import type { ToolUIPart } from "ai";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
+import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
+import { isQuestionTool } from "../QuestionDock/helpers";
+import {
+  type ClarifyingQuestion,
+  extractClarifyingQuestions,
+} from "../../tools/clarifying-questions";
 import {
   extractToolName,
   getAnimationText,
   getToolCategory,
 } from "../../tools/GenericTool/helpers";
+import { capabilityTargetRow, capabilityTargetToolName } from "./capabilityRow";
 import { type ChainCategory, getCatalogLabel } from "./toolCatalog";
+import type { HeldRowInfo } from "./heldRow";
+import { heldAskText, heldToolName } from "./heldRow";
 import { asObject, integrationIconSrc } from "./resultHelpers";
 
 export type ChainRowState = "running" | "done" | "error";
@@ -31,6 +40,10 @@ export interface ChainRow {
    *  row line but renders no card, so one delegation never stacks
    *  duplicate cards down the chain. */
   supersededSubSession?: boolean;
+  /** A call the action gate held: whether it waits, ran or was turned down. */
+  held?: HeldRowInfo;
+  /** A lookup that found nothing, which the label already says. */
+  emptyResult?: boolean;
 }
 
 const SUB_SESSION_CARD_TOOLS = new Set([
@@ -41,7 +54,8 @@ const SUB_SESSION_CARD_TOOLS = new Set([
 ]);
 
 function subSessionIdOf(row: ChainRow): string | null {
-  if (!row.tool || !SUB_SESSION_CARD_TOOLS.has(row.tool)) return null;
+  const tool = capabilityTargetRow(row).tool;
+  if (!tool || !SUB_SESSION_CARD_TOOLS.has(tool)) return null;
   const output = asObject(row.output);
   const sid = output?.sub_session_id;
   return typeof sid === "string" && sid ? sid : null;
@@ -67,7 +81,8 @@ export function markSupersededSubSessionRows(rows: ChainRow[]): ChainRow[] {
     const sid = subSessionIdOf(row);
     if (!sid) continue;
     const open = openRowKey.get(sid);
-    if (open && !SUB_SESSION_START_TOOLS.has(row.tool ?? "")) {
+    const tool = capabilityTargetRow(row).tool ?? "";
+    if (open && !SUB_SESSION_START_TOOLS.has(tool)) {
       supersededKeys.add(open);
     }
     openRowKey.set(sid, row.key);
@@ -81,9 +96,17 @@ export function markSupersededSubSessionRows(rows: ChainRow[]): ChainRow[] {
 const ACTION_RESPONSE_TYPES = new Set([
   "setup_requirements",
   "review_required",
+  "approval_required",
   "need_login",
   "trigger_config_required",
   "suggested_goal",
+]);
+
+const BLOCK_ACTION_TOOLS = new Set([
+  "run_block",
+  "continue_run_block",
+  "run_capability",
+  "resume_capability",
 ]);
 
 function actionLabel(toolName: string, tool: ToolUIPart): string | null {
@@ -93,7 +116,7 @@ function actionLabel(toolName: string, tool: ToolUIPart): string | null {
   if (typeof data.type !== "string" || !ACTION_RESPONSE_TYPES.has(data.type)) {
     return null;
   }
-  const isBlock = toolName === "run_block" || toolName === "continue_run_block";
+  const isBlock = BLOCK_ACTION_TOOLS.has(toolName);
   if (data.type === "setup_requirements") {
     const setup =
       data.setup_info && typeof data.setup_info === "object"
@@ -114,6 +137,8 @@ function actionLabel(toolName: string, tool: ToolUIPart): string | null {
       ? `Review ${name.trim()}`
       : "Review this action";
   }
+  if (data.type === "approval_required")
+    return heldAskText(data, heldToolName(data, toolName));
   if (data.type === "suggested_goal") return "Review the suggested goal";
   return typeof data.message === "string" && data.message.trim()
     ? data.message.trim()
@@ -129,6 +154,15 @@ export function isLiftedSetupRow(row: ChainRow): boolean {
   const data = asObject(row.output);
   if (!data) return false;
   return data.type === "setup_requirements" && !!asObject(data.setup_info);
+}
+
+/** The questions a settled row asked once the user has moved past them. They
+ *  render under the chain, where their card was, so collapsing the chain
+ *  cannot hide what the user was asked. */
+export function getAskedQuestions(row: ChainRow): ClarifyingQuestion[] {
+  if (row.state !== "done" || row.lifted) return [];
+  if (!isQuestionTool(row.tool, row.output)) return [];
+  return extractClarifyingQuestions(row);
 }
 
 function getProviderIconSrc(tool: ToolUIPart): string | undefined {
@@ -147,25 +181,39 @@ function getProviderIconSrc(tool: ToolUIPart): string | undefined {
 // it into a chain would bury both behind a collapsed "summarized context".
 export const COMPACTION_PART_TYPE = "tool-context_compaction";
 
-// Hiring, raising or updating an expert is the user's call, not a step the
-// model worked through — the card renders as its own message part so the
-// approval never sits inside a chain that collapses on top of it.
+export const SOUL_CHANGE_TOOLS = new Set([
+  "update_expert_soul",
+  "confirm_expert_soul_update",
+]);
+
+// Hiring, raising or updating an expert, or editing its Soul, is the user's
+// call, not a step the model worked through — the card renders as its own
+// message part so the approval never sits inside a chain that collapses on
+// top of it.
 export const EXPERT_CHANGE_TOOLS = new Set([
   "hire_expert",
   "raise_expert",
   "update_expert",
   "confirm_expert_change",
+  ...SOUL_CHANGE_TOOLS,
 ]);
 
 export function isExpertChangePart(part: MessagePart): boolean {
-  return (
-    part.type.startsWith("tool-") &&
-    EXPERT_CHANGE_TOOLS.has(part.type.slice("tool-".length))
+  if (!part.type.startsWith("tool-")) return false;
+  if (EXPERT_CHANGE_TOOLS.has(part.type.slice("tool-".length))) return true;
+  const target = capabilityTargetToolName(
+    part.type,
+    "input" in part ? part.input : undefined,
   );
+  return target !== null && EXPERT_CHANGE_TOOLS.has(target);
 }
 
 export function isChainPart(part: MessagePart): boolean {
-  if (part.type === COMPACTION_PART_TYPE || isExpertChangePart(part)) {
+  if (
+    part.type === COMPACTION_PART_TYPE ||
+    part.type === EXPERT_ONBOARDING_PART_TYPE ||
+    isExpertChangePart(part)
+  ) {
     return false;
   }
   return part.type === "reasoning" || part.type.startsWith("tool-");
@@ -182,6 +230,24 @@ function narrationText(part: MessagePart): string | null {
   const text = typeof part.text === "string" ? part.text.trim() : "";
   if (!text || text.length > NARRATION_MAX_CHARS) return null;
   return text;
+}
+
+/** Chats saved before the engines named a dispatched tool after itself store
+ *  `run_capability(id: "tool:<name>")`; those rows are labelled as the tool
+ *  that ran. A `connect` call only checks sign-in, so it keeps its own. */
+function getRowCatalogLabel(
+  row: ChainRow,
+  context: { displayName: unknown; output: unknown },
+) {
+  const target = capabilityTargetRow(row);
+  const viaDispatch =
+    target.tool && target !== row && asObject(target.input)?.connect !== true
+      ? getCatalogLabel(target.tool, target.input, row.state, context)
+      : null;
+  return (
+    viaDispatch ??
+    getCatalogLabel(row.tool ?? "", row.input, row.state, context)
+  );
 }
 
 export function toChainRow(part: MessagePart, index: number): ChainRow | null {
@@ -240,10 +306,10 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
       output: tool.output,
     };
 
-    const catalogLabel = getCatalogLabel(toolName, stableTool.input, state, {
-      displayName: tool.title,
-      output: tool.output,
-    });
+    const catalogLabel = getRowCatalogLabel(
+      { key: tool.toolCallId, category: "other", text: "", state, ...data },
+      { displayName: tool.title, output: tool.output },
+    );
     if (catalogLabel) {
       return {
         key: tool.toolCallId,
@@ -285,8 +351,8 @@ const CATEGORY_SUMMARY: Record<ChainRow["category"], string> = {
   edit: "edited files",
   todo: "updated tasks",
   compaction: "summarized context",
-  agent: "ran agents",
-  "agent-build": "built agents",
+  agent: "delegated work",
+  "agent-build": "built workflows",
   plan: "planned the approach",
   block: "ran blocks",
   memory: "managed memory",

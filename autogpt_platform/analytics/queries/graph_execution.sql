@@ -33,6 +33,16 @@
 --   correctness_score FLOAT        AI correctness score (if available)
 --   possibly_ai       BOOLEAN      True if agent has sensitive_action_safe_mode enabled
 --   groupedErrorMessage TEXT       Scrubbed error string (IDs/URLs replaced with wildcards)
+--   expertId          TEXT         Hired expert the run is attributed to (nullable)
+--   triggerSource     TEXT         How the run started: manual | api | schedule | webhook |
+--                                  copilot | subgraph | admin. NULL for rows created
+--                                  before the column existed (Sept 2026).
+--   triggerRef        TEXT         What started it: schedule id, webhook id, chat session id,
+--                                  'api_key'/'oauth', or the UI surface ('library', 'builder')
+--   failureReason     TEXT         Structured failure reason (e.g. insufficient_balance)
+--   isDryRun          BOOLEAN      LLM-simulated run; exclude from task counts
+--   isSubgraphRun     BOOLEAN      Nested run started by a parent run; exclude from task counts
+--   endedAt           TIMESTAMPTZ  When the run reached a terminal state (nullable)
 --
 -- WINDOW
 --   Rolling 90 days (createdAt > CURRENT_DATE - 90 days)
@@ -99,7 +109,19 @@ SELECT
             '\1\2/...', 'gi'
         ),
         '[a-zA-Z0-9_:-]*\d[a-zA-Z0-9_:-]*', '*', 'g'
-    )                                                              AS groupedErrorMessage
+    )                                                              AS groupedErrorMessage,
+    -- Columns below were appended later; CREATE OR REPLACE VIEW only allows
+    -- adding columns at the end, so keep new ones here. They are quoted so
+    -- the column names stay camelCase as documented (an unquoted alias folds
+    -- to lowercase); groupedErrorMessage above predates this and cannot be
+    -- renamed in place.
+    ge."expertId"                                                  AS "expertId",
+    ge."triggerSource"                                             AS "triggerSource",
+    ge."triggerRef"                                                AS "triggerRef",
+    ge."stats"::jsonb->>'failure_reason'                           AS "failureReason",
+    COALESCE((ge."stats"::jsonb->>'is_dry_run')::boolean, FALSE)   AS "isDryRun",
+    ge."parentGraphExecutionId" IS NOT NULL                        AS "isSubgraphRun",
+    ge."endedAt"                                                   AS "endedAt"
 FROM platform."AgentGraphExecution" ge
 LEFT JOIN platform."AgentGraph" g
        ON ge."agentGraphId" = g."id"

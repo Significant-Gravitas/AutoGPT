@@ -1,6 +1,6 @@
 """Tests for the briefings API routes.
 
-Pattern mirrors backend/api/features/executions/review/review_routes_test.py:
+Pattern mirrors backend/api/features/graph_executions/review/review_routes_test.py:
 the full app from backend.api.rest_api, the session-scoped `server` fixture
 (real Prisma DB), and `mock_jwt_user` for auth overrides. Unlike the review
 tests, these seed real rows via backend.data.briefing.create_briefing rather

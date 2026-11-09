@@ -10,8 +10,11 @@ from .device_base import BaseDeviceAuthHandler
 from .discord import DiscordOAuthHandler
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
+from .microsoft import MicrosoftDeviceAuthHandler, MicrosoftOAuthHandler
+from .microsoft_365_copilot import Microsoft365CopilotDeviceAuthHandler
 from .notion import NotionOAuthHandler
 from .reddit import RedditOAuthHandler
+from .rmfg import RMFGDeviceAuthHandler
 from .stripe_link import StripeLinkDeviceAuthHandler
 from .twitter import TwitterOAuthHandler
 
@@ -28,6 +31,7 @@ _ORIGINAL_HANDLERS = [
     RedditOAuthHandler,
     TwitterOAuthHandler,
     TodoistOAuthHandler,
+    MicrosoftOAuthHandler,
 ]
 
 # Start with original handlers
@@ -234,6 +238,9 @@ CREDENTIALS_BY_PROVIDER: dict[str, SDKAwareCredentials] = SDKAwareCredentialsDic
 # ------------------------------------------------------------------ #
 _ORIGINAL_DEVICE_HANDLERS: list[type[BaseDeviceAuthHandler]] = [
     CodexDeviceAuthHandler,
+    Microsoft365CopilotDeviceAuthHandler,
+    MicrosoftDeviceAuthHandler,
+    RMFGDeviceAuthHandler,
     StripeLinkDeviceAuthHandler,
 ]
 

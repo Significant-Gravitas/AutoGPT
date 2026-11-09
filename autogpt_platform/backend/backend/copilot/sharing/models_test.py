@@ -5,7 +5,10 @@ test here is checking that data which must NOT cross the public link
 genuinely does not.
 """
 
+import json
 from datetime import datetime, timezone
+
+import pytest
 
 from backend.copilot.model import ChatMessage as ChatMessageDomain
 from backend.copilot.sharing.models import _redact_secret_keys, sanitize_chat_message
@@ -139,6 +142,36 @@ class TestRedactSecretKeys:
             "id_token": "[redacted]",
         }
 
+    def test_redacts_camel_and_pascal_case_secret_keys(self):
+        result = _redact_secret_keys(
+            {
+                "accessToken": "access",
+                "clientSecret": "client",
+                "AuthToken": "auth",
+                "refreshToken": "refresh",
+                "userPassword": "password",
+                "APIKey": "key",
+            }
+        )
+        assert result == {
+            "accessToken": "[redacted]",
+            "clientSecret": "[redacted]",
+            "AuthToken": "[redacted]",
+            "refreshToken": "[redacted]",
+            "userPassword": "[redacted]",
+            "APIKey": "[redacted]",
+        }
+
+    def test_does_not_redact_camel_case_usage_counts(self):
+        result = _redact_secret_keys(
+            {"promptTokens": 100, "completionTokens": 50, "totalTokens": 150}
+        )
+        assert result == {
+            "promptTokens": 100,
+            "completionTokens": 50,
+            "totalTokens": 150,
+        }
+
 
 class TestSanitizeChatMessage:
     def test_preserves_canonical_tool_display_name(self):
@@ -270,3 +303,52 @@ class TestSanitizeChatMessage:
         payload = _json.loads(sanitized.content)
         assert payload["api_keys"] == "[redacted]"
         assert payload["count"] == 2
+
+    def test_tool_content_redacts_nested_camel_case_secrets(self):
+        msg = _msg(
+            role="tool",
+            content=(
+                '{"result":{"accessToken":"access","nested":'
+                '{"clientSecret":"client","refreshToken":"refresh"}}}'
+            ),
+        )
+
+        sanitized = sanitize_chat_message(msg)
+
+        import json as _json
+
+        payload = _json.loads(sanitized.content)
+        assert payload == {
+            "result": {
+                "accessToken": "[redacted]",
+                "nested": {
+                    "clientSecret": "[redacted]",
+                    "refreshToken": "[redacted]",
+                },
+            }
+        }
+
+    @pytest.mark.parametrize("key", ["X-Api-Key", "Api-Keys", "api key", "api.key"])
+    def test_redacts_secret_keys_spelled_as_headers(self, key):
+        headers = {key: "sk-test", "Accept": "*/*"}
+        call = _msg(
+            role="assistant",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "function": {"name": "fetch", "arguments": {"headers": headers}},
+                }
+            ],
+        )
+        result = _msg(role="tool", content=json.dumps({"request_headers": headers}))
+
+        sanitized_call = sanitize_chat_message(call)
+        sanitized_result = sanitize_chat_message(result)
+
+        expected = {key: "[redacted]", "Accept": "*/*"}
+        assert sanitized_call.tool_calls is not None
+        assert (
+            sanitized_call.tool_calls[0]["function"]["arguments"]["headers"] == expected
+        )
+        assert sanitized_result.content is not None
+        assert json.loads(sanitized_result.content)["request_headers"] == expected

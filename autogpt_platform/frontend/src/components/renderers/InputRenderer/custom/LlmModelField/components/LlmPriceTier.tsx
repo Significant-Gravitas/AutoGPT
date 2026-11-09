@@ -13,7 +13,7 @@ export function LlmPriceTier({ tier }: Props) {
   }
   const clamped = Math.min(3, Math.max(1, tier));
   return (
-    <div className="flex items-center text-zinc-900">
+    <div className="flex items-center text-foreground-strong">
       {Array.from({ length: clamped }).map((_, index) => (
         <Icon
           icon={DollarSignIcon}

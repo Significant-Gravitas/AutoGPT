@@ -47,10 +47,16 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Ran command",
     subject: (input) => quoted(input, "command", 60),
   },
+  start_desktop: {
+    category: "browser",
+    running: "Starting desktop",
+    done: "Started desktop",
+  },
   list_workspace_files: {
     category: "file-list",
     running: "Listing workspace files",
     done: "Listed workspace files",
+    empty: "none yet",
   },
   read_workspace_file: {
     category: "file-read",
@@ -66,6 +72,11 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     subject: (input) =>
       quoted(input, "path", 60) ?? quoted(input, "filename", 60),
   },
+  read_tool_result: {
+    category: "file-read",
+    running: "Reading the full result",
+    done: "Read the full result",
+  },
   delete_workspace_file: {
     category: "file-delete",
     running: "Deleting",
@@ -75,8 +86,31 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   list_schedules: {
     category: "schedule",
-    running: "Listing schedules",
-    done: "Listed schedules",
+    running: "Checking your schedules",
+    done: "Checked your schedules",
+    empty: "none yet",
+  },
+  pause_schedule: {
+    category: "schedule",
+    running: "Pausing schedule",
+    done: "Paused schedule",
+  },
+  resume_schedule: {
+    category: "schedule",
+    running: "Resuming schedule",
+    done: "Resumed schedule",
+  },
+  list_routines: {
+    category: "schedule",
+    running: "Checking your routines",
+    done: "Checked your routines",
+    empty: "none yet",
+  },
+  schedule_routine: {
+    category: "schedule",
+    running: "Saving routine",
+    done: "Saved routine",
+    subject: (input) => quoted(input, "title"),
   },
   delete_schedule: {
     category: "schedule",
@@ -94,15 +128,22 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Posted to",
     subject: (input) => quoted(input, "channel"),
   },
+  edit_chat_platform_message: {
+    category: "chat",
+    running: "Editing a posted message",
+    done: "Edited a posted message",
+  },
   list_chat_platform_channels: {
     category: "chat",
     running: "Listing chat channels",
     done: "Listed chat channels",
+    empty: "none found",
   },
   list_agent_triggers: {
     category: "trigger",
-    running: "Listing agent triggers",
-    done: "Listed agent triggers",
+    running: "Listing workflow triggers",
+    done: "Listed workflow triggers",
+    empty: "none yet",
   },
   setup_agent_webhook_trigger: {
     category: "trigger",
@@ -113,6 +154,7 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "preset",
     running: "Listing presets",
     done: "Listed presets",
+    empty: "none yet",
   },
   update_preset: {
     category: "preset",
@@ -131,10 +173,39 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     subject: (_input, context) =>
       quotedName(getBlockDisplayName(context.displayName, context.output)),
   },
+  find_capability: {
+    category: "block",
+    running: "Searching capabilities for",
+    done: "Searched capabilities for",
+    subject: (input) => quoted(input, "query"),
+  },
+  describe_capability: {
+    category: "block",
+    running: "Reading capability",
+    done: "Read capability",
+    subject: (input) => quotedName(strField(input, "id")),
+  },
+  run_capability: {
+    category: "block",
+    running: "Running",
+    done: "Ran",
+    subject: (input, context) =>
+      quotedName(
+        getBlockDisplayName(context.displayName, context.output) ??
+          strField(input, "id"),
+      ),
+  },
+  resume_capability: {
+    category: "block",
+    running: "Resuming",
+    done: "Resumed",
+    subject: (_input, context) =>
+      quotedName(getBlockDisplayName(context.displayName, context.output)),
+  },
   schedule_agent: {
     category: "agent",
-    running: "Scheduling agent",
-    done: "Scheduled agent",
+    running: "Scheduling workflow",
+    done: "Scheduled workflow",
   },
   continue_run_block: {
     category: "block",
@@ -188,6 +259,7 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "skill",
     running: "Listing skills",
     done: "Listed skills",
+    empty: "none yet",
   },
   connect_integration: {
     category: "integration",

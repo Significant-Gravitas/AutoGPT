@@ -52,7 +52,7 @@ export default function useCredits({
 } = {}): {
   credits: number | null;
   fetchCredits: () => void;
-  requestTopUp: (credit_amount: number) => Promise<void>;
+  requestTopUp: (credit_amount: number) => Promise<boolean>;
   openBillingPortal: () => Promise<void>;
   refundTopUp: (
     transaction_key: string,
@@ -182,22 +182,29 @@ export default function useCredits({
     [api, fetchAutoTopUpConfig, scopedIdentityKey, identityScope],
   );
 
+  // Resolves true once it has sent the page to Stripe, and false when the
+  // identity changed first, so a caller marks the page busy only for a real
+  // redirect.
   const requestTopUp = useCallback(
     async (credit_amount: number) => {
       if (scopedIdentityKey === null) {
         throw new Error("Authentication required");
       }
       const requestScope = identityScope;
-      if (identityScopeRef.current.token !== requestScope) return;
+      if (identityScopeRef.current.token !== requestScope) return false;
       let response: { checkout_url: string };
       try {
         response = await api.requestTopUp(credit_amount);
       } catch (error) {
-        if (identityScopeRef.current.token !== requestScope) return;
+        if (identityScopeRef.current.token !== requestScope) return false;
         throw error;
       }
-      if (identityScopeRef.current.token !== requestScope) return;
+      if (identityScopeRef.current.token !== requestScope) return false;
+      if (!response.checkout_url) {
+        throw new Error("Checkout didn't start. Please try again later.");
+      }
       router.push(response.checkout_url);
+      return true;
     },
     [api, scopedIdentityKey, identityScope, router],
   );

@@ -1,7 +1,29 @@
-import { useEffect, useRef, useState } from "react";
+import { useNowSecond } from "@/hooks/useNowSecond";
+import { useState } from "react";
+
+interface Run {
+  isRunning: boolean;
+  anchorIso: string | null | undefined;
+  startedAtMs: number | null;
+  frozenSeconds: number;
+}
+
+function resolveStartMs(
+  anchorIso: string | null | undefined,
+  fallbackMs: number,
+) {
+  const anchorMs = anchorIso ? Date.parse(anchorIso) : NaN;
+  return Number.isFinite(anchorMs) ? anchorMs : fallbackMs;
+}
+
+export function getElapsedSeconds(startedAtMs: number, nowMs: number) {
+  return Math.max(0, Math.floor((nowMs - startedAtMs) / 1000));
+}
 
 /**
- * Ticks once per second while `isRunning` is true.
+ * When the current run started, without ticking. `startedAtMs` is set while
+ * `isRunning` is true and null otherwise; `frozenSeconds` holds the elapsed
+ * reading at the moment the last run stopped (0 before any run).
  *
  * Pass `anchorIso` (a server-issued ISO timestamp, e.g. the active stream's
  * `started_at` or the last user/tool message's `createdAt`) to count from
@@ -11,36 +33,62 @@ import { useEffect, useRef, useState } from "react";
  * the turn's last recorded activity, not the moment the current browser
  * tab mounted.
  */
+export function useElapsedAnchor(
+  isRunning: boolean,
+  anchorIso?: string | null,
+) {
+  const [run, setRun] = useState<Run>(() => ({
+    isRunning,
+    anchorIso,
+    startedAtMs: isRunning ? resolveStartMs(anchorIso, Date.now()) : null,
+    frozenSeconds: 0,
+  }));
+
+  // Re-sync whenever the run starts or stops, and whenever a late-arriving
+  // anchorIso (e.g. session data loads after the timer started on page
+  // refresh) replaces the one the run started from. An anchor that drops
+  // out mid-run (a session refetch clears it) keeps the start it had.
+  let current = run;
+  if (
+    run.isRunning !== isRunning ||
+    (isRunning && run.anchorIso !== anchorIso)
+  ) {
+    current = {
+      isRunning,
+      anchorIso,
+      startedAtMs: isRunning
+        ? resolveStartMs(
+            anchorIso,
+            run.isRunning && run.startedAtMs !== null
+              ? run.startedAtMs
+              : Date.now(),
+          )
+        : null,
+      frozenSeconds:
+        !isRunning && run.startedAtMs !== null
+          ? getElapsedSeconds(run.startedAtMs, Date.now())
+          : run.frozenSeconds,
+    };
+    setRun(current);
+  }
+
+  return {
+    startedAtMs: current.startedAtMs,
+    frozenSeconds: current.frozenSeconds,
+  };
+}
+
+/**
+ * Elapsed whole seconds of the current run, ticking once per second on the
+ * shared wall-clock second while `isRunning` is true and holding the last
+ * reading once it stops. See `useElapsedAnchor` for `anchorIso`.
+ */
 export function useElapsedTimer(isRunning: boolean, anchorIso?: string | null) {
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const startTimeRef = useRef<number | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
-
-  useEffect(() => {
-    if (isRunning) {
-      // Re-sync on every re-run so a late-arriving anchorIso (e.g. session
-      // data loads after the timer started on page refresh) updates the
-      // start time instead of being ignored.
-      const anchorMs = anchorIso ? Date.parse(anchorIso) : NaN;
-      startTimeRef.current = Number.isFinite(anchorMs) ? anchorMs : Date.now();
-      setElapsedSeconds(
-        Math.max(0, Math.floor((Date.now() - startTimeRef.current) / 1000)),
-      );
-
-      intervalRef.current = setInterval(() => {
-        if (startTimeRef.current !== null) {
-          setElapsedSeconds(
-            Math.max(0, Math.floor((Date.now() - startTimeRef.current) / 1000)),
-          );
-        }
-      }, 1000);
-
-      return () => clearInterval(intervalRef.current);
-    }
-
-    clearInterval(intervalRef.current);
-    startTimeRef.current = null;
-  }, [isRunning, anchorIso]);
-
+  const { startedAtMs, frozenSeconds } = useElapsedAnchor(isRunning, anchorIso);
+  const nowMs = useNowSecond(isRunning);
+  const elapsedSeconds =
+    startedAtMs === null
+      ? frozenSeconds
+      : getElapsedSeconds(startedAtMs, nowMs);
   return { elapsedSeconds };
 }

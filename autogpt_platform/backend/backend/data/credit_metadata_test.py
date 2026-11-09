@@ -24,7 +24,7 @@ from backend.util.json import SafeJson
 
 
 @pytest.fixture
-async def setup_test_user():
+async def setup_test_user(server):
     """Setup test user and cleanup after test."""
     user_id = DEFAULT_USER_ID
 
@@ -216,6 +216,14 @@ async def test_create_subscription_checkout_attaches_datafast_metadata():
     mock_session.url = "https://checkout.stripe.com/pay/cs_test_sub"
     create_mock = AsyncMock(return_value=mock_session)
     with (
+        patch(
+            "backend.data.credit.subscription_checkout_lock",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "backend.data.credit.ensure_no_unconverted_trial",
+            new_callable=AsyncMock,
+        ),
         patch(
             "backend.data.credit.get_subscription_price_id",
             new_callable=AsyncMock,

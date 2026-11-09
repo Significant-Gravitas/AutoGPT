@@ -7,9 +7,12 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { LockIcon } from "@hugeicons/core-free-icons";
-import { ReactNode, useState } from "react";
+import { useState } from "react";
+import { environment } from "@/services/environment";
 import { cn } from "@/lib/utils";
 import { ExpertSidePanel } from "../ExpertSidePanel/ExpertSidePanel";
+import { LearnedNotes } from "./components/LearnedNotes/LearnedNotes";
+import { SoulSectionTitle } from "./SoulSectionTitle";
 import { useBottomScrollShadow } from "./useBottomScrollShadow";
 import { useSoulDrawer } from "./useSoulDrawer";
 
@@ -22,7 +25,13 @@ export function SoulDrawer({ expert, onClose }: Props) {
   return (
     <ExpertSidePanel
       identity={
-        expert ? { name: expert.name, avatarUrl: expert.avatar_url } : null
+        expert
+          ? {
+              name: expert.name,
+              avatarUrl: expert.avatar_url,
+              color: expert.color,
+            }
+          : null
       }
       title={expert ? `${expert.name}'s Soul` : ""}
       panelId="soul"
@@ -60,25 +69,27 @@ function SoulPanelBody({ expert, onClose }: BodyProps) {
             A living document that shapes every reply.
           </Text>
           <SoulFields soul={soul} updateField={updateField} />
-          <LearnedNotes />
+          {environment.isGraphMemoryAvailable() ? (
+            <LearnedNotes expertId={expert.id} />
+          ) : null}
           <ProtectedRules rules={expert.protected_soul_rules} />
         </div>
         <div
           aria-hidden="true"
           className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sidebar to-transparent transition-opacity duration-200",
+            "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface-muted to-transparent transition-opacity duration-200",
             hasMoreBelow ? "opacity-100" : "opacity-0",
           )}
         />
       </div>
-      <div className="flex shrink-0 justify-end gap-2 border-t border-t-sidebar-border px-5 py-3">
-        <Button type="button" variant="ghost" size="xs" onClick={onClose}>
+      <div className="flex shrink-0 justify-end gap-2 border-t border-t-border-base px-5 py-3">
+        <Button type="button" variant="ghost" size="small" onClick={onClose}>
           Cancel
         </Button>
         <Button
           type="submit"
           variant="primary"
-          size="xs"
+          size="small"
           loading={isPending}
           disabled={!canSave}
         >
@@ -101,7 +112,8 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-name"
         label="Name"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        // oxlint-disable-next-line design-system/no-restyle -- Input has no label tone prop (src/components is P9's)
+        labelClassName="!text-foreground-body"
         value={soul.name}
         maxLength={100}
         required
@@ -111,7 +123,8 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-identity"
         label="Identity and personality"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        // oxlint-disable-next-line design-system/no-restyle -- Input has no label tone prop (src/components is P9's)
+        labelClassName="!text-foreground-body"
         type="textarea"
         rows={6}
         value={soul.identity}
@@ -123,7 +136,8 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-voice"
         label="Voice"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        // oxlint-disable-next-line design-system/no-restyle -- Input has no label tone prop (src/components is P9's)
+        labelClassName="!text-foreground-body"
         type="textarea"
         rows={3}
         value={soul.voice_preferences}
@@ -137,7 +151,8 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-boundaries"
         label="Boundaries"
         labelVariant="small-medium"
-        labelClassName="!text-zinc-700"
+        // oxlint-disable-next-line design-system/no-restyle -- Input has no label tone prop (src/components is P9's)
+        labelClassName="!text-foreground-body"
         type="textarea"
         rows={4}
         value={soul.boundaries}
@@ -149,49 +164,28 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
   );
 }
 
-function LearnedNotes() {
-  return (
-    <section className="mb-8">
-      <SoulSectionTitle>What I&apos;ve learned</SoulSectionTitle>
-      <Text variant="small" tone="muted">
-        Nothing recorded yet. What this expert learns will appear here.
-      </Text>
-    </section>
-  );
-}
-
 function ProtectedRules({ rules }: { rules: string[] }) {
   return (
-    <section className="border-t border-zinc-200 pt-6">
+    <section className="border-t border-border-base pt-6">
       <div className="mb-3 flex items-center gap-2">
-        <Icon icon={LockIcon} size={16} className="text-zinc-500" />
+        <span className="flex text-foreground-tertiary">
+          <Icon icon={LockIcon} size={16} />
+        </span>
         <SoulSectionTitle>Protected rules</SoulSectionTitle>
       </div>
-      <div className="space-y-2 rounded-xl bg-zinc-50 p-4">
+      <div className="space-y-2 rounded-xl bg-surface-muted p-4">
         {rules.map((rule) => (
-          <Text
-            key={rule}
-            variant="body"
-            as="div"
-            tone="secondary"
-            className="flex gap-2 leading-5"
-          >
+          <div key={rule} className="flex gap-2 text-foreground-secondary">
             <Icon icon={LockIcon} size={14} className="mt-0.5 shrink-0" />
-            <span>{rule}</span>
-          </Text>
+            <Text variant="body-tight" as="span" tone="secondary">
+              {rule}
+            </Text>
+          </div>
         ))}
       </div>
       <Text variant="small" tone="muted" className="mt-3">
         These rules are part of every expert&apos;s soul and cannot be edited.
       </Text>
     </section>
-  );
-}
-
-function SoulSectionTitle({ children }: { children: ReactNode }) {
-  return (
-    <Text variant="body-medium" as="h3" tone="primary">
-      {children}
-    </Text>
   );
 }

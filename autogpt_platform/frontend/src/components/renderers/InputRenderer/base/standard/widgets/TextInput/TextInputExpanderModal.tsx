@@ -1,6 +1,6 @@
 "use client";
 
-import React, { FC, useEffect, useState } from "react";
+import React, { FC, useEffect, useId, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -31,6 +31,7 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
   placeholder,
   inputType = "text",
 }) => {
+  const inputId = useId();
   const [tempValue, setTempValue] = useState(defaultValue);
   const [isCopied, setIsCopied] = useState(false);
   const { toast } = useToast();
@@ -75,13 +76,13 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
           <Text variant="body">{description}</Text>
           <Input
             type="textarea"
-            label=""
+            label={title || "Edit value"}
             hideLabel
-            id="input-expander-modal"
+            id={inputId}
             value={tempValue}
             className={cn(
-              "!min-h-[300px] rounded-2xlarge",
-              inputType === "json" && "font-mono text-sm",
+              "!min-h-[300px]",
+              inputType === "json" && "font-mono text-body",
             )}
             onChange={(e) => setTempValue(e.target.value)}
             placeholder={placeholder || "Enter text..."}
@@ -90,17 +91,18 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
 
           <div className="flex items-center justify-end gap-1">
             <Button
-              variant="secondary"
-              size="small"
+              variant={isCopied ? "success" : "secondary"}
+              size="icon-sm"
+              shape="pill"
+              tone="base"
+              withTooltip={false}
               onClick={copyValue}
-              className={cn(
-                "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
-                isCopied &&
-                  "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
-              )}
+              aria-label={
+                isCopied ? "Copied to clipboard" : "Copy to clipboard"
+              }
             >
               {isCopied ? (
-                <Icon icon={Tick02Icon} size={16} className="text-green-600" />
+                <Icon icon={Tick02Icon} size={16} tone="success" />
               ) : (
                 <Icon icon={Copy01Icon} size={16} />
               )}

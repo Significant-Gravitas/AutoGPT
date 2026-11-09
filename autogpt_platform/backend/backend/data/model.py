@@ -41,7 +41,9 @@ from pydantic_core import (
 )
 from typing_extensions import TypedDict
 
+from backend.data.credential_scope import ServerTarget, scope_rule
 from backend.data.onboarding_steps import OnboardingStep
+from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import ExecutionFailureReason
 from backend.util.json import loads as json_loads
@@ -97,7 +99,21 @@ class User(BaseModel):
         description="User timezone (IANA timezone identifier or 'not-set')",
     )
 
-    # Default AutoPilot connection for chats nobody routed explicitly. Kept as
+    # Consent captured at signup (see record_signup_consent).
+    terms_accepted_at: Optional[datetime] = Field(
+        None, description="When the user accepted the terms and privacy policy"
+    )
+    terms_version: Optional[str] = Field(
+        None, description="Version of the terms and privacy policy accepted"
+    )
+    marketing_opt_out_at: Optional[datetime] = Field(
+        None, description="When the user opted out of marketing email"
+    )
+    marketing_opt_out_source: Optional[str] = Field(
+        None, description="Where the marketing opt-out came from"
+    )
+
+    # Default Otto connection for chats nobody routed explicitly. Kept as
     # plain strings here: the data layer stores the choice, the copilot layer
     # decides what a given value means (and treats one it doesn't recognise as
     # "automatic", so a value written by a newer server can't break an older one).
@@ -156,6 +172,10 @@ class User(BaseModel):
             alerts_enabled=prisma_user.alertsEnabled,
             notify_on_store_verdict=prisma_user.notifyOnStoreVerdict,
             timezone=prisma_user.timezone or USER_TIMEZONE_NOT_SET,
+            terms_accepted_at=prisma_user.termsAcceptedAt,
+            terms_version=prisma_user.termsVersion,
+            marketing_opt_out_at=prisma_user.marketingOptOutAt,
+            marketing_opt_out_source=prisma_user.marketingOptOutSource,
             default_chat_auth_provider=prisma_user.defaultChatAuthProvider,
             default_chat_credential_id=prisma_user.defaultChatCredentialId,
         )
@@ -321,6 +341,58 @@ def is_sdk_default(cred_id: str) -> bool:
     return cred_id.endswith(SDK_DEFAULT_SUFFIX)
 
 
+# An SDK default credential holds the operator's own key. Blocks may run on one
+# only for the providers listed here: stateless, metered APIs where the key keeps
+# no objects that belong to a user. Graph save, graph validation and credential
+# lookup refuse every other "{provider}-default".
+RUNNABLE_SDK_DEFAULT_PROVIDERS: frozenset[str] = frozenset(
+    {
+        "anysearch",
+        "bannerbear",
+        "dataforb2b",
+        "dataforseo",
+        "firecrawl",
+        "parallel",
+        "stagehand",
+        "tavily",
+        "wolfram",
+    }
+)
+
+
+def is_refused_sdk_default(cred_id: str) -> bool:
+    if not is_sdk_default(cred_id):
+        return False
+    return (
+        cred_id.removesuffix(SDK_DEFAULT_SUFFIX) not in RUNNABLE_SDK_DEFAULT_PROVIDERS
+    )
+
+
+def sdk_default_refused_message(cred_id: str) -> str:
+    provider = provider_label(cred_id.removesuffix(SDK_DEFAULT_SUFFIX))
+    return (
+        f"The platform's shared {provider} key can't be used here. "
+        f"Connect your own {provider} credentials and select them instead."
+    )
+
+
+def provider_label(provider: str) -> str:
+    """The name people know a provider by, for messages about its shared key."""
+    return _PROVIDER_LABELS.get(provider, provider)
+
+
+_PROVIDER_LABELS: dict[str, str] = {
+    "agent_mail": "AgentMail",
+    "airtable": "Airtable",
+    "allquiet": "All Quiet",
+    "baas": "Meeting BaaS",
+    "exa": "Exa",
+    "linear": "Linear",
+    "rmfg": "RMFG",
+    "smartlead": "SmartLead",
+}
+
+
 class _BaseCredentials(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     provider: str
@@ -377,12 +449,28 @@ class UserPasswordCredentials(_BaseCredentials):
     type: Literal["user_password"] = "user_password"
     username: SecretStr
     password: SecretStr
+    scope: str | None = Field(
+        default=None,
+        description="What this login may be used for, as a URI whose meaning "
+        "depends on the provider: smtp://host[:port] for SMTP, or the engine's "
+        "scheme (postgresql://, mysql://, mssql://) and host[:port] for a "
+        "database. None for a login saved before scopes existed.",
+    )
 
     def auth_header(self) -> str:
         # Converting the string to bytes using encode()
         # Base64 encoding it with base64.b64encode()
         # Converting the resulting bytes back to a string with decode()
         return f"Basic {base64.b64encode(f'{self.username.get_secret_value()}:{self.password.get_secret_value()}'.encode()).decode()}"
+
+    def matches_scope(self, target: ServerTarget) -> bool:
+        """Whether this login may be sent to `target`, the exact server a block
+        is about to connect to, by the rule of the login's provider. A login with
+        no scope, or for a provider with no scope rule, matches nothing."""
+        rule = scope_rule(self.provider)
+        if self.scope is None or rule is None:
+            return False
+        return rule.matches(self.scope, target)
 
 
 class HostScopedCredentials(_BaseCredentials):
@@ -403,7 +491,11 @@ class HostScopedCredentials(_BaseCredentials):
         return self._extract_headers(headers)
 
     def get_headers_dict(self) -> dict[str, str]:
-        """Get headers with secret values extracted."""
+        """Get headers with secret values extracted.
+
+        A caller sending them also passes their names to
+        ``Requests(sensitive_headers=...)``, so a cross-origin redirect drops them.
+        """
         return self._extract_headers(self.headers)
 
     def auth_header(self) -> str:
@@ -474,11 +566,6 @@ class OAuthState(BaseModel):
     """Metadata to echo back to external app on completion"""
     initiated_by_api_key_id: Optional[str] = None
     """ID of the API key that initiated this OAuth flow"""
-
-    @property
-    def is_external(self) -> bool:
-        """Whether this OAuth flow was initiated via external API."""
-        return self.callback_url is not None
 
 
 class UserMetadata(BaseModel):
@@ -618,6 +705,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     discriminator_mapping: Optional[dict[str, CP]] = None
     discriminator_type_mapping: Optional[dict[str, frozenset[CT]]] = None
     discriminator_values: set[Any] = Field(default_factory=set)
+    credential_free_discriminator_values: set[Any] = Field(default_factory=set)
     is_auto_credential: bool = False
     credential_reference_only: bool = False
     input_field_name: Optional[str] = None
@@ -699,6 +787,12 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                     if value not in all_discriminator_values:
                         all_discriminator_values.append(value)
 
+            all_credential_free_values = set()
+            for _, field in group:
+                all_credential_free_values.update(
+                    field.credential_free_discriminator_values
+                )
+
             # Generate the key for the combined result
             providers_key, supported_types_key = key
             group_key = (
@@ -720,6 +814,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                     discriminator_mapping=combined.discriminator_mapping,
                     discriminator_type_mapping=combined.discriminator_type_mapping,
                     discriminator_values=set(all_discriminator_values),
+                    credential_free_discriminator_values=all_credential_free_values,
                     is_auto_credential=combined.is_auto_credential,
                     credential_reference_only=all(
                         field.credential_reference_only for _, field in group
@@ -734,20 +829,19 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     def requires_credentials(self, discriminator_value: Any) -> bool:
         """Whether this selection needs a credential at all.
 
-        A field may declare a discriminator value that maps to no provider,
-        meaning that choice is credential-free — AutoPilot's `platform`
-        transport runs on platform credits and needs nothing connected.
+        Credential-free choices are explicit so an unknown or retired
+        discriminator value is not silently treated as unauthenticated.
 
         Callers must consult this before resolving, discriminating, or
         enforcing entitlement on a field: `discriminate()` raises on an
-        unmapped value, and resolving a credential the selection will never
-        use can fail a run that was not going to touch that provider.
+        unsupported value, and resolving a credential for an explicitly free
+        selection can fail a run that was not going to touch that provider.
         """
         if not (self.discriminator and self.discriminator_mapping):
             return True
         if discriminator_value is None:
             return True
-        return discriminator_value in self.discriminator_mapping
+        return discriminator_value not in self.credential_free_discriminator_values
 
     def discriminate(self, discriminator_value: Any) -> CredentialsFieldInfo:
         if not (self.discriminator and self.discriminator_mapping):
@@ -758,7 +852,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         except KeyError:
             raise ValueError(
                 f"Model '{discriminator_value}' is not supported. "
-                "It may have been deprecated. Please update your agent configuration."
+                "It may have been deprecated. Please update your workflow configuration."
             )
 
         supported_types = self.supported_types
@@ -778,6 +872,9 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
             discriminator_mapping=self.discriminator_mapping,
             discriminator_type_mapping=self.discriminator_type_mapping,
             discriminator_values=set(self.discriminator_values),
+            credential_free_discriminator_values=set(
+                self.credential_free_discriminator_values
+            ),
             is_auto_credential=self.is_auto_credential,
             credential_reference_only=self.credential_reference_only,
             input_field_name=self.input_field_name,
@@ -791,6 +888,7 @@ def CredentialsField(
     discriminator_mapping: Optional[dict[str, Any]] = None,
     discriminator_type_mapping: Optional[dict[str, Any]] = None,
     discriminator_values: Optional[set[Any]] = None,
+    credential_free_discriminator_values: Optional[set[Any]] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
     **kwargs,
@@ -808,6 +906,7 @@ def CredentialsField(
             "discriminator_mapping": discriminator_mapping,
             "discriminator_type_mapping": discriminator_type_mapping,
             "discriminator_values": discriminator_values,
+            "credential_free_discriminator_values": credential_free_discriminator_values,
             "credential_reference_only": kwargs.pop("credential_reference_only", None),
         }.items()
         if v is not None
@@ -843,19 +942,22 @@ class AutoTopUpConfig(BaseModel):
     """Threshold to trigger auto top up."""
 
 
-class UserTransaction(BaseModel):
+class UserCreditTransaction(BaseModel):
     transaction_key: str = ""
     transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
     transaction_type: CreditTransactionType = CreditTransactionType.USAGE
     amount: int = 0
-    running_balance: int = 0
-    current_balance: int = 0
     description: str | None = None
     usage_graph_id: str | None = None
     usage_execution_id: str | None = None
     usage_node_count: int = 0
     usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
     user_id: str
+
+
+class UserCreditTransactionAdminView(UserCreditTransaction):
+    running_balance: int = 0
+    current_balance: int = 0
     user_email: str | None = None
     reason: str | None = None
     admin_email: str | None = None
@@ -879,18 +981,11 @@ class CreditHistoryRelatedExecution(BaseModel):
     amount: int | None = None
 
 
-class CreditTransactionItem(BaseModel):
+class CreditTransactionItem(UserCreditTransaction):
     id: str = ""
-    transaction_key: str = ""
-    transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
-    transaction_type: CreditTransactionType = CreditTransactionType.USAGE
-    amount: int = 0
-    description: str | None = None
-    usage_graph_id: str | None = None
-    usage_execution_id: str | None = None
-    usage_node_count: int = 0
-    usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
-    user_id: str
+    usage_chat_session_id: str | None = Field(
+        default=None, description="The AutoPilot chat the usage came from"
+    )
     activity_type: Literal["agent_run", "copilot_tools", "block_usage", "other"] = (
         "other"
     )
@@ -966,6 +1061,10 @@ class NodeExecutionStats(BaseModel):
     output_token_count: int = 0
     cache_read_token_count: int = 0
     cache_creation_token_count: int = 0
+    # Estimated input tokens of LLM requests that reached the provider and
+    # were cancelled before a reply reported their usage. Billed only when a
+    # stop request ended the run (see billing.bills_stop_estimate).
+    abandoned_input_token_count: int = 0
     cost: int = 0
     # Post-flight adjustment to the pre-flight ``cost`` estimate. Three writers:
     # 1. charge_reconciled_usage — dynamic cost delta (TOKENS/SECOND/ITEMS/
@@ -1079,6 +1178,8 @@ class UserExecutionSummaryStats(BaseModel):
 
 class UserOnboarding(BaseModel):
     userId: str
+    wizardProgress: OnboardingWizardProgress | None = None
+    wizardRevision: int = 0
     # Steps are typed as ``OnboardingStep`` so the API exposes a typed enum to
     # the frontend (the DB stores plain strings). The rename migration keeps
     # existing rows within the enum, and writes are validated on the completion

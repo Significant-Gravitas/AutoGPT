@@ -1,4 +1,4 @@
-import type { SuggestedPrompt } from "@/app/api/__generated__/models/suggestedPrompt";
+import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
 import {
   act,
   cleanup,
@@ -7,9 +7,12 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ExpertIdentity } from "../../../useExpertMap";
 import {
   introRevealTimings,
   OnboardingIntroCard,
@@ -21,22 +24,85 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 
-const PROMPTS: SuggestedPrompt[] = [
+type CardProps = ComponentProps<typeof OnboardingIntroCard>;
+type Suggestions = CardProps["suggestions"];
+type Collapse = CardProps["collapse"];
+
+const MARIA: ExpertIdentity = {
+  id: "expert-maria",
+  name: "Maria",
+  avatarUrl: null,
+  role: "Finance, Invoicing & Bookkeeping",
+  isArchived: false,
+  readOnlyReason: null,
+};
+
+const PROMPTS: SuggestedTask[] = [
   {
+    id: "0",
     title: "Summarise my inbox",
     prompt: "Every morning, summarise my unread email and flag what matters.",
     icon: "envelope",
+    state: "open",
   },
   {
+    id: "1",
     title: "Watch competitor pricing",
     prompt: "Check competitor pricing pages weekly and tell me what moved.",
     icon: "not-a-real-icon-slug",
+    state: "open",
   },
 ];
+
+const MARIAS_TASK: SuggestedTask = {
+  id: "2",
+  title: "Chase unpaid invoices",
+  prompt: "Chase every unpaid invoice with a polite follow-up.",
+  why: "Three invoices are past due.",
+  state: "open",
+  expert_id: MARIA.id,
+};
 
 const GREETING = "You spend most of your week chasing updates.";
 const COPY_LABEL = "Copy your recording's transcript";
 const FOOTER = "Want to do something else? Just write it in the textbox below.";
+const EMPTY_FOOTER =
+  "Tell me what you'd like to start with in the textbox below.";
+const TRANSCRIPT = "I spend Mondays rebuilding the same report.";
+
+function makeSuggestions(
+  tasks: SuggestedTask[],
+  overrides: Partial<Suggestions> = {},
+): Suggestions {
+  return {
+    isStored: true,
+    allTasks: tasks,
+    tasks: tasks.filter((task) => task.state !== "dismissed"),
+    experts: [MARIA],
+    expertsById: new Map([[MARIA.id, MARIA]]),
+    isRosterLoaded: true,
+    sendingId: null,
+    sendTask: vi.fn(),
+    removeTask: vi.fn(),
+    ...overrides,
+  };
+}
+
+function makeCollapse(isCollapsed = false): Collapse {
+  return { isCollapsed, toggle: vi.fn() };
+}
+
+function renderCard(props: Partial<CardProps> = {}) {
+  return render(
+    <OnboardingIntroCard
+      name="Alex"
+      greeting={GREETING}
+      suggestions={makeSuggestions(PROMPTS)}
+      collapse={makeCollapse()}
+      {...props}
+    />,
+  );
+}
 
 function writeTextMock(impl: () => Promise<void>) {
   const writeText = vi.fn(impl);
@@ -54,131 +120,171 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 describe("OnboardingIntroCard — content", () => {
-  it("greets the user by name and renders the greeting, prompts and footer", () => {
-    const { container } = render(
-      <OnboardingIntroCard
-        name="Alex"
-        greeting={GREETING}
-        prompts={PROMPTS}
-        onSelectPrompt={vi.fn()}
-      />,
-    );
+  it("greets the user by name and renders the greeting, the task list and the footer", () => {
+    const { container } = renderCard();
 
     const text = normalizeWhitespace(container);
     expect(text).toContain("Hey, Alex");
     expect(text).toContain(GREETING);
 
-    expect(screen.getByText("Summarise my inbox")).toBeDefined();
-    expect(screen.getByText("Watch competitor pricing")).toBeDefined();
+    const list = screen.getByRole("list", { name: "Your first tasks" });
+    expect(
+      within(list).getByRole("button", {
+        name: "Start with Otto: Summarise my inbox",
+      }),
+    ).toBeDefined();
+    expect(
+      within(list).getByRole("button", {
+        name: "Start with Otto: Watch competitor pricing",
+      }),
+    ).toBeDefined();
     expect(screen.getByText(FOOTER)).toBeDefined();
   });
 
-  it("renders a row for a prompt whose icon slug the frontend does not know", () => {
-    render(
-      <OnboardingIntroCard
-        name="Alex"
-        greeting={GREETING}
-        prompts={[PROMPTS[1]]}
-        onSelectPrompt={vi.fn()}
-      />,
-    );
+  it("says Hey there to a user it has no name for", () => {
+    const { container } = renderCard({ name: null });
+
+    expect(normalizeWhitespace(container)).toContain("Hey there");
+  });
+
+  it("names the expert who takes a task and gives the rest to Otto", () => {
+    renderCard({ suggestions: makeSuggestions([MARIAS_TASK, PROMPTS[1]]) });
 
     expect(
-      screen.getByRole("button", { name: "Watch competitor pricing" }),
+      screen.getByRole("button", {
+        name: "Start with Maria: Chase unpaid invoices",
+      }),
+    ).toBeDefined();
+    expect(screen.getByText(MARIAS_TASK.why ?? "")).toBeDefined();
+    expect(
+      screen.getByRole("button", {
+        name: "Start with Otto: Watch competitor pricing",
+      }),
     ).toBeDefined();
   });
 
-  it("omits the prompt list entirely when the server sent no prompts", () => {
-    render(
-      <OnboardingIntroCard
-        name="Alex"
-        greeting={GREETING}
-        prompts={[]}
-        onSelectPrompt={vi.fn()}
-      />,
-    );
+  it("shows who is on the team above the tasks", () => {
+    renderCard();
+
+    const team = screen.getByRole("list", { name: "Your team" });
+    const members = within(team).getAllByRole("listitem");
+    expect(members).toHaveLength(2);
+    expect(within(members[0]).getByText("Otto")).toBeDefined();
+    expect(within(members[1]).getByText("Maria")).toBeDefined();
+    expect(within(members[1]).getByText("Bookkeeper")).toBeDefined();
+  });
+
+  it("omits the list and stops pointing at it once nothing is left", () => {
+    renderCard({ suggestions: makeSuggestions([]) });
 
     expect(screen.queryByRole("list")).toBeNull();
-    expect(screen.getByText(FOOTER)).toBeDefined();
+    expect(screen.getByText(EMPTY_FOOTER)).toBeDefined();
+    expect(screen.queryByText(FOOTER)).toBeNull();
   });
 });
 
-describe("OnboardingIntroCard — picking a prompt", () => {
-  it("sends the full prompt, not the short title shown in the row", async () => {
-    const onSelectPrompt = vi.fn();
-    render(
-      <OnboardingIntroCard
-        name="Alex"
-        greeting={GREETING}
-        prompts={PROMPTS}
-        onSelectPrompt={onSelectPrompt}
-      />,
-    );
+describe("OnboardingIntroCard — picking a task", () => {
+  it("hands the clicked row's task over to be sent", async () => {
+    const suggestions = makeSuggestions(PROMPTS);
+    renderCard({ suggestions });
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Summarise my inbox" }),
+      screen.getByRole("button", {
+        name: "Start with Otto: Summarise my inbox",
+      }),
     );
 
-    expect(onSelectPrompt).toHaveBeenCalledExactlyOnceWith(PROMPTS[0].prompt);
+    expect(suggestions.sendTask).toHaveBeenCalledExactlyOnceWith(PROMPTS[0]);
   });
 
   it("does not fire while the composer is disabled", async () => {
-    const onSelectPrompt = vi.fn();
-    render(
-      <OnboardingIntroCard
-        name="Alex"
-        greeting={GREETING}
-        prompts={PROMPTS}
-        onSelectPrompt={onSelectPrompt}
-        disabled
-      />,
-    );
+    const suggestions = makeSuggestions(PROMPTS);
+    renderCard({ suggestions, disabled: true });
 
-    const row = screen.getByRole("button", { name: "Summarise my inbox" });
+    const row = screen.getByRole("button", {
+      name: "Start with Otto: Summarise my inbox",
+    });
     expect(row).toHaveProperty("disabled", true);
 
     await userEvent.click(row, { pointerEventsCheck: 0 });
 
-    expect(onSelectPrompt).not.toHaveBeenCalled();
+    expect(suggestions.sendTask).not.toHaveBeenCalled();
+  });
+});
+
+describe("OnboardingIntroCard — folding the list", () => {
+  it("hides the something-else line while the list is folded", () => {
+    renderCard({ collapse: makeCollapse(true) });
+
+    expect(
+      screen.getByRole("button", { name: "2 tasks · Show" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("list", { name: "Your first tasks" })).toBeNull();
+    expect(screen.queryByText(FOOTER)).toBeNull();
+    expect(screen.queryByText(EMPTY_FOOTER)).toBeNull();
+  });
+
+  it("shows the something-else line again once the list is open", () => {
+    const { rerender } = renderCard({ collapse: makeCollapse(true) });
+    expect(screen.queryByText(FOOTER)).toBeNull();
+
+    rerender(
+      <OnboardingIntroCard
+        name="Alex"
+        greeting={GREETING}
+        suggestions={makeSuggestions(PROMPTS)}
+        collapse={makeCollapse(false)}
+      />,
+    );
+
+    expect(screen.getByText(FOOTER)).toBeDefined();
+    expect(
+      screen.getByRole("list", { name: "Your first tasks" }),
+    ).toBeDefined();
+  });
+
+  it("asks to fold the list when Hide is clicked", async () => {
+    const collapse = makeCollapse(false);
+    renderCard({ collapse });
+
+    await userEvent.click(screen.getByRole("button", { name: "Hide" }));
+
+    expect(collapse.toggle).toHaveBeenCalledExactlyOnceWith(2);
+  });
+
+  it("still says where to start when there are no tasks, even with the list folded", () => {
+    renderCard({
+      suggestions: makeSuggestions([]),
+      collapse: makeCollapse(true),
+    });
+
+    expect(screen.getByText(EMPTY_FOOTER)).toBeDefined();
+    expect(
+      screen.queryByRole("region", { name: "Suggested first tasks" }),
+    ).toBeNull();
   });
 });
 
 describe("OnboardingIntroCard — transcript copy", () => {
   it("offers no copy affordance when there is no transcript", () => {
-    render(
-      <OnboardingIntroCard
-        name="Alex"
-        greeting={GREETING}
-        prompts={PROMPTS}
-        onSelectPrompt={vi.fn()}
-      />,
-    );
+    renderCard();
 
     expect(screen.queryByRole("button", { name: COPY_LABEL })).toBeNull();
   });
 
   it("copies the transcript verbatim and confirms it visually", async () => {
     const writeText = writeTextMock(() => Promise.resolve());
-    const { container } = render(
-      <OnboardingIntroCard
-        name="Alex"
-        greeting={GREETING}
-        prompts={PROMPTS}
-        transcript="I spend Mondays rebuilding the same report."
-        onSelectPrompt={vi.fn()}
-      />,
-    );
+    const { container } = renderCard({ transcript: TRANSCRIPT });
 
     await userEvent.click(screen.getByRole("button", { name: COPY_LABEL }));
 
-    expect(writeText).toHaveBeenCalledExactlyOnceWith(
-      "I spend Mondays rebuilding the same report.",
-    );
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(TRANSCRIPT);
     await waitFor(() =>
-      expect(container.querySelector(".text-emerald-600")).not.toBeNull(),
+      expect(container.querySelector(".text-success")).not.toBeNull(),
     );
     expect(toastSpy).not.toHaveBeenCalled();
   });
@@ -187,15 +293,7 @@ describe("OnboardingIntroCard — transcript copy", () => {
     const writeText = writeTextMock(() =>
       Promise.reject(new Error("clipboard blocked")),
     );
-    const { container } = render(
-      <OnboardingIntroCard
-        name="Alex"
-        greeting={GREETING}
-        prompts={PROMPTS}
-        transcript="I spend Mondays rebuilding the same report."
-        onSelectPrompt={vi.fn()}
-      />,
-    );
+    const { container } = renderCard({ transcript: TRANSCRIPT });
 
     await userEvent.click(screen.getByRole("button", { name: COPY_LABEL }));
 
@@ -208,71 +306,34 @@ describe("OnboardingIntroCard — transcript copy", () => {
       }),
     );
     // No tick: the copy never happened.
-    expect(container.querySelector(".text-emerald-600")).toBeNull();
+    expect(container.querySelector(".text-success")).toBeNull();
   });
 
   it("drops the confirmation tick again after a couple of seconds", async () => {
     vi.useFakeTimers();
     writeTextMock(() => Promise.resolve());
-    const { container } = render(
-      <OnboardingIntroCard
-        name="Alex"
-        greeting={GREETING}
-        prompts={PROMPTS}
-        transcript="I spend Mondays rebuilding the same report."
-        onSelectPrompt={vi.fn()}
-      />,
-    );
+    const { container } = renderCard({ transcript: TRANSCRIPT });
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: COPY_LABEL }));
     });
-    expect(container.querySelector(".text-emerald-600")).not.toBeNull();
+    expect(container.querySelector(".text-success")).not.toBeNull();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
 
-    expect(container.querySelector(".text-emerald-600")).toBeNull();
+    expect(container.querySelector(".text-success")).toBeNull();
     vi.useRealTimers();
   });
 });
 
 describe("introRevealTimings", () => {
-  it("pushes every stage back as the greeting gets longer", () => {
-    const short = introRevealTimings("Hello there", 0);
-    const long = introRevealTimings("Hello there, this is a longer line", 0);
+  it("orders greeting, prompts, footer and composer with fixed offsets", () => {
+    const { promptsStart, footerStart, composerStart } = introRevealTimings();
 
-    expect(short.promptsStart).toBeCloseTo(0.5 + 2 * 0.08 + 0.3, 5);
-    expect(long.promptsStart).toBeGreaterThan(short.promptsStart);
-    expect(long.footerStart).toBeGreaterThan(short.footerStart);
-    expect(long.composerStart).toBeGreaterThan(short.composerStart);
-  });
-
-  it("staggers the footer behind the last prompt row and the composer behind the footer", () => {
-    const none = introRevealTimings("Hello there", 0);
-    const three = introRevealTimings("Hello there", 3);
-
-    expect(three.promptsStart).toBe(none.promptsStart);
-    expect(three.footerStart - none.footerStart).toBeCloseTo(3 * 0.12, 5);
-    expect(three.composerStart - three.footerStart).toBeCloseTo(0.4, 5);
-  });
-
-  it("ignores empty words so padding does not delay the reveal", () => {
-    const padded = introRevealTimings("  Hello   there  ", 2);
-    const tidy = introRevealTimings("Hello there", 2);
-
-    expect(padded).toEqual(tidy);
-  });
-
-  it("still produces an ordered schedule for an empty greeting", () => {
-    const { promptsStart, footerStart, composerStart } = introRevealTimings(
-      "",
-      0,
-    );
-
-    expect(promptsStart).toBeCloseTo(0.8, 5);
-    expect(footerStart).toBeGreaterThan(promptsStart);
-    expect(composerStart).toBeGreaterThan(footerStart);
+    expect(promptsStart).toBeCloseTo(0.5 + 0.45 + 0.3, 5);
+    expect(footerStart - promptsStart).toBeCloseTo(0.35, 5);
+    expect(composerStart - footerStart).toBeCloseTo(0.4, 5);
   });
 });

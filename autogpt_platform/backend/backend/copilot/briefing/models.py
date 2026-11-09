@@ -29,11 +29,14 @@ class BriefingRunItem(BaseModel):
     # before the fields existed.
     schedule_id: str | None = None
     webhook_id: str | None = None
+    # The execution's own `trigger_source`, set even when a schedule created
+    # before its job carried a `schedule_id` fired the run.
+    trigger_source: str | None = None
 
 
 class BriefingDecisionItem(BaseModel):
     node_exec_id: str
-    graph_exec_id: str
+    graph_exec_id: str | None
     title: str
     expert_id: str | None
     expert_name: str | None

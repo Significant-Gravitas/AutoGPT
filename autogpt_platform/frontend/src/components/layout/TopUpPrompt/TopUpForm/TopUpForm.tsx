@@ -25,13 +25,14 @@ export function TopUpForm({ submitLabel = "Top up", size = "normal" }: Props) {
 }
 
 interface StateProps {
-  requestTopUp: (creditAmount: number) => Promise<void>;
+  requestTopUp: (creditAmount: number) => Promise<boolean>;
   submitLabel: string;
   size: "small" | "normal";
 }
 
 function TopUpFormState({ requestTopUp, submitLabel, size }: StateProps) {
-  const { form, isLoading, submitTopUp } = useTopUpForm(requestTopUp);
+  const { form, isLoading, isRedirecting, submitTopUp } =
+    useTopUpForm(requestTopUp);
   const inputSize = size === "small" ? "small" : "medium";
   const buttonSize = size === "small" ? "small" : "large";
 
@@ -53,7 +54,11 @@ function TopUpFormState({ requestTopUp, submitLabel, size }: StateProps) {
           />
         )}
       />
-      <Button type="submit" disabled={isLoading} size={buttonSize}>
+      <Button
+        type="submit"
+        disabled={isLoading || isRedirecting}
+        size={buttonSize}
+      >
         {isLoading ? "Redirecting…" : submitLabel}
       </Button>
     </Form>

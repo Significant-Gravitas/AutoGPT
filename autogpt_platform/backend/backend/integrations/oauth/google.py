@@ -1,6 +1,8 @@
+import asyncio
 import logging
 from typing import Optional
 
+from google.auth.exceptions import RefreshError
 from google.auth.external_account_authorized_user import (
     Credentials as ExternalAccountCredentials,
 )
@@ -10,12 +12,28 @@ from google_auth_oauthlib.flow import Flow
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
-from backend.integrations.providers import ProviderName
+from backend.integrations.providers import ProviderName, provider_key
 from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
+from .refresh_failure import OAuthTokenRequestError, describe_refresh_failure
 
 logger = logging.getLogger(__name__)
+
+
+class _StatusRecordingRequest(Request):
+    """google-auth's transport, remembering the last HTTP status it saw.
+
+    ``RefreshError`` carries Google's error body but not the status, and the
+    status is half of what a failed refresh has to report.
+    """
+
+    last_status: int | None = None
+
+    def __call__(self, *args, **kwargs):
+        response = super().__call__(*args, **kwargs)
+        self.last_status = response.status
+        return response
 
 
 # --8<-- [start:GoogleOAuthHandlerExample]
@@ -47,11 +65,20 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         logger.debug(f"Setting up OAuth flow with scopes: {all_scopes}")
         flow = self._setup_oauth_flow(all_scopes)
         flow.redirect_uri = self.redirect_uri
+        # The platform generated this challenge together with the verifier it
+        # stores on the OAuth state, so the challenge on the login URL is the
+        # one the verifier in exchange_code_for_tokens can answer for.
+        pkce_params = (
+            {"code_challenge": code_challenge, "code_challenge_method": "S256"}
+            if code_challenge
+            else {}
+        )
         authorization_url, _ = flow.authorization_url(
             access_type="offline",
             include_granted_scopes="true",
             state=state,
             prompt="consent",
+            **pkce_params,
         )
         return authorization_url
 
@@ -68,7 +95,9 @@ class GoogleOAuthHandler(BaseOAuthHandler):
 
         # Disable scope check in fetch_token
         flow.oauth2session.scope = None
-        token = flow.fetch_token(code=code)
+        # This is a different Flow than the one that built the login URL, so
+        # the verifier has to come from the platform's OAuth state.
+        token = flow.fetch_token(code=code, code_verifier=code_verifier)
         logger.debug("Token fetched successfully")
 
         # Get the actual scopes granted by Google
@@ -166,7 +195,15 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         assert google_creds.refresh_token
         assert google_creds.scopes
 
-        google_creds.refresh(Request())
+        request = _StatusRecordingRequest()
+        try:
+            await asyncio.to_thread(google_creds.refresh, request)
+        except RefreshError as e:
+            raise OAuthTokenRequestError(
+                provider_key(self.PROVIDER_NAME),
+                status_code=request.last_status,
+                error_code=describe_refresh_failure(e).error_code,
+            ) from e
         assert google_creds.expiry
 
         return OAuth2Credentials(
@@ -182,6 +219,13 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         )
 
     def _setup_oauth_flow(self, scopes: list[str]) -> Flow:
+        # google-auth-oauthlib >= 1.3.0 generates its own PKCE verifier per
+        # Flow by default. A verifier minted here would only live on this
+        # Flow, which is discarded after the login URL is built, so the token
+        # exchange could never present it and Google would reject every
+        # exchange with "(invalid_grant) Missing code verifier". PKCE is
+        # handled with the platform's own pair instead (see get_login_url and
+        # exchange_code_for_tokens).
         return Flow.from_client_config(
             {
                 "web": {
@@ -192,4 +236,5 @@ class GoogleOAuthHandler(BaseOAuthHandler):
                 }
             },
             scopes=scopes,
+            autogenerate_code_verifier=False,
         )

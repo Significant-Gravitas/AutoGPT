@@ -96,45 +96,38 @@ export const getTypeDisplayInfo = (schema: any) => {
   ) {
     return {
       displayType: "table",
-      colorClass: "!text-indigo-500",
-      hexColor: "#6366f1",
+      colorClass: "!text-indigo",
     };
   }
 
   if (schema?.type === "string" && schema?.format) {
     const formatMap: Record<
       string,
-      { displayType: string; colorClass: string; hexColor: string }
+      { displayType: string; colorClass: string }
     > = {
       file: {
         displayType: "file",
-        colorClass: "!text-green-500",
-        hexColor: "#22c55e",
+        colorClass: "!text-success",
       },
       date: {
         displayType: "date",
-        colorClass: "!text-blue-500",
-        hexColor: "#3b82f6",
+        colorClass: "!text-info",
       },
       time: {
         displayType: "time",
-        colorClass: "!text-blue-500",
-        hexColor: "#3b82f6",
+        colorClass: "!text-info",
       },
       "date-time": {
         displayType: "datetime",
-        colorClass: "!text-blue-500",
-        hexColor: "#3b82f6",
+        colorClass: "!text-info",
       },
       "long-text": {
         displayType: "text",
-        colorClass: "!text-green-500",
-        hexColor: "#22c55e",
+        colorClass: "!text-success",
       },
       "short-text": {
         displayType: "text",
-        colorClass: "!text-green-500",
-        hexColor: "#22c55e",
+        colorClass: "!text-success",
       },
     };
 
@@ -157,45 +150,39 @@ export const getTypeDisplayInfo = (schema: any) => {
   const displayType = typeMap[schema?.type] || schema?.type || "any";
 
   const colorMap: Record<string, string> = {
-    string: "!text-green-500",
-    number: "!text-blue-500",
-    integer: "!text-blue-500",
-    boolean: "!text-yellow-500",
-    object: "!text-purple-500",
-    array: "!text-indigo-500",
-    null: "!text-gray-500",
-    any: "!text-gray-500",
+    string: "!text-success",
+    number: "!text-info",
+    integer: "!text-info",
+    boolean: "!text-yellow",
+    object: "!text-brand",
+    array: "!text-indigo",
+    null: "!text-foreground-tertiary",
+    any: "!text-foreground-tertiary",
   };
 
-  const hexColorMap: Record<string, string> = {
-    string: "#22c55e",
-    number: "#3b82f6",
-    integer: "#3b82f6",
-    boolean: "#eab308",
-    object: "#a855f7",
-    array: "#6366f1",
-    null: "#6b7280",
-    any: "#6b7280",
-  };
-
-  const colorClass = colorMap[schema?.type] || "!text-gray-500";
-  const hexColor = hexColorMap[schema?.type] || "#6b7280";
+  const colorClass = colorMap[schema?.type] || "!text-foreground-tertiary";
 
   return {
     displayType,
     colorClass,
-    hexColor,
   };
+};
+
+// Whole class names, so Tailwind finds each stroke colour in the source.
+const EDGE_STROKE_CLASSES: Record<string, string> = {
+  "!text-success": "stroke-success",
+  "!text-info": "stroke-info",
+  "!text-yellow": "stroke-yellow",
+  "!text-brand": "stroke-brand",
+  "!text-indigo": "stroke-indigo",
+  "!text-foreground-tertiary": "stroke-foreground-tertiary",
 };
 
 export function getEdgeColorFromOutputType(
   outputSchema: RJSFSchema | undefined,
   sourceHandle: string,
-): { colorClass: string; hexColor: string } {
-  const defaultColor = {
-    colorClass: "stroke-zinc-500/50",
-    hexColor: "#6b7280",
-  };
+): { colorClass: string } {
+  const defaultColor = { colorClass: "stroke-edge/50" };
 
   if (!outputSchema?.properties) return defaultColor;
 
@@ -209,8 +196,10 @@ export function getEdgeColorFromOutputType(
     if (!fieldSchema) return defaultColor;
 
     if (i === handleParts.length - 1) {
-      const { hexColor, colorClass } = getTypeDisplayInfo(fieldSchema);
-      return { colorClass: colorClass.replace("!text-", "stroke-"), hexColor };
+      const { colorClass } = getTypeDisplayInfo(fieldSchema);
+      return {
+        colorClass: EDGE_STROKE_CLASSES[colorClass] ?? defaultColor.colorClass,
+      };
     }
 
     if (fieldSchema.properties) {

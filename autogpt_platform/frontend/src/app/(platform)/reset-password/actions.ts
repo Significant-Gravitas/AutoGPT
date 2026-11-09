@@ -2,6 +2,7 @@
 import { auth } from "@/lib/auth/auth";
 import * as Sentry from "@sentry/nextjs";
 import { APIError } from "better-auth/api";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 export async function sendResetEmail(email: string) {
@@ -22,6 +23,8 @@ export async function sendResetEmail(email: string) {
             email,
             redirectTo: new URL("/reset-password", origin).toString(),
           },
+          // The client's IP, for the per-IP limit (attempt-limits.ts).
+          headers: await headers(),
         });
       } catch (error) {
         console.error("Error sending reset email", error);

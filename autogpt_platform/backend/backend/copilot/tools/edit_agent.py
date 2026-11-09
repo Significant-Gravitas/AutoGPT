@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.blocks import get_block, get_webhook_block_ids
 from backend.copilot.model import ChatSession
 from backend.data.model import is_credentials_field_name
@@ -12,9 +14,12 @@ from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_sav
 from .agent_json_input import (
     AGENT_JSON_REF_SCHEMA,
     AGENT_JSON_SCHEMA,
+    reads_workspace_file,
     resolve_agent_json_or_error,
 )
 from .base import BaseTool
+from .expert_scope import require_installed_workflow
+from .external_scope import external_allows, external_tenancy
 from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase
 
@@ -29,10 +34,22 @@ class EditAgentTool(BaseTool):
         return "edit_agent"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY]
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # Reading the graph from a workspace file is a read of the caller's files.
+        needed = [APIKeyPermission.READ_FILES] if reads_workspace_file(args) else []
+        # Sub-agents to embed are read from the caller's library.
+        if args.get("library_agent_ids"):
+            needed.append(APIKeyPermission.READ_LIBRARY)
+        return needed
+
+    @property
     def description(self) -> str:
         return (
             "Edit an existing agent. Validates, auto-fixes, and saves. "
-            "Requires get_agent_building_guide first (refuses otherwise)."
+            "Requires tool:get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
@@ -47,6 +64,7 @@ class EditAgentTool(BaseTool):
                 "agent_id": {
                     "type": "string",
                     "description": "Graph ID or library agent ID to edit.",
+                    "entity": "agent_or_graph",
                 },
                 "agent_json": AGENT_JSON_SCHEMA,
                 "agent_json_ref": AGENT_JSON_REF_SCHEMA,
@@ -54,6 +72,8 @@ class EditAgentTool(BaseTool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Library agent IDs as building blocks.",
+                    "title": "Building blocks",
+                    "entity": "library_agent",
                 },
                 "save": {
                     "type": "boolean",
@@ -90,9 +110,9 @@ class EditAgentTool(BaseTool):
             elif agent_id != builder_graph_id:
                 return ErrorResponse(
                     message=(
-                        "This chat is bound to the builder's current agent. "
-                        "Editing a different agent is not allowed here — "
-                        "open that agent in the builder instead."
+                        "This chat is bound to the builder's current workflow. "
+                        "Editing a different workflow is not allowed here — "
+                        "open that workflow in the builder instead."
                     ),
                     error="builder_session_graph_mismatch",
                     session_id=session_id,
@@ -104,10 +124,20 @@ class EditAgentTool(BaseTool):
 
         if not agent_id:
             return ErrorResponse(
-                message="Please provide the agent ID to edit.",
+                message="Please provide the workflow ID to edit.",
                 error="missing_agent_id",
                 session_id=session_id,
             )
+        if user_id:
+            scope_error = await require_installed_workflow(
+                user_id,
+                session,
+                graph_id=agent_id,
+                library_agent_id=agent_id,
+                name=agent_id,
+            )
+            if scope_error is not None:
+                return scope_error
 
         agent_json, resolve_error = await resolve_agent_json_or_error(
             agent_json=agent_json,
@@ -116,9 +146,9 @@ class EditAgentTool(BaseTool):
             session=session,
             session_id=session_id,
             missing_message=(
-                "Please provide agent_json with the complete updated agent "
-                'graph (inline or as an "@@agptfile:<path>" string), or '
-                "agent_json_ref pointing at the workspace agent file."
+                "Please provide agent_json with the complete updated "
+                'workflow (inline or as an "@@agptfile:<path>" string), or '
+                "agent_json_ref pointing at the workspace workflow file."
             ),
         )
         if resolve_error is not None:
@@ -137,7 +167,7 @@ class EditAgentTool(BaseTool):
         current_agent = await get_agent_as_json(agent_id, user_id)
         if current_agent is None:
             return ErrorResponse(
-                message=f"Could not find agent with ID '{agent_id}' in your library.",
+                message=f"Could not find workflow with ID '{agent_id}' in your library.",
                 error="agent_not_found",
                 session_id=session_id,
             )
@@ -150,11 +180,11 @@ class EditAgentTool(BaseTool):
                 message=(
                     "This edit changes the webhook trigger block's configuration "
                     f"({', '.join(changed_trigger_fields)}), which can't be set "
-                    "by editing the graph — that would change the agent's global "
+                    "by editing the graph — that would change the workflow's global "
                     "default for everyone who uses it. A trigger's configuration "
                     "lives on a per-trigger preset: use the "
-                    "setup_agent_webhook_trigger tool with these fields as "
-                    "`trigger_config` instead. Re-run edit_agent leaving the "
+                    "tool:setup_agent_webhook_trigger tool with these fields as "
+                    "`trigger_config` instead. Re-run tool:edit_agent leaving the "
                     "trigger block's config unchanged."
                 ),
                 error="trigger_config_edit_blocked",
@@ -167,6 +197,7 @@ class EditAgentTool(BaseTool):
 
         # Fetch library agents for AgentExecutorBlock validation
         library_agents = await fetch_library_agents(user_id, library_agent_ids)
+        organization_id, team_id = external_tenancy(session)
 
         return await fix_validate_and_save(
             agent_json,
@@ -174,8 +205,14 @@ class EditAgentTool(BaseTool):
             session_id=session_id,
             save=save,
             is_update=True,
-            default_name="Updated Agent",
+            default_name="Updated Workflow",
             library_agents=library_agents,
+            organization_id=organization_id,
+            team_id=team_id,
+            # A webhook preset runs the version it is pinned to with its stored
+            # credentials, so moving it onto this one is a start.
+            move_webhook_presets=external_allows(session, APIKeyPermission.RUN_AGENT),
+            external_caller=session.external_caller,
         )
 
 

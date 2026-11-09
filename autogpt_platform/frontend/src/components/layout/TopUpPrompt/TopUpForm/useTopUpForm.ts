@@ -1,4 +1,5 @@
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -12,26 +13,34 @@ const topUpSchema = z.object({
 });
 
 export function useTopUpForm(
-  requestTopUp: (creditAmount: number) => Promise<void>,
+  requestTopUp: (creditAmount: number) => Promise<boolean>,
 ) {
   const toastOnFail = useToastOnFail();
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [isRequesting, setIsRequesting] = useState(false);
+  const checkoutRedirect = useCheckoutRedirect();
+  const isLoading = isRequesting || checkoutRedirect.isRedirectingHere;
 
   const form = useForm<z.infer<typeof topUpSchema>>({
     resolver: zodResolver(topUpSchema),
   });
 
   async function submitTopUp(data: z.infer<typeof topUpSchema>) {
-    setIsLoading(true);
+    if (isLoading || checkoutRedirect.isRedirecting) return;
+    setIsRequesting(true);
     await requestTopUp(Math.round(data.amount * 100))
+      .then((isRedirecting) => {
+        if (isRedirecting) checkoutRedirect.markRedirecting();
+      })
       .catch(toastOnFail("request top-up"))
-      .finally(() => setIsLoading(false));
+      .finally(() => setIsRequesting(false));
   }
 
   return {
     form,
     isLoading,
+    // Any checkout on the page leaving for Stripe, not just this one.
+    isRedirecting: checkoutRedirect.isRedirecting,
     submitTopUp,
   };
 }

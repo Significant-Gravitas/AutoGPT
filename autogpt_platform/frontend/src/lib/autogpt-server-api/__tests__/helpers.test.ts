@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/services/environment", () => ({
   environment: {
@@ -8,7 +8,12 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
-import { buildUrlWithQuery, createRequestHeaders } from "../helpers";
+import {
+  buildUrlWithQuery,
+  createRequestHeaders,
+  makeAuthenticatedFileUpload,
+} from "../helpers";
+import { environment } from "@/services/environment";
 import {
   API_KEY_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
@@ -181,7 +186,7 @@ describe("createRequestHeaders — impersonation and API-key forwarding", () => 
 
   it("forwards the API key header alongside sentry headers", () => {
     const request = makeRequest({
-      [API_KEY_HEADER_NAME]: "api-key-value",
+      [API_KEY_HEADER_NAME]: "api-key-value", // pragma: allowlist secret
       baggage: "sentry-environment=local",
     });
 
@@ -194,5 +199,96 @@ describe("createRequestHeaders — impersonation and API-key forwarding", () => 
 
     expect(headers[API_KEY_HEADER_NAME]).toBe("api-key-value");
     expect(headers["baggage"]).toBe("sentry-environment=local");
+  });
+});
+
+describe("makeAuthenticatedFileUpload", () => {
+  beforeEach(() => {
+    vi.mocked(environment.isClientSide).mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.mocked(environment.isClientSide).mockReturnValue(false);
+  });
+
+  it.each([
+    [413, "Appearance images must be 5 MB or smaller."],
+    [400, "Choose a PNG, JPEG or WebP image."],
+    [
+      422,
+      "This image wasn't approved for an Expert appearance. Choose another image.",
+    ],
+    [503, "Image storage is unavailable. Please try again later."],
+  ])(
+    "preserves actionable backend details for HTTP %i",
+    async (status, detail) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(Response.json({ detail }, { status })),
+      );
+
+      await expect(
+        makeAuthenticatedFileUpload("/upload", new FormData()),
+      ).rejects.toMatchObject({
+        name: "ApiError",
+        message: detail,
+        status,
+        response: { detail },
+      });
+    },
+  );
+
+  it("keeps the general upload limit for a bodyless 413", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(null, { status: 413, statusText: "Payload Too Large" }),
+        ),
+    );
+
+    await expect(
+      makeAuthenticatedFileUpload("/upload", new FormData()),
+    ).rejects.toMatchObject({
+      message: "File is too large — max size is 256MB",
+      status: 413,
+    });
+  });
+
+  it("provides recovery guidance when the error has no body or status text", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 502 })),
+    );
+
+    await expect(
+      makeAuthenticatedFileUpload("/upload", new FormData()),
+    ).rejects.toMatchObject({
+      message: "Request failed (HTTP 502). Please try again.",
+      status: 502,
+      response: null,
+    });
+  });
+
+  it("falls back to HTTP status text for a non-JSON error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response("unavailable", {
+          status: 502,
+          statusText: "Bad Gateway",
+        }),
+      ),
+    );
+
+    await expect(
+      makeAuthenticatedFileUpload("/upload", new FormData()),
+    ).rejects.toMatchObject({
+      message: "Bad Gateway",
+      status: 502,
+      response: null,
+    });
   });
 });
