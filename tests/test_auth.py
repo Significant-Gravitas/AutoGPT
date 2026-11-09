@@ -466,11 +466,18 @@ def test_callback_uses_next_port_when_first_is_busy(
 ) -> None:
     import autogpt_local_executor.auth as auth_module
 
-    blocker = socket.socket()
-    blocker.bind(("127.0.0.1", 0))
-    first_port = blocker.getsockname()[1]
     # A free port is rarely in the registered 41899-41910, so the range is
-    # moved to start at it.
+    # moved to start at it. macOS and Windows hand out ports up to 65535, and
+    # a range running past it would bind an invalid port (OverflowError).
+    for _ in range(100):
+        blocker = socket.socket()
+        blocker.bind(("127.0.0.1", 0))
+        first_port = blocker.getsockname()[1]
+        if first_port + 11 <= 65535:
+            break
+        blocker.close()
+    else:
+        pytest.skip("no free port with eleven valid ports after it")
     monkeypatch.setattr(auth_module, "CALLBACK_FIRST_PORT", first_port)
     monkeypatch.setattr(auth_module, "CALLBACK_LAST_PORT", first_port + 11)
     flow = OAuthFlow(_config(tmp_path, callback_port=first_port), token_store=object())
