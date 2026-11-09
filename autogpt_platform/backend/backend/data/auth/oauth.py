@@ -14,6 +14,7 @@ import hashlib
 import logging
 import secrets
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
@@ -32,6 +33,16 @@ from .base import APIAuthorizationInfo
 
 logger = logging.getLogger(__name__)
 keysmith = APIKeySmith()  # Only used for client secret hashing (Scrypt)
+
+# A Scrypt check of a client secret costs about 30 ms of CPU and 16 MiB of
+# memory. The checks get a pool of their own, so a burst of them queues here
+# rather than taking the threads asyncio.to_thread hands to everything else,
+# API-key checks included. Four threads use at most four cores and 64 MiB at
+# once, and still get through about 130 checks a second.
+CLIENT_SECRET_CHECK_THREADS = 4
+_client_secret_checks = ThreadPoolExecutor(
+    max_workers=CLIENT_SECRET_CHECK_THREADS, thread_name_prefix="oauth-secret"
+)
 
 
 def _generate_token() -> str:
@@ -316,9 +327,12 @@ async def validate_client_credentials(
     if not app.is_active:
         raise InvalidClientError("Application is not active")
 
-    # Scrypt costs tens of milliseconds of CPU, which on the event loop
-    # stalls every other request the worker is serving.
-    if not await asyncio.to_thread(app.verify_secret, client_secret):
+    # On the event loop, a Scrypt check would stall every other request the
+    # worker is serving.
+    secret_matches = await asyncio.get_running_loop().run_in_executor(
+        _client_secret_checks, app.verify_secret, client_secret
+    )
+    if not secret_matches:
         raise InvalidClientError("Invalid client_secret")
 
     # Return without secret hash

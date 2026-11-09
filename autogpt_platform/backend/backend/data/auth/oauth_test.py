@@ -2,6 +2,7 @@
 
 import asyncio
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -107,3 +108,52 @@ async def test_the_event_loop_keeps_serving_while_client_secrets_are_checked(
 
     assert served_during_check == [True, True]
     assert [type(result) for result in results[:2]] == [InvalidClientError] * 2
+
+
+async def test_a_burst_of_secret_checks_leaves_other_thread_work_alone(
+    mocker: pytest_mock.MockFixture, stored_app: OAuthApplicationInfoWithSecret
+) -> None:
+    """The checks queue on a pool of their own, so the threads
+    asyncio.to_thread hands out, which API-key checks also use, stay free, and
+    no more checks run at once than that pool has threads."""
+    release = threading.Event()
+    counter_lock = threading.Lock()
+    running = 0
+    most_at_once = 0
+
+    def slow_check(*args: object) -> bool:
+        nonlocal running, most_at_once
+        with counter_lock:
+            running += 1
+            most_at_once = max(most_at_once, running)
+        release.wait(timeout=60)
+        with counter_lock:
+            running -= 1
+        return False
+
+    mocker.patch.object(oauth.keysmith, "verify_key", side_effect=slow_check)
+    # More checks than a default pool ever has threads: min(32, CPUs + 4).
+    burst = asyncio.gather(
+        *(validate_client_credentials("client-1", "agpt_wrong") for _ in range(40)),
+        return_exceptions=True,
+    )
+    try:
+        await _wait_for(lambda: running >= oauth.CLIENT_SECRET_CHECK_THREADS)
+        other_work = await asyncio.wait_for(
+            asyncio.to_thread(lambda: "done"), timeout=10
+        )
+    finally:
+        release.set()
+        results = await asyncio.wait_for(burst, timeout=60)
+
+    assert other_work == "done"
+    assert most_at_once == oauth.CLIENT_SECRET_CHECK_THREADS
+    assert [type(result) for result in results] == [InvalidClientError] * 40
+
+
+async def _wait_for(condition: Callable[[], bool]) -> None:
+    for _ in range(3000):
+        if condition():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("condition not reached within 30 s")
