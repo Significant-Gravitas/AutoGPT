@@ -23,8 +23,13 @@ from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.background_task import BackgroundSessionState
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
-from backend.copilot.model import AutopilotMode, ChatSession
+from backend.copilot.model import ONBOARDING_INTERVIEW_KIND, AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
+from backend.copilot.onboarding_interview import (
+    INTERVIEW_NO_CONNECTION_CHANGE,
+    INTERVIEW_TURN_CAP,
+    InterviewTurnPlan,
+)
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
@@ -5018,7 +5023,18 @@ def _mock_route_change(
     *,
     transports: list,
     success: bool = True,
+    kind: str | None = None,
 ):
+    """The route's reads stubbed: the user's transports, and the session as
+    its owner reads it (an ordinary chat unless *kind* says otherwise; none
+    at all for someone else's)."""
+    session = _make_session_info()
+    session.metadata.kind = kind
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=session if success else None,
+    )
     mocker.patch(
         "backend.api.features.chat.routes.get_chat_transports",
         new_callable=AsyncMock,
@@ -5122,6 +5138,32 @@ def test_change_connection_on_someone_elses_session_is_a_404(
     )
 
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        {"llm_auth_provider": "platform"},
+        {"llm_auth_provider": "codex", "llm_credential_id": "cred-1"},
+    ],
+    ids=["platform", "codex"],
+)
+def test_change_connection_refuses_an_onboarding_interview(
+    mocker: pytest_mock.MockerFixture, target: dict[str, str]
+) -> None:
+    """The interview owns its route: on another one its turns would not end
+    at Otto's end signal, so it is never moved, whatever the target."""
+    mock_update = _mock_route_change(
+        mocker,
+        transports=[_transport("platform", None), _transport("codex", "cred-1")],
+        kind=ONBOARDING_INTERVIEW_KIND,
+    )
+
+    response = client.put("/sessions/sess-1/connection", json=target)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == INTERVIEW_NO_CONNECTION_CHANGE
+    mock_update.assert_not_called()
 
 
 # ─── Advanced tier is enforced where a turn starts, not just in the picker ──
@@ -5887,3 +5929,181 @@ def test_a_refused_message_writes_nothing_first(
     assert response.status_code == 422
     apply_mode.assert_not_awaited()
     mocks.enqueue.assert_not_awaited()
+
+
+# ─── Onboarding interview turns ───────────────────────────────────────
+
+_INTERVIEW = "backend.api.features.onboarding_dump.interview"
+
+
+def test_an_interview_turn_is_admitted_by_the_interview_alone(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """In place of the paywall and allowance every other turn passes, so the
+    interview's one allowance decides its kickoff and all its turns."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    plan = InterviewTurnPlan(reply=INTERVIEW_TURN_CAP)
+    admit = mocker.patch(
+        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        new_callable=AsyncMock,
+        return_value=plan,
+    )
+    started = mocker.patch(
+        f"{_INTERVIEW}.record_onboarding_interview_turn_started",
+        new_callable=AsyncMock,
+    )
+    platform_allowance = mocker.patch(
+        "backend.api.features.chat.routes.enforce_platform_allowance",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream", json={"message": "Yes, that's right."}
+    )
+
+    assert response.status_code == 200
+    assert admit.await_args.kwargs == {
+        "is_user_message": True,
+        "expert_kickoff": False,
+        "has_attachments": False,
+    }
+    mocks.paywall.assert_not_awaited()
+    platform_allowance.assert_not_awaited()
+    mocks.enqueue.assert_awaited_once()
+    # The goodbye turn is dispatched: its hand-off is lined up behind it.
+    started.assert_awaited_once_with(test_user_id, "sess-1", plan)
+
+
+def test_a_turn_the_interview_refuses_is_never_stored(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    mocker.patch(
+        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        new_callable=AsyncMock,
+        side_effect=fastapi.HTTPException(status_code=409, detail="closed"),
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "One more?"})
+
+    assert response.status_code == 409
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_attachments_in_an_interview_go_to_the_interview_s_admission(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    admit = mocker.patch(
+        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        new_callable=AsyncMock,
+        side_effect=fastapi.HTTPException(status_code=422, detail="no files"),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "Here's my menu.", "file_ids": ["f-1"]},
+    )
+
+    assert response.status_code == 422
+    assert admit.await_args.kwargs["has_attachments"] is True
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_a_follow_up_queued_in_an_interview_is_admitted_by_the_interview(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    session = _mock_stream_queue_internals(mocker)
+    session.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    session.metadata.llm_auth_provider = "platform"
+    admit = mocker.patch(
+        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        new_callable=AsyncMock,
+        return_value=InterviewTurnPlan(reply=3),
+    )
+    paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending", json={"message": "And weddings."}
+    )
+
+    assert response.status_code == 200
+    assert admit.await_args.kwargs == {"has_attachments": False}
+    paywall.assert_not_awaited()
+
+
+def test_an_interview_turn_ignores_the_request_s_model_voice_and_approval_mode(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """Before the plan step nobody picks a costlier model, and the typed
+    interview keeps its own style: the switches a request can carry are not
+    the interview's to change."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    mocker.patch(
+        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        new_callable=AsyncMock,
+        return_value=InterviewTurnPlan(reply=3),
+    )
+    mocker.patch(
+        f"{_INTERVIEW}.record_onboarding_interview_turn_started",
+        new_callable=AsyncMock,
+    )
+    entitled = mocker.patch(
+        "backend.api.features.chat.routes.advanced_tier_entitled",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    apply_mode = mocker.patch(
+        "backend.api.features.chat.routes._apply_autopilot_mode",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "We use Gmail.",
+            "model": "advanced",
+            "voice": True,
+            "autopilot_mode": "unsupervised",
+        },
+    )
+
+    # Not refused for the Advanced tier: the tier never reaches the turn.
+    assert response.status_code == 200
+    entitled.assert_not_awaited()
+    apply_mode.assert_awaited_once_with(mocks.session, test_user_id, None)
+    sent = mocks.enqueue.await_args.kwargs
+    assert sent["model"] is None
+    assert sent["voice"] is False
+    assert sent["message"] == "We use Gmail."
+
+
+def test_an_ordinary_chat_still_takes_the_request_s_switches(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.advanced_tier_entitled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    apply_mode = mocker.patch(
+        "backend.api.features.chat.routes._apply_autopilot_mode",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "Hi.", "model": "advanced", "autopilot_mode": "auto"},
+    )
+
+    assert response.status_code == 200
+    apply_mode.assert_awaited_once_with(mocks.session, test_user_id, "auto")
+    assert mocks.enqueue.await_args.kwargs["model"] == "advanced"

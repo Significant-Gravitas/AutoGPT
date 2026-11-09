@@ -86,6 +86,11 @@ from backend.copilot.offers import (
     advanced_tier_entitled,
     get_connection_offers,
 )
+from backend.copilot.onboarding_interview import (
+    INTERVIEW_NO_CONNECTION_CHANGE,
+    InterviewTurnPlan,
+    is_onboarding_interview,
+)
 from backend.copilot.pending_message_helpers import (
     QueuePendingMessageResponse,
     StreamRegistryUnavailable,
@@ -277,6 +282,17 @@ async def enforce_platform_allowance(user_id: str) -> None:
             detail="Rate limit service degraded, retry shortly",
             headers={"Retry-After": "30"},
         ) from e
+
+
+async def _record_interview_turn_started(
+    user_id: str, session_id: str, plan: InterviewTurnPlan
+) -> None:
+    # Deferred: the onboarding interview's web module imports this one.
+    from backend.api.features.onboarding_dump.interview import (
+        record_onboarding_interview_turn_started,
+    )
+
+    await record_onboarding_interview_turn_started(user_id, session_id, plan)
 
 
 async def _validate_and_get_session(
@@ -1286,6 +1302,9 @@ async def change_session_connection_route(
     History is not rewritten. Turns already stamped keep the connection they
     ran on, so a chat that hit a limit and carried on elsewhere reads as
     exactly that.
+
+    An onboarding interview is refused with 409: it owns its route, and on
+    any other one its turns would not end at Otto's end signal.
     """
     auth_provider = request.llm_auth_provider
     credential_id = request.llm_credential_id
@@ -1297,6 +1316,10 @@ async def change_session_connection_route(
             status_code=422,
             detail=f"{auth_provider}_credential_required",
         )
+
+    session = await get_chat_session_metadata(session_id, user_id)
+    if session is not None and is_onboarding_interview(session):
+        raise HTTPException(status_code=409, detail=INTERVIEW_NO_CONNECTION_CHANGE)
 
     transports = await get_chat_transports(user_id)
     target = next(
@@ -1969,6 +1992,27 @@ async def stream_chat_post(
             message = normalise_user_message(message)
         except EmptyUserMessage as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # An onboarding interview admits its own turns and charges them to its
+    # own allowance, in place of the paywall and allowance checks below.
+    interview_plan = None
+    if is_onboarding_interview(session):
+        from backend.api.features.onboarding_dump.interview import (
+            admit_onboarding_interview_turn,
+        )
+
+        interview_plan = await admit_onboarding_interview_turn(
+            session,
+            user_id,
+            is_user_message=request.is_user_message,
+            expert_kickoff=request.expert_kickoff,
+            has_attachments=bool(request.file_ids or request.folder_ids),
+        )
+        # The interview runs on its own fast route and in its own typed
+        # style, before anyone has a plan: the request's model tier, voice
+        # mode and approval mode are not the interview's to change.
+        request = request.model_copy(
+            update={"model": None, "voice": False, "autopilot_mode": None}
+        )
     await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
 
     await enforce_model_entitlement(request.model, session, user_id)
@@ -1988,7 +2032,7 @@ async def stream_chat_post(
     )
 
     is_platform_route = session.metadata.llm_auth_provider == "platform"
-    if is_platform_route:
+    if is_platform_route and interview_plan is None:
         await enforce_payment_paywall(user_id)
     elif session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
@@ -2099,7 +2143,7 @@ async def stream_chat_post(
     # neither the platform paywall nor its USD usage windows apply. Admission,
     # pending-message frequency, and concurrent-turn caps remain enforced by
     # the shared scheduling path below.
-    if user_id and is_platform_route:
+    if user_id and is_platform_route and interview_plan is None:
         await enforce_platform_allowance(user_id)
 
     # Enrich message with file metadata if file_ids are provided.
@@ -2242,6 +2286,8 @@ async def stream_chat_post(
             f"[STREAM] Queued turn for session={session_id} "
             f"(running cap reached; inflight cap={inflight_cap})"
         )
+        if interview_plan is not None:
+            await _record_interview_turn_started(user_id, session_id, interview_plan)
         return _empty_ui_message_stream_response()
     except BaseException:
         await release_client_message_claim()
@@ -2272,6 +2318,8 @@ async def stream_chat_post(
             # The user carried the chat on, so a pending "Resume at reset"
             # would repeat their turn.
             cancel_resume_at_reset_in_background(session_id, user_id)
+        if interview_plan is not None:
+            await _record_interview_turn_started(user_id, session_id, interview_plan)
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000
     logger.info(
@@ -2453,7 +2501,17 @@ async def queue_pending_message(
 ):
     """Queue a follow-up message while the session has an active turn."""
     session = await _validate_and_get_writable_session(session_id, user_id)
-    if session.metadata.llm_auth_provider == "platform":
+    if is_onboarding_interview(session):
+        from backend.api.features.onboarding_dump.interview import (
+            admit_onboarding_interview_turn,
+        )
+
+        await admit_onboarding_interview_turn(
+            session,
+            user_id,
+            has_attachments=bool(request.file_ids or request.folder_ids),
+        )
+    elif session.metadata.llm_auth_provider == "platform":
         await enforce_payment_paywall(user_id)
     elif session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)

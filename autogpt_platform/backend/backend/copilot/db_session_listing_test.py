@@ -239,6 +239,45 @@ async def test_presence_is_false_when_the_user_owns_no_visible_session():
         assert await user_has_any_session("u1") is False
 
 
+@pytest.mark.asyncio
+async def test_a_presence_check_can_leave_kinds_out():
+    """Each kind left out NULL-safely like dreams, so a legacy session with
+    no ``kind`` still counts, and passed as a parameter, never spliced."""
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await user_has_any_session(
+            "u1", exclude_kinds=("onboarding_interview", "daydream")
+        )
+
+    query = raw.call_args.args[0]
+    assert "(metadata->>'kind' IS DISTINCT FROM $2)" in query
+    assert "(metadata->>'kind' IS DISTINCT FROM $3)" in query
+    assert "onboarding_interview" not in query
+    assert _NULL_SAFE_DREAM_FILTER in query
+    assert raw.call_args.args[1:] == ("u1", "onboarding_interview", "daydream")
+
+
+@pytest.mark.asyncio
+async def test_a_presence_check_counts_every_kind_but_dreams_by_default():
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await user_has_any_session("u1")
+
+    query = raw.call_args.args[0]
+    assert "$2" not in query
+    assert raw.call_args.args[1:] == ("u1",)
+
+
+@pytest.mark.asyncio
+async def test_the_sidebar_still_lists_an_onboarding_interview():
+    """Only the greeting's presence check leaves the interview out."""
+    raw = AsyncMock(return_value=[{"count": 1}])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await get_user_session_count("u1")
+
+    assert "onboarding_interview" not in raw.call_args.args[0]
+
+
 # ---------- NULL semantics against the real database ----------
 
 

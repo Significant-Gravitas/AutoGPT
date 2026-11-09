@@ -32,6 +32,7 @@ from backend.copilot.tools import (
     expert_tool_disabled_groups,
     get_available_tools,
     get_tool,
+    interview_disabled_tools,
     reachable_tool_names,
 )
 from backend.copilot.tools.list_agent_triggers import AgentTriggerListResponse
@@ -113,8 +114,12 @@ def _expert_disabled_groups(expert: Expert | None) -> list[ToolGroup]:
 
 def expert_tools(expert: Expert | None) -> list[ChatCompletionToolParam]:
     """Production's tool surface for an authenticated session:
-    an expert loses the staffing tools, plain Otto the expert-only ones."""
-    return get_available_tools(disabled_groups=_expert_disabled_groups(expert))
+    an expert loses the staffing tools, plain Otto the expert-only ones, and
+    both the onboarding interview's own."""
+    return get_available_tools(
+        disabled_groups=_expert_disabled_groups(expert),
+        disabled_tools=interview_disabled_tools("normal"),
+    )
 
 
 def expert_reachable_tools(expert: Expert | None) -> frozenset[str]:
@@ -123,7 +128,10 @@ def expert_reachable_tools(expert: Expert | None) -> frozenset[str]:
     The schema list above is the eager core; the rest of the surface is a
     ``run_capability`` call away, under the same group gate.
     """
-    return reachable_tool_names(disabled_groups=_expert_disabled_groups(expert))
+    return reachable_tool_names(
+        disabled_groups=_expert_disabled_groups(expert),
+        disabled_tools=interview_disabled_tools("normal"),
+    )
 
 
 async def generate_turn(

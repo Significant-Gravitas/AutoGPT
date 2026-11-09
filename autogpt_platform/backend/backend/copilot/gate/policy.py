@@ -157,6 +157,9 @@ _UNGATED = frozenset(
         "connect_integration",
         "request_credential_grant",
         "resume_capability",
+        # Closes the onboarding interview it is called in, and reaches nothing
+        # outside that chat.
+        "end_interview",
         # Previews: they only park a proposal and put it to the user on its own
         # card. The confirm that applies it is what the gate holds.
         "hire_expert",

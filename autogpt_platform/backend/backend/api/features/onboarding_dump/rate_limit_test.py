@@ -128,3 +128,63 @@ def test_windows_are_per_user_and_roll_over_independently():
     assert first[1] == later[1]
     assert first[1] != next_day[1]
     assert first[2:] == (1800, 41400)
+
+
+# ---------- the onboarding interview's turns ----------
+
+
+@pytest.mark.asyncio
+async def test_an_interview_turn_uses_its_own_atomic_budget(admission):
+    _, _, redis, _ = admission
+    await rate_limit.enforce_interview_turn_budget("user-1")
+    redis.eval.assert_awaited_once()
+    args = redis.eval.await_args.args
+    assert key_slot(args[2].encode()) == key_slot(args[3].encode())
+    assert "user-1" not in args[2]
+    assert args[2].startswith("onboarding:interview:")
+    assert args[4:6] == (
+        str(rate_limit.INTERVIEW_HOURLY_TURNS),
+        str(rate_limit.INTERVIEW_DAILY_TURNS),
+    )
+
+
+def test_interview_turns_never_spend_personalization_attempts():
+    now = datetime(2026, 10, 6, 12, 30, tzinfo=UTC)
+    personalization = rate_limit._budget_windows("user-1", now)
+    interview = rate_limit._budget_windows("user-1", now, "interview")
+    assert personalization[:2] != interview[:2]
+    assert personalization[0].startswith("onboarding:personalization:")
+
+
+def test_a_whole_interview_fits_in_an_hour_of_the_budget():
+    from backend.copilot.onboarding_interview import INTERVIEW_TURN_CAP
+
+    assert rate_limit.INTERVIEW_HOURLY_TURNS > INTERVIEW_TURN_CAP
+    assert rate_limit.INTERVIEW_DAILY_TURNS >= rate_limit.INTERVIEW_HOURLY_TURNS
+
+
+@pytest.mark.asyncio
+async def test_a_spent_interview_budget_is_a_429_with_retry_after(admission):
+    _, _, redis, _ = admission
+    redis.eval.return_value = 600
+    with pytest.raises(HTTPException) as caught:
+        await rate_limit.enforce_interview_turn_budget("user-1")
+    assert caught.value.status_code == 429
+    assert caught.value.headers == {"Retry-After": "600"}
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_interview_budget_is_a_503(admission):
+    _, _, redis, _ = admission
+    redis.eval.side_effect = RedisError("down")
+    with pytest.raises(HTTPException) as caught:
+        await rate_limit.enforce_interview_turn_budget("user-1")
+    assert caught.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_a_paying_person_s_interview_uses_no_budget(admission):
+    _, tier_lookup, _, connect = admission
+    tier_lookup.return_value = SubscriptionTier.PRO
+    await rate_limit.enforce_interview_turn_budget("user-1")
+    connect.assert_not_awaited()

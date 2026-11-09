@@ -46,6 +46,7 @@ from backend.api.features.onboarding_dump.rate_limit import (
 )
 from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.db import user_has_any_session
+from backend.copilot.model import ONBOARDING_INTERVIEW_KIND
 from backend.data.onboarding import (
     format_brain_dump_for_extraction,
     get_user_onboarding,
@@ -910,7 +911,11 @@ async def _retire_greeting_if_chatted(user_id: str) -> bool:
     it answers "no" and the rest of the checks decide.
     """
     try:
-        if not await user_has_any_session(user_id):
+        # The interview is what the greeting is written from, so it cannot be
+        # the session that retires it.
+        if not await user_has_any_session(
+            user_id, exclude_kinds=(ONBOARDING_INTERVIEW_KIND,)
+        ):
             return False
     except Exception as e:
         logger.warning("Brain dump greeting: session lookup failed: %s", e)

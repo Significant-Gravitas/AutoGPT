@@ -4846,7 +4846,7 @@
       "put": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Change the connection an existing chat runs on",
-        "description": "Move a chat onto another connection, from the next turn onward.\n\nA chat is latched to the connection it started on so that a turn cannot\nsilently change who pays for it halfway through. This is the deliberate\nexception: when a provider stops accepting turns -- a spent quota, an\nexpired login -- the alternative to switching is the chat simply ending.\n\nIt never happens on its own. The caller is a button the user pressed, and\nthe run continues on the connection they picked rather than on whichever\none happens to work.\n\nHistory is not rewritten. Turns already stamped keep the connection they\nran on, so a chat that hit a limit and carried on elsewhere reads as\nexactly that.",
+        "description": "Move a chat onto another connection, from the next turn onward.\n\nA chat is latched to the connection it started on so that a turn cannot\nsilently change who pays for it halfway through. This is the deliberate\nexception: when a provider stops accepting turns -- a spent quota, an\nexpired login -- the alternative to switching is the chat simply ending.\n\nIt never happens on its own. The caller is a button the user pressed, and\nthe run continues on the connection they picked rather than on whichever\none happens to work.\n\nHistory is not rewritten. Turns already stamped keep the connection they\nran on, so a chat that hit a limit and carried on elsewhere reads as\nexactly that.\n\nAn onboarding interview is refused with 409: it owns its route, and on\nany other one its turns would not end at Otto's end signal.",
         "operationId": "putV2Change the connection an existing chat runs on",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -22102,6 +22102,18 @@
               { "$ref": "#/components/schemas/PendingQuestion" },
               { "type": "null" }
             ]
+          },
+          "onboarding_interview_stage": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Onboarding Interview Stage"
+          },
+          "onboarding_interview_ending": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Onboarding Interview Ending"
+          },
+          "onboarding_interview_first_task": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Onboarding Interview First Task"
           }
         },
         "type": "object",
@@ -25456,13 +25468,15 @@
         "type": "string",
         "enum": [
           "subscription-pricing-page-initial-state",
-          "trial-checkout-no-charge-copy"
+          "trial-checkout-no-charge-copy",
+          "onboarding-interview-ending-text"
         ],
         "title": "Experiment",
         "description": "Experiments, each a multivariate PostHog flag read by the frontend or backend.",
         "x-enum-varnames": [
           "SUBSCRIPTION_PRICING",
-          "TRIAL_CHECKOUT_NO_CHARGE_COPY"
+          "TRIAL_CHECKOUT_NO_CHARGE_COPY",
+          "ONBOARDING_INTERVIEW_ENDING_TEXT"
         ]
       },
       "ExperimentAssignment": {
@@ -33754,7 +33768,8 @@
           "expert_onboarding",
           "team_consult",
           "session_list",
-          "session_message"
+          "session_message",
+          "interview_ended"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

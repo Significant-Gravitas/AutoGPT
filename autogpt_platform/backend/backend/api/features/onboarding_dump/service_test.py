@@ -32,6 +32,7 @@ from backend.api.features.onboarding_dump.models import (
     RecommendedExpert,
     SuggestedPrompt,
 )
+from backend.copilot.model import ONBOARDING_INTERVIEW_KIND
 from backend.data.understanding import BusinessUnderstanding, BusinessUnderstandingInput
 
 USER_ID = "user-1"
@@ -1013,6 +1014,29 @@ async def test_intro_card_is_withheld_from_a_user_who_already_has_a_session(
 
 
 @pytest.mark.asyncio
+async def test_the_onboarding_interview_is_not_the_session_that_retires_the_card(
+    dumps: DumpStore, has_session: AsyncMock
+):
+    """The greeting is written from the interview, so only a session of any
+    other kind says the user is past it."""
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You mentioned the weekly order emails.",
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    has_session.assert_awaited_once_with(
+        USER_ID, exclude_kinds=(ONBOARDING_INTERVIEW_KIND,)
+    )
+    assert card.greeting == "You mentioned the weekly order emails."
+
+
+@pytest.mark.asyncio
 async def test_intro_card_is_withheld_from_a_chatting_user_without_a_dump_row(
     dumps: DumpStore, has_session: AsyncMock
 ):
@@ -1688,7 +1712,18 @@ async def test_team_uses_signup_snapshot_and_stays_pending_until_its_job_finishe
     templates: AsyncMock,
     generate_team: AsyncMock,
     extraction: dict[str, AsyncMock],
+    mocker: MockerFixture,
 ):
+    # The greeting and provider jobs run beside the team's; stubbed so the
+    # test makes no model calls of its own.
+    mocker.patch(
+        "backend.api.features.onboarding_dump.intro.generate_intro",
+        new=AsyncMock(return_value=("Welcome!", [])),
+    )
+    mocker.patch(
+        "backend.api.features.onboarding_dump.recommend.generate_recommendations",
+        new=AsyncMock(return_value=[]),
+    )
     saved = asyncio.Event()
     release_team = asyncio.Event()
     extraction["get_business_understanding"].return_value = (

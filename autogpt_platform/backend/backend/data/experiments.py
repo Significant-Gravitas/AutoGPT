@@ -31,6 +31,11 @@ class Experiment(str, Enum):
     SUBSCRIPTION_PRICING = "subscription-pricing-page-initial-state"
     # Backend-decided: the arm sets the trial's Stripe Checkout text.
     TRIAL_CHECKOUT_NO_CHARGE_COPY = "trial-checkout-no-charge-copy"
+    # How an onboarding interview ends, one experiment per mode so each arm
+    # is offered only where it fits. The frontend shows the arm; the backend
+    # reads it when the interview closes, and it decides when the answers are
+    # handed off (``onboarding_dump.interview_endings``).
+    ONBOARDING_INTERVIEW_ENDING_TEXT = "onboarding-interview-ending-text"
 
     @classmethod
     def __get_pydantic_json_schema__(

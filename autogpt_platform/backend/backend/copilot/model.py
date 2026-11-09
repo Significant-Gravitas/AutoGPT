@@ -68,6 +68,24 @@ RoutingSource = Literal[
 # which an AutoPilotBlock session also satisfies.
 ChatSessionOrigin = Literal["interactive", "automation"]
 
+# ``ChatSessionMetadata.kind`` of the onboarding interview: Otto asks someone
+# who just signed up about their work, then the platform builds their team
+# from the answers. Here rather than in ``onboarding_interview`` so the leaf
+# modules that gate on it (``session_permissions``, ``db``) can read it.
+ONBOARDING_INTERVIEW_KIND = "onboarding_interview"
+
+# ``ChatSessionMetadata.onboarding_interview_stage``, in the only order an
+# interview moves through them: the wrap-up was asked for, the interview took
+# its last turn, its answers reached the onboarding pipeline.
+INTERVIEW_STAGE_WRAP_UP_ISSUED = "wrap_up_issued"
+INTERVIEW_STAGE_CLOSED = "closed"
+INTERVIEW_STAGE_HANDED_OFF = "handed_off"
+INTERVIEW_STAGES: tuple[str, ...] = (
+    INTERVIEW_STAGE_WRAP_UP_ISSUED,
+    INTERVIEW_STAGE_CLOSED,
+    INTERVIEW_STAGE_HANDED_OFF,
+)
+
 
 # Redis cache key prefix for chat sessions
 CHAT_SESSION_CACHE_PREFIX = "chat:session:"
@@ -134,6 +152,8 @@ class ChatSessionMetadata(BaseModel):
     # (and so analytics / retention rules can filter them out).
     # Open enum: future kinds (e.g. ``"daydream"``) can land without a
     # migration; readers must tolerate unknown values.
+    # ``ONBOARDING_INTERVIEW_KIND`` marks Otto's sign-up interview
+    # (``backend.copilot.onboarding_interview``).
     kind: str = "normal"
 
     # When ``kind == "dream"``, the originating pass id so the session
@@ -161,6 +181,26 @@ class ChatSessionMetadata(BaseModel):
     # when they reply. Drives the Home "Needs You" question item; one per
     # session, latest wins.
     pending_question: PendingQuestion | None = None
+
+    # How far an onboarding interview has got, one of ``INTERVIEW_STAGES``;
+    # None while it is still asking, and on every other kind of session.
+    # Written by the server only and only ever forward
+    # (``update_session_interview_stage``). A string rather than a Literal so a
+    # stage added later never fails to load here.
+    onboarding_interview_stage: str | None = None
+
+    # The onboarding interview's arm of the ending experiment, read on the
+    # server when it closes and stamped once
+    # (``update_session_interview_ending``); None for anyone not enrolled,
+    # and on every other kind of session.
+    onboarding_interview_ending: str | None = None
+
+    # The first task the person agreed their team starts on, as Otto's end
+    # signal carried it, stored with the move to ``closed``
+    # (``onboarding_interview.close_on_end_signal``). Written by Otto from
+    # what the person said, and shown only to them. None for an interview
+    # the end signal did not close, and on every other kind of session.
+    onboarding_interview_first_task: str | None = None
 
 
 def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
@@ -1084,24 +1124,37 @@ async def upsert_chat_session(
                 # new one, and bill the next turn to the connection they just
                 # left. The approval mode is changed the same way mid-turn, and
                 # a stale one would run the next turn under the mode the user
-                # just left. Only these keys are taken from the cache; the rest
+                # just left. An onboarding interview's stage, ending arm and
+                # agreed first task are recorded outside this turn's copy the
+                # same way, and a stale stage would reopen an interview that
+                # closed. Only these keys are taken from the cache; the rest
                 # of this session's metadata is this turn's own.
                 cached_meta = existing_cached.metadata
                 from_cache = {
                     "llm_auth_provider": cached_meta.llm_auth_provider,
                     "llm_credential_id": cached_meta.llm_credential_id,
                     "autopilot_mode": cached_meta.autopilot_mode,
+                    "onboarding_interview_stage": (
+                        cached_meta.onboarding_interview_stage
+                    ),
+                    "onboarding_interview_ending": (
+                        cached_meta.onboarding_interview_ending
+                    ),
+                    "onboarding_interview_first_task": (
+                        cached_meta.onboarding_interview_first_task
+                    ),
                 }
                 merged = session.metadata.model_copy(update=from_cache)
                 if merged != session.metadata:
                     updates["metadata"] = merged
                 session = session.model_copy(update=updates)
             else:
-                # With no cached copy the database holds the mode, which this
-                # upsert never writes, so it cannot be stale there.
-                stored = await _with_stored_autopilot_mode(session)
-                # Without the stored mode this turn's copy could be stale, so
-                # leave the cache empty and let the next read go to the database.
+                # With no cached copy the database holds the mode and the
+                # interview stage, which this upsert never writes, so they
+                # cannot be stale there.
+                stored = await _with_stored_mutable_metadata(session)
+                # Without them this turn's copy could be stale, so leave the
+                # cache empty and let the next read go to the database.
                 cache_it = stored is not None
                 session = stored or session
             if cache_it:
@@ -2011,26 +2064,104 @@ async def update_session_autopilot_mode(
         return True
 
 
-async def _with_stored_autopilot_mode(session: ChatSession) -> ChatSession | None:
-    """``session`` with the database's mode, or None if that could not be read."""
+async def _with_stored_mutable_metadata(session: ChatSession) -> ChatSession | None:
+    """``session`` with the database's approval mode and interview stage,
+    ending and first task, the metadata written outside a turn's own copy, or
+    None if those could not be read."""
     try:
         stored = await chat_db().get_chat_session_metadata(session.session_id)
     except Exception as e:
         logger.warning(
-            f"Could not read the stored mode for session {session.session_id}: {e}"
+            f"Could not read the stored metadata for session {session.session_id}: {e}"
         )
         return None
-    if stored is None or stored.metadata.autopilot_mode == (
-        session.metadata.autopilot_mode
-    ):
+    if stored is None:
         return session
-    return session.model_copy(
-        update={
-            "metadata": session.metadata.model_copy(
-                update={"autopilot_mode": stored.metadata.autopilot_mode}
+    update = {
+        "autopilot_mode": stored.metadata.autopilot_mode,
+        "onboarding_interview_stage": stored.metadata.onboarding_interview_stage,
+        "onboarding_interview_ending": stored.metadata.onboarding_interview_ending,
+        "onboarding_interview_first_task": (
+            stored.metadata.onboarding_interview_first_task
+        ),
+    }
+    merged = session.metadata.model_copy(update=update)
+    if merged == session.metadata:
+        return session
+    return session.model_copy(update={"metadata": merged})
+
+
+async def update_session_interview_stage(
+    session_id: str, user_id: str, stage: str, *, first_task: str | None = None
+) -> bool:
+    """Move an onboarding interview forward to *stage*; never back.
+
+    True only for the call that moved it, so callers can treat it as a claim.
+    *first_task*, the task the person agreed their team starts on, is stored
+    in the same write, so only the move that closes the interview stores
+    one. Written through the cache under the session lock, as the approval
+    mode is, so a stale cached copy cannot put the interview back a stage.
+    """
+    async with _get_session_lock(session_id) as lock_acquired:
+        if not lock_acquired:
+            raise RedisError(
+                f"Could not serialize interview stage update for session {session_id}"
             )
-        }
-    )
+
+        updated = await chat_db().update_chat_session_interview_stage(
+            session_id, user_id, stage, first_task=first_task
+        )
+        if not updated:
+            return False
+
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.metadata.onboarding_interview_stage = stage
+                if first_task is not None:
+                    cached.metadata.onboarding_interview_first_task = first_task
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache interview stage update failed for session {session_id}; "
+                f"evicting so the next read takes the database's stage: {e}"
+            )
+            await invalidate_session_cache(session_id)
+        return True
+
+
+async def update_session_interview_ending(
+    session_id: str, user_id: str, ending: str
+) -> bool:
+    """Stamp an onboarding interview's ending arm onto it, once.
+
+    True only for the call that stamped it. Written through the cache under
+    the session lock, as the stage is, so a cached copy carries the arm too.
+    """
+    async with _get_session_lock(session_id) as lock_acquired:
+        if not lock_acquired:
+            raise RedisError(
+                f"Could not serialize interview ending update for session {session_id}"
+            )
+
+        stamped = await chat_db().update_chat_session_interview_ending(
+            session_id, user_id, ending
+        )
+        if not stamped:
+            return False
+
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.metadata.onboarding_interview_ending = ending
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache interview ending update failed for session {session_id}; "
+                f"evicting so the next read takes the database's arm: {e}"
+            )
+            await invalidate_session_cache(session_id)
+        return True
 
 
 async def update_session_pinned(

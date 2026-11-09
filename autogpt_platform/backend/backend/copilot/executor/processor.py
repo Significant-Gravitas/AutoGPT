@@ -715,6 +715,11 @@ class CoPilotProcessor:
 
         try:
             from backend.copilot.model import get_chat_session
+            from backend.copilot.onboarding_interview import (
+                INTERVIEW_CLOSED,
+                interview_is_over,
+                is_onboarding_interview,
+            )
 
             # Known before anything can end the turn, so a load-test
             # account's turn is told apart from people's however it ends.
@@ -761,11 +766,22 @@ class CoPilotProcessor:
                 raise RuntimeError("codex_session_route_mismatch")
 
             session = await _normalize_private_expert_session_tenancy(session)
+            # An onboarding interview runs before the plan step, on bounds of
+            # its own (``onboarding_dump.interview``) instead of the
+            # allowance. The bound that holds whatever queued the turn is
+            # here: an interview that is over takes no turn.
+            interview = is_onboarding_interview(session)
+            if interview and interview_is_over(session):
+                log.info("Turn not started: the onboarding interview is over")
+                error_msg = "The interview is over."
+                error_code = INTERVIEW_CLOSED
+                scheduled_watch = None
+                return
             # The allowance, budget and tier checks that set up the turn share
             # one read of the trial and one of the usage state; closed at the
             # model's first output, so tools running after it read afresh.
             trial_reads = cost_context_stack.enter_context(trial_reads_shared())
-            if entry.llm_auth_provider == "platform":
+            if entry.llm_auth_provider == "platform" and not interview:
                 # Every platform-billed turn passes the allowance here, from
                 # whichever path queued it (see backend.copilot.budget_gate).
                 # An AutoPilot block turn the allowance can't cover may run on
@@ -936,6 +952,12 @@ class CoPilotProcessor:
                     log.info(
                         "Using SDK service on the scripted model: load-test account"
                     )
+                elif interview:
+                    # An interview is pinned to the fast path, whatever the
+                    # engine flags say: its model is its own route's.
+                    stream_fn = stream_chat_completion_baseline
+                    engine = "baseline"
+                    log.info("Using baseline service: onboarding interview")
                 else:
                     use_sdk = await resolve_use_sdk(
                         entry.user_id,

@@ -19,6 +19,9 @@ from backend.api.features.chat.routes import (
     enforce_model_entitlement,
     enforce_platform_allowance,
 )
+from backend.api.features.onboarding_dump.interview import (
+    admit_onboarding_interview_turn,
+)
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
@@ -26,6 +29,7 @@ from backend.copilot.config import CopilotLLMModel
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.executor.utils import schedule_chat_turn
 from backend.copilot.model import ChatSessionInfo
+from backend.copilot.onboarding_interview import is_onboarding_interview
 from backend.copilot.pending_message_helpers import (
     StreamRegistryUnavailable,
     is_turn_in_flight,
@@ -113,6 +117,10 @@ async def continue_session(
 
 async def _admit(session: ChatSessionInfo, user_id: str) -> None:
     route = session.metadata.llm_auth_provider
+    if is_onboarding_interview(session):
+        # A continuation is a system note, and an interview takes only the
+        # user's own messages: this refuses it with the interview's reason.
+        await admit_onboarding_interview_turn(session, user_id, is_user_message=False)
     if route == "platform":
         await enforce_payment_paywall(user_id)
         await enforce_platform_allowance(user_id)

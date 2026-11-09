@@ -38,6 +38,7 @@ from backend.copilot.baseline.reasoning import (
     BaselineReasoningEmitter,
     anthropic_thinking_extra_body,
     reasoning_extra_body,
+    thinking_off_extra_body,
 )
 from backend.copilot.baseline.tool_order import writes_files
 from backend.copilot.baseline.tool_persistence import BaselineToolPersistence
@@ -57,7 +58,10 @@ from backend.copilot.context import (
 )
 from backend.copilot.continuation import send_trailing_note_as_user
 from backend.copilot.expert_context import build_expert_identity_suffix
-from backend.copilot.expert_kickoff import is_expert_kickoff_turn
+from backend.copilot.expert_kickoff import (
+    is_expert_kickoff_turn,
+    is_hidden_chat_message,
+)
 from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.context import fetch_warm_context
@@ -84,8 +88,18 @@ from backend.copilot.model import (
     upsert_chat_session,
 )
 from backend.copilot.model_normalize import normalize_model_for_transport
-from backend.copilot.model_router import ResolvedModel, resolve_model_route
+from backend.copilot.model_router import (
+    ResolvedModel,
+    resolve_model_route,
+    resolve_onboarding_interview_model,
+)
 from backend.copilot.moonshot import is_moonshot_model
+from backend.copilot.onboarding_interview import (
+    build_interview_state_block,
+    get_onboarding_interview_supplement,
+    interview_is_closed,
+    is_onboarding_interview,
+)
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
@@ -160,6 +174,7 @@ from backend.copilot.tools import (
     execute_tool,
     expert_tool_disabled_groups,
     get_available_tools,
+    interview_disabled_tools,
     kickoff_turn_disabled_tools,
     origin_disabled_tools,
     tool_names_in_groups,
@@ -170,6 +185,7 @@ from backend.copilot.tools.e2b_sandbox import (
     get_or_create_sandbox,
     pause_sandbox_direct,
 )
+from backend.copilot.tools.end_interview import END_INTERVIEW_TOOL
 from backend.copilot.tools.seen_capabilities import build_seen_capabilities_notice
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skill_matching import build_matched_skills_notice
@@ -525,6 +541,9 @@ class _BaselineStreamState:
     # Broadcast attributes each generation (see ``llm_attribution``).
     user_id: str | None = None
     session_id: str | None = None
+    # The turn answers without thinking: no reasoning is asked for, and a
+    # model that thinks unless told otherwise is told not to.
+    thinking_off: bool = False
     # Live delivery channel drained concurrently by ``stream_chat_completion_baseline``
     # so reasoning / text / tool events reach the SSE wire **during** the upstream
     # LLM stream, not after ``_baseline_llm_caller`` returns.  Before this was a
@@ -988,11 +1007,14 @@ async def _baseline_llm_caller(
                     generation_name="copilot-baseline",
                 )
             )
-            reasoning_param = reasoning_extra_body(
+            if state.thinking_off:
+                extra_body.update(thinking_off_extra_body(state.model, "openrouter"))
+            elif reasoning_param := reasoning_extra_body(
                 state.model, config.claude_agent_max_thinking_tokens
-            )
-            if reasoning_param:
+            ):
                 extra_body.update(reasoning_param)
+        elif state.thinking_off:
+            extra_body.update(thinking_off_extra_body(state.model, "anthropic"))
         else:
             # Direct mode (non-OR, non-local): use native Anthropic thinking param.
             thinking_param = anthropic_thinking_extra_body(
@@ -1002,7 +1024,10 @@ async def _baseline_llm_caller(
                 extra_body.update(thinking_param)
         # Direct: Anthropic requires max_tokens > budget_tokens explicitly; OR injects a default.
         max_tokens_arg: int | Any = openai_omit
-        if not is_openrouter_transport and "thinking" in extra_body:
+        if (
+            not is_openrouter_transport
+            and extra_body.get("thinking", {}).get("type") == "enabled"
+        ):
             model_max = get_max_output_tokens(state.model)
             budget = min(config.claude_agent_max_thinking_tokens, model_max - 1)
             extra_body["thinking"]["budget_tokens"] = budget
@@ -1922,6 +1947,12 @@ async def stream_chat_completion_baseline(
     _pre_drain_msg_count = len(session.messages)
     learning_initiating_user = find_initiating_user_row(session, message)
     learning_initiating_text = message
+    # A hidden row (a kickoff the server wrote) is not the user's words, so
+    # this turn is not remembered or learned from as if it were.
+    from_hidden_row = is_hidden_chat_message(message_metadata) or (
+        learning_initiating_user is not None
+        and is_hidden_chat_message(learning_initiating_user.metadata)
+    )
     # The stream's rows start after the message that triggered it; the rows
     # appended before the turn's first yield are announced once it opens.
     turn_start = _pre_drain_msg_count
@@ -1959,7 +1990,14 @@ async def stream_chat_completion_baseline(
     # would be rejected by the direct client.  Pass the baseline-side
     # ``config`` so monkeypatch fixtures targeting this module's
     # ``config`` symbol drive the decision.
-    resolved_route = await _resolve_baseline_model(model, user_id)
+    # An onboarding interview runs on its own route, whatever tier the turn
+    # carries: one fast model, picked in the catalog.
+    interview = is_onboarding_interview(session)
+    resolved_route = (
+        await resolve_onboarding_interview_model(config=config)
+        if interview
+        else await _resolve_baseline_model(model, user_id)
+    )
     resolved_model = resolved_route.model
     routing_source = resolved_route.source
     try:
@@ -1973,11 +2011,12 @@ async def stream_chat_completion_baseline(
         # of erroring at the user.  Re-raises the original error if the
         # config default is also invalid (deployment-level misconfig caught
         # by the ``model_validator`` at startup).
-        tier_default = (
-            config.fast_advanced_model
-            if model == "advanced"
-            else config.fast_standard_model
-        )
+        if interview:
+            tier_default = config.onboarding_interview_model
+        elif model == "advanced":
+            tier_default = config.fast_advanced_model
+        else:
+            tier_default = config.fast_standard_model
         try:
             active_model = normalize_model_for_transport(tier_default, config)
         except ValueError:
@@ -1994,9 +2033,11 @@ async def stream_chat_completion_baseline(
         )
 
     # --- E2B sandbox setup (feature parity with SDK path) ---
+    # An onboarding interview has no tool that runs in a sandbox, so it
+    # starts its reply without waiting on one.
     e2b_sandbox = None
     e2b_api_key = config.active_e2b_api_key
-    if e2b_api_key:
+    if e2b_api_key and not interview:
         try:
             # An expert session runs on the expert's own persistent box;
             # everything else gets a per-session sandbox.
@@ -2132,6 +2173,8 @@ async def stream_chat_completion_baseline(
         + oversight_supplement
         + team_building_supplement
         + chat_platform_supplement
+        # Empty unless the session is an onboarding interview.
+        + get_onboarding_interview_supplement(session.metadata.kind)
         + graphiti_supplement
         + auto_mode_supplement
         + builder_session_suffix
@@ -2208,11 +2251,16 @@ async def stream_chat_completion_baseline(
         # path has no equivalent of the SDK CLI's native
         # ``max_budget_usd`` running-cost reminder, so this is the only
         # signal the model gets about how much USD spend headroom the
-        # user has left.
-        budget_ctx = await build_budget_ctx(
-            user_id=user_id,
-            default_daily_cost_limit=config.daily_cost_limit_microdollars,
-            default_weekly_cost_limit=config.weekly_cost_limit_microdollars,
+        # user has left. An onboarding interview draws on no plan's
+        # allowance, so it is told nothing about one.
+        budget_ctx = (
+            ""
+            if interview
+            else await build_budget_ctx(
+                user_id=user_id,
+                default_daily_cost_limit=config.daily_cost_limit_microdollars,
+                default_weekly_cost_limit=config.weekly_cost_limit_microdollars,
+            )
         )
         # Per-session follow-up awareness — gives the baseline model the
         # current session_id + pending follow-up summary on its first turn
@@ -2348,8 +2396,11 @@ async def stream_chat_completion_baseline(
     # stale from turn two onward and says nothing about the tree. After the
     # pending fold so it lands on the message the model reads last, and never
     # on ``user_message_for_transcript``: that would persist one stale figure
-    # per turn, the same trap the warm-context injection below names.
-    budget_status = await build_turn_budget_block(envelope, user_id)
+    # per turn, the same trap the warm-context injection below names. Not on
+    # an onboarding interview, which spends no plan's budget.
+    budget_status = (
+        "" if interview else await build_turn_budget_block(envelope, user_id)
+    )
     if e2b_sandbox is not None:
         budget_status += await build_sandbox_replaced_notice(session_id)
     if budget_status:
@@ -2402,6 +2453,17 @@ async def stream_chat_completion_baseline(
                 if msg["role"] == "user":
                     _add_message_text(msg, builder_block, prepend=True)
                     break
+
+    # An onboarding interview's per-turn ``<interview_state>`` prefix: which
+    # reply this is and, at the end, the wrap-up and the goodbye. Same
+    # query-only contract as the builder block above, and empty for every
+    # other session. On every turn the interview runs, not only user turns,
+    # so no turn reaches the model without its place in the interview.
+    if interview_block := build_interview_state_block(session):
+        for msg in reversed(openai_messages):
+            if msg["role"] == "user":
+                _add_message_text(msg, interview_block, prepend=True)
+                break
 
     # Skill-drift notice — same query-only contract as the builder block
     # above: prepended to the live model input, never to
@@ -2524,12 +2586,13 @@ async def stream_chat_completion_baseline(
     )
     # A hire's kickoff turn is a server-sent control message, so nothing on
     # it was asked for: narrow it to the onboarding card and nothing else.
-    # Otherwise hide what the origin gate would refuse anyway.
+    # Otherwise hide what the origin gate would refuse anyway. The onboarding
+    # interview's own tools are hidden from every other kind of session.
     disabled_tools = (
         kickoff_turn_disabled_tools()
         if is_expert_kickoff_turn(session)
         else origin_disabled_tools(session.metadata.origin)
-    )
+    ) | interview_disabled_tools(session.metadata.kind)
     tools = get_available_tools(
         disabled_groups=disabled_tool_groups, disabled_tools=disabled_tools
     )
@@ -2624,6 +2687,9 @@ async def stream_chat_completion_baseline(
         ),
         user_id=user_id,
         session_id=session_id,
+        # An interview's turns answer at once; its prompt asks for nothing
+        # that needs thinking.
+        thinking_off=interview,
     )
 
     # Queued, not yielded: the loop below yields them inside the try whose
@@ -2680,6 +2746,98 @@ async def stream_chat_completion_baseline(
     # turn. Without this, earlier-round chatter would suppress a fallback
     # that should fire.
     text_len_before_final_round: list[int] = [0]
+    # Set when an onboarding interview's end signal closed it during the
+    # turn, which then ends at that round.
+    ended_by_end_signal: list[bool] = [False]
+    # What Otto said in this turn's rounds that called the end signal,
+    # whether the call closed the interview or was refused: the goodbye
+    # comes with the call.
+    said_with_end_signal: list[str] = [""]
+
+    async def _say_goodbye_if_unsaid() -> None:
+        """Run one last round, with no tools offered, when no round that
+        called the end signal said anything: the call came before any
+        goodbye, and Otto says it there, in the person's language.
+
+        Only those rounds count. Text said with a call that was refused is
+        the goodbye, so it is not said again after the call that closes the
+        interview; text from a round without the call is not a goodbye, so
+        it never stands in for one.
+
+        The interview is already closed, so a round that fails leaves the
+        turn ending without a goodbye rather than on an error.
+        """
+        if said_with_end_signal[0].strip():
+            return
+        try:
+            goodbye = await _bound_llm_caller(openai_messages, [])
+            _bound_conversation_updater(openai_messages, goodbye)
+        except Exception:
+            logger.warning(
+                "[Baseline] Goodbye round after the end signal failed for %s",
+                session_id[:12],
+                exc_info=True,
+            )
+
+    async def _save_messages_queued_before_the_close() -> None:
+        """Save what the person queued during the turn that closed the
+        interview as their own rows, with no model call.
+
+        The interview takes no more turns, so no later drain would reach
+        them, and the queue route has already admitted and charged them.
+        Saved as user rows they are part of what the person said, so the
+        hand-off reads them (``onboarding_dump.interview``). Persisted the way
+        the mid-turn drain persists them: after the rows this turn wrote
+        before them, so the chat stays in order.
+        """
+        try:
+            pending = await drain_pending_messages(session_id)
+        except Exception:
+            logger.warning(
+                "[Baseline] drain after the end signal failed for session %s",
+                session_id,
+                exc_info=True,
+            )
+            return
+        if not pending:
+            return
+        current_session = _session_holder[0]
+        # This turn's rows so far, then the text no row holds yet (the
+        # goodbye round's), as the turn's final save would write them.
+        unwritten_text = state.assistant_text[state._flushed_assistant_text_len :]
+        recorded_text = "".join(
+            m.content or "" for m in state.session_messages if m.role == "assistant"
+        )
+        if unwritten_text.startswith(recorded_text):
+            unwritten_text = unwritten_text[len(recorded_text) :]
+        current_session.messages.extend(state.session_messages)
+        state.session_messages.clear()
+        if unwritten_text.strip():
+            current_session.messages.append(
+                ChatMessage(
+                    role="assistant",
+                    content=unwritten_text,
+                    model=state.model,
+                    routing_source=state.routing_source,
+                    llm_auth_provider=state.llm_auth_provider,
+                    llm_credential_id=state.llm_credential_id,
+                )
+            )
+        state._flushed_assistant_text_len = len(state.assistant_text)
+        stamp_turn_trace_id(current_session.messages, turn_start)
+        current_session = await persist_session_safe(current_session, "[Baseline]")
+        _session_holder[0] = current_session
+        if await persist_pending_as_user_rows(
+            current_session,
+            transcript_builder,
+            pending,
+            log_prefix="[Baseline]",
+            content_of=pending_message_text,
+        ):
+            _emit(state, drained_rows_entry(pending, pending_message_text))
+        checkpoint = turn_checkpoint(current_session.messages, turn_start)
+        if checkpoint is not None:
+            _emit(state, checkpoint)
 
     async def _run_tool_call_loop() -> None:
         # Read/write the current session via ``_session_holder`` so this
@@ -2711,6 +2869,22 @@ async def stream_chat_completion_baseline(
                         f"[Baseline] Engine switch pending for "
                         f"{session_id[:12]} — ending tool loop"
                     )
+                    break
+                # What this round said, when it called the end signal: the
+                # goodbye, which ``_say_goodbye_if_unsaid`` looks for.
+                if interview and any(
+                    call.name == END_INTERVIEW_TOOL
+                    for call in loop_result.last_tool_calls
+                ):
+                    said_with_end_signal[0] += state.assistant_text[
+                        text_len_before_final_round[0] :
+                    ]
+                # The end signal (``end_interview``) closed the interview in
+                # this round: the turn ends here, with no further model call,
+                # so Otto says goodbye once. Messages queued during the turn
+                # are saved below, as the interview takes no more turns.
+                if interview and interview_is_closed(_session_holder[0]):
+                    ended_by_end_signal[0] = True
                     break
                 # Inject any messages the user queued while the turn was
                 # running.  ``tool_call_loop`` mutates ``openai_messages``
@@ -2859,6 +3033,9 @@ async def stream_chat_completion_baseline(
                     checkpoint = turn_checkpoint(current_session.messages, turn_start)
                     if checkpoint is not None:
                         _emit(state, checkpoint)
+            if ended_by_end_signal[0]:
+                await _say_goodbye_if_unsaid()
+                await _save_messages_queued_before_the_close()
         finally:
             # Always post the sentinel so the outer consumer exits — even if
             # ``tool_call_loop`` raised.  ``_baseline_llm_caller``'s own
@@ -2877,7 +3054,9 @@ async def stream_chat_completion_baseline(
             yield evt
         # Sentinel received — surface any exception the inner task hit.
         await loop_task
-        loop_result = loop_result_holder[0]
+        # A turn the end signal ended gets neither notice below: its goodbye
+        # is Otto's own, in the person's language.
+        loop_result = None if ended_by_end_signal[0] else loop_result_holder[0]
         # Budget was reached when iterations hit the configured cap. This
         # covers both exit paths out of ``tool_call_loop``:
         #   - ``finished_naturally=True``: the last iteration ran with
@@ -3139,7 +3318,13 @@ async def stream_chat_completion_baseline(
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
-        if graphiti_enabled and user_id and message and is_user_message:
+        if (
+            graphiti_enabled
+            and user_id
+            and message
+            and is_user_message
+            and not from_hidden_row
+        ):
             # Pass only the final assistant reply (after stripping tool-loop
             # chatter) so derived-finding distillation sees the substantive
             # response, not intermediate tool-planning text.
@@ -3157,7 +3342,7 @@ async def stream_chat_completion_baseline(
 
         # --- Skill learning: record this turn as a learning source ---
         # Independent of Graphiti; honors the user's learning preferences.
-        if user_id and message and is_user_message:
+        if user_id and message and is_user_message and not from_hidden_row:
             _capture_task = asyncio.create_task(
                 capture_chat_turn(
                     user_id,

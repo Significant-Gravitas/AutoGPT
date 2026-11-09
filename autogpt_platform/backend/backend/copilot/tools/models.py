@@ -154,6 +154,9 @@ class ResponseType(str, Enum):
     SESSION_LIST = "session_list"
     SESSION_MESSAGE = "session_message"
 
+    # Onboarding interview
+    INTERVIEW_ENDED = "interview_ended"
+
 
 # Base response model
 class ToolResponseBase(ImageCarrier):
@@ -1507,6 +1510,14 @@ class TodoWriteResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.TODO_WRITE
     todos: list[TodoItem] = Field(default_factory=list)
+
+
+class InterviewEndedResponse(ToolResponseBase):
+    """Response from ``end_interview``: the onboarding interview is closed,
+    and its team starts on ``first_task``."""
+
+    type: ResponseType = ResponseType.INTERVIEW_ENDED
+    first_task: str
 
 
 class PlatformInfoResponse(ToolResponseBase):
