@@ -365,6 +365,22 @@ async def test_a_calls_state_moves_as_its_record_does(redis, test_user_id):
     assert body["leg"] == "websocket"
 
 
+async def test_a_live_calls_state_names_the_socket_to_rejoin_it_on(
+    voice_on, redis, test_user_id
+):
+    """A tab holding the call's resume ticket rejoins on the socket the
+    server names, never one it kept itself; an ended call names none."""
+    for status, relay_url in (
+        ("connecting", f"{RELAY}/call"),
+        ("live", f"{RELAY}/call"),
+        ("ended", None),
+        ("transcribing", None),
+    ):
+        await _record(redis, test_user_id, status=status)
+        body = (await request("GET", f"/{CALL}")).json()
+        assert (status, body["relay_url"]) == (status, relay_url)
+
+
 async def test_someone_elses_call_is_not_found(redis):
     await _record(redis, OTHER_USER, status="live")
     assert (await request("GET", f"/{CALL}")).status_code == 404

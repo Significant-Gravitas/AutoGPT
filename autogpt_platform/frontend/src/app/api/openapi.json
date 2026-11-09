@@ -13004,6 +13004,28 @@
       }
     },
     "/api/onboarding/brain-dump/interview": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Onboarding Interview",
+        "description": "The person's onboarding interview as it stands, without starting it.\n\nFor the step's talk-or-type choice, which must know whether the\ninterview is over before it offers Skip. Nothing is created, greeted,\ncharged or refused. An interview that is over but not yet handed off is\nhanded off in the background, as the start does. 404 when the person has\nno interview.",
+        "operationId": "get_onboarding_interview",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterviewStateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Start Onboarding Interview",
@@ -28920,6 +28942,20 @@
         "title": "InterviewStartResponse",
         "description": "The person's onboarding interview, open on the onboarding step."
       },
+      "InterviewStateResponse": {
+        "properties": {
+          "session_id": { "type": "string", "title": "Session Id" },
+          "stage": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Stage"
+          },
+          "is_over": { "type": "boolean", "title": "Is Over" }
+        },
+        "type": "object",
+        "required": ["session_id", "is_over"],
+        "title": "InterviewStateResponse",
+        "description": "The person's onboarding interview as it stands, read without starting\nit."
+      },
       "IntroCardResponse": {
         "properties": {
           "path": { "type": "string", "title": "Path" },
@@ -39967,6 +40003,10 @@
             "type": "string",
             "enum": ["livekit", "websocket"],
             "title": "Leg"
+          },
+          "relay_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Relay Url"
           },
           "hand_off": {
             "anyOf": [

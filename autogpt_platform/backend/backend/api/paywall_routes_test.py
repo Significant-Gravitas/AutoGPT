@@ -166,6 +166,9 @@ OPEN_WHILE_PAYWALLED = {
     # cap and one interview per user bound it instead.
     "POST /api/onboarding/brain-dump/interview",
     "POST /api/onboarding/brain-dump/interview/finish",
+    # Reading the interview as it stands, for the step's talk-or-type choice:
+    # it starts, greets and charges nothing.
+    "GET /api/onboarding/brain-dump/interview",
     # The onboarding voice call starts before the plan step, so before anything
     # is paid for. The person's own call allowance and the platform's daily
     # voice budget bound it.

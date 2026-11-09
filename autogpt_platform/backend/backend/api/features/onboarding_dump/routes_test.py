@@ -48,10 +48,13 @@ from backend.api.features.store.exceptions import VirusDetectedError
 from backend.blocks.typesafe._client import JevCallResult
 from backend.copilot.model import (
     INTERVIEW_STAGE_CLOSED,
+    INTERVIEW_STAGE_HANDED_OFF,
     INTERVIEW_STAGE_WRAP_UP_ISSUED,
     ONBOARDING_INTERVIEW_KIND,
+    ChatMessage,
     ChatSession,
 )
+from backend.copilot.onboarding_interview import INTERVIEW_TURN_CAP
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.understanding import BusinessUnderstandingInput
 from backend.util.exceptions import (
@@ -2301,6 +2304,137 @@ def test_an_unreadable_budget_or_stream_is_a_503(start_interview: AsyncMock):
 
     assert response.status_code == 503
     assert response.headers["retry-after"] == "30"
+
+
+@pytest.fixture
+def interview_starts(mocker: MockerFixture) -> dict[str, AsyncMock]:
+    """What only the typed start may do: create an interview, charge its
+    budget and write Otto's kickoff."""
+    return {
+        name: mocker.patch.object(interview, name, new=AsyncMock())
+        for name in (
+            "get_or_create_onboarding_interview_session",
+            "enforce_onboarding_interview_allowance",
+            "kick_off_onboarding_interview",
+        )
+    }
+
+
+@pytest.fixture
+def background_hand_off(mocker: MockerFixture) -> tuple[MagicMock, MagicMock]:
+    """The hand-off an interview that is over gets behind the request, and
+    the spawn that runs it."""
+    hand_off = mocker.patch.object(
+        interview, "hand_off_closed_interview", new=MagicMock(return_value="hand-off")
+    )
+    spawn = mocker.patch.object(interview, "spawn_background_task")
+    return hand_off, spawn
+
+
+def _stored_interview(mocker: MockerFixture, session: ChatSession | None) -> AsyncMock:
+    return mocker.patch.object(
+        interview,
+        "find_onboarding_interview_session",
+        new=AsyncMock(return_value=session),
+    )
+
+
+def test_reading_a_finished_interview_answers_it_over_and_starts_nothing(
+    mocker: MockerFixture,
+    test_user_id: str,
+    interview_starts: dict[str, AsyncMock],
+    background_hand_off: tuple[MagicMock, MagicMock],
+):
+    """The talk-or-type choice learns the interview is over, so it offers
+    no Skip, without the start's kickoff row or budget charge."""
+    found = _stored_interview(
+        mocker, _interview(test_user_id, stage=INTERVIEW_STAGE_HANDED_OFF)
+    )
+
+    response = client.get(INTERVIEW_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": INTERVIEW_SESSION_ID,
+        "stage": INTERVIEW_STAGE_HANDED_OFF,
+        "is_over": True,
+    }
+    found.assert_awaited_once_with(test_user_id)
+    for start in interview_starts.values():
+        start.assert_not_awaited()
+    # Handed off already: nothing left to settle.
+    background_hand_off[1].assert_not_called()
+
+
+def test_reading_with_no_interview_is_a_404_and_creates_none(
+    mocker: MockerFixture,
+    interview_starts: dict[str, AsyncMock],
+    background_hand_off: tuple[MagicMock, MagicMock],
+):
+    _stored_interview(mocker, None)
+
+    response = client.get(INTERVIEW_URL)
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No onboarding interview"
+    for start in interview_starts.values():
+        start.assert_not_awaited()
+    background_hand_off[1].assert_not_called()
+
+
+def test_reading_an_interview_over_by_its_cap_hands_it_off_as_the_start_does(
+    mocker: MockerFixture,
+    test_user_id: str,
+    interview_starts: dict[str, AsyncMock],
+    background_hand_off: tuple[MagicMock, MagicMock],
+):
+    """Its replies are used up before its stage says so: it reads as over,
+    and the hand-off the start would spawn runs behind the read."""
+    session = _interview(test_user_id)
+    session.messages = [
+        message
+        for n in range(INTERVIEW_TURN_CAP)
+        for message in (
+            ChatMessage(role="user", content=f"Answer {n}."),
+            ChatMessage(role="assistant", content=f"Reply {n}."),
+        )
+    ]
+    _stored_interview(mocker, session)
+    hand_off, spawn = background_hand_off
+
+    response = client.get(INTERVIEW_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": INTERVIEW_SESSION_ID,
+        "stage": None,
+        "is_over": True,
+    }
+    hand_off.assert_called_once_with(test_user_id, INTERVIEW_SESSION_ID)
+    assert spawn.call_args.args == ("hand-off",)
+    for start in interview_starts.values():
+        start.assert_not_awaited()
+
+
+def test_reading_an_interview_under_way_answers_it_open(
+    mocker: MockerFixture,
+    test_user_id: str,
+    interview_starts: dict[str, AsyncMock],
+    background_hand_off: tuple[MagicMock, MagicMock],
+):
+    _stored_interview(
+        mocker, _interview(test_user_id, stage=INTERVIEW_STAGE_WRAP_UP_ISSUED)
+    )
+
+    response = client.get(INTERVIEW_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": INTERVIEW_SESSION_ID,
+        "stage": INTERVIEW_STAGE_WRAP_UP_ISSUED,
+        "is_over": False,
+    }
+    background_hand_off[1].assert_not_called()
 
 
 def test_finishing_hands_the_interview_off_and_answers_its_take(

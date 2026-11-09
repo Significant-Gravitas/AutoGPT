@@ -310,6 +310,20 @@ class InterviewStartResponse(BaseModel):
     still asking."""
 
 
+class InterviewStateResponse(BaseModel):
+    """The person's onboarding interview as it stands, read without starting
+    it."""
+
+    session_id: str
+    """The interview's chat session; each person has one."""
+    stage: str | None = None
+    """``ChatSessionMetadata.onboarding_interview_stage``; None while Otto is
+    still asking."""
+    is_over: bool
+    """Whether it takes no more turns: closed, handed off, or its replies
+    used up, which can be true before ``stage`` says so."""
+
+
 class VoiceCallCaps(BaseModel):
     """A voice call's limits. The relay enforces them; the browser shows them."""
 
@@ -376,6 +390,9 @@ class VoiceCallStatusResponse(BaseModel):
     ``vendor_error``, ``server_restart``), or ``crashed`` when the server
     running it stopped."""
     leg: Literal["livekit", "websocket"]
+    relay_url: str | None = None
+    """The relay's call socket, which a tab holding the call's resume ticket
+    rejoins it on; set only while the call is live."""
     hand_off: FinalizeResponse | None = None
     """What the onboarding pipeline answered the call's hand-off, read the
     way the typed interview's finish answer is read; None until it has

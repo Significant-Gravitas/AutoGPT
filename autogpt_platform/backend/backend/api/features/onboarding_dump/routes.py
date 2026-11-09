@@ -31,6 +31,7 @@ from backend.api.features.onboarding_dump.models import (
     FinalizeResponse,
     GreetingDoneResponse,
     InterviewStartResponse,
+    InterviewStateResponse,
     IntroCardResponse,
     RecommendedExpertsResponse,
     RecommendedProvidersResponse,
@@ -229,6 +230,28 @@ async def start_onboarding_interview(
         session_id=started.session.session_id,
         turn_id=started.turn_id,
         stage=started.session.metadata.onboarding_interview_stage,
+    )
+
+
+@router.get("/interview", operation_id="get_onboarding_interview")
+async def get_onboarding_interview(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> InterviewStateResponse:
+    """The person's onboarding interview as it stands, without starting it.
+
+    For the step's talk-or-type choice, which must know whether the
+    interview is over before it offers Skip. Nothing is created, greeted,
+    charged or refused. An interview that is over but not yet handed off is
+    handed off in the background, as the start does. 404 when the person has
+    no interview.
+    """
+    read = await interview.read_onboarding_interview(user_id)
+    if read is None:
+        raise fastapi.HTTPException(status_code=404, detail="No onboarding interview")
+    return InterviewStateResponse(
+        session_id=read.session.session_id,
+        stage=read.session.metadata.onboarding_interview_stage,
+        is_over=read.is_over,
     )
 
 

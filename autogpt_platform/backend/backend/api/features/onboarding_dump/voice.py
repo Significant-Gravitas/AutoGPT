@@ -334,13 +334,17 @@ async def _their_call(
 
 
 def _status_of(record: CallRecord) -> VoiceCallStatusResponse:
+    # Written with the call's first record, so a record without one is one
+    # whose fields could not be read: nothing is known to be running.
+    status = record.status or locks.ENDED
     return VoiceCallStatusResponse(
         call_id=record.call_id,
-        # Written with the call's first record, so a record without one is
-        # one whose fields could not be read: nothing is known to be running.
-        status=record.status or locks.ENDED,
+        status=status,
         end_reason=record.end_reason,
         leg="livekit" if record.leg == "livekit" else "websocket",
+        relay_url=(
+            relay_socket_url() if status in (locks.CONNECTING, locks.LIVE) else None
+        ),
         hand_off=record.hand_off,
     )
 

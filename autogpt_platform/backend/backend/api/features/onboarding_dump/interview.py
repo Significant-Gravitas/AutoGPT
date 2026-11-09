@@ -200,11 +200,7 @@ async def start_onboarding_interview(user_id: str) -> StartedInterview:
     await refuse_while_a_call_holds_the_interview(user_id)
     session = await get_or_create_onboarding_interview_session(user_id)
     if interview_is_over(session):
-        if session.metadata.onboarding_interview_stage != INTERVIEW_STAGE_HANDED_OFF:
-            spawn_background_task(
-                hand_off_closed_interview(user_id, session.session_id),
-                name=f"interview-hand-off-{session.session_id[:12]}",
-            )
+        _hand_off_in_background(user_id, session)
         return StartedInterview(session=session, turn_id=None)
     if user_has_spoken(session) or count_answered_turns(session.messages) > 0:
         return StartedInterview(session=session, turn_id=None)
@@ -229,6 +225,46 @@ async def start_onboarding_interview(user_id: str) -> StartedInterview:
         user_id, session.session_id, plan_interview_turn(session)
     )
     return StartedInterview(session=session, turn_id=turn_id)
+
+
+class InterviewAsItStands(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    session: ChatSession
+    # It takes no more turns: closed, handed off, or its replies used up,
+    # which can be true before its stage says so.
+    is_over: bool
+
+
+async def read_onboarding_interview(user_id: str) -> InterviewAsItStands | None:
+    """The user's onboarding interview as it stands, read without starting
+    it: ``None`` when they have none. Nothing is created, greeted, charged or
+    refused.
+
+    For the step's talk-or-type choice, which must know whether the
+    interview is over before it offers Skip, and cannot ask
+    :func:`start_onboarding_interview`, which creates an interview and greets
+    when none exists. An interview that is over but not yet handed off is
+    handed off in the background, as the start does, so the stage settles
+    for the next read.
+    """
+    session = await find_onboarding_interview_session(user_id)
+    if session is None:
+        return None
+    is_over = interview_is_over(session)
+    if is_over:
+        _hand_off_in_background(user_id, session)
+    return InterviewAsItStands(session=session, is_over=is_over)
+
+
+def _hand_off_in_background(user_id: str, session: ChatSession) -> None:
+    """Hand off an interview that is over, unless that already happened."""
+    if session.metadata.onboarding_interview_stage == INTERVIEW_STAGE_HANDED_OFF:
+        return
+    spawn_background_task(
+        hand_off_closed_interview(user_id, session.session_id),
+        name=f"interview-hand-off-{session.session_id[:12]}",
+    )
 
 
 async def _refuse_if_busy(session_id: str) -> None:
