@@ -566,6 +566,33 @@ def test_doctor_round_trips_a_probe_through_the_keychain(monkeypatch, keeps, mar
     assert backend.stored == {}
 
 
+def test_a_probe_left_in_the_keychain_is_cleared_by_the_next_doctor(monkeypatch) -> None:
+    """A probe the keychain stored after doctor stopped waiting for it, with
+    doctor gone before its thread deleted it, stayed under the token
+    service for good: each run probed a new name, so none touched it."""
+    import sys
+
+    class GoneBeforeTheDelete(_MemoryKeyring):
+        def __init__(self) -> None:
+            super().__init__()
+            self.first = True
+
+        def delete_password(self, service: str, name: str) -> None:
+            if self.first:
+                self.first = False
+                return
+            super().delete_password(service, name)
+
+    backend = GoneBeforeTheDelete()
+    monkeypatch.setitem(sys.modules, "keyring", _keyring_module(backend))
+
+    doctor._check_keychain()
+    assert len(backend.stored) == 1
+    doctor._check_keychain()
+
+    assert backend.stored == {}
+
+
 def test_doctor_warns_on_a_keyring_backend_that_can_store_nothing(monkeypatch) -> None:
     import sys
 

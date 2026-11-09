@@ -23,7 +23,6 @@ import asyncio
 import contextlib
 import json
 import os
-import secrets
 import shutil
 import subprocess
 import threading
@@ -115,6 +114,11 @@ def _check_directory_browser() -> CheckResult:
 
 # A locked keychain can block on an unlock prompt; doctor must not hang on it.
 KEYCHAIN_PROBE_SECONDS = 10.0
+# The probe's name in the keychain. One name, not one per run: a probe the
+# keychain stores after doctor stopped waiting may outlive doctor, which
+# doesn't wait for its thread to delete it, and the next run's probe then
+# overwrites and deletes it rather than leaving it there for good.
+KEYCHAIN_PROBE_NAME = "doctor-probe"
 
 
 def _check_keychain() -> CheckResult:
@@ -163,14 +167,13 @@ def _probe_keychain() -> CheckResult:
 def _round_trip(keyring, name: str) -> CheckResult:
     from .auth import KEYCHAIN_SERVICE
 
-    key = f"doctor-probe-{secrets.token_hex(4)}"
     try:
-        keyring.set_password(KEYCHAIN_SERVICE, key, "ok")
+        keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_PROBE_NAME, "ok")
         try:
-            stored = keyring.get_password(KEYCHAIN_SERVICE, key)
+            stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_PROBE_NAME)
         finally:
             try:
-                keyring.delete_password(KEYCHAIN_SERVICE, key)
+                keyring.delete_password(KEYCHAIN_SERVICE, KEYCHAIN_PROBE_NAME)
             except Exception:
                 pass
     except Exception as exc:
