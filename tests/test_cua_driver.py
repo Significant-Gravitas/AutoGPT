@@ -684,11 +684,13 @@ def test_clipboard_tools_are_offered_only_when_enabled() -> None:
 def test_arguments_that_reach_the_disk_wait_for_approval(
     tool: str, arguments: dict, argument: str
 ) -> None:
+    # As on a Mac: a Windows bundle_id must also be an AUMID, which
+    # test_a_windows_bundle_id_must_be_an_aumid covers.
     with pytest.raises(catalog.ApprovalRequired) as waiting:
-        catalog.check_arguments(tool, arguments)
+        catalog.check_arguments(tool, arguments, platform="darwin")
     assert waiting.value.argument == argument
 
-    catalog.check_arguments(tool, arguments, approved=[argument])
+    catalog.check_arguments(tool, arguments, approved=[argument], platform="darwin")
 
 
 @pytest.mark.parametrize(
@@ -760,7 +762,7 @@ def test_arguments_this_machine_never_takes_are_refused(
     ],
 )
 def test_ordinary_arguments_pass(tool: str, arguments: dict) -> None:
-    catalog.check_arguments(tool, arguments)
+    catalog.check_arguments(tool, arguments, platform="darwin")
 
 
 @pytest.mark.parametrize(
@@ -839,7 +841,7 @@ def _config(tmp_path: Path, **overrides: Any) -> ShimConfig:
 async def make_handler(tmp_path: Path, fake_log: Path):
     made: list[ComputerUseHandler] = []
 
-    def make(**overrides: Any) -> ComputerUseHandler:
+    def make(platform: str = "linux", **overrides: Any) -> ComputerUseHandler:
         config = _config(tmp_path, **overrides)
         audit = AuditWriter(config.audit_log_path, b"a" * 32)
         handler = ComputerUseHandler(
@@ -848,7 +850,7 @@ async def make_handler(tmp_path: Path, fake_log: Path):
             driver=CuaDriverBridge(
                 tools=catalog.offered_tools(enable_clipboard=config.enable_clipboard),
                 binary=FAKE,
-                platform="linux",
+                platform=platform,
                 client_factory=_fake_client,
             ),
         )
@@ -1028,6 +1030,131 @@ async def test_the_drivers_own_error_comes_back_as_a_result(make_handler) -> Non
     assert isinstance(response, ComputerToolResultMessage)
     assert response.payload.is_error is True
     assert response.payload.structured_content == {"code": "stale"}
+
+
+@pytest.mark.parametrize(
+    ("bundle_id", "platform", "refused"),
+    [
+        ("com.apple.calculator", "win32", True),
+        ("logoff", "win32", True),
+        ("a!b!c", "win32", True),
+        ("!App", "win32", True),
+        ("Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", "win32", False),
+        ("com.apple.calculator", "darwin", False),
+    ],
+)
+def test_a_windows_bundle_id_must_be_an_aumid(bundle_id: str, platform: str, refused: bool) -> None:
+    """On Windows cua-driver 0.38 launches a bundle_id that is an AUMID
+    (`Package!App`) as a packaged app and hands anything else to
+    ShellExecuteEx as a program name, without looking for an installed app:
+    `logoff` signed the person out, unasked."""
+
+    def check() -> None:
+        catalog.check_arguments(
+            "launch_app", {"bundle_id": bundle_id}, platform=platform, on_path=lambda _: None
+        )
+
+    if refused:
+        with pytest.raises(catalog.ArgumentRefused) as caught:
+            check()
+        assert caught.value.argument == "bundle_id"
+    else:
+        check()
+
+
+@pytest.mark.parametrize(
+    ("name", "matches"),
+    [
+        ("Notepad", True),
+        ("notepad", True),
+        ("NOTEPAD.EXE", True),
+        (" Google ", True),
+        ("goog", True),
+        ("logoff", False),
+        ("shutdown.exe", False),
+        ("", False),
+        (".exe", False),
+    ],
+)
+def test_a_windows_launch_name_matches_as_the_driver_matches(name: str, matches: bool) -> None:
+    """cua-driver 0.38 on Windows: the exact name ignoring case and a
+    trailing `.exe`, else the shortest installed name starting with it."""
+    assert catalog.windows_app_name_matches(name, ["Notepad", "Google Chrome"]) is matches
+
+
+async def test_a_windows_launch_by_a_name_no_app_has_never_reaches_the_driver(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """With no installed app of that name, cua-driver hands the name to
+    ShellExecuteEx, which runs a program of that name from PATH, out of
+    sight: `logoff` would sign the person out, unasked. A running process
+    of that name, which no installed app matched, doesn't count."""
+    monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad", "Google Chrome"]))
+    handler = make_handler(platform="win32")
+
+    response = await handler.handle(_call("launch_app", {"name": "logoff"}))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert response.payload.details == {"tool": "launch_app", "argument": "name"}
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps"]
+
+
+async def test_a_windows_launch_by_an_installed_apps_name_goes_ahead(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad", "Google Chrome"]))
+    handler = make_handler(platform="win32")
+
+    first = await handler.handle(_call("launch_app", {"name": "notepad.exe"}))
+    second = await handler.handle(_call("launch_app", {"name": "Goog"}))
+
+    for response in (first, second):
+        assert isinstance(response, ComputerToolResultMessage)
+        assert response.payload.is_error is False
+    # The installed apps are listed once and kept for a while.
+    assert [call["tool"] for call in _records(fake_log, "call")] == [
+        "list_apps",
+        "launch_app",
+        "launch_app",
+    ]
+
+
+async def test_a_windows_launch_name_is_refused_when_the_apps_cannot_be_listed(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    monkeypatch.setenv("FAKE_CUA_LIST_APPS_ERROR", "the Windows shell did not answer")
+    handler = make_handler(platform="win32")
+
+    response = await handler.handle(_call("launch_app", {"name": "Notepad"}))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps"]
+
+
+@pytest.mark.parametrize(
+    ("platform", "arguments"),
+    [
+        ("win32", {"name": "logoff", "aumid": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"}),
+        ("win32", {"name": "logoff", "bundle_id": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"}),
+        ("linux", {"name": "Calculator"}),
+        ("darwin", {"name": "Calculator"}),
+    ],
+    ids=["windows-aumid", "windows-aumid-bundle-id", "linux", "macos"],
+)
+async def test_a_launch_the_name_lookup_doesnt_decide_lists_no_apps(
+    make_handler, fake_log, monkeypatch, platform: str, arguments: dict
+) -> None:
+    """An AUMID wins over the name in cua-driver's routing, and elsewhere
+    than Windows the name never reaches ShellExecuteEx."""
+    monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad"]))
+    handler = make_handler(platform=platform)
+
+    response = await handler.handle(_call("launch_app", arguments))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["launch_app"]
 
 
 @pytest.mark.parametrize(

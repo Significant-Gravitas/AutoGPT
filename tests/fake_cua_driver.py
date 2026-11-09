@@ -20,6 +20,8 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_INITIALIZE    JSON object merged into initialize's result
   FAKE_CUA_SCREEN_ERROR  get_screen_size answers with this error
   FAKE_CUA_ENDED_SESSIONS  comma-separated session labels refused as ended
+  FAKE_CUA_APPS          JSON list of installed app names list_apps returns
+  FAKE_CUA_LIST_APPS_ERROR  list_apps answers with this error
 """
 
 from __future__ import annotations
@@ -123,6 +125,25 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
             },
             error=True,
         )
+    if name == "list_apps" and (
+        os.environ.get("FAKE_CUA_APPS") or os.environ.get("FAKE_CUA_LIST_APPS_ERROR")
+    ):
+        if os.environ.get("FAKE_CUA_LIST_APPS_ERROR"):
+            return text_result(os.environ["FAKE_CUA_LIST_APPS_ERROR"], error=True)
+        names = json.loads(os.environ["FAKE_CUA_APPS"])
+        # cua-driver 0.38 on Windows: installed apps carry their launch_path;
+        # a running process no installed app matched has none.
+        apps = [
+            {
+                "pid": 0,
+                "name": app,
+                "running": False,
+                "kind": "desktop",
+                "launch_path": f"C:\\Apps\\{app}.exe",
+            }
+            for app in names
+        ] + [{"pid": 77, "name": "logoff", "running": True, "kind": "desktop", "launch_path": None}]
+        return text_result(f"Found {len(apps)} app(s).", {"apps": apps, "processes": []})
     if name == "get_screen_size":
         if os.environ.get("FAKE_CUA_SCREEN_ERROR"):
             return text_result(os.environ["FAKE_CUA_SCREEN_ERROR"], error=True)
