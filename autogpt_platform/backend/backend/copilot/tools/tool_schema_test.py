@@ -329,7 +329,12 @@ from ._test_data import make_session
 #     task tools tree                             80,427 (94 tools)
 #     + reason / default_guess        +386        80,813 (94 tools)
 #     + headroom                      +300        81,113
-_CHAR_BUDGET = 81_113
+# Raised for start_task, the tool every multi-step request goes through
+# (eager, so it is in every chat's list):
+#     reason / default_guess tree                 80,813 (94 tools)
+#     + start_task                    +734        81,547 (95 tools)
+#     + headroom                      +300        81,847
+_CHAR_BUDGET = 81_847
 
 
 @pytest.fixture(scope="module")
@@ -557,7 +562,11 @@ def test_total_schema_char_budget() -> None:
 #     task tools tree                             72,427
 #     + reason / default_guess        +368        72,795
 #     + headroom                      +300        73,095
-_SESSION_WIRE_BUDGET = 73_095
+# And for start_task, as above:
+#     reason / default_guess tree                 72,795
+#     + start_task                    +658        73,453
+#     + headroom                      +300        73,753
+_SESSION_WIRE_BUDGET = 73_753
 
 
 def test_largest_declared_session_wire_budget() -> None:

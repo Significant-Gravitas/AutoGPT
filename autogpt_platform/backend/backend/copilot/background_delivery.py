@@ -5,6 +5,8 @@ from collections.abc import Awaitable
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
+from prisma.enums import TaskStatus
+
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import ORPHAN_RUNNING_RESET_SECONDS
 from backend.copilot.background_task import BackgroundTask, task_metadata
@@ -12,7 +14,7 @@ from backend.copilot.executor.utils import enqueue_cancel_task, get_session_lock
 from backend.copilot.model import _get_session_lock, invalidate_session_cache
 from backend.copilot.tree import TurnEnvelope, keep_tree_alive
 from backend.copilot.turn_queue import cancel_queued_turn, dispatch_next_for_user
-from backend.data.db_accessors import background_task_db, chat_db
+from backend.data.db_accessors import background_task_db, chat_db, task_db
 from backend.data.redis_client import get_redis_async
 
 logger = logging.getLogger(__name__)
@@ -139,7 +141,38 @@ async def _settle_child(
     return await background_task_db().get_background_task(task.id, task.user_id)
 
 
+# Where a finished worker leaves the tasks linked to its chat.
+_TASK_STATUS_BY_OUTCOME: dict[str, TaskStatus] = {
+    "completed": TaskStatus.DONE,
+    "failed": TaskStatus.FAILED,
+    "timed_out": TaskStatus.FAILED,
+    "cancelled": TaskStatus.CANCELLED,
+}
+
+
+async def settle_worker_tasks(task: BackgroundTask) -> None:
+    """Close the tasks a finished worker was running (``start_task``).
+
+    Only open ones move: a task waiting on the user (NEEDS_INPUT) stays
+    open, since the worker ended by asking. Best-effort and idempotent, so
+    a delivery retried later moves nothing twice.
+    """
+    status = _TASK_STATUS_BY_OUTCOME.get(task.outcome or "")
+    if status is None:
+        return
+    try:
+        await task_db().move_session_tasks(
+            task.child_session_id,
+            task.user_id,
+            [TaskStatus.TODO, TaskStatus.IN_PROGRESS],
+            status,
+        )
+    except Exception:
+        logger.warning(f"Could not settle tasks for background task {task.id}")
+
+
 async def _deliver(task: BackgroundTask) -> None:
+    await settle_worker_tasks(task)
     async with _get_session_lock(task.parent_session_id) as locked:
         if not locked:
             return

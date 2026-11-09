@@ -180,6 +180,7 @@ ToolName = Literal[
     "search_feature_requests",
     "setup_agent_webhook_trigger",
     "start_desktop",
+    "start_task",
     "store_skill",
     "update_expert",
     "update_expert_soul",

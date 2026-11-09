@@ -89,6 +89,7 @@ from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .start_desktop import StartDesktopTool
+from .start_task import StartTaskTool
 from .tasks import (
     ArchiveTaskTool,
     CreateTaskTool,
@@ -148,6 +149,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "get_task": GetTaskTool(),
     "update_task": UpdateTaskTool(),
     "archive_task": ArchiveTaskTool(),
+    "start_task": StartTaskTool(),
     "run_agent": RunAgentTool(),
     # Schedule management
     "list_schedules": ListSchedulesTool(),

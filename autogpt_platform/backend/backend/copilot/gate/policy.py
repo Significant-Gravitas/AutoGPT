@@ -105,6 +105,8 @@ _WORKSPACE = frozenset(
         # Tasks are the user's own bookkeeping, like TodoWrite's list.
         "archive_task",
         "create_task",
+        # Starts the user's own work; the worker's calls are gated themselves.
+        "start_task",
         "update_task",
         "memory_store",
         "start_desktop",

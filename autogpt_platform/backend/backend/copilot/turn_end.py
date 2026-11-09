@@ -2,13 +2,15 @@
 
 A question for the user (``ask_question``) is the last thing in its turn: no
 more text and no more tool calls, so the question card is what the user is
-left looking at. The tool registers the session here when it succeeds, and
-each engine then:
+left looking at. Starting a background task (``start_task``) ends the turn
+too, so the chat is free while the work runs, but the other calls of that
+step still run (the user may have asked for several tasks at once). The tool
+registers the session here when it succeeds, and each engine then:
 
-* refuses every tool call that starts after it (calls the model placed
-  before the question in the same step have already run), and
 * makes no further model call (the SDK through its PostToolUse hook, the
-  baseline by leaving its tool loop).
+  baseline by leaving its tool loop), and
+* after a question, refuses every tool call that starts later (calls the
+  model placed before the question in the same step have already run).
 
 Process-local: the tool runs in the same executor process as the engine that
 checks. Each turn clears its session when it starts, and the executor clears
@@ -23,13 +25,15 @@ ENDED_REFUSAL = (
 )
 
 _lock = threading.Lock()
-_ending: set[str] = set()
+# Session -> whether calls that start from now on are refused.
+_ending: dict[str, bool] = {}
 
 
-def request_end(session_id: str) -> None:
-    """End *session_id*'s turn after the current tool step."""
+def request_end(session_id: str, *, refuse_later_calls: bool = True) -> None:
+    """End *session_id*'s turn after the current tool step; with
+    *refuse_later_calls*, also refuse every call that starts from now on."""
     with _lock:
-        _ending.add(session_id)
+        _ending[session_id] = _ending.get(session_id, False) or refuse_later_calls
 
 
 def is_ending(session_id: str | None) -> bool:
@@ -40,7 +44,15 @@ def is_ending(session_id: str | None) -> bool:
         return session_id in _ending
 
 
+def refuses_calls(session_id: str | None) -> bool:
+    """True when calls that start now are refused: the turn asked a question."""
+    if not session_id:
+        return False
+    with _lock:
+        return _ending.get(session_id, False)
+
+
 def clear(session_id: str) -> None:
     """Forget the request, at the start and end of every turn."""
     with _lock:
-        _ending.discard(session_id)
+        _ending.pop(session_id, None)

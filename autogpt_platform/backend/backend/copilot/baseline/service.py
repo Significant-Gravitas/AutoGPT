@@ -1232,7 +1232,7 @@ async def _baseline_tool_executor(
     tool_name = tool_call.name
     raw_args = tool_call.arguments or "{}"
 
-    if turn_end.is_ending(session.session_id):
+    if turn_end.refuses_calls(session.session_id):
         return _refuse_after_question(state, tool_call_id, tool_name)
 
     try:

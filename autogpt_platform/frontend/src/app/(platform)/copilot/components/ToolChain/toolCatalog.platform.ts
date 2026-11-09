@@ -41,6 +41,11 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     running: "Archiving task",
     done: "Archived task",
   },
+  start_task: {
+    category: "todo",
+    running: "Starting task",
+    done: "Started task",
+  },
   web_search: {
     category: "web",
     running: "Searching the web for",

@@ -259,7 +259,7 @@ def create_security_hooks(
 
             # A question for the user ends the turn: nothing runs after it.
             _, session = get_execution_context()
-            if session is not None and turn_end.is_ending(session.session_id):
+            if session is not None and turn_end.refuses_calls(session.session_id):
                 logger.info("[SDK] Refusing %s: the turn asked a question", tool_name)
                 return cast(SyncHookJSONOutput, _deny(turn_end.ENDED_REFUSAL))
 

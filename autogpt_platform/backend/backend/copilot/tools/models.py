@@ -108,6 +108,7 @@ class ResponseType(str, Enum):
     TASK_DETAILS = "task_details"
     TASK_UPDATED = "task_updated"
     TASK_ARCHIVED = "task_archived"
+    TASK_STARTED = "task_started"
 
     # Browser automation
     BROWSER_NAVIGATE = "browser_navigate"

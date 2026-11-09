@@ -66,3 +66,17 @@ class TaskUpdatedResponse(ToolResponseBase):
 class TaskArchivedResponse(ToolResponseBase):
     type: ResponseType = ResponseType.TASK_ARCHIVED
     task_id: str
+
+
+class TaskStartedResponse(ToolResponseBase):
+    """A task handed to a background worker; its result comes back here."""
+
+    type: ResponseType = ResponseType.TASK_STARTED
+    task: TaskInfo
+    in_background: bool = Field(
+        description="False when background work is unavailable and the task "
+        "is worked on in this chat instead."
+    )
+    worker_session_id: str | None = None
+    worker_session_link: str | None = None
+    background_task_id: str | None = None

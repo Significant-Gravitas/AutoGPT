@@ -63,6 +63,9 @@ EAGER_CORE: frozenset[str] = frozenset(
         # the card it exists to open is unreachable, and so is the
         # ``run_capability`` that would reach it.
         "expert_onboarding",
+        # Multi-step work runs as a background task: the prompt routes every
+        # request bigger than a quick answer here by name, every turn.
+        "start_task",
     }
 )
 
