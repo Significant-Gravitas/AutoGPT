@@ -9,11 +9,10 @@ import { ProgressError } from "./components/ProgressError";
 import { StepIndicator } from "./components/StepIndicator";
 import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
 import { ConnectStep } from "./steps/ConnectStep/ConnectStep";
-import { HireStep } from "./steps/HireStep/HireStep";
 import { IntroStep } from "./steps/IntroStep/IntroStep";
 import { PreparingStep } from "./steps/PreparingStep";
 import { RoleStep } from "./steps/RoleStep";
-import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
+import { PlanTrialStep } from "./steps/SubscriptionStep/PlanTrialStep";
 import { useOnboardingWizardStore } from "./store";
 import { useOnboardingPage } from "./useOnboardingPage";
 
@@ -24,6 +23,7 @@ export default function OnboardingPage() {
     handlePreparingComplete,
     isPaymentEnabled,
     isSelfHostConnectEnabled,
+    canHireTeam,
     steps,
     preparingStep,
     totalSteps,
@@ -115,7 +115,7 @@ export default function OnboardingPage() {
           size="xs"
           onClick={prevStep}
           leadingIcon={ArrowLeft01Icon}
-          className="absolute left-6 top-6"
+          className="absolute top-6 left-6"
         >
           Back
         </Button>
@@ -125,23 +125,25 @@ export default function OnboardingPage() {
         className={cn(
           "flex w-full min-w-0 flex-1 items-center justify-center",
           currentStep === steps.subscription
-            ? "pb-8 pt-3 lg:pb-2"
-            : "pb-8 pt-16",
+            ? "pt-3 pb-8 lg:pb-2"
+            : "pt-16 pb-8",
         )}
       >
         {currentStep === steps.team && <IntroStep slide="team" />}
         {currentStep === steps.autopilot && <IntroStep slide="autopilot" />}
         {currentStep === steps.role && <RoleStep />}
         {currentStep === steps.painPoints && <BrainDumpStep />}
-        {currentStep === steps.hire && <HireStep />}
         {isSelfHostConnectEnabled && currentStep === steps.connect && (
           <ConnectStep />
         )}
-        {isPaymentEnabled && currentStep === steps.subscription && (
-          <SubscriptionStep />
+        {currentStep === steps.subscription && (
+          <PlanTrialStep hasPaywall={isPaymentEnabled} />
         )}
         {currentStep === preparingStep && (
-          <PreparingStep onComplete={handlePreparingComplete} />
+          <PreparingStep
+            onComplete={handlePreparingComplete}
+            canHire={canHireTeam}
+          />
         )}
       </div>
 

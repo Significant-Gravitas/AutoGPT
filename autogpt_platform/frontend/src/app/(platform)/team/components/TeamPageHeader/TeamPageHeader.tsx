@@ -48,7 +48,7 @@ export function TeamPageHeader({ experts }: Props) {
               />
             </span>
           ))}
-          <span className="absolute left-1/2 top-0 z-10 -translate-x-1/2 transition-transform duration-300 ease-out group-hover:-translate-y-0.5 motion-reduce:transition-none">
+          <span className="absolute top-0 left-1/2 z-10 -translate-x-1/2 transition-transform duration-300 ease-out group-hover:-translate-y-0.5 motion-reduce:transition-none">
             <AutopilotAvatar size={52} className={AVATAR_CLASS} />
           </span>
         </div>

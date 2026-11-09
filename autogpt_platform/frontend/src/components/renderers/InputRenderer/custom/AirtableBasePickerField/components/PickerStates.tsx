@@ -30,7 +30,7 @@ export function BasesError({ message, onRetry, retrying }: ErrorProps) {
       role="alert"
       className="flex flex-col items-start gap-2 rounded-2xl bg-error-surface p-3"
     >
-      <Text variant="small" className="text-error-foreground">
+      <Text variant="small" tone="error-strong">
         {message}
       </Text>
       <Button

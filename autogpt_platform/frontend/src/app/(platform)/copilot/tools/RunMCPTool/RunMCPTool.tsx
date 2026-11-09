@@ -69,7 +69,7 @@ export function RunMCPToolComponent({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 text-body text-foreground-tertiary">
         <ToolIcon isStreaming={isStreaming} isError={isError} />
         <MorphingTextAnimation
           text={isCorrupted ? "Tool result could not be displayed" : text}
@@ -86,10 +86,10 @@ export function RunMCPToolComponent({ part }: Props) {
 
       {/* Error detail card */}
       {errorOutput && (
-        <div className="mt-2 rounded-lg border border-error/30 bg-error-surface px-3 py-2 text-sm text-error-foreground">
+        <div className="mt-2 rounded-lg border border-error/30 bg-error-surface px-3 py-2 text-body text-error-foreground">
           {errorOutput.message}
           {errorOutput.error && (
-            <pre className="mt-1 whitespace-pre-wrap break-words text-xs opacity-80">
+            <pre className="mt-1 text-caption break-words whitespace-pre-wrap opacity-80">
               {errorOutput.error}
             </pre>
           )}

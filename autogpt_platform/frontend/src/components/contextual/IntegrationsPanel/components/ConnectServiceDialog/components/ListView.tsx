@@ -42,7 +42,8 @@ export function ListView({
         <Icon
           icon={Search01Icon}
           size={20}
-          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-foreground-tertiary"
+          tone="muted"
+          className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2"
         />
         <input
           type="text"
@@ -50,17 +51,13 @@ export function ListView({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search services..."
           aria-label="Search services"
-          className="h-[46px] w-full rounded-3xl border border-border-base bg-surface pl-12 pr-4 text-body text-foreground-base placeholder:text-placeholder focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+          className="h-[46px] w-full rounded-3xl border border-border-base bg-surface pr-4 pl-12 text-body text-foreground-base placeholder:text-placeholder focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
         />
       </div>
 
       {isEmpty ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border-base py-10 text-center">
-          <Icon
-            icon={Plug01Icon}
-            size={24}
-            className="text-foreground-tertiary"
-          />
+          <Icon icon={Plug01Icon} size={24} tone="muted" />
           <Text variant="body" tone="body">
             {query.trim()
               ? `No services match "${query.trim()}"`

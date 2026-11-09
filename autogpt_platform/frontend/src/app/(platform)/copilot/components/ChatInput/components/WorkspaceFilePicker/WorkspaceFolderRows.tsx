@@ -67,7 +67,7 @@ export function WorkspaceFolderRows({
                 e.preventDefault();
                 onOpen(folder.id);
               }}
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none"
             >
               <div
                 className={cn(
@@ -104,8 +104,8 @@ export function WorkspaceFolderRows({
                 onToggleAttach(folder, subfolderCount);
               }}
               className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-sm transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
+                "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-body transition-colors",
+                "focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none",
                 isSelected
                   ? "text-brand"
                   : "text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-body",
@@ -120,7 +120,8 @@ export function WorkspaceFolderRows({
             <Icon
               icon={ArrowRight01Icon}
               size={16}
-              className="shrink-0 text-foreground-subtle"
+              tone="subtle"
+              className="shrink-0"
               aria-hidden
             />
           </li>

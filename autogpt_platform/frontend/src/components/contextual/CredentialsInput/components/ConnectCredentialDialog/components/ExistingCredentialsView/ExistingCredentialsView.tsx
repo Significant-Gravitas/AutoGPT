@@ -48,7 +48,7 @@ export function ExistingCredentialsView({
         <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-surface shadow-lg ring-1 ring-separator">
           <AutoGPTLogo
             hideText
-            className="absolute left-1/2 top-1/2 h-8 w-[4.4rem] -translate-x-[77%] -translate-y-1/2"
+            className="absolute top-1/2 left-1/2 h-8 w-[4.4rem] -translate-x-[77%] -translate-y-1/2"
           />
         </span>
         <span aria-hidden className="grid grid-cols-3 gap-1.5">
@@ -99,7 +99,7 @@ export function ExistingCredentialsView({
                     credential.type === "oauth2" ? SecurityCheckIcon : Key01Icon
                   }
                   size={22}
-                  className="text-foreground-body"
+                  tone="body"
                 />
               </span>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">

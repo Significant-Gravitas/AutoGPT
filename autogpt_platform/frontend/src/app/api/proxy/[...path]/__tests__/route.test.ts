@@ -655,6 +655,70 @@ describe("proxy route — handler pass-through", () => {
     expect(res.headers.get("content-security-policy")).toBe("sandbox");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
+
+  it.each([
+    "text/html; charset=utf-8",
+    "image/svg+xml",
+    "application/xhtml+xml",
+    "text/xml",
+  ])(
+    "relays a %s response from any other route as a download",
+    async (type) => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response("hello", {
+          status: 200,
+          headers: {
+            "Content-Type": type,
+            "Content-Disposition": 'inline; filename="page"',
+          },
+        }),
+      );
+
+      const path = ["api", "v1", "items"];
+      const req = new NextRequest(
+        `https://app.test/api/proxy/${path.join("/")}`,
+      );
+      const res = await GET(req, makeParams(path));
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-disposition")).toBe(
+        'attachment; filename="page"',
+      );
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(await res.text()).toBe("hello");
+    },
+  );
+
+  it("leaves a JSON response renderable", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const res = await GET(req, makeParams(["api", "v1", "items"]));
+
+    expect(res.headers.get("content-disposition")).toBeNull();
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("still renders the Codex device-login page", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("<p>sign in</p>", {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      }),
+    );
+
+    const path = ["api", "integrations", "codex", "device-login", "login-1"];
+    const req = new NextRequest(`https://app.test/api/proxy/${path.join("/")}`);
+    const res = await GET(req, makeParams(path));
+
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(res.headers.get("content-disposition")).toBeNull();
+  });
 });
 
 describe("proxy route — response-start timeout", () => {

@@ -74,6 +74,11 @@
                   "line-clamp-*",
                   "whitespace-*",
                   "text-balance",
+                  "text-ellipsis",
+                  "text-clip",
+                  "gap-*",
+                  "gap-x-*",
+                  "gap-y-*",
                   "text-pretty",
                   "break-*",
                   "text-start",
@@ -112,12 +117,17 @@
             ]
           }
         ],
+        "design-system/no-shadcn-alias-colours": "error",
+        "design-system/no-raw-palette-classes": "error",
+        "design-system/no-hex-colours": "error",
+        "design-system/no-arbitrary-colour": "error",
         "design-system/no-dark-variant": "error",
+        "design-system/no-raw-text-size": "error",
         "design-system/no-legacy-import": "error",
         "design-system/no-legacy-button-variant": "error",
         "design-system/hugeicons-only": "error",
         "design-system/require-suppression-reason": "error",
-        "design-system/baseline-outdated": "warn"
+        "design-system/baseline-outdated": "error"
       }
     },
     {
@@ -127,14 +137,48 @@
         "src/components/organisms/**"
       ],
       "rules": {
-        "design-system/no-restyle": "off"
-      }
-    },
-    {
-      "files": ["src/components/atoms/Button/**"],
-      "rules": {
-        "design-system/no-legacy-import": "off",
-        "design-system/no-legacy-button-variant": "off"
+        "design-system/no-restyle": [
+          "error",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Text$",
+                "allow": [
+                  "layout",
+                  "truncate",
+                  "line-clamp-*",
+                  "whitespace-*",
+                  "text-balance",
+                  "text-ellipsis",
+                  "text-clip",
+                  "gap-*",
+                  "gap-x-*",
+                  "gap-y-*",
+                  "text-pretty",
+                  "break-*",
+                  "text-start",
+                  "text-end",
+                  "text-left",
+                  "text-center",
+                  "text-right"
+                ]
+              },
+              {
+                "pattern": "^Icon$",
+                "allow": ["layout"]
+              },
+              {
+                "pattern": "^Button$",
+                "allow": ["layout"]
+              },
+              {
+                "pattern": "^(?!(Text|Icon|Button)$)",
+                "allow": ["*"]
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -163,6 +207,10 @@
       ],
       "rules": {
         "design-system/no-raw-colors": "off",
+        "design-system/no-shadcn-alias-colours": "off",
+        "design-system/no-raw-palette-classes": "off",
+        "design-system/no-hex-colours": "off",
+        "design-system/no-arbitrary-colour": "off",
         "design-system/no-arbitrary-values": "off",
         "design-system/no-restyle": "off",
         "design-system/no-inline-styles": "off",
@@ -178,12 +226,17 @@
       "files": ["src/app/api/__generated__/**"],
       "rules": {
         "design-system/no-raw-colors": "off",
+        "design-system/no-shadcn-alias-colours": "off",
+        "design-system/no-raw-palette-classes": "off",
+        "design-system/no-hex-colours": "off",
+        "design-system/no-arbitrary-colour": "off",
         "design-system/no-arbitrary-values": "off",
         "design-system/no-restyle": "off",
         "design-system/no-inline-styles": "off",
         "design-system/require-static-classes": "off",
         "design-system/no-unknown-classes": "off",
         "design-system/no-dark-variant": "off",
+        "design-system/no-raw-text-size": "off",
         "design-system/no-legacy-import": "off",
         "design-system/no-legacy-button-variant": "off",
         "design-system/hugeicons-only": "off",

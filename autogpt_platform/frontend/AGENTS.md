@@ -58,14 +58,14 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 
 The full rules are in `docs/engineering/design-system.md`; `pnpm lint` enforces them as `design-system/*` rules, and each error names the token or component to use instead.
 
-- **Colour** comes from role tokens (`bg-surface`, `text-foreground-secondary`, `border-border-base`, `bg-error-surface`), never raw palette classes (`bg-zinc-200`), hex or `rgb()` values (`bg-[#fff]`). Migrating a class keeps its value: same value, new name; if no role has it, leave it with `// TODO(tokens)` rather than picking the nearest role.
+- **Colour** comes from the role tokens in `src/app/tokens/theme.css` (`bg-surface`, `text-foreground-secondary`, `border-border-base`, `bg-error-surface`, `bg-orange/10`), never shadcn names (`bg-background`, `text-muted-foreground`), raw palette classes (`bg-zinc-200`), hex or `rgb()` values (`bg-[#fff]`); in a string, `rgb(var(--color-<role>))`. Tailwind's palette is reset, so a palette class renders nothing. `design-system/no-shadcn-alias-colours`, `no-raw-palette-classes`, `no-hex-colours` and `no-arbitrary-colour` fail them; artwork, logos, chart series and user-picked palettes go in `ds-colour-exempt.json` with a reason, never a suppression comment. `scripts/ds/palette-map.json` names the role for each palette class.
 - **No `dark:` or `light:` classes.** They never render; the tokens carry the theme.
 - **Primitives own their look.** Pick a `variant`, `size` or `tone`; `className` is for layout (on `Text` also truncation, line clamping, wrapping, breaking, `text-balance`/`text-pretty` and alignment). Text goes through the `Text` atom, icons through the `Icon` atom with Hugeicons.
 - **No legacy UI:** nothing from `src/components/__legacy__`, `legacy/` paths, `@/components/ui`, `LegacyButton` or `legacy-*` Button variants.
 - **No arbitrary values** except layout and transitions; no inline `style` for static values; no classes Tailwind does not generate.
 - **Suppressions say why:** `// oxlint-disable-next-line design-system/<rule> -- <reason>`, one line, one rule.
 - **Pixels:** a change to `src/components/**`, `globals.css` or `tailwind*.ts` comes with before/after screenshots at 1440 and 390 px in the PR, or "no pixel change" and how you checked.
-- After removing violations, or moving, renaming or splitting a file, run `pnpm lint:ds-baseline` and commit the baseline. Lint fails new violations and counts above the baseline; grandfathered counts at or below it pass.
+- After removing violations, or moving, renaming or splitting a file, run `pnpm lint:ds-baseline` and commit the baseline. Lint fails new violations, counts above the baseline and counts below it (`design-system/baseline-outdated`, until the lower count is committed); only a count equal to the baseline passes.
 
 ## Architecture
 
@@ -76,7 +76,7 @@ The full rules are in `docs/engineering/design-system.md`; `pnpm lint` enforces 
 - **Workflow Builder**: Visual graph editor using @xyflow/react
 - **UI Components**: shadcn/ui (Radix UI primitives) with Tailwind CSS styling
 - **Icons**: Hugeicons (stroke-rounded) only, rendered through the `Icon` atom
-- **Feature Flags**: read from the backend's `/api/feature-flags` by default, which answers from PostHog
+- **Feature Flags**: read from the backend's `/api/feature-flags`, which answers from PostHog
 - **Error Handling**: ErrorCard for render errors, toast for mutations, Sentry for exceptions
 - **Testing**: Vitest + React Testing Library + MSW for integration tests (primary), Playwright for E2E, Storybook for visual
 

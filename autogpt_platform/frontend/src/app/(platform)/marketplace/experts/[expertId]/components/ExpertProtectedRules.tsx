@@ -26,7 +26,7 @@ export function ExpertProtectedRules({ rules }: Props) {
           >
             <span
               aria-hidden="true"
-              className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-b from-success-surface to-success/15 text-success ring-1 ring-inset ring-success/20"
+              className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-b from-success-surface to-success/15 text-success ring-1 ring-success/20 ring-inset"
             >
               <Icon icon={SecurityCheckIcon} size={18} />
             </span>
@@ -34,7 +34,7 @@ export function ExpertProtectedRules({ rules }: Props) {
               <p className="text-body-md leading-6 text-foreground-emphasis">
                 {rule}
               </p>
-              <span className="mt-1 inline-flex items-center gap-1 text-xs text-foreground-tertiary">
+              <span className="mt-1 inline-flex items-center gap-1 text-caption text-foreground-tertiary">
                 <Icon icon={LockIcon} size={12} aria-hidden="true" />
                 Locked
               </span>

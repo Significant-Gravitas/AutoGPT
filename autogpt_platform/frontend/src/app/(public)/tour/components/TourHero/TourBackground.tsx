@@ -32,8 +32,8 @@ function Rectangles({ className }: RectanglesProps) {
 export function TourBackground() {
   return (
     <div className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-hidden opacity-40 [perspective:1000px] [transform-style:preserve-3d]">
-      <Rectangles className="[mask-image:linear-gradient(to_top,white,transparent)] [transform:rotateX(45deg)]" />
-      <Rectangles className="[mask-image:linear-gradient(to_bottom,white,transparent)] [transform:rotateX(-45deg)]" />
+      <Rectangles className="[transform:rotateX(45deg)] [mask-image:linear-gradient(to_top,white,transparent)]" />
+      <Rectangles className="[transform:rotateX(-45deg)] [mask-image:linear-gradient(to_bottom,white,transparent)]" />
     </div>
   );
 }

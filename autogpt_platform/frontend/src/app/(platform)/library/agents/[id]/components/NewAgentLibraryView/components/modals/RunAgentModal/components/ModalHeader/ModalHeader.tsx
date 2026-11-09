@@ -30,7 +30,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
             previewLimit={400}
             variant="small"
             // oxlint-disable-next-line design-system/no-restyle -- ShowMoreText has no tone prop yet
-            className="mb-2 mt-4 !text-foreground-body"
+            className="mt-4 mb-2 !text-foreground-body"
           >
             {agent.description}
           </ShowMoreText>
@@ -38,11 +38,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
 
         {agent.recommended_schedule_cron && !agent.has_external_trigger ? (
           <div className="flex flex-col gap-4 rounded-medium border border-info/30 bg-info-surface p-4">
-            <Text
-              variant="lead-semibold"
-              // oxlint-disable-next-line design-system/no-restyle -- no Text tone for info-foreground yet
-              className="text-info-foreground"
-            >
+            <Text variant="lead-semibold" tone="info-strong">
               Tip
             </Text>
             <div className="h-px w-full bg-info/20" />
@@ -58,11 +54,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
 
         {agent.instructions ? (
           <div className="mt-4 flex flex-col gap-4 rounded-medium border border-accent-surface bg-accent-surface/50 p-4">
-            <Text
-              variant="lead-semibold"
-              // oxlint-disable-next-line design-system/no-restyle -- no Text tone for brand-hover yet
-              className="text-brand-hover"
-            >
+            <Text variant="lead-semibold" tone="brand-strong">
               Instructions
             </Text>
 

@@ -93,7 +93,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
               <span
                 ref={titleRef}
                 onPointerEnter={checkTitleOverflow}
-                className="line-clamp-1 block min-w-0 font-sans text-lg font-semibold tracking-title text-foreground-strong"
+                className="line-clamp-1 block min-w-0 font-sans text-lead font-semibold tracking-title text-foreground-strong"
               >
                 {agent.agent_name}
               </span>
@@ -121,20 +121,20 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
             </span>
           </div>
         )}
-        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-foreground-secondary">
+        <p className="mt-3 line-clamp-3 text-body leading-relaxed text-foreground-secondary">
           {agent.description}
         </p>
       </div>
 
       <div className="relative mt-auto flex w-full items-center pt-3">
-        <span className="text-xs text-foreground-tertiary">
+        <span className="text-caption text-foreground-tertiary">
           {agent.runs === 0
             ? "No runs"
             : `${(agent.runs ?? 0).toLocaleString()} runs`}
         </span>
       </div>
       {agent.creator && agent.slug && agent.agent_graph_id && (
-        <div className="absolute bottom-4 right-4">
+        <div className="absolute right-4 bottom-4">
           <AddToLibraryButton
             creatorSlug={agent.creator}
             agentSlug={agent.slug}

@@ -65,7 +65,7 @@ function IntegrationsTabContent({ expert }: { expert: ContextPanelExpert }) {
   return (
     <div className="flex flex-col gap-6">
       {isGrantableError && !isError ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-warning-surface px-3 py-2 ring-1 ring-inset ring-warning-border">
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-warning-surface px-3 py-2 ring-1 ring-warning-border ring-inset">
           <Text tone="warning" variant="small">
             Couldn&apos;t load your connected services, so &ldquo;Use
             existing&rdquo; is unavailable.
@@ -126,21 +126,23 @@ function IntegrationsTabContent({ expert }: { expert: ContextPanelExpert }) {
             <>
               {canUseExisting && (
                 <Button
-                  variant="ghost"
-                  size="icon"
+                  variant="ghost-subtle"
+                  size="icon-2xs"
+                  shape="soft"
+                  withTooltip={false}
                   onClick={openUseExisting}
                   aria-label="Use existing"
-                  className="size-6 rounded-lg !p-0 text-foreground-subtle"
                 >
                   <Icon icon={Share01Icon} size={14} />
                 </Button>
               )}
               <Button
-                variant="ghost"
-                size="icon"
+                variant="ghost-subtle"
+                size="icon-2xs"
+                shape="soft"
+                withTooltip={false}
                 onClick={openConnect}
                 aria-label="Add integration"
-                className="size-6 rounded-lg !p-0 text-foreground-subtle"
               >
                 <Icon icon={PlusSignIcon} size={14} />
               </Button>
@@ -201,7 +203,7 @@ function ExpertPageLink({ expert, className }: ExpertPageLinkProps) {
     <Link
       href={`/team/${expert.id}`}
       className={cn(
-        "flex items-center gap-1 text-body-sm font-medium leading-inherit text-foreground-body transition-colors hover:text-foreground",
+        "flex items-center gap-1 text-body-sm leading-inherit font-medium text-foreground-body transition-colors hover:text-foreground-base",
         className,
       )}
     >
@@ -260,21 +262,24 @@ function IntegrationRow({
         title="Ready"
         className="size-1.5 shrink-0 rounded-full bg-success"
       />
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onRemove}
-        disabled={isRemoving}
-        aria-busy={isRemoving}
-        aria-label={`Remove ${name}`}
-        className="size-7 shrink-0 rounded-lg !p-0 text-foreground-tertiary opacity-0 transition-opacity hover:text-error focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
-      >
-        <Icon
-          icon={isRemoving ? Loading03Icon : Delete02Icon}
-          size={14}
-          className={isRemoving ? "animate-spin" : undefined}
-        />
-      </Button>
+      <span className="flex shrink-0 opacity-0 transition-opacity group-hover:opacity-100 has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100">
+        <Button
+          variant="ghost-danger"
+          size="icon-xs"
+          shape="soft"
+          withTooltip={false}
+          onClick={onRemove}
+          disabled={isRemoving}
+          aria-busy={isRemoving}
+          aria-label={`Remove ${name}`}
+        >
+          <Icon
+            icon={isRemoving ? Loading03Icon : Delete02Icon}
+            size={14}
+            spin={isRemoving}
+          />
+        </Button>
+      </span>
     </div>
   );
 }

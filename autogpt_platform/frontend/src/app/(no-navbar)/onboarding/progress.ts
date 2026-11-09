@@ -79,16 +79,20 @@ export function resumeStep({
   progress,
   steps,
   requestedStep,
+  hasPaywall = true,
 }: {
   progress: OnboardingWizardProgress | null;
   steps: StepLayout;
   requestedStep?: string | null;
+  /** False when the `subscription` slot is the plan alone, with nothing to
+   *  pay: then a draft that got past it can resume past it. */
+  hasPaywall?: boolean;
 }): Step {
   const order = orderedSteps(steps);
   const completed = new Set(progress?.completedSteps ?? []);
   // Payment must be confirmed by the subscription query, never by draft data
   // or a success query parameter. A confirmed plan removes this layout slot.
-  completed.delete("subscription");
+  if (hasPaywall) completed.delete("subscription");
   if (progress && !normalizeOnboardingProfile(progress).role.trim())
     completed.delete("role");
   const ceilingKey = order.find((key) => !completed.has(key)) ?? "preparing";

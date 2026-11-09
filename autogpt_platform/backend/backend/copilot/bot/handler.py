@@ -11,10 +11,11 @@ import logging
 
 from pydantic import BaseModel, Field, SkipValidation
 
+from backend.copilot.service import strip_server_injected_tags
 from backend.platform_linking.models import CardTurn, ChatTurnHandle, TurnDenial
 from backend.util.exceptions import LinkAlreadyExistsError
 
-from . import sessions, threads
+from . import failures, sessions, threads
 from .adapters.base import MessageContext, PlatformAdapter
 from .attachments import (
     format_attachment_problems,
@@ -157,6 +158,9 @@ class MessageHandler:
             await self._follow(ctx, ctx.follow, adapter)
             return
         ctx = with_typed_options(ctx)
+        # Decide on the text as the engines will read it: a message of only
+        # server-only blocks has nothing to answer, the same as an empty one.
+        ctx = ctx.with_changes(text=strip_server_injected_tags(ctx.text))
         # Skipped attachments (too large / failed download) count as content:
         # the user sent something and must hear why nothing happened.
         has_content = bool(
@@ -170,6 +174,12 @@ class MessageHandler:
                     "You mentioned me but didn't say anything. How can I help?",
                     ctx.message_id,
                 )
+            return
+
+        # A message that @-mentions someone else, and not us, is addressed to
+        # them. Even in a thread we own that is not ours to answer; leaving it
+        # to the model's NO_REPLY still spent a turn and sometimes a reply.
+        if ctx.addressed_to_others and not ctx.bot_mentioned:
             return
 
         # In a thread we only auto-reply when we own it (= we created it in
@@ -539,19 +549,12 @@ class MessageHandler:
                         "Ask a server admin to run `/setup` first.",
                     )
                     return False
-        except ValueError:
-            # ValueError-based domain exceptions (NotFoundError etc.) arrive
-            # over RPC with this base type.
-            logger.exception("Failed to check link status")
+        except Exception as exc:
+            category = failures.LINK_CHECK_FAILED
+            reference = failures.new_reference()
+            failures.report_failure(exc, category, reference, platform=ctx.platform)
             await adapter.send_message(
-                ctx.channel_id, "Something went wrong. Try again later."
-            )
-            return False
-        except Exception:
-            logger.exception("Unexpected error while checking link status")
-            await adapter.send_message(
-                ctx.channel_id,
-                "Something went wrong. Try again in a moment.",
+                ctx.channel_id, failures.failure_reply(category, reference)
             )
             return False
         return True

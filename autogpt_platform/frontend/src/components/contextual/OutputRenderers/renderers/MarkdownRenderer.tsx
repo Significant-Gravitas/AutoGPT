@@ -16,7 +16,7 @@ import {
 } from "../types";
 import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
-import { escapeCurrencyAmounts } from "@/lib/markdown-math";
+import { escapeLiteralDollars } from "@/lib/markdown-math";
 import { YouTubeEmbed } from "@/components/molecules/YouTubeEmbed/YouTubeEmbed";
 import {
   getYouTubeVideoId,
@@ -119,7 +119,7 @@ function renderVideoEmbed(url: string): React.ReactNode {
         <div className="relative aspect-video">
           <YouTubeEmbed
             url={url}
-            className="absolute left-0 top-0 rounded-lg shadow-md"
+            className="absolute top-0 left-0 rounded-lg shadow-md"
           />
         </div>
       </div>
@@ -153,7 +153,7 @@ function renderVideoEmbed(url: string): React.ReactNode {
         <iframe
           src={embedUrl}
           title="Embedded video player"
-          className="absolute left-0 top-0 h-full w-full rounded-lg shadow-md"
+          className="absolute top-0 left-0 h-full w-full rounded-lg shadow-md"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
         />
@@ -212,7 +212,7 @@ const MARKDOWN_COMPONENTS: Components = {
     if (isInline) {
       return (
         <code
-          className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-sm text-foreground-emphasis"
+          className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-body text-foreground-emphasis"
           {...props}
         >
           {children}
@@ -221,7 +221,7 @@ const MARKDOWN_COMPONENTS: Components = {
     }
     // Block code is handled by rehype-highlight
     return (
-      <code className="font-mono text-sm text-action-foreground" {...props}>
+      <code className="font-mono text-body text-action-foreground" {...props}>
         {children}
       </code>
     );
@@ -241,7 +241,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   blockquote: ({ children, ...props }) => (
     <blockquote
-      className="my-4 border-l-4 border-info pl-4 italic text-foreground-body"
+      className="my-4 border-l-4 border-info pl-4 text-foreground-body italic"
       {...props}
     >
       {children}
@@ -259,7 +259,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   th: ({ children, ...props }) => (
     <th
-      className="bg-surface-muted px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-foreground-body"
+      className="bg-surface-muted px-4 py-3.5 text-left text-caption font-semibold tracking-wider text-foreground-body uppercase"
       {...props}
     >
       {children}
@@ -267,7 +267,7 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   td: ({ children, ...props }) => (
     <td
-      className="border-t border-border-base px-4 py-3.5 text-sm text-foreground-secondary"
+      className="border-t border-border-base px-4 py-3.5 text-body text-foreground-secondary"
       {...props}
     >
       {children}
@@ -315,13 +315,13 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   // Better heading styles
   h1: ({ children, ...props }) => (
-    <h1 className="my-6 text-3xl font-bold text-foreground-base" {...props}>
+    <h1 className="my-6 text-heading font-bold text-foreground-base" {...props}>
       {children}
     </h1>
   ),
   h2: ({ children, ...props }) => (
     <h2
-      className="my-5 text-2xl font-semibold text-foreground-emphasis"
+      className="my-5 text-heading-md font-semibold text-foreground-emphasis"
       {...props}
     >
       {children}
@@ -329,25 +329,28 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   h3: ({ children, ...props }) => (
     <h3
-      className="my-4 text-xl font-semibold text-foreground-emphasis"
+      className="my-4 text-lead font-semibold text-foreground-emphasis"
       {...props}
     >
       {children}
     </h3>
   ),
   h4: ({ children, ...props }) => (
-    <h4 className="my-3 text-lg font-medium text-foreground-body" {...props}>
+    <h4 className="my-3 text-lead font-medium text-foreground-body" {...props}>
       {children}
     </h4>
   ),
   h5: ({ children, ...props }) => (
-    <h5 className="my-2 text-base font-medium text-foreground-body" {...props}>
+    <h5
+      className="my-2 text-body-lg font-medium text-foreground-body"
+      {...props}
+    >
       {children}
     </h5>
   ),
   h6: ({ children, ...props }) => (
     <h6
-      className="my-2 text-sm font-medium text-foreground-secondary"
+      className="my-2 text-body font-medium text-foreground-secondary"
       {...props}
     >
       {children}
@@ -415,7 +418,7 @@ function renderMarkdown(
   value: unknown,
   _metadata?: OutputMetadata,
 ): React.ReactNode {
-  const markdownContent = escapeCurrencyAmounts(String(value));
+  const markdownContent = escapeLiteralDollars(String(value));
 
   return (
     <div className="markdown-output">

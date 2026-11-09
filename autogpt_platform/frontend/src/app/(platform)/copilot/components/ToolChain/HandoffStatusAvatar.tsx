@@ -66,7 +66,7 @@ export function StatusAvatar({
           data-testid="handoff-badge"
           style={{ width: badgeSize, height: badgeSize }}
           className={cn(
-            "absolute -bottom-0.5 -end-0.5 flex items-center justify-center rounded-full ring-2 ring-surface",
+            "absolute -end-0.5 -bottom-0.5 flex items-center justify-center rounded-full ring-2 ring-surface",
             badge.className,
           )}
         >

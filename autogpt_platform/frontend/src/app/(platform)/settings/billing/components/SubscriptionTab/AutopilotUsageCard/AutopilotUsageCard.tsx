@@ -111,10 +111,11 @@ function UsageBar({
         {primary ? (
           <span className="flex items-baseline gap-1 whitespace-nowrap">
             <Text
-              variant="h2"
+              variant="h1"
               as="span"
-              // oxlint-disable-next-line design-system/no-restyle -- the usage figure is a sans display number; no Text variant has it
-              className="font-sans text-display font-semibold leading-12 tracking-display"
+              tracking="display"
+              // oxlint-disable-next-line design-system/no-restyle -- the usage figure is a sans display number on a 48px line; no Text variant has it
+              className="font-sans leading-12"
             >
               {label}
             </Text>
@@ -141,8 +142,7 @@ function UsageBar({
         className="h-2 overflow-hidden rounded-full bg-surface-hover"
       >
         <div
-          // oxlint-disable-next-line design-system/no-raw-colors -- the full bar stays orange until the orange -> warning hue change is approved
-          className={`h-full w-[var(--usage-percent)] rounded-full transition-[width] duration-300 motion-reduce:transition-none ${percent >= 100 ? "bg-orange-500" : "bg-brand"}`}
+          className={`h-full w-[var(--usage-percent)] rounded-full transition-[width] duration-300 motion-reduce:transition-none ${percent >= 100 ? "bg-orange" : "bg-brand"}`}
           style={{ "--usage-percent": `${percent}%` } as CSSProperties}
         />
       </div>

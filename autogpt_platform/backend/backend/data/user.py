@@ -237,9 +237,9 @@ async def get_user_email_by_id(user_id: str) -> Optional[str]:
 
 
 class AuthUserFlagFields(BaseModel):
-    """Minimal AuthUser attributes used to build a LaunchDarkly context.
+    """Minimal AuthUser attributes used to build a feature flag context.
 
-    A plain serializable shape (not an ``ldclient.Context``) so it can cross
+    A plain serializable shape (not the flag module's context) so it can cross
     the DatabaseManager RPC boundary — feature-flag evaluation runs in
     Prisma-less workers (scheduler, copilot-executor) that reach the auth
     table via the RPC client rather than a locally-connected Prisma engine.
@@ -251,7 +251,7 @@ class AuthUserFlagFields(BaseModel):
 
 
 async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields]:
-    """Fetch the AuthUser fields used for LaunchDarkly targeting.
+    """Fetch the AuthUser fields used for feature flag targeting.
 
     Returns ``None`` when no auth row exists (e.g. mid auth-migration bridge
     window) so the caller can avoid caching a not-found as an anonymous
@@ -718,8 +718,12 @@ async def update_user_notification_preference(
             "alertsEnabled": data.alerts_enabled,
             "notifyOnStoreVerdict": data.store_verdicts_enabled,
         }
-        if data.email:
-            update_data["email"] = data.email
+        # `data.email` is deliberately not written: nothing here proves the
+        # caller owns that address. Writing it let any signed-in user point
+        # their account at someone else's address, learn from the unique
+        # index whether it was registered, and accept that person's
+        # organization invitations, which bind to User.email. The verified
+        # change-email flow is the only path that moves an account's address.
         # `is not None`, not truthiness: 0 is the documented "send nothing"
         # value that one-click unsubscribe writes, and a falsy check silently
         # kept the previous limit instead.

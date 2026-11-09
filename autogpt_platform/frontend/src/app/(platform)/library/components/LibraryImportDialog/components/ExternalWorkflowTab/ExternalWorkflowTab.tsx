@@ -20,7 +20,7 @@ export default function ExternalWorkflowTab({
 }: ExternalWorkflowTabProps) {
   return (
     <TabsLineContent value="platform">
-      <p className="mb-4 text-sm text-foreground-tertiary">
+      <p className="mb-4 text-body text-foreground-tertiary">
         Upload a workflow exported from n8n, Make.com, Zapier, or any other
         platform. Otto will convert it into an AutoGPT workflow for you.
       </p>
@@ -32,7 +32,7 @@ export default function ExternalWorkflowTab({
         placeholder="Workflow file (n8n, Make.com, Zapier, ...)"
         maxFileSize={10 * 1024 * 1024}
         showStorageNote={false}
-        className="mb-4 mt-2"
+        className="mt-2 mb-4"
       />
       <Button
         type="button"
@@ -53,7 +53,7 @@ export default function ExternalWorkflowTab({
 
       <div className="my-5 flex items-center gap-3">
         <div className="h-px flex-1 bg-surface-active" />
-        <span className="text-xs text-foreground-subtle">
+        <span className="text-caption text-foreground-subtle">
           or import from URL
         </span>
         <div className="h-px flex-1 bg-surface-active" />
@@ -66,7 +66,7 @@ export default function ExternalWorkflowTab({
             type="button"
             disabled={importWorkflow.isSubmitting}
             onClick={() => importWorkflow.setUrlValue(p.url)}
-            className="rounded-full border border-border-base px-3 py-1 text-xs text-foreground-secondary hover:border-brand hover:text-brand-hover disabled:opacity-50"
+            className="rounded-full border border-border-base px-3 py-1 text-caption text-foreground-secondary hover:border-brand hover:text-brand-hover disabled:opacity-50"
           >
             {p.label}
           </button>

@@ -29,7 +29,7 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
         color
           ? {
               // oxlint-disable-next-line design-system/no-inline-styles -- tinted by the expert's own colour, which is runtime data
-              color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-secondary-foreground)))`,
+              color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-foreground-strong)))`,
             }
           : undefined
       }
@@ -46,8 +46,9 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
             size="icon-xs"
             leadingIcon={PencilEdit02Icon}
             aria-label="Edit budget"
-            // oxlint-disable-next-line design-system/no-restyle -- the ghost Button has no variant that takes a tinted card's colour (src/components is P9's)
-            className={cn(color && "text-inherit hover:bg-surface/50")}
+            tone={color ? "inherit" : undefined}
+            // oxlint-disable-next-line design-system/no-restyle -- the ghost Button has no variant with a tinted card's translucent hover
+            className={cn(color && "hover:bg-surface/50")}
             onClick={() => setIsEditOpen(true)}
           />
         </div>
