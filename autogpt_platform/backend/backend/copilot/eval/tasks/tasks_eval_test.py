@@ -407,3 +407,17 @@ def test_a_date_in_the_call_picks_that_days_records():
 
     assert [i["id"] for i in json.loads(one_day)["items"]] == ["e1"]
     assert {i["id"] for i in json.loads(two_days)["items"]} == {"e1", "e3"}
+
+
+def test_task_edits_and_filters_behave_like_the_real_tools():
+    sim = Simulator(WORLD)
+    _, made = sim.call("create_task", {"title": "Old", "brief": "b"})
+    task_id = json.loads(made)["task"]["id"]
+    sim.call("update_task", {"task_id": task_id, "title": "New", "expert_id": "exp_1"})
+    sim.call("start_task", {"title": "Other", "brief": "b"})
+
+    _, todo = sim.call("list_tasks", {"status": "TODO"})
+    _, owned = sim.call("list_tasks", {"expert_id": "exp_1"})
+
+    assert [t["title"] for t in json.loads(todo)["tasks"]] == ["New"]
+    assert [t["owner"] for t in json.loads(owned)["tasks"]] == ["exp_1"]

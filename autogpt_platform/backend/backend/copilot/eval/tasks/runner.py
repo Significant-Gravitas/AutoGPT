@@ -22,6 +22,7 @@ from backend.copilot.service import format_user_context_prefix
 from backend.copilot.tools import question_rules
 from backend.copilot.tools.ask_question import parse_questions
 from backend.copilot.turn_end import ENDED_REFUSAL, WRAP_UP_REFUSAL
+from backend.copilot.untrusted_text import flag_instructions
 
 from .llm import Backend, Call, Reply
 from .models import Case, Question, Run, ToolCall, TurnRecord, World
@@ -128,6 +129,7 @@ def execute_call(
     if name == "ask_question":
         return _ask(args, mode, run, record)
     call, result = sim.call(name, args)
+    result = flag_instructions(result)  # as BaseTool.execute does in production
     call.result_preview = result[:300]
     record.tool_calls.append(call)
     if call.name == "start_task":

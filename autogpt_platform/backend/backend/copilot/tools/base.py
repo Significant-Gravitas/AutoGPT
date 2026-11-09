@@ -23,6 +23,7 @@ from backend.copilot.tool_call_context import tool_call_context
 from backend.copilot.tool_image import HeldImage, parse_held_image
 from backend.copilot.trial_reads import trial_reads_fresh
 from backend.copilot.turn_tracing import tool_transaction
+from backend.copilot.untrusted_text import flag_output
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
 from backend.data.workspace_internal import TOOL_OUTPUT_PURPOSE
@@ -573,7 +574,7 @@ class BaseTool:
             span.set_tag("copilot.tool.success", "true" if output.success else "false")
             if not output.success and not _awaits_the_user(output):
                 outcome.is_error = True
-            return output
+            return flag_output(output)
 
     async def _execute_checked(
         self,

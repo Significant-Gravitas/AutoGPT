@@ -115,9 +115,7 @@ class Simulator:
             "connect_integration": lambda: _sign_in(str(args.get("provider", ""))),
             "start_task": lambda: self._start_task(args),
             "create_task": lambda: self._create_task(args),
-            "list_tasks": lambda: _dump(
-                {"tasks": [t.model_dump() for t in self.tasks]}
-            ),
+            "list_tasks": lambda: self._list_tasks(args),
             "get_task": lambda: self._get_task(str(args.get("task_id", ""))),
             "update_task": lambda: self._update_task(args),
             "list_team": lambda: _dump({"experts": self.world.experts}),
@@ -174,7 +172,22 @@ class Simulator:
         if task is None:
             return _dump({"error": f"Task {args.get('task_id')} not found"})
         task.status = str(args.get("status") or task.status)
+        task.title = str(args.get("title") or task.title)
+        if args.get("assign_to_otto"):
+            task.owner = None
+        elif args.get("expert_id"):
+            task.owner = str(args["expert_id"])
         return _dump({"task": task.model_dump()})
+
+    def _list_tasks(self, args: dict[str, Any]) -> str:
+        """The tasks, filtered by status and owner as the real tool filters."""
+        status, owner = args.get("status"), args.get("expert_id")
+        tasks = [
+            t
+            for t in self.tasks
+            if (not status or t.status == status) and (not owner or t.owner == owner)
+        ]
+        return _dump({"tasks": [t.model_dump() for t in tasks]})
 
     # -- data -----------------------------------------------------------------
 
