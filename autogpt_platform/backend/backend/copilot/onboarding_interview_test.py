@@ -46,6 +46,7 @@ from backend.copilot.onboarding_interview import (
     check_onboarding_interview_turn,
     clean_first_task,
     count_answered_turns,
+    find_onboarding_interview_session,
     get_onboarding_interview_supplement,
     get_or_create_onboarding_interview_session,
     interview_is_over,
@@ -53,7 +54,6 @@ from backend.copilot.onboarding_interview import (
     kick_off_onboarding_interview,
     onboarding_interview_kickoff_message_id,
     onboarding_interview_kickoff_metadata,
-    onboarding_interview_session_id,
     render_interview_state,
 )
 from backend.copilot.onboarding_interview_goals import ONBOARDING_INTERVIEW_GOALS
@@ -631,10 +631,43 @@ async def test_a_voice_turn_cannot_carry_a_forged_state_into_its_saved_row() -> 
 # ---------- the interview session ----------
 
 
-@pytest.mark.asyncio
-async def test_each_user_has_one_interview(mocker: MockerFixture) -> None:
-    """Opened twice, the same interview comes back, titled from the start
-    so no title is ever generated from its hidden kickoff."""
+class _OnboardingRows:
+    """The interview ids recorded on users' onboarding rows, claimed as the
+    database claims them: only into an empty column."""
+
+    def __init__(self) -> None:
+        self.ids: dict[str, str] = {}
+        self.stored: list[str] = []
+
+    async def claim(self, user_id: str, candidate: str) -> str:
+        if user_id not in self.ids:
+            self.ids[user_id] = candidate
+            self.stored.append(candidate)
+        return self.ids[user_id]
+
+    async def get(self, user_id: str) -> str | None:
+        return self.ids.get(user_id)
+
+
+@pytest.fixture
+def onboarding_rows(mocker: MockerFixture) -> _OnboardingRows:
+    rows = _OnboardingRows()
+    mocker.patch.object(
+        onboarding_interview,
+        "claim_onboarding_interview_session_id",
+        new=AsyncMock(side_effect=rows.claim),
+    )
+    mocker.patch.object(
+        onboarding_interview,
+        "get_onboarding_interview_session_id",
+        new=AsyncMock(side_effect=rows.get),
+    )
+    return rows
+
+
+def _session_store(
+    mocker: MockerFixture,
+) -> tuple[dict[str, ChatSession], MagicMock]:
     stored: dict[str, ChatSession] = {}
 
     async def get(session_id: str, user_id: str | None = None):
@@ -649,14 +682,27 @@ async def test_each_user_has_one_interview(mocker: MockerFixture) -> None:
     chat_db = MagicMock(create_chat_session=AsyncMock(side_effect=create))
     mocker.patch("backend.copilot.onboarding_interview.get_chat_session", new=get)
     mocker.patch("backend.copilot.onboarding_interview.chat_db", return_value=chat_db)
+    return stored, chat_db
+
+
+@pytest.mark.asyncio
+async def test_a_second_call_adopts_the_first_s_id_and_claims_once(
+    mocker: MockerFixture, onboarding_rows: _OnboardingRows
+) -> None:
+    """Opened twice, the same interview comes back, its id recorded once,
+    titled from the start so no title is ever generated from its hidden
+    kickoff."""
+    _, chat_db = _session_store(mocker)
 
     first = await get_or_create_onboarding_interview_session("user-1")
     second = await get_or_create_onboarding_interview_session("user-1")
+    other = await get_or_create_onboarding_interview_session("user-2")
 
     assert first.session_id == second.session_id
-    assert first.session_id == onboarding_interview_session_id("user-1")
-    assert onboarding_interview_session_id("user-2") != first.session_id
-    chat_db.create_chat_session.assert_awaited_once()
+    assert onboarding_rows.ids["user-1"] == first.session_id
+    assert other.session_id != first.session_id
+    assert onboarding_rows.stored == [first.session_id, other.session_id]
+    assert chat_db.create_chat_session.await_count == 2
     assert first.title == ONBOARDING_INTERVIEW_TITLE
     assert first.metadata.kind == ONBOARDING_INTERVIEW_KIND
     assert first.metadata.llm_auth_provider == "platform"
@@ -664,8 +710,57 @@ async def test_each_user_has_one_interview(mocker: MockerFixture) -> None:
 
 
 @pytest.mark.asyncio
+async def test_each_open_offers_a_fresh_random_id(
+    mocker: MockerFixture, onboarding_rows: _OnboardingRows
+) -> None:
+    """The id is never worked out from the user: every first open offers a
+    new random one, and only the first claim is kept."""
+    _session_store(mocker)
+
+    await get_or_create_onboarding_interview_session("user-1")
+    await get_or_create_onboarding_interview_session("user-1")
+
+    claim = onboarding_interview.claim_onboarding_interview_session_id
+    offered = [call.args[1] for call in claim.await_args_list]
+    assert len(set(offered)) == 2
+    assert onboarding_rows.ids["user-1"] == offered[0]
+
+
+@pytest.mark.asyncio
+async def test_the_interview_is_created_outside_any_organization_or_team(
+    mocker: MockerFixture, onboarding_rows: _OnboardingRows
+) -> None:
+    _, chat_db = _session_store(mocker)
+
+    await get_or_create_onboarding_interview_session("user-1")
+
+    call = chat_db.create_chat_session.await_args.kwargs
+    assert call["organization_id"] is None
+    assert call["team_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_stored_id_with_no_session_row_is_created_again_at_that_id(
+    mocker: MockerFixture, onboarding_rows: _OnboardingRows
+) -> None:
+    """A deleted session leaves its id on the onboarding row; the next open
+    creates the interview again at it instead of recording another."""
+    onboarding_rows.ids["user-1"] = "stored-interview"
+    stored, chat_db = _session_store(mocker)
+
+    session = await get_or_create_onboarding_interview_session("user-1")
+
+    assert session.session_id == "stored-interview"
+    assert chat_db.create_chat_session.await_args.kwargs["session_id"] == (
+        "stored-interview"
+    )
+    assert onboarding_rows.stored == []
+    assert set(stored) == {"stored-interview"}
+
+
+@pytest.mark.asyncio
 async def test_an_interview_opened_twice_at_once_adopts_the_winner(
-    mocker: MockerFixture,
+    mocker: MockerFixture, onboarding_rows: _OnboardingRows
 ) -> None:
     session = _interview()
     reads = iter([None, session])
@@ -679,6 +774,37 @@ async def test_an_interview_opened_twice_at_once_adopts_the_winner(
     mocker.patch("backend.copilot.onboarding_interview.chat_db", return_value=chat_db)
 
     assert await get_or_create_onboarding_interview_session("user-1") is session
+
+
+@pytest.mark.asyncio
+async def test_finding_an_interview_never_creates_one(
+    mocker: MockerFixture, onboarding_rows: _OnboardingRows
+) -> None:
+    stored, chat_db = _session_store(mocker)
+
+    assert await find_onboarding_interview_session("user-1") is None
+
+    onboarding_rows.ids["user-1"] = "gone"
+    assert await find_onboarding_interview_session("user-1") is None
+
+    opened = await get_or_create_onboarding_interview_session("user-2")
+    assert (
+        await find_onboarding_interview_session("user-2") is stored[opened.session_id]
+    )
+    assert chat_db.create_chat_session.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_finding_skips_a_stored_id_that_is_not_an_interview(
+    mocker: MockerFixture, onboarding_rows: _OnboardingRows
+) -> None:
+    stored, _ = _session_store(mocker)
+    onboarding_rows.ids["user-1"] = "plain-chat"
+    stored["plain-chat"] = ChatSession.new(
+        "user-1", dry_run=False, session_id="plain-chat"
+    )
+
+    assert await find_onboarding_interview_session("user-1") is None
 
 
 # ---------- hidden kickoff ----------
@@ -746,14 +872,58 @@ async def test_kicking_off_writes_the_server_kickoff_and_starts_otto(
     assert call["permissions"].tools == ["ask_question", "end_interview"]
 
 
+def _rows_in_database(mocker: MockerFixture, *rows: ChatMessage) -> MagicMock:
+    page = MagicMock(messages=list(rows))
+    chat_db = MagicMock(get_chat_messages_paginated=AsyncMock(return_value=page))
+    mocker.patch("backend.copilot.onboarding_interview.chat_db", return_value=chat_db)
+    return chat_db
+
+
 @pytest.mark.asyncio
 async def test_an_answered_kickoff_is_never_sent_again(
-    kickoff_io: tuple[AsyncMock, AsyncMock],
+    kickoff_io: tuple[AsyncMock, AsyncMock], mocker: MockerFixture
 ) -> None:
     replied, schedule = kickoff_io
     replied.return_value = True
+    session = _interview()
+    _rows_in_database(mocker, _kickoff(session), _otto("Hi, I'm Otto, an AI."))
 
-    assert await kick_off_onboarding_interview(_interview()) is None
+    assert await kick_off_onboarding_interview(session) is None
+
+    schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_greeting_that_failed_is_dispatched_again_without_a_new_row(
+    kickoff_io: tuple[AsyncMock, AsyncMock], mocker: MockerFixture
+) -> None:
+    """An error the turn wrote after the kickoff is not Otto's greeting: the
+    kickoff is dispatched again, so the next start greets the person."""
+    replied, schedule = kickoff_io
+    replied.return_value = True
+    session = _interview()
+    error = _otto(f"{COPILOT_ERROR_PREFIX} The model is unavailable.")
+    session.messages = [_kickoff(session), error]
+    _rows_in_database(mocker, _kickoff(session), error)
+
+    assert await kick_off_onboarding_interview(session) == "turn-1"
+
+    assert schedule.await_args.kwargs["message_already_persisted"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_greeting_counts_as_written_from_the_database_not_the_cache(
+    kickoff_io: tuple[AsyncMock, AsyncMock], mocker: MockerFixture
+) -> None:
+    """A cached copy can trail a greeting just written; the stored rows
+    decide, so Otto never greets twice."""
+    replied, schedule = kickoff_io
+    replied.return_value = True
+    session = _interview()
+    session.messages = [_kickoff(session)]
+    _rows_in_database(mocker, _kickoff(session), _otto("Hi, I'm Otto, an AI."))
+
+    assert await kick_off_onboarding_interview(session) is None
 
     schedule.assert_not_awaited()
 

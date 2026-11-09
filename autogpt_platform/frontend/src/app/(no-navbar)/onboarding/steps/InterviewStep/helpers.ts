@@ -1,8 +1,15 @@
+import type { FinalizeResponse } from "@/app/api/__generated__/models/finalizeResponse";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { UIMessage } from "ai";
 
 // The stages the backend records once the interview takes no more turns.
 const ENDED_STAGES = new Set(["closed", "handed_off"]);
+
+const SUPERSEDED = "superseded";
+const VERDICTS_ON_THE_WORDS = new Set([
+  "no_usable_speech",
+  "insufficient_content",
+]);
 
 // What the chat routes answer a turn sent after the interview is over.
 const INTERVIEW_CLOSED = "onboarding_interview_closed";
@@ -35,16 +42,38 @@ export function isInterviewClosedError(error: Error | undefined) {
   return !!error?.message?.includes(INTERVIEW_CLOSED);
 }
 
-// A 409 means the interview is already over, so the step moves on.
-export function startFailureOf(error: unknown): StartFailure | "over" {
+export function startFailureOf(error: unknown): StartFailure {
   if (error instanceof ApiError) {
-    if (error.status === 409) return "over";
     if (error.status === 429) {
       return { kind: "busy", retryAfterSeconds: retryAfterSecondsOf(error) };
     }
     if (error.status === 503) return { kind: "unavailable" };
   }
   return { kind: "failed" };
+}
+
+export function finishFailureOf(error: unknown): StartFailure {
+  if (error instanceof ApiError && error.status === 429) {
+    return { kind: "busy", retryAfterSeconds: retryAfterSecondsOf(error) };
+  }
+  return { kind: "failed" };
+}
+
+export function finishFailureCopy(failure: StartFailure) {
+  return failure.kind === "busy"
+    ? startFailureCopy(failure)
+    : "That didn't go through. Try again.";
+}
+
+// The path the take the finish answered with puts the person on, or null
+// when the pipeline never ruled on their words and the click should be
+// tried again.
+export function finishPathOf(response: FinalizeResponse): "A" | "B" | null {
+  if (response.status !== "failed") return "A";
+  const code = response.error_code ?? "";
+  if (code === SUPERSEDED) return "A";
+  if (VERDICTS_ON_THE_WORDS.has(code)) return "B";
+  return null;
 }
 
 export function startFailureCopy(failure: StartFailure) {

@@ -284,6 +284,15 @@ async def enforce_platform_allowance(user_id: str) -> None:
         ) from e
 
 
+async def _charge_interview_turn(user_id: str) -> None:
+    # Deferred: the onboarding interview's web module imports this one.
+    from backend.api.features.onboarding_dump.interview import (
+        enforce_onboarding_interview_allowance,
+    )
+
+    await enforce_onboarding_interview_allowance(user_id)
+
+
 async def _record_interview_turn_started(
     user_id: str, session_id: str, plan: InterviewTurnPlan
 ) -> None:
@@ -1992,8 +2001,9 @@ async def stream_chat_post(
             message = normalise_user_message(message)
         except EmptyUserMessage as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-    # An onboarding interview admits its own turns and charges them to its
-    # own allowance, in place of the paywall and allowance checks below.
+    # An onboarding interview admits its own turns, in place of the paywall
+    # and allowance checks below, and charges its own budget when the turn
+    # is dispatched.
     interview_plan = None
     if is_onboarding_interview(session):
         from backend.api.features.onboarding_dump.interview import (
@@ -2206,6 +2216,11 @@ async def stream_chat_post(
         if claim == "accepted":
             turn_id = None
         else:
+            if interview_plan is not None:
+                # Charged once the key is this request's, so a retransmit the
+                # claim turned away costs nothing, and a refusal here releases
+                # the key below.
+                await _charge_interview_turn(user_id)
             turn_id = await schedule_chat_turn(
                 session_id=session_id,
                 user_id=user_id,

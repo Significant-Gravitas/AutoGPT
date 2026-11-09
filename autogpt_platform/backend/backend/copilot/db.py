@@ -881,12 +881,16 @@ def exclude_dream_sessions_sql(column: str = "metadata") -> str:
 
 _EXCLUDE_DREAM_SESSIONS_SQL = exclude_dream_sessions_sql()
 
+
 # The onboarding interview is the sign-up conversation, not a chat the person
-# returns to, so the list and its count leave it out the same NULL-safe way
-# and it stays fetchable by id. Built from our own constant, never from input.
-_EXCLUDE_ONBOARDING_INTERVIEW_SQL = (
-    f"(metadata->>'kind' IS DISTINCT FROM '{ONBOARDING_INTERVIEW_KIND}')"
-)
+# returns to, so the list and its count, Home's waiting questions and search
+# leave it out the same NULL-safe way, and it stays fetchable by id. Built
+# from our own constant, never from input.
+def exclude_onboarding_interview_sql(column: str = "metadata") -> str:
+    return f"({column}->>'kind' IS DISTINCT FROM '{ONBOARDING_INTERVIEW_KIND}')"
+
+
+_EXCLUDE_ONBOARDING_INTERVIEW_SQL = exclude_onboarding_interview_sql()
 
 
 async def get_user_chat_sessions(
@@ -1107,6 +1111,9 @@ async def get_sessions_with_pending_question(
 ) -> list[ChatSessionInfo]:
     """Sessions of *user_id* still waiting on an answer, newest question first.
 
+    Leaves out dream sessions and the onboarding interview, as the chat list
+    does: neither is a chat the person returns to.
+
     Excludes *delegated* sub-threads (``delegated_by_session_id``): the caller
     that delegated is still waiting on that answer and owns reporting back, so
     the sub's question is an implementation detail of someone else's task —
@@ -1123,6 +1130,8 @@ async def get_sessions_with_pending_question(
         f"SELECT {_PENDING_QUESTION_SESSION_COLUMNS} "
         'FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
         + _EXCLUDE_DREAM_SESSIONS_SQL
+        + " AND "
+        + _EXCLUDE_ONBOARDING_INTERVIEW_SQL
         # jsonb_typeof, not IS NOT NULL: a session created after this field
         # existed persists an explicit ``"pending_question": null``, which is a
         # JSON null — present as far as ``->`` is concerned.

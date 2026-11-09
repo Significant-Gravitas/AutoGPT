@@ -20,6 +20,7 @@ from backend.api.features.search.content_handlers import (
     StoreAgentHandler,
     _get_enabled_blocks,
 )
+from backend.copilot.model import ONBOARDING_INTERVIEW_KIND
 
 
 @pytest.fixture(autouse=True)
@@ -740,6 +741,34 @@ async def test_chat_session_handler_excludes_dream_sessions_in_every_query():
     assert len(captured) == 4
     for sql in captured:
         assert "IS DISTINCT FROM 'dream'" in sql, f"missing dream filter in: {sql}"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_chat_session_handler_leaves_out_the_onboarding_interview_everywhere():
+    """The sign-up interview is not a chat to find again: no query embeds it,
+    counts it, or keeps an embedding of it as valid."""
+    captured: list[str] = []
+
+    async def fake_query_raw(sql: str, *args, **kwargs):
+        captured.append(sql)
+        if "COUNT" in sql.upper():
+            return [{"count": 0}]
+        return []
+
+    with patch(
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
+        side_effect=fake_query_raw,
+    ):
+        handler = ChatSessionHandler()
+        await handler.get_missing_items(batch_size=10)
+        await handler.get_stats()
+        await handler.get_valid_content_ids()
+
+    assert len(captured) == 4
+    for sql in captured:
+        assert (
+            f"IS DISTINCT FROM '{ONBOARDING_INTERVIEW_KIND}'" in sql
+        ), f"missing interview filter in: {sql}"
 
 
 @pytest.mark.asyncio

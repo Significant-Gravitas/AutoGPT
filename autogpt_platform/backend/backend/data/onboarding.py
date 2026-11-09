@@ -90,15 +90,48 @@ async def ensure_user_onboarding(user_id: str) -> UserOnboarding:
     For write paths, which follow up with an ``update`` that has nothing to
     target otherwise. Unlike the read above this does require a provisioned
     ``User``, which is correct: there is no onboarding progress to record for
-    an account the platform does not have.
+    an account the platform does not have. Two first writes at once both
+    get the row one of them created.
     """
-    return await UserOnboarding.prisma().upsert(
-        where={"userId": user_id},
-        data={
-            "create": UserOnboardingCreateInput(userId=user_id),
-            "update": {},
-        },
+    try:
+        return await UserOnboarding.prisma().upsert(
+            where={"userId": user_id},
+            data={
+                "create": UserOnboardingCreateInput(userId=user_id),
+                "update": {},
+            },
+        )
+    except prisma.errors.UniqueViolationError:
+        created = await UserOnboarding.prisma().find_unique(where={"userId": user_id})
+        if created is None:
+            raise
+        return created
+
+
+async def claim_onboarding_interview_session_id(user_id: str, candidate: str) -> str:
+    """Record *candidate* as the session of *user_id*'s onboarding interview,
+    unless one is recorded already, and return the one that is.
+
+    The update only fills an empty column, in one statement, so when two
+    first opens race, one id is stored and both return it.
+    """
+    await ensure_user_onboarding(user_id)
+    claimed = await UserOnboarding.prisma().update_many(
+        where={"userId": user_id, "interviewSessionId": None},
+        data={"interviewSessionId": candidate},
     )
+    if claimed:
+        return candidate
+    stored = await get_onboarding_interview_session_id(user_id)
+    if stored is None:
+        raise RuntimeError(f"No onboarding interview recorded for user {user_id}")
+    return stored
+
+
+async def get_onboarding_interview_session_id(user_id: str) -> str | None:
+    """The session of *user_id*'s onboarding interview, if one was opened."""
+    onboarding = await UserOnboarding.prisma().find_unique(where={"userId": user_id})
+    return onboarding.interviewSessionId if onboarding else None
 
 
 def _default_user_onboarding(user_id: str) -> UserOnboarding:

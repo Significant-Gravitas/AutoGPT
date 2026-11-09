@@ -60,6 +60,8 @@ class _Budget(NamedTuple):
     route: str
     unavailable: str
     exhausted: str
+    # Counted on every subscription tier, not only for someone with no plan.
+    all_tiers: bool = False
 
 
 _PERSONALIZATION = _Budget(
@@ -78,6 +80,7 @@ _INTERVIEW = _Budget(
     route="/api/onboarding/interview",
     unavailable="The interview is temporarily unavailable. Your progress is saved; please retry shortly.",
     exhausted="You have sent a lot of messages in a short time. Your progress is saved; please try again later.",
+    all_tiers=True,
 )
 
 
@@ -88,17 +91,17 @@ async def enforce_personalization_budget(user_id: str) -> None:
 async def enforce_interview_turn_budget(user_id: str) -> None:
     """Admit one onboarding interview turn, its kickoff included.
 
-    The personalization budget's rules on the interview's own counters: it
-    applies to someone with no plan where the platform takes payment, a turn
-    past it is a 429 with Retry-After, and a budget that cannot be read is a
-    503 rather than a turn nobody counted.
+    The personalization budget's rules on the interview's own counters,
+    except that it applies on every subscription tier where the platform
+    takes payment: a turn past it is a 429 with Retry-After, and a budget
+    that cannot be read is a 503 rather than a turn nobody counted.
     """
     await _enforce(user_id, _INTERVIEW)
 
 
 async def _enforce(user_id: str, budget: _Budget) -> None:
     try:
-        if not await _requires_budget(user_id):
+        if not await _requires_budget(user_id, budget):
             return
         retry_after = await asyncio.wait_for(
             _admit(user_id, budget), timeout=REDIS_TIMEOUT_SECONDS
@@ -120,15 +123,16 @@ async def _enforce(user_id: str, budget: _Budget) -> None:
         )
 
 
-async def _requires_budget(user_id: str) -> bool:
+async def _requires_budget(user_id: str, budget: _Budget) -> bool:
     if settings.config.behave_as == BehaveAs.LOCAL:
         return False
-    try:
-        tier = await get_user_subscription_tier(user_id)
-    except ValueError:
-        tier = SubscriptionTier.NO_TIER
-    if tier != SubscriptionTier.NO_TIER:
-        return False
+    if not budget.all_tiers:
+        try:
+            tier = await get_user_subscription_tier(user_id)
+        except ValueError:
+            tier = SubscriptionTier.NO_TIER
+        if tier != SubscriptionTier.NO_TIER:
+            return False
     return is_platform_payment_enabled()
 
 

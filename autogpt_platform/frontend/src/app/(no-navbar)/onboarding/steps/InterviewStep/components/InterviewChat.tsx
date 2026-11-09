@@ -5,6 +5,7 @@ import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatM
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { finishFailureCopy, type StartFailure } from "../helpers";
 
 type ChatProps = React.ComponentProps<typeof ChatMessagesContainer>;
 
@@ -20,7 +21,7 @@ interface Props {
   isOver: boolean;
   canFinishEarly: boolean;
   isLeaving: boolean;
-  hasFinishFailed: boolean;
+  finishFailure: StartFailure | null;
   onSend: (message: string) => Promise<void>;
   onStop: () => void;
   onFinish: () => Promise<void>;
@@ -38,7 +39,7 @@ export function InterviewChat({
   isOver,
   canFinishEarly,
   isLeaving,
-  hasFinishFailed,
+  finishFailure,
   onSend,
   onStop,
   onFinish,
@@ -104,9 +105,9 @@ export function InterviewChat({
               )}
             </div>
           )}
-          {hasFinishFailed && (
+          {finishFailure && (
             <Text variant="small" tone="error" role="alert">
-              That didn&apos;t go through. Try again.
+              {finishFailureCopy(finishFailure)}
             </Text>
           )}
         </div>

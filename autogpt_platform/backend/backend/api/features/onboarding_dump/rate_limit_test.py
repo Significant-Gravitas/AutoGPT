@@ -183,8 +183,29 @@ async def test_an_unreadable_interview_budget_is_a_503(admission):
 
 
 @pytest.mark.asyncio
-async def test_a_paying_person_s_interview_uses_no_budget(admission):
+@pytest.mark.parametrize("tier", list(SubscriptionTier))
+async def test_an_interview_uses_its_budget_on_every_tier(admission, tier):
+    """One counter for everyone, whatever their plan."""
+    _, tier_lookup, redis, _ = admission
+    tier_lookup.return_value = tier
+    await rate_limit.enforce_interview_turn_budget("user-1")
+    redis.eval.assert_awaited_once()
+    assert redis.eval.await_args.args[2].startswith("onboarding:interview:")
+    tier_lookup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_paying_person_s_personalization_still_uses_no_budget(admission):
     _, tier_lookup, _, connect = admission
     tier_lookup.return_value = SubscriptionTier.PRO
+    await rate_limit.enforce_personalization_budget("user-1")
+    connect.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_self_hosted_interview_is_never_counted(admission, mocker):
+    _, tier_lookup, _, connect = admission
+    mocker.patch.object(rate_limit.settings.config, "behave_as", BehaveAs.LOCAL)
     await rate_limit.enforce_interview_turn_budget("user-1")
+    tier_lookup.assert_not_awaited()
     connect.assert_not_awaited()

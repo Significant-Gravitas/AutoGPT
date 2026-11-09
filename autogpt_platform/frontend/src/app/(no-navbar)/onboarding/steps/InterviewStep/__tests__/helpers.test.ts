@@ -3,6 +3,9 @@ import type { UIMessage } from "ai";
 import { describe, expect, it } from "vitest";
 import {
   describeWait,
+  finishFailureCopy,
+  finishFailureOf,
+  finishPathOf,
   hasAnswered,
   isEndedStage,
   isInterviewClosedError,
@@ -74,8 +77,10 @@ describe("what the person said", () => {
 });
 
 describe("a start that fails", () => {
-  it("treats a 409 as an interview that is already over", () => {
-    expect(startFailureOf(new ApiError("over", 409, null))).toBe("over");
+  it("treats a 409 as a plain failure to try again", () => {
+    expect(startFailureOf(new ApiError("conflict", 409, null))).toEqual({
+      kind: "failed",
+    });
   });
 
   it("reads the wait a spent budget sends", () => {
@@ -86,7 +91,7 @@ describe("a start that fails", () => {
     );
 
     expect(failure).toEqual({ kind: "busy", retryAfterSeconds: 90 });
-    expect(failure !== "over" && startFailureCopy(failure)).toBe(
+    expect(startFailureCopy(failure)).toBe(
       "You've sent a lot of messages in a short time. Your progress is saved; try again in 2 minutes.",
     );
   });
@@ -97,9 +102,7 @@ describe("a start that fails", () => {
     );
 
     expect(failure).toEqual({ kind: "busy", retryAfterSeconds: null });
-    expect(failure !== "over" && startFailureCopy(failure)).toContain(
-      "try again in a little while",
-    );
+    expect(startFailureCopy(failure)).toContain("try again in a little while");
   });
 
   it("tells an outage from any other failure", () => {
@@ -107,11 +110,9 @@ describe("a start that fails", () => {
     const other = startFailureOf(new Error("socket hang up"));
 
     expect(outage).toEqual({ kind: "unavailable" });
-    expect(outage !== "over" && startFailureCopy(outage)).toContain(
-      "Otto can't chat right now",
-    );
+    expect(startFailureCopy(outage)).toContain("Otto can't chat right now");
     expect(other).toEqual({ kind: "failed" });
-    expect(other !== "over" && startFailureCopy(other)).toBe(
+    expect(startFailureCopy(other)).toBe(
       "We couldn't start your interview. Try again.",
     );
   });
@@ -122,5 +123,46 @@ describe("a start that fails", () => {
     expect(describeWait(1200)).toBe("20 minutes");
     expect(describeWait(3600)).toBe("an hour");
     expect(describeWait(3601)).toBe("2 hours");
+  });
+});
+
+describe("what a finish answered", () => {
+  function take(status: "transcribed" | "failed", errorCode?: string | null) {
+    return { status, input_mode: "typed" as const, error_code: errorCode };
+  }
+
+  it("moves on as path A for a take that went through or a newer take", () => {
+    expect(finishPathOf(take("transcribed"))).toBe("A");
+    expect(finishPathOf(take("failed", "superseded"))).toBe("A");
+  });
+
+  it("moves on as path B for a verdict on the words", () => {
+    expect(finishPathOf(take("failed", "no_usable_speech"))).toBe("B");
+    expect(finishPathOf(take("failed", "insufficient_content"))).toBe("B");
+  });
+
+  it("stays for a failure nobody ruled on", () => {
+    expect(finishPathOf(take("failed", "quality_check_unavailable"))).toBe(
+      null,
+    );
+    expect(finishPathOf(take("failed", "something_else"))).toBe(null);
+    expect(finishPathOf(take("failed", null))).toBe(null);
+  });
+
+  it("says how long to wait when the budget turns it away, and try again otherwise", () => {
+    const busy = finishFailureOf(
+      new ApiError("busy", 429, {
+        detail: { message: "Slow down.", retry_after_seconds: 1200 },
+      }),
+    );
+    const down = finishFailureOf(new ApiError("down", 503, null));
+
+    expect(finishFailureCopy(busy)).toBe(
+      "You've sent a lot of messages in a short time. Your progress is saved; try again in 20 minutes.",
+    );
+    expect(finishFailureCopy(down)).toBe("That didn't go through. Try again.");
+    expect(finishFailureCopy(finishFailureOf(new Error("offline")))).toBe(
+      "That didn't go through. Try again.",
+    );
   });
 });

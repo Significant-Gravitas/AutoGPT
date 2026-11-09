@@ -27,6 +27,7 @@ from backend.copilot.context import get_current_envelope, take_session_message_s
 from backend.copilot.db import get_chat_session_metadata, get_chat_session_status
 from backend.copilot.expert_context import escape_prompt_xml_tags
 from backend.copilot.model import CHAT_STATUS_IDLE, ChatSession, ChatSessionInfo
+from backend.copilot.onboarding_interview import is_onboarding_interview
 from backend.copilot.pending_message_helpers import queue_user_message
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
@@ -115,6 +116,12 @@ class MessageSessionTool(BaseTool):
         # a distinct refusal would let this tool probe for session ids.
         target = await get_chat_session_metadata(target_id)
         if target is None or target.user_id != user_id:
+            return self._error(
+                f"No session {target_id} of yours. Use tool:find_session.", session
+            )
+        # An onboarding interview takes only its owner's own messages, and is
+        # answered like any session that is not there.
+        if is_onboarding_interview(target):
             return self._error(
                 f"No session {target_id} of yours. Use tool:find_session.", session
             )

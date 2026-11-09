@@ -47,13 +47,10 @@ from backend.api.features.onboarding_dump.role_task_sets import ROLE_FALLBACK_TA
 from backend.api.features.store.exceptions import VirusDetectedError
 from backend.blocks.typesafe._client import JevCallResult
 from backend.copilot.model import (
+    INTERVIEW_STAGE_CLOSED,
     INTERVIEW_STAGE_WRAP_UP_ISSUED,
     ONBOARDING_INTERVIEW_KIND,
     ChatSession,
-)
-from backend.copilot.onboarding_interview import (
-    INTERVIEW_CLOSED,
-    onboarding_interview_session_id,
 )
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.understanding import BusinessUnderstandingInput
@@ -2131,11 +2128,13 @@ def test_a_roster_read_that_fails_leaves_the_plan_hire_to_hire_expert(
 
 INTERVIEW_URL = "/onboarding/brain-dump/interview"
 INTERVIEW_FINISH_URL = "/onboarding/brain-dump/interview/finish"
+# The id recorded on the person's onboarding row when they first opened it.
+INTERVIEW_SESSION_ID = "interview-session-1"
 
 
 def _interview(user_id: str, stage: str | None = None) -> ChatSession:
     session = ChatSession.new(user_id, dry_run=False)
-    session.session_id = onboarding_interview_session_id(user_id)
+    session.session_id = INTERVIEW_SESSION_ID
     session.metadata.kind = ONBOARDING_INTERVIEW_KIND
     session.metadata.onboarding_interview_stage = stage
     return session
@@ -2150,6 +2149,17 @@ def start_interview(mocker: MockerFixture) -> AsyncMock:
 def finalize_interview(mocker: MockerFixture) -> AsyncMock:
     return mocker.patch.object(
         interview, "finalize_onboarding_interview", new=AsyncMock()
+    )
+
+
+@pytest.fixture
+def find_interview(mocker: MockerFixture, test_user_id: str) -> AsyncMock:
+    """The lookup of the person's interview by the id on their onboarding
+    row: theirs unless a test says they have none."""
+    return mocker.patch.object(
+        routes,
+        "find_onboarding_interview_session",
+        new=AsyncMock(return_value=_interview(test_user_id)),
     )
 
 
@@ -2169,10 +2179,9 @@ def test_starting_the_interview_answers_it_with_otto_s_first_turn(
         "turn_id": "turn-1",
         "stage": None,
     }
-    # Opened in the org and team the request runs in.
-    start_interview.assert_awaited_once_with(
-        test_user_id, organization_id="test-org", team_id="test-team"
-    )
+    # Opened from who the person is, outside the org and team the request
+    # runs in.
+    start_interview.assert_awaited_once_with(test_user_id)
 
 
 def test_reopening_an_interview_under_way_starts_no_turn(
@@ -2194,7 +2203,7 @@ def test_reopening_an_interview_under_way_starts_no_turn(
 
 
 def test_a_greeting_already_being_written_is_followed_not_refused(
-    start_interview: AsyncMock, test_user_id: str
+    start_interview: AsyncMock, find_interview: AsyncMock, test_user_id: str
 ):
     """A reload or a second tab while Otto greets: the client reads the
     session, which resumes the turn still running."""
@@ -2206,21 +2215,43 @@ def test_a_greeting_already_being_written_is_followed_not_refused(
 
     assert response.status_code == 200
     assert response.json() == {
-        "session_id": onboarding_interview_session_id(test_user_id),
+        "session_id": INTERVIEW_SESSION_ID,
         "turn_id": None,
         "stage": None,
     }
+    find_interview.assert_awaited_once_with(test_user_id)
 
 
-def test_an_interview_that_is_over_is_a_409(start_interview: AsyncMock):
+def test_a_running_turn_with_no_interview_on_record_stays_a_409(
+    start_interview: AsyncMock, find_interview: AsyncMock
+):
     start_interview.side_effect = fastapi.HTTPException(
-        status_code=409, detail=INTERVIEW_CLOSED
+        status_code=409, detail=interview.TURN_IN_PROGRESS
     )
+    find_interview.return_value = None
 
     response = client.post(INTERVIEW_URL)
 
     assert response.status_code == 409
-    assert response.json()["detail"] == INTERVIEW_CLOSED
+
+
+def test_an_interview_that_is_over_is_a_200_with_its_stage(
+    start_interview: AsyncMock, test_user_id: str
+):
+    """Back or a reload after the interview ended shows how it ended."""
+    session = _interview(test_user_id, stage=INTERVIEW_STAGE_CLOSED)
+    start_interview.return_value = interview.StartedInterview(
+        session=session, turn_id=None
+    )
+
+    response = client.post(INTERVIEW_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": INTERVIEW_SESSION_ID,
+        "turn_id": None,
+        "stage": INTERVIEW_STAGE_CLOSED,
+    }
 
 
 def test_a_spent_interview_budget_is_a_429_with_its_wait_in_the_body(
@@ -2273,7 +2304,7 @@ def test_an_unreadable_budget_or_stream_is_a_503(start_interview: AsyncMock):
 
 
 def test_finishing_hands_the_interview_off_and_answers_its_take(
-    finalize_interview: AsyncMock, test_user_id: str
+    finalize_interview: AsyncMock, find_interview: AsyncMock, test_user_id: str
 ):
     finalize_interview.return_value = FinalizeResponse(
         status=BrainDumpStatus.transcribed,
@@ -2288,15 +2319,48 @@ def test_finishing_hands_the_interview_off_and_answers_its_take(
     assert response.json()["input_mode"] == "typed"
     # The person's own interview, found from who they are, never from the
     # request; the pipeline's jobs run after the response.
+    find_interview.assert_awaited_once_with(test_user_id)
     user_id, session_id, background_tasks = finalize_interview.await_args.args
     assert user_id == test_user_id
-    assert session_id == onboarding_interview_session_id(test_user_id)
+    assert session_id == INTERVIEW_SESSION_ID
     assert isinstance(background_tasks, fastapi.BackgroundTasks)
 
 
-def test_finishing_without_an_interview_is_a_404(finalize_interview: AsyncMock):
+def test_finishing_with_no_interview_on_record_is_a_404(
+    finalize_interview: AsyncMock, find_interview: AsyncMock
+):
+    find_interview.return_value = None
+
+    response = client.post(INTERVIEW_FINISH_URL)
+
+    assert response.status_code == 404
+    finalize_interview.assert_not_awaited()
+
+
+def test_finishing_an_interview_that_is_gone_is_a_404(
+    finalize_interview: AsyncMock, find_interview: AsyncMock
+):
     finalize_interview.side_effect = NotFoundError("Onboarding interview not found")
 
     response = client.post(INTERVIEW_FINISH_URL)
 
     assert response.status_code == 404
+
+
+def test_a_finish_the_pipeline_s_budget_refuses_is_a_429_with_its_wait_in_the_body(
+    finalize_interview: AsyncMock, find_interview: AsyncMock
+):
+    finalize_interview.side_effect = fastapi.HTTPException(
+        status_code=429,
+        detail="You have made several personalization attempts.",
+        headers={"Retry-After": "600"},
+    )
+
+    response = client.post(INTERVIEW_FINISH_URL)
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "600"
+    assert response.json()["detail"] == {
+        "message": "You have made several personalization attempts.",
+        "retry_after_seconds": 600,
+    }

@@ -17,6 +17,8 @@ import { useOnboardingWizardStore } from "../../store";
 import { recordSkippedTake } from "../BrainDumpStep/useBrainDumpStep";
 import { forgetShownPlan } from "../SubscriptionStep/components/PlanPanel/helpers";
 import {
+  finishFailureOf,
+  finishPathOf,
   hasAnswered,
   isEndedStage,
   isInterviewClosedError,
@@ -37,9 +39,9 @@ export function useInterviewStep() {
   const [startFailure, setStartFailure] = useState<StartFailure | null>(null);
   const [startedStage, setStartedStage] = useState<string | null>(null);
   const [readStage, setReadStage] = useState<string | null>(null);
-  const [isReadingStage, setIsReadingStage] = useState(false);
+  const [hasAskedToFinish, setHasAskedToFinish] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
-  const [hasFinishFailed, setHasFinishFailed] = useState(false);
+  const [finishFailure, setFinishFailure] = useState<StartFailure | null>(null);
   const isLeavingRef = useRef(false);
   const startedRef = useRef(false);
   const startAttemptRef = useRef(0);
@@ -92,6 +94,7 @@ export function useInterviewStep() {
 
   const isTurnRunning = status === "streaming" || status === "submitted";
   const isOver =
+    hasAskedToFinish ||
     isEndedStage(startedStage) ||
     isEndedStage(session?.metadata?.onboarding_interview_stage) ||
     isEndedStage(readStage) ||
@@ -104,7 +107,7 @@ export function useInterviewStep() {
 
   // Otto's end signal closes the interview inside the turn; the reply cap and
   // the scope guard close it just after. So once a turn ends the stage is read
-  // for a while, and the finish button waits until it has been.
+  // for a while.
   useEffect(() => {
     if (isTurnRunning) {
       turnRanRef.current = true;
@@ -113,7 +116,6 @@ export function useInterviewStep() {
     if (!turnRanRef.current || !sessionId) return;
     turnRanRef.current = false;
     let cancelled = false;
-    setIsReadingStage(true);
     async function readUntilOver(id: string) {
       const deadline = Date.now() + STAGE_READ_WINDOW_MS;
       while (!cancelled && Date.now() < deadline) {
@@ -121,16 +123,14 @@ export function useInterviewStep() {
         if (cancelled) return;
         if (isEndedStage(stage)) {
           setReadStage(stage);
-          break;
+          return;
         }
         await pause(STAGE_READ_INTERVAL_MS);
       }
-      if (!cancelled) setIsReadingStage(false);
     }
     void readUntilOver(sessionId);
     return () => {
       cancelled = true;
-      setIsReadingStage(false);
     };
   }, [isTurnRunning, sessionId]);
 
@@ -148,12 +148,7 @@ export function useInterviewStep() {
       setSessionId(response.data.session_id);
     } catch (startError) {
       if (attempt !== startAttemptRef.current) return;
-      const failure = startFailureOf(startError);
-      if (failure === "over") {
-        await finish();
-        return;
-      }
-      setStartFailure(failure);
+      setStartFailure(startFailureOf(startError));
     }
   }
 
@@ -161,23 +156,30 @@ export function useInterviewStep() {
     if (isLeavingRef.current) return;
     isLeavingRef.current = true;
     setIsLeaving(true);
-    setHasFinishFailed(false);
+    setHasAskedToFinish(true);
+    setFinishFailure(null);
+    let path: "A" | "B" | null = null;
+    let failure: StartFailure | null = null;
     try {
-      await finishOnboardingInterview();
-    } catch {
+      const response = await finishOnboardingInterview();
+      path = response.status === 200 ? finishPathOf(response.data) : null;
+    } catch (finishError) {
+      failure = finishFailureOf(finishError);
+    }
+    if (path === null) {
       isLeavingRef.current = false;
       setIsLeaving(false);
-      setHasFinishFailed(true);
+      setFinishFailure(failure ?? { kind: "failed" });
       return;
     }
-    setIntroPath("A");
+    setIntroPath(path);
     forgetShownPlan(useOnboardingWizardStore.getState().userID);
     await saveWizardAnswers();
     nextStep();
   }
 
   async function skip() {
-    if (isLeavingRef.current) return;
+    if (isOver || isLeavingRef.current) return;
     isLeavingRef.current = true;
     setIsLeaving(true);
     setIntroPath("B");
@@ -231,10 +233,9 @@ export function useInterviewStep() {
     isTurnSettling: isReconnecting || isFinishProbing || hasActiveStream,
     isTurnRunning,
     isOver,
-    canFinishEarly:
-      hasAnswered(messages) && !isTurnRunning && !isReadingStage && !isOver,
+    canFinishEarly: hasAnswered(messages) && !isTurnRunning && !isOver,
     isLeaving,
-    hasFinishFailed,
+    finishFailure,
     finish,
     skip,
   };
