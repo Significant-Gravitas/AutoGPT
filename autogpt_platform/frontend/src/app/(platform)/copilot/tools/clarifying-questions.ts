@@ -5,6 +5,8 @@ export interface ClarifyingQuestion {
   options?: string[];
   /** Several of `options` may be picked. Never set without options. */
   allow_multiple?: boolean;
+  /** Otto's best guess, which the answer field starts with. */
+  default_guess?: string;
 }
 
 /** A multi-select answer: the ticked options, and any typed text kept in its
@@ -71,6 +73,7 @@ export function normalizeClarifyingQuestions(
     example?: unknown;
     options?: unknown;
     allow_multiple?: unknown;
+    default_guess?: unknown;
   }>,
 ): ClarifyingQuestion[] {
   const seen = new Set<string>();
@@ -103,6 +106,9 @@ export function normalizeClarifyingQuestions(
     // Without options the card has nothing to toggle, so the flag would only
     // promise a multi-select the user never gets.
     if (options && q.allow_multiple === true) item.allow_multiple = true;
+    if (typeof q.default_guess === "string" && q.default_guess.trim()) {
+      item.default_guess = q.default_guess.trim();
+    }
     return item;
   });
 }
@@ -176,10 +182,35 @@ export function extractClarifyingQuestions(source: {
         options: toOptions(item.options) ?? toOptions(asked?.options),
         allow_multiple:
           item.allow_multiple === true || asked?.allow_multiple === true,
+        default_guess: item.default_guess ?? asked?.default_guess,
       },
     ];
   });
   return normalizeClarifyingQuestions(valid);
+}
+
+/** The answers a question card starts with: Otto's best guess for every
+ *  question that has one, so a single Answer click means "use your best
+ *  guess". A guess that names one of a multi-select's options is ticked;
+ *  any other guess is typed text. */
+export function initialAnswers(
+  questions: ClarifyingQuestion[],
+): Record<string, QuestionAnswer> {
+  const answers: Record<string, QuestionAnswer> = {};
+  for (const q of questions) {
+    const guess = q.default_guess;
+    if (!guess) continue;
+    if (!(q.allow_multiple && q.options)) {
+      answers[q.keyword] = guess;
+      continue;
+    }
+    const ticked = q.options.includes(guess);
+    answers[q.keyword] = {
+      selected: ticked ? [guess] : [],
+      custom: ticked ? "" : guess,
+    };
+  }
+  return answers;
 }
 
 /**
