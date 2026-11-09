@@ -50,7 +50,10 @@ def test_parallel_mcp_credential_and_block_provider_share_service():
     # Parallel Search is an MCP server for the same provider as Parallel Decisions.
     entry = _entry("mcp_parallel")
     assert entry.mcp_server.provider == "parallel"
-    assert service_for_catalog_entry(entry).service == service_for_provider("parallel").service
+    assert (
+        service_for_catalog_entry(entry).service
+        == service_for_provider("parallel").service
+    )
 
     url = entry.mcp_server.server_url
     assert url == "https://search.parallel.ai/mcp"
