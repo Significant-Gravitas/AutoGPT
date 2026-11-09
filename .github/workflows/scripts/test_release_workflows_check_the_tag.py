@@ -79,9 +79,9 @@ class ReleaseWorkflowsCheckTheTag(unittest.TestCase):
         )
 
     def test_only_a_deciding_mention_of_the_tag_counts(self) -> None:
-        # Deleting the classic release's job condition left its build
-        # report's source_url as the only mention, and the old text match
-        # still passed.
+        # Only a condition (`if:`) that reads the tag gates a release. A
+        # mention anywhere else, such as a build report's source_url or an
+        # image label, decides nothing, so it must not count.
         for ungated in (
             "on: release\njobs:\n  build:\n    runs-on: x\n    steps:\n"
             "      - name: Generate build report\n        run: ./report.sh\n        env:\n"
