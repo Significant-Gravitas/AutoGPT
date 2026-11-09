@@ -146,4 +146,4 @@ Start with `autogpt-shim doctor`. Then:
 | Windows look empty to the agent (`degraded: true`) on Linux | AT-SPI unreachable: the session bus isn't in the shim's environment, or the app doesn't expose accessibility. |
 | Results arrive without screenshots | The per-minute screenshot budget is spent; the result says so. |
 | `FEATURE_NOT_SUPPORTED` | The agent asked for a tool this computer doesn't offer, or an argument it never accepts, such as `check_permissions` with `prompt: true`. |
-| `APPROVAL_REQUIRED` | The call reaches the disk and you haven't approved it. |
+| `APPROVAL_REQUIRED` | The call reaches the disk, or starts a program out of sight, and you haven't approved it. |

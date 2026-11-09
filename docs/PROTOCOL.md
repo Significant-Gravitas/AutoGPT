@@ -1008,9 +1008,11 @@ Error codes:
 - `FEATURE_NOT_SUPPORTED` — a computer tool this machine doesn't offer, or
   an argument it never accepts (`details.tool`, `details.argument`). See
   [CUA_DRIVER.md](CUA_DRIVER.md).
-- `APPROVAL_REQUIRED` — a computer tool call used an argument that reaches
-  the disk without the person's approval (`details.tool`,
-  `details.argument`).
+- `APPROVAL_REQUIRED` — a computer tool call used one of the tool's
+  approval arguments without naming it in `approved_arguments`
+  (`details.tool`, `details.argument`). Those arguments reach the disk or
+  start a program out of sight (see `COMPUTER_TOOL_CALL` above); nothing
+  reached the driver.
 - `CLIPBOARD_CONCEALED` — `clipboard_read` found content this session may
   not read; `details.reason` says why. See [COMPUTER_USE.md](COMPUTER_USE.md).
 - `MODEL_NOT_AVAILABLE` — `LOCAL_LLM_COMPLETION.model` not present in
