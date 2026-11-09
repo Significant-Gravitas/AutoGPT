@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot.credential_selection import CredentialPin
 from backend.data.model import CredentialsMetaInput
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
@@ -24,6 +25,7 @@ def _followup(**overrides) -> CopilotTurnJobInfo:
         "cron": "0 12 * * *",
         "run_at": None,
         "name": "copilot turn (new chat)",
+        "credential_pins": {"github": CredentialPin(id="account-1", title="Work")},
         "next_run_time": _NOON.isoformat(),
         "timezone": "America/Chicago",
     }
@@ -46,6 +48,8 @@ def _graph_schedule(**overrides) -> GraphExecutionJobInfo:
         "input_data": {"repo": "Significant-Gravitas/AutoGPT"},
         "input_credentials": {"github": _account("account-1")},
         "name": "Trending check",
+        "organization_id": "org-a",
+        "team_id": "team-a",
         "next_run_time": _NOON.isoformat(),
         "timezone": "America/Chicago",
     }
@@ -57,17 +61,25 @@ def _scheduler(*jobs) -> MagicMock:
     return MagicMock(get_execution_schedules=AsyncMock(return_value=list(jobs)))
 
 
-async def _find_followup(job, **request):
+def _session(*, organization_id=None, team_id=None, expert_id=None):
+    session = make_session(_USER, expert_id=expert_id)
+    session.organization_id = organization_id
+    session.team_id = team_id
+    return session
+
+
+async def _find_followup(job, session=None, **request):
     wanted = {
         "message": _MESSAGE,
         "target_session_id": None,
         "cron": "0 12 * * *",
         "run_at": None,
         "timezone": "America/Chicago",
+        "credential_pins": {"github": CredentialPin(id="account-1")},
     }
     wanted.update(request)
     return await find_duplicate_followup(
-        _scheduler(job), _USER, make_session(_USER), **wanted
+        _scheduler(job), _USER, session or _session(), **wanted
     )
 
 
@@ -107,6 +119,17 @@ async def test_a_one_shot_asked_for_again_minutes_later_is_a_duplicate():
         pytest.param({"expert_id": "expert-1"}, {}, id="an expert's schedule"),
         pytest.param({"routine_id": "routine-1"}, {}, id="a routine's job"),
         pytest.param(
+            {},
+            {"credential_pins": {"github": CredentialPin(id="account-2")}},
+            id="another account",
+        ),
+        pytest.param({}, {"credential_pins": {}}, id="no account pinned"),
+        pytest.param(
+            {"organization_id": "org-a", "team_id": "team-a"},
+            {},
+            id="another organization",
+        ),
+        pytest.param(
             {"cron": None, "run_at": _NOON},
             {"cron": None, "run_at": _NOON + timedelta(minutes=30)},
             id="one-shots half an hour apart",
@@ -124,24 +147,48 @@ async def test_a_different_followup_is_not_a_duplicate(
     assert await _find_followup(_followup(**job_overrides), **request_overrides) is None
 
 
-async def _find_graph_schedule(job, **request):
+async def _find_graph_schedule(job, session=None, **request):
     wanted = {
         "graph_id": "graph",
         "graph_version": 2,
         "cron": "0 12 * * *",
         "timezone": "America/Chicago",
         "inputs": {"repo": "Significant-Gravitas/AutoGPT"},
+        "input_defaults": {},
         "credentials": {"github": _account("account-1")},
+        "organization_id": "org-a",
+        "team_id": "team-a",
     }
     wanted.update(request)
     return await find_duplicate_graph_schedule(
-        _scheduler(job), _USER, make_session(_USER), **wanted
+        _scheduler(job), _USER, session or _session(), **wanted
     )
 
 
 @pytest.mark.asyncio
 async def test_the_same_workflow_schedule_under_another_name_is_a_duplicate():
     found = await _find_graph_schedule(_graph_schedule(name="Daily trending"))
+    assert found is not None and found.id == "existing"
+
+
+@pytest.mark.asyncio
+async def test_an_input_left_to_its_default_matches_the_default_given():
+    """use_defaults stores no value; the run fills the same default in."""
+    defaults = {"repo": "Significant-Gravitas/AutoGPT"}
+    found = await _find_graph_schedule(
+        _graph_schedule(input_data={}), inputs=defaults, input_defaults=defaults
+    )
+    assert found is not None and found.id == "existing"
+
+
+@pytest.mark.asyncio
+async def test_an_experts_schedule_matches_whatever_tenancy_it_was_moved_to():
+    """An expert's jobs are re-homed to her private tenancy when made, so the
+    chat's own organization is not what they carry."""
+    found = await _find_graph_schedule(
+        _graph_schedule(expert_id="expert-1", organization_id="private-org"),
+        session=_session(expert_id="expert-1"),
+    )
     assert found is not None and found.id == "existing"
 
 
@@ -157,6 +204,8 @@ async def test_the_same_workflow_schedule_under_another_name_is_a_duplicate():
             {"credentials": {"github": _account("account-2")}},
             id="another account",
         ),
+        pytest.param({"team_id": "team-b"}, id="another team"),
+        pytest.param({"inputs": {}}, id="a missing input with no default"),
     ],
 )
 async def test_a_different_workflow_schedule_is_not_a_duplicate(request_overrides):

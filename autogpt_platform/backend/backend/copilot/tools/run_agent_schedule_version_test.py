@@ -59,6 +59,8 @@ async def test_scheduling_a_workflow_already_scheduled_adds_no_second_one():
         graph_version=5,
         cron="0 12 * * *",
         input_data={"repo": "AutoGPT"},
+        organization_id="org",
+        team_id="team",
         name="Trending check",
         next_run_time="2026-09-09T17:00:00+00:00",
         timezone="UTC",

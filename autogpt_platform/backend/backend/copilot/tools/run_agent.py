@@ -1417,6 +1417,16 @@ class RunAgentTool(BaseTool):
         emit_tool_display_name(library_agent.name)
         library_agent_link = f"/library/agents/{library_agent.id}"
 
+        # Session-anchored tenancy, mirroring ``_run_agent``: fire-time
+        # executions of this schedule attribute to the chat session's org.
+        # Likewise for expert attribution: a schedule created in an
+        # expert-scoped chat belongs to that expert, so it surfaces on her
+        # Team card / expert page, counts toward her weekly credit budget,
+        # and is cleaned up when she is archived.
+        org_id, team_id = session.organization_id, session.team_id
+        if org_id is None:
+            org_id, team_id = await orgs_db().get_user_default_team(user_id)
+
         scheduler = get_scheduler_client()
         existing = await find_duplicate_graph_schedule(
             scheduler,
@@ -1427,7 +1437,10 @@ class RunAgentTool(BaseTool):
             cron=cron,
             timezone=user_timezone,
             inputs=inputs,
+            input_defaults=_input_defaults(graph),
             credentials=graph_credentials,
+            organization_id=org_id,
+            team_id=team_id,
         )
         if existing is not None:
             return ExecutionStartedResponse(
@@ -1456,16 +1469,6 @@ class RunAgentTool(BaseTool):
         # validation drift could hit here — turn credential errors back
         # into the inline ``SetupRequirementsResponse`` so the user
         # sees the credential setup card instead of a generic error.
-        # Session-anchored tenancy, mirroring ``_run_agent``: fire-time
-        # executions of this schedule attribute to the chat session's org.
-        # Likewise for expert attribution: a schedule created in an
-        # expert-scoped chat belongs to that expert, so it surfaces on her
-        # Team card / expert page, counts toward her weekly credit budget,
-        # and is cleaned up when she is archived.
-        org_id, team_id = session.organization_id, session.team_id
-        if org_id is None:
-            org_id, team_id = await orgs_db().get_user_default_team(user_id)
-
         try:
             result = await scheduler.add_execution_schedule(
                 user_id=user_id,
@@ -1526,6 +1529,15 @@ class RunAgentTool(BaseTool):
             library_agent_link=library_agent_link,
             status=SCHEDULED_STATUS,
         ).from_outside()
+
+
+def _input_defaults(graph: GraphModel) -> dict[str, Any]:
+    """What a run fills an omitted input with."""
+    return {
+        name: field["default"]
+        for name, field in graph.input_schema.get("properties", {}).items()
+        if "default" in field
+    }
 
 
 def _unexpected_error(error: Exception, session: ChatSession) -> ErrorResponse:

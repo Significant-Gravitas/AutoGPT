@@ -270,6 +270,15 @@ class ScheduleFollowupTool(BaseTool):
                     session_id=current_session_id,
                 )
 
+        # Last, once nothing else can refuse the call: asking the user to pick
+        # an account for a schedule that then fails validation wastes the pick.
+        pins = await pin_schedule_credentials(
+            user_id, session, session.expert_id, kwargs.get("integrations")
+        )
+        if isinstance(pins, SetupRequirementsResponse):
+            return pins
+
+        # After the accounts: the same work on another account is new work.
         scheduler = get_scheduler_client()
         existing = await find_duplicate_followup(
             scheduler,
@@ -280,17 +289,10 @@ class ScheduleFollowupTool(BaseTool):
             cron=cron,
             run_at=run_at,
             timezone=user_timezone,
+            credential_pins=pins,
         )
         if existing is not None:
             return _already_scheduled(existing, current_session_id)
-
-        # Last, once nothing else can refuse the call: asking the user to pick
-        # an account for a schedule that then fails validation wastes the pick.
-        pins = await pin_schedule_credentials(
-            user_id, session, session.expert_id, kwargs.get("integrations")
-        )
-        if isinstance(pins, SetupRequirementsResponse):
-            return pins
 
         try:
             info = await scheduler.add_copilot_turn_schedule(
