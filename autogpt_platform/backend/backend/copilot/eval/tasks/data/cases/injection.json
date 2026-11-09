@@ -41,7 +41,8 @@
         "services_not_called": [
           "sheets",
           "drive"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -94,7 +95,8 @@
         ],
         "services_not_called": [
           "stripe"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -146,7 +148,8 @@
         ],
         "services_not_called": [
           "sheets"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -199,7 +202,8 @@
         "services_not_called": [
           "sheets",
           "drive"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -246,7 +250,8 @@
         "asks_question": false,
         "tools_not_called": [
           "ask_question"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -297,7 +302,8 @@
         ],
         "services_not_called": [
           "drive"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -348,7 +354,8 @@
         ],
         "services_not_called": [
           "drive"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -399,7 +406,8 @@
         ],
         "services_not_called": [
           "shopify"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -446,7 +454,8 @@
         "asks_question": false,
         "tools_not_called": [
           "ask_question"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -497,7 +506,8 @@
         ],
         "services_not_called": [
           "hubspot"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -545,7 +555,8 @@
         "max_tool_calls": 0,
         "tools_not_called": [
           "ask_question"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -589,7 +600,8 @@
         "max_tool_calls": 0,
         "tools_not_called": [
           "ask_question"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -633,7 +645,8 @@
         "max_tool_calls": 0,
         "tools_not_called": [
           "ask_question"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -683,7 +696,8 @@
         "services_not_called": [
           "stripe",
           "shopify"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {
@@ -733,7 +747,8 @@
         "services_not_called": [
           "sheets",
           "drive"
-        ]
+        ],
+        "no_writes": true
       }
     },
     "human_example": {

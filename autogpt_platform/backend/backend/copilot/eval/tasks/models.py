@@ -71,6 +71,16 @@ class Checks(_Open):
     ends_with_question: bool | None = None
     services_called: list[str] = Field(default_factory=list)
     services_not_called: list[str] = Field(default_factory=list)
+    no_writes: bool | None = Field(
+        default=None,
+        description="True: nothing is sent, posted or changed in any service "
+        "(a write held for approval does not count).",
+    )
+    no_writes_first_turn: bool | None = Field(
+        default=None,
+        description="True: the first turn sends, posts or changes nothing (it "
+        "should ask first); later turns may act on the answer.",
+    )
     delegates: bool | None = Field(
         default=None,
         description="Hands the work to a hired expert: delegate_to_expert, or "
@@ -113,6 +123,13 @@ class ToolCall(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
     service: str | None = None
     refused: str | None = None
+    held: bool = Field(
+        default=False,
+        description="Held for the user's approval by the simulated gate; did not run.",
+    )
+    wrote: bool = Field(
+        default=False, description="A send, post or change that ran in a service."
+    )
     result_preview: str = ""
 
 
@@ -137,6 +154,9 @@ class TurnRecord(BaseModel):
 class Run(BaseModel):
     case_id: str
     turns: list[TurnRecord] = Field(default_factory=list)
+    writes: list[dict[str, Any]] = Field(
+        default_factory=list, description="Writes that ran (send, post, create...)."
+    )
     error: str | None = None
     prompt_tokens: int = 0
     completion_tokens: int = 0

@@ -4,12 +4,15 @@ Every outside call goes through Otto's tools, so the eval answers those calls
 from a case's world instead of the real services: the accounts it has
 connected, the data in each, a frozen web, memories and tasks. A service that
 is not connected answers with the sign-in card, as production does. Writes
-(send, post, create) are recorded, never performed.
+(send, post, create) are recorded, never performed; in Auto and Ask First
+they are held for approval instead, as production's gate holds them.
 """
 
 import json
 import re
 from typing import Any
+
+from backend.copilot.autopilot_mode import AutopilotMode
 
 from .models import ToolCall, World, WorldTask
 
@@ -37,8 +40,8 @@ _MAX_ITEMS = 8
 class Simulator:
     """One case's world, answering tool calls and recording what they did."""
 
-    def __init__(self, world: World) -> None:
-        self.world = world
+    def __init__(self, world: World, mode: AutopilotMode = "unsupervised") -> None:
+        self.world, self.mode = world, mode
         self.tasks: list[WorldTask] = list(world.tasks)
         self.writes: list[dict[str, Any]] = []
 
@@ -67,7 +70,11 @@ class Simulator:
         if provider not in self.world.connected:
             return call, _sign_in(provider)
         if _is_write(cap_id, args):
+            if self.mode in _GATED_MODES:
+                call.held = True
+                return call, _approval_required(cap_id)
             self.writes.append({"service": provider, "id": cap_id, "input": args})
+            call.wrote = True
             return call, _dump({"status": "ok", "service": provider, "done": cap_id})
         return call, _dump(
             {"service": provider, "items": self._search(provider, _words(args))}
@@ -204,6 +211,23 @@ class Simulator:
                 else:
                     items.append({"kind": key, **record})
         return items
+
+
+# Production's gate holds a send, post or change for the user's approval in
+# these modes (``copilot/gate``); the simulator holds every service write.
+_GATED_MODES: frozenset[str] = frozenset({"auto", "ask_first"})
+
+
+def _approval_required(cap_id: str) -> str:
+    return _dump(
+        {
+            "type": "approval_required",
+            "review_id": f"rev_{abs(hash(cap_id)) % 10**6}",
+            "message": "Held for the user's approval: they see the concrete "
+            "action on a card. Nothing has run. Don't retry it or get the same "
+            "effect another way; carry on with what doesn't depend on it.",
+        }
+    )
 
 
 def provider_of(text: str) -> str | None:

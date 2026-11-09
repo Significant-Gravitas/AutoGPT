@@ -7,7 +7,8 @@ import pytest
 
 from .judge import run_checks, score_case
 from .llm import Call, Reply, cli_result, parse_reply, render_chat_prompt
-from .models import Case, Review, Run, ToolCall, TurnRecord, World
+from .models import Case, Question, Review, Run, ToolCall, TurnRecord, World
+from .native.runner import read_stream
 from .runner import Models, run_case
 from .simulator import Simulator
 
@@ -271,3 +272,86 @@ def test_claude_style_invoke_blocks_count_as_calls():
     assert [(c.name, json.loads(c.arguments)) for c in reply.tool_calls] == [
         ("run_capability", {"id": "service:gmail/search", "input": {"q": "invoice"}})
     ]
+
+
+@pytest.mark.parametrize(
+    "mode, held", [("auto", True), ("ask_first", True), ("unsupervised", False)]
+)
+def test_writes_are_held_for_approval_where_the_gate_would_hold_them(mode, held):
+    sim = Simulator(WORLD, mode)
+    call, result = sim.call(
+        "run_capability", {"id": "service:gmail/send", "input": {"to": "a@b.c"}}
+    )
+
+    assert call.held == held
+    assert (json.loads(result).get("type") == "approval_required") == held
+    assert bool(sim.writes) != held
+
+
+def test_no_writes_fails_only_on_a_write_that_ran():
+    case = _case(expected={"checks": {"no_writes": True}})
+
+    def passed(writes: list[dict]) -> bool:
+        run = Run(case_id="c1", turns=[TurnRecord(user="hi")], writes=writes)
+        return all(c.passed for c in run_checks(case, run))
+
+    assert passed([])
+    assert not passed([{"service": "gmail", "id": "service:gmail/send", "input": {}}])
+
+
+def test_the_native_stream_gives_every_text_block_and_the_result():
+    stream = "\n".join(
+        json.dumps(e)
+        for e in [
+            {"type": "system", "subtype": "init"},
+            {
+                "type": "assistant",
+                "message": {"content": [{"type": "text", "text": "Checking."}]},
+            },
+            {
+                "type": "assistant",
+                "message": {"content": [{"type": "tool_use", "name": "x"}]},
+            },
+            {
+                "type": "assistant",
+                "message": {"content": [{"type": "text", "text": "Done."}]},
+            },
+            {
+                "type": "result",
+                "subtype": "success",
+                "session_id": "s1",
+                "num_turns": 3,
+            },
+        ]
+    )
+
+    texts, result = read_stream(stream + "\nnot json")
+
+    assert texts == ["Checking.", "Done."]
+    assert result is not None and result["session_id"] == "s1"
+
+
+def test_asking_first_means_no_write_in_the_first_turn_only():
+    case = _case(expected={"checks": {"no_writes_first_turn": True}})
+    sent = ToolCall(name="run_capability", service="gmail", wrote=True)
+
+    def passed(*turns: TurnRecord) -> bool:
+        return all(
+            c.passed for c in run_checks(case, Run(case_id="c1", turns=list(turns)))
+        )
+
+    assert passed(
+        TurnRecord(user="pay it"), TurnRecord(user="the first", tool_calls=[sent])
+    )
+    assert not passed(TurnRecord(user="pay it", tool_calls=[sent]))
+
+
+def test_any_blocking_reason_answers_a_case_that_names_one():
+    case = _case(expected={"checks": {"question_reasons": ["user_only_fact"]}})
+
+    def passed(reason: str) -> bool:
+        turn = TurnRecord(user="x", questions=[Question(question="q", reason=reason)])
+        return all(c.passed for c in run_checks(case, Run(case_id="c1", turns=[turn])))
+
+    assert passed("conflict") and passed("user_only_fact")
+    assert not passed("preference")

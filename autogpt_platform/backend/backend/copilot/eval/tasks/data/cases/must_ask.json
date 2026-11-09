@@ -39,7 +39,8 @@
         "question_reasons": [
           "goal_ambiguous",
           "irreversible_choice"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -91,7 +92,8 @@
         "max_questions": 3,
         "question_reasons": [
           "conflict"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -145,7 +147,8 @@
         "question_reasons": [
           "goal_ambiguous",
           "preference"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -200,7 +203,8 @@
           "user_only_fact",
           "conflict",
           "irreversible_choice"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -254,7 +258,8 @@
         "question_reasons": [
           "irreversible_choice",
           "user_only_fact"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -311,7 +316,8 @@
         "question_reasons": [
           "goal_ambiguous",
           "user_only_fact"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -362,7 +368,8 @@
         "max_questions": 3,
         "question_reasons": [
           "conflict"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -420,7 +427,8 @@
         "question_reasons": [
           "goal_ambiguous",
           "user_only_fact"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -473,7 +481,8 @@
         "question_reasons": [
           "irreversible_choice",
           "user_only_fact"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -530,7 +539,8 @@
         "question_reasons": [
           "user_only_fact",
           "preference"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -580,7 +590,8 @@
         "max_questions": 3,
         "question_reasons": [
           "user_only_fact"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -633,7 +644,8 @@
         "max_questions": 3,
         "question_reasons": [
           "goal_ambiguous"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -685,7 +697,8 @@
         "max_questions": 3,
         "question_reasons": [
           "conflict"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -738,7 +751,8 @@
         "max_questions": 3,
         "question_reasons": [
           "goal_ambiguous"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -792,7 +806,8 @@
         "question_reasons": [
           "conflict",
           "user_only_fact"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -849,7 +864,8 @@
         "question_reasons": [
           "user_only_fact",
           "preference"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -902,7 +918,8 @@
         "question_reasons": [
           "irreversible_choice",
           "user_only_fact"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -954,7 +971,8 @@
         "max_questions": 3,
         "question_reasons": [
           "goal_ambiguous"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -1007,7 +1025,8 @@
         "question_reasons": [
           "irreversible_choice",
           "user_only_fact"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -1056,7 +1075,8 @@
         "max_questions": 3,
         "question_reasons": [
           "conflict"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -1107,7 +1127,8 @@
         "question_reasons": [
           "user_only_fact",
           "irreversible_choice"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -1157,7 +1178,8 @@
         "max_questions": 3,
         "question_reasons": [
           "user_only_fact"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -1210,7 +1232,8 @@
         "max_questions": 3,
         "question_reasons": [
           "user_only_fact"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -1262,7 +1285,8 @@
         "max_questions": 3,
         "question_reasons": [
           "conflict"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {
@@ -1315,7 +1339,8 @@
         "max_questions": 3,
         "question_reasons": [
           "goal_ambiguous"
-        ]
+        ],
+        "no_writes_first_turn": true
       }
     },
     "human_example": {

@@ -41,7 +41,7 @@ class Models:
 
 async def run_case(case: Case, world: World, models: Models) -> Run:
     mode: AutopilotMode = case.approval_mode or world.approval_mode
-    sim = Simulator(world)
+    sim = Simulator(world, mode)
     system = chat_system_prompt(None) + approval_mode_supplement(mode, True)
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     tools = [dict(t) for t in expert_tools(None)]
@@ -61,6 +61,7 @@ async def run_case(case: Case, world: World, models: Models) -> Run:
                 )
     except Exception as e:  # a broken case is scored, not fatal to the run
         run.error = f"{type(e).__name__}: {e}"[:500]
+    run.writes = sim.writes
     return run
 
 
@@ -89,7 +90,7 @@ async def _turn(
         if not calls:
             break
         for call in calls:
-            result = _execute(call.name, call.arguments, sim, mode, run, record)
+            result = execute_call(call.name, call.arguments, sim, mode, run, record)
             messages.append(
                 {"role": "tool", "tool_call_id": call.id, "content": result}
             )
@@ -102,7 +103,7 @@ async def _turn(
     return record
 
 
-def _execute(
+def execute_call(
     name: str,
     raw_args: str,
     sim: Simulator,

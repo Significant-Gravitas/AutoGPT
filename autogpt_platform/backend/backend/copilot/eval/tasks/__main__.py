@@ -1,7 +1,7 @@
 """Run the task eval and write a report.
 
     poetry run python -m backend.copilot.eval.tasks \\
-        --backend claude --model claude-opus-5-5 --user-model claude-sonnet-5-5 \\
+        --backend claude-native --model claude-opus-5-5 --user-model claude-sonnet-5-5 \\
         --reviewer claude:claude-opus-5-5 --reviewer cursor:grok-4.7-medium-fast
 
 Otto and the simulated user run on ``--backend``: the OpenAI API (needs
@@ -26,6 +26,7 @@ from .html_report import write_html
 from .judge import review, run_checks, score_case
 from .llm import Backend, ClaudeBackend, CursorBackend, OpenAIBackend
 from .models import Case, CaseResult, Rating, World
+from .native.runner import run_case_native
 from .runner import Models, run_case
 
 HERE = Path(__file__).parent
@@ -39,11 +40,14 @@ def load_worlds() -> dict[str, World]:
     }
 
 
-def load_cases(categories: list[str] | None, limit: int | None) -> list[Case]:
+def load_cases(
+    categories: list[str] | None, limit: int | None, ids: list[str] | None = None
+) -> list[Case]:
     cases: list[Case] = []
     for path in sorted((DATA / "cases").glob("*.json")):
         batch = [Case.model_validate(c) for c in json.loads(path.read_text())]
         batch = [c for c in batch if not categories or c.category in categories]
+        batch = [c for c in batch if not ids or c.id in ids]
         cases += batch[:limit] if limit else batch
     return cases
 
@@ -51,7 +55,7 @@ def load_cases(categories: list[str] | None, limit: int | None) -> list[Case]:
 def make_backend(name: str) -> Backend:
     if name == "cursor":
         return CursorBackend()
-    if name == "claude":
+    if name in ("claude", "claude-native"):
         return ClaudeBackend()
     return OpenAIBackend(
         openai.AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"], max_retries=3)
@@ -95,9 +99,12 @@ def _review_failed(result: CaseResult) -> bool:
 
 async def evaluate(args: argparse.Namespace) -> Path:
     models = Models(make_backend(args.backend), otto=args.model, user=args.user_model)
+    play = run_case_native if args.backend == "claude-native" else run_case
     reviewers = parse_reviewers(args.reviewer or [f"{args.backend}:{args.model}"])
     worlds = load_worlds()
-    cases = [c for c in load_cases(args.category, args.limit) if c.world in worlds]
+    cases = [
+        c for c in load_cases(args.category, args.limit, args.case) if c.world in worlds
+    ]
     results, out = resume(args.resume) if args.resume else ([], new_run_dir())
     done = {r.case_id for r in results}
     cases = [c for c in cases if c.id not in done]
@@ -105,7 +112,7 @@ async def evaluate(args: argparse.Namespace) -> Path:
 
     async def one(case: Case) -> None:
         async with gate:
-            run = await run_case(case, worlds[case.world], models)
+            run = await play(case, worlds[case.world], models)
         checks = run_checks(case, run)
         reviews = await asyncio.gather(
             *(review(case, run, checks, b, m) for _, b, m in reviewers)
@@ -224,6 +231,7 @@ def write_report(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--category", action="append")
+    parser.add_argument("--case", action="append", help="run only these case ids")
     parser.add_argument(
         "--resume",
         help="a run folder name under runs/: keep its clean cases, rerun the rest",
@@ -232,11 +240,13 @@ def main() -> None:
     parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument(
         "--backend",
-        choices=["openai", "cursor", "claude"],
+        choices=["openai", "cursor", "claude", "claude-native"],
         default="openai",
         help="Where Otto and the simulated user run. openai: the API, needs "
         "OPENAI_API_KEY. cursor: cursor-agent on a Cursor subscription. "
-        "claude: claude -p on a Claude subscription.",
+        "claude: claude -p on a Claude subscription, tools in the prompt. "
+        "claude-native: claude -p with Otto's tools over MCP and the stop "
+        "hook, as production's SDK engine runs.",
     )
     parser.add_argument("--model", default="gpt-5.4")
     parser.add_argument(
