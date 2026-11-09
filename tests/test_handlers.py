@@ -8,6 +8,7 @@ import contextlib
 import errno
 import os
 import signal
+import stat
 import sys
 import textwrap
 import time
@@ -1519,6 +1520,43 @@ async def test_a_write_the_shim_cant_give_the_owner_back_goes_in_place(
     assert shared.stat().st_ino == inode
     assert shared.stat().st_gid == group
     assert sorted(p.name for p in tmp_path.iterdir()) == ["shared.txt"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+@pytest.mark.asyncio
+async def test_a_replacement_is_owner_only_until_it_takes_the_old_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The file that replaces a private one was created under the umask's
+    mode (0o644, say) and given the old mode only after: another account
+    that opened it meanwhile, watching the directory, could read the new
+    contents through that descriptor once they were written."""
+    import autogpt_local_executor.path_jail as path_jail
+
+    private = tmp_path / "private.txt"
+    private.write_text("old")
+    private.chmod(0o600)
+    before_mode: list[int] = []
+    real_fchmod = os.fchmod
+
+    def fchmod(fd: int, mode: int) -> None:
+        before_mode.append(stat.S_IMODE(os.fstat(fd).st_mode))
+        real_fchmod(fd, mode)
+
+    monkeypatch.setattr(path_jail.os, "fchmod", fchmod)
+    previous = os.umask(0o022)
+    try:
+        await FileHandler(make_config(tmp_path)).handle_write(_write_msg(private, "new"))
+        created = tmp_path / "created.txt"
+        await FileHandler(make_config(tmp_path)).handle_write(_write_msg(created, "x"))
+    finally:
+        os.umask(previous)
+
+    assert private.read_text() == "new"
+    assert before_mode and all(mode & 0o077 == 0 for mode in before_mode)
+    assert stat.S_IMODE(private.stat().st_mode) == 0o600
+    # A new file still gets 0o666 less the umask.
+    assert stat.S_IMODE(created.stat().st_mode) == 0o644
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX modes")

@@ -373,9 +373,13 @@ def _replace_with(
 ) -> None:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     flags |= getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    # Opened with 0o666 so the umask applies, as it does to a plain create.
+    # A new file is opened with 0o666 so the umask applies, as it does to a
+    # plain create. One that replaces a file starts owner-only and gets the
+    # old mode below: another account that opened it under the umask's mode
+    # (watching the directory, say) could read the new contents through that
+    # descriptor once they were written, however private the old file was.
     temp = temporary_sibling(path)
-    descriptor = os.open(temp, flags, 0o666)
+    descriptor = os.open(temp, flags, 0o666 if mode is None else 0o600)
     try:
         with os.fdopen(descriptor, "wb") as file:
             if owner is not None and hasattr(os, "fchown"):
