@@ -129,7 +129,7 @@ class AskQuestionTool(BaseTool):
         if not isinstance(raw_questions, list) or not raw_questions:
             raise ValueError("ask_question requires a non-empty 'questions' array")
 
-        questions = _parse_questions(raw_questions)
+        questions = parse_questions(raw_questions)
         if not questions:
             raise ValueError(
                 "ask_question requires at least one valid question in 'questions'"
@@ -195,7 +195,7 @@ async def _mark_pending(session: ChatSession, text: str) -> None:
         )
 
 
-def _parse_questions(raw: list[Any]) -> list[ClarifyingQuestion]:
+def parse_questions(raw: list[Any]) -> list[ClarifyingQuestion]:
     """Parse and validate raw question dicts into ClarifyingQuestion objects."""
     return [
         q
