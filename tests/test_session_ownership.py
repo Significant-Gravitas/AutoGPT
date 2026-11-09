@@ -607,13 +607,35 @@ async def test_a_handler_that_finishes_after_revocation_sends_nothing(
     request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
     await daemon._on_frame(ws, dump_message(request))
     assert await asyncio.to_thread(running.wait, 30)
+    work = tuple(daemon._dispatch_tasks)
 
-    # The revocation waits for the running thread, so it's freed from outside.
-    threading.Timer(0.2, release.set).start()
-    await asyncio.wait_for(daemon._on_frame(ws, _session_revoked_frame()), timeout=30)
+    # The revocation's audit record waits until the handler has finished,
+    # so the socket is still open when the handler tries to reply: only the
+    # guard can stop that reply. (A timer that freed the thread after the
+    # close let a closed socket refuse it instead.)
+    auditing = asyncio.Event()
+    audited = asyncio.Event()
+    real_audit = daemon._audit_session_revoked
 
+    async def held_audit(**kwargs: Any) -> None:
+        auditing.set()
+        await audited.wait()
+        await real_audit(**kwargs)
+
+    monkeypatch.setattr(daemon, "_audit_session_revoked", held_audit)
+    revocation = asyncio.create_task(daemon._on_frame(ws, _session_revoked_frame()))
+    await asyncio.wait_for(auditing.wait(), timeout=30)
+    release.set()
+    await asyncio.wait(work, timeout=30)
+
+    assert all(task.done() for task in work)
+    assert ws.close_calls == []
     assert ws.sent == []
+
+    audited.set()
+    await asyncio.wait_for(revocation, timeout=30)
     assert ws.close_calls
+    assert ws.sent == []
 
 
 async def test_revocation_audits_and_closes_while_a_side_effect_hangs(
