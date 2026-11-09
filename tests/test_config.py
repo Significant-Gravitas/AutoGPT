@@ -399,3 +399,36 @@ def test_reconnect_delays_are_at_most_a_day(tmp_path: Path, field: str) -> None:
     with pytest.raises(ValidationError):
         ShimConfig(allowed_root=tmp_path, **{field: 86_401})
     assert getattr(ShimConfig(allowed_root=tmp_path, **{field: 86_400}), field) == 86_400
+
+
+@pytest.mark.parametrize("source", ["file", "environment"])
+def test_a_home_relative_path_setting_is_expanded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    """A shell expands `~` on the command line, but from the config file or
+    the environment `~/workspace` went through whole: the shim took a folder
+    named `~` in its working directory (the home directory, under systemd)
+    for the root, and made one."""
+    import autogpt_local_executor.config as config_module
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    settings = {
+        "allowed_root": "~/workspace",
+        "audit_log_path": "~/logs/audit.log",
+        "recording_buffer_dir": "~/buffer",
+    }
+    if source == "file":
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("".join(f'{key} = "{value}"\n' for key, value in settings.items()))
+        config = load_config(config_path=config_file)
+    else:
+        monkeypatch.setattr(config_module, "_default_config_path", lambda: tmp_path / "absent")
+        for key, value in settings.items():
+            monkeypatch.setenv(f"AUTOGPT_SHIM_{key.upper()}", value)
+        config = load_config()
+
+    home = Path.home()
+    assert config.allowed_root == home / "workspace"
+    assert config.audit_log_path == home / "logs" / "audit.log"
+    assert config.recording_buffer_dir == home / "buffer"

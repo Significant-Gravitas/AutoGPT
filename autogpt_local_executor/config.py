@@ -127,6 +127,15 @@ class ShimConfig(BaseSettings):
         "<platform_url>/auth (with http/https adjusted).",
     )
 
+    @field_validator("allowed_root", "audit_log_path", "recording_buffer_dir")
+    @classmethod
+    def expand_home(cls, value: Path | None) -> Path | None:
+        """`~` is the user's home, as on the command line, where the shell
+        expands it. From the config file or the environment it went through
+        whole, so the shim took a folder named `~` in its working directory
+        (the home directory, under systemd) for the root, or made one."""
+        return None if value is None else value.expanduser()
+
     @field_validator("platform_url", "platform_ws_url", "platform_oauth_url")
     @classmethod
     def validate_platform_endpoint(cls, value: str | None, info: ValidationInfo) -> str | None:
