@@ -9,9 +9,15 @@ interface Props {
   onReason?: (value: string) => void;
   onSubmit?: (answer: { reason: string; note: string }) => void;
   onDismiss?: () => void;
+  onClose?: () => void;
 }
 
-export function TopUpDismissedCard({ onReason, onSubmit, onDismiss }: Props) {
+export function TopUpDismissedCard({
+  onReason,
+  onSubmit,
+  onDismiss,
+  onClose,
+}: Props) {
   const [isOpen, setIsOpen] = useState(true);
   const [isSent, setIsSent] = useState(false);
 
@@ -23,6 +29,7 @@ export function TopUpDismissedCard({ onReason, onSubmit, onDismiss }: Props) {
   function close() {
     setIsOpen(false);
     if (!isSent) onDismiss?.();
+    onClose?.();
   }
 
   if (!isOpen) return null;

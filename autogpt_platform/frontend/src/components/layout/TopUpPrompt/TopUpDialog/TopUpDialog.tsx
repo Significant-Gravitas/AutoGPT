@@ -6,6 +6,8 @@ import Link from "next/link";
 
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
+import { useRef } from "react";
 
 import { TopUpForm } from "../TopUpForm/TopUpForm";
 
@@ -15,17 +17,26 @@ interface Props {
   // "out-of-credits" is the reactive nudge shown when the balance hits zero;
   // "add-credits" is the same form opened deliberately from the wallet.
   variant?: "out-of-credits" | "add-credits";
+  /** Closed without buying and without leaving for Stripe. */
+  onDismissed?: () => void;
 }
 
 export function TopUpDialog({
   isOpen,
   onClose,
   variant = "out-of-credits",
+  onDismissed,
 }: Props) {
   const isOutOfCredits = variant === "out-of-credits";
+  const { isRedirecting } = useCheckoutRedirect();
+  const isRequestingRef = useRef(false);
 
   function handleOpenChange(open: boolean) {
-    if (!open) onClose();
+    if (open) return;
+    onClose();
+    if (isOutOfCredits && !isRedirecting && !isRequestingRef.current) {
+      onDismissed?.();
+    }
   }
 
   return (
@@ -59,7 +70,12 @@ export function TopUpDialog({
           </Link>
           .
         </Text>
-        <TopUpForm submitLabel="Top up" />
+        <TopUpForm
+          submitLabel="Top up"
+          onRequestingChange={(isRequesting) => {
+            isRequestingRef.current = isRequesting;
+          }}
+        />
       </Dialog.Content>
     </Dialog>
   );

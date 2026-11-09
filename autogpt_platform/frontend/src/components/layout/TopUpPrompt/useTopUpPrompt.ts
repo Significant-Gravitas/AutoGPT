@@ -4,6 +4,8 @@ interface TopUpPromptContextValue {
   isOutOfCredits: boolean;
   openTopUp: () => void;
   closeTopUp: () => void;
+  /** The "what would make topping up worth it" card is on screen. */
+  isTopUpCardOpen: boolean;
 }
 
 export const TopUpPromptContext = createContext<TopUpPromptContextValue | null>(
@@ -17,6 +19,7 @@ const inertPrompt: TopUpPromptContextValue = {
   isOutOfCredits: false,
   openTopUp: () => {},
   closeTopUp: () => {},
+  isTopUpCardOpen: false,
 };
 
 export function useTopUpPrompt() {
