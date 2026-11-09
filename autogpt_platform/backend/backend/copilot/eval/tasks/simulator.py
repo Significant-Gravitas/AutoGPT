@@ -33,7 +33,7 @@ _WRITE_WORDS = (
     "send", "post", "create", "update", "delete", "reply", "draft", "write",
     "add", "remove", "refund", "cancel", "schedule", "invite", "archive", "edit",
 )  # fmt: skip
-_ITEM_CHARS = 600
+_ITEM_CHARS = 4_000  # whole emails and pages, as production's tools return them
 _MAX_ITEMS = 8
 
 
@@ -134,7 +134,9 @@ class Simulator:
         return _dump({"status": "ok"})
 
     def _start_task(self, args: dict[str, Any]) -> str:
-        task = self._add_task(str(args.get("title", "")), "IN_PROGRESS")
+        task = self._add_task(
+            str(args.get("title", "")), "IN_PROGRESS", args.get("expert_id")
+        )
         return _dump(
             {
                 "type": "task_started",
@@ -147,12 +149,15 @@ class Simulator:
         )
 
     def _create_task(self, args: dict[str, Any]) -> str:
-        task = self._add_task(str(args.get("title", "")), "TODO")
+        task = self._add_task(str(args.get("title", "")), "TODO", args.get("expert_id"))
         return _dump({"type": "task_created", "task": task.model_dump()})
 
-    def _add_task(self, title: str, status: str) -> WorldTask:
+    def _add_task(self, title: str, status: str, owner: Any = None) -> WorldTask:
         task = WorldTask(
-            id=f"task_new_{len(self.tasks) + 1}", title=title, status=status
+            id=f"task_new_{len(self.tasks) + 1}",
+            title=title,
+            status=status,
+            owner=str(owner) if owner else None,
         )
         self.tasks.append(task)
         return task
@@ -276,4 +281,4 @@ def _sign_in(provider: str) -> str:
 
 
 def _dump(value: Any) -> str:
-    return json.dumps(value, default=str)[:12_000]
+    return json.dumps(value, default=str)[:40_000]
