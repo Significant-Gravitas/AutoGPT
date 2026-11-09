@@ -294,6 +294,21 @@ class TestHireAndHandOffInOneApproval:
         assert _TITLE in resp.message
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_kickoff_that_cannot_be_sent_still_reports_the_hire(self):
+        """The hire is applied before the kickoff is asked for; an RPC failure
+        on the kickoff must not turn it into an error Otto reports."""
+        with _env() as env:
+            env.db.start_expert_kickoff.side_effect = ConnectionError("restarting")
+            session = make_session(_USER)
+            preview = await _propose_with_task(session)
+            resp = await _confirm(_approve(session), preview.confirmation_id)
+
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        env.db.hire_expert.assert_awaited_once()
+        env.db.start_expert_kickoff.assert_awaited_once()
+        assert resp.expert.name == "James"
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_a_confirm_that_broke_midway_leaves_the_hire_answerable(self):
         """A Redis error after the shared claim must not leave that claim
         behind, or the user's real answer is refused as already done when

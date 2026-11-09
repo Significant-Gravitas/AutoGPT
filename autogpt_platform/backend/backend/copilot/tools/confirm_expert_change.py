@@ -7,6 +7,7 @@ produced it. A hire offered with its task also starts that task when the id
 confirmed is the "hire and start" one (see ``hire_handoff``).
 """
 
+import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
@@ -21,6 +22,8 @@ from .expert_proposal import (
 )
 from .hire_handoff import hand_off_to_new_hire, with_hire_only
 from .models import ErrorResponse, ExpertChangeAppliedResponse, ToolResponseBase
+
+logger = logging.getLogger(__name__)
 
 _PROPOSAL_FIELDS = (
     "template_id",
@@ -115,14 +118,28 @@ class ConfirmExpertChangeTool(BaseTool):
             # No page follows a chat hire into the new expert's thread, so
             # the server sends its kickoff. A hand-off opens that thread with
             # the task instead.
-            await experts_db().start_expert_kickoff(
-                user_id,
-                applied.expert.id,
-                organization_id=session.organization_id,
-                team_id=session.team_id,
-            )
+            await _send_kickoff(user_id, applied.expert.id, session)
         if task is None or not isinstance(applied, ExpertChangeAppliedResponse):
             return applied
         if not proposal.hand_off:
             return with_hire_only(applied, task)
         return await hand_off_to_new_hire(user_id, session, applied, task)
+
+
+async def _send_kickoff(user_id: str, expert_id: str, session: ChatSession) -> None:
+    """Best-effort: the hire is already applied, so a failed RPC to the
+    database manager (restarting, timed out) must not turn it into an error
+    Otto reports as a failed hire. The expert then introduces itself the
+    first time it is opened, as before."""
+    try:
+        await experts_db().start_expert_kickoff(
+            user_id,
+            expert_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+        )
+    except Exception:
+        logger.warning(
+            f"Kickoff for chat-hired expert #{expert_id} could not be sent",
+            exc_info=True,
+        )
