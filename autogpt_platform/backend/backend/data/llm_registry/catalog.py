@@ -2273,6 +2273,28 @@ def _build_catalog() -> CatalogPayload:
                     provider_output_usd_per_1m=2.501,
                 ),
             ),
+            CatalogModel(
+                slug="tencent/hy4",
+                display_name="Hy4",
+                provider="open_router",
+                creator="tencent",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=2,
+                supports_tools=True,
+                supports_reasoning=True,
+                # OpenRouter live pricing (Tencent fp4 endpoint): $0.417/$1.2505
+                # per Mtok, $0.021/Mtok cached input, credit rates at the
+                # standard 1.5x margin (verified live 2026-11-04).
+                cost=CatalogModelCost(
+                    run_credits=2,
+                    input_credits_per_1m=62.55,
+                    output_credits_per_1m=187.575,
+                    cache_read_credits_per_1m=3.15,
+                    provider_input_usd_per_1m=0.417,
+                    provider_output_usd_per_1m=1.2505,
+                ),
+            ),
             # ----- Unbiased -----
             CatalogModel(
                 slug="unbiased/pareto",

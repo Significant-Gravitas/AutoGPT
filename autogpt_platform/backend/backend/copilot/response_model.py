@@ -317,14 +317,31 @@ class StreamError(StreamBaseResponse):
         otherwise opaque text. Idempotent: if the caller already embedded
         the prefix, we don't double it.
         """
+        data = {
+            "type": self.type.value,
+            "errorText": self._sse_error_text(),
+        }
+        return f"data: {json_dumps(data)}\n\n"
+
+    def _sse_error_text(self) -> str:
         text = self.errorText
         if self.code and not text.lstrip().startswith(f"[code:{self.code}]"):
             text = f"[code:{self.code}] {text}"
-        data = {
-            "type": self.type.value,
-            "errorText": text,
+        return text
+
+
+class StreamRecoveredError(StreamError):
+    """A persisted terminal error whose original stream publication was lost."""
+
+    turn_id: str = Field(exclude=True)
+
+    def to_sse(self) -> str:
+        control = {
+            "type": "data-turn-error",
+            "data": {"turnId": self.turn_id, "errorText": self._sse_error_text()},
+            "transient": True,
         }
-        return f"data: {json_dumps(data)}\n\n"
+        return f"data: {json_dumps(control)}\n\n" + super().to_sse()
 
 
 class StreamHeartbeat(StreamBaseResponse):

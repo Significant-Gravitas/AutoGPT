@@ -13,6 +13,7 @@ import {
 } from "../helpers";
 import type { User } from "../types";
 import { ImpersonationState } from "@/lib/impersonation";
+import { isAbortError, isNetworkError } from "@/lib/transient-errors";
 
 interface FetchUserResult {
   user: User | null;
@@ -41,7 +42,13 @@ export async function fetchUser(): Promise<FetchUserResult> {
       isUserLoading: false,
     };
   } catch (error) {
-    console.error("Get user error:", error);
+    // A check cut off by a full-page navigation (a login reloads the page) or
+    // a dropped connection is not a broken session.
+    if (isAbortError(error) || isNetworkError(error)) {
+      console.warn("Get user deferred:", error);
+    } else {
+      console.error("Get user error:", error);
+    }
     return {
       user: null,
       hasLoadedUser: true, // Error means we tried and failed, so mark as loaded
