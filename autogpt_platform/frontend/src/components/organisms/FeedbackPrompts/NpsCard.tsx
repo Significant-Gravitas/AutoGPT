@@ -83,16 +83,16 @@ export function NpsCard({
             ))}
           </div>
           <div className="flex justify-between">
-            <Text variant="small" className="!text-foreground-tertiary">
+            <Text variant="small" tone="muted">
               Not likely
             </Text>
-            <Text variant="small" className="!text-foreground-tertiary">
+            <Text variant="small" tone="muted">
               Very likely
             </Text>
           </div>
           {score !== null ? (
             <>
-              <Text variant="body-medium" className="!text-foreground-strong">
+              <Text variant="body-medium" tone="primary">
                 {followUpFor(score)}
               </Text>
               <Textarea

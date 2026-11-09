@@ -34,10 +34,10 @@ export function OttoMistakeCard({
       <div className="flex items-start gap-3">
         <AutopilotAvatar size={32} className="ring-1 ring-border-base" />
         <div className="flex flex-1 flex-col gap-0.5">
-          <Text variant="body-medium" className="!text-foreground-strong">
+          <Text variant="body-medium" tone="primary">
             Help the team fix this
           </Text>
-          <Text variant="small" className="!text-foreground-tertiary">
+          <Text variant="small" tone="muted">
             I&apos;ve flagged this chat for review. Which of these went wrong?
           </Text>
         </div>

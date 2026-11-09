@@ -90,12 +90,12 @@ export function WorkCheckCard({
           className="ring-1 ring-border-base"
         />
         <div className="flex flex-1 flex-col gap-0.5">
-          <Text variant="body-medium" className="!text-foreground-strong">
+          <Text variant="body-medium" tone="primary">
             {rating && rating !== "great"
               ? `What should ${name} do better?`
               : `How did ${name} do?`}
           </Text>
-          <Text variant="small" className="!text-foreground-tertiary">
+          <Text variant="small" tone="muted">
             {note}
           </Text>
         </div>
@@ -123,7 +123,7 @@ export function WorkCheckCard({
               )}
             >
               <Icon icon={option.icon} size={28} strokeWidth={1.75} />
-              <Text variant="small-medium" className="!text-inherit">
+              <Text variant="small-medium" tone="inherit">
                 {option.label}
               </Text>
             </motion.button>

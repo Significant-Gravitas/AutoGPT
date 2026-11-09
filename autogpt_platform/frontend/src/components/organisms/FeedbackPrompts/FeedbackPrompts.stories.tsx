@@ -240,7 +240,7 @@ function OnboardingStep({
         {body}
       </Text>
       <div className="size-40 rounded-full bg-surface-active" />
-      <Text variant="small" className="!text-foreground-tertiary">
+      <Text variant="small" tone="muted">
         Step skipped
       </Text>
       <OnboardingSkipPrompt question={question} reasons={reasons} />

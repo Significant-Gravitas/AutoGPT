@@ -49,7 +49,7 @@ export function CheckoutAbandonedDialog({
       <Dialog.Content>
         <NoInitialFocus />
         <div className="flex flex-col gap-4">
-          <Text variant="body" className="!text-foreground-tertiary">
+          <Text variant="body" tone="muted">
             {copy.body}
           </Text>
           <ReasonFlow

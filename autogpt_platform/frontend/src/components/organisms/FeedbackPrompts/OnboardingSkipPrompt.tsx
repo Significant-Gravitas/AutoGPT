@@ -31,7 +31,7 @@ export function OnboardingSkipPrompt({
 
   return (
     <div className="flex w-full max-w-2xl flex-col items-center gap-3">
-      <Text variant="small" className="!text-foreground-tertiary">
+      <Text variant="small" tone="muted">
         {question}
       </Text>
       <div className="w-full">

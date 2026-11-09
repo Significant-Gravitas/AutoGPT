@@ -20,7 +20,7 @@ export function OttoOfferCard({ starters, onPick }: Props) {
       <div className="flex items-start gap-3">
         <AutopilotAvatar size={40} className="ring-1 ring-border-base" />
         <div className="min-w-0 rounded-2xl rounded-tl-sm bg-surface px-4 py-2.5 shadow-sm">
-          <Text variant="body" className="!text-foreground-emphasis">
+          <Text variant="body" tone="emphasis">
             {hasStarters
               ? "From what you told me, I'd start with one of these."
               : "Tell me one weekly task and I'll do it with you now."}
@@ -29,7 +29,7 @@ export function OttoOfferCard({ starters, onPick }: Props) {
       </div>
       {hasStarters ? (
         <>
-          <div className="flex flex-col gap-1.5 pl-[3.25rem]">
+          <div className="flex flex-col gap-1.5 pl-14">
             {starters.map((starter) => (
               <button
                 key={starter}
@@ -41,14 +41,16 @@ export function OttoOfferCard({ starters, onPick }: Props) {
                 <Icon
                   icon={ArrowRight02Icon}
                   size={16}
-                  className="shrink-0 text-foreground-tertiary transition-transform group-hover:translate-x-0.5"
+                  tone="muted"
+                  motion="transform"
+                  className="shrink-0 group-hover:translate-x-0.5"
                 />
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-1.5 pl-[3.25rem] text-foreground-tertiary">
+          <div className="flex items-center gap-1.5 pl-14 text-foreground-tertiary">
             <Icon icon={SparklesIcon} size={14} />
-            <Text variant="small" className="!text-foreground-tertiary">
+            <Text variant="small" tone="muted">
               Picked for you from your onboarding answers.
             </Text>
           </div>

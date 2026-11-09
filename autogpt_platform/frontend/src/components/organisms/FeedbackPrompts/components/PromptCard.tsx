@@ -34,14 +34,11 @@ export function PromptCard({
         {avatar}
         <div className="flex flex-1 flex-col gap-0.5">
           {eyebrow ? (
-            <Text
-              variant="small"
-              className="!text-xs !text-foreground-tertiary"
-            >
+            <Text variant="small" tone="muted">
               {eyebrow}
             </Text>
           ) : null}
-          <Text variant="body-medium" className="!text-foreground-strong">
+          <Text variant="body-medium" tone="primary">
             {title}
           </Text>
         </div>
@@ -51,7 +48,7 @@ export function PromptCard({
           aria-label="Close"
           withTooltip={false}
           onClick={onClose}
-          className="-mr-1 -mt-1 shrink-0"
+          className="-mt-1 -mr-1 shrink-0"
         >
           <Icon icon={Cancel01Icon} size={14} />
         </Button>

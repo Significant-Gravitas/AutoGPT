@@ -12,13 +12,13 @@ const NAV = ["Home", "Library", "Marketplace"];
 
 export function MockPage({ title, children, corner, centered }: Props) {
   return (
-    <div className="relative min-h-screen bg-background">
+    <div className="relative min-h-screen bg-canvas">
       <header className="flex h-14 items-center gap-6 border-b border-border-base bg-surface px-6">
-        <Text variant="body-medium" className="!text-foreground-strong">
+        <Text variant="body-medium" tone="primary">
           AutoGPT
         </Text>
         {NAV.map((item) => (
-          <Text key={item} variant="body" className="!text-foreground-tertiary">
+          <Text key={item} variant="body" tone="muted">
             {item}
           </Text>
         ))}
@@ -35,7 +35,7 @@ export function MockPage({ title, children, corner, centered }: Props) {
         {children ?? <SkeletonBlocks />}
       </main>
       {corner ? (
-        <div className="fixed bottom-6 right-6 z-40">{corner}</div>
+        <div className="fixed right-6 bottom-6 z-40">{corner}</div>
       ) : null}
     </div>
   );

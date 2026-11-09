@@ -17,9 +17,10 @@ export function ThanksLine({
       <Icon
         icon={CheckmarkCircle02Icon}
         size={16}
-        className="mt-[3px] shrink-0 text-success-foreground"
+        tone="success-strong"
+        className="mt-[3px] shrink-0"
       />
-      <Text variant="body" className="!text-foreground-emphasis">
+      <Text variant="body" tone="emphasis">
         {children}{" "}
         {withChangelog ? (
           <Link
