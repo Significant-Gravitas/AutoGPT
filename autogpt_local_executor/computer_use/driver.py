@@ -34,9 +34,12 @@ DRIVER_NAME = "cua-driver"
 # How to add computer use to a shim installed from Git, as the platform's
 # setup card and the README install it. pipx leaves an installed package
 # as it is without --force, extra or not. docs/COMPUTER_USE.md says the same.
+# Double quotes, which cmd.exe, PowerShell and POSIX shells all take (the
+# text has no $, backtick or !); cmd.exe would split single-quoted text at
+# its spaces.
 COMPUTER_USE_INSTALL = (
-    "pipx install --force 'autogpt-local-executor[computer-use] @ "
-    "git+https://github.com/Significant-Gravitas/autogpt-local-executor.git'"
+    'pipx install --force "autogpt-local-executor[computer-use] @ '
+    'git+https://github.com/Significant-Gravitas/autogpt-local-executor.git"'
 )
 START_TIMEOUT_SECONDS = 30.0
 LIST_TIMEOUT_SECONDS = 30.0
