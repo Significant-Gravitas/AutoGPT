@@ -321,6 +321,31 @@ async def test_the_job_stores_the_transcript_and_leaves_the_call_for_its_hand_of
     assert await locks.postcall_pending(rig.redis) == [call_id]
 
 
+async def test_the_claim_is_given_up_before_the_recording_is_deleted(
+    rig: Rig, mocker: MockerFixture
+):
+    """The call is the REST API's to hand off once its transcript is stored,
+    so a slow deletion holds no hand-off back."""
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(pcm, marks)
+    delete = rig.recordings.delete
+    claims_while_deleting: list[str | None] = []
+
+    async def noting_the_claim(path: str) -> None:
+        claims_while_deleting.append(
+            await rig.redis.get(locks.postcall_claim_key(call_id))
+        )
+        await delete(path)
+
+    mocker.patch.object(rig.recordings, "delete", new=noting_the_claim)
+
+    record = await rig.run(rig.postcall(ScriptedTranscriber(SAID)), call_id, pcm=pcm)
+
+    assert record.status == locks.TRANSCRIBED
+    assert claims_while_deleting == [None]
+    assert rig.recordings.objects == {}
+
+
 async def test_the_transcription_names_the_speaker_from_the_account(rig: Rig):
     pcm, marks = recording_of(answer())
     call_id = await rig.call(pcm, marks)

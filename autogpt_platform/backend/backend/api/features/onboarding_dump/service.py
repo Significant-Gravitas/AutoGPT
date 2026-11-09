@@ -15,7 +15,7 @@ from fastapi import BackgroundTasks, HTTPException
 from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from backend.api.features.experts.experts_db import list_templates
 from backend.api.features.experts.models import Expert
@@ -248,12 +248,47 @@ async def finalize_voice_dump(
     )
 
 
+class TypedTake(BaseModel):
+    """A typed take's answer, and whether this call judged it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    response: FinalizeResponse
+    # This call claimed the take and ran the quality gate on it. False when
+    # the answer is the row's as it stands: another call's claim, or a take
+    # already moving.
+    judged: bool
+
+
 async def finalize_typed_dump(
     user_id: str,
     recording_id: str,
     text: str,
     background_tasks: BackgroundTasks,
 ) -> FinalizeResponse:
+    return (
+        await finalize_typed_take(user_id, recording_id, text, background_tasks)
+    ).response
+
+
+async def reopen_unjudged_take(user_id: str, recording_id: str) -> bool:
+    """Put a take whose row was claimed and left ``transcribed`` with no
+    answer back where a finalize claims it again, so its words are judged
+    rather than read as a ruling. True when the row held that take there."""
+    return await db.claim_transition(
+        user_id,
+        recording_id,
+        expected=BrainDumpStatus.transcribed,
+        new=BrainDumpStatus.recording_uploaded,
+    )
+
+
+async def finalize_typed_take(
+    user_id: str,
+    recording_id: str,
+    text: str,
+    background_tasks: BackgroundTasks,
+) -> TypedTake:
     # Same idempotency contract as the voice path: a repeated submit must
     # not reset the row or queue a second extraction and greeting on top
     # of the pair already running.
@@ -269,8 +304,11 @@ async def finalize_typed_dump(
             BrainDumpStatus.completed,
         )
     ):
-        return _pipeline_response(
-            existing.status, existing.transcript, existing.inputMode
+        return TypedTake(
+            response=_pipeline_response(
+                existing.status, existing.transcript, existing.inputMode
+            ),
+            judged=False,
         )
 
     await db.start_dump(user_id, recording_id, BrainDumpInputMode.typed)
@@ -290,16 +328,20 @@ async def finalize_typed_dump(
         # falling through to the tasks below.
         current = await db.get_dump(user_id)
         if current is None:
-            return FinalizeResponse(
+            response = FinalizeResponse(
                 status=BrainDumpStatus.failed, input_mode=BrainDumpInputMode.typed
             )
-        if current.recordingId != recording_id:
-            return FinalizeResponse(
+        elif current.recordingId != recording_id:
+            response = FinalizeResponse(
                 status=BrainDumpStatus.failed,
                 input_mode=BrainDumpInputMode.typed,
                 error_code="superseded",
             )
-        return _pipeline_response(current.status, current.transcript, current.inputMode)
+        else:
+            response = _pipeline_response(
+                current.status, current.transcript, current.inputMode
+            )
+        return TypedTake(response=response, judged=False)
 
     await _admit_processing(user_id, recording_id)
     # Typed dumps skip transcription but not the gate: a keyboard can
@@ -310,8 +352,11 @@ async def finalize_typed_dump(
         text, input_mode=BrainDumpInputMode.typed
     )
     if rejection is not None:
-        return await _quality_rejection(
-            user_id, recording_id, rejection, text, BrainDumpInputMode.typed
+        return TypedTake(
+            response=await _quality_rejection(
+                user_id, recording_id, rejection, text, BrainDumpInputMode.typed
+            ),
+            judged=True,
         )
 
     background_tasks.add_task(
@@ -321,8 +366,11 @@ async def finalize_typed_dump(
         text.strip(),
         BrainDumpInputMode.typed,
     )
-    return _pipeline_response(
-        BrainDumpStatus.transcribed, text.strip(), BrainDumpInputMode.typed
+    return TypedTake(
+        response=_pipeline_response(
+            BrainDumpStatus.transcribed, text.strip(), BrainDumpInputMode.typed
+        ),
+        judged=True,
     )
 
 

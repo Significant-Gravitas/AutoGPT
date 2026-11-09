@@ -42,10 +42,15 @@ from fastapi import BackgroundTasks, HTTPException
 
 from backend.api.features.onboarding_dump import quality
 from backend.api.features.onboarding_dump.interview import (
+    LaterCallUnsettled,
     call_that_took_the_interview,
+    call_words,
     superseded_take,
 )
-from backend.api.features.onboarding_dump.interview_endings import assigned_ending
+from backend.api.features.onboarding_dump.interview_endings import (
+    MODE_ENDINGS,
+    assigned_ending,
+)
 from backend.api.features.onboarding_dump.models import (
     FinalizeResponse,
     VoiceCallCaps,
@@ -56,6 +61,8 @@ from backend.api.features.onboarding_dump.models import (
 from backend.api.features.onboarding_dump.rate_limit import enforce_voice_call_budget
 from backend.api.features.onboarding_dump.voice_handoff import (
     HANDOFF_CLAIM_TTL_S,
+    HandOffClaim,
+    LostClaim,
     hand_off_call,
     owed,
     settle_if_owed,
@@ -128,7 +135,7 @@ async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
     await _refuse_past_platform_limits(redis)
     await enforce_voice_call_budget(user_id)
     leg = await _choose_leg(user_id)
-    ending = await assigned_ending(user_id, "voice")
+    ending = _voice_arm(await assigned_ending(user_id, "voice"))
     call_id = tokens.new_call_id()
     return VoiceCallStartResponse(
         call_id=call_id,
@@ -138,6 +145,16 @@ async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
         leg=leg,
         caps=VoiceCallCaps.model_validate(CAPS.as_message()),
     )
+
+
+def _voice_arm(ending: str | None) -> str | None:
+    """*ending*, when it is an arm the voice mode offers; None otherwise, so
+    the call ends as an unenrolled one does."""
+    if ending in {arm.value for arm in MODE_ENDINGS["voice"]}:
+        return ending
+    if ending is not None:
+        logger.warning(f"Voice call: ending {ending!r} is no voice arm")
+    return None
 
 
 def relay_socket_url() -> str | None:
@@ -251,6 +268,11 @@ async def call_status(user_id: str, call_id: str) -> VoiceCallStatusResponse:
 async def latest_call(user_id: str) -> VoiceCallStatusResponse:
     """*user_id*'s latest call as it stands, for a step that reloads.
 
+    A call that settled without words of record is no take, so the read
+    looks back past it along ``prev`` to the latest call that has words or
+    is still to settle, and answers that one; with nothing behind it, the
+    no-words call itself.
+
     Raises:
         HTTPException: 404 when they have none or its record has expired, 503
             while it cannot be read.
@@ -265,7 +287,17 @@ async def latest_call(user_id: str) -> VoiceCallStatusResponse:
         ) from exc
     if call_id is None:
         raise HTTPException(status_code=404, detail=NO_SUCH_CALL)
-    return await call_status(user_id, call_id)
+    redis = await _bounded(get_redis_async())
+    record = await _their_call(redis, user_id, call_id)
+    seen = {record.call_id}
+    while call_words(record) == "no_words" and record.prev not in (None, *seen):
+        earlier = await _bounded(locks.read_call(redis, record.prev or ""))
+        if earlier is None or earlier.uid != user_id:
+            break
+        seen.add(earlier.call_id)
+        record = earlier
+    settle_if_owed(record)
+    return _status_of(record)
 
 
 async def finish_call(
@@ -301,10 +333,18 @@ async def finish_call(
         return answered
     _refuse_unless_ready(record)
     holder = f"finish:{uuid.uuid4().hex}"
-    if not await _bounded(
-        locks.claim_postcall(redis, call_id, holder, ttl_s=HANDOFF_CLAIM_TTL_S)
-    ):
+    try:
+        claimed = await _bounded(
+            locks.claim_postcall(redis, call_id, holder, ttl_s=HANDOFF_CLAIM_TTL_S)
+        )
+    except HTTPException:
+        # The claim may have been written before the wait for its reply gave
+        # up; left, it would hold every finish back until it lapsed.
+        await _quietly(locks.release_postcall(redis, call_id, holder))
+        raise
+    if not claimed:
         raise HTTPException(status_code=409, detail={"code": CALL_NOT_READY})
+    claim = HandOffClaim(redis, call_id, holder)
     try:
         # Another finish, or the call's job, may have answered since the read
         # above, and the words are judged once.
@@ -313,13 +353,20 @@ async def finish_call(
         if answered is not None:
             return answered
         _refuse_unless_ready(record)
-        closure = await hand_off_call(
-            redis,
-            record,
-            background_tasks,
-            confirmed=True,
-            corrections=corrections,
-        )
+        async with claim.renewed():
+            closure = await hand_off_call(
+                redis,
+                record,
+                background_tasks,
+                claim=claim,
+                confirmed=True,
+                by_person=True,
+                corrections=corrections,
+            )
+    except (LostClaim, LaterCallUnsettled):
+        # Another hand-off took the call over, or a later call of the
+        # person's could still become a take: the words are not ready.
+        raise HTTPException(status_code=409, detail={"code": CALL_NOT_READY}) from None
     finally:
         await _quietly(locks.release_postcall(redis, call_id, holder))
     if closure.hand_off is None:

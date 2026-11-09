@@ -95,11 +95,11 @@ logger = logging.getLogger(__name__)
 # The end reason of a call whose pod died before it could end it.
 CRASHED = "crashed"
 
-# What a call records when its transcript job gives up.
-TRANSCRIPTION_UNAVAILABLE = "transcription_unavailable"
-# What a call records when the relay took the person's audio and no recording
-# of it is left: no ruling on their words.
-RECORDING_UNAVAILABLE = "recording_unavailable"
+# What a call records when its transcript job gives up, and when the relay
+# took the person's audio and no recording of it is left: no ruling on their
+# words.
+TRANSCRIPTION_UNAVAILABLE = locks.TRANSCRIPTION_UNAVAILABLE
+RECORDING_UNAVAILABLE = locks.RECORDING_UNAVAILABLE
 
 # Audio kept on each side of a segment of speech, and the silence between
 # the segments of one turn's clip.
@@ -527,6 +527,11 @@ class PostCall:
         made = await self._make_transcript(redis, record, recording, pcm, first_name)
         if made is None:
             return RECORDING_UNAVAILABLE
+        # The call is the REST API's to hand off from here: its claim goes
+        # before the recording's deletion, however long that takes.
+        await self._bounded(
+            "post-call release", locks.release_postcall(redis, call_id, self.pod)
+        )
         await self._discard_recording(recording, made)
         logger.info(f"Voice call {call_id}: transcribed after ending {made.end_reason}")
         return locks.TRANSCRIBED

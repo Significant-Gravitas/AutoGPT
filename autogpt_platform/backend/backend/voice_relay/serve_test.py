@@ -330,18 +330,106 @@ def _not_the_relays(module: str) -> bool:
     )
 
 
-def test_the_relay_process_loads_neither_the_executor_nor_the_pipeline():
-    # A fresh interpreter: this one has loaded them through other tests.
-    probe = (
-        "import json, sys\n"
-        "import backend.voice_relay.serve\n"
-        f"banned = {NOT_THE_RELAYS!r}\n"
-        "loaded = sorted(m for m in sys.modules if any("
-        "m == b or m.startswith(b + '.') for b in banned))\n"
-        "print('BANNED_MODULES=' + json.dumps(loaded))\n"
+# A fresh interpreter imports the relay's entry point, runs one call through
+# a session against the fake vendor and that call's transcript job, then
+# reports which modules it loaded.
+PROBE = """
+import asyncio, json, sys, tempfile, time
+
+import backend.voice_relay.serve
+from fakeredis import FakeServer
+from fakeredis.aioredis import FakeRedis
+
+from backend.voice_relay import locks, tokens
+from backend.voice_relay.config import Caps, Timing
+from backend.voice_relay.conftest import (
+    FakeSocket, MemoryRecordings, ScriptedTranscriber, speech,
+)
+from backend.voice_relay.fake_vendor import FakeVendor, Reply
+from backend.voice_relay.metering import CallMeter
+from backend.voice_relay.postcall import PostCall
+from backend.voice_relay.record import CallRecording
+from backend.voice_relay.session import Session
+
+USER = "user-1"
+# The tests' own signing key, as the relay's conftest sets it.
+tokens.settings.secrets.voice_relay_signing_key = "k" * 48  # pragma: allowlist secret
+
+
+async def call_and_transcribe(spool):
+    redis = FakeRedis(server=FakeServer(), decode_responses=True)
+
+    async def get_redis():
+        return redis
+
+    async def sink(row):
+        return None
+
+    async def first_name(user_id):
+        return "Dana"
+
+    recordings = MemoryRecordings()
+    call_id = tokens.new_call_id()
+    store = locks.CallStore(redis, call_id=call_id, user_id=USER, holder="probe")
+    ws = FakeSocket()
+    session = Session(
+        call_id=call_id,
+        user_id=USER,
+        leg="websocket",
+        ws=ws,
+        vendor=FakeVendor([
+            Reply(text="Hi, what do you do?", audio_s=0.1),
+            Reply(text="Bye!", audio_s=0.1, heard="I bake", first_task="Bake"),
+        ]),
+        store=store,
+        meter=CallMeter(
+            user_id=USER, call_id=call_id, leg="websocket",
+            model="gemini-3.8-live", redis=redis, sink=sink,
+        ),
+        classifier=None,
+        caps=Caps(max_call_s=20.0, soft_wrap_s=2.0, idle_s=5.0),
+        timing=Timing(
+            tick_s=0.02, end_flag_poll_s=0.05, wrap_grace_s=2.0,
+            finish_grace_s=2.0, reattach_s=1.0, scope_settle_s=0.05,
+            scope_timeout_s=1.0, vendor_connect_timeout_s=1.0,
+        ),
+        recording=CallRecording(
+            call_id=call_id, user_id=USER, spool_dir=spool,
+            store=recordings, call_store=store,
+        ),
     )
+    await locks.take_user_lock(redis, USER, call_id)
+    await store.record(status="connecting", started=round(time.time(), 3))
+    running = asyncio.create_task(session.run())
+    await ws.wait_for("turn_complete")
+    ws.send_audio(speech(0.4))
+    await asyncio.wait_for(running, timeout=20)
+    assert session.postcall_claimed
+    postcall = PostCall(
+        redis=get_redis, recordings=recordings,
+        transcriber=ScriptedTranscriber(["I bake bread."]),
+        first_name=first_name, live_model="gemini-3.8-live", pod="probe",
+        cost_sink=sink,
+    )
+    pcm = await session.recording.close()
+    await postcall.run(call_id, recording=session.recording, pcm=pcm)
+    record = await locks.read_call(redis, call_id)
+    assert record is not None and record.status == "transcribed", record
+
+
+with tempfile.TemporaryDirectory() as spool:
+    asyncio.run(call_and_transcribe(spool))
+banned = %r
+loaded = sorted(
+    m for m in sys.modules if any(m == b or m.startswith(b + ".") for b in banned)
+)
+print("BANNED_MODULES=" + json.dumps(loaded))
+"""
+
+
+def test_the_relay_process_loads_neither_the_executor_nor_the_pipeline():
     run = subprocess.run(
-        [sys.executable, "-c", probe],
+        [sys.executable, "-c", PROBE % (NOT_THE_RELAYS,)],
         capture_output=True,
         text=True,
         timeout=180,
