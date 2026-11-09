@@ -7,7 +7,10 @@ import {
 import type { TurnStats } from "../../../../helpers/convertChatSessionToUiMessages";
 import type { SentFrom } from "../../../../sentFrom";
 import { WorkCheckTool } from "../../../../tools/FeedbackPrompts/WorkCheckTool";
-import { WORK_CHECK_PART_TYPE } from "../../../../tools/FeedbackPrompts/helpers";
+import {
+  readFeedbackPrompt,
+  WORK_CHECK_PART_TYPE,
+} from "../../../../tools/FeedbackPrompts/helpers";
 import type { ExpertIdentity } from "../../../../useExpertMap";
 import { TurnStatsBar } from "../../../JobStatsBar/TurnStatsBar";
 import { ScheduledChatNoticeCard } from "../../../ScheduledChatNoticeCard/ScheduledChatNoticeCard";
@@ -166,7 +169,11 @@ export const MessageRow = memo(function MessageRow({
     savedMessageId: turnStat?.savedMessageId,
   });
   const workCheckPart = feedbackTarget
-    ? renderableParts.findLast((part) => part.type === WORK_CHECK_PART_TYPE)
+    ? renderableParts.findLast(
+        (part) =>
+          part.type === WORK_CHECK_PART_TYPE &&
+          readFeedbackPrompt(part as ToolUIPart) !== null,
+      )
     : undefined;
   const showActions =
     isLastInTurn &&

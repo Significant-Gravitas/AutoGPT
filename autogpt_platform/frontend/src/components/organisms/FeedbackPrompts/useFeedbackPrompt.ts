@@ -9,31 +9,40 @@ import { useRef } from "react";
 export type FeedbackPromptKind = ClaimFeedbackPromptRequestKind;
 export type FeedbackPromptAnswer = UpdateFeedbackPromptRequest;
 
-async function requestClaim(kind: FeedbackPromptKind) {
+export interface FeedbackPromptClaim {
+  id: string | null;
+  /** No answer came back, as opposed to the backend refusing a showing. */
+  failed: boolean;
+}
+
+async function requestClaim(
+  kind: FeedbackPromptKind,
+): Promise<FeedbackPromptClaim> {
   try {
     const response = await postV2ClaimFeedbackPrompt({ kind });
-    return response.status === 200 ? (response.data.id ?? null) : null;
+    if (response.status !== 200) return { id: null, failed: true };
+    return { id: response.data.id ?? null, failed: false };
   } catch {
-    return null;
+    return { id: null, failed: true };
   }
 }
 
 async function sendAnswer(
-  claimed: Promise<string | null>,
+  claimed: Promise<FeedbackPromptClaim>,
   patch: FeedbackPromptAnswer,
 ) {
   try {
-    const id = await claimed;
+    const { id } = await claimed;
     if (id) await patchV2UpdateFeedbackPrompt(id, patch);
   } catch {
     // A prompt must never get in the way of what the person came to do.
   }
 }
 
-// One showing of a prompt. A claim that fails reads as "don't show it", and
+// One showing of a prompt. A claim with no id means "don't show it", and
 // answers are written one after another so the last tap is the one that stands.
 export function useFeedbackPrompt(kind: FeedbackPromptKind) {
-  const claimRef = useRef<Promise<string | null> | null>(null);
+  const claimRef = useRef<Promise<FeedbackPromptClaim> | null>(null);
   const savesRef = useRef<Promise<unknown>>(Promise.resolve());
 
   function claim() {
@@ -42,7 +51,7 @@ export function useFeedbackPrompt(kind: FeedbackPromptKind) {
   }
 
   function adopt(id: string) {
-    claimRef.current = Promise.resolve(id);
+    claimRef.current = Promise.resolve({ id, failed: false });
   }
 
   function save(patch: FeedbackPromptAnswer) {

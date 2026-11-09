@@ -245,6 +245,17 @@ describe("feedback cards in a chat", () => {
     expect(screen.queryByText("Help the team fix this")).toBeNull();
   });
 
+  it("keeps the card when a second call in the turn was refused", async () => {
+    setup();
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[USER, reply([workCheck(), workCheck(null)])]}
+      />,
+    );
+    expect(await screen.findByText("How did Otto do?")).toBeDefined();
+  });
+
   it("shows the thanks line for an answered check after a reload", async () => {
     setup({ answered: true, score: 2 });
     render(

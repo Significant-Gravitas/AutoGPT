@@ -111,6 +111,8 @@ test("closing on the way to Stripe shows nothing", async () => {
   const { claims } = setup();
   fireEvent.click(screen.getByRole("button", { name: "Leave for Stripe" }));
   await closeTopUpDialog();
+  // Set by the close itself, so it is the guard this reads, not a slow claim.
+  expect(screen.getByText("card closed")).toBeDefined();
   expect(screen.queryByText(CARD_TITLE)).toBeNull();
   expect(claims).toEqual([]);
 });

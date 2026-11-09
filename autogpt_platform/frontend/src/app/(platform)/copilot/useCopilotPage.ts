@@ -50,6 +50,7 @@ import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useSettleGate } from "./useSettleGate";
+import { markTaskSent } from "./components/SuggestedTasks/markTaskSent";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 
 function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
@@ -551,6 +552,7 @@ function useCopilotPageChat(
     onSend: sendOrQueue,
     setPendingFileParts,
     isSendLocked: isExpertSendLocked,
+    onTaskStarted: markTaskSent,
   });
 
   const { isKickoffStarting } = useExpertKickoff({

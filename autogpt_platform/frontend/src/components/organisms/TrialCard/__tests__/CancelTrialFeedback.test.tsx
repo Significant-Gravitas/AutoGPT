@@ -1,7 +1,4 @@
-import {
-  getGetBrainDumpSuggestedTasksMockHandler200,
-  getUpdateBrainDumpSuggestedTasksMockHandler200,
-} from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import { getGetBrainDumpSuggestedTasksMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
 import {
   getPatchV2UpdateFeedbackPromptMockHandler200,
@@ -61,7 +58,6 @@ const TASK: SuggestedTask = {
 function setup({ stored = true, tasks = [TASK] } = {}) {
   const cancel = vi.fn(() => trialResponse());
   const patches: unknown[] = [];
-  const updates: unknown[] = [];
   server.use(
     getGetTrialsGetTrialStatusMockHandler200(trialResponse()),
     getPostTrialsCancelTrialMockHandler200(cancel),
@@ -78,13 +74,9 @@ function setup({ stored = true, tasks = [TASK] } = {}) {
         score: null,
       };
     }),
-    getUpdateBrainDumpSuggestedTasksMockHandler200(async ({ request }) => {
-      updates.push(await request.clone().json());
-      return { stored: true, tasks };
-    }),
   );
   render(<TrialCard />);
-  return { cancel, patches, updates };
+  return { cancel, patches };
 }
 
 async function openDialog() {
@@ -165,19 +157,16 @@ test("the offer asks for one task when none are stored", async () => {
 });
 
 test("taking a task starts its chat and keeps the trial", async () => {
-  const { cancel, patches, updates } = setup();
+  const { cancel, patches } = setup();
   const dialog = await openDialog();
   clickIn(dialog, "I haven't seen results yet");
   clickIn(dialog, "Continue");
   fireEvent.click(await screen.findByRole("button", { name: TASK.title }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(push).toHaveBeenCalledWith(
-    `/home?autosubmit=true&expertId=maria#prompt=${encodeURIComponent(TASK.prompt)}`,
+    `/home?autosubmit=true&expertId=maria&suggestedTaskId=task-1#prompt=${encodeURIComponent(TASK.prompt)}`,
   );
   await waitFor(() => expect(patches).toContainEqual({ offer_taken: true }));
-  await waitFor(() =>
-    expect(updates).toEqual([{ task_ids: [TASK.id], state: "sent" }]),
-  );
   expect(cancel).not.toHaveBeenCalled();
 });
 

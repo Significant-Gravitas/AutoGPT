@@ -11,6 +11,7 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import { http, HttpResponse } from "msw";
 import { beforeEach, expect, test, vi } from "vitest";
 import { NpsPrompt } from "../NpsPrompt";
 
@@ -92,6 +93,24 @@ test("a refused claim leaves the marker and shows nothing", async () => {
   render(tree());
   await waitFor(() => expect(storage.get(Key.NPS_DONE)).toBe("user-a"));
   expect(screen.queryByText(QUESTION)).toBeNull();
+});
+
+test("a failed claim leaves no marker, so the next load asks again", async () => {
+  let attempts = 0;
+  server.use(
+    http.post("*/api/feedback-prompts/claim", () => {
+      attempts += 1;
+      return HttpResponse.json({ detail: "boom" }, { status: 500 });
+    }),
+  );
+  const { unmount } = render(tree());
+  await waitFor(() => expect(attempts).toBe(1));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(storage.get(Key.NPS_DONE)).not.toBe("user-a");
+  expect(screen.queryByText(QUESTION)).toBeNull();
+  unmount();
+  render(tree());
+  await waitFor(() => expect(attempts).toBe(2));
 });
 
 test("with the marker set no claim happens", async () => {

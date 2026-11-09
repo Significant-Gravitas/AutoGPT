@@ -35,7 +35,21 @@ interface Props {
   persistedSidebarOpen?: boolean;
 }
 
+// The provider and the NPS card sit above the shell's branches: moving between
+// them (into settings, say) remounts everything below, and an NPS card that
+// goes away can't come back, because its one showing is already used.
 export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
+  return (
+    <TopUpPromptProvider>
+      <PlatformShell persistedSidebarOpen={persistedSidebarOpen}>
+        {children}
+      </PlatformShell>
+      <NpsPrompt />
+    </TopUpPromptProvider>
+  );
+}
+
+function PlatformShell({ children, persistedSidebarOpen }: Props) {
   const {
     showAppSidebar,
     showChangelog,
@@ -51,12 +65,7 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
     (state) => state.source !== null,
   );
 
-  const content = (
-    <TopUpPromptProvider>
-      <PaywallGate>{children}</PaywallGate>
-      <NpsPrompt />
-    </TopUpPromptProvider>
-  );
+  const content = <PaywallGate>{children}</PaywallGate>;
 
   // Logged-out marketplace visitors get public navigation and a trial CTA.
   if (showTourSidebar) {

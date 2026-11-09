@@ -18,7 +18,7 @@ export function CheckoutAbandonedPrompt({ kind }: Props) {
   const [isClaimed, setIsClaimed] = useState(false);
 
   useMountEffect(() => {
-    void prompt.claim().then((id) => {
+    void prompt.claim().then(({ id }) => {
       if (id) setIsClaimed(true);
     });
   });

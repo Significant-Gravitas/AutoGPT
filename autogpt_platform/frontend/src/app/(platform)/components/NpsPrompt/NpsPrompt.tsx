@@ -45,8 +45,8 @@ function NpsClaim({ userID, isHidden }: ClaimProps) {
   const [isClaimed, setIsClaimed] = useState(false);
 
   useMountEffect(() => {
-    void prompt.claim().then((id) => {
-      setNpsMarker(userID);
+    void prompt.claim().then(({ id, failed }) => {
+      if (!failed) setNpsMarker(userID);
       if (id) setIsClaimed(true);
     });
   });
