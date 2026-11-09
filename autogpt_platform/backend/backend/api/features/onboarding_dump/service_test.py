@@ -96,7 +96,9 @@ class DumpStore:
                 and self.row.status in (*processing, BrainDumpStatus.completed)
             )
             or (
-                input_mode != BrainDumpInputMode.voice and self.row.status in processing
+                input_mode != BrainDumpInputMode.voice
+                and self.row.status in processing
+                and not db.call_take_displaces(recording_id, self.row.recordingId)
             )
         ):
             return self.row
@@ -2126,3 +2128,47 @@ async def test_a_team_write_that_loses_a_race_is_written_on_the_next_read(
 
     assert len(attempts) == 2
     assert _stored_team(dumps)["source"] == "llm"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "given_up"),
+    [
+        (BrainDumpStatus.recording_uploaded, True),
+        (BrainDumpStatus.transcribed, True),
+        (BrainDumpStatus.extracting, False),
+        (BrainDumpStatus.completed, False),
+        (BrainDumpStatus.failed, False),
+    ],
+)
+async def test_a_take_is_given_up_only_while_no_pipeline_has_run_it(
+    dumps: DumpStore, status: BrainDumpStatus, given_up: bool
+):
+    """A take the pipeline has moved on, finished above all, is never
+    knocked out."""
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.typed)
+    assert dumps.row is not None
+    dumps.row.status = status
+
+    assert (
+        await service.give_up_unrun_take(USER_ID, RECORDING_ID, "superseded")
+        is given_up
+    )
+    assert dumps.row.status == (BrainDumpStatus.failed if given_up else status)
+    if given_up:
+        assert dumps.row.errorCode == "superseded"
+
+
+@pytest.mark.asyncio
+async def test_giving_up_a_take_leaves_another_take_on_the_row_alone(
+    dumps: DumpStore,
+):
+    await dumps.start_dump(USER_ID, "rec-newer", BrainDumpInputMode.typed)
+    assert dumps.row is not None
+    dumps.row.status = BrainDumpStatus.transcribed
+
+    assert not await service.give_up_unrun_take(USER_ID, RECORDING_ID, "superseded")
+    assert (dumps.row.recordingId, dumps.row.status) == (
+        "rec-newer",
+        BrainDumpStatus.transcribed,
+    )

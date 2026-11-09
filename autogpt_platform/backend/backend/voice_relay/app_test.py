@@ -287,6 +287,63 @@ async def test_a_call_names_the_call_it_replaced_on_the_persons_row(redis):
         await read_until(ws, "ended")
 
 
+async def test_a_call_names_the_call_it_replaced_though_its_first_write_was_lost(
+    redis, monkeypatch
+):
+    """Every write of the call's names the call before it, as it names the
+    owner, so a first write that timed out loses neither."""
+    record = locks.CallStore.record
+    second = tokens.new_call_id()
+
+    async def first_write_lost(self, **fields):
+        if self.call_id == second and fields.get("status") == "connecting":
+            return False
+        return await record(self, **fields)
+
+    monkeypatch.setattr(locks.CallStore, "record", first_write_lost)
+    vendor = FakeVendor([Reply(text="Hi"), Reply(text="Hi again")])
+    async with running_relay(redis, vendor) as running:
+        first = tokens.new_call_id()
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start(call_id=first)))
+        await read_until(ws, "ready")
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start(call_id=second)))
+        await read_until(ws, "ready")
+
+        written = await locks.read_call(redis, second)
+        assert written is not None
+        assert (written.uid, written.status, written.prev) == (USER, "live", first)
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+
+
+async def test_a_call_is_pending_before_its_first_record_write(redis, monkeypatch):
+    """A pod that dies between the two leaves a pending call with no record,
+    which the relay's sweep drops, rather than a record nothing finishes."""
+    record = locks.CallStore.record
+    pending_at_first_write: list[bool] = []
+
+    async def noting(self, **fields):
+        if fields.get("status") == "connecting":
+            pending = await locks.postcall_pending(self.redis)
+            pending_at_first_write.append(self.call_id in pending)
+        return await record(self, **fields)
+
+    monkeypatch.setattr(locks.CallStore, "record", noting)
+    async with running_relay(redis, FakeVendor([Reply(text="Hi")])) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start()))
+        await read_until(ws, "ready")
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+
+    assert pending_at_first_write == [True]
+
+
 async def test_a_call_that_cannot_be_recorded_does_not_start(redis):
     vendor = FakeVendor([Reply(text="Hi")])
     async with running_relay(redis, vendor, record_failures=1) as running:

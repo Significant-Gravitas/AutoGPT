@@ -5,6 +5,7 @@ place, and ``recordingId`` identifies the current one so ``finalize`` can
 be retried safely.
 """
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -73,6 +74,29 @@ _TAKE_OWNED_RESET: dict[str, Any] = {
 }
 
 
+# A voice call's interview take is named for the call: ``interview-`` and
+# the call's id, 32 hex digits. A typed interview's is named for its chat
+# session, whose id is a dashed UUID, so the two never match.
+_CALL_TAKE = re.compile(r"interview-[0-9a-f]{32}")
+
+
+def call_take_displaces(recording_id: str, held: str) -> bool:
+    """Whether *recording_id*, a voice call's interview take, displaces the
+    row's take *held*, another call's, in whatever status it is.
+
+    A typed or skipped take never displaces a take still being processed:
+    two typed submits carry no order between them. Two calls' takes do. The
+    row named the later call when it started, so the later call's take
+    claims the row as a new voice upload does, and the earlier take's jobs
+    write nothing once it is off the row.
+    """
+    return (
+        recording_id != held
+        and _CALL_TAKE.fullmatch(recording_id) is not None
+        and _CALL_TAKE.fullmatch(held) is not None
+    )
+
+
 async def start_dump(
     user_id: str,
     recording_id: str,
@@ -82,9 +106,11 @@ async def start_dump(
 
     A take already moving through the pipeline is returned untouched when
     recovery replays part 0 or finalize is retried, and a typed or skipped
-    take with a different id cannot displace one still being processed. Any
-    other new id is a deliberate new take, a re-take after a finished one
-    included, and claims the row, taking every take-owned column with it.
+    take with a different id cannot displace one still being processed,
+    unless it is a voice call's take and the take on the row another call's
+    (:func:`call_take_displaces`). Any other new id is a deliberate new
+    take, a re-take after a finished one included, and claims the row,
+    taking every take-owned column with it.
     """
     existing = await get_dump(user_id)
     if existing and (
@@ -95,6 +121,7 @@ async def start_dump(
         or (
             input_mode != BrainDumpInputMode.voice
             and existing.status in _PROCESSING_STATUSES
+            and not call_take_displaces(recording_id, existing.recordingId)
         )
     ):
         return existing
