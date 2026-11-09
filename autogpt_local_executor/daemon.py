@@ -306,6 +306,12 @@ DISPATCH_DRAIN_SECONDS = 10.0
 # until its thread returns, which a hung one never does. Well inside the 30
 # seconds the platform waits for most replies.
 MACHINE_WORK_WAIT_SECONDS = 10.0
+# How long a session has to stay up after its handshake for its drop to
+# start the reconnect backoff over. One the platform ends sooner (closing
+# with 1011 right after HELLO_ACK while it is overloaded, say) counts as a
+# failed connect, so the backoff keeps growing rather than every shim
+# reconnecting every few seconds.
+STABLE_SESSION_SECONDS = 60.0
 
 # When the shim received the request this task serves (loop time), set by
 # _dispatch: a computer-use call's deadline counts from it.
@@ -436,7 +442,9 @@ class ShimDaemon:
         self._revoked_ws: Any = None
         # Whether the current connection got through its handshake. A session
         # that was up and then dropped starts the reconnect backoff over.
-        self._session_up = False
+        # When the current session's handshake completed (loop time), or None
+        # while it isn't up.
+        self._session_up_at: float | None = None
         # Backpressure / health bookkeeping (#38). _in_flight = tasks
         # currently holding the semaphore; _queue_depth = tasks waiting
         # to acquire it. Maintained explicitly so we don't have to poke
@@ -536,7 +544,7 @@ class ShimDaemon:
         attempt = 0
         try:
             while self._running:
-                self._session_up = False
+                self._session_up_at = None
                 try:
                     await self._session()
                 except asyncio.CancelledError:
@@ -570,7 +578,11 @@ class ShimDaemon:
                         break
                     if not self._running:
                         break
-                    if self._session_up:
+                    if (
+                        self._session_up_at is not None
+                        and asyncio.get_running_loop().time() - self._session_up_at
+                        >= STABLE_SESSION_SECONDS
+                    ):
                         # The drop ended a working session, not a run of failed
                         # connects, so reconnect promptly.
                         attempt = 0
@@ -735,7 +747,7 @@ class ShimDaemon:
             except Exception as exc:
                 disconnect_reason = f"handshake_failed: {exc.__class__.__name__}"
                 raise
-            self._session_up = True
+            self._session_up_at = asyncio.get_running_loop().time()
             # Start the periodic STATUS ticker AFTER handshake — we want
             # max_concurrent from HELLO_ACK before announcing capacity.
             self._status_task = asyncio.create_task(self._status_ticker(ws))

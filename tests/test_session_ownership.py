@@ -426,6 +426,9 @@ async def test_a_session_that_was_up_starts_the_reconnect_backoff_over(
 ) -> None:
     """A session that ran and then dropped must reconnect promptly, not at
     the delay built up by the failures before it."""
+    import autogpt_local_executor.daemon as daemon_module
+
+    monkeypatch.setattr(daemon_module, "STABLE_SESSION_SECONDS", 0.0)
     attempts: list[int] = []
     calls = 0
 
@@ -453,6 +456,39 @@ async def test_a_session_that_was_up_starts_the_reconnect_backoff_over(
     await asyncio.wait_for(daemon.run(), timeout=30)
 
     assert attempts == [0, 1, 2, 0]
+
+
+async def test_sessions_the_platform_ends_right_away_keep_the_backoff_growing(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A platform that answered HELLO_ACK and then closed with 1011 (while
+    overloaded, say) had every shim reconnect after the base delay, again
+    and again, since any session that came up started the backoff over."""
+    attempts: list[int] = []
+    calls = 0
+
+    async def handshake(_ws: Any) -> None:
+        return None
+
+    async def session() -> None:
+        nonlocal calls
+        calls += 1
+        if calls <= 3:
+            dropped = _FakeWebSocket([_make_connection_closed(code=1011, reason="")])
+            await daemon._run_session(dropped)
+        daemon._running = False
+
+    def backoff(attempt: int) -> float:
+        attempts.append(attempt)
+        return 0
+
+    monkeypatch.setattr(daemon, "_handshake", handshake)
+    monkeypatch.setattr(daemon, "_session", session)
+    monkeypatch.setattr(daemon, "_backoff_delay", backoff)
+
+    await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert attempts == [0, 1, 2]
 
 
 def test_the_backoff_survives_any_number_of_failed_attempts(daemon: ShimDaemon) -> None:

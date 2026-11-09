@@ -1283,6 +1283,8 @@ and the spec's discriminated union just gains it within a major.
 
 Shim uses exponential backoff: `min(2^attempt * 1s, 60s) + jitter(0-5s)`.
 `attempt` counts failed connects in a row and goes back to 0 once a
-connection completes its handshake, so a session that drops after
-running reconnects promptly. On reconnect, shim sends a new `HELLO`. Platform re-issues `HELLO_ACK` with same session.
+session that completed its handshake has stayed up for a minute, so a
+session that drops after running reconnects promptly, while one the
+platform ends right after `HELLO_ACK` (closing with 1011 while
+overloaded, say) counts as a failed connect and the backoff keeps growing. On reconnect, shim sends a new `HELLO`. Platform re-issues `HELLO_ACK` with same session.
 Any in-flight requests at disconnect time are considered failed; platform retries if safe.
