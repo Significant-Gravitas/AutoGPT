@@ -207,9 +207,7 @@ def assert_inside_jail(
     )
 
 
-def from_root(
-    requested_path: str | os.PathLike[str], allowed_root: str | os.PathLike[str]
-) -> str:
+def from_root(requested_path: str | os.PathLike[str], allowed_root: str | os.PathLike[str]) -> str:
     """The path a request names, before symlinks are resolved: `~` expanded,
     and a relative path taken from the root, as the platform means one (it
     joins a relative path to allowed_root itself), not from whatever
