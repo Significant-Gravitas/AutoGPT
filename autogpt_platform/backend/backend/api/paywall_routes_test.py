@@ -309,6 +309,7 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/credits/stripe_webhook",
     "POST /api/email/",
     "POST /api/email/mailerlite/webhook",
+    "GET /api/email/unsubscribe",
     "POST /api/email/unsubscribe",
     "GET /api/experts/templates",
     "GET /api/feature-flags",

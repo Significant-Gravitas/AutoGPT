@@ -2,7 +2,7 @@ import logging
 from types import TracebackType
 from typing import Annotated, Self
 
-from fastapi import APIRouter, Body, Query, Security
+from fastapi import APIRouter, Body, Query, Request, Security
 from fastapi.responses import JSONResponse
 
 from backend.api.utils.api_key_auth import APIKeyAuthenticator
@@ -11,6 +11,7 @@ from backend.data.user import (
     get_user_by_email,
     set_user_email_verification,
     unsubscribe_user_by_token,
+    verify_unsubscribe_token,
 )
 from backend.util.posthog_events import PostHogEvent
 from backend.util.settings import Settings
@@ -26,6 +27,7 @@ from .models import (
     PostmarkSubscriptionChangeWebhook,
     PostmarkWebhook,
 )
+from .unsubscribe_page import confirm_page, invalid_link_page, unsubscribed_page
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -38,10 +40,34 @@ postmark_api_key_auth = APIKeyAuthenticator(
 )
 
 
+@router.get("/unsubscribe", include_in_schema=False)
+async def unsubscribe_confirm_page(token: Annotated[str, Query()]):
+    # A click only shows the page: mail scanners open links, and must not
+    # unsubscribe anyone by doing so.
+    try:
+        verify_unsubscribe_token(token)
+    except ValueError:
+        return invalid_link_page()
+    return confirm_page()
+
+
 @router.post("/unsubscribe", summary="One Click Email Unsubscribe")
-async def unsubscribe_via_one_click(token: Annotated[str, Query()]):
-    logger.info("Received unsubscribe request from One Click Unsubscribe")
-    await unsubscribe_user_by_token(token)
+async def unsubscribe_via_one_click(request: Request, token: Annotated[str, Query()]):
+    # The confirm page's form asks for a page back; a mail app's one-click POST
+    # (RFC 8058) reads only the status.
+    from_page = "text/html" in request.headers.get("accept", "")
+    logger.info(
+        "Received unsubscribe request from "
+        f"{'the confirm page' if from_page else 'One Click Unsubscribe'}"
+    )
+    try:
+        await unsubscribe_user_by_token(token)
+    except ValueError:
+        if from_page:
+            return invalid_link_page()
+        raise
+    if from_page:
+        return unsubscribed_page()
     return JSONResponse(status_code=200, content={"status": "ok"})
 
 
