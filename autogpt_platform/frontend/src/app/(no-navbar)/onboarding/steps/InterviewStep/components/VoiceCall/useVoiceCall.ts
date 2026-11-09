@@ -693,6 +693,10 @@ export function useVoiceCall(args: Args) {
     if (phase === "ended") trackEndingAction("type_instead");
     const attempt = ++conn.attempt;
     conn.poll += 1;
+    // A finish waiting on the server is let go: the typed interview takes
+    // over from here.
+    conn.isLeaving = false;
+    setIsLeaving(false);
     const call = conn.call;
     if (call) {
       trackInterview("interview_ended", {
@@ -745,42 +749,48 @@ export function useVoiceCall(args: Args) {
   }
 
   // The person's word on the call's take: hand off what it kept, or answer
-  // the hand-off as it stands, and read the answer for a call.
+  // the hand-off as it stands, and read the answer for a call. A finish the
+  // server cannot take yet (409: the call's words, or a later call of the
+  // person's, are not settled) is waited out and asked again, never shown as
+  // an error.
   async function finishCall(callId: string) {
     const conn = connRef.current;
     const attempt = ++conn.attempt;
+    const poll = ++conn.poll;
     conn.isLeaving = true;
     setIsLeaving(true);
     setFinishFailure(null);
+    const windowEndsAt = Date.now() + ENDING_WINDOW_MS;
     let outcome: ReturnType<typeof voiceFinishOutcome> = null;
-    try {
-      const response = await finishOnboardingVoiceCall(callId);
-      outcome =
-        response.status === 200 ? voiceFinishOutcome(response.data) : null;
-    } catch (error) {
-      // The step went away while the finish was on its way.
-      if (attempt !== conn.attempt) return;
-      conn.isLeaving = false;
-      setIsLeaving(false);
-      // The call's words are not ready to hand off yet.
-      if (refusalOf(error).status === 409) {
-        setPhase("wrapping_up");
-        void awaitEnding(callId);
-        return;
+    for (;;) {
+      try {
+        const response = await finishOnboardingVoiceCall(callId);
+        outcome =
+          response.status === 200 ? voiceFinishOutcome(response.data) : null;
+        break;
+      } catch (error) {
+        // The step went away, or the person typed instead, meanwhile.
+        if (attempt !== conn.attempt || poll !== conn.poll) return;
+        if (refusalOf(error).status !== 409) {
+          stopFinishing(finishFailureOf(error));
+          return;
+        }
       }
-      setFinishFailure(finishFailureOf(error));
-      return;
+      setPhase("finishing");
+      const isPastWindow = Date.now() >= windowEndsAt;
+      setIsPastWindow(isPastWindow);
+      await sleep(isPastWindow ? ENDING_SLOW_POLL_MS : ENDING_POLL_MS);
+      if (attempt !== conn.attempt || poll !== conn.poll) return;
     }
-    if (attempt !== conn.attempt) return;
+    if (attempt !== conn.attempt || poll !== conn.poll) return;
+    setIsPastWindow(false);
     if (outcome === "superseded") {
       // Another take owns the interview, and the call's record says whose:
       // the person's typing opens the typed interview; any other leads on.
       const call = await readStatus(callId);
-      if (attempt !== conn.attempt) return;
+      if (attempt !== conn.attempt || poll !== conn.poll) return;
       if (call === null) {
-        conn.isLeaving = false;
-        setIsLeaving(false);
-        setFinishFailure({ kind: "failed" });
+        stopFinishing({ kind: "failed" });
         return;
       }
       if (call !== "missing" && answerOf(call) === "typed") {
@@ -797,6 +807,10 @@ export function useVoiceCall(args: Args) {
     }
     conn.isLeaving = false;
     setIsLeaving(false);
+    if (outcome === "no_words") {
+      settle({ kind: "no_words" }, null);
+      return;
+    }
     if (outcome === "insufficient") {
       settle({ kind: "insufficient" }, null);
       return;
@@ -805,7 +819,17 @@ export function useVoiceCall(args: Args) {
       settle({ kind: "unsaved", reason: endReason }, null);
       return;
     }
-    setFinishFailure({ kind: "failed" });
+    stopFinishing({ kind: "failed" });
+  }
+
+  // A finish that cannot go on: back to the call's ending, saying why.
+  function stopFinishing(failure: StartFailure) {
+    const conn = connRef.current;
+    conn.isLeaving = false;
+    setIsLeaving(false);
+    setIsPastWindow(false);
+    setPhase("ended");
+    setFinishFailure(failure);
   }
 
   function trackEndingAction(action: EndingAction) {

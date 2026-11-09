@@ -114,7 +114,9 @@ export function VoiceCall({ call }: Props) {
         </div>
       )}
 
-      {(call.phase === "wrapping_up" || call.phase === "saving") &&
+      {(call.phase === "wrapping_up" ||
+        call.phase === "saving" ||
+        call.phase === "finishing") &&
         call.isPastWindow && (
           <Button
             variant="secondary"

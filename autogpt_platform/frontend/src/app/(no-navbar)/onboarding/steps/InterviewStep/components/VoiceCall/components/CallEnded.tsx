@@ -45,7 +45,10 @@ export function CallEnded({
   }
 
   // With nothing to hand off, calling again leads.
-  const leadsWithCall = ending.kind === "missing" || ending.kind === "unsaved";
+  const leadsWithCall =
+    ending.kind === "missing" ||
+    ending.kind === "no_words" ||
+    ending.kind === "unsaved";
   const otherWays = (
     <>
       <Button
@@ -89,6 +92,12 @@ export function CallEnded({
           yet.
         </Text>
       )}
+      {ending.kind === "no_words" && (
+        <Text variant="body" align="center">
+          We didn&apos;t hear you on that call. You can call again or type
+          instead.
+        </Text>
+      )}
       {ending.kind === "unsaved" && (
         <Text variant="body" align="center">
           We couldn&apos;t keep what you said on that call. You can call again
@@ -121,6 +130,7 @@ export function CallEnded({
         )}
         {(ending.kind === "lost" ||
           ending.kind === "missing" ||
+          ending.kind === "no_words" ||
           ending.kind === "unsaved" ||
           (ending.kind === "retry" && ending.cutOff)) &&
           otherWays}

@@ -150,6 +150,9 @@ export type CallPhase =
   | "wrapping_up"
   // The call was lost; what became of its words is being read.
   | "saving"
+  // The person's finish of the call waits until the server can take it:
+  // the call's words, or a later call of theirs, are not settled yet.
+  | "finishing"
   // Ending a live call before what the person chose next.
   | "ending_call"
   // A live call holds the interview: rejoin it or end it.
@@ -195,6 +198,8 @@ export function callStatusCopy({
       return "Wrapping up…";
     case "saving":
       return "We lost the call. Saving what you said…";
+    case "finishing":
+      return "Saving what you said…";
     case "ending_call":
       return "Ending the call…";
     default:
@@ -228,10 +233,15 @@ const UNSETTLED = new Set<VoiceCallStatusResponseStatus>([
 ]);
 
 const SUPERSEDED = "superseded";
-const VERDICTS_ON_THE_WORDS = new Set([
+// The call settled without words: nothing was heard, or nothing could be
+// made of the recording. Such a call is no take, and an earlier call stands.
+const NO_WORDS = new Set([
   "no_usable_speech",
-  "insufficient_content",
+  "transcription_unavailable",
+  "recording_unavailable",
 ]);
+// Words were heard, and judged too few to set up from.
+const NOT_ENOUGH_WORDS = "insufficient_content";
 // The pipeline never ruled on words the call kept: the finish route hands
 // them off again. Any other failure kept nothing to hand off.
 const HANDED_OFF_AGAIN = new Set([
@@ -247,6 +257,8 @@ export type CallEnding =
   // Cut off with the words saved: "Meet your team" (a finish of this call),
   // "Call again" and "Type instead".
   | { kind: "lost"; reason: string | null }
+  // Nothing was heard on the call: "Call again" and "Type instead".
+  | { kind: "no_words" }
   | { kind: "insufficient" }
   // The pipeline never ruled on the words: "Try again" through the finish
   // route, beside the other ways on after a cut-off call.
@@ -281,6 +293,7 @@ export function answerOf(
   const reason = call.end_reason ?? null;
   if (call.status === "failed") {
     const failure = failureOf(call.hand_off?.error_code ?? null);
+    if (failure === "no_words") return { kind: "no_words" };
     if (failure === "insufficient") return { kind: "insufficient" };
     if (failure === "retry") return { kind: "retry", cutOff: !closed, reason };
     return { kind: "unsaved", reason };
@@ -300,11 +313,12 @@ export function answerOf(
 // What a finish of a call answers, read for a call: an accepted take leads
 // on to the team; `superseded` says another take owns the interview, which
 // the call's record tells apart (the person's typing, or a take that leads
-// on); a verdict on the words keeps the interview open for another call or
-// for typing; a hand-off nobody ruled on is tried again (null).
+// on); a call with no words, or too few, keeps the interview open for
+// another call or for typing; a hand-off nobody ruled on is tried again
+// (null).
 export function voiceFinishOutcome(
   response: FinalizeResponse,
-): "A" | "superseded" | "insufficient" | "unsaved" | null {
+): "A" | "superseded" | "no_words" | "insufficient" | "unsaved" | null {
   if (response.status !== "failed") return "A";
   const code = response.error_code ?? null;
   if (code === SUPERSEDED) return "superseded";
@@ -312,10 +326,14 @@ export function voiceFinishOutcome(
   return failure === "retry" ? null : failure;
 }
 
-// A failed hand-off, read for what the person can do next: a verdict on the
-// words; words kept to hand off again; or nothing kept.
-function failureOf(code: string | null): "insufficient" | "retry" | "unsaved" {
-  if (code !== null && VERDICTS_ON_THE_WORDS.has(code)) return "insufficient";
+// A failed hand-off, read for what the person can do next: no words, or a
+// verdict that they were too few; words kept to hand off again; or nothing
+// kept.
+function failureOf(
+  code: string | null,
+): "no_words" | "insufficient" | "retry" | "unsaved" {
+  if (code !== null && NO_WORDS.has(code)) return "no_words";
+  if (code === NOT_ENOUGH_WORDS) return "insufficient";
   if (code === null || HANDED_OFF_AGAIN.has(code)) return "retry";
   return "unsaved";
 }

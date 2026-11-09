@@ -251,6 +251,9 @@ const SUPERSEDED_TAKE: FinalizeResponse = {
   error_code: "superseded",
 };
 
+const DIDNT_HEAR_YOU =
+  "We didn't hear you on that call. You can call again or type instead.";
+
 function callRecord(overrides: Partial<CallRecord> = {}): CallRecord {
   return {
     call_id: CALL_ID,
@@ -1322,14 +1325,14 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(typedStartCount).toBe(1);
   });
 
-  it("offers another call or typing, never Try again, for a call that kept nothing to hand off", async () => {
+  it("offers another call or typing, never Try again, for a call whose words were not kept", async () => {
     callStates[CALL_ID] = [
       callRecord({
         status: "failed",
         hand_off: {
           status: "failed",
           input_mode: "typed",
-          error_code: "transcription_unavailable",
+          error_code: "some_new_failure",
         },
       }),
     ];
@@ -1347,6 +1350,104 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(screen.getByRole("button", { name: "Type instead" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
     expect(screen.queryByText(/What you said is kept/)).toBeNull();
+  });
+
+  it.each([
+    ["no_usable_speech"],
+    ["transcription_unavailable"],
+    ["recording_unavailable"],
+  ])(
+    "says it did not hear the person, with another call or typing, after a call that settled without words (%s)",
+    async (code) => {
+      callStates[CALL_ID] = [
+        callRecord({
+          status: "failed",
+          end_reason: "user_hangup",
+          hand_off: { status: "failed", input_mode: "typed", error_code: code },
+        }),
+      ];
+      render(<OnboardingPage />);
+      const socket = await liveCall();
+
+      endCall(socket, "user_hangup");
+
+      expect(await screen.findByText(DIDNT_HEAR_YOU)).toBeDefined();
+      expect(screen.getByRole("button", { name: "Call again" })).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "Type instead" }),
+      ).toBeDefined();
+      expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+      expect(screen.queryByText(/We heard you/)).toBeNull();
+    },
+  );
+
+  it("says it did not hear the person when a call's finish answers that nothing was heard", async () => {
+    callStates[CALL_ID] = [
+      callRecord({
+        status: "failed",
+        hand_off: {
+          status: "failed",
+          input_mode: "typed",
+          error_code: "quality_check_unavailable",
+        },
+      }),
+    ];
+    server.use(
+      getFinishOnboardingVoiceCallMockHandler200(({ params }) => {
+        finishes.push(String(params.callId));
+        return {
+          status: "failed",
+          input_mode: "typed",
+          error_code: "no_usable_speech",
+        };
+      }),
+    );
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "finished");
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByText(DIDNT_HEAR_YOU)).toBeDefined();
+    expect(finishes).toEqual([CALL_ID]);
+    expect(screen.queryByTestId("step-plan")).toBeNull();
+  });
+
+  it("keeps the call's ending and says the finish failed when the finish route errs", async () => {
+    callStates[CALL_ID] = [
+      callRecord({
+        status: "failed",
+        hand_off: {
+          status: "failed",
+          input_mode: "typed",
+          error_code: "quality_check_unavailable",
+        },
+      }),
+    ];
+    server.use(
+      http.post(`${VOICE}/:callId/finish`, ({ params }) => {
+        finishes.push(String(params.callId));
+        return HttpResponse.json({ detail: "Internal error" }, { status: 500 });
+      }),
+    );
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "finished");
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Try again" }));
+
+    expect(
+      await screen.findByText("That didn't go through. Try again."),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Try again" })).toHaveProperty(
+      "disabled",
+      false,
+    );
+    expect(finishes).toEqual([CALL_ID]);
   });
 
   it("keeps Skip and Back away while a call's finish is on its way", async () => {
@@ -1449,6 +1550,75 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
   });
 
+  it("keeps Saving what you said while a call's finish waits on a later call, then moves on", async () => {
+    callStates[CALL_ID] = [callRecord({ end_reason: "vendor_error" })];
+    let laterCallSettled = false;
+    server.use(
+      http.post(`${VOICE}/:callId/finish`, ({ params }) => {
+        finishes.push(String(params.callId));
+        // A later call of the person's is still unsettled.
+        if (!laterCallSettled) {
+          return HttpResponse.json(
+            { detail: { code: "call_not_ready" } },
+            { status: 409 },
+          );
+        }
+        return HttpResponse.json(ACCEPTED);
+      }),
+    );
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "vendor_error");
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Meet your team" }));
+
+    expect(await screen.findByText("Saving what you said…")).toBeDefined();
+    await waitFor(() => expect(finishes.length).toBeGreaterThanOrEqual(3));
+    expect(screen.queryByText("That didn't go through. Try again.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+
+    laterCallSettled = true;
+
+    await expectPlanStep();
+    expect(new Set(finishes)).toEqual(new Set([CALL_ID]));
+    expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
+  });
+
+  it("offers Type instead past the wait while a call's finish waits, and stops finishing once the person types", async () => {
+    callStates[CALL_ID] = [callRecord({ end_reason: "vendor_error" })];
+    server.use(
+      http.post(`${VOICE}/:callId/finish`, ({ params }) => {
+        finishes.push(String(params.callId));
+        return HttpResponse.json(
+          { detail: { code: "call_not_ready" } },
+          { status: 409 },
+        );
+      }),
+    );
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    const user = userEvent.setup();
+
+    endCall(socket, "vendor_error");
+    await user.click(
+      await screen.findByRole("button", { name: "Meet your team" }),
+    );
+    expect(await screen.findByText("Saving what you said…")).toBeDefined();
+    await user.click(
+      await screen.findByRole("button", { name: "Type instead" }),
+    );
+
+    expect(await screen.findByText(GREETING)).toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const asked = finishes.length;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(finishes.length).toBe(asked);
+    expect(screen.queryByTestId("step-plan")).toBeNull();
+  });
+
   it("moves on as path A when the call's finish answers that another take beat it", async () => {
     callStates[CALL_ID] = [callRecord({ end_reason: "vendor_error" })];
     server.use(
@@ -1507,7 +1677,7 @@ describe("onboarding interview by voice: how a call ends", () => {
         hand_off: {
           status: "failed",
           input_mode: "typed",
-          error_code: "no_usable_speech",
+          error_code: "insufficient_content",
         },
       }),
     ];
@@ -1761,6 +1931,24 @@ describe("onboarding interview by voice: one interview, typed or spoken", () => 
     expect(screen.queryByText(GREETING)).toBeNull();
     // The typed interview is never read first.
     expect(typedStartCount).toBe(0);
+  });
+
+  it("shows the earlier call a reload answers, not the call this tab made last", async () => {
+    // This tab's last call settled without words, so the server's read
+    // looks through it to the call before.
+    keepTicket(OTHER_CALL_ID);
+    latestCall = callRecord({ end_reason: "client_gone" });
+
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText("The connection dropped.")).toBeDefined();
+    expect(screen.getByText("What you said so far is saved.")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Rejoin" })).toBeNull();
+    expect(statusReads).not.toContain(OTHER_CALL_ID);
+    expect(fakes.sockets).toHaveLength(0);
   });
 
   it("opens a finished typed interview as its transcript in a new tab, with no choice and no Skip", async () => {

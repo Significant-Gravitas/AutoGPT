@@ -206,8 +206,26 @@ describe("what a call's record answers", () => {
     ).toEqual({ kind: "lost", reason: "idle" });
   });
 
-  it.each([["no_usable_speech"], ["insufficient_content"]])(
-    "shows the insufficient screen for a verdict on the words (%s), however the call ended",
+  it("shows the insufficient screen when the words were too few, however the call ended", () => {
+    for (const reason of ["finished", "client_gone"]) {
+      expect(
+        answerOf(
+          call({
+            status: "failed",
+            end_reason: reason,
+            hand_off: failed("insufficient_content"),
+          }),
+        ),
+      ).toEqual({ kind: "insufficient" });
+    }
+  });
+
+  it.each([
+    ["no_usable_speech"],
+    ["transcription_unavailable"],
+    ["recording_unavailable"],
+  ])(
+    "says it did not hear the person on a call that settled without words (%s), however it ended",
     (code) => {
       for (const reason of ["finished", "client_gone"]) {
         expect(
@@ -218,7 +236,7 @@ describe("what a call's record answers", () => {
               hand_off: failed(code),
             }),
           ),
-        ).toEqual({ kind: "insufficient" });
+        ).toEqual({ kind: "no_words" });
       }
     },
   );
@@ -241,26 +259,19 @@ describe("what a call's record answers", () => {
     ).toEqual({ kind: "retry", cutOff: true, reason: "vendor_error" });
   });
 
-  it.each([
-    ["transcription_unavailable"],
-    ["recording_unavailable"],
-    ["some_new_failure"],
-  ])(
-    "offers another call or typing for a call that kept nothing to hand off (%s)",
-    (code) => {
-      for (const reason of ["finished", "client_gone"]) {
-        expect(
-          answerOf(
-            call({
-              status: "failed",
-              end_reason: reason,
-              hand_off: failed(code),
-            }),
-          ),
-        ).toEqual({ kind: "unsaved", reason });
-      }
-    },
-  );
+  it("offers another call or typing for a call whose failure it does not know", () => {
+    for (const reason of ["finished", "client_gone"]) {
+      expect(
+        answerOf(
+          call({
+            status: "failed",
+            end_reason: reason,
+            hand_off: failed("some_new_failure"),
+          }),
+        ),
+      ).toEqual({ kind: "unsaved", reason });
+    }
+  });
 
   it.each([
     ["quality_check_unavailable"],
@@ -303,10 +314,17 @@ describe("what a finish of a call answers", () => {
     expect(voiceFinishOutcome(failed("superseded"))).toBe("superseded");
   });
 
-  it("keeps the interview open for a verdict on the words", () => {
+  it("keeps the interview open for a call with no words, or too few", () => {
     expect(voiceFinishOutcome(failed("insufficient_content"))).toBe(
       "insufficient",
     );
+    for (const code of [
+      "no_usable_speech",
+      "transcription_unavailable",
+      "recording_unavailable",
+    ]) {
+      expect(voiceFinishOutcome(failed(code))).toBe("no_words");
+    }
   });
 
   it("asks to try again when the pipeline never ruled", () => {
@@ -314,10 +332,8 @@ describe("what a finish of a call answers", () => {
     expect(voiceFinishOutcome(failed(null))).toBeNull();
   });
 
-  it("says when the call kept nothing to hand off", () => {
-    expect(voiceFinishOutcome(failed("transcription_unavailable"))).toBe(
-      "unsaved",
-    );
+  it("says when the call kept nothing it knows how to hand off", () => {
+    expect(voiceFinishOutcome(failed("some_new_failure"))).toBe("unsaved");
   });
 });
 
@@ -343,6 +359,17 @@ describe("the call's copy", () => {
     });
     expect(saving).toBe("We lost the call. Saving what you said…");
     expect(saving).not.toMatch(/typ/i);
+  });
+
+  it("says the words are being saved, not that anything failed, while a finish waits", () => {
+    expect(
+      callStatusCopy({
+        phase: "finishing",
+        isWrappingUp: false,
+        wasResumed: false,
+        isHangingUp: false,
+      }),
+    ).toBe("Saving what you said…");
   });
 
   it("puts the live call's state in one line", () => {
