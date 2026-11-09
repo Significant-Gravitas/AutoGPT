@@ -1129,6 +1129,25 @@ async def test_an_approved_disk_argument_is_relayed_and_audited_whole(
     assert record["details"]["arguments"]["screenshot_out_file"] == path
 
 
+async def test_an_approval_name_the_tool_lacks_keeps_its_record_cut(
+    make_handler, fake_log, tmp_path
+) -> None:
+    """Any approved_arguments entry turned the audit's cut off, so a call
+    naming one the tool doesn't have, refused right after, had its long
+    arguments written to the audit log whole, time after time."""
+    handler = make_handler()
+    url = "https://example.com/" + "a" * 5000
+
+    response = await handler.handle(
+        _call("browser_navigate", {"url": url}, approved_arguments=["screenshot_out_file"])
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert _records(fake_log, "call") == []
+    [record] = _audit(tmp_path)
+    assert len(record["details"]["arguments"]["url"]) < 300
+
+
 async def test_an_approval_covers_only_the_argument_it_names(make_handler, fake_log) -> None:
     handler = make_handler(enable_clipboard=True)
 

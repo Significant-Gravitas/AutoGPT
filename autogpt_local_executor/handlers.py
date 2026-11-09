@@ -1657,12 +1657,15 @@ class ComputerUseHandler:
     def _call_details(msg: ComputerToolCallMessage) -> dict[str, Any]:
         tool = msg.payload.tool
         approved = msg.payload.approved_arguments
+        # Only a name the tool can have approved counts: a call naming
+        # another is refused, and its record keeps the usual cut.
+        approves = set(approved) & set(APPROVAL_ARGUMENTS.get(tool, {}))
         details: dict[str, Any] = {
             "tool": tool,
             # What launches, and the paths the person approved, are kept
             # whole, as EXECUTE_COMMAND keeps argv.
             "arguments": _audit_arguments(
-                dict(msg.payload.arguments), truncate=tool != "launch_app" and not approved
+                dict(msg.payload.arguments), truncate=tool != "launch_app" and not approves
             ),
         }
         if approved:
