@@ -19,15 +19,21 @@ from backend.copilot.model import ChatMessage
 
 from .models import ClarifyingQuestion
 
-# Turns in a row that may end with a question, per approval mode.
+# Turns in a row that may end with a question, per approval mode. One round
+# in every mode: once the user has answered, Otto goes on with its defaults
+# and says what it assumed. Ask First differs in its approval cards, not in
+# asking twice.
 QUESTION_BUDGET: dict[AutopilotMode, int] = {
     "unsupervised": 1,
-    "auto": 2,
-    "ask_first": 4,
+    "auto": 1,
+    "ask_first": 1,
 }
 
+# At the start of any sentence of the question: "Hugo wanted Thursday. Should
+# I tell Tobias yes anyway?" is still a permission ask; "Which bill should I
+# pay?" is not.
 _PERMISSION_CHATTER = re.compile(
-    r"^\s*(should i|shall i|do you want me to|would you like me to|"
+    r"(?:^|[.?!:;]\s+)\s*(should i|shall i|do you want me to|would you like me to|"
     r"want me to|can i go ahead|ok(ay)? to (proceed|go ahead)|"
     r"may i proceed|should we proceed|ready for me to)\b",
     re.IGNORECASE,

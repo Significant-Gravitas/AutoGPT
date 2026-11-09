@@ -37,10 +37,19 @@ def test_preferences_are_asked_only_in_ask_first(mode, allowed):
 
 @pytest.mark.parametrize(
     "text",
-    ["Should I go ahead?", "Do you want me to also email them?", "OK to proceed?"],
+    [
+        "Should I go ahead?",
+        "Do you want me to also email them?",
+        "OK to proceed?",
+        "Hugo wanted to decide Thursday. Should I tell Tobias yes now anyway?",
+    ],
 )
 def test_permission_chatter_is_refused(text):
     assert "do not ask permission" in (refusal([_q(text)], "auto", 0) or "")
+
+
+def test_should_i_inside_a_real_question_is_not_permission():
+    assert refusal([_q("Which of the three bills should I pay?")], "auto", 0) is None
 
 
 def test_asking_before_something_irreversible_is_allowed():
