@@ -94,8 +94,9 @@ class TestBuildSystemPrompt:
         assert understanding is None
 
     @pytest.mark.asyncio
-    async def test_langfuse_compiled_prompt_returned(self):
-        """When Langfuse is configured and returns a prompt, the compiled text is returned."""
+    async def test_langfuse_prompt_is_not_fetched_while_switched_off(self):
+        """The Langfuse fetch is switched off: the in-file prompt is served even
+        when Langfuse is configured and would return a prompt."""
         fake_understanding = MagicMock()
         mock_db = MagicMock()
         mock_db.get_business_understanding = AsyncMock(return_value=fake_understanding)
@@ -115,13 +116,17 @@ class TestBuildSystemPrompt:
                 f"{_SVC}.asyncio.to_thread", new=AsyncMock(return_value=mock_prompt_obj)
             ),
         ):
-            from backend.copilot.service import _build_system_prompt
+            from backend.copilot.service import (
+                _CACHEABLE_SYSTEM_PROMPT,
+                _build_system_prompt,
+            )
 
             prompt, understanding = await _build_system_prompt("user-789")
 
-        assert prompt == langfuse_prompt_text
+        assert prompt == _CACHEABLE_SYSTEM_PROMPT
+        mock_langfuse.get_prompt.assert_not_called()
         assert understanding is fake_understanding
-        mock_prompt_obj.compile.assert_called_once_with(users_information="")
+        mock_prompt_obj.compile.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_langfuse_error_falls_back_to_static_prompt(self):
