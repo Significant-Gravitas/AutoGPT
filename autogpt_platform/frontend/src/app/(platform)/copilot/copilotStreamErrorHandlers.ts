@@ -259,7 +259,9 @@ export function handleStreamError({
   }
 
   // 3. Authentication failures (from getCopilotAuthHeaders or 401 responses).
-  // "401" counts only as a number of its own, not inside an id.
+  // It is the error's text that is read, not a response's status: "401"
+  // counts only as a whole word in it, never inside a longer one such as an
+  // id.
   const isAuthError =
     errorDetail.includes("Authentication failed") ||
     errorDetail.includes("Unauthorized") ||

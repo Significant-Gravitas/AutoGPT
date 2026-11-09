@@ -108,7 +108,7 @@ describe("handleStreamError", () => {
     );
   });
 
-  it("toasts an auth error for a 401 status in the message", () => {
+  it("toasts an auth error when 401 is a whole word in the error's text", () => {
     handleStreamError({
       error: new Error("Request failed: HTTP 401"),
       onRateLimit: vi.fn(),

@@ -74,14 +74,19 @@ export function forgetCallTicket(userId: string) {
   }
 }
 
-// Every ticket this tab kept, for signing out.
-export function forgetCallTickets() {
+// Every ticket this tab kept, for signing out; with *keepUserId*, every one
+// but that user's, for an account taking over the tab.
+export function forgetCallTickets(keepUserId?: string) {
+  const kept = keepUserId === undefined ? null : `${KEY_PREFIX}${keepUserId}`;
   try {
     const keys = Array.from({ length: sessionStorage.length }, (_, index) =>
       sessionStorage.key(index),
     );
     keys
-      .filter((key): key is string => !!key && key.startsWith(KEY_PREFIX))
+      .filter(
+        (key): key is string =>
+          !!key && key.startsWith(KEY_PREFIX) && key !== kept,
+      )
       .forEach((key) => sessionStorage.removeItem(key));
   } catch {
     // Nothing kept, nothing to forget.

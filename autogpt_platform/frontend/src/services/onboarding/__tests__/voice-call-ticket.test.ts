@@ -102,6 +102,18 @@ describe("the call's ticket, kept for a reload", () => {
     expect(readCallTicket("another-user", CALL_ID)).toBeNull();
     expect(sessionStorage.getItem("autogpt:onboarding-intro-path")).toBe("A");
   });
+
+  it("forgets every ticket but the signed-in account's when an account takes over the tab", () => {
+    saveCallTicket(USER, ticket());
+    saveCallTicket("another-user", ticket());
+    sessionStorage.setItem("autogpt:onboarding-intro-path", "A");
+
+    forgetCallTickets(USER);
+
+    expect(readCallTicket(USER, CALL_ID)).not.toBeNull();
+    expect(readCallTicket("another-user", CALL_ID)).toBeNull();
+    expect(sessionStorage.getItem("autogpt:onboarding-intro-path")).toBe("A");
+  });
 });
 
 describe("the shapes a call's values come in", () => {
