@@ -95,7 +95,9 @@ def extract_artifact_links(text: str) -> tuple[str, list[WorkspaceArtifactLink]]
         return f"`{display_name.replace('`', '')}`"
 
     stripped = _WORKSPACE_ARTIFACT_LINK_RE.sub(_capture, text)
-    if not any(ch.isalnum() for ch in _WORKSPACE_ARTIFACT_LINK_RE.sub("", text)):
+    if artifacts and not any(
+        ch.isalnum() for ch in _WORKSPACE_ARTIFACT_LINK_RE.sub("", text)
+    ):
         return "", artifacts
     # Clean up the gaps the removed links leave behind so surrounding prose
     # still reads naturally.

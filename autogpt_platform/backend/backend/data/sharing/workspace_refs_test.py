@@ -178,6 +178,10 @@ class TestExtractArtifactLinks:
         assert stripped == ""
         assert artifacts
 
+    @pytest.mark.parametrize("text", ["👍", "✅", "..."])
+    def test_a_reply_without_links_is_kept_even_with_no_letters(self, text):
+        assert extract_artifact_links(text) == (text, [])
+
     def test_a_backtick_in_a_name_cannot_break_out_of_the_code_span(self):
         text, artifacts = extract_artifact_links("See [a`b.txt](workspace://1) now")
         assert text == "See `ab.txt` now"
