@@ -1,5 +1,11 @@
 import { APIError } from "better-auth/api";
-import type { AppleOptions } from "better-auth/social-providers";
+import { apple, type AppleOptions } from "better-auth/social-providers";
+import { verifyProviderIdToken } from "@better-auth/core/oauth2";
+import {
+  appleWebCredentials,
+  createAppleClientSecret,
+} from "./apple-client-secret";
+import { currentAuthEndpoint } from "./auth-endpoint";
 
 export interface AppleAccountUser {
   email: string;
@@ -9,12 +15,15 @@ export interface AppleAccountUser {
 
 export function getAppleProvider(
   findAccountUser: (subject: string) => Promise<AppleAccountUser | null>,
-): AppleOptions | undefined {
+) {
   const bundleID = process.env.AUTH_APPLE_APP_BUNDLE_IDENTIFIER?.trim();
-  if (!bundleID) return;
+  const web = appleWebCredentials();
+  const clientID = web?.clientID || bundleID;
+  if (!clientID) return;
 
-  return {
-    clientId: bundleID,
+  const options: AppleOptions = {
+    clientId: clientID,
+    audience: bundleID ? [clientID, bundleID] : [clientID],
     async mapProfileToUser(profile) {
       if (profile.email) return {};
       const user = await findAccountUser(profile.sub);
@@ -26,6 +35,36 @@ export function getAppleProvider(
       };
     },
   };
+  const provider = apple(options);
+  const callbackProvider = apple({ ...options, audience: [clientID] });
+  const verifiedOptions: AppleOptions = {
+    ...options,
+    async getUserInfo(tokens) {
+      const endpoint = await currentAuthEndpoint();
+      if (
+        endpoint.path !== "/sign-in/social" &&
+        (!tokens.idToken ||
+          !(await verifyProviderIdToken(callbackProvider, tokens.idToken)))
+      )
+        return null;
+      return provider.getUserInfo(tokens);
+    },
+  };
+  if (!web) return verifiedOptions;
+  return async () => ({
+    ...verifiedOptions,
+    clientSecret: await createAppleClientSecret(web),
+  });
+}
+
+export function appleTrustedOrigins(request?: Request) {
+  if (
+    appleWebCredentials() &&
+    request?.method === "POST" &&
+    new URL(request.url).pathname === "/api/auth/callback/apple"
+  )
+    return ["https://appleid.apple.com"];
+  return [];
 }
 
 export function assertAppleSignInRequest(
@@ -33,10 +72,15 @@ export function assertAppleSignInRequest(
   body: { provider?: unknown; idToken?: { nonce?: unknown } } | undefined,
 ) {
   if (path !== "/sign-in/social" || body?.provider !== "apple") return;
+  const webConfigured = Boolean(appleWebCredentials());
+  if (!process.env.AUTH_APPLE_APP_BUNDLE_IDENTIFIER?.trim() && !webConfigured) {
+    return;
+  }
   if (!body.idToken) {
+    if (webConfigured) return;
     throw new APIError("BAD_REQUEST", {
-      code: "APPLE_ID_TOKEN_REQUIRED",
-      message: "Use Sign in with Apple in the app to continue.",
+      code: "APPLE_WEB_LOGIN_NOT_CONFIGURED",
+      message: "Browser Sign in with Apple is not configured for this server.",
     });
   }
   if (typeof body.idToken.nonce !== "string" || !body.idToken.nonce.trim()) {

@@ -26,6 +26,17 @@ describe("Apple identity validation", () => {
     expect(state.database.UserAuthSession).toHaveLength(0);
   });
 
+  it("returns provider-not-found for browser login when Apple is entirely disabled", async () => {
+    vi.stubEnv("AUTH_APPLE_APP_BUNDLE_IDENTIFIER", "");
+    const handler = await loadAppleAuth();
+    const response = await handler(
+      authRequest("sign-in/social", { provider: "apple" }),
+    );
+    expect(response.status).toBe(404);
+    expect((await response.json()).code).toBe("PROVIDER_NOT_FOUND");
+    expect(state.database.UserAuthSession).toHaveLength(0);
+  });
+
   it.each([
     { aud: "com.someone-else.app" },
     { iss: "https://untrusted.example.test" },
@@ -104,7 +115,7 @@ describe("Apple identity validation", () => {
       authRequest("sign-in/social", { provider: "apple" }),
     );
     expect(response.status).toBe(400);
-    expect((await response.json()).code).toBe("APPLE_ID_TOKEN_REQUIRED");
+    expect((await response.json()).code).toBe("APPLE_WEB_LOGIN_NOT_CONFIGURED");
   });
 
   it("does not use a client-supplied email to sign an unknown Apple subject into an account", async () => {

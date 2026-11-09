@@ -76,6 +76,20 @@ describe("POST /api/auth/login/with-provider", () => {
     });
   });
 
+  it("starts Apple browser login through the existing provider endpoint", async () => {
+    vi.stubEnv("AUTH_CALLBACK_URL", "");
+    const url = "https://appleid.apple.com/auth/authorize?state=apple-state";
+    signInSocialMock.mockResolvedValue({ url });
+    const request = makeProviderRequest({ provider: "apple" });
+    const response = await POST(request);
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: { provider: "apple", callbackURL: "/auth/callback" },
+      headers: request.headers,
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ url });
+  });
+
   it("returns 400 when no provider is supplied", async () => {
     const response = await POST(makeProviderRequest({ redirectTo: "/x" }));
 

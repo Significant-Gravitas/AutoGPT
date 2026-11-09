@@ -1,16 +1,58 @@
-# Native Sign in with Apple
+# Sign in with Apple for native and browser clients
 
 This follow-up uses the session foundation in [#15384](https://github.com/Significant-Gravitas/AutoGPT/pull/15384). Better Auth runs the server-side exchange under `autogpt_platform/frontend/src/lib/auth/`; the Python REST and WebSocket servers continue accepting the same session-bound access JWTs.
 
-## Enable the provider
+## Native configuration
 
 1. Enable Sign in with Apple for the app's App ID in the Apple Developer account and its signing entitlements.
-2. Set `AUTH_APPLE_APP_BUNDLE_IDENTIFIER` on the auth service to that exact bundle identifier. An empty value keeps Apple sign-in disabled. This is a public identifier, not a secret.
+2. Set `AUTH_APPLE_APP_BUNDLE_IDENTIFIER` on the auth service to that exact bundle identifier. An empty value keeps the native bundle audience disabled. This is a public identifier, not a secret.
 3. Deploy the auth service with the native session foundation available on the backend.
 
-The native identity-token exchange needs Apple's public signing keys, fetched from `https://appleid.apple.com/auth/keys`; it needs no Apple private key, client-secret JWT, Service ID or browser callback registration. The configured App ID is the only accepted audience. Browser OAuth authorization-code redirects are outside this change and return `APPLE_ID_TOKEN_REQUIRED` rather than starting an unconfigured redirect flow.
+The native identity-token exchange needs Apple's public signing keys, fetched from `https://appleid.apple.com/auth/keys`; it needs no Apple private key, client-secret JWT, Service ID or browser callback registration. With native-only configuration, the configured bundle identifier is the only accepted audience.
 
-## Client exchange
+## Browser configuration
+
+1. Create an Apple Service ID and enable Sign in with Apple. Associate it with the same primary App ID as the native application so Apple identifies a person consistently across both clients.
+2. Register the auth service's domain and exact HTTPS return URL: `https://<auth-host>/api/auth/callback/apple`. Apple does not accept localhost or non-HTTPS return URLs. Set `BETTER_AUTH_URL` to that public auth origin.
+3. Create a Sign in with Apple key for the primary App ID. Supply these server-side values through the deployment's secret configuration:
+
+   | Setting | Value |
+   | --- | --- |
+   | `AUTH_APPLE_CLIENT_ID` | Apple Service ID used by browser OAuth |
+   | `AUTH_APPLE_TEAM_ID` | Apple Developer Team ID |
+   | `AUTH_APPLE_KEY_ID` | Signing key's Key ID |
+   | `AUTH_APPLE_PRIVATE_KEY` | Downloaded PKCS#8 `.p8` private key |
+
+   The key accepts real newlines or escaped `\n` sequences. Keep it server-side; never put it in a `NEXT_PUBLIC_*` variable or commit it. This is an Apple-issued credential, not a locally generated application secret.
+4. Deploy the auth service. Rotate the Apple key through the same deployment configuration and restart the service when changing credentials.
+
+All four browser settings are required. When native login is configured, incomplete browser configuration returns `APPLE_WEB_LOGIN_NOT_CONFIGURED` for redirect requests while native login remains available. Browser-only configuration is supported without a native bundle identifier. Without a native bundle identifier or complete browser settings, the Apple provider is disabled and returns the standard `PROVIDER_NOT_FOUND` response.
+
+The auth service signs a fresh ES256 client-secret JWT with a five-minute lifetime for each authorization, code exchange and provider-token refresh. Better Auth caches provider options at initialization, so the Apple plugin refreshes that credential when each operation runs, including after a long consent flow. The private key and client-secret JWT never go to the browser. Browser callback identities must have the configured Service ID audience; direct ID-token exchanges accept the configured native and Service ID audiences.
+
+## Browser exchange
+
+The existing browser login endpoint accepts Apple:
+
+```http
+POST /api/auth/login/with-provider
+Content-Type: application/json
+```
+
+```json
+{
+  "provider": "apple",
+  "redirectTo": "/auth/callback"
+}
+```
+
+Navigate to the returned `url`. The Better Auth client can also call `signIn.social({ provider: "apple", callbackURL: "/auth/callback" })`, or POST the same provider and callback URL to `/api/auth/sign-in/social`.
+
+Apple posts its result to `/api/auth/callback/apple`. Better Auth redirects that form POST to a same-site GET, where the browser's OAuth state cookie is available, validates and consumes the state, and exchanges the authorization code server-side. The callback then creates the normal HttpOnly session cookies and redirects to the requested local destination. Only this Apple callback POST trusts Apple's origin; other auth endpoints keep their existing origin checks. Browser sessions receive no native bearer header. Missing or mismatched state, replayed callbacks, declined consent and invalid identity tokens do not create sessions.
+
+This backend change exposes the provider through the existing login API; it does not add login buttons to the web or native UI.
+
+## Native exchange
 
 For each Apple authorization, generate a fresh cryptographically random nonce. Set `ASAuthorizationAppleIDRequest.nonce` to its SHA-256 hexadecimal digest and request the email and full-name scopes. Send the resulting identity token and original nonce to the selected server:
 
@@ -44,7 +86,9 @@ The server requires the nonce and uses Better Auth's Apple verifier for the RS25
 
 ## Validation
 
-`apple-sign-in.test.ts` runs signed Apple identity tokens through the real production auth configuration and Better Auth HTTP handler, including signed session export, access-JWT verification and renewal, repeat login, private relay email, browser cookie isolation and logout. `apple-sign-in-rejections.test.ts` covers signature/claim/nonce rejection, missing configuration, unavailable signing keys, account ownership, unverified-email linking, bans and signup policy. Only external Apple responses, database storage, DNS and platform provisioning are replaced in these tests; JWT verification and session issuance are real.
+`apple-sign-in.test.ts` runs signed Apple identity tokens through the real production auth configuration and Better Auth HTTP handler, including signed session export, access-JWT verification and renewal, repeat login, private relay email, browser cookie isolation and logout. `apple-sign-in-rejections.test.ts` covers signature/claim/nonce rejection, missing configuration, unavailable signing keys, account ownership, unverified-email linking, bans and signup policy.
+
+The `apple-browser-*.test.ts` suites exercise authorization through Apple's form callback to a cookie session, logout, shared native/browser identity, fresh client secrets after delayed consent, browser-only and partial configuration, callback replay, origin/state checks, callback token validation and signup policy. Tests generate signing keys in memory and verify outgoing client-secret JWTs. Only external Apple responses, database storage, DNS and platform provisioning are replaced; JWT verification and session issuance are real. Origin and CSRF checks are explicitly enabled, including under the test environment.
 
 Run them with the existing auth regressions from `autogpt_platform/frontend`:
 
@@ -52,6 +96,6 @@ Run them with the existing auth regressions from `autogpt_platform/frontend`:
 pnpm test:unit src/lib/auth/__tests__
 ```
 
-Live acceptance still requires the app's registered App ID and a signed Apple build: authorize with a real account, test Hide My Email and repeat consent, renew an access JWT against the deployed backend, then verify logout refuses further authenticated requests. This PR supplies the server contract; it does not add a native button or claim live Apple certification.
+Live acceptance still requires configured Apple identifiers and credentials, a registered HTTPS domain and a signed native build: authorize with a real account in both clients, test Hide My Email and repeat consent, confirm the same account is selected, renew an access JWT against the deployed backend, then verify logout refuses further authenticated requests. No real Apple credentials or live Apple authorization are exercised by these automated tests.
 
 References: [Better Auth Apple provider](https://better-auth.com/docs/authentication/apple), [Apple user verification](https://developer.apple.com/documentation/signinwithapple/verifying-a-user).

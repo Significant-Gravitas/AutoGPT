@@ -46,6 +46,11 @@ vi.mock("better-auth", async (importOriginal) => {
     betterAuth: (options: Parameters<typeof actual.betterAuth>[0]) =>
       actual.betterAuth({
         ...options,
+        advanced: {
+          ...options.advanced,
+          disableOriginCheck: false,
+          disableCSRFCheck: false,
+        },
         database: memoryAdapter(appleTestState.database),
         rateLimit: { enabled: false },
       }),
@@ -70,7 +75,7 @@ vi.mock("../provision-platform-user", () => ({
   platformUserExists: vi.fn(async () => true),
 }));
 
-export const origin = "http://localhost:3000";
+export const origin = "https://platform.example.test";
 export const bundleID = "com.autogpt.test";
 export const nativeHeaders = { "X-AutoGPT-Native": "1" };
 export const nonce = "test-apple-authorization-nonce";
@@ -83,7 +88,9 @@ export async function prepareAppleAuth() {
   vi.stubEnv("BETTER_AUTH_SECRET", randomUUID() + randomUUID());
   vi.stubEnv("AUTH_APPLE_APP_BUNDLE_IDENTIFIER", bundleID);
   vi.stubEnv("AUTH_APPLE_CLIENT_ID", "");
-  vi.stubEnv("AUTH_APPLE_CLIENT_SECRET", "");
+  vi.stubEnv("AUTH_APPLE_TEAM_ID", "");
+  vi.stubEnv("AUTH_APPLE_KEY_ID", "");
+  vi.stubEnv("AUTH_APPLE_PRIVATE_KEY", "");
   vi.stubEnv("AUTH_ALLOW_NEW_ACCOUNTS", "true");
   vi.stubEnv("AUTH_SIGNUP_ALLOWLIST", "");
   vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "false");

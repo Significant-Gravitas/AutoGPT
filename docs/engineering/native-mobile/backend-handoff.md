@@ -4,7 +4,7 @@ The backend foundation in [#15384](https://github.com/Significant-Gravitas/AutoG
 
 The same session and retry contracts can be used by installed mobile and desktop clients. Client interfaces, browser login returns and distribution remain separate work.
 
-The [native Sign in with Apple follow-up](apple-sign-in.md) exchanges an Apple identity token for the same signed session bearer. It is enabled separately with the app's registered bundle identifier.
+The [Sign in with Apple follow-up](apple-sign-in.md) supports native identity-token exchange into the same signed session bearer and browser OAuth into cookie sessions. Native login uses the registered bundle identifier; browser login additionally uses an Apple Service ID, Team ID, Key ID and private key with an HTTPS callback registration. Group both identifiers under the same primary Apple App ID for shared account identity.
 
 The pending-message changes ship with session authentication because reconnecting clients retry accepted sends. Preserving their IDs requires recovery to retain the same IDs through cancellation, database failure and buffer refill. The engine changes preserve existing approval results and transient-error behavior when those recovery boundaries are introduced.
 

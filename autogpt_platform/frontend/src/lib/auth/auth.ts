@@ -8,8 +8,10 @@ import {
 import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
 import { nativeSessionBearer } from "./native-session-bearer";
+import { appleOAuth } from "./apple-oauth";
 import {
   assertAppleSignInRequest,
+  appleTrustedOrigins,
   getAppleProvider,
   type AppleAccountUser,
 } from "./apple-provider";
@@ -150,6 +152,7 @@ function getRequestIP(ctx: HookContext) {
 export const auth = betterAuth({
   baseURL,
   secret: authSecret,
+  trustedOrigins: appleTrustedOrigins,
   // Without database transactions, as before Better Auth 1.7, which turns
   // them on for a bare pg Pool. A sign-up would then hold one of the pool's
   // connections throughout while the session hook (access blocks, IP log)
@@ -490,6 +493,7 @@ export const auth = betterAuth({
   socialProviders: getSocialProviders(),
   plugins: [
     admin(),
+    ...appleOAuth(),
     nativeSessionBearer(),
     jwt({
       schema: {
