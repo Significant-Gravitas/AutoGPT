@@ -228,11 +228,26 @@ async def test_a_rotation_waits_for_an_append_in_progress(tmp_path: Path, monkey
     # Built before the append, so the only thing left to wait on the lock is
     # the rotation itself, not the second writer's startup.
     other = AuditWriter(path=daemon.path, audit_key=KEY)
+    # Set once the rotation asks for the lock the append holds: a rotation
+    # still starting up when the check below ran would pass it without
+    # taking the lock at all.
+    rotation_asked = threading.Event()
+    real_lock = audit_module._file_lock
+
+    @contextlib.contextmanager
+    def watched_lock(path: Path, **kwargs: bool):
+        if appending.is_set():
+            rotation_asked.set()
+        with real_lock(path, **kwargs):
+            yield
+
+    monkeypatch.setattr(audit_module, "_file_lock", watched_lock)
     write = asyncio.create_task(
         daemon.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
     )
     assert await asyncio.to_thread(appending.wait, 30)
     rotation = asyncio.create_task(asyncio.to_thread(other.force_rotate))
+    assert await asyncio.to_thread(rotation_asked.wait, 30)
     await asyncio.sleep(0.2)
     rotated_during_the_append = rotation.done()
     release.set()
