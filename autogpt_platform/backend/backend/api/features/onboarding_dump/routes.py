@@ -205,8 +205,10 @@ async def start_onboarding_interview(
 
     A person has one interview, typed or spoken: 409 ``call_in_progress``
     while a voice call of theirs is live, and 409
-    ``onboarding_interview_closed`` once a call's words became the
-    interview's take, each naming the call (``call_id``). 429 at its turn
+    ``onboarding_interview_closed`` once a call took the interview (its words
+    accepted from a call that ran to its close, or that the person
+    confirmed), each naming the call (``call_id``). A call that was cut off
+    leaves the typed interview open. 429 at its turn
     budget, 503 while the budget, the chat stream or the person's calls
     cannot be read. A 429 carries its wait in the body
     (``retry_after_seconds``) as well as in ``Retry-After``: the browser's API
@@ -315,11 +317,13 @@ async def finish_onboarding_voice_call(
 ) -> FinalizeResponse:
     """The person's confirm of their voice call, and "Meet your team".
 
-    Idempotent: a call already handed off, or whose words the pipeline ruled
-    on, is answered as it stands. A call waiting for the confirm, or whose
-    hand-off the pipeline never ruled on, hands its words off now, with any
-    ``corrections`` after them. The client reads the answer as it reads the
-    typed interview's finish. 404 for a call that is not theirs; 409
+    Idempotent: a call that took the interview or that another take beat, or
+    whose words the pipeline ruled on, is answered as it stands. A call
+    waiting for the confirm, one whose hand-off the pipeline never ruled on,
+    or one cut off with its words accepted hands its words off now, with any
+    ``corrections`` after them, and its accepted take becomes the interview's.
+    The client reads the answer as it reads the typed interview's finish. 404
+    for a call that is not theirs; 409
     (``call_not_ready``) while the call's words are not ready. A 429 or 503
     carries its wait in the body (``retry_after_seconds``).
     """
@@ -370,7 +374,10 @@ async def finish_onboarding_interview(
     a ruling on the words (``quality_check_unavailable``, or no code) leaves
     the interview to be handed off again on the next call. The pipeline's
     jobs run after the response, as a typed brain dump's do. 404 when the
-    person has no interview. A 429 carries its wait in the body
+    person has no interview. As the start route does, 409 ``call_in_progress``
+    while a voice call of theirs is live and 409
+    ``onboarding_interview_closed`` once a call took the interview, each
+    naming the call (``call_id``). A 429 carries its wait in the body
     (``retry_after_seconds``), as the start route's does.
     """
     opened = await find_onboarding_interview_session(user_id)

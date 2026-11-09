@@ -199,8 +199,28 @@ async def test_a_call_record_reads_back_typed(redis):
     assert record.hand_off.error_code == "quality_check_unavailable"
     assert record.transcript_of_record == "I run a bakery."
     assert record.postcall_attempts == 2
-    assert not record.took_the_interview
+    assert not record.accepted
+    assert not record.took_interview
     assert await locks.read_call(redis, "call-b") is None
+
+
+async def test_a_call_that_took_the_interview_says_so_on_its_record(redis):
+    await locks.write_call_record(
+        redis,
+        "call-a",
+        {
+            "uid": USER,
+            "status": "handed_off",
+            "hand_off": {"status": "transcribed", "input_mode": "typed"},
+            "took_interview": True,
+        },
+    )
+
+    record = await locks.read_call(redis, "call-a")
+
+    assert record is not None
+    assert record.accepted
+    assert record.took_interview
 
 
 async def test_a_record_with_a_field_that_cannot_be_read_keeps_its_owner(redis):

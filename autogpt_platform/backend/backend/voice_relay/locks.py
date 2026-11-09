@@ -201,12 +201,15 @@ class CallRecord(BaseModel):
     transcript_of_record: str | None = None
     # What the onboarding pipeline answered the call's hand-off.
     hand_off: FinalizeResponse | None = None
+    # Whether the call's words became the interview's take, written where the
+    # hand-off answered (``handoff``).
+    took_interview: bool = False
     postcall_attempts: int = 0
 
     @property
-    def took_the_interview(self) -> bool:
-        """Whether the call's words became the interview's take: handed off
-        and accepted, not superseded by another take."""
+    def accepted(self) -> bool:
+        """Whether the pipeline took the call's words: handed off, neither
+        refused nor superseded."""
         return (
             self.status == HANDED_OFF
             and self.hand_off is not None
@@ -226,7 +229,7 @@ async def read_call(redis: AsyncRedisClient, call_id: str) -> CallRecord | None:
     for name, value in raw.items():
         if name not in CallRecord.model_fields or name == "call_id":
             continue
-        if name in ("turns", "hand_off", "postcall_attempts"):
+        if name in ("turns", "hand_off", "took_interview", "postcall_attempts"):
             try:
                 fields[name] = json.loads(value)
             except ValueError:

@@ -225,32 +225,23 @@ def allowance(mocker: MockerFixture) -> AsyncMock:
 
 
 class VoiceCalls:
-    """The person's voice calls: the latest on their onboarding row, each
-    call's record and the live-call lock in Redis, and their typed interview
-    as a call reads it. None of either unless a test says otherwise."""
+    """The person's voice calls: the latest on their onboarding row and the
+    one that took their interview, the live-call lock in Redis, and their
+    typed interview as a call reads it. None of any unless a test says
+    otherwise."""
 
     def __init__(self, redis: FakeRedis) -> None:
         self.redis = redis
         self.latest: str | None = None
+        self.taken: str | None = None
         self.typed: ChatSession | None = None
 
     async def live(self, call_id: str) -> None:
         await locks.take_user_lock(self.redis, USER_ID, call_id)
 
-    async def answered(
-        self, call_id: str, status: str, hand_off: FinalizeResponse | None
-    ) -> None:
-        """*call_id* is the person's latest, and its hand-off answered."""
-        self.latest = call_id
-        await locks.write_call_record(
-            self.redis,
-            call_id,
-            {
-                "uid": USER_ID,
-                "status": status,
-                "hand_off": hand_off.model_dump(mode="json") if hand_off else None,
-            },
-        )
+    def took(self, call_id: str) -> None:
+        """*call_id* is the person's latest, and it took their interview."""
+        self.latest = self.taken = call_id
 
 
 def _take(code: str | None = None) -> FinalizeResponse:
@@ -268,11 +259,19 @@ def voice_calls(mocker: MockerFixture) -> VoiceCalls:
     async def latest(user_id: str) -> str | None:
         return calls.latest
 
+    async def taken(user_id: str) -> str | None:
+        return calls.taken
+
     async def typed(user_id: str) -> ChatSession | None:
         return calls.typed
 
     mocker.patch.object(
         interview, "get_onboarding_voice_call_id", new=AsyncMock(side_effect=latest)
+    )
+    mocker.patch.object(
+        interview,
+        "get_onboarding_voice_interview_call_id",
+        new=AsyncMock(side_effect=taken),
     )
     mocker.patch.object(
         interview, "find_onboarding_interview_session", new=AsyncMock(side_effect=typed)
@@ -1795,7 +1794,7 @@ async def test_the_typed_interview_waits_while_a_voice_call_is_live(
 async def test_the_typed_interview_is_over_once_a_call_took_it(
     opening: dict[str, MagicMock], allowance: AsyncMock, voice_calls: VoiceCalls
 ):
-    await voice_calls.answered("call-1", locks.HANDED_OFF, _take())
+    voice_calls.took("call-1")
 
     with pytest.raises(HTTPException) as refused:
         await interview.start_onboarding_interview(USER_ID)
@@ -1809,24 +1808,12 @@ async def test_the_typed_interview_is_over_once_a_call_took_it(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("status", "hand_off"),
-    [
-        (locks.FAILED, _take(quality.INSUFFICIENT_CONTENT)),
-        (locks.FAILED, _take(quality.QUALITY_CHECK_UNAVAILABLE)),
-        (locks.TRANSCRIBING, None),
-        (locks.HANDED_OFF, _take(interview.SUPERSEDED)),
-    ],
-    ids=["words-turned-away", "never-ruled-on", "being-transcribed", "superseded"],
-)
 async def test_a_call_that_did_not_take_the_interview_leaves_typing_open(
-    opening: dict[str, MagicMock],
-    allowance: AsyncMock,
-    voice_calls: VoiceCalls,
-    status: str,
-    hand_off: FinalizeResponse | None,
+    opening: dict[str, MagicMock], allowance: AsyncMock, voice_calls: VoiceCalls
 ):
-    await voice_calls.answered("call-1", status, hand_off)
+    """The person's latest call was cut off, turned away or never ruled on:
+    none of these took the interview."""
+    voice_calls.latest = "call-1"
 
     started = await interview.start_onboarding_interview(USER_ID)
 
@@ -1865,7 +1852,7 @@ async def test_an_open_interview_takes_no_turn_while_a_voice_call_is_live(
 async def test_an_open_interview_takes_no_turn_once_a_call_took_it(
     stored: StoredInterview, allowance: AsyncMock, voice_calls: VoiceCalls
 ):
-    await voice_calls.answered("call-1", locks.HANDED_OFF, _take())
+    voice_calls.took("call-1")
 
     with pytest.raises(HTTPException) as refused:
         await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
@@ -1875,38 +1862,84 @@ async def test_an_open_interview_takes_no_turn_once_a_call_took_it(
 
 
 @pytest.mark.asyncio
-async def test_closing_the_typed_interview_after_a_call_took_it_keeps_the_calls_take(
+async def test_finishing_the_typed_interview_once_a_call_took_it_names_the_call(
+    stored: StoredInterview, dumps: DumpStore, voice_calls: VoiceCalls
+):
+    voice_calls.took("call-1")
+
+    with pytest.raises(HTTPException) as refused:
+        await _finalize(stored.session.session_id)
+
+    assert refused.value.status_code == 409
+    assert refused.value.detail == {"code": INTERVIEW_CLOSED, "call_id": "call-1"}
+    assert stored.stages == []
+    assert dumps.row is None
+
+
+@pytest.mark.asyncio
+async def test_finishing_the_typed_interview_while_a_call_is_live_names_the_call(
+    stored: StoredInterview, dumps: DumpStore, voice_calls: VoiceCalls
+):
+    await voice_calls.live("call-1")
+
+    with pytest.raises(HTTPException) as refused:
+        await _finalize(stored.session.session_id)
+
+    assert refused.value.status_code == 409
+    assert refused.value.detail == {"code": "call_in_progress", "call_id": "call-1"}
+    assert dumps.row is None
+
+
+@pytest.mark.asyncio
+async def test_the_servers_close_after_a_call_took_the_interview_keeps_the_calls_take(
     stored: StoredInterview,
     dumps: DumpStore,
     quality_gate: AsyncMock,
     voice_calls: VoiceCalls,
 ):
-    await voice_calls.answered("call-1", locks.HANDED_OFF, _take())
+    """A typed tab left open closes on its own turn; it never hands off over
+    the call's take."""
+    voice_calls.took("call-1")
 
-    response, _ = await _finalize(stored.session.session_id)
+    closure = await interview.close_onboarding_interview(
+        USER_ID, stored.session.session_id, reason="confirmed"
+    )
 
-    assert response == _take(interview.SUPERSEDED)
+    assert closure.hand_off == _take(interview.SUPERSEDED)
     assert stored.stages == [INTERVIEW_STAGE_CLOSED, INTERVIEW_STAGE_HANDED_OFF]
     assert dumps.row is None
     quality_gate.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_the_call_that_took_the_interview_is_known_after_its_record_expires(
+async def test_the_fallback_after_a_call_took_the_interview_hands_nothing_off(
+    stored: StoredInterview, dumps: DumpStore, voice_calls: VoiceCalls
+):
+    """An interview closed on a confirm arm and left unconfirmed is handed off
+    by the next request, which a call taking the interview answers without a
+    refusal."""
+    stored.session.metadata.onboarding_interview_stage = INTERVIEW_STAGE_CLOSED
+    stored.session.metadata.onboarding_interview_ending = (
+        InterviewEnding.PROFILE_CARD.value
+    )
+    voice_calls.took("call-1")
+
+    await interview.hand_off_closed_interview(USER_ID, stored.session.session_id)
+
+    assert stored.stages == [INTERVIEW_STAGE_HANDED_OFF]
+    assert dumps.row is None
+
+
+@pytest.mark.asyncio
+async def test_which_call_took_the_interview_is_read_from_the_onboarding_row(
     dumps: DumpStore, voice_calls: VoiceCalls
 ):
-    """A call's record lives a day; past that, the dump row still holds the
-    call's take."""
-    voice_calls.latest = "call-1"
-    assert await interview.call_that_took_the_interview(USER_ID) is None
-
-    take = await dumps.start_dump(USER_ID, "interview-call-1", BrainDumpInputMode.typed)
+    """The row outlives the call's record. A cut-off call whose take the dump
+    row still holds took nothing: the row says so."""
+    voice_calls.latest = "call-2"
+    take = await dumps.start_dump(USER_ID, "interview-call-2", BrainDumpInputMode.typed)
     take.status = BrainDumpStatus.completed
+    assert await interview.call_that_took_the_interview(USER_ID) is None
+
+    voice_calls.took("call-1")
     assert await interview.call_that_took_the_interview(USER_ID) == "call-1"
-
-    take.status = BrainDumpStatus.failed
-    assert await interview.call_that_took_the_interview(USER_ID) is None
-
-    later = await dumps.start_dump(USER_ID, "rec-later", BrainDumpInputMode.voice)
-    later.status = BrainDumpStatus.completed
-    assert await interview.call_that_took_the_interview(USER_ID) is None

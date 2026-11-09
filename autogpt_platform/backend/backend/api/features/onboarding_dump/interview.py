@@ -30,10 +30,13 @@ call's from its transcript of record (:func:`close_voice_interview`).
 
 A person has one interview, typed or spoken. The voice call start route
 refuses a call once the typed interview is over; the typed interview is
-refused while a call of theirs is live, and is over once a call's words
-became the take (:func:`refuse_while_a_call_holds_the_interview`). A call
-whose hand-off another take beat is ``superseded``, and so is a typed
-interview closed after a call took the interview.
+refused while a call of theirs is live, and is over once a call took the
+interview (:func:`refuse_while_a_call_holds_the_interview`). A call takes it
+when its words were accepted and the call ran to its close, or the person
+confirmed it; a call that was cut off leaves the interview open, for a later
+call or the typed interview to replace its take. A call whose hand-off
+another take beat is ``superseded``, and so is a typed interview closed after
+a call took the interview.
 """
 
 import asyncio
@@ -103,7 +106,10 @@ from backend.copilot.service import (
     strip_server_injected_tags,
 )
 from backend.data.db_accessors import chat_db
-from backend.data.onboarding import get_onboarding_voice_call_id
+from backend.data.onboarding import (
+    get_onboarding_voice_call_id,
+    get_onboarding_voice_interview_call_id,
+)
 from backend.data.redis_client import get_redis_async
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import NotFoundError
@@ -277,24 +283,13 @@ async def call_that_took_the_interview(user_id: str) -> str | None:
     """The person's voice call whose words became their interview's take, or
     None.
 
-    Only their latest call can be (``UserOnboarding.voiceCallId``), once its
-    hand-off was accepted: its record says so for a day, and after that the
-    dump row does, while it still holds that call's take.
+    A call takes the interview when the pipeline accepted its words and the
+    call ran to its close, or the person confirmed it; one that was cut off
+    leaves the interview open (``voice_relay.handoff``). The hand-off writes
+    that on the person's onboarding row, which outlives the call's record,
+    and the row is what is read.
     """
-    call_id = await get_onboarding_voice_call_id(user_id)
-    if call_id is None:
-        return None
-    record = await locks.read_call(await get_redis_async(), call_id)
-    if record is not None:
-        return call_id if record.took_the_interview else None
-    dump = await dump_db.get_dump(user_id)
-    if (
-        dump is not None
-        and dump.recordingId == interview_recording_id(call_id)
-        and dump.status != BrainDumpStatus.failed
-    ):
-        return call_id
-    return None
+    return await get_onboarding_voice_interview_call_id(user_id)
 
 
 def _voice_calls_unreadable() -> HTTPException:
@@ -488,7 +483,11 @@ async def hand_off_closed_interview(user_id: str, session_id: str) -> None:
         if stored.metadata.onboarding_interview_ending is None:
             await close_onboarding_interview(user_id, session_id, reason="confirmed")
         else:
-            await finalize_onboarding_interview(user_id, session_id, None)
+            # The server's own hand-off, not the person's confirm: an
+            # interview a call took is answered superseded, never refused.
+            await close_onboarding_interview(
+                user_id, session_id, reason="user", confirmed=True
+            )
     elif interview_reached_cap(session):
         await close_onboarding_interview(user_id, session_id, reason="cap")
 
@@ -726,7 +725,13 @@ async def finalize_onboarding_interview(
     and the response describes the take as it stands. Only the session's
     owner can finalize it, and a session of any other kind is treated as
     missing.
+
+    Raises:
+        HTTPException: whatever :func:`refuse_while_a_call_holds_the_interview`
+            raises while a voice call holds the interview: the step then shows
+            the call, not the typed interview's ending.
     """
+    await refuse_while_a_call_holds_the_interview(user_id)
     closure = await close_onboarding_interview(
         user_id,
         session_id,

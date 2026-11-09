@@ -458,6 +458,12 @@ model UserOnboarding {
   // Redis for a day; a later call replaces this one.
   voiceCallId String? @unique
 
+  // The voice call whose words became the user's onboarding interview's take:
+  // accepted by the pipeline from a call that ran to its close, or that the
+  // user confirmed. Kept here because the call's record expires in a day and
+  // the interview does not. NULL while no call has taken the interview.
+  voiceInterviewCallId String? @unique
+
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

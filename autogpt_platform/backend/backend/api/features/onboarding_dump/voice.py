@@ -257,12 +257,13 @@ async def finish_call(
 ) -> FinalizeResponse:
     """The person's confirm of their call, or their retry of its hand-off.
 
-    A call whose hand-off closed the interview, whose words the pipeline ruled
-    on, or whose transcript could not be made is answered as it stands, so a
-    second click costs nothing. A call waiting for its confirm, or one whose
-    hand-off the pipeline never ruled on, hands its transcript of record off
-    now, with *corrections* after it as the person's own words. The
-    pipeline's jobs run after the response.
+    A call that took the interview or that another take beat, one whose words
+    the pipeline ruled on, or one whose transcript could not be made is
+    answered as it stands, so a second click costs nothing. A call waiting for
+    its confirm, one whose hand-off the pipeline never ruled on, or one cut
+    off with its words accepted hands its transcript of record off now, with
+    *corrections* after it as the person's own words, and its accepted take
+    becomes the interview's. The pipeline's jobs run after the response.
 
     Raises:
         HTTPException: 404 for a call that is not theirs; 409
@@ -272,14 +273,9 @@ async def finish_call(
     """
     redis = await _bounded(get_redis_async())
     record = await _their_call(redis, user_id, call_id)
-    stored = record.hand_off
-    if stored is not None and (
-        record.status == locks.HANDED_OFF
-        or stored.error_code in _VERDICTS
-        or record.transcript_of_record is None
-    ):
-        return stored
-    if record.status not in (locks.TRANSCRIBED, locks.FAILED) or (
+    if record.hand_off is not None and _answered_as_it_stands(record):
+        return record.hand_off
+    if record.status not in (locks.TRANSCRIBED, locks.FAILED, locks.HANDED_OFF) or (
         record.transcript_of_record is None
     ):
         raise HTTPException(status_code=409, detail={"code": CALL_NOT_READY})
@@ -322,6 +318,18 @@ async def end_call(user_id: str, call_id: str) -> None:
     if not theirs:
         raise HTTPException(status_code=404, detail=NO_SUCH_CALL)
     await _bounded(locks.request_end(redis, call_id))
+
+
+def _answered_as_it_stands(record: CallRecord) -> bool:
+    """Whether finishing *record*, a call with an answer, only repeats it."""
+    if record.transcript_of_record is None:
+        return True
+    if record.hand_off is not None and record.hand_off.error_code in _VERDICTS:
+        return True
+    if record.status == locks.HANDED_OFF:
+        # A cut-off call's accepted take waits for the person's finish.
+        return record.took_interview or not record.accepted
+    return False
 
 
 async def _their_call(

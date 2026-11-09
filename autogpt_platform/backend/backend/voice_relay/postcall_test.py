@@ -18,7 +18,13 @@ from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump import interview, quality, voice
 from backend.api.features.onboarding_dump.interview_endings import InterviewEnding
-from backend.api.features.onboarding_dump.interview_test import jobs
+from backend.api.features.onboarding_dump.interview_test import (
+    StoredInterview,
+    allowance,
+    jobs,
+    opening,
+    stored,
+)
 from backend.api.features.onboarding_dump.service_test import (
     DumpStore,
     dumps,
@@ -33,6 +39,7 @@ from backend.copilot.model import (
     ONBOARDING_INTERVIEW_KIND,
     ChatSession,
 )
+from backend.copilot.onboarding_interview import INTERVIEW_CLOSED
 from backend.voice_relay import handoff, locks, postcall, tokens
 from backend.voice_relay.config import IN_RATE, TRANSCRIBE_MODEL
 from backend.voice_relay.conftest import MemoryRecordings, ScriptedTranscriber
@@ -48,12 +55,15 @@ from backend.voice_relay.postcall import (
 from backend.voice_relay.record import wav_of
 
 __all__ = [
+    "allowance",
     "dumps",
     "extraction",
     "jobs",
+    "opening",
     "personalization_admission",
     "quality_gate",
     "storage_mocks",
+    "stored",
     "transcribe",
 ]
 
@@ -94,6 +104,8 @@ class Interviews:
 
     def __init__(self) -> None:
         self.latest_call: str | None = None
+        # The call that took the interview, as the onboarding row keeps it.
+        self.taken: str | None = None
         self.typed: ChatSession | None = None
 
 
@@ -107,6 +119,22 @@ def interviews(mocker: MockerFixture, redis) -> Interviews:
     async def typed(user_id: str) -> ChatSession | None:
         return state.typed
 
+    async def taken(user_id: str) -> str | None:
+        return state.taken
+
+    async def take(user_id: str, call_id: str) -> None:
+        state.taken = call_id
+
+    mocker.patch.object(
+        interview,
+        "get_onboarding_voice_interview_call_id",
+        new=AsyncMock(side_effect=taken),
+    )
+    mocker.patch.object(
+        handoff,
+        "record_onboarding_voice_interview_call",
+        new=AsyncMock(side_effect=take),
+    )
     mocker.patch.object(
         interview,
         "get_onboarding_voice_call_id",
@@ -538,6 +566,9 @@ async def test_a_take_the_judge_never_ruled_on_is_handed_off_again_by_the_finish
     assert quality_gate.await_count == 2
     record = await locks.read_call(rig.redis, call_id)
     assert record is not None and record.status == locks.HANDED_OFF
+    # The person's finish makes the take the interview's.
+    assert record.took_interview
+    assert rig.interviews.taken == call_id
     assert dumps.row is not None and dumps.row.transcript == SAID[0]
 
 
@@ -587,6 +618,9 @@ async def test_a_confirm_arm_waits_and_the_finish_route_completes_the_hand_off(
     assert dumps.row.transcript == f"{SAID[0]}\nEight staff, not five."
     record = await locks.read_call(rig.redis, call_id)
     assert record is not None and record.status == locks.HANDED_OFF
+    # The person's finish makes the take the interview's.
+    assert record.took_interview
+    assert rig.interviews.taken == call_id
 
 
 async def test_a_call_the_person_has_called_again_since_is_superseded(

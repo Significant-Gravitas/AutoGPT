@@ -4,9 +4,18 @@ the answer on the call's record.
 Shared by the relay's post-call job (``postcall``), which hands a call off
 once its transcript is made, and the REST API's finish route
 (``onboarding_dump.voice``), which hands it off on the person's confirm or
-retry. The call's status follows the answer: ``handed_off`` once it closed
-the interview, ``failed`` with the answer while the interview stays open, or
-``transcribed`` while a confirm arm waits for the person.
+retry. The call's status follows the answer: ``handed_off`` once the pipeline
+took the words or another take owns the interview, ``failed`` with the answer
+while the interview stays open, or ``transcribed`` while a confirm arm waits
+for the person.
+
+A call whose words the pipeline accepted takes the person's interview when it
+ran to its close (:data:`RAN_TO_ITS_CLOSE`), or when the person confirmed it.
+A call that was cut off is handed off all the same, so the person has a Home
+if they never come back, but leaves the interview open: a later call, or the
+typed interview, replaces its take as any re-take does. Which call took the
+interview is written here, where the hand-off answers: on the person's
+onboarding row, which outlives the call, and on the call's record.
 """
 
 from fastapi import BackgroundTasks, HTTPException
@@ -19,9 +28,18 @@ from backend.api.features.onboarding_dump.interview import (
 )
 from backend.api.features.onboarding_dump.models import FinalizeResponse
 from backend.copilot.onboarding_interview import InterviewEndReason
+from backend.data.onboarding import record_onboarding_voice_interview_call
 from backend.data.redis_client import AsyncRedisClient
 from backend.voice_relay import locks
 from backend.voice_relay.locks import CallRecord, CallStatus
+
+# How a call ends when it runs to its close: Otto's goodbye, the server's caps,
+# the scope rule, or the person's Hang up. Every other end cut the call off:
+# the connection, silence, the vendor, a pod, or "End that call" from another
+# device.
+RAN_TO_ITS_CLOSE = frozenset(
+    {"finished", "wall_clock", "turn_cap", "spend_cap", "scope", "user_hangup"}
+)
 
 # The pipeline's refusals to take a hand-off for now, as a call records them:
 # over the person's personalization budget, or the budget cannot be read.
@@ -46,6 +64,12 @@ _INTERVIEW_REASONS: dict[str, InterviewEndReason] = {
 
 def interview_reason(end_reason: str | None) -> InterviewEndReason:
     return _INTERVIEW_REASONS.get(end_reason or "", "cap")
+
+
+def ran_to_its_close(end_reason: str | None) -> bool:
+    """Whether a call that ended with *end_reason* ran to its close, rather
+    than being cut off. An end this code does not know counts as cut off."""
+    return end_reason in RAN_TO_ITS_CLOSE
 
 
 def refused_hand_off(refusal: HTTPException) -> FinalizeResponse | None:
@@ -77,9 +101,14 @@ def call_status_after(closure: InterviewClosure) -> CallStatus:
 
 
 async def record_hand_off(
-    redis: AsyncRedisClient, call_id: str, closure: InterviewClosure
+    redis: AsyncRedisClient,
+    call_id: str,
+    closure: InterviewClosure,
+    *,
+    took_interview: bool = False,
 ) -> CallStatus:
-    """Record a hand-off's answer on the call. Returns the call's status."""
+    """Record a hand-off's answer on the call, and whether the call took the
+    interview with it. Returns the call's status."""
     status = call_status_after(closure)
     hand_off = closure.hand_off
     await locks.forget_call_fields(
@@ -89,10 +118,22 @@ async def record_hand_off(
             "status": status,
             "ending": closure.ending,
             "hand_off": hand_off.model_dump(mode="json") if hand_off else None,
+            "took_interview": True if took_interview else None,
         },
         *(() if hand_off else ("hand_off",)),
     )
     return status
+
+
+def takes_the_interview(
+    closure: InterviewClosure, record: CallRecord, *, confirmed: bool
+) -> bool:
+    """Whether a hand-off's answer makes the call the interview's take: the
+    pipeline accepted its words, and the call ran to its close or the person
+    confirmed it."""
+    hand_off = closure.hand_off
+    accepted = hand_off is not None and hand_off.status != BrainDumpStatus.failed
+    return accepted and (confirmed or ran_to_its_close(record.end_reason))
 
 
 async def hand_off_call(
@@ -105,7 +146,13 @@ async def hand_off_call(
 ) -> InterviewClosure:
     """Hand a call's stored transcript of record to the person's interview,
     and record the answer on the call. The pipeline refusing it for now (429
-    or 503) is recorded as a failed answer, then raised."""
+    or 503) is recorded as a failed answer, then raised.
+
+    *confirmed* is the person's own finish of the call, which makes an
+    accepted take the interview's whatever ended the call. The call that took
+    the interview is written on the person's onboarding row before the call's
+    record, so the record never says so while the row does not.
+    """
     try:
         closure = await close_voice_interview(
             record.uid,
@@ -126,5 +173,10 @@ async def hand_off_call(
                 InterviewClosure(ending=None, hand_off=answer),
             )
         raise
-    await record_hand_off(redis, record.call_id, closure)
+    took_interview = takes_the_interview(closure, record, confirmed=confirmed)
+    if took_interview:
+        await record_onboarding_voice_interview_call(record.uid, record.call_id)
+    await record_hand_off(
+        redis, record.call_id, closure, took_interview=took_interview
+    )
     return closure
