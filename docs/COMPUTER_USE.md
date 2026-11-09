@@ -114,17 +114,19 @@ read returns depends on a second setting:
   `CLIPBOARD_CONCEALED`. On Linux the shim checks with `xclip` (X11) or
   `wl-paste` (Wayland); without the tool it refuses rather than guess.
 
-The agent can put a file or an image file on the clipboard only after you
-approve that call (see [Files on the disk](#files-on-the-disk)).
+The agent can put a file or an image file on the clipboard only once that
+call is approved: by you on its card, by a standing rule you set on one, or
+by the platform in an Unsupervised chat (see
+[Files on the disk](#files-on-the-disk)).
 
 ## Files on the disk
 
 Three of cua-driver's tool arguments reach this computer's disk themselves:
 saving a screenshot to a file, putting a file or image file on the
 clipboard, and handing files to a web page's upload field. Otto asks you
-first, every time, on an approval card in the chat that shows the path; the
-shim runs the call only once you approve it. Without an approval the shim
-answers `APPROVAL_REQUIRED` and nothing happens.
+first, on an approval card in the chat that shows the path; the shim runs
+the call only once it's approved. Without an approval the shim answers
+`APPROVAL_REQUIRED` and nothing happens.
 
 A script (`run_script`) asks too, on a card that shows it: the
 shim can't check the calls a script makes inside cua-driver, and one of
@@ -136,9 +138,13 @@ files to open, or an inspector port. cua-driver starts those out of sight,
 with no window of their own, and opens a link in your own browser. Opening
 an app by its name or id asks nothing.
 
-In an Unsupervised chat, none of these ask: the platform approves the call
-itself and tells the shim so, and the shim, which can't tell that from your
-approval, runs it.
+Two things approve these calls without a card. In an Unsupervised chat none
+of them ask. And an approval card can also set a standing rule ("from now
+on", in the scope the card names): later calls of that kind then go ahead
+without a card, whatever path, file or script they name, not just the one
+the card showed. Either way the platform approves the call and tells the
+shim so, and the shim, which can't tell that from your approval of that one
+call, runs it.
 
 These approvals cover those arguments, not the apps. An app Otto drives
 reads and writes files with your access, outside the shared folders too: a

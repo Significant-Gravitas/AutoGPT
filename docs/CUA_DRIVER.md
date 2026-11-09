@@ -143,7 +143,7 @@ sixteen tools; all of them are in the catalog, which
 **The shim** (`handlers.ComputerUseHandler`):
 
 - Only an offered tool is relayed (`FEATURE_NOT_SUPPORTED` otherwise).
-- Arguments that reach the disk need the person's approval, per call:
+- Arguments that reach the disk need approval, call by call:
   `screenshot_out_file` on `get_window_state` and `get_desktop_state`
   (writes the screenshot to a file), `file_path` and `image_path` on
   `clipboard_write` (puts a file from anywhere on disk on the clipboard),
@@ -156,8 +156,10 @@ sixteen tools; all of them are in the catalog, which
   must name an app. The tool list names them in each tool's `approval_arguments`. The platform
   asks the person on an approval card that shows the path, and only then
   sends the call with the argument in `approved_arguments`; a chat that runs
-  Unsupervised sends it without asking, and the shim, which can't tell the
-  two apart, trusts the field. Without it the shim answers
+  Unsupervised sends it without asking, and so does a standing rule the
+  person set on an earlier card ("from now on"), for later calls of that
+  kind whatever path they name. The shim, which can't tell these apart,
+  trusts the field. Without it the shim answers
   `APPROVAL_REQUIRED` and nothing reaches the driver. A
   `run_steps` step may not use one at all, and neither may the `observe`
   that ends a batch, which the driver runs as a `get_window_state` call.
