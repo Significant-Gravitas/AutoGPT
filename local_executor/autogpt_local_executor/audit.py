@@ -769,8 +769,6 @@ def _detect_shim_version() -> str:
 def _now_ts() -> float:
     # Plain wall clock; the spec calls for unix epoch seconds. Tests can
     # monkeypatch this if they need determinism.
-    import time
-
     return time.time()
 
 

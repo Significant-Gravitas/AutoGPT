@@ -34,9 +34,12 @@ DRIVER_NAME = "cua-driver"
 # How to add computer use to a shim installed from Git, as the platform's
 # setup card and the README install it. pipx leaves an installed package
 # as it is without --force, extra or not. docs/COMPUTER_USE.md says the same.
+# Double quotes, which cmd.exe, PowerShell and POSIX shells all take (the
+# text has no $, backtick or !); cmd.exe would split single-quoted text at
+# its spaces.
 COMPUTER_USE_INSTALL = (
-    "pipx install --force 'autogpt-local-executor[computer-use] @ "
-    "git+https://github.com/Significant-Gravitas/autogpt-local-executor.git'"
+    'pipx install --force "autogpt-local-executor[computer-use] @ '
+    'git+https://github.com/Significant-Gravitas/autogpt-local-executor.git"'
 )
 START_TIMEOUT_SECONDS = 30.0
 LIST_TIMEOUT_SECONDS = 30.0
@@ -71,6 +74,10 @@ _INHERITED_CUA_SETTINGS = frozenset(
 )
 
 Runtime = Literal["direct", "service"]
+
+
+class CallNotStarted(TimeoutError):
+    """A call's deadline passed before the driver took it: nothing ran."""
 
 
 class DriverUnavailable(Exception):
@@ -243,8 +250,9 @@ class CuaDriverBridge:
     async def call_tool(
         self, name: str, arguments: dict[str, Any], *, timeout: float
     ) -> dict[str, Any]:
-        """One tool call, within `timeout` seconds of waiting for its turn
-        and `timeout` more of running.
+        """One tool call, which waits for its turn and runs within `timeout`
+        seconds in all. Raises CallNotStarted when the deadline passes before
+        the call reaches the driver.
 
         cua-driver 0.38 runs one request at a time and drops MCP's cancel
         notice, so a call past its deadline, or one its caller gave up on,
@@ -252,12 +260,20 @@ class CuaDriverBridge:
         sent after it would wait. The bridge sends one call at a time, so the
         one the driver runs is the one that overran, and stops the driver to
         end it; the next call starts a new one."""
-        async with asyncio.timeout(timeout):
-            await self._turn.acquire()
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        try:
+            async with asyncio.timeout_at(deadline):
+                await self._turn.acquire()
+        except TimeoutError as exc:
+            raise CallNotStarted(f"{name} waited its whole deadline for the driver") from exc
         try:
             client = await self._ensure_client()
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise CallNotStarted(f"{name}'s deadline passed while the driver started")
             try:
-                return await client.call_tool(name, arguments, timeout=timeout)
+                return await client.call_tool(name, arguments, timeout=remaining)
             except McpClosedError as exc:
                 self._last_failure = str(exc)
                 raise DriverUnavailable(f"cua-driver stopped during the call: {exc}") from exc
@@ -415,6 +431,7 @@ class CuaDriverBridge:
 __all__ = [
     "COMPUTER_USE_INSTALL",
     "DRIVER_NAME",
+    "CallNotStarted",
     "CuaDriverBridge",
     "DriverSnapshot",
     "DriverUnavailable",

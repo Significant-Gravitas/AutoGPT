@@ -37,6 +37,7 @@ from .computer_use import (
     APPROVAL_ARGUMENTS,
     ApprovalRequired,
     ArgumentRefused,
+    CallNotStarted,
     ClipboardConcealedError,
     ClipboardWritebackRegistry,
     ComputerUseError,
@@ -1419,14 +1420,23 @@ class ComputerUseHandler:
         config: ShimConfig,
         audit: AuditWriter | None = None,
         driver: CuaDriverBridge | None = None,
+        machine_turn: asyncio.Lock | None = None,
     ) -> None:
         self.config = config
         self.audit = audit
         self._driver = driver
+        # One GUI: tool calls from every session on the machine take turns.
+        self._machine_turn = machine_turn or asyncio.Lock()
         # A child session's handler uses its parent's driver and never stops it.
         self._owns_driver = True
         self._screenshot_rate = _SlidingWindowRateLimiter(config.max_screenshots_per_minute)
         self.clipboard_writeback = ClipboardWritebackRegistry()
+
+    @property
+    def shares_a_driver(self) -> bool:
+        """Whether this is a child session's handler, using its parent's
+        driver (share_with)."""
+        return not self._owns_driver
 
     @property
     def driver(self) -> CuaDriverBridge:
@@ -1440,9 +1450,10 @@ class ComputerUseHandler:
 
     def share_with(self, other: ComputerUseHandler) -> None:
         """Make `other`, a child session's handler, use this one's driver
-        process, screenshot budget and clipboard record: they are the
+        process, turn, screenshot budget and clipboard record: they are the
         machine's, not the session's."""
         other._driver = self.driver
+        other._machine_turn = self._machine_turn
         other._owns_driver = False
         other._screenshot_rate = self._screenshot_rate
         other.clipboard_writeback = self.clipboard_writeback
@@ -1476,7 +1487,9 @@ class ComputerUseHandler:
         session_id = self.config.session_id or "default"
         return "autogpt-" + hashlib.sha256(session_id.encode()).hexdigest()[:12]
 
-    async def handle(self, msg: Any) -> Any:
+    async def handle(self, msg: Any, *, received_at: float | None = None) -> Any:
+        """`received_at` (loop time) is when the shim received the message;
+        a tool call's deadline counts from it."""
         if not self.config.enable_computer_use:
             return make_error(
                 msg.id,
@@ -1486,7 +1499,7 @@ class ComputerUseHandler:
         if isinstance(msg, ComputerToolsRequestMessage):
             return await self._tools(msg)
         if isinstance(msg, ComputerToolCallMessage):
-            return await self._call(msg)
+            return await self._call(msg, received_at)
         return make_error(
             msg.id,
             ErrorCode.INTERNAL_ERROR,
@@ -1522,7 +1535,15 @@ class ComputerUseHandler:
 
     # ── COMPUTER_TOOL_CALL ───────────────────────────────────────────
 
-    async def _call(self, msg: ComputerToolCallMessage) -> Any:
+    async def _call(self, msg: ComputerToolCallMessage, received_at: float | None = None) -> Any:
+        """One call, within one deadline: `timeout_seconds` from when the
+        shim received it (`received_at`, loop time), covering its wait for
+        the computer, which every session's calls take turns at, and the
+        driver's work. A call whose deadline passes while it waits never
+        reaches the driver."""
+        loop = asyncio.get_running_loop()
+        seconds = float(msg.payload.timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
+        deadline = (loop.time() if received_at is None else received_at) + seconds
         start = time.monotonic()
         tool = msg.payload.tool
         arguments = dict(msg.payload.arguments)
@@ -1538,7 +1559,27 @@ class ComputerUseHandler:
         if approved:
             details["approved_arguments"] = sorted(approved)
         try:
-            result = await self._relay(tool, arguments, msg.payload.timeout_seconds, approved)
+            async with asyncio.timeout_at(deadline):
+                await self._machine_turn.acquire()
+        except TimeoutError:
+            return await self._not_started(msg, details, start)
+        try:
+            return await self._run_call(msg, details, start, deadline)
+        finally:
+            self._machine_turn.release()
+
+    async def _run_call(
+        self,
+        msg: ComputerToolCallMessage,
+        details: dict[str, Any],
+        start: float,
+        deadline: float,
+    ) -> Any:
+        tool = msg.payload.tool
+        arguments = dict(msg.payload.arguments)
+        approved = msg.payload.approved_arguments
+        try:
+            result = await self._relay(tool, arguments, deadline, approved)
         except asyncio.CancelledError:
             # The action may have happened: the bridge stopped the driver to
             # end it, but nothing takes back a click it already made.
@@ -1562,6 +1603,8 @@ class ComputerUseHandler:
             result = self._result_payload(
                 tool, {"isError": True, "content": [{"type": "text", "text": exc.message}]}
             )
+        except CallNotStarted:
+            return await self._not_started(msg, details, start)
         except TimeoutError:
             await self._emit(
                 msg.id, details, _err_result(_elapsed_ms(start), ErrorCode.COMMAND_TIMEOUT.value)
@@ -1576,17 +1619,39 @@ class ComputerUseHandler:
                     "tool": tool,
                     "timeout_seconds": msg.payload.timeout_seconds
                     or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS,
+                    "started": True,
                 },
             )
         payload, summary = result
         await self._emit(msg.id, {**details, **summary}, _ok_result(_elapsed_ms(start)))
         return ComputerToolResultMessage(id=msg.id, ts=now_ts(), payload=payload)
 
+    async def _not_started(
+        self, msg: ComputerToolCallMessage, details: dict[str, Any], start: float
+    ) -> Any:
+        """The deadline passed before the driver took the call: it waited
+        behind other calls on this computer, or for the driver to start."""
+        await self._emit(
+            msg.id, details, _err_result(_elapsed_ms(start), ErrorCode.COMMAND_TIMEOUT.value)
+        )
+        return make_error(
+            msg.id,
+            ErrorCode.COMMAND_TIMEOUT,
+            f"{msg.payload.tool} didn't start: this computer was busy with another call "
+            "until its deadline passed. Nothing ran; call it again.",
+            details={
+                "tool": msg.payload.tool,
+                "timeout_seconds": msg.payload.timeout_seconds
+                or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS,
+                "started": False,
+            },
+        )
+
     async def _relay(
         self,
         tool: str,
         arguments: dict[str, Any],
-        timeout_seconds: int | None,
+        deadline: float,
         approved: list[str],
     ) -> tuple[ComputerToolResultPayload, dict[str, Any]]:
         snapshot = await self.driver.snapshot()
@@ -1613,7 +1678,10 @@ class ComputerUseHandler:
             ) from exc
         if takes_session(spec.get("inputSchema") or {}):
             arguments["session"] = self.session_label
-        timeout = float(timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
+        # Starting the driver, on the first call, has its own deadline.
+        timeout = deadline - asyncio.get_running_loop().time()
+        if timeout <= 0:
+            raise CallNotStarted(f"{tool}'s deadline passed before the driver took it")
 
         if tool == "clipboard_read":
             raw = await self._clipboard_read(arguments, timeout)

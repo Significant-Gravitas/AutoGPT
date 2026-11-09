@@ -159,12 +159,18 @@ sixteen tools; all of them are in the catalog, which
 - `session` is set to the shim session's label on every call that takes it,
   overriding the caller's.
 - The clipboard rules, the screenshot budget and the frame limit below.
-- A deadline per call (120 s unless the platform asks for 1-600 s); past it
-  the shim stops the driver, and the next call starts a new one. Its
-  sessions, element tokens and launched browsers' pages start over too.
-- One call at a time per machine.
-- An audit record for every call, refused ones too. An approved call's
-  record names the approved arguments and keeps their paths whole.
+- One call at a time per machine, and one deadline per call (120 s unless
+  the platform asks for 1-600 s), counted from when the shim receives it, so
+  the wait for its turn counts. A call still waiting at its deadline never
+  reaches the driver (`started: false`). Past the deadline of a running
+  call, the shim stops the driver (`started: true`), and the next call
+  starts a new one; its sessions, element tokens and launched browsers'
+  pages start over too.
+- An audit record, best effort, for every call the computer-use handler
+  takes, refused ones too: a call goes ahead if its record can't be
+  written, and a call refused before the handler (computer use off on this
+  machine, or not granted to the session) gets no record. An approved
+  call's record names the approved arguments and keeps their paths whole.
 
 **Why a policy and not a capability manifest.** cua-driver's capability
 manifest is its strongest control, but it makes every window, app, display
@@ -181,8 +187,8 @@ manifest, is the natural next step.
 Computer use acts with the person's own rights through their GUI. An agent
 that can type can open a terminal. The shim doesn't claim otherwise: the
 capability is off until the person turns it on, the platform must grant it
-to each session, every call is audited, and the agent cursor shows where the
-agent works. The approval arguments keep disk access out of side channels the
+to each session, the calls it takes are audited (best effort, see Audit),
+and the agent cursor shows where the agent works. The approval arguments keep disk access out of side channels the
 person can't see: each one waits for the person to approve it. They are not a
 sandbox around the GUI.
 
@@ -250,7 +256,10 @@ content, with a note either way.
 
 ## Audit
 
-Every `COMPUTER_TOOL_CALL` writes a `COMPUTER_TOOL_CALL` record: the tool,
+Every `COMPUTER_TOOL_CALL` the computer-use handler takes writes a
+`COMPUTER_TOOL_CALL` record, best effort: a failed write doesn't stop the
+call, and a call refused before the handler (computer use off, or not
+granted to the session) has none. The record holds the tool,
 the arguments with typed, set and scripted text (`text`, `value`, `script`,
 `prompt_text`) replaced by its length and other long strings cut short, the
 outcome, whether the driver reported an error, how many images were sent or
@@ -264,7 +273,11 @@ With computer use on, the daemon checks before it connects that a usable
 cua-driver is installed (exit 78, permanent, if not). On macOS it starts the
 driver and asks `check_permissions` for Accessibility and Screen Recording
 without prompting; if either is missing it exits 78 and launchd starts it
-again later, as before. `autogpt-shim doctor` runs cua-driver's own
+again later, as before. Each chat's session checks again when it starts,
+through the same driver. If another chat's call is holding the driver past
+the check's 30 s, the new session goes ahead: the grants are the app's,
+checked when the shim started, and a busy driver is a working one.
+`autogpt-shim doctor` runs cua-driver's own
 `doctor`, starts the driver as the daemon does, reads the screen size, and on
 macOS reports both grants and, when one is missing, asks macOS to show its
 prompt for the shim's app (the driver leaves prompting to its host).

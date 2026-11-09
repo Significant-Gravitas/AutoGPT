@@ -135,7 +135,9 @@ def test_the_install_hint_replaces_a_shim_installed_from_git(tmp_path, monkeypat
     doctor.run_doctor(_config(tmp_path, enable_computer_use=True))
 
     out = capsys.readouterr().out
-    assert "pipx install --force 'autogpt-local-executor[computer-use] @ git+https://" in out
+    # Double quotes: cmd.exe splits single-quoted text at its spaces.
+    assert 'pipx install --force "autogpt-local-executor[computer-use] @ git+https://' in out
+    assert "'" not in doctor.COMPUTER_USE_INSTALL
 
 
 def test_computer_use_md_gives_the_install_command_the_shim_does() -> None:
