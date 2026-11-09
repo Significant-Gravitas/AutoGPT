@@ -270,10 +270,15 @@ already made stays made. See [AUDIT_LOG.md](AUDIT_LOG.md).
 ## Permissions and preflight
 
 With computer use on, the daemon checks before it connects that a usable
-cua-driver is installed (exit 78, permanent, if not). On macOS it starts the
-driver and asks `check_permissions` for Accessibility and Screen Recording
-without prompting; if either is missing it exits 78 and launchd starts it
-again later, as before. Each chat's session checks again when it starts,
+cua-driver is installed. If not, the failure is permanent: the shim exits 78,
+which the systemd unit doesn't restart, and under the LaunchAgent it exits 0
+so launchd doesn't restart it either. Once the driver is installed, restart
+the service (`launchctl kickstart -k gui/$(id -u)/net.autogpt.shim`, or
+`systemctl --user restart autogpt-shim`). On macOS it starts the driver,
+where one of another release fails the same way, and asks
+`check_permissions` for Accessibility and Screen Recording without
+prompting; if either is missing it exits 78 and launchd starts it again
+later, as before. Each chat's session checks again when it starts,
 through the same driver. If another chat's call is holding the driver past
 the check's 30 s, the new session goes ahead: the grants are the app's,
 checked when the shim started, and a busy driver is a working one.
