@@ -12,7 +12,6 @@ second one.
 import logging
 
 from backend.api.features.experts.models import HireSurface
-
 from backend.copilot import turn_queue
 from backend.copilot.active_turns import (
     ConcurrentTurnLimitError,

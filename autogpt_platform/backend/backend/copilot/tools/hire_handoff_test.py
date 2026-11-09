@@ -134,7 +134,9 @@ def _env(
         patch("backend.copilot.tools.hire_expert.experts_db", return_value=db),
         patch("backend.copilot.tools.expert_proposal.experts_db", return_value=db),
         patch("backend.copilot.tools.expert_delegation.experts_db", return_value=db),
-        patch("backend.copilot.tools.confirm_expert_change.experts_db", return_value=db),
+        patch(
+            "backend.copilot.tools.confirm_expert_change.experts_db", return_value=db
+        ),
         patch("backend.copilot.tools.hire_expert.get_redis_async", redis),
         patch("backend.copilot.tools.confirm_expert_change.get_redis_async", redis),
         patch(
