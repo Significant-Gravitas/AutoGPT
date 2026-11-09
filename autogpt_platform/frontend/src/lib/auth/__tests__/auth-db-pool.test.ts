@@ -155,6 +155,7 @@ describe("auth database pool", () => {
       expect(postgres.peak).toBeLessThanOrEqual(ROLE_LIMIT);
       expect(postgres.open).toBe(0);
     }
-    // 300 seeds take about 4 s alone, more on a busy CI runner.
-  }, 30_000);
+    // 300 seeds take about 4 s alone and can take several times that on a
+    // loaded CI runner, so the budget leaves about 15x headroom.
+  }, 60_000);
 });
