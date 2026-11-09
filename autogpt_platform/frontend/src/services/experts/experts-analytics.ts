@@ -9,6 +9,7 @@ import {
   type EventName,
 } from "@/services/analytics/posthog-events";
 import type { HireRequestSurface } from "@/app/api/__generated__/models/hireRequestSurface";
+import type { ExpertThreadSource } from "@/services/experts/expert-thread-source";
 import * as Sentry from "@sentry/nextjs";
 import posthog from "posthog-js";
 
@@ -23,7 +24,10 @@ interface FunnelEventProperties {
     template_id: string;
     surface: NonNullable<HireRequestSurface>;
   };
-  [ExpertsFunnelEvent.EXPERT_THREAD_CREATED]: { expert_id: string };
+  [ExpertsFunnelEvent.EXPERT_THREAD_CREATED]: {
+    expert_id: string;
+    thread_source?: ExpertThreadSource;
+  };
   [ExpertsFunnelEvent.BRIEFING_OUTCOME_CLICKED]: { status: string };
   [ExpertsFunnelEvent.HOME_ATTENTION_ACTIONED]: {
     kind: string;
@@ -34,13 +38,20 @@ interface FunnelEventProperties {
     position: number;
     surface: "intro" | "home";
     remaining: number;
+    owner: "expert" | "otto";
+    expert_template_id: string | null;
+    /** 0-based index in the stored (ranked) order. */
+    rank: number;
   };
   [ExpertsFunnelEvent.HOME_SUGGESTION_DISMISSED]: {
-    position: number | null;
+    position: number;
     surface: "intro" | "home";
     remaining: number;
-    scope: "one" | "all";
+    // "all" was Hide all, which is gone; the key stays for old insights.
+    scope: "one";
   };
+  [ExpertsFunnelEvent.HOME_SUGGESTIONS_COLLAPSED]: { open: number };
+  [ExpertsFunnelEvent.HOME_SUGGESTIONS_EXPANDED]: { open: number };
 }
 
 type FunnelEvent = FunnelViewEvent | keyof FunnelEventProperties;

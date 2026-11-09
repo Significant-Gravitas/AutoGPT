@@ -136,7 +136,11 @@ async def test_a_refused_turn_ends_paused_without_running():
     assert pause_of(marker) == PAUSE
     turn.save.assert_awaited_once_with(turn.session)
     turn.complete.assert_awaited_once_with(
-        "sess-1", error_message=None, error_code=None, turn_id="turn-1"
+        "sess-1",
+        error_message=None,
+        error_code=None,
+        turn_id="turn-1",
+        skip_error_publish=False,
     )
 
 
@@ -166,6 +170,7 @@ async def test_an_unreadable_allowance_fails_the_turn_closed():
         error_message=RATE_LIMIT_UNAVAILABLE_MESSAGE,
         error_code=RATE_LIMIT_UNAVAILABLE_CODE,
         turn_id="turn-1",
+        skip_error_publish=False,
     )
 
 
@@ -287,7 +292,11 @@ async def test_a_block_turn_past_its_allowance_runs_on_credits_and_pays_its_cost
         assert charge["metadata"].block == "AutoPilotBlock"
     windows.assert_not_awaited()
     turn.complete.assert_awaited_once_with(
-        "sess-1", error_message=None, error_code=None, turn_id="turn-1"
+        "sess-1",
+        error_message=None,
+        error_code=None,
+        turn_id="turn-1",
+        skip_error_publish=False,
     )
 
 
@@ -377,6 +386,7 @@ async def test_an_unreadable_allowance_fails_a_block_turn_closed_too(credits):
         error_message=RATE_LIMIT_UNAVAILABLE_MESSAGE,
         error_code=RATE_LIMIT_UNAVAILABLE_CODE,
         turn_id="turn-1",
+        skip_error_publish=False,
     )
 
 
@@ -395,4 +405,5 @@ async def test_an_unreadable_balance_fails_a_block_turn_closed(credits):
         error_message=RATE_LIMIT_UNAVAILABLE_MESSAGE,
         error_code=RATE_LIMIT_UNAVAILABLE_CODE,
         turn_id="turn-1",
+        skip_error_publish=False,
     )
