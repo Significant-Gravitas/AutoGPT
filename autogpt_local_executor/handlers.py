@@ -17,6 +17,7 @@ import binascii
 import hashlib
 import json
 import logging
+import math
 import mimetypes
 import os
 import shutil
@@ -1474,7 +1475,13 @@ class ComputerUseHandler:
         if raw.get("isError") or not isinstance(structured, dict):
             return None
         width, height = structured.get("width"), structured.get("height")
-        if isinstance(width, int | float) and isinstance(height, int | float):
+        # Python's json reads NaN and Infinity, which int() refuses.
+        if (
+            isinstance(width, int | float)
+            and isinstance(height, int | float)
+            and math.isfinite(width)
+            and math.isfinite(height)
+        ):
             return int(width), int(height)
         return None
 

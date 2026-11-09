@@ -1323,6 +1323,19 @@ async def test_the_deadline_counts_from_when_the_shim_received_the_call(
     assert _records(fake_log, "call") == []
 
 
+@pytest.mark.parametrize("width", ["NaN", "Infinity"])
+async def test_a_screen_size_that_is_not_a_finite_number_is_left_out(
+    make_handler, fake_log, monkeypatch, width: str
+) -> None:
+    """The driver's output is read with Python's json, which takes NaN and
+    Infinity, and int() of either raised, so HELLO failed instead of going
+    out without the size."""
+    monkeypatch.setenv("FAKE_CUA_SCREEN", f'{{"width": {width}, "height": 1080}}')
+    handler = make_handler()
+
+    assert await handler.screen_size() is None
+
+
 async def test_hello_skips_the_screen_size_rather_than_end_another_call(
     make_handler, fake_log, monkeypatch
 ) -> None:
