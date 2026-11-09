@@ -5,7 +5,6 @@ import hmac
 import json
 import time
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
 
 import fastapi
 import fastapi.testclient
@@ -1162,18 +1161,37 @@ def test_paid_invoice_restarts_the_period_last_and_alerts_when_it_cannot(
     assert alert.await_count == int(outcome == RestartOutcome.NEEDS_MANUAL_FIX)
 
 
-def test_a_late_payment_needing_a_person_alerts_once_across_its_deliveries(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    """One payment arrives as invoice.paid, invoice.payment_succeeded and
-    invoice_payment.paid, and Stripe redelivers each for days; every delivery
-    runs the restart again. The person is told once."""
-    invoice_id = f"in_{uuid4().hex}"
+class _InMemoryRedis:
+    """The SET NX / DEL subset the webhook's claims use."""
+
+    def __init__(self) -> None:
+        self.keys: dict[str, str] = {}
+
+    async def set(self, key: str, value: str, nx: bool = False, ex=None):
+        if nx and key in self.keys:
+            return None
+        self.keys[key] = value
+        return True
+
+    async def delete(self, *keys: str) -> int:
+        return sum(self.keys.pop(key, None) is not None for key in keys)
+
+
+@pytest.fixture
+def late_payment_needing_a_person(mocker: pytest_mock.MockFixture):
+    """A paid invoice whose restart needs a person, with the webhook's Redis
+    claims held in memory for this test only."""
+    routes = "backend.api.features.billing.subscriptions.routes"
+    mocker.patch(
+        f"{routes}.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=_InMemoryRedis(),
+    )
+    invoice_id = "in_late"
     invoice = {"id": invoice_id, "customer": "cus_1", "subscription": "sub_1"}
     mocker.patch(
         "stripe.Invoice.retrieve_async", new_callable=AsyncMock, return_value=invoice
     )
-    routes = "backend.api.features.billing.subscriptions.routes"
     for name in (
         "reconcile_wallet_payment_on_paid_invoice",
         "handle_subscription_payment_success",
@@ -1187,19 +1205,32 @@ def test_a_late_payment_needing_a_person_alerts_once_across_its_deliveries(
         return_value=RestartOutcome.NEEDS_MANUAL_FIX,
     )
     alert = mocker.patch(
-        f"{routes}.alert_tier_reconciliation_discrepancy", new_callable=AsyncMock
+        f"{routes}.alert_tier_reconciliation_discrepancy",
+        new_callable=AsyncMock,
+        return_value=True,
     )
-    paid = {"id": f"evt_{uuid4().hex}", "type": "invoice.paid"}
-
-    for event in (
-        {**paid, "data": {"object": invoice}},
-        {**paid, "data": {"object": invoice}},  # Stripe's redelivery
+    paid = {"id": "evt_paid", "type": "invoice.paid", "data": {"object": invoice}}
+    deliveries = (
+        paid,
+        paid,  # Stripe's redelivery
         {
-            "id": f"evt_{uuid4().hex}",
+            "id": "evt_invoice_payment_paid",
             "type": "invoice_payment.paid",
             "data": {"object": {"invoice": invoice_id}},
         },
-    ):
+    )
+    return deliveries, restart, alert
+
+
+def test_a_late_payment_needing_a_person_alerts_once_across_its_deliveries(
+    mocker: pytest_mock.MockFixture, late_payment_needing_a_person
+) -> None:
+    """One payment arrives as invoice.paid, invoice.payment_succeeded and
+    invoice_payment.paid, and Stripe redelivers each for days; every delivery
+    runs the restart again. The person is told once."""
+    deliveries, restart, alert = late_payment_needing_a_person
+
+    for event in deliveries:
         _post_event(mocker, event)
 
     assert restart.await_count == 3
