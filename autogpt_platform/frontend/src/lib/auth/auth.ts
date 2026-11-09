@@ -8,6 +8,11 @@ import {
 import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
 import { nativeSessionBearer } from "./native-session-bearer";
+import {
+  assertAppleSignInRequest,
+  getAppleProvider,
+  type AppleAccountUser,
+} from "./apple-provider";
 import { compare, hash } from "bcryptjs";
 import { PostgresDialect } from "kysely";
 import { Pool } from "pg";
@@ -59,8 +64,7 @@ const baseURL =
   "http://localhost:3000";
 
 function getSocialProviders() {
-  const providers: Record<string, { clientId: string; clientSecret: string }> =
-    {};
+  const providers: NonNullable<BetterAuthOptions["socialProviders"]> = {};
 
   for (const provider of ["google", "github", "discord"] as const) {
     const prefix = `AUTH_${provider.toUpperCase()}`;
@@ -71,7 +75,21 @@ function getSocialProviders() {
     }
   }
 
+  const apple = getAppleProvider(findAppleAccountUser);
+  if (apple) providers.apple = apple;
+
   return providers;
+}
+
+async function findAppleAccountUser(
+  subject: string,
+): Promise<AppleAccountUser | null> {
+  const context = await auth.$context;
+  const owner = await context.internalAdapter.findAccountOwnerByKey({
+    providerId: "apple",
+    accountId: subject,
+  });
+  return owner?.kind === "owned" ? owner.user : null;
 }
 
 // Shared with the databaseHooks below so the verified-email mirror reuses the
@@ -146,6 +164,7 @@ export const auth = betterAuth({
   disabledPaths: DISABLED_AUTH_PATHS,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      assertAppleSignInRequest(ctx.path, ctx.body);
       // Sign-in and reset emails are limited per IP and address (attempt-limits.ts).
       await limitAuthAttempts({
         path: ctx.path,

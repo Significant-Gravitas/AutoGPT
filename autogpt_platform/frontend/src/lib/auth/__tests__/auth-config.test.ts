@@ -101,6 +101,7 @@ async function loadAuthOptions(): Promise<CapturedAuthOptions> {
 }
 
 const PROVIDER_ENV_KEYS = [
+  "AUTH_APPLE_APP_BUNDLE_IDENTIFIER",
   "AUTH_GOOGLE_CLIENT_ID",
   "AUTH_GOOGLE_CLIENT_SECRET",
   "AUTH_GITHUB_CLIENT_ID",

@@ -4,6 +4,8 @@ The backend foundation in [#15384](https://github.com/Significant-Gravitas/AutoG
 
 The same session and retry contracts can be used by installed mobile and desktop clients. Client interfaces, browser login returns and distribution remain separate work.
 
+The [native Sign in with Apple follow-up](apple-sign-in.md) exchanges an Apple identity token for the same signed session bearer. It is enabled separately with the app's registered bundle identifier.
+
 The pending-message changes ship with session authentication because reconnecting clients retry accepted sends. Preserving their IDs requires recovery to retain the same IDs through cancellation, database failure and buffer refill. The engine changes preserve existing approval results and transient-error behavior when those recovery boundaries are introduced.
 
 ## Foundation landing boundary
