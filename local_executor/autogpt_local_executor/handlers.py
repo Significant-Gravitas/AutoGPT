@@ -1406,6 +1406,18 @@ class FileHandler:
 # ── Computer use ─────────────────────────────────────────────────────────────
 
 
+def _session_ended(raw: dict[str, Any]) -> bool:
+    """Whether cua-driver refused a call because its session had ended
+    (cua-driver 0.38: `refusal.code` "session_ended")."""
+    structured = raw.get("structuredContent")
+    refusal = structured.get("refusal") if isinstance(structured, dict) else None
+    return (
+        bool(raw.get("isError"))
+        and isinstance(refusal, dict)
+        and refusal.get("code") == "session_ended"
+    )
+
+
 class ComputerUseHandler:
     """Relays computer use to cua-driver (see docs/CUA_DRIVER.md).
 
@@ -1432,6 +1444,8 @@ class ComputerUseHandler:
         self._owns_driver = True
         self._screenshot_rate = _SlidingWindowRateLimiter(config.max_screenshots_per_minute)
         self.clipboard_writeback = ClipboardWritebackRegistry()
+        # How many times cua-driver ended this session's label (session_label).
+        self._label_renewals = 0
 
     @property
     def shares_a_driver(self) -> bool:
@@ -1462,7 +1476,7 @@ class ComputerUseHandler:
     async def screen_size(self) -> tuple[int, int] | None:
         """The main display's logical size, from the driver, for HELLO."""
         try:
-            raw = await self.driver.call_tool(
+            raw = await self.call_driver(
                 "get_screen_size",
                 {"session": self.session_label},
                 timeout=SCREEN_SIZE_SECONDS,
@@ -1493,9 +1507,40 @@ class ComputerUseHandler:
     @property
     def session_label(self) -> str:
         """The cua-driver session every call from this shim session carries,
-        so each gets its own agent cursor and cleanup."""
+        so each gets its own agent cursor and cleanup. A new one each time
+        cua-driver ends the last (call_driver)."""
         session_id = self.config.session_id or "default"
-        return "autogpt-" + hashlib.sha256(session_id.encode()).hexdigest()[:12]
+        label = "autogpt-" + hashlib.sha256(session_id.encode()).hexdigest()[:12]
+        return f"{label}.{self._label_renewals}" if self._label_renewals else label
+
+    async def call_driver(
+        self,
+        tool: str,
+        arguments: dict[str, Any],
+        *,
+        timeout: float,
+        start_within: float | None = None,
+    ) -> dict[str, Any]:
+        """One driver call, as `CuaDriverBridge.call_tool`. cua-driver ends a
+        named session left idle for five minutes and refuses every later call
+        that names it until the driver restarts, so a call refused for that
+        moves this session to a new label and goes again, once: the refused
+        call never ran."""
+        deadline = asyncio.get_running_loop().time() + timeout
+        raw = await self.driver.call_tool(
+            tool, arguments, timeout=timeout, start_within=start_within
+        )
+        if arguments.get("session") != self.session_label or not _session_ended(raw):
+            return raw
+        self._label_renewals += 1
+        arguments["session"] = self.session_label
+        logger.info(
+            f"cua-driver ended this session's driver session; going on as {arguments['session']}"
+        )
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise CallNotStarted(f"{tool}'s deadline passed while its driver session was renewed")
+        return await self.driver.call_tool(tool, arguments, timeout=remaining)
 
     async def handle(self, msg: Any, *, received_at: float | None = None) -> Any:
         """`received_at` (loop time) is when the shim received the message;
@@ -1713,7 +1758,7 @@ class ComputerUseHandler:
         if tool == "clipboard_read":
             raw = await self._clipboard_read(arguments, timeout)
         else:
-            raw = await self.driver.call_tool(tool, arguments, timeout=timeout)
+            raw = await self.call_driver(tool, arguments, timeout=timeout)
             if tool == "clipboard_write" and not raw.get("isError"):
                 if isinstance(arguments.get("text"), str):
                     self.clipboard_writeback.record_write(arguments["text"])
@@ -1738,7 +1783,7 @@ class ComputerUseHandler:
         timeout = deadline - asyncio.get_running_loop().time()
         if timeout <= 0:
             raise CallNotStarted("clipboard_read's deadline passed in the marker check")
-        raw = await self.driver.call_tool("clipboard_read", arguments, timeout=timeout)
+        raw = await self.call_driver("clipboard_read", arguments, timeout=timeout)
         if raw.get("isError"):
             return raw
         structured = raw.get("structuredContent")
@@ -1755,7 +1800,7 @@ class ComputerUseHandler:
                 # and the driver reads the types, then the text: a password
                 # manager's copy between the two would pass as clean. Read
                 # again; the same text with no marker belongs to one copy.
-                again = await self.driver.call_tool(
+                again = await self.call_driver(
                     "clipboard_read",
                     arguments,
                     timeout=max(deadline - asyncio.get_running_loop().time(), 0.001),

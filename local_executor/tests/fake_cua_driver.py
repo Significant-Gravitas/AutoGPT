@@ -19,6 +19,7 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_SLOW_SECONDS  how long the slow drag (pid -2) takes (default 30)
   FAKE_CUA_INITIALIZE    JSON object merged into initialize's result
   FAKE_CUA_SCREEN_ERROR  get_screen_size answers with this error
+  FAKE_CUA_ENDED_SESSIONS  comma-separated session labels refused as ended
 """
 
 from __future__ import annotations
@@ -102,6 +103,24 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
         return text_result(
             f"Permission denied: user policy: tool '{name}' is not allowed by the YAML policy",
             {"code": "permission_denied"},
+            error=True,
+        )
+    session = arguments.get("session")
+    if session in os.environ.get("FAKE_CUA_ENDED_SESSIONS", "").split(","):
+        # cua-driver 0.38.0's refusal of a named session it ended for idling.
+        message = (
+            f"session '{session}' has ended; call start_session with session "
+            f"'{session}' to start it again, or use a new session label"
+        )
+        return text_result(
+            message,
+            {
+                "hint": "That session has ended. Start it again with start_session "
+                "(same label), or use a new session label.",
+                "next_call": {"arguments": {"session": session}, "tool": "start_session"},
+                "refusal": {"code": "session_ended", "message": message},
+                "status": "refused",
+            },
             error=True,
         )
     if name == "get_screen_size":

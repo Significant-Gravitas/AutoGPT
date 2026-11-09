@@ -2208,7 +2208,7 @@ class ShimDaemon:
             else:
                 await driver.snapshot()
                 start_within = None
-            result = await driver.call_tool(
+            result = await self._computer_handler.call_driver(
                 "check_permissions",
                 {"prompt": False, "session": self._computer_handler.session_label},
                 timeout=PERMISSION_CHECK_SECONDS,
