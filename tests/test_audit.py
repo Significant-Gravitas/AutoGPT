@@ -562,32 +562,44 @@ async def test_concurrent_writes_serialize_via_internal_lock(tmp_path: Path) -> 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX file locks and modes")
 @pytest.mark.asyncio
-async def test_audit_verify_reads_the_log_under_the_writers_lock(
+async def test_audit_verify_reads_under_the_writers_lock_and_checks_after_it(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """A verify that read mid-append could call a valid log truncated."""
+    """A verify that read mid-append could call a valid log truncated. One
+    that also checked every record under the lock held the daemon's audit
+    writes, and the requests waiting on them, for the whole check."""
     import fcntl
 
     monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
-    held: list[bool] = []
+    held: dict[str, list[bool]] = {"read": [], "check": []}
 
-    def verify(_path: Path, _key: bytes) -> list:
+    def lock_held() -> bool:
         with open(tmp_path / ".audit.log.lock", "a+b") as probe:
             try:
                 fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                held.append(True)
-            else:
-                fcntl.flock(probe, fcntl.LOCK_UN)
-                held.append(False)
-        return []
+                return True
+            fcntl.flock(probe, fcntl.LOCK_UN)
+            return False
 
-    monkeypatch.setattr(AuditWriter, "verify", staticmethod(verify))
+    real_read = cli._read_audit_file
+    real_check = AuditWriter.verify_records
+
+    def read(path: Path) -> bytes | None:
+        held["read"].append(lock_held())
+        return real_read(path)
+
+    def check(data: bytes, key: bytes) -> list:
+        held["check"].append(lock_held())
+        return real_check(data, key)
+
+    monkeypatch.setattr(cli, "_read_audit_file", read)
+    monkeypatch.setattr(AuditWriter, "verify_records", staticmethod(check))
 
     assert cli._audit_verify(writer.path) == 0
-    assert held == [True]
+    assert held == {"read": [True], "check": [False]}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")

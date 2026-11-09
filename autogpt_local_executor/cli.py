@@ -717,10 +717,17 @@ def _audit_verify(current: Path) -> int:
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2
-    # The daemon may be appending; a half-written record would read as a break.
+    # The daemon may be appending; a half-written record would read as a
+    # break. So the log is read whole under the writers' lock, and checked
+    # after it, as verify-all does: checking parses and HMACs every record,
+    # and the daemon's audit writes, and the requests that wait on them,
+    # would wait for all of it.
     with holding_log_lock(current):
-        violations = AuditWriter.verify(current, key)
-    return _print_violations(current, violations)
+        contents = _read_audit_file(current)
+    if contents is None:
+        print(f"Audit log not found: {current}")
+        return 1
+    return _print_violations(current, AuditWriter.verify_records(contents, key))
 
 
 def _same_file(a: Path, b: Path) -> bool:
