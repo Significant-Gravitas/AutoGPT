@@ -728,14 +728,15 @@ class TestFallbackDelimiter:
 
     @pytest.mark.parametrize("delimiter_in_sample", ["", ";"])
     def test_quote_heavy_single_column_parses_quickly(self, delimiter_in_sample):
-        """csv.Sniffer took ten seconds on this 503-character shape before
-        CPython 3.13.15 (gh-109638), and hours at 8 KB; guessing by parsing
-        takes time in proportion to it."""
-        quotes = '"' * 240
+        """csv.Sniffer ran for over a minute on this 1 KB shape before CPython
+        3.13.15 (gh-109638), and for hours at 8 KB; parsing it now takes
+        milliseconds, so the bound only has to leave room for a CI pause."""
+        quotes = '"' * 480
         content = f':\n{quotes}aa: {delimiter_in_sample}{quotes}a =d-] "f"\n[\r\n= "'
         start = time.perf_counter()
-        parse_file_content(content, "csv")
-        assert time.perf_counter() - start < 1.0
+        result = parse_file_content(content, "csv")
+        assert time.perf_counter() - start < 10.0
+        assert result == content
 
 
 # ---------------------------------------------------------------------------
