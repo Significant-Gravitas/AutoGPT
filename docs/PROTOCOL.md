@@ -942,8 +942,8 @@ come back as `ERROR`: `DEPENDENCY_MISSING` (no usable cua-driver),
 Content is text and image blocks; another kind of block becomes a text
 note. Images are base64 as the driver produced them, at most
 `max_screenshots_per_minute` a minute (default 10) per machine; past that,
-or when the frame would exceed the WebSocket limit, images are left out and
-a text block says why. `structured_content` is the driver's
+or when the result would exceed `HELLO_ACK.max_file_size_bytes` or the
+WebSocket limit, images are left out and a text block says why. `structured_content` is the driver's
 `structuredContent`, dropped only when the result can't otherwise fit.
 
 `clipboard_read` returns text under the shim's rules: by default only text

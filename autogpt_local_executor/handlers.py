@@ -1833,7 +1833,9 @@ class ComputerUseHandler:
         structured = raw.get("structuredContent")
         structured = structured if isinstance(structured, dict) else None
 
-        budget = MAX_WIRE_BASE64_CONTENT_BYTES
+        # Every operation's payload stays within the negotiated
+        # max_file_size_bytes (PROTOCOL.md), and within the frame.
+        budget = min(self.config.max_file_size_bytes, MAX_WIRE_BASE64_CONTENT_BYTES)
         size = sum(_block_size(block) for block in content) + len(
             json.dumps(structured) if structured is not None else ""
         )
@@ -1856,7 +1858,9 @@ class ComputerUseHandler:
             if first_text is not None:
                 content.append(
                     ComputerTextContent(
-                        text=_truncate_utf8(first_text.text, MAX_WIRE_TEXT_CONTENT_BYTES)
+                        text=_truncate_utf8(
+                            first_text.text, min(budget, MAX_WIRE_TEXT_CONTENT_BYTES)
+                        )
                     )
                 )
             notes.append("The result was cut down to fit the connection's message limit.")

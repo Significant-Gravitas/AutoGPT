@@ -1155,6 +1155,24 @@ async def test_an_image_too_large_for_the_connection_is_left_out(make_handler, m
     assert (record["details"]["images"], record["details"]["images_withheld"]) == (0, 1)
 
 
+async def test_an_image_past_the_negotiated_payload_limit_is_left_out(
+    make_handler, monkeypatch
+) -> None:
+    """A result was held only to the frame's budget, so with a lower
+    negotiated max_file_size_bytes, which bounds every operation's payload
+    (PROTOCOL.md), a screenshot could exceed the limit the platform set."""
+    monkeypatch.setenv("FAKE_CUA_IMAGE_BYTES", "4000")
+    handler = make_handler()
+    handler.config.max_file_size_bytes = 1000
+
+    response = await handler.handle(_call("get_window_state", {"pid": 1}))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert not [b for b in response.payload.content if isinstance(b, ComputerImageContent)]
+    assert any("too large" in b.text for b in response.payload.content
+               if isinstance(b, ComputerTextContent))  # fmt: skip
+
+
 async def test_text_is_measured_as_json_writes_it(make_handler, monkeypatch) -> None:
     """The budget counted a text block's raw UTF-8 bytes, but JSON writes a
     control character as six bytes and a quote as two, so a result could
