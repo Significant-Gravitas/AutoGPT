@@ -316,6 +316,7 @@ def _mock_stream_internals(
         organization_id=None,
         team_id=None,
         expert_id=None,
+        archived_at=None,
     )
     mock_session.metadata.llm_auth_provider = llm_auth_provider
     mock_session.metadata.llm_credential_id = (
@@ -3377,7 +3378,7 @@ def test_get_pending_messages_returns_200_with_empty_buffer(
     mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_session",
         new_callable=AsyncMock,
-        return_value=mocker.MagicMock(),
+        return_value=mocker.MagicMock(archived_at=None),
     )
     mocker.patch(
         "backend.api.features.chat.routes.peek_pending_messages",
@@ -3400,7 +3401,7 @@ def test_get_pending_messages_returns_queued_messages(
     mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_session",
         new_callable=AsyncMock,
-        return_value=mocker.MagicMock(),
+        return_value=mocker.MagicMock(archived_at=None),
     )
     mocker.patch(
         "backend.api.features.chat.routes.peek_pending_messages",
