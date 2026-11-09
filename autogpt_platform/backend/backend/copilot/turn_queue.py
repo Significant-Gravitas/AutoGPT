@@ -10,7 +10,8 @@ text column:
 
 The user's pending message itself is just a normal ChatMessage row (no
 status of its own).  The dispatcher's submit-time payload (``file_ids``,
-``model``, ``permissions``, ``context``, ``request_arrival_at``)
+``model``, ``permissions``, ``context``, ``request_arrival_at``, ``cost_context``,
+``impersonated``)
 is stashed in that row's ``metadata`` JSONB so a later promotion can
 replay the turn faithfully.
 
@@ -30,19 +31,22 @@ cancels manually.
 
 import logging
 import uuid
+from datetime import datetime
 from typing import Any, Literal, Mapping
 
 from prisma.errors import UniqueViolationError
 from pydantic import BaseModel, ValidationError
 
 from backend.copilot.active_turns import (
+    SessionNotIdle,
     TurnSlot,
     count_running_turns,
     get_delegated_turn_limit,
     get_running_turn_limit,
 )
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
-from backend.copilot.db import is_duplicate_chat_message_id_error
+from backend.copilot.credential_selection import CredentialPin
+from backend.copilot.duplicate_message_id import is_duplicate_chat_message_id_error
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_QUEUED,
@@ -63,10 +67,22 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
+from backend.copilot.service import normalise_user_message
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tracking import track_user_message
-from backend.copilot.tree import TreeRefusal, TurnEnvelope, release_turn
+from backend.copilot.tree import (
+    TreeRefusal,
+    TurnEnvelope,
+    release_turn,
+    reopen_closed_tree,
+)
+from backend.copilot.trial_cost_context import (
+    TrialCostContext,
+    capture_cost_context,
+    restore_cost_context,
+)
 from backend.data.db_accessors import chat_db
+from backend.data.user import is_user_banned
 from backend.integrations.codex.access import has_codex_access
 
 logger = logging.getLogger(__name__)
@@ -88,6 +104,9 @@ UNREADABLE_SPAWN = (
 UNRECORDED_WAKE = (
     "The approved action could not be resumed: what it was allowed to do was "
     f"not recorded. {WAKE_LATER}"
+)
+UNREADABLE_BACKGROUND = (
+    "Otto couldn't start this background work because its saved limits are unavailable."
 )
 
 
@@ -119,11 +138,6 @@ async def list_queued_sessions(user_id: str):
     )
 
 
-class SessionNotIdle(Exception):
-    """The session already has a turn queued or running, so a spawned child
-    cannot be queued into it."""
-
-
 class InflightCapExceeded(Exception):
     """User's running + queued total has reached the configured hard cap.
 
@@ -148,6 +162,7 @@ async def try_enqueue_turn(
     permissions: Mapping[str, Any] | None = None,
     request_arrival_at: float = 0.0,
     envelope: TurnEnvelope | None = None,
+    impersonated: bool = False,
 ) -> ChatMessage | None:
     """Admit a queued turn against the user's hard cap.
 
@@ -174,6 +189,7 @@ async def try_enqueue_turn(
         permissions=permissions,
         request_arrival_at=request_arrival_at,
         envelope=envelope,
+        impersonated=impersonated,
     )
 
 
@@ -196,17 +212,28 @@ async def enqueue_turn(
     tool_call_id: str | None = None,
     tool_name: str | None = None,
     only_if_idle: bool = False,
+    impersonated: bool = False,
 ) -> ChatMessage | None:
     """Persist the user's pending message and flip the session to
     ``"queued"``.  Caller is responsible for the in-flight cap check
     AND session-ownership check upstream — once the row is committed
     the dispatcher owns it.
 
-    The user message is a regular ChatMessage row (no special status).
+    The user message is a regular ChatMessage row (no special status),
+    with the same input normalisation as a message that starts a turn
+    directly; one with nothing left once normalised raises
+    :class:`~backend.copilot.service.EmptyUserMessage` and writes no row.
     The dispatcher's submit-time payload is stashed in the row's
     ``metadata`` JSONB so a later promotion replays the turn faithfully.
     """
+    if is_user_message:
+        # Promotion replays this row as the turn's message and later turns
+        # replay it as history, so it is normalised before it is stored.
+        message = normalise_user_message(message)
     metadata = dict(message_metadata or {})
+    metadata["cost_context"] = (await capture_cost_context(user_id)).model_dump(
+        mode="json"
+    )
     if context is not None:
         metadata["context"] = dict(context)
     if file_ids is not None:
@@ -220,6 +247,8 @@ async def enqueue_turn(
         metadata["permissions"] = dict(permissions)
     if request_arrival_at:
         metadata["request_arrival_at"] = request_arrival_at
+    if impersonated:
+        metadata["impersonated"] = True
     # A wake starts under the envelope its call was held under, and a spawned
     # child under the one admitted for it, whichever turn frees the slot.
     if envelope is not None:
@@ -303,7 +332,9 @@ async def _flip(db: Any, session_id: str, user_id: str) -> bool:
     )
 
 
-async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
+async def cancel_queued_turn(
+    *, user_id: str, session_id: str, expected_turn_id: str | None = None
+) -> bool:
     """Flip the user's session from ``"queued"`` → ``"idle"``.  A queued child
     gets a closing row saying it was cancelled, which its waiter reads, and its
     node goes back to its tree.  Returns True iff the CAS matched AND the
@@ -316,6 +347,11 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
         async with _get_session_lock(session_id):
             # Read before the flip: once idle, a new message can become the latest.
             pending = await db.get_latest_user_message_in_session(session_id)
+            if expected_turn_id is not None and (
+                pending is None
+                or (pending.metadata or {}).get("turn_id") != expected_turn_id
+            ):
+                return False
             if not await db.update_chat_session_status(
                 session_id=session_id,
                 expect_status=CHAT_STATUS_QUEUED,
@@ -323,7 +359,12 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
                 user_id=user_id,
             ):
                 return False
-            if pending is not None and _is_spawned(pending):
+            spawned = pending is not None and _is_spawned(pending)
+            logger.info(
+                f"cancel_queued_turn: session={session_id} user={user_id} "
+                f"cancelled before it started, spawned={spawned}"
+            )
+            if spawned and pending is not None:
                 child = _child_node(pending.metadata or {})
                 await _note_cancel(db, session_id)
             await invalidate_session_cache(session_id)
@@ -428,6 +469,7 @@ async def _promote_head(user_id: str) -> bool | None:
     # The admitted envelope of a queued child, whose node a refusal gives back.
     child: TurnEnvelope | None = None
     spawned = False
+    background = False
     try:
         # Find the pending user message in this session (the most recent
         # user-role row with no following assistant rows — i.e. the one
@@ -467,6 +509,14 @@ async def _promote_head(user_id: str) -> bool | None:
         metadata = pending.metadata or {}
         queued_envelope = _stored_envelope(metadata)
         spawned = _is_spawned(pending)
+        background = bool(metadata.get("background_task_id"))
+        if background and queued_envelope is None:
+            await _refuse_queued_turn(head, UNREADABLE_BACKGROUND)
+            return None
+        if background and queued_envelope is not None:
+            # Background work keeps no clock, so its tree may have expired
+            # while it waited; the recheck below would refuse a closed one.
+            await reopen_closed_tree(queued_envelope, user_id=user_id)
         if spawned and queued_envelope is None:
             # Nothing but that envelope bounds a child its spawner admitted.
             await _refuse_queued_turn(
@@ -484,7 +534,7 @@ async def _promote_head(user_id: str) -> bool | None:
             await _refuse_queued_turn(head, UNRECORDED_WAKE)
             return None
 
-        turn_id = str(uuid.uuid4())
+        turn_id = str(metadata["turn_id"]) if background else str(uuid.uuid4())
         # The user's message is already persisted AND the session is
         # already ``chatStatus='running'`` from claim_queued_session.
         # Build a TurnSlot directly (no acquire) so we don't re-check
@@ -494,38 +544,57 @@ async def _promote_head(user_id: str) -> bool | None:
         # ``mark_session_completed`` → ``release_turn_slot``.
         slot = TurnSlot(user_id, head.session_id)
         slot.admitted = True
-        await dispatch_turn(
-            slot,
-            session_id=head.session_id,
-            user_id=user_id,
-            turn_id=turn_id,
-            message=pending.content,
-            is_user_message=pending.role == "user",
-            context=metadata.get("context"),
-            file_ids=metadata.get("file_ids"),
-            # Session-anchored tenancy: promoted turns attribute to the
-            # session's org/team, same as directly-dispatched turns —
-            # without this, capped users' queued turns would lose their
-            # org context on promotion.
-            organization_id=head.organization_id,
-            team_id=head.team_id,
-            model=metadata.get("model"),
-            llm_auth_provider=head.metadata.llm_auth_provider,
-            llm_credential_id=head.metadata.llm_credential_id,
-            permissions=_promotion_permissions(head, metadata, spawned=spawned),
-            request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
-            tool_call_id=metadata.get("tool_call_id") or "chat_stream",
-            tool_name=metadata.get("tool_name") or "chat",
-            # A typed message is a root, as the chat route makes it, not the
-            # child of the turn this hook runs in; a wake or a child brings its own.
-            envelope=queued_envelope,
-            root=queued_envelope is None,
-        )
+        # Missing legacy attribution must not be guessed from today's plan or
+        # the completing turn's context. Keep such work queued for recovery.
+        cost_context = TrialCostContext.model_validate(metadata.get("cost_context"))
+        with restore_cost_context(user_id, cost_context):
+            await dispatch_turn(
+                slot,
+                session_id=head.session_id,
+                user_id=user_id,
+                turn_id=turn_id,
+                message=pending.content,
+                is_user_message=pending.role == "user",
+                context=metadata.get("context"),
+                file_ids=metadata.get("file_ids"),
+                # Session-anchored tenancy: promoted turns attribute to the
+                # session's org/team, same as directly-dispatched turns —
+                # without this, capped users' queued turns would lose their
+                # org context on promotion.
+                organization_id=head.organization_id,
+                team_id=head.team_id,
+                model=metadata.get("model"),
+                llm_auth_provider=head.metadata.llm_auth_provider,
+                llm_credential_id=head.metadata.llm_credential_id,
+                permissions=_promotion_permissions(head, metadata, spawned=spawned),
+                request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
+                impersonated=metadata.get("impersonated") is True,
+                tool_call_id=metadata.get("tool_call_id") or "chat_stream",
+                tool_name=metadata.get("tool_name") or "chat",
+                message_metadata=metadata if background else None,
+                unattended=background,
+                credential_pins=(
+                    {
+                        key: CredentialPin.model_validate(value)
+                        for key, value in metadata.get("credential_pins", {}).items()
+                    }
+                    if background
+                    else None
+                ),
+                # A typed message is a root, as the chat route makes it, not the
+                # child of the turn this hook runs in; a wake or a child brings its own.
+                envelope=queued_envelope,
+                root=queued_envelope is None,
+            )
     except TreeRefusal as refused:
         # Only a stored envelope is re-checked here; a root is never refused.
         await _refuse_queued_turn(
             head,
-            refused.message if spawned else f"{refused.message} {WAKE_LATER}",
+            (
+                refused.message
+                if spawned or background
+                else f"{refused.message} {WAKE_LATER}"
+            ),
             release=child,
         )
         return None
@@ -555,7 +624,12 @@ async def _promote_head(user_id: str) -> bool | None:
             )
         raise
 
-    if pending.role == "user" and pending.content and not spawned:
+    logger.info(
+        f"dispatch_next_for_user: started queued session={head.session_id} "
+        f"user={user_id} turn={turn_id} sub_work={sub_work[head.session_id]}"
+    )
+
+    if pending.role == "user" and pending.content and not spawned and not background:
         try:
             track_user_message(
                 user_id=user_id,
@@ -777,10 +851,21 @@ def _promotion_permissions(
     )
 
 
+TurnRefusalKind = Literal["banned", "codex_access", "no_plan", "usage", "outage"]
+
+
 class TurnRefusal(BaseModel):
     reason: str
+    # What the owner could do about it, for callers that tell them: reconnect
+    # the Codex route, choose a plan, wait for the usage window, or nothing
+    # (a banned account, or an outage on our side).
+    kind: TurnRefusalKind
     # The usage store was unreadable: an outage, not the user's state.
     transient: bool = False
+    # Usage refusals only: the window that ran out ("daily", "weekly" or
+    # "trial") and when it resets.
+    window: str | None = None
+    resets_at: datetime | None = None
 
 
 async def turn_refusal(
@@ -788,21 +873,24 @@ async def turn_refusal(
 ) -> TurnRefusal | None:
     """Why a turn billed to this route may not start for this user, if so.
 
-    Access first (Codex entitlement, the platform paywall), then the platform
-    route's usage: its daily and weekly windows and a trial's total budget.
-    Lookup errors propagate, so each caller decides what an unknown means.
+    A ban first, on every route; then access (Codex entitlement, the platform
+    paywall), then the platform route's usage: its daily and weekly windows and
+    a trial's total budget. Lookup errors propagate, so each caller decides what
+    an unknown means.
     """
+    if await is_user_banned(user_id):
+        return TurnRefusal(reason="is banned", kind="banned")
     if llm_auth_provider == "codex":
         if await has_codex_access(user_id):
             return None
-        return TurnRefusal(reason="lacks Codex entitlement")
+        return TurnRefusal(reason="lacks Codex entitlement", kind="codex_access")
     if llm_auth_provider != "platform":
         return None
     if await is_user_paywalled(user_id):
-        return TurnRefusal(reason="paywalled")
+        return TurnRefusal(reason="paywalled", kind="no_plan")
     cfg = ChatConfig()
     try:
-        daily_limit, weekly_limit, _ = await get_global_rate_limits(
+        daily_limit, weekly_limit, usage_tier = await get_global_rate_limits(
             user_id,
             cfg.daily_cost_limit_microdollars,
             cfg.weekly_cost_limit_microdollars,
@@ -811,9 +899,17 @@ async def turn_refusal(
             user_id=user_id,
             daily_cost_limit=daily_limit,
             weekly_cost_limit=weekly_limit,
+            expected_tier=usage_tier,
         )
     except RateLimitExceeded as exc:
-        return TurnRefusal(reason=f"rate-limited ({exc})")
+        return TurnRefusal(
+            reason=f"rate-limited ({exc})",
+            kind="usage",
+            window=exc.window,
+            resets_at=exc.resets_at,
+        )
     except RateLimitUnavailable:
-        return TurnRefusal(reason="has unreadable usage limits", transient=True)
+        return TurnRefusal(
+            reason="has unreadable usage limits", kind="outage", transient=True
+        )
     return None

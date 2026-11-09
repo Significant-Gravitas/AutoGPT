@@ -13,20 +13,6 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? { enabled: true, ready: true }
-        : actual.useFlagStatus(flag as never),
-  };
-});
-
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -81,19 +67,18 @@ beforeEach(() => {
   );
 });
 
-describe("TeamPage tabs", () => {
-  test("opens on Overview without Pod board", async () => {
+describe("TeamPage layout", () => {
+  test("shows the roster under a plain header, with no tabs", async () => {
     server.use(getListExpertsMockHandler([maria]));
 
     render(<TeamPage />);
 
-    const overview = await screen.findByRole("tab", { name: "Overview" });
-    expect(overview.getAttribute("aria-selected")).toBe("true");
-    expect(screen.queryByRole("tab", { name: "Pod board" })).toBeNull();
-    expect(screen.queryByRole("tab", { name: "All tasks" })).toBeNull();
+    expect(await screen.findByText("Maria")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Team" })).toBeDefined();
+    expect(screen.queryByRole("tab")).toBeNull();
   });
 
-  test("Overview lists every expert without pod sections", async () => {
+  test("lists every expert without pod sections", async () => {
     const growth: ExpertPod = {
       id: "pod-growth",
       name: "Growth",
@@ -121,7 +106,7 @@ describe("TeamRoster toolbar", () => {
     expect(await screen.findByText("Maria")).toBeDefined();
 
     await user.type(
-      screen.getByRole("searchbox", { name: "Search experts" }),
+      screen.getByRole("textbox", { name: "Search experts" }),
       "resear",
     );
 
@@ -140,7 +125,7 @@ describe("TeamRoster toolbar", () => {
     expect(await screen.findByText("Maria")).toBeDefined();
 
     await user.type(
-      screen.getByRole("searchbox", { name: "Search experts" }),
+      screen.getByRole("textbox", { name: "Search experts" }),
       "nobody",
     );
 
@@ -150,7 +135,6 @@ describe("TeamRoster toolbar", () => {
   });
 
   test("the paused filter keeps only experts with paused schedules", async () => {
-    const user = userEvent.setup();
     const pausedLee = makeExpert({
       id: "expert-lee",
       name: "Lee",
@@ -158,10 +142,11 @@ describe("TeamRoster toolbar", () => {
     });
     server.use(getListExpertsMockHandler([maria, pausedLee]));
 
+    const user = userEvent.setup();
     render(<TeamPage />);
     expect(await screen.findByText("Maria")).toBeDefined();
 
-    await user.click(screen.getByRole("button", { name: "Filter experts" }));
+    await user.click(screen.getByRole("button", { name: /^Filter experts/ }));
     await user.click(
       await screen.findByRole("menuitemradio", { name: "Paused" }),
     );

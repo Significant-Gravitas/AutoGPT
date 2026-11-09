@@ -1,3 +1,5 @@
+// @vitest-environment-options {"settings":{"disableIframePageLoading":true}}
+
 import {
   getGetV2GetExpertComputerMockHandler,
   getPostV2StartExpertDesktopMockHandler,
@@ -35,9 +37,7 @@ describe("ExpertComputerSection", () => {
   it("shows the expert's boxes and volumes without waking anything", async () => {
     server.use(getGetV2GetExpertComputerMockHandler(computer));
 
-    render(
-      <ExpertComputerSection expertId="expert-1" expertName="Maria" enabled />,
-    );
+    render(<ExpertComputerSection expertId="expert-1" expertName="Maria" />);
 
     expect(await screen.findByText("Maria's computer")).toBeDefined();
     expect(screen.getByText("Suspended")).toBeDefined();
@@ -61,9 +61,7 @@ describe("ExpertComputerSection", () => {
       }),
     );
 
-    render(
-      <ExpertComputerSection expertId="expert-1" expertName="Maria" enabled />,
-    );
+    render(<ExpertComputerSection expertId="expert-1" expertName="Maria" />);
 
     await userEvent.click(
       await screen.findByRole("button", { name: "Turn on screen" }),
@@ -89,7 +87,7 @@ describe("ExpertComputerSection", () => {
     );
 
     const { rerender } = render(
-      <ExpertComputerSection expertId="expert-1" expertName="Maria" enabled />,
+      <ExpertComputerSection expertId="expert-1" expertName="Maria" />,
     );
     await userEvent.click(
       await screen.findByRole("button", { name: "Turn on screen" }),
@@ -100,9 +98,7 @@ describe("ExpertComputerSection", () => {
       ).toBeDefined(),
     );
 
-    rerender(
-      <ExpertComputerSection expertId="expert-2" expertName="Ada" enabled />,
-    );
+    rerender(<ExpertComputerSection expertId="expert-2" expertName="Ada" />);
 
     await waitFor(() =>
       expect(
@@ -121,9 +117,7 @@ describe("ExpertComputerSection", () => {
       }),
     );
 
-    render(
-      <ExpertComputerSection expertId="expert-1" expertName="Maria" enabled />,
-    );
+    render(<ExpertComputerSection expertId="expert-1" expertName="Maria" />);
 
     expect(
       await screen.findByText(

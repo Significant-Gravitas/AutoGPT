@@ -373,12 +373,19 @@ TRIAL_CREDITS_ROUTES = {
     "resume_trial",
     "start_trial_checkout",
 }
+PERSONAL_ACTIVATION_ROUTES = {
+    "confirm_pro_activation",
+    "get_current_pro_activation",
+    "get_pro_activation",
+    "preview_pro_activation",
+}
 # Routes that never resolve the org-pooled credit model at all. The reason is
 # prose; the exemption is checked by the transitive walk at the bottom of this
 # module.
 POOLED_MODEL_UNREACHABLE_ROUTES: dict[str, str] = {
     "get_subscription_status": "subscriptions are user-level, not org-pooled",
     "update_subscription_tier": "subscriptions are user-level, not org-pooled",
+    "preview_tier_upgrade": "previews only the caller's owned personal subscription",
     "get_user_auto_top_up": "reads the caller's own User.top_up_config, not org data",
     "stripe_webhook": (
         "unauthenticated by design, verified by Stripe signature; it fulfils "
@@ -427,6 +434,22 @@ def test_every_credits_route_is_gated_or_explicitly_exempt():
                 f"{route.name} now resolves an org context; it can reach pooled "
                 "credit and needs gating or its own documented reason"
             )
+        elif route.name in PERSONAL_ACTIVATION_ROUTES:
+            # These act only on the authenticated user's subscription and
+            # cannot resolve an org's pooled credits, even through helpers.
+            dependencies = _dependency_names(route.dependant)
+            assert {
+                "requires_user",
+                "get_user_id",
+            } <= dependencies, (
+                f"{route.name} must authenticate and identify its own user"
+            )
+            assert (
+                "get_request_context" not in dependencies
+            ), f"{route.name} now resolves an org context; review its billing gate"
+            assert not _reaches_credit_model(
+                route.endpoint
+            ), f"{route.name} now reaches pooled org credit; require MANAGE_BILLING"
         elif route.name in POOLED_MODEL_UNREACHABLE_ROUTES:
             assert not _reaches_credit_model(route.endpoint), (
                 f"{route.name} now reaches get_credit_model, so it can resolve a "
@@ -708,16 +731,19 @@ def test_personal_org_owner_passes_real_context_resolution(
     tested is that the personal-org fallback yields owner rights, which a
     hand-built RequestContext could not prove.
     """
-    mock_prisma.orgmember.find_first = AsyncMock(return_value=Mock(orgId="personal-1"))
-    mock_prisma.orgmember.find_unique = AsyncMock(return_value=_org_member(owner=True))
+    personal_membership = _org_member(owner=True)
+    personal_membership.orgId = "personal-1"
+    mock_prisma.orgmember.find_first = AsyncMock(return_value=personal_membership)
 
     resp = client.get("/api/credits")
 
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"credits": 1000}
-    # The personal-org fallback ran (no X-Org-Id header was supplied) and its
-    # org id is what the credit model was resolved against.
+    # The personal-org fallback ran (no X-Org-Id header was supplied), its
+    # membership row is the one validated, and its org id is what the credit
+    # model was resolved against.
     mock_prisma.orgmember.find_first.assert_awaited_once()
+    mock_prisma.orgmember.find_unique.assert_not_awaited()
     assert credit_stubs.get_credit_model.await_args.args[1] == "personal-1"
 
 

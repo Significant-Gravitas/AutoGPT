@@ -52,14 +52,15 @@ product does what the user expects.
 ## Run locally
 
 Start a full stack in the journeys configuration, then point Playwright at it.
-Mirror CI's backend settings:
+Mirror CI's backend settings; `docker-compose.journeys.yml` adds the scripted
+model AutoPilot chats with (see below):
 
 ```bash
 cd autogpt_platform
 make init-env
 python ../.github/scripts/hosted_journeys_env.py >> backend/.env
-echo "CHAT_TEST_MODE=true" >> backend/.env
-NEXT_PUBLIC_PW_TEST=true docker compose up -d --build
+NEXT_PUBLIC_PW_TEST=true docker compose -f docker-compose.yml \
+  -f docker-compose.journeys.yml up -d --build
 cd frontend
 PLAYWRIGHT_JOURNEY_COST_PER_NODE=1 PLAYWRIGHT_JOURNEY_TIER=PRO \
   pnpm exec playwright test --config playwright.journeys.config.ts --project hosted
@@ -73,8 +74,41 @@ reads the hosted flag values the fixtures hand it.
 per node execution: `1` with `EXECUTION_COST_COUNT_THRESHOLD=1`, otherwise
 leave it unset for `0`.
 
-The tier grant uses `DATABASE_URL` from `frontend/.env`; if your stack's
-Postgres isn't on `localhost:5432`, set `PLAYWRIGHT_JOURNEY_DATABASE_URL`.
+The tier grant and the copilot cost check use `DATABASE_URL` from
+`frontend/.env`; if your stack's Postgres isn't on `localhost:5432`, set
+`PLAYWRIGHT_JOURNEY_DATABASE_URL`.
+
+### Chatting with AutoPilot: the scripted model
+
+Journeys that chat run the real copilot pipeline (engine, tool calls,
+persistence, streaming and reconnects, cost accounting) against
+`autogpt_platform/scripted_model`, a fake model provider that plays each
+model turn from a script. `docker-compose.journeys.yml` starts it and points
+AutoPilot at it, in place of `CHAT_TEST_MODE`'s canned reply.
+
+- **Write the script** in `model-scripts/<name>.json`: the text, tool calls
+  (with their exact arguments) and token usage of each model turn, in order.
+  The format is in `scripted_model/README.md`.
+- **Pick it** with `scriptedRun("<name>")` from `scripted-model.ts`, and put
+  its `marker` in the chat message.
+- **Import the script** in the spec to know what to expect, as
+  `copilot-build-agent-journey.spec.ts` does.
+- **Check the run** with the helpers in `scripted-model.ts`:
+  `expectEachTurnOnce` (every turn asked for once, every expected tool result
+  seen, every reply delivered in full) and `expectChargedWhatWasBilled` (the
+  copilot's cost ledger charged exactly what the model billed). They read the
+  scripted model's journal at `localhost:4010`.
+
+- **Chat helpers** are in `copilot-chat.ts`. `recordChatStreams` records the
+  body of every chat stream as the browser received it (Chromium keeps no
+  streamed body for Playwright), and `cutChatStreams` fails the open ones the
+  way a dropped connection does. `context.setOffline` can't do that: Chromium
+  lets a stream that is already open finish.
+
+A request the script can't answer (no marker, past the last turn, a tool the
+platform didn't offer) fails the turn with the reason, which shows in the
+scripted model's container log and journal. These journeys skip against a
+deployed app, whose AutoPilot uses real models.
 
 ### Projects: `hosted` and `selfhost`
 
@@ -104,8 +138,8 @@ PLAYWRIGHT_BASE_URL=https://autogpt-pr-<N>.vercel.app \
   config, so pass it `userAgent: JOURNEY_USER_AGENT` yourself.
 - Users sign up as `journey-<id>@previews.agpt.co`, which the preview
   allowlist accepts. Override the domain with `PLAYWRIGHT_JOURNEY_EMAIL_DOMAIN`.
-- Previews serve real PostHog flags, so `enable-platform-payment` is on there
-  and a fresh user is paywalled: running an agent gets a 402. For journeys
+- Previews run with `ENABLE_PLATFORM_PAYMENT` on, so a fresh user is
+  paywalled: running an agent gets a 402. For journeys
   that run agents, sign in as a paid account instead with
   `PLAYWRIGHT_JOURNEY_EMAIL` and `PLAYWRIGHT_JOURNEY_PASSWORD`. Never put a
   real password in a log, commit or PR.
@@ -137,7 +171,8 @@ The journeys leg runs as close to the hosted product as one compose stack
 allows. Flag values live in `hosted-flags.json`, read by both sides:
 
 - **Backend:** `.github/scripts/hosted_journeys_env.py` turns them into
-  `FORCE_FLAG_<NAME>` lines in `backend/.env`, plus `ENABLE_CREDIT=true`.
+  `FORCE_FLAG_<NAME>` lines in `backend/.env`, plus `ENABLE_CREDIT=true`
+  and `ENABLE_PLATFORM_PAYMENT=true`.
 - **Frontend:** the fixtures write them to local storage before the app
   loads, and a `NEXT_PUBLIC_PW_TEST=true` build serves them
   (`services/feature-flags/pw-flag-overrides.ts`). That lets both legs share
@@ -146,15 +181,15 @@ allows. Flag values live in `hosted-flags.json`, read by both sides:
 
 Differences from hosted that are still open:
 
-| Area               | Journeys leg                                                                                                                        | Hosted                                                                         |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Payments           | `enable-platform-payment` **on**; journey users get a paid tier without Stripe, so checkout, trials and Stripe webhooks go untested | On, with Stripe: NO_TIER users get a 402 until they subscribe or start a trial |
-| Node execution fee | 1 credit per node (`EXECUTION_COST_COUNT_THRESHOLD=1`), so a run's cost is visible                                                  | 1 credit per 100 node executions                                               |
-| Copilot            | `CHAT_TEST_MODE` dummy reply; no real turn pipeline, tools or cost                                                                  | Real models                                                                    |
-| Flag source        | Fixed values from `hosted-flags.json`; JSON flags (model routing, tier limits) at code defaults                                     | PostHog/LaunchDarkly with targeting                                            |
-| `BEHAVE_AS`        | `LOCAL` on both sides; the frontend's is build time                                                                                 | `CLOUD`                                                                        |
-| Pods               | One `executor`, one `copilot_executor`                                                                                              | Many. Scaling needs the fixed host ports 8002/8008 removed first               |
-| Frontend runtime   | Next.js standalone server in Docker                                                                                                 | Vercel (body size limits, edge routing)                                        |
-| External services  | No Stripe, OAuth providers, Postmark or E2B; ClamAV, Redis, RabbitMQ and FalkorDB are real                                          | Real                                                                           |
-| LLM keys           | None; blocks that need platform credentials fail                                                                                    | Platform keys                                                                  |
-| Origin             | `http://localhost:3000`                                                                                                             | HTTPS                                                                          |
+| Area               | Journeys leg                                                                                                                                                                         | Hosted                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| Payments           | `ENABLE_PLATFORM_PAYMENT` **on**; journey users get a paid tier without Stripe, so checkout, trials and Stripe webhooks go untested                                                  | On, with Stripe: NO_TIER users get a 402 until they subscribe or start a trial |
+| Node execution fee | 1 credit per node (`EXECUTION_COST_COUNT_THRESHOLD=1`), so a run's cost is visible                                                                                                   | 1 credit per 100 node executions                                               |
+| Copilot            | The scripted model: the real engine (Claude Agent SDK), tools, persistence, streaming and cost, with scripted model turns. Memory (Graphiti) calls fail, so turns run without memory | Real models                                                                    |
+| Flag source        | Fixed values from `hosted-flags.json`; JSON flags (model routing, tier limits) at code defaults                                                                                      | PostHog with targeting                                                         |
+| `BEHAVE_AS`        | `LOCAL` on both sides; the frontend's is build time                                                                                                                                  | `CLOUD`                                                                        |
+| Pods               | One `executor`, one `copilot_executor`                                                                                                                                               | Many                                                                           |
+| Frontend runtime   | Next.js standalone server in Docker                                                                                                                                                  | Vercel (body size limits, edge routing)                                        |
+| External services  | No Stripe, OAuth providers, Postmark or E2B; ClamAV, Redis, RabbitMQ and FalkorDB are real                                                                                           | Real                                                                           |
+| LLM keys           | None; blocks that need platform credentials fail                                                                                                                                     | Platform keys                                                                  |
+| Origin             | `http://localhost:3000`                                                                                                                                                              | HTTPS                                                                          |

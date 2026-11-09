@@ -2,7 +2,11 @@ import path from "path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./coverage-fixture";
 import { E2E_AUTH_STATES } from "./credentials/accounts";
-import { BuildPage, createUniqueAgentName } from "./pages/build.page";
+import {
+  BuildPage,
+  createUniqueAgentName,
+  SIMPLE_AGENT,
+} from "./pages/build.page";
 import {
   clickRunButton,
   dismissFeedbackDialog,
@@ -228,7 +232,10 @@ async function createAndSaveDeterministicOutputAgent(
 
   await buildPage.addBlockByClick("Agent Output");
   await buildPage.waitForNodeOnCanvas(2);
-  await buildPage.connectNodes(0, 1);
+  await buildPage.connectNodes({
+    source: { node: "Store Value", output: "output" },
+    target: { node: "Agent Output", input: "value" },
+  });
   await buildPage.fillLastNodeTextInput("Agent Output", outputName);
 
   await buildPage.saveAgent(
@@ -289,7 +296,7 @@ test("library happy path: user can open the imported or saved agent from Library
 }) => {
   test.setTimeout(120000);
 
-  const { libraryPage, importedAgent } = await importAgentFromFile(
+  const { libraryPage, importedAgent, graphID } = await importAgentFromFile(
     page,
     TEST_AGENT_PATH,
     createUniqueAgentName("E2E Open Agent"),
@@ -305,7 +312,9 @@ test("library happy path: user can open the imported or saved agent from Library
   const builderPage = (await popupPromise) ?? page;
 
   await builderPage.waitForLoadState("domcontentloaded");
-  await expect(builderPage).toHaveURL(/\/build/);
+  await expect(builderPage).toHaveURL(
+    new RegExp(`/build\\?.*flowID=${graphID}`),
+  );
   const importedBuildPage = new BuildPage(builderPage);
   await importedBuildPage.waitForNodeOnCanvas();
   expect(await importedBuildPage.getNodeCount()).toBeGreaterThan(0);
@@ -413,7 +422,7 @@ test("library happy path: user can edit a saved agent from Library and keep chan
     .context()
     .waitForEvent("page", { timeout: 10000 })
     .catch(() => null);
-  // "Edit agent" link is inside the three-dot dropdown menu
+  // "Edit workflow" link is inside the three-dot dropdown menu
   await agentCard.getByRole("button", { name: "More actions" }).first().click();
   await page
     .getByTestId("library-agent-card-open-in-builder-link")
@@ -431,7 +440,7 @@ test("library happy path: user can edit a saved agent from Library and keep chan
 
   await builderPage.getByTestId("save-control-save-button").click();
   const saveAgentButton = builderPage.getByRole("button", {
-    name: "Save Agent",
+    name: "Save Workflow",
   });
   if (await saveAgentButton.isVisible({ timeout: 3000 }).catch(() => false)) {
     await expect(saveAgentButton).toBeEnabled({ timeout: 10000 });
@@ -489,9 +498,12 @@ test("library happy path: user can rerun a completed task from the Library agent
 
   await libraryPage.waitForRunToComplete();
 
-  // Simple agent has no AgentOutputBlock — verify run completion only.
   const runStatus = await libraryPage.getRunStatus();
   expect(runStatus).toBe("completed");
+  await libraryPage.assertRunOutputValue(
+    SIMPLE_AGENT.outputName,
+    SIMPLE_AGENT.value,
+  );
 });
 
 test("library happy path: user can delete a completed task from the run sidebar", async ({
@@ -532,7 +544,9 @@ test("library happy path: user can delete a completed task from the run sidebar"
   // Sidebar should drop the only run, returning the page to initial
   // task-entry state.
   await expect(
-    page.getByRole("button", { name: /^(Setup your task|New agent task)$/i }),
+    page.getByRole("button", {
+      name: /^(Setup your task|New workflow task)$/i,
+    }),
   ).toBeVisible({ timeout: 15000 });
 });
 

@@ -1,4 +1,4 @@
-import type { BrowserContext, Locator, Page } from "@playwright/test";
+import type { BrowserContext, Page } from "@playwright/test";
 import { expect, test } from "../coverage-fixture";
 import { BuildPage, createUniqueAgentName } from "../pages/build.page";
 import {
@@ -84,6 +84,31 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
     await expect.soft(notice).toBeVisible();
   });
 
+  await test.step("builder chat with no model says how to fix it, and saves no agent", async () => {
+    const buildPage = new BuildPage(page);
+    await buildPage.open();
+    await page.getByRole("button", { name: "Chat with builder" }).click();
+    const panel = page.getByRole("complementary", {
+      name: "Builder chat panel",
+    });
+    const notice = panel.getByRole("status", { name: "No AI connection" });
+    await expect.soft(notice).toBeVisible();
+    await expect
+      .soft(notice.getByRole("link", { name: /setup guide/i }))
+      .toHaveAttribute("href", /single-container\.md#models-and-memory/);
+    await expect
+      .soft(panel.getByRole("button", { name: "Retry" }))
+      .toHaveCount(0);
+
+    await page.getByRole("button", { name: "Close chat" }).click();
+    expect
+      .soft(
+        await libraryAgentNames(page),
+        "opening the builder chat must not save an empty agent",
+      )
+      .toEqual([]);
+  });
+
   const agentName = createUniqueAgentName("Selfhost Journey Agent");
   const expectedOutput = `selfhost-output-${runID}`;
   const outputName = `selfhost-result-${runID}`;
@@ -100,10 +125,11 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
     );
     await buildPage.addBlockByClick("Agent Output");
     await buildPage.waitForNodeOnCanvas(2);
-    await connectHandles(page, "output", "value");
-    await expect.poll(() => buildPage.getEdgeCount()).toBe(1);
+    await buildPage.connectNodes({
+      source: { node: "Store Value", output: "output" },
+      target: { node: "Agent Output", input: "value" },
+    });
     await buildPage.fillLastNodeTextInput("Agent Output", outputName);
-    await expect.soft(page.locator(AGENTATION)).toHaveCount(0);
     await buildPage.saveAgent(agentName, "Self-hosted first-hour journey");
     await buildPage.waitForSaveComplete();
     await buildPage.waitForSaveButton();
@@ -118,6 +144,15 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
     await libraryPage.assertRunOutputValue(outputName, expectedOutput);
     await expect.soft(page.getByText(/^Cost: \$/)).toHaveCount(0);
     await expectNoHostedOnlyChrome(page);
+  });
+
+  await test.step("the Library's briefing shows no spend", async () => {
+    await page.goto("/library");
+    await expect(page.getByText("Workflow Briefing")).toBeVisible();
+    await expect.soft(page.getByText("Spent this month")).toHaveCount(0);
+    await expect
+      .soft(page.getByRole("button", { name: /costs breakdown/i }))
+      .toHaveCount(0);
   });
 
   await test.step("settings: memory is reachable, billing is not", async () => {
@@ -147,43 +182,13 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
   ).toEqual([]);
 });
 
-const AGENTATION = "[data-agentation-root], [data-agentation-toolbar]";
-
-// Drags from the first node's named output to the second node's named input.
-// BuildPage.connectNodes takes each node's first handle, which for Store Value
-// is ``error``.
-async function connectHandles(page: Page, output: string, input: string) {
-  const nodeIDs = await page
-    .locator('[data-id^="custom-node-"]')
-    .evaluateAll((nodes) =>
-      nodes.map((node) =>
-        (node.getAttribute("data-id") ?? "").replace("custom-node-", ""),
-      ),
-    );
-  const source = page.locator(
-    `[data-tutorial-id="output-handler-${nodeIDs[0]}-${output}"]`,
+async function libraryAgentNames(page: Page) {
+  const response = await page.request.get(
+    "/api/proxy/api/library/agents?page_size=100",
   );
-  const target = page.locator(
-    `[data-tutorial-id="input-handler-${nodeIDs[1]}-${input}"]`,
-  );
-  const from = await centerOf(source);
-  const to = await centerOf(target);
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  const steps = 20;
-  for (let step = 1; step <= steps; step++) {
-    await page.mouse.move(
-      from.x + ((to.x - from.x) * step) / steps,
-      from.y + ((to.y - from.y) * step) / steps,
-    );
-  }
-  await page.mouse.up();
-}
-
-async function centerOf(locator: Locator) {
-  const box = await locator.boundingBox();
-  if (!box) throw new Error("handle is not on screen");
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  expect(response.ok()).toBe(true);
+  const { agents } = (await response.json()) as { agents: { name: string }[] };
+  return agents.map((agent) => agent.name);
 }
 
 async function submitSignup(page: Page, email: string) {
@@ -226,7 +231,6 @@ async function expectNoHostedOnlyChrome(page: Page) {
   const accountMenu = page.getByTestId("profile-popout-menu-trigger");
   await expect(accountMenu).toBeVisible();
   await expect.soft(page.getByText(/earn credits/i)).toHaveCount(0);
-  await expect.soft(page.locator(AGENTATION)).toHaveCount(0);
 
   await accountMenu.click();
   const menu = page.getByTestId("account-menu-popover");

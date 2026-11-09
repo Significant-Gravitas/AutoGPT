@@ -10,9 +10,13 @@ copilot worker reuses the exact route logic.
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
-from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.features.library.model import (
+    LibraryAgentPreset,
+    stored_trigger_mask_key,
+)
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db, triggers_db
 from backend.util.exceptions import (
@@ -23,6 +27,7 @@ from backend.util.exceptions import (
 )
 
 from .base import BaseTool
+from .external_scope import external_tenant
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -61,6 +66,7 @@ async def _list_scoped_presets(
         graph_id=graph_id,
         expert_id=session.expert_id,
         filter_by_expert=True,
+        organization_id=external_tenant(session),
     )
     scoped = [
         preset for preset in response.presets if _is_in_session_scope(preset, session)
@@ -122,6 +128,10 @@ class ListPresetsTool(BaseTool):
     @property
     def name(self) -> str:
         return "list_presets"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -205,7 +215,7 @@ class ListPresetsTool(BaseTool):
                 )
             except NotFoundError as e:
                 return ErrorResponse(
-                    message=f"Library agent not found: {e}",
+                    message=f"Library workflow not found: {e}",
                     error="library_agent_not_found",
                     session_id=session_id,
                 )
@@ -261,13 +271,27 @@ class UpdatePresetTool(BaseTool):
         return "update_preset"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # An active trigger starts runs, so turning one on, or giving one new
+        # inputs or trigger config (re-registering its webhook), is a run. The
+        # graph isn't known here, so either counts unless it turns the preset off.
+        is_active = args.get("is_active")
+        reconfigures = args.get("inputs") or args.get("trigger_config")
+        if is_active is True or (reconfigures and is_active is not False):
+            return [APIKeyPermission.RUN_AGENT]
+        return []
+
+    @property
     def description(self) -> str:
         return (
             "Update a preset by preset_id: rename, change description, pause or "
-            "resume it (is_active=false/true), or reconfigure its inputs. For a "
-            "webhook trigger, 'inputs' is the trigger block's config (e.g. repo, "
-            "events) and changing it re-registers the webhook with the preset's "
-            "existing credentials. Find preset_id via tool:list_presets."
+            "resume it (is_active=false/true), or change its inputs. 'inputs' are "
+            "the agent's graph inputs; a webhook trigger's config is "
+            "'trigger_config', and changing that re-registers the webhook. Find "
+            "preset_id via tool:list_presets."
         )
 
     @property
@@ -297,10 +321,16 @@ class UpdatePresetTool(BaseTool):
                 "inputs": {
                     "type": "object",
                     "description": (
-                        "Inputs to change, merged over the preset's current "
-                        "inputs. For a webhook trigger these are the trigger "
-                        "block's config (e.g. repo, events); changing them "
-                        "re-registers the webhook."
+                        "Graph inputs to change, merged over the current ones. "
+                        "Not the trigger config."
+                    ),
+                    "additionalProperties": True,
+                },
+                "trigger_config": {
+                    "type": "object",
+                    "description": (
+                        "Trigger config fields to change (e.g. repo, events), "
+                        "merged over the current config."
                     ),
                     "additionalProperties": True,
                 },
@@ -341,10 +371,40 @@ class UpdatePresetTool(BaseTool):
         merged_inputs = None
         credentials = None
         new_inputs = kwargs.get("inputs")
-        if new_inputs:
-            # Reconfigure: merge over current inputs and reuse the stored
-            # credentials so the webhook can be re-registered.
-            merged_inputs = {**current.inputs, **new_inputs}
+        new_trigger_config = kwargs.get("trigger_config")
+        if new_inputs or new_trigger_config:
+            # A triggered preset nests its trigger config under a per-node mask
+            # key, beside the graph's own inputs. Merging graph inputs into that
+            # mask pollutes the config and leaves the graph input unchanged.
+            mask_key = stored_trigger_mask_key(current.inputs)
+            if new_inputs and current.webhook_id and not mask_key:
+                # Without a mask the backend reads every stored input as trigger
+                # config, so a graph input saved now would land inside it.
+                return ErrorResponse(
+                    message=(
+                        "This trigger was saved in an older format. Save its "
+                        "trigger settings first, then set its inputs."
+                    ),
+                    error="preset_update_failed",
+                    session_id=session_id,
+                )
+            if new_trigger_config and not (mask_key or current.webhook_id):
+                return ErrorResponse(
+                    message="This preset has no webhook trigger to configure.",
+                    error="preset_update_failed",
+                    session_id=session_id,
+                )
+            merged_inputs = {**current.inputs, **(new_inputs or {})}
+            if mask_key:
+                merged_inputs[mask_key] = {
+                    **(current.inputs.get(mask_key) or {}),
+                    **(new_trigger_config or {}),
+                }
+            elif new_trigger_config:
+                # A flat preset the boot backfill has not converted: its inputs
+                # are all trigger config, and update_triggered_preset nests them.
+                merged_inputs.update(new_trigger_config)
+            # Reuse the stored credentials so the webhook can be re-registered.
             credentials = current.credentials
 
         try:
@@ -386,6 +446,10 @@ class DeletePresetTool(BaseTool):
     @property
     def name(self) -> str:
         return "delete_preset"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:

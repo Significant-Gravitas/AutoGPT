@@ -10,6 +10,7 @@ import {
   PlusSignCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 type IncompatibleUpdateDialogProps = {
   isOpen: boolean;
@@ -44,7 +45,7 @@ export function IncompatibleUpdateDialog({
     <Dialog
       title={
         <div className="flex items-center gap-2">
-          <Icon icon={Alert01Icon} className="h-5 w-5 text-amber-500" />
+          <Icon icon={Alert01Icon} tone="warning-bright" className="h-5 w-5" />
           Incompatible Update
         </div>
       }
@@ -59,10 +60,10 @@ export function IncompatibleUpdateDialog({
     >
       <Dialog.Content>
         <div className="space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <Text variant="body-tight" tone="secondary">
             Updating <strong>{beautifyString(agentName)}</strong> from v
             {currentVersion} to v{latestVersion} will break some connections.
-          </p>
+          </Text>
 
           {/* Input changes - two column layout */}
           {hasInputChanges && (
@@ -71,7 +72,8 @@ export function IncompatibleUpdateDialog({
               leftIcon={
                 <Icon
                   icon={CancelCircleIcon}
-                  className="h-4 w-4 text-red-500"
+                  tone="error"
+                  className="h-4 w-4"
                 />
               }
               leftTitle="Removed"
@@ -79,7 +81,8 @@ export function IncompatibleUpdateDialog({
               rightIcon={
                 <Icon
                   icon={PlusSignCircleIcon}
-                  className="h-4 w-4 text-green-500"
+                  tone="success"
+                  className="h-4 w-4"
                 />
               }
               rightTitle="Added"
@@ -94,7 +97,8 @@ export function IncompatibleUpdateDialog({
               leftIcon={
                 <Icon
                   icon={CancelCircleIcon}
-                  className="h-4 w-4 text-red-500"
+                  tone="error"
+                  className="h-4 w-4"
                 />
               }
               leftTitle="Removed"
@@ -102,7 +106,8 @@ export function IncompatibleUpdateDialog({
               rightIcon={
                 <Icon
                   icon={PlusSignCircleIcon}
-                  className="h-4 w-4 text-green-500"
+                  tone="success"
+                  className="h-4 w-4"
                 />
               }
               rightTitle="Added"
@@ -115,7 +120,8 @@ export function IncompatibleUpdateDialog({
               icon={
                 <Icon
                   icon={CancelCircleIcon}
-                  className="h-4 w-4 text-red-500"
+                  tone="error"
+                  className="h-4 w-4"
                 />
               }
               title="Type Changed"
@@ -131,7 +137,8 @@ export function IncompatibleUpdateDialog({
               icon={
                 <Icon
                   icon={PlusSignCircleIcon}
-                  className="h-4 w-4 text-amber-500"
+                  tone="warning-bright"
+                  className="h-4 w-4"
                 />
               }
               title="New Required Inputs"
@@ -143,7 +150,7 @@ export function IncompatibleUpdateDialog({
           <Alert variant="warning">
             <AlertDescription>
               If you proceed, you&apos;ll need to remove the broken connections
-              before you can save or run your agent.
+              before you can save or run your workflow.
             </AlertDescription>
           </Alert>
 
@@ -151,12 +158,7 @@ export function IncompatibleUpdateDialog({
             <Button variant="ghost" size="small" onClick={onClose}>
               Cancel
             </Button>
-            <Button
-              variant="primary"
-              size="small"
-              onClick={onConfirm}
-              className="border-amber-700 bg-amber-600 hover:bg-amber-700"
-            >
+            <Button variant="warning" size="small" onClick={onConfirm}>
               Update Anyway
             </Button>
           </Dialog.Footer>
@@ -186,57 +188,73 @@ function TwoColumnSection({
   rightItems,
 }: TwoColumnSectionProps) {
   return (
-    <div className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
-      <span className="font-medium">{title}</span>
+    <div className="rounded-md border border-border-base p-3">
+      <Text variant="large-medium-tight" as="span" tone="inherit">
+        {title}
+      </Text>
       <div className="mt-2 grid grid-cols-2 items-start gap-4">
         {/* Left column - Breaking changes */}
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+          <Text
+            variant="body-tight"
+            tone="muted"
+            as="div"
+            className="flex items-center gap-1.5"
+          >
             {leftIcon}
             <span>{leftTitle}</span>
-          </div>
+          </Text>
           <ul className="mt-1.5 space-y-1">
             {leftItems.length > 0 ? (
               leftItems.map((item) => (
-                <li
-                  key={item}
-                  className="text-sm text-gray-700 dark:text-gray-300"
-                >
-                  <code className="rounded bg-red-50 px-1 py-0.5 font-mono text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                <Text variant="body-tight" tone="body" as="li" key={item}>
+                  <Text
+                    variant="small-mono-tight"
+                    as="code"
+                    tone="error-strong"
+                    className="rounded bg-error-surface px-1 py-0.5"
+                  >
                     {item}
-                  </code>
-                </li>
+                  </Text>
+                </Text>
               ))
             ) : (
-              <li className="text-sm italic text-gray-400 dark:text-gray-500">
+              <Text variant="body-tight-italic" tone="subtle" as="li">
                 None
-              </li>
+              </Text>
             )}
           </ul>
         </div>
 
         {/* Right column - Possible solutions */}
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+          <Text
+            variant="body-tight"
+            tone="muted"
+            as="div"
+            className="flex items-center gap-1.5"
+          >
             {rightIcon}
             <span>{rightTitle}</span>
-          </div>
+          </Text>
           <ul className="mt-1.5 space-y-1">
             {rightItems.length > 0 ? (
               rightItems.map((item) => (
-                <li
-                  key={item}
-                  className="text-sm text-gray-700 dark:text-gray-300"
-                >
-                  <code className="rounded bg-green-50 px-1 py-0.5 font-mono text-xs text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                <Text variant="body-tight" tone="body" as="li" key={item}>
+                  <Text
+                    variant="small-mono-tight"
+                    as="code"
+                    tone="success-strong"
+                    className="rounded bg-success-surface px-1 py-0.5"
+                  >
                     {item}
-                  </code>
-                </li>
+                  </Text>
+                </Text>
               ))
             ) : (
-              <li className="text-sm italic text-gray-400 dark:text-gray-500">
+              <Text variant="body-tight-italic" tone="subtle" as="li">
                 None
-              </li>
+              </Text>
             )}
           </ul>
         </div>
@@ -259,24 +277,34 @@ function SingleColumnSection({
   items,
 }: SingleColumnSectionProps) {
   return (
-    <div className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
+    <div className="rounded-md border border-border-base p-3">
       <div className="flex items-center gap-2">
         {icon}
-        <span className="font-medium">{title}</span>
+        <Text variant="large-medium-tight" as="span" tone="inherit">
+          {title}
+        </Text>
       </div>
-      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <Text variant="body-tight" tone="muted" className="mt-1">
         {description}
-      </p>
-      <ul className="mt-2 space-y-1">
+      </Text>
+      <ul className="mt-2 list-disc space-y-1">
         {items.map((item) => (
-          <li
+          <Text
+            variant="body-tight"
+            tone="body"
+            as="li"
             key={item}
-            className="ml-4 list-disc text-sm text-gray-700 dark:text-gray-300"
+            className="ml-4"
           >
-            <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-800">
+            <Text
+              variant="small-mono-tight"
+              tone="inherit"
+              as="code"
+              className="rounded bg-surface-hover px-1 py-0.5"
+            >
               {item}
-            </code>
-          </li>
+            </Text>
+          </Text>
         ))}
       </ul>
     </div>

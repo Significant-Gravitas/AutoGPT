@@ -1,6 +1,11 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
-import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import {
+  getAuthDeepLink,
+  sanitizeAuthNext,
+  withAuthTracking,
+} from "@/lib/auth-redirect";
+import { isBannedNotice } from "@/lib/auth/account-banned";
 import {
   EMAIL_VERIFICATION_NOTICE_PARAM,
   getEmailVerificationNotice,
@@ -14,6 +19,8 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { login as loginAction } from "./actions";
+import { isTeamEmail } from "@/lib/auth/team-email";
+import { clearImpersonationEverywhere } from "@/lib/impersonation";
 
 export function useLoginPage() {
   useCaptureMarketingPrompt();
@@ -34,10 +41,15 @@ export function useLoginPage() {
 
   // Same-origin redirect target; off-site values are dropped so a crafted
   // `/login?next=https://phishing.site` cannot redirect users elsewhere.
-  const nextUrl = sanitizeAuthNext(searchParams.get("next"));
+  const rawNext = searchParams.get("next");
+  const nextUrl = getAuthDeepLink(rawNext);
+  // Round trips (Google, the verification email) carry the whole safe `next`;
+  // /auth/callback decides from it, tracking params included.
+  const safeNext = sanitizeAuthNext(rawNext);
   const verificationNotice = getEmailVerificationNotice(
     searchParams.get(EMAIL_VERIFICATION_NOTICE_PARAM),
   );
+  const showBannedNotice = isBannedNotice(searchParams);
 
   // Only honour explicit `?next=` deep links here. Generic "already logged in
   // on /login, get me out" is handled by OnboardingProvider so the user lands
@@ -61,11 +73,13 @@ export function useLoginPage() {
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
     setIsLoggingIn(true);
+    // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
+    clearImpersonationEverywhere();
 
     try {
       // Include next URL in OAuth flow if present
-      const callbackUrl = nextUrl
-        ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
+      const callbackUrl = safeNext
+        ? `/auth/callback?next=${encodeURIComponent(safeNext)}`
         : `/auth/callback`;
       const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
 
@@ -95,7 +109,7 @@ export function useLoginPage() {
     setIsLoading(true);
     setIsLoggingIn(true);
 
-    if (data.email.includes("@agpt.co")) {
+    if (isTeamEmail(data.email)) {
       toast({
         title: "Please use Google SSO to login using an AutoGPT email.",
         variant: "default",
@@ -106,8 +120,10 @@ export function useLoginPage() {
       return;
     }
 
+    clearImpersonationEverywhere();
+
     try {
-      const result = await loginAction(data.email, data.password, nextUrl);
+      const result = await loginAction(data.email, data.password, safeNext);
 
       if (result.error === "email_not_verified" && result.email) {
         setVerificationEmail(result.email);
@@ -124,7 +140,8 @@ export function useLoginPage() {
       // router.replace() does a soft navigation where the cookie store may not
       // immediately reflect cookies set by the server action, causing a blank page.
       // This matches the OAuth flow which also uses window.location.href.
-      window.location.href = nextUrl || result.next || "/";
+      window.location.href =
+        nextUrl || withAuthTracking(result.next || "/", rawNext);
     } catch (error) {
       toast({
         title:
@@ -142,9 +159,10 @@ export function useLoginPage() {
   return {
     form,
     feedback,
-    nextUrl,
+    nextUrl: safeNext,
     verificationEmail,
     verificationNotice,
+    showBannedNotice,
     user,
     isLoading,
     isGoogleLoading,

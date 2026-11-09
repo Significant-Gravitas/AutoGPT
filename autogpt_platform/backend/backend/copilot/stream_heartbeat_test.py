@@ -7,7 +7,7 @@ schedule (sub-second thresholds) so they run quickly without flakiness.
 """
 
 import asyncio
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
@@ -28,13 +28,6 @@ from backend.copilot.stream_heartbeat import SilenceWatchdog, wrap_stream_with_h
 @pytest_asyncio.fixture(scope="session", loop_scope="session", name="server")
 async def _server_noop() -> None:
     return None
-
-
-@pytest_asyncio.fixture(
-    scope="session", loop_scope="session", autouse=True, name="graph_cleanup"
-)
-async def _graph_cleanup_noop() -> AsyncIterator[None]:
-    yield
 
 
 @pytest.mark.asyncio

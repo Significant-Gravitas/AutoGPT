@@ -52,14 +52,10 @@ export async function subscribeToPush(
 }
 
 export async function unsubscribeFromPush(
-  registration: ServiceWorkerRegistration,
+  subscription: PushSubscription,
 ): Promise<boolean> {
   try {
-    const subscription = await registration.pushManager.getSubscription();
-    if (subscription) {
-      return await subscription.unsubscribe();
-    }
-    return true;
+    return await subscription.unsubscribe();
   } catch (error) {
     console.error("Failed to unsubscribe from push:", error);
     return false;

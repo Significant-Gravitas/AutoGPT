@@ -51,6 +51,27 @@ describe("handleStreamError", () => {
     mockToast.mockClear();
   });
 
+  it("hands a refusal for want of a plan to onPaywall, and nothing else", () => {
+    const onRateLimit = vi.fn();
+    const onReconnect = vi.fn();
+    const onPaywall = vi.fn();
+    const noPlan = Object.assign(
+      new Error("A subscription is required to use this feature."),
+      { status: 402 },
+    );
+    handleStreamError({
+      error: noPlan,
+      onRateLimit,
+      onReconnect,
+      onPaywall,
+      isUserStoppingRef: makeRef(false),
+    });
+    expect(onPaywall).toHaveBeenCalledOnce();
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(onRateLimit).not.toHaveBeenCalled();
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
   it("routes rate-limit messages (case-insensitive 'usage limit') to onRateLimit", () => {
     const onRateLimit = vi.fn();
     const onReconnect = vi.fn();
@@ -148,7 +169,7 @@ describe("handleStreamError", () => {
       title: string;
       description: string;
     };
-    expect(arg.title).toBe("AutoPilot is temporarily unavailable");
+    expect(arg.title).toBe("Your expert is temporarily unavailable");
     expect(arg.description).toMatch(/try again shortly/i);
     expect(onRateLimit).not.toHaveBeenCalled();
   });

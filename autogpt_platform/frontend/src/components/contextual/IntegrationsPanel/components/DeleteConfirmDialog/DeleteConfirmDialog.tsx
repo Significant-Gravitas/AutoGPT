@@ -40,8 +40,8 @@ export function DeleteConfirmDialog({
       ? "These credentials are referenced by active webhooks or workflows. Forcing removal may break them."
       : "This credential is referenced by an active webhook or workflow. Forcing removal may break it."
     : isBulk
-      ? "This action cannot be undone. Agents using these credentials will lose access immediately."
-      : "This action cannot be undone. Agents using this credential will lose access immediately.";
+      ? "This action cannot be undone. Experts and workflows using these credentials will lose access immediately."
+      : "This action cannot be undone. Experts and workflows using this credential will lose access immediately.";
   const confirmLabel = isForce ? "Force remove" : "Remove";
 
   return (
@@ -52,12 +52,12 @@ export function DeleteConfirmDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <Text variant="body" className="text-zinc-800">
+          <Text variant="body" tone="emphasis">
             {message}
           </Text>
 
           {notice && (
-            <Text variant="small" className="text-[#505057]">
+            <Text variant="small" tone="body">
               {notice}
             </Text>
           )}

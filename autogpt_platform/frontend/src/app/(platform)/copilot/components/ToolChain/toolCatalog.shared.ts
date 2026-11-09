@@ -33,6 +33,8 @@ export interface ToolMeta {
   category: ChainCategory;
   running: string;
   done: string;
+  /** Appended to the done label when a lookup finds nothing ("none yet"). */
+  empty?: string;
   subject?: (input: ToolInput, context: ToolDisplayContext) => string | null;
 }
 

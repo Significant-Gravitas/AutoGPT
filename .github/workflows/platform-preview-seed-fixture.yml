@@ -8,9 +8,11 @@ name: AutoGPT Platform - Preview Seed Fixture Bake
 #
 # SECURITY INVARIANT: this workflow holds NO cloud credentials and has NO read
 # path to any real database. It runs entirely against a throwaway Postgres
-# service container. The fixture contains ONLY Faker-generated synthetic rows
-# plus the already-public marketplace agent exports checked into
-# autogpt_platform/backend/agents/. No production data is ever touched.
+# service container. The fixture contains ONLY synthetic rows (Faker-generated,
+# plus the hand-written preview marketplace in
+# backend/api/features/store/preview_seed_content.py) and the already-public
+# marketplace agent exports checked into autogpt_platform/backend/agents/. No
+# production data is ever touched.
 #
 # RESTORE PROCEDURE (consumers): apply restore-preamble.sql to the target
 # database FIRST — it creates the platform schema and installs the vector +
@@ -27,6 +29,7 @@ on:
     paths:
       - "autogpt_platform/backend/migrations/**"
       - "autogpt_platform/backend/test/**"
+      - "autogpt_platform/backend/backend/api/features/store/preview_seed*.py"
       - ".github/workflows/platform-preview-seed-fixture.yml"
   schedule:
     # Weekly backstop (Mondays 06:00 UTC) so the fixture never goes stale even
@@ -89,7 +92,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           # Always bake dev: schedule/dispatch runs execute from the DEFAULT
           # branch (master), which would otherwise silently bake master's
@@ -105,12 +108,12 @@ jobs:
         run: echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-py3.12-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
@@ -164,6 +167,11 @@ jobs:
           }
         env:
           SKILLS_CATALOG_TOKEN: ${{ github.token }}
+
+      # The same synthetic marketplace preview deploys seed. Needs only the
+      # database, so a failure here is a real one.
+      - name: "Seed: synthetic preview marketplace"
+        run: timeout 300 poetry run seed-preview-marketplace
 
       - name: "Seed: e2e_test_data (best-effort)"
         run: |
@@ -274,7 +282,7 @@ jobs:
           PREAMBLE="${GITHUB_WORKSPACE}/restore-preamble.sql"
           MIGRATION_HEAD="$(jq -r .migration_head "${MANIFEST}")"
           DEV_SHA="$(jq -r .dev_sha "${MANIFEST}")"
-          NOTES="Rolling, fully SYNTHETIC preview-database seed fixture baked from dev@${DEV_SHA:0:12} (migration head: ${MIGRATION_HEAD}). Preview environments restore fixture.dump.gz (custom-format, gzipped, platform schema only, including _prisma_migrations) BEFORE running a PR's own migrations, so schema changes run against populated tables. RESTORE: apply restore-preamble.sql to the target database first (it creates the platform schema and installs the vector + pg_trgm extensions into it, which pg_dump --schema=platform omits), then run 'gunzip -c fixture.dump.gz | pg_restore -d <db> --no-owner' WITHOUT --exit-on-error (the dump's own CREATE SCHEMA collides benignly with the preamble's). SECURITY INVARIANT: this bake holds no cloud credentials and has no read path to any real database — it runs entirely against a throwaway Postgres container and contains only Faker-generated synthetic rows plus the already-public marketplace agent exports checked into autogpt_platform/backend/agents/. This asset is regenerated on every eligible dev push and weekly; treat it as disposable."
+          NOTES="Rolling, fully SYNTHETIC preview-database seed fixture baked from dev@${DEV_SHA:0:12} (migration head: ${MIGRATION_HEAD}). Preview environments restore fixture.dump.gz (custom-format, gzipped, platform schema only, including _prisma_migrations) BEFORE running a PR's own migrations, so schema changes run against populated tables. RESTORE: apply restore-preamble.sql to the target database first (it creates the platform schema and installs the vector + pg_trgm extensions into it, which pg_dump --schema=platform omits), then run 'gunzip -c fixture.dump.gz | pg_restore -d <db> --no-owner' WITHOUT --exit-on-error (the dump's own CREATE SCHEMA collides benignly with the preamble's). SECURITY INVARIANT: this bake holds no cloud credentials and has no read path to any real database — it runs entirely against a throwaway Postgres container and contains only synthetic rows (Faker-generated, plus the hand-written preview marketplace) and the already-public marketplace agent exports checked into autogpt_platform/backend/agents/. This asset is regenerated on every eligible dev push and weekly; treat it as disposable."
           if gh release view "${TAG}" >/dev/null 2>&1; then
             echo "Updating existing rolling release ${TAG}"
             gh release edit "${TAG}" --title "Preview seed fixture (rolling)" --notes "${NOTES}" --prerelease

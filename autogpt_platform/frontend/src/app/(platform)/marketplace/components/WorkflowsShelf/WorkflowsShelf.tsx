@@ -17,15 +17,27 @@ interface Props {
   agents: StoreAgent[];
   featuredAgents: StoreAgent[];
   total: number;
+  onPublish?: () => void;
 }
 
-export function WorkflowsShelf({ id, agents, featuredAgents, total }: Props) {
+export function WorkflowsShelf({
+  id,
+  agents,
+  featuredAgents,
+  total,
+  onPublish,
+}: Props) {
   const [isExpanded, setIsExpanded] = useState(false);
   const ordered = featuredFirst(agents, featuredAgents);
 
   if (ordered.length === 0) return null;
 
   const shown = isExpanded ? ordered : ordered.slice(0, SHELF_PREVIEW_SIZE);
+  const publishTrigger = (
+    <Button variant="secondary" size="small" onClick={onPublish}>
+      Publish your workflows
+    </Button>
+  );
 
   return (
     <section
@@ -56,13 +68,11 @@ export function WorkflowsShelf({ id, agents, featuredAgents, total }: Props) {
         {/* The old full-width creator banner sat at the bottom of the page and
             spoke louder than the shelf it advertised; one line under the
             workflows is the whole invitation. */}
-        <PublishAgentModal
-          trigger={
-            <Button variant="secondary" size="small">
-              Publish your workflows
-            </Button>
-          }
-        />
+        {onPublish ? (
+          publishTrigger
+        ) : (
+          <PublishAgentModal trigger={publishTrigger} />
+        )}
       </div>
     </section>
   );

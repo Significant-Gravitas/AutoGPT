@@ -91,32 +91,43 @@ test.describe("run correctness journey", () => {
       .toMatch(TERMINAL_STATUS);
   });
 
-  test("a run whose node fails is marked FAILED and shows the user the error", async ({
+  test("a run whose node fails shows the user which step failed and why", async ({
     page,
     journeyUser: _user,
   }, testInfo) => {
-    // Today a node error with nothing wired to its error output is non-fatal
-    // (backend/executor/manager.py): the run reports COMPLETED and the run
-    // view says "No output from this run." with no sign of the error. Whether
-    // the run should fail is the open product question of #14275 and
-    // SECRT-2840; either way the user needs to see the error. Remove this
-    // marker when both hold.
-    test.fail(
-      true,
-      "https://github.com/Significant-Gravitas/AutoGPT/issues/14275",
-    );
+    // A node error with nothing wired to its error output doesn't fail the
+    // run (backend/executor/manager.py), so the run reports COMPLETED. Whether
+    // it should fail is the open product question of #14275 and SECRT-2840;
+    // either way the user must see which step failed and why.
     const { agent, runID } = await runAgentWithFailingNode(page, testInfo);
 
     await expect
       .poll(() => getRunStatus(page, agent.graphID, runID), {
-        message: "the run should end as FAILED",
+        message: "the run should end as COMPLETED, its node error non-fatal",
         timeout: 30_000,
       })
-      .toBe("FAILED");
+      .toBe("COMPLETED");
+
+    const failures = page.getByTestId("run-failures");
     await expect(
-      page.getByText(/Invalid regex pattern/).first(),
-      "the node's error should be shown in the run view",
-    ).toBeVisible();
+      failures,
+      "the run view should say that a step failed",
+    ).toContainText("1 step failed");
+    await expect(
+      failures,
+      "the run view should name the step that failed",
+    ).toContainText("Match Text Pattern");
+    await expect(
+      failures,
+      "the run view should show the step's error",
+    ).toContainText(/Invalid regex pattern/);
+
+    await page.goto(agent.url);
+    await waitForAgentPageLoad(page);
+    await expect(
+      runListItem(page, runID),
+      "the Library run list should mark the run as having a failed step",
+    ).toContainText("1 step failed");
   });
 });
 
@@ -183,21 +194,12 @@ async function importAgent(page: Page, testInfo: TestInfo, graph: GraphSpec) {
       links: graph.links,
     }),
   );
-  await importAgentFromFile(page, filePath, graph.name);
-  return findLibraryAgent(page, graph.name);
-}
-
-async function findLibraryAgent(page: Page, name: string) {
-  const response = await page.request.get("/api/proxy/api/library/agents", {
-    params: { search_term: name },
-  });
-  expect(response.ok(), `GET library agents: ${response.status()}`).toBe(true);
-  const body = (await response.json()) as {
-    agents: { id: string; graph_id: string; name: string }[];
-  };
-  const agent = body.agents.find((candidate) => candidate.name === name);
-  if (!agent) throw new Error(`library agent "${name}" should exist`);
-  return { graphID: agent.graph_id, url: `/library/agents/${agent.id}` };
+  const { importedAgent, graphID } = await importAgentFromFile(
+    page,
+    filePath,
+    graph.name,
+  );
+  return { graphID, url: importedAgent.seeRunsUrl };
 }
 
 async function startRunFromLibrary(page: Page, agentURL: string) {

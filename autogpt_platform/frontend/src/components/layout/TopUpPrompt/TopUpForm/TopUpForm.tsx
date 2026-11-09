@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function TopUpForm({ submitLabel = "Top up", size = "normal" }: Props) {
-  const { form, isLoading, submitTopUp } = useTopUpForm();
+  const { form, isLoading, isRedirecting, submitTopUp } = useTopUpForm();
   const inputSize = size === "small" ? "small" : "medium";
   const buttonSize = size === "small" ? "small" : "large";
 
@@ -31,7 +31,11 @@ export function TopUpForm({ submitLabel = "Top up", size = "normal" }: Props) {
           />
         )}
       />
-      <Button type="submit" disabled={isLoading} size={buttonSize}>
+      <Button
+        type="submit"
+        disabled={isLoading || isRedirecting}
+        size={buttonSize}
+      >
         {isLoading ? "Redirecting…" : submitLabel}
       </Button>
     </Form>

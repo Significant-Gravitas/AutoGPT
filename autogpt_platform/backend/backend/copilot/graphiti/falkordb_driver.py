@@ -1,17 +1,22 @@
 import asyncio
+import functools
 import logging
 import random
 import re
 from collections.abc import Awaitable
 from typing import Any, cast
 
-from graphiti_core.driver.driver import GraphDriver
+from falkordb.asyncio import FalkorDB
+from graphiti_core.driver.driver import GraphDriver, GraphDriverSession
 from graphiti_core.driver.falkordb import STOPWORDS
 from graphiti_core.driver.falkordb_driver import FalkorDriver
 from graphiti_core.helpers import validate_group_ids
 from graphiti_core.utils.datetime_utils import convert_datetimes_to_strings
 
 from .config import graphiti_config
+from .fact_attributes import EdgeMergingSession, merging_save
+from .falkordb_connect import DeferredFalkorDB, build_off_loop, new_falkordb_client
+from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +113,7 @@ def _is_pending_queue_overflow(exc: Exception) -> bool:
 
 
 class AutoGPTFalkorDriver(FalkorDriver):
-    """FalkorDriver subclass with three AutoGPT-specific tweaks.
+    """FalkorDriver subclass with four AutoGPT-specific tweaks.
 
     1. ``build_fulltext_query`` adds the per-user ``group_id`` filter so
        multi-tenant searches don't cross user graphs.
@@ -136,16 +141,56 @@ class AutoGPTFalkorDriver(FalkorDriver):
        exceeded" backpressure with bounded jittered backoff, so a load
        spike degrades into a slightly slower memory op instead of a
        dropped one plus a Sentry alert. (SENTRY-1384.)
+
+    4. A driver made without a client never builds one on the calling
+       thread. Upstream constructs ``FalkorDB(...)`` there, whose
+       constructor probes the server synchronously; this one gets a
+       ``falkordb_connect.DeferredFalkorDB``, which builds the real client on the connect
+       pool when the first command needs it. ``host``, ``port`` and
+       ``password`` default to graphiti config.
+    5. graphiti's two saves of a fact, run through ``execute_query`` or
+       ``session()`` (``add_episode``'s bulk save), merge graphiti's map
+       into the stored properties instead of replacing them, so what
+       the platform wrote on a fact survives graphiti saving it again,
+       and save nothing on a forgotten fact but its episode list
+       (``fact_attributes.py``).
     """
 
-    def __init__(self, *args, build_indices: bool = False, **kwargs):
+    def __init__(
+        self,
+        host: str | None = None,
+        port: int | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        falkor_db: FalkorDB | None = None,
+        database: str = "default_db",
+        *,
+        build_indices: bool = False,
+    ):
         # Stash the flag BEFORE super().__init__ runs because
         # FalkorDriver.__init__ fires
         # ``loop.create_task(self.build_indices_and_constraints())``
         # synchronously; our override below reads this attribute when
         # the task actually ticks on the loop.
         self._build_indices_at_init = build_indices
-        super().__init__(*args, **kwargs)
+        if falkor_db is None:
+            falkor_db = DeferredFalkorDB(
+                functools.partial(
+                    new_falkordb_client,
+                    host,
+                    port,
+                    username=username,
+                    password=password,
+                )
+            )
+        super().__init__(falkor_db=falkor_db, database=database)
+
+    @property
+    def graph_name(self) -> str:
+        """The graph this driver reads and writes: a memory scope's
+        ``group_id``, which also names the graph's write lock
+        (``scope_lock.py``)."""
+        return self._database
 
     async def build_indices_and_constraints(self) -> None:  # type: ignore[override]
         if not self._build_indices_at_init:
@@ -205,7 +250,9 @@ class AutoGPTFalkorDriver(FalkorDriver):
 
         Reimplemented rather than delegating to ``super()`` so per-attempt
         logging is under our control; the result-shaping mirrors upstream.
+        graphiti's saves of a fact run as merges (``merging_save``).
         """
+        cypher_query_ = merging_save(cypher_query_)
         graph = self._get_graph(self._database)
         # falkordb's async ``Graph.query`` is typed as its sync counterpart in
         # the stubs (returns a bare ``QueryResult``, params typed narrowly);
@@ -286,6 +333,11 @@ class AutoGPTFalkorDriver(FalkorDriver):
                 raise
         raise AssertionError("unreachable: loop returns or raises on every path")
 
+    def session(self, database: str | None = None) -> GraphDriverSession:
+        """graphiti's FalkorDB session, running its saves of a fact as
+        merges (``fact_attributes.EdgeMergingSession``)."""
+        return EdgeMergingSession(self._get_graph(database))
+
     @staticmethod
     async def _dispatch(graph, cypher_query_, params, read_only: bool) -> Any:
         """Issue one attempt on the read-only or writing transport.
@@ -344,3 +396,46 @@ class AutoGPTFalkorDriver(FalkorDriver):
             return ""
 
         return fulltext_query
+
+
+def open_driver(
+    scope: MemoryScope, *, build_indices: bool = False
+) -> AutoGPTFalkorDriver:
+    """Open a Cypher driver on ``scope``'s graph; the caller must close it.
+
+    The one place scope-level code constructs a driver. ``build_indices``
+    stays False unless the caller is about to write — see
+    ``AutoGPTFalkorDriver`` for why a bare construction must never create a
+    graph. Opening one touches no network: its client is built on the
+    connect pool when the first command needs it
+    (``falkordb_connect.DeferredFalkorDB``), so
+    it can be opened anywhere, the event loop included.
+    """
+    return open_graph_driver(scope.group_id, build_indices=build_indices)
+
+
+def open_graph_driver(
+    database: str, *, build_indices: bool = False
+) -> AutoGPTFalkorDriver:
+    """Open a Cypher driver on the graph named ``database``; the caller must
+    close it. For code that knows a graph only by its name (an expert
+    graph's name is a digest no scope can be rebuilt from): a migration, or
+    a sweep over graphs noted in Redis. Opening one creates no graph."""
+    return AutoGPTFalkorDriver(database=database, build_indices=build_indices)
+
+
+async def connect_driver(
+    database: str, *, build_indices: bool = False
+) -> AutoGPTFalkorDriver:
+    """A driver on graph ``database``, its client already built.
+
+    Where ``open_driver`` builds the client at the first command, this
+    builds it before returning, on the connect pool
+    (``falkordb_connect.build_off_loop``).
+    The driver itself is made here, on the loop: its constructor schedules
+    the index build, when asked for.
+    """
+    client = await build_off_loop(new_falkordb_client)
+    return AutoGPTFalkorDriver(
+        falkor_db=client, database=database, build_indices=build_indices
+    )

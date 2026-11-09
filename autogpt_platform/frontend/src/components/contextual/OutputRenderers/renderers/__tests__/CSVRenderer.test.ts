@@ -88,4 +88,11 @@ describe("csvRenderer.render (parse via render output smoke)", () => {
     expect(screen.getByText("Alice")).toBeDefined();
     expect(screen.getByText("30")).toBeDefined();
   });
+  it("says the file is empty when it has no header row", () => {
+    render(
+      csvRenderer.render("", { filename: "empty.csv" }) as React.ReactElement,
+    );
+
+    expect(screen.getByText("Empty CSV")).toBeDefined();
+  });
 });
