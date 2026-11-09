@@ -20,6 +20,7 @@ import { ContextualTips } from "../components/ContextualTips/ContextualTips";
 import { FirstRunTour } from "../components/FirstRunTour/FirstRunTour";
 import { useFirstRunTourStore } from "../components/FirstRunTour/store";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
+import { NpsPrompt } from "../components/NpsPrompt/NpsPrompt";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
 import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose/BuilderSidebarAutoClose";
@@ -53,6 +54,7 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
   const content = (
     <TopUpPromptProvider>
       <PaywallGate>{children}</PaywallGate>
+      <NpsPrompt />
     </TopUpPromptProvider>
   );
 
