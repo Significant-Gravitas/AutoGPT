@@ -17,6 +17,7 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_RPC_ERROR     comma-separated tools answered with a JSON-RPC error
   FAKE_CUA_NEXT_CURSOR   tools/list pages without end: `same` cursor or a `new` one
   FAKE_CUA_SLOW_SECONDS  how long the slow drag (pid -2) takes (default 30)
+  FAKE_CUA_INITIALIZE    JSON object merged into initialize's result
 """
 
 from __future__ import annotations
@@ -179,21 +180,17 @@ def handle(message: dict) -> None:
             },
             policy=sorted(allowed_tools() or []),
         )
-        send(
-            {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": {
-                    "protocolVersion": message["params"]["protocolVersion"],
-                    "serverInfo": {
-                        "name": "cua-driver",
-                        "version": os.environ.get("FAKE_CUA_VERSION", "0.38.0"),
-                    },
-                    "capabilities": {"tools": {}},
-                    "instructions": "Fake cua-driver guidance.",
-                },
-            }
-        )
+        initialized = {
+            "protocolVersion": message["params"]["protocolVersion"],
+            "serverInfo": {
+                "name": "cua-driver",
+                "version": os.environ.get("FAKE_CUA_VERSION", "0.38.0"),
+            },
+            "capabilities": {"tools": {}},
+            "instructions": "Fake cua-driver guidance.",
+        }
+        initialized.update(json.loads(os.environ.get("FAKE_CUA_INITIALIZE") or "{}"))
+        send({"jsonrpc": "2.0", "id": request_id, "result": initialized})
     elif method == "tools/list":
         result: dict = {"tools": tool_list()}
         paging = os.environ.get("FAKE_CUA_NEXT_CURSOR")

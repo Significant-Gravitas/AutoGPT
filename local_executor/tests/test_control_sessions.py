@@ -434,7 +434,9 @@ class _AckSocket:
             raise OSError("the connection was reset")
 
 
+# As the platform sends it: a control ACK names its null session.
 _CONTROL_ACK: dict[str, Any] = {
+    "session_id": None,
     "connection_id": "connection-1",
     "granted_capabilities": ["files", "directory_browse"],
     "protocol_version": "2.0",
@@ -449,6 +451,7 @@ _CONTROL_ACK: dict[str, Any] = {
         ("granted_capabilities", 4400),
         ("protocol_version", 4426),
         ("connection_id", 4426),
+        ("session_id", 4426),
     ],
 )
 async def test_a_control_hello_ack_missing_a_required_field_stops_the_daemon(
@@ -457,8 +460,9 @@ async def test_a_control_hello_ack_missing_a_required_field_stops_the_daemon(
     """PROTOCOL.md: a control daemon fails terminally when its HELLO_ACK
     lacks a required field. One without granted_capabilities failed to parse
     before the flag was set, so run() reconnected with backoff; one without
-    protocol_version was taken for the shim's own; and a close that raised skipped the
-    flag on every path."""
+    protocol_version was taken for the shim's own; one without session_id
+    was taken for a null one; and a close that raised skipped the flag on
+    every path."""
     daemon = _control_daemon(tmp_path)
     payload = {key: value for key, value in _CONTROL_ACK.items() if key != missing}
     websocket = _AckSocket(payload, close_fails=close_fails)
@@ -480,6 +484,70 @@ async def test_a_complete_control_hello_ack_connects(tmp_path: Path) -> None:
     assert websocket.closed is None
     assert daemon._disable_reconnect is False
     assert daemon._connection_id == "connection-1"
+
+
+@pytest.mark.asyncio
+async def test_a_control_reconnect_keeps_the_machine_slots_old_work_holds(tmp_path: Path) -> None:
+    """Each control handshake made a new semaphore for the machine's request
+    slots. Work a session started can outlive it (a thread can't be
+    stopped), so after a reconnect it no longer counted, and the chats'
+    new requests could run past the negotiated limit beside it."""
+    daemon = _control_daemon(tmp_path)
+    await daemon._handshake(_AckSocket({**_CONTROL_ACK, "max_concurrent": 1}))
+    old_work = daemon._machine_work_semaphore
+    assert old_work is not None
+    await old_work.acquire()  # still running in a thread after its session ended
+
+    await daemon._handshake(_AckSocket({**_CONTROL_ACK, "max_concurrent": 1}))
+    slots = daemon._machine_work_semaphore
+    assert slots is not None
+
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.2):
+            await slots.acquire()
+    old_work.release()  # the old work ends
+    async with asyncio.timeout(10):
+        await slots.acquire()
+
+
+@pytest.mark.asyncio
+async def test_a_lower_limit_after_a_reconnect_counts_the_old_work(tmp_path: Path) -> None:
+    daemon = _control_daemon(tmp_path)
+    await daemon._handshake(_AckSocket({**_CONTROL_ACK, "max_concurrent": 2}))
+    slots = daemon._machine_work_semaphore
+    assert slots is not None
+    await slots.acquire()
+    await slots.acquire()
+
+    await daemon._handshake(_AckSocket({**_CONTROL_ACK, "max_concurrent": 1}))
+    slots.release()
+
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.2):
+            await daemon._machine_work_semaphore.acquire()  # type: ignore[union-attr]
+    slots.release()
+    async with asyncio.timeout(10):
+        await daemon._machine_work_semaphore.acquire()  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_a_machine_slot_handed_to_a_waiter_that_gives_up_goes_to_the_next() -> None:
+    from autogpt_local_executor.daemon import MachineSlots
+
+    slots = MachineSlots(1)
+    await slots.acquire()
+    first = asyncio.ensure_future(slots.acquire())
+    second = asyncio.ensure_future(slots.acquire())
+    await asyncio.sleep(0)
+
+    slots.release()  # hands the slot to `first`, which gives up before it runs
+    first.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    async with asyncio.timeout(10):
+        assert await second
+    assert slots.locked()
 
 
 def _idle_child(tmp_path: Path) -> tuple[ShimDaemon, list[str], list[str]]:
@@ -590,6 +658,41 @@ async def test_a_child_whose_detach_cannot_be_audited_keeps_serving(
     monkeypatch.setattr(daemon, "_write_control_audit", AsyncMock(side_effect=OSError("full")))
     try:
         await daemon._reap_idle_children()
+        await child._on_frame(_ChildSocket(sent), _stat_request("/tmp/next"))
+        await asyncio.wait_for(asyncio.gather(*child._dispatch_tasks), timeout=30)
+    finally:
+        session.cancel()
+
+    stop.assert_not_awaited()
+    assert started == ["/tmp/next"]
+
+
+@pytest.mark.asyncio
+async def test_a_child_whose_detach_is_cancelled_while_audited_keeps_serving(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The control connection dropping while the idle detach was audited
+    cancelled the reaper there, leaving the child running and refusing
+    every request as being detached until control reconnected."""
+    daemon = _control_daemon(tmp_path)
+    child, started, sent = _idle_child(tmp_path)
+    session = asyncio.create_task(asyncio.sleep(60))
+    daemon._child_sessions["session-1"] = _ActiveChild(daemon=child, task=session)
+    stop = AsyncMock()
+    monkeypatch.setattr(daemon, "_stop_child_session", stop)
+    auditing = asyncio.Event()
+
+    async def audit_until_cancelled(op: str, **kwargs: Any) -> None:
+        auditing.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(daemon, "_write_control_audit", audit_until_cancelled)
+    reaper = asyncio.create_task(daemon._reap_idle_children())
+    try:
+        await asyncio.wait_for(auditing.wait(), timeout=30)
+        reaper.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await reaper
         await child._on_frame(_ChildSocket(sent), _stat_request("/tmp/next"))
         await asyncio.wait_for(asyncio.gather(*child._dispatch_tasks), timeout=30)
     finally:

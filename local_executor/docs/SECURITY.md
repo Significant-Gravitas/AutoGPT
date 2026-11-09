@@ -224,8 +224,11 @@ normal network access. OS isolation and destination approval are future work.
 `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE` and `audit-key.enc` under
 `AUTOGPT_SHIM_FALLBACK_DIR` (default `~/.autogpt-local-executor`). Its format is
 HMAC-derived XOR obfuscation, not authenticated encryption or a slow password
-KDF. It does not make headless pairing work. Malformed stored keys fail closed;
-an existing log detects a wrong decoded key before appending. Without an
+KDF. It does not make headless pairing work. It starts a new key only while
+there is no audit log: one the keychain's key signed would never verify with
+it, so a keychain missing at start is waited for instead. Malformed stored
+keys fail closed; an existing log detects a wrong decoded key before
+appending. Without an
 existing log, the fallback cannot authenticate a passphrase or detect
 valid-length ciphertext corruption. Prefer a supported OS keyring.
 

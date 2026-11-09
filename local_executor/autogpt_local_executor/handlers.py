@@ -1462,7 +1462,10 @@ class ComputerUseHandler:
         """The main display's logical size, from the driver, for HELLO."""
         try:
             raw = await self.driver.call_tool(
-                "get_screen_size", {"session": self.session_label}, timeout=SCREEN_SIZE_SECONDS
+                "get_screen_size",
+                {"session": self.session_label},
+                timeout=SCREEN_SIZE_SECONDS,
+                start_within=CHILD_DRIVER_WAIT_SECONDS if self.shares_a_driver else None,
             )
         except (DriverUnavailable, McpError, TimeoutError):
             # HELLO goes out without the size rather than not at all.
@@ -1541,23 +1544,9 @@ class ComputerUseHandler:
         the computer, which every session's calls take turns at, and the
         driver's work. A call whose deadline passes while it waits never
         reaches the driver."""
-        loop = asyncio.get_running_loop()
-        seconds = float(msg.payload.timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
-        deadline = (loop.time() if received_at is None else received_at) + seconds
+        deadline = self.call_deadline(msg, received_at)
         start = time.monotonic()
-        tool = msg.payload.tool
-        arguments = dict(msg.payload.arguments)
-        approved = msg.payload.approved_arguments
-        details: dict[str, Any] = {
-            "tool": tool,
-            # What launches, and the paths the person approved, are kept
-            # whole, as EXECUTE_COMMAND keeps argv.
-            "arguments": _audit_arguments(
-                arguments, truncate=tool != "launch_app" and not approved
-            ),
-        }
-        if approved:
-            details["approved_arguments"] = sorted(approved)
+        details = self._call_details(msg)
         try:
             async with asyncio.timeout_at(deadline):
                 await self._machine_turn.acquire()
@@ -1567,6 +1556,37 @@ class ComputerUseHandler:
             return await self._run_call(msg, details, start, deadline)
         finally:
             self._machine_turn.release()
+
+    @staticmethod
+    def call_deadline(msg: ComputerToolCallMessage, received_at: float | None = None) -> float:
+        """When a call's `timeout_seconds` runs out (loop time), counted from
+        when the shim received it."""
+        seconds = float(msg.payload.timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
+        return (asyncio.get_running_loop().time() if received_at is None else received_at) + seconds
+
+    async def refuse_unstarted(self, msg: ComputerToolCallMessage) -> Any:
+        """Answer a call whose deadline passed before it could be taken (it
+        waited for one of the machine's request slots), as one whose
+        deadline passed waiting for the computer is answered."""
+        if not self.config.enable_computer_use:
+            return await self.handle(msg)
+        return await self._not_started(msg, self._call_details(msg), time.monotonic())
+
+    @staticmethod
+    def _call_details(msg: ComputerToolCallMessage) -> dict[str, Any]:
+        tool = msg.payload.tool
+        approved = msg.payload.approved_arguments
+        details: dict[str, Any] = {
+            "tool": tool,
+            # What launches, and the paths the person approved, are kept
+            # whole, as EXECUTE_COMMAND keeps argv.
+            "arguments": _audit_arguments(
+                dict(msg.payload.arguments), truncate=tool != "launch_app" and not approved
+            ),
+        }
+        if approved:
+            details["approved_arguments"] = sorted(approved)
+        return details
 
     async def _run_call(
         self,
@@ -1637,8 +1657,9 @@ class ComputerUseHandler:
         return make_error(
             msg.id,
             ErrorCode.COMMAND_TIMEOUT,
-            f"{msg.payload.tool} didn't start: this computer was busy with another call "
-            "until its deadline passed. Nothing ran; call it again.",
+            f"{msg.payload.tool} didn't start: this computer was busy with another call, "
+            "or cua-driver was still starting, until its deadline passed. Nothing ran; "
+            "call it again.",
             details={
                 "tool": msg.payload.tool,
                 "timeout_seconds": msg.payload.timeout_seconds
@@ -1654,7 +1675,7 @@ class ComputerUseHandler:
         deadline: float,
         approved: list[str],
     ) -> tuple[ComputerToolResultPayload, dict[str, Any]]:
-        snapshot = await self.driver.snapshot()
+        snapshot = await self.driver.snapshot(deadline=deadline)
         spec = snapshot.tool(tool)
         if spec is None:
             raise ComputerUseError(
@@ -1678,7 +1699,6 @@ class ComputerUseHandler:
             ) from exc
         if takes_session(spec.get("inputSchema") or {}):
             arguments["session"] = self.session_label
-        # Starting the driver, on the first call, has its own deadline.
         timeout = deadline - asyncio.get_running_loop().time()
         if timeout <= 0:
             raise CallNotStarted(f"{tool}'s deadline passed before the driver took it")
@@ -1845,6 +1865,11 @@ class ComputerUseHandler:
 
 # How long HELLO waits for the driver's screen size.
 SCREEN_SIZE_SECONDS = 10.0
+# How long a chat's session, starting, waits for the driver another chat's
+# call may hold (its permission check, HELLO's screen size) before going on
+# without it: the platform gives a new chat's session a few seconds (eight)
+# to connect, and undoes the chat when it doesn't.
+CHILD_DRIVER_WAIT_SECONDS = 2.0
 
 # How long one computer tool call may run unless the platform asks for less
 # or more. The driver's own bounded waits (verify_state, run_script) fit.
@@ -1860,13 +1885,28 @@ def _audit_arguments(value: Any, key: str | None = None, *, truncate: bool = Tru
     if isinstance(value, dict):
         return {k: _audit_arguments(v, k, truncate=truncate) for k, v in value.items()}
     if isinstance(value, list):
+        if key == "keys" and _types_a_character(value):
+            return [{"redacted_chars": 1} if _is_character(item) else item for item in value]
         return [_audit_arguments(item, key, truncate=truncate) for item in value]
     if isinstance(value, str):
-        if key in _AUDIT_REDACTED_ARGUMENTS:
+        # press_key takes any single character, so a secret can be typed a
+        # key at a time; named keys (enter, tab) stay readable.
+        if key in _AUDIT_REDACTED_ARGUMENTS or (key == "key" and _is_character(value)):
             return {"redacted_chars": len(value)}
         if truncate and len(value) > _AUDIT_STRING_LIMIT:
             return value[:_AUDIT_STRING_LIMIT] + f"… ({len(value)} chars)"
     return value
+
+
+def _is_character(value: Any) -> bool:
+    return isinstance(value, str) and len(value) == 1
+
+
+def _types_a_character(keys: list[Any]) -> bool:
+    """Whether a hotkey chord types a character: shift and a character, as
+    against a command chord (ctrl+c) whose keys stay readable."""
+    held = {key.lower() for key in keys if isinstance(key, str) and not _is_character(key)}
+    return held <= {"shift"} and any(_is_character(key) for key in keys)
 
 
 def _block_size(block: ComputerTextContent | ComputerImageContent) -> int:

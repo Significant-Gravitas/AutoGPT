@@ -1353,12 +1353,15 @@ async def test_recursive_list_without_hidden_skips_what_is_inside_hidden_dirs(
 
 
 class _FullDisk:
-    """A file object whose writes fail the way a full disk does."""
+    """A file object whose writes fail the way a full disk does: part of the
+    data lands, then the disk is full."""
 
     def __init__(self, file) -> None:
         self._file = file
 
-    def write(self, _data: bytes) -> int:
+    def write(self, data: bytes) -> int:
+        self._file.write(data[:1])
+        self._file.flush()
         raise OSError(errno.ENOSPC, "No space left on device")
 
     def __getattr__(self, name: str):
@@ -1426,6 +1429,69 @@ async def test_a_write_keeps_the_mode_and_a_new_file_follows_the_umask(tmp_path:
     assert existing.read_text() == "new"
     assert existing.stat().st_mode & 0o777 == 0o640
     assert created.stat().st_mode & 0o777 == 0o644
+
+
+def _another_group(directory: Path) -> int | None:
+    """A group this process is in that a new file in `directory` wouldn't
+    get: not the effective group (Linux) nor the directory's (BSD, macOS)."""
+    if not hasattr(os, "getgroups"):
+        return None
+    taken = {os.getegid(), directory.stat().st_gid}
+    return next((gid for gid in os.getgroups() if gid not in taken), None)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX ownership")
+@pytest.mark.asyncio
+async def test_a_write_keeps_the_files_group(tmp_path: Path) -> None:
+    """The replacement was the shim's new file, in the shim's group (or the
+    directory's), with the old mode: a file shared through a group lost it,
+    and its group bits then applied to another group."""
+    group = _another_group(tmp_path)
+    if group is None:
+        pytest.skip("needs a supplementary group")
+    shared = tmp_path / "shared.txt"
+    shared.write_text("old")
+    os.chown(shared, -1, group)
+    shared.chmod(0o640)
+
+    await FileHandler(make_config(tmp_path)).handle_write(_write_msg(shared, "new"))
+
+    assert shared.read_text() == "new"
+    assert shared.stat().st_gid == group
+    assert shared.stat().st_uid == os.geteuid()
+    assert shared.stat().st_mode & 0o777 == 0o640
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["shared.txt"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX ownership")
+@pytest.mark.asyncio
+async def test_a_write_the_shim_cant_give_the_owner_back_goes_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file another account owns, or in a group the shim isn't in, can't be
+    handed back after a replace, so it is written in place, which keeps its
+    owner and group."""
+    import autogpt_local_executor.path_jail as path_jail
+
+    group = _another_group(tmp_path)
+    if group is None:
+        pytest.skip("needs a supplementary group")
+    shared = tmp_path / "shared.txt"
+    shared.write_text("old")
+    os.chown(shared, -1, group)
+    inode = shared.stat().st_ino
+
+    def refuse(*_args: object) -> None:
+        raise PermissionError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setattr(path_jail.os, "fchown", refuse)
+
+    await FileHandler(make_config(tmp_path)).handle_write(_write_msg(shared, "new"))
+
+    assert shared.read_text() == "new"
+    assert shared.stat().st_ino == inode
+    assert shared.stat().st_gid == group
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["shared.txt"]
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX modes")

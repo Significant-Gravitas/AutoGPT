@@ -228,11 +228,26 @@ async def test_a_rotation_waits_for_an_append_in_progress(tmp_path: Path, monkey
     # Built before the append, so the only thing left to wait on the lock is
     # the rotation itself, not the second writer's startup.
     other = AuditWriter(path=daemon.path, audit_key=KEY)
+    # Set once the rotation asks for the lock the append holds: a rotation
+    # still starting up when the check below ran would pass it without
+    # taking the lock at all.
+    rotation_asked = threading.Event()
+    real_lock = audit_module._file_lock
+
+    @contextlib.contextmanager
+    def watched_lock(path: Path, **kwargs: bool):
+        if appending.is_set():
+            rotation_asked.set()
+        with real_lock(path, **kwargs):
+            yield
+
+    monkeypatch.setattr(audit_module, "_file_lock", watched_lock)
     write = asyncio.create_task(
         daemon.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
     )
     assert await asyncio.to_thread(appending.wait, 30)
     rotation = asyncio.create_task(asyncio.to_thread(other.force_rotate))
+    assert await asyncio.to_thread(rotation_asked.wait, 30)
     await asyncio.sleep(0.2)
     rotated_during_the_append = rotation.done()
     release.set()
@@ -341,6 +356,33 @@ def test_computer_tool_text_is_redacted_to_its_length() -> None:
     assert details["steps"][0]["args"] == {"value": {"redacted_chars": 7}, "pid": 3}
     assert details["script"] == {"redacted_chars": 40}
     assert details["query"].startswith("q" * 200) and details["query"].endswith("(300 chars)")
+
+
+def test_keys_pressed_one_character_at_a_time_are_redacted() -> None:
+    """press_key takes any single character, so a secret typed a key at a
+    time went into the audit log whole, a run_steps batch's in one record.
+    A shift chord types a character too. Named keys and command chords
+    stay readable."""
+    from autogpt_local_executor.handlers import _audit_arguments
+
+    details = _audit_arguments(
+        {
+            "key": "p",
+            "steps": [
+                {"tool": "press_key", "args": {"key": "a", "pid": 3}},
+                {"press_key": {"key": "enter"}},
+                {"tool": "hotkey", "args": {"keys": ["shift", "s"]}},
+                {"tool": "hotkey", "args": {"keys": ["ctrl", "c"]}},
+            ],
+        }
+    )
+
+    assert details["key"] == {"redacted_chars": 1}
+    steps = details["steps"]
+    assert steps[0]["args"] == {"key": {"redacted_chars": 1}, "pid": 3}
+    assert steps[1] == {"press_key": {"key": "enter"}}
+    assert steps[2]["args"] == {"keys": ["shift", {"redacted_chars": 1}]}
+    assert steps[3]["args"] == {"keys": ["ctrl", "c"]}
 
 
 # ── verify-all across multiple rotated files ─────────────────────────────────
@@ -1091,6 +1133,26 @@ def test_a_record_with_a_non_finite_number_is_a_parse_error(tmp_path: Path, numb
     assert violation.kind == "parse_error"
 
 
+def test_a_record_that_parses_but_cannot_be_canonicalized_is_a_violation(
+    tmp_path: Path,
+) -> None:
+    """The case below is too deep for the JSON parser itself, so it passed
+    with the canonicalizer's RecursionError uncaught. Some hundreds of
+    levels parse and only the canonicalizer, which recurses deeper per
+    level, gives up (700 does on Python 3.11 to 3.13)."""
+    depth = 700
+    nested = '{"a":' * depth + "1" + "}" * depth
+    record = f'{{"seq": 1, "ts": 1.0, "details": {nested}, "hmac": "00"}}'
+    json.loads(record)  # this one parses
+    path = tmp_path / "audit.log"
+    path.write_text(record + "\n")
+
+    [violation] = AuditWriter.verify(path, KEY)
+
+    assert violation.kind == "parse_error"
+    assert "uncanonicalizable record" in violation.message
+
+
 def test_a_record_nested_too_deeply_to_check_is_a_parse_error(tmp_path: Path) -> None:
     """A record nested some hundreds of levels deep parses, but canonicalizing
     it raised RecursionError, which the verifier didn't catch, so verify and
@@ -1206,15 +1268,66 @@ def test_a_locked_keychain_is_not_replaced_by_the_file_key(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize("error", ["NoKeyringError", "InitError"])
-def test_no_usable_keychain_still_falls_back_to_the_file_key(error: str) -> None:
+def test_no_usable_keychain_still_falls_back_to_the_file_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: str
+) -> None:
+    """With the passphrase set, and no audit log yet for another key to have
+    signed, the file key stands in, and stays the key from then on."""
     import keyring
     import keyring.errors
 
-    with (
-        patch.object(keyring, "get_password", side_effect=getattr(keyring.errors, error)("none")),
-        patch("autogpt_local_executor.audit._fallback_audit_key", return_value=b"k" * 32),
-    ):
-        assert get_or_create_audit_key() == b"k" * 32
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    with patch.object(keyring, "get_password", side_effect=getattr(keyring.errors, error)("none")):
+        first = get_or_create_audit_key(tmp_path / "audit.log")
+        (tmp_path / "audit.log").write_text("")
+        again = get_or_create_audit_key(tmp_path / "audit.log")
+
+    assert len(first) == 32
+    assert again == first
+
+
+@pytest.mark.parametrize("error", ["NoKeyringError", "InitError"])
+def test_a_keychain_missing_at_start_is_waited_for_without_the_file_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: str
+) -> None:
+    """With no keychain and no passphrase the audit key failed for good, so
+    the systemd unit stayed stopped when its Secret Service came up after
+    it (one the desktop session starts later, say). The shim can't run
+    without a keychain, which holds its sign-in, so a missing one at start
+    is waited for."""
+    import keyring
+    import keyring.errors
+
+    from autogpt_local_executor.audit import AuditKeyUnavailableError
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.delenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", raising=False)
+    with patch.object(keyring, "get_password", side_effect=getattr(keyring.errors, error)("none")):
+        with pytest.raises(AuditKeyUnavailableError, match="AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE"):
+            get_or_create_audit_key(tmp_path / "audit.log")
+
+
+def test_a_keychain_missing_at_start_is_not_replaced_by_a_new_file_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the passphrase set, a keychain that wasn't up yet made the shim
+    create a file key, a different one from the keychain's that had signed
+    the log, so the log stopped verifying and the stray file key stayed."""
+    import keyring
+    import keyring.errors
+
+    from autogpt_local_executor.audit import AuditKeyUnavailableError
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    log = tmp_path / "audit.log"
+    log.write_text('{"seq": 1}\n')
+    with patch.object(keyring, "get_password", side_effect=keyring.errors.NoKeyringError("none")):
+        with pytest.raises(AuditKeyUnavailableError, match="move it aside"):
+            get_or_create_audit_key(log)
+
+    assert not (tmp_path / "audit-key.enc").exists()
 
 
 # ── Export: descriptors, a prune meanwhile, the default name ───────────
@@ -1421,6 +1534,41 @@ async def test_a_path_that_is_not_valid_utf_8_is_still_audited(tmp_path: Path) -
     assert record["details"]["argv"] == ["x\\udcff"]
     assert record["request_id"] == "req-\\udcff"
     assert AuditWriter.verify(writer.path, KEY) == []
+
+
+@pytest.mark.asyncio
+async def test_an_escaped_key_keeps_both_values_when_it_spells_another_key(
+    tmp_path: Path,
+) -> None:
+    """A lone surrogate key was escaped to `\\udcff`, which is also how a
+    key a request carries can be spelled, so one of the two values was
+    dropped from the record, a refused call's included."""
+    writer = _writer(tmp_path)
+
+    await writer.write(
+        "COMPUTER_TOOL_CALL",
+        request_id="req-1",
+        details={"arguments": {"\udcff": "lone", "\\udcff": "spelled", "a\\b": "plain"}},
+        result={},
+    )
+
+    [line] = writer.path.read_text(encoding="utf-8").splitlines()
+    arguments = json.loads(line)["details"]["arguments"]
+    assert sorted(arguments.values()) == ["lone", "plain", "spelled"]
+    assert arguments["\\udcff"] == "lone"
+    assert AuditWriter.verify(writer.path, KEY) == []
+
+
+@pytest.mark.asyncio
+async def test_keys_that_need_no_escape_are_written_as_they_are(tmp_path: Path) -> None:
+    writer = _writer(tmp_path)
+
+    await writer.write(
+        "FILE_WRITE", request_id="req-1", details={"a\\b": 1, "path": "x"}, result={}
+    )
+
+    [line] = writer.path.read_text(encoding="utf-8").splitlines()
+    assert json.loads(line)["details"] == {"a\\b": 1, "path": "x"}
 
 
 @pytest.mark.parametrize("failure", ["corrupt", "unreadable"])

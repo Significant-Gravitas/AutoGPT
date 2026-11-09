@@ -203,3 +203,7 @@ def test_the_quartz_names_the_tap_thread_uses_exist() -> None:
         "kCFRunLoopRunFinished",
     ):
         assert hasattr(quartz, name), name
+    assert macos_capture._TAP_DISABLED == {
+        quartz.kCGEventTapDisabledByTimeout,
+        quartz.kCGEventTapDisabledByUserInput,
+    }

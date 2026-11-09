@@ -259,6 +259,55 @@ def test_callback_validates_state_without_logging_code(
     assert "the-code" not in captured.err
 
 
+def _ipv6_loopback() -> bool:
+    try:
+        with socket.socket(socket.AF_INET6) as probe:
+            probe.bind(("::1", 0))
+    except OSError:
+        return False
+    return True
+
+
+_needs_ipv6 = pytest.mark.skipif(not _ipv6_loopback(), reason="no IPv6 loopback")
+
+
+@_needs_ipv6
+def test_a_redirect_the_browser_sends_to_ipv6_loopback_reaches_the_shim(tmp_path: Path) -> None:
+    """The redirect URI names localhost, which a browser may try as ::1
+    before 127.0.0.1, but the callback server listened on 127.0.0.1 only."""
+    flow = OAuthFlow(_config(tmp_path, callback_port=_free_port()), token_store=object())
+    server, codes, errors, port = flow._bind_callback_server(expected_state="right-state")
+
+    def send_callback() -> None:
+        with urllib.request.urlopen(
+            f"http://[::1]:{port}/callback?code=the-code&state=right-state", timeout=30
+        ):
+            pass
+
+    thread = threading.Thread(target=send_callback)
+    thread.start()
+    try:
+        assert flow._wait_for_callback(server, codes, errors, timeout=60) == "the-code"
+    finally:
+        thread.join(timeout=30)
+
+
+@_needs_ipv6
+def test_a_port_another_program_listens_on_at_ipv6_loopback_is_not_taken(tmp_path: Path) -> None:
+    """Another program listening on ::1, or on every address through a
+    dual-stack socket (which macOS lets the same user share), left
+    127.0.0.1 free, so the shim took the port, the browser's ::1 connection
+    took the code to that program, and the sign-in timed out."""
+    port = _free_port()
+    with socket.socket(socket.AF_INET6) as other:
+        other.bind(("::1", port))
+        other.listen()
+        flow = OAuthFlow(_config(tmp_path, callback_port=port), token_store=object())
+
+        with pytest.raises(RuntimeError, match="Could not bind"):
+            flow._bind_callback_server(expected_state="state")
+
+
 def test_callback_wait_outlasts_requests_for_other_paths(tmp_path: Path) -> None:
     """A browser asks for /favicon.ico; that must not end the wait."""
     flow = OAuthFlow(_config(tmp_path, callback_port=_free_port()), token_store=object())

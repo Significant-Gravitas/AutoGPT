@@ -72,9 +72,12 @@ cua-driver uses XWayland unless you set `CUA_DRIVER_RS_ENABLE_WAYLAND=1` in
 the shim's environment for its native backend, whose support varies by
 compositor (see cua-driver's Linux notes). The accessibility tree comes from
 AT-SPI over the session bus: a shim started as a systemd user service needs
-`DISPLAY` (or `WAYLAND_DISPLAY`) and `DBUS_SESSION_BUS_ADDRESS` in its
+`DISPLAY` (XWayland's, on Wayland) and `DBUS_SESSION_BUS_ADDRESS` in its
 environment, which desktop sessions usually import into the user manager.
-`doctor` runs cua-driver's own checks for the display server and AT-SPI.
+`WAYLAND_DISPLAY` stands in for `DISPLAY` only with
+`CUA_DRIVER_RS_ENABLE_WAYLAND=1`; without either, the shim doesn't offer
+computer use. `doctor` runs cua-driver's own checks for the display server
+and AT-SPI.
 
 WSL2 can't drive Windows apps; run the shim on Windows itself.
 
@@ -103,11 +106,10 @@ Three of cua-driver's tool arguments reach this computer's disk themselves:
 saving a screenshot to a file, putting a file or image file on the
 clipboard, and handing files to a web page's upload field. Otto asks you
 first, every time, on an approval card in the chat that shows the path; the
-shim runs the call only once you approve it (an Unsupervised chat doesn't
-ask). Without an approval the shim answers `APPROVAL_REQUIRED` and nothing
-happens.
+shim runs the call only once you approve it. Without an approval the shim
+answers `APPROVAL_REQUIRED` and nothing happens.
 
-A script (`run_script`) asks too, every time, on a card that shows it: the
+A script (`run_script`) asks too, on a card that shows it: the
 shim can't check the calls a script makes inside cua-driver, and one of
 them can save a screenshot to a file.
 
@@ -116,6 +118,10 @@ command line or a program's path, extra command-line arguments, links or
 files to open, or an inspector port. cua-driver starts those out of sight,
 with no window of their own, and opens a link in your own browser. Opening
 an app by its name or id asks nothing.
+
+In an Unsupervised chat, none of these ask: the platform approves the call
+itself and tells the shim so, and the shim, which can't tell that from your
+approval, runs it.
 
 These approvals cover those arguments, not the apps. An app Otto drives
 reads and writes files with your access, outside the shared folders too: a
@@ -141,9 +147,9 @@ Start with `autogpt-shim doctor`. Then:
 | Symptom | Cause |
 |---|---|
 | The platform doesn't offer computer use for this computer | The shim wasn't started with `--enable-computer-use`, cua-driver isn't installed, or it didn't start; the shim log says which (`Not advertising computer_use: ...`). On Linux, no display in the shim's environment. |
-| The shim exits with code 78 at start | macOS permission missing, or no usable cua-driver. `doctor` says which. |
+| The shim exits with code 78 at start | A macOS permission is missing, or there is no usable cua-driver: none installed, or on macOS one of another release. `doctor` says which. For a permission, launchd starts the shim again on its own. A missing or incompatible driver isn't retried: the LaunchAgent exits 0 instead, and the systemd unit doesn't restart on 78, so restart the service once the driver is fixed (`launchctl kickstart -k gui/$(id -u)/net.autogpt.shim`, or `systemctl --user restart autogpt-shim`). |
 | `DEPENDENCY_MISSING` | No cua-driver, or one of another release. Reinstall with the computer-use extra. |
 | Windows look empty to the agent (`degraded: true`) on Linux | AT-SPI unreachable: the session bus isn't in the shim's environment, or the app doesn't expose accessibility. |
 | Results arrive without screenshots | The per-minute screenshot budget is spent; the result says so. |
 | `FEATURE_NOT_SUPPORTED` | The agent asked for a tool this computer doesn't offer, or an argument it never accepts, such as `check_permissions` with `prompt: true`. |
-| `APPROVAL_REQUIRED` | The call reaches the disk and you haven't approved it. |
+| `APPROVAL_REQUIRED` | The call reaches the disk, or starts a program out of sight, and you haven't approved it. |

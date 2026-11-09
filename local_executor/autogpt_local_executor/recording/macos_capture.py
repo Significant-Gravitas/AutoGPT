@@ -39,6 +39,11 @@ _KEY_DOWN_TYPE: int | None = None
 # Longest the tap thread runs its run loop before it re-checks the stop flag.
 # This bounds how long a stop() that races the thread's startup can take.
 _RUN_LOOP_SLICE_SECONDS = 0.25
+# How long stop() waits for the tap thread to end.
+_STOP_JOIN_SECONDS = 2.0
+# The event types macOS sends a tap it has turned off (CGEventTypes.h:
+# kCGEventTapDisabledByTimeout, kCGEventTapDisabledByUserInput).
+_TAP_DISABLED = frozenset({0xFFFFFFFE, 0xFFFFFFFF})
 
 
 class MacInputCaptureSource(CaptureSource):
@@ -51,6 +56,9 @@ class MacInputCaptureSource(CaptureSource):
     """
 
     def __init__(self, *, poll_interval: float = 0.2, max_queued_events: int = 10_000) -> None:
+        if max_queued_events <= 0:
+            # queue.Queue takes that as no bound at all.
+            raise ValueError("max_queued_events must be positive")
         self._poll = poll_interval
         # Bounded, so a stalled consumer can't grow it without limit; events
         # it can't take are counted, and steps() then fails the recording.
@@ -140,6 +148,14 @@ class MacInputCaptureSource(CaptureSource):
         (listen-only passthrough)."""
         import Quartz
 
+        if int(etype) in _TAP_DISABLED:
+            # Not an action: macOS turned the tap off (a slow callback, or
+            # secure input). What the person did meanwhile went unseen, so
+            # the recording is incomplete; the tap goes back on for the rest.
+            self.dropped_events += 1
+            if self._tap is not None:
+                Quartz.CGEventTapEnable(self._tap, True)
+            return event
         try:
             loc = Quartz.CGEventGetLocation(event)
             record = {
@@ -171,7 +187,7 @@ class MacInputCaptureSource(CaptureSource):
             # Ends the current slice early; the flag catches a stop that this misses.
             Quartz.CFRunLoopStop(self._runloop)
         if self._thread is not None:
-            self._thread.join(timeout=2.0)
+            self._thread.join(timeout=_STOP_JOIN_SECONDS)
 
     # ── frontmost app / window (best-effort) ───────────────────────────────
 
@@ -249,8 +265,15 @@ class MacInputCaptureSource(CaptureSource):
                 except queue.Empty:
                     continue
                 yield self._to_step(rec)
-            # Events queued before the stop belong to the recording, and a
-            # drop after the last check above must still fail it.
+            # A callback still running when the stop came can queue its
+            # event after a drain, so the tap thread ends first. Events
+            # queued before the stop belong to the recording, and a drop
+            # after the last check above must still fail it.
+            await asyncio.to_thread(self.stop)
+            if self._thread is not None and self._thread.is_alive():
+                raise RecordingError(
+                    "The input capture didn't stop, so the recording may be missing actions"
+                )
             while True:
                 try:
                     rec = self._q.get_nowait()

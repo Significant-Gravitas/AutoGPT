@@ -150,8 +150,10 @@ sixteen tools; all of them are in the catalog, which
   program out of sight (see Residual risk); `name`, `bundle_id` and `aumid`
   must name an app. The tool list names them in each tool's `approval_arguments`. The platform
   asks the person on an approval card that shows the path, and only then
-  sends the call with the argument in `approved_arguments`; without it the
-  shim answers `APPROVAL_REQUIRED` and nothing reaches the driver. A
+  sends the call with the argument in `approved_arguments`; a chat that runs
+  Unsupervised sends it without asking, and the shim, which can't tell the
+  two apart, trusts the field. Without it the shim answers
+  `APPROVAL_REQUIRED` and nothing reaches the driver. A
   `run_steps` step may not use one at all, and neither may the `observe`
   that ends a batch, which the driver runs as a `get_window_state` call.
 - `prompt: true` on `check_permissions` is refused: permission prompts are
@@ -161,8 +163,10 @@ sixteen tools; all of them are in the catalog, which
 - The clipboard rules, the screenshot budget and the frame limit below.
 - One call at a time per machine, and one deadline per call (120 s unless
   the platform asks for 1-600 s), counted from when the shim receives it, so
-  the wait for its turn counts. A call still waiting at its deadline never
-  reaches the driver (`started: false`). Past the deadline of a running
+  the wait for its turn counts, and so does the wait for the driver to start.
+  A call still waiting at its deadline never reaches the driver (`started:
+  false`); a start it waited for goes on for the calls after it, since
+  stopping one part way would count toward the three restarts. Past the deadline of a running
   call, the shim stops the driver (`started: true`), and the next call
   starts a new one; its sessions, element tokens and launched browsers'
   pages start over too.
@@ -189,8 +193,8 @@ that can type can open a terminal. The shim doesn't claim otherwise: the
 capability is off until the person turns it on, the platform must grant it
 to each session, the calls it takes are audited (best effort, see Audit),
 and the agent cursor shows where the agent works. The approval arguments keep disk access out of side channels the
-person can't see: each one waits for the person to approve it. They are not a
-sandbox around the GUI.
+person can't see: each one waits for the person to approve it, unless the
+chat runs Unsupervised. They are not a sandbox around the GUI.
 
 Known gaps:
 
@@ -261,7 +265,8 @@ Every `COMPUTER_TOOL_CALL` the computer-use handler takes writes a
 call, and a call refused before the handler (computer use off, or not
 granted to the session) has none. The record holds the tool,
 the arguments with typed, set and scripted text (`text`, `value`, `script`,
-`prompt_text`) replaced by its length and other long strings cut short, the
+`prompt_text`, a single character pressed with `press_key` or a shift-only
+`hotkey`) replaced by its length and other long strings cut short, the
 outcome, whether the driver reported an error, how many images were sent or
 withheld, and the duration. A call cancelled by revocation is recorded as
 `CANCELLED`: the shim stopped the driver to end it, but an action it
@@ -270,13 +275,20 @@ already made stays made. See [AUDIT_LOG.md](AUDIT_LOG.md).
 ## Permissions and preflight
 
 With computer use on, the daemon checks before it connects that a usable
-cua-driver is installed (exit 78, permanent, if not). On macOS it starts the
-driver and asks `check_permissions` for Accessibility and Screen Recording
-without prompting; if either is missing it exits 78 and launchd starts it
-again later, as before. Each chat's session checks again when it starts,
-through the same driver. If another chat's call is holding the driver past
-the check's 30 s, the new session goes ahead: the grants are the app's,
-checked when the shim started, and a busy driver is a working one.
+cua-driver is installed. If not, the failure is permanent: the shim exits 78,
+which the systemd unit doesn't restart, and under the LaunchAgent it exits 0
+so launchd doesn't restart it either. Once the driver is installed, restart
+the service (`launchctl kickstart -k gui/$(id -u)/net.autogpt.shim`, or
+`systemctl --user restart autogpt-shim`). On macOS it starts the driver,
+where one of another release fails the same way, and asks
+`check_permissions` for Accessibility and Screen Recording without
+prompting; if either is missing it exits 78 and launchd starts it again
+later, as before. Each chat's session checks again when it starts,
+through the same driver. The platform gives a new chat's session a few
+seconds to connect, so if another chat's call holds the driver for more
+than two of them, the new session goes ahead unchecked: the grants are the
+app's, checked when the shim started, and a busy driver is a working one.
+Its HELLO waits as briefly for the screen size, and leaves it out instead.
 `autogpt-shim doctor` runs cua-driver's own
 `doctor`, starts the driver as the daemon does, reads the screen size, and on
 macOS reports both grants and, when one is missing, asks macOS to show its

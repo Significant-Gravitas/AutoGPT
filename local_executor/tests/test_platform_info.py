@@ -141,7 +141,12 @@ def _fake_open(file_contents: dict[str, str]):
     return _open
 
 
-_SESSION_VARIABLES = ("DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE")
+_SESSION_VARIABLES = (
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "XDG_SESSION_TYPE",
+    "CUA_DRIVER_RS_ENABLE_WAYLAND",
+)
 
 
 def _session(
@@ -174,23 +179,40 @@ def _session(
     "env",
     [
         {"DISPLAY": ":0"},
-        {"WAYLAND_DISPLAY": "wayland-0"},
+        {"WAYLAND_DISPLAY": "wayland-0", "CUA_DRIVER_RS_ENABLE_WAYLAND": "1"},
         {"DISPLAY": ":0", "WAYLAND_DISPLAY": "w"},
     ],
-    ids=["x11", "wayland", "xwayland"],
+    ids=["x11", "native-wayland", "xwayland"],
 )
 def test_linux_computer_use_is_advertised_with_a_display(
     monkeypatch: pytest.MonkeyPatch, env: dict[str, str]
 ) -> None:
-    """cua-driver drives X11, and Wayland through XWayland or its own
-    backend, so either display will do."""
+    """cua-driver drives X11, which XWayland provides on a Wayland desktop,
+    and Wayland itself only with its experimental backend turned on."""
     _session(monkeypatch, **env)
 
     assert "computer_use" in platform_info.detect_capabilities(enable_computer_use=True)
 
 
-def test_linux_computer_use_needs_a_display(monkeypatch: pytest.MonkeyPatch) -> None:
-    _session(monkeypatch)
+@pytest.mark.parametrize(
+    "env",
+    [
+        {},
+        {"WAYLAND_DISPLAY": "wayland-0"},
+        {"WAYLAND_DISPLAY": "wayland-0", "CUA_DRIVER_RS_ENABLE_WAYLAND": "0"},
+        {"WAYLAND_DISPLAY": "wayland-0", "CUA_DRIVER_RS_ENABLE_WAYLAND": " FALSE "},
+        {"CUA_DRIVER_RS_ENABLE_WAYLAND": "1"},
+    ],
+    ids=["none", "wayland-only", "opted-out-0", "opted-out-false", "opted-in-without-wayland"],
+)
+def test_linux_computer_use_needs_a_display_the_driver_can_drive(
+    monkeypatch: pytest.MonkeyPatch, env: dict[str, str]
+) -> None:
+    """cua-driver 0.38 takes its X11 path unless CUA_DRIVER_RS_ENABLE_WAYLAND
+    is set, to anything but empty, 0 or false, in a Wayland session. With
+    WAYLAND_DISPLAY alone HELLO offered computer use, and then
+    get_screen_size and every action failed for want of an X display."""
+    _session(monkeypatch, **env)
 
     assert "computer_use" not in platform_info.detect_capabilities(enable_computer_use=True)
 

@@ -39,8 +39,12 @@ range is the only one it tries, since no other is known to be registered), so a 
 server) doesn't break first-time auth. The platform's OAuth client
 registration MUST accept all ports in this range as valid `redirect_uri`
 values for `client_id=autogpt-local-executor` — registering only 41899
-would defeat the fallback. Listener is always bound to `127.0.0.1`; never
-to `0.0.0.0`. See [CROSS_PLATFORM.md → OAuth callback port](CROSS_PLATFORM.md#oauth-callback-port).
+would defeat the fallback. The listener is bound to loopback only:
+`127.0.0.1`, and where the machine has IPv6, `::1` on the same port, since
+a browser may try `localhost` as either; never `0.0.0.0` or `::`. A port
+another program holds on either address (on `::1`, or on every address
+through a dual-stack socket) is skipped, so the redirect can't reach it.
+See [CROSS_PLATFORM.md → OAuth callback port](CROSS_PLATFORM.md#oauth-callback-port).
 The server takes one connection at a time, so each read waits at most 10
 seconds and a whole request at most 20 before the connection is dropped: a
 browser's preconnect that never sends, or a client that sends a byte now and

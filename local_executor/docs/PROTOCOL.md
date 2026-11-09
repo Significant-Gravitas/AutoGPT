@@ -69,7 +69,9 @@ ignored a newer field could act without a constraint the platform meant it
 to apply. The platform learns the shim's maximum from HELLO before it
 answers, so it must not send a newer minor's fields to an older shim. A
 frame whose objects and arrays nest more than 64 levels deep is logged and
-dropped the same way; no message comes close.
+dropped the same way; no message comes close. So is one holding `NaN`,
+`Infinity` or a number too large for a double (`1e999`): JSON has none of
+them, though some encoders write them.
 
 ### Frame-level `version`
 
@@ -166,13 +168,15 @@ ceiling but cannot expand access beyond the user's local policy.
 
 The ACK must carry the same message ID as `HELLO` and only capabilities
 advertised by the shim. On a data connection it must carry the exact selected
-session ID. On the base control connection it must carry a null/empty session
-ID, an opaque `connection_id`, a 2.x protocol version (named in
-`protocol_version`, not left to its default), and the `directory_browse`
-capability. A control
-daemon fails terminally when any of those fields are missing, closing with
-4426, or when the ACK doesn't parse at all, closing with 4400. The shim
-enforces the granted subset on every subsequent request.
+session ID. On the base control connection it must carry a `session_id`
+that is null or empty (named, not left out), an opaque `connection_id`, a
+2.x protocol version (named in `protocol_version`, not left to its
+default), and the `directory_browse` capability. A control daemon fails
+terminally on an ACK it can't use. One that doesn't parse closes with 4400,
+whatever else it lacks; that includes an ACK without `granted_capabilities`,
+which every ACK must have. One that parses but lacks a control field above
+closes with 4426. The shim enforces the granted subset on every subsequent
+request.
 
 ### Machine control and per-chat roots
 
@@ -502,16 +506,18 @@ The shim creates parents only after both checks pass.
 target, which is then renamed over it, so a write that fails part way (a
 full disk, say) leaves the old contents whole (on the in-place fallback
 below, it leaves a partial file instead). An existing file keeps its
-mode, except set-user-ID and set-group-ID, which a write drops so that new
-contents never run with the file owner's privileges (Linux drops them for an
-unprivileged writer; the shim drops them whatever it runs as); a new one gets
-the usual default (0o666 less the umask). An existing file with more than
+owner and group, and its mode, except set-user-ID and set-group-ID, which a
+write drops so that new contents never run with the file owner's privileges
+(Linux drops them for an unprivileged writer; the shim drops them whatever
+it runs as); a new one gets the usual default (0o666 less the umask). An existing file with more than
 one hard link is refused with `PATH_OUTSIDE_ALLOWED_ROOT`, as `FILE_READ`
 refuses one: its other names may be outside the root, and the shim can't
 tell, so the write neither succeeds nor replaces it. Because a target the
 write does replace gets a new inode, extended attributes and ACLs on the
-old file don't carry over. Where the directory takes no new entries, or (on Windows) another
-program has the file open, the shim overwrites the file in place instead:
+old file don't carry over. Where the directory takes no new entries, (on
+Windows) another program has the file open, or the shim may not give the new
+file the old one's owner and group (a file another account owns, a group the
+shim isn't in), the shim overwrites the file in place instead:
 it truncates the file and writes the content, so a write that fails part way
 there leaves a partial file, and the old contents are gone.
 
@@ -875,17 +881,20 @@ connection. Listing tools never waits for a running action.
 `tool` matches `^[a-z][a-z0-9_]{0,63}$`. `arguments` follows the tool's
 `input_schema`. Calls from every session on a machine take turns: there is
 one screen. `timeout_seconds` (1-600, default 120) bounds the whole call,
-from when the shim receives it: the wait for its turn counts. A call whose
-deadline passes while it waits never reaches the driver and gets
+from when the shim receives it: the wait for its turn counts, and so does
+the wait for cua-driver to start, on the first call or after it stopped. A
+call whose deadline passes while it waits never reaches the driver and gets
 `COMMAND_TIMEOUT` with `details.started: false`; nothing ran, so it can be
-sent again. At the deadline of a call the driver is running, the shim stops
+sent again. A start that outlasts it goes on, for the calls after it. At the deadline of a call the driver is running, the shim stops
 the driver, which can't cancel a call it is running, and answers
 `COMMAND_TIMEOUT` with `details.started: true`, though an action the driver
 already made stays made. The next call starts the driver afresh, without the
 element tokens and sessions of the old one.
 
 `approved_arguments` (at most 8, default empty) names the tool's approval
-arguments the person approved for this call. An argument in a tool's
+arguments the platform approved for this call: usually the person, on an
+approval card, but a chat that runs Unsupervised approves without asking.
+The shim can't tell which and trusts the field. An argument in a tool's
 `approval_arguments` can reach the disk (`screenshot_out_file`, clipboard
 `file_path` / `image_path`, `browser_set_input_files.files`, and
 `run_script.script`, whose calls inside the driver can save a screenshot to
@@ -968,10 +977,16 @@ Error codes:
 - `PATH_NOT_FOUND` — FILE_STAT/READ/DELETE on a path that doesn't exist (and `missing_ok: false`)
 - `PATH_NOT_EMPTY` — FILE_DELETE on a non-empty dir with `recursive: false`
 - `PATH_EXISTS` — FILE_MOVE with `overwrite: false` and dst exists
-- `COMMAND_TIMEOUT` — reserved for future strict-timeout transport; today
-  EXECUTE_COMMAND on timeout returns `COMMAND_RESULT` with `timed_out: true`
-  and `exit_code = -1` rather than an ERROR. Callers should branch on the
-  `timed_out` flag.
+- `COMMAND_TIMEOUT` — a `COMPUTER_TOOL_CALL` ran out of `timeout_seconds`
+  (`details.tool`, `details.timeout_seconds`). `details.started` says
+  whether anything ran: `false` when the call was still waiting for its
+  turn or for cua-driver to start, so nothing reached the driver; `true`
+  when the driver was running it, so the shim stopped the driver, and what
+  the call already did stays done. Neither is retried automatically (see
+  [Idempotency](#idempotency)); the model decides, and may send a call that
+  didn't start again. `EXECUTE_COMMAND` doesn't use this code: on timeout it
+  returns `COMMAND_RESULT` with `timed_out: true` and `exit_code = -1`, so
+  callers branch on the `timed_out` flag.
 - `SHELL_NOT_AVAILABLE` — `shell` selector requested a shell not installed on this OS
 - `UNSUPPORTED_ARCH` — HELLO `arch` value not recognized
 - `CAPABILITY_NOT_GRANTED` — requested capability not in granted_capabilities
@@ -1000,9 +1015,11 @@ Error codes:
 - `FEATURE_NOT_SUPPORTED` — a computer tool this machine doesn't offer, or
   an argument it never accepts (`details.tool`, `details.argument`). See
   [CUA_DRIVER.md](CUA_DRIVER.md).
-- `APPROVAL_REQUIRED` — a computer tool call used an argument that reaches
-  the disk without the person's approval (`details.tool`,
-  `details.argument`).
+- `APPROVAL_REQUIRED` — a computer tool call used one of the tool's
+  approval arguments without naming it in `approved_arguments`
+  (`details.tool`, `details.argument`). Those arguments reach the disk or
+  start a program out of sight (see `COMPUTER_TOOL_CALL` above); nothing
+  reached the driver.
 - `CLIPBOARD_CONCEALED` — `clipboard_read` found content this session may
   not read; `details.reason` says why. See [COMPUTER_USE.md](COMPUTER_USE.md).
 - `MODEL_NOT_AVAILABLE` — `LOCAL_LLM_COMPLETION.model` not present in
@@ -1123,7 +1140,10 @@ assigns each request its own async task and responds with matching `id` when com
 Max concurrent requests: `HELLO_ACK.max_concurrent` (default 4).
 The chats on a machine also share the control connection's `max_concurrent`
 slots. A request waits up to ten seconds for one, then gets
-`SHIM_OVERLOADED` with `details.reason: "machine_busy"`. A slot stays taken
+`SHIM_OVERLOADED` with `details.reason: "machine_busy"`. A
+`COMPUTER_TOOL_CALL` waits no longer than its own deadline, which this wait
+counts toward; one whose deadline comes first gets `COMMAND_TIMEOUT` with
+`details.started: false`. A slot stays taken
 until its work ends, including work still running in a thread after its
 session ended.
 `COMPUTER_TOOL_CALL`s from every session on a machine take turns, since

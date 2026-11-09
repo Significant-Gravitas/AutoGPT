@@ -234,6 +234,68 @@ async def test_a_driver_that_exits_fails_the_waiting_request(fake_log: Path) -> 
         await client.close()
 
 
+class _StalledInput:
+    """A pipe to a driver that has stopped reading its input: writes are
+    taken, and a drain past the first `drains` never ends."""
+
+    def __init__(self, drains: int = 0) -> None:
+        self.written: list[bytes] = []
+        self._drains = drains
+
+    def write(self, data: bytes) -> None:
+        self.written.append(data)
+
+    async def drain(self) -> None:
+        if self._drains > 0:
+            self._drains -= 1
+            return
+        await asyncio.Event().wait()
+
+    def is_closing(self) -> bool:
+        return False
+
+
+def _client_writing_to(stdin: _StalledInput) -> StdioMcpClient:
+    from types import SimpleNamespace
+
+    client = StdioMcpClient(["cua-driver", "mcp"])
+    client._process = SimpleNamespace(stdin=stdin, returncode=None, pid=1)  # type: ignore[assignment]
+    return client
+
+
+async def test_a_request_the_driver_does_not_read_ends_at_its_deadline() -> None:
+    """The deadline started once the request was written, so a driver that
+    had stopped reading its input held a large call in drain() for good,
+    and with it the computer's turn: the bridge stops the driver only when
+    the call returns."""
+    stdin = _StalledInput()
+    client = _client_writing_to(stdin)
+    task = asyncio.ensure_future(client.call_tool("type_text", {"text": "x" * 100}, timeout=0.2))
+    try:
+        done, _ = await asyncio.wait({task}, timeout=20)
+        assert task in done
+        with pytest.raises(TimeoutError):
+            task.result()
+    finally:
+        task.cancel()
+
+
+async def test_a_cancel_notice_the_driver_does_not_read_does_not_hold_the_call() -> None:
+    """The request went out, no answer came, and the cancel notice sent at
+    the deadline then waited in drain() for good."""
+    stdin = _StalledInput(drains=1)
+    client = _client_writing_to(stdin)
+    task = asyncio.ensure_future(client.call_tool("click", {"pid": 5}, timeout=0.2))
+    try:
+        done, _ = await asyncio.wait({task}, timeout=20)
+        assert task in done
+        with pytest.raises(TimeoutError):
+            task.result()
+        assert b"notifications/cancelled" in stdin.written[-1]
+    finally:
+        task.cancel()
+
+
 async def test_the_client_answers_the_servers_ping(fake_log: Path) -> None:
     client = _fake_client([str(FAKE), "mcp"])
     await client.start(timeout=10)
@@ -384,6 +446,46 @@ async def test_a_driver_that_fails_to_start_says_why(fake_log, monkeypatch) -> N
     with pytest.raises(DriverUnavailable, match="fake driver failed to start"):
         await bridge.snapshot()
     await bridge.close()
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [{"serverInfo": "cua-driver"}, {"capabilities": 1}, {"capabilities": ["tools"]}],
+    ids=["server-info", "capabilities", "capabilities-list"],
+)
+async def test_a_driver_with_malformed_initialize_metadata_is_stopped(
+    fake_log, monkeypatch, metadata: dict[str, Any]
+) -> None:
+    """A serverInfo or capabilities that wasn't an object was read after the
+    start's cleanup, so it raised a plain AttributeError or TypeError: the
+    driver it had started kept running, since the bridge didn't hold it
+    yet, and HELLO, which goes on without computer use only for
+    DriverUnavailable, failed."""
+    import json
+
+    monkeypatch.setenv("FAKE_CUA_INITIALIZE", json.dumps(metadata))
+    started: list[StdioMcpClient] = []
+
+    def factory(argv: list[str], **kwargs: Any) -> StdioMcpClient:
+        client = fake_client(argv, **kwargs)
+        started.append(client)
+        return client
+
+    bridge = CuaDriverBridge(
+        tools=catalog.offered_tools(enable_clipboard=False),
+        binary=FAKE,
+        platform="linux",
+        client_factory=factory,
+    )
+    try:
+        with pytest.raises(DriverUnavailable, match="isn't an object"):
+            await bridge.snapshot()
+        [client] = started
+        assert not client.alive
+    finally:
+        for client in started:
+            await client.close()
+        await bridge.close()
 
 
 async def test_a_policy_file_that_cannot_be_written_leaves_the_driver_unavailable(
@@ -1117,6 +1219,94 @@ async def test_a_call_kept_waiting_past_its_deadline_never_starts(
     assert [r["tool"] for r in _records(fake_log, "call")] == ["drag"]
 
 
+class _HeldStart:
+    """A client factory whose drivers don't finish starting until `go` is
+    set, counting the starts."""
+
+    def __init__(self) -> None:
+        self.go = asyncio.Event()
+        self.starting = asyncio.Event()
+        self.started: list[StdioMcpClient] = []
+
+    def __call__(self, argv: list[str], **kwargs: Any) -> StdioMcpClient:
+        held = self
+
+        class Held(StdioMcpClient):
+            async def start(self, *, timeout: float) -> Any:
+                held.starting.set()
+                await held.go.wait()
+                return await super().start(timeout=timeout)
+
+        client = Held([sys.executable, *argv], **kwargs)
+        self.started.append(client)
+        return client
+
+
+async def test_a_call_gives_up_on_a_slow_start_and_leaves_it_running(fake_log) -> None:
+    """Starting the driver on a call's first use ignored the call's deadline,
+    holding the driver's turn for as long as the start took, which kept
+    HELLO's screen size and other chats' calls waiting past theirs. The
+    start isn't stopped either: that would count against the restart
+    budget."""
+    held = _HeldStart()
+    bridge = CuaDriverBridge(
+        tools=catalog.offered_tools(enable_clipboard=False),
+        binary=FAKE,
+        platform="linux",
+        client_factory=held,
+    )
+    try:
+        first = asyncio.ensure_future(bridge.call_tool("get_screen_size", {}, timeout=0.3))
+        done, _ = await asyncio.wait({first}, timeout=20)
+        assert first in done
+        with pytest.raises(driver.CallNotStarted):
+            first.result()
+        # The driver's turn is free, and the start goes on.
+        assert not bridge._turn.locked()
+        assert held.starting.is_set() and len(held.started) == 1
+
+        held.go.set()
+        result = await bridge.call_tool("get_screen_size", {}, timeout=30)
+
+        assert result["structuredContent"]["width"] == 1920
+        assert len(held.started) == 1
+        assert held.started[0].alive
+    finally:
+        held.go.set()
+        await bridge.close()
+
+
+async def test_a_call_whose_deadline_passes_while_the_driver_starts_never_runs(
+    tmp_path, fake_log
+) -> None:
+    held = _HeldStart()
+    config = _config(tmp_path)
+    handler = ComputerUseHandler(
+        config,
+        audit=AuditWriter(config.audit_log_path, b"a" * 32),
+        driver=CuaDriverBridge(
+            tools=catalog.offered_tools(enable_clipboard=False),
+            binary=FAKE,
+            platform="linux",
+            client_factory=held,
+        ),
+    )
+    try:
+        call = asyncio.ensure_future(handler.handle(_call("click", {"pid": 7}, timeout_seconds=1)))
+        done, _ = await asyncio.wait({call}, timeout=20)
+        assert call in done
+        response = call.result()
+
+        assert isinstance(response, ErrorMessage)
+        assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+        assert response.payload.details == {"tool": "click", "timeout_seconds": 1, "started": False}
+        assert "starting" in response.payload.message
+        assert _records(fake_log, "call") == []
+    finally:
+        held.go.set()
+        await handler.close()
+
+
 async def test_the_deadline_counts_from_when_the_shim_received_the_call(
     make_handler, fake_log
 ) -> None:
@@ -1392,6 +1582,36 @@ async def test_text_one_chat_wrote_is_readable_from_another(make_handler) -> Non
 
 
 # ── Daemon ───────────────────────────────────────────────────────────────
+
+
+async def test_a_child_session_waits_only_briefly_for_a_busy_shared_driver(
+    tmp_path, fake_log, monkeypatch
+) -> None:
+    """The platform waits a few seconds (eight) for a chat's session to
+    connect, then undoes the chat. A new chat's permission check waited up
+    to 30 s for the shared driver, which another chat's call can hold far
+    longer, and its HELLO up to 10 s more for the screen size."""
+    from autogpt_local_executor import handlers, platform_info
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setattr(handlers, "CHILD_DRIVER_WAIT_SECONDS", 0.2, raising=False)
+    parent = _daemon(tmp_path, session_id=None)
+    child = _daemon(tmp_path, session_id="child-1")
+    parent._computer_handler.share_with(child._computer_handler)
+    driver = parent._computer_handler.driver
+    await driver.snapshot()
+    await driver._turn.acquire()  # another chat's call, running
+    starting = asyncio.ensure_future(
+        asyncio.gather(child._preflight_computer_use(), child._computer_handler.screen_size())
+    )
+    try:
+        done, _ = await asyncio.wait({starting}, timeout=5)
+        assert starting in done
+        assert starting.result() == [None, None]
+    finally:
+        starting.cancel()
+        driver._turn.release()
+        await parent._computer_handler.close()
 
 
 def _daemon(tmp_path: Path, **overrides: Any):

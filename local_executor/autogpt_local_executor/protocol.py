@@ -13,6 +13,7 @@ the doc wins — fix the model.
 from __future__ import annotations
 
 import json
+import math
 import time
 import uuid
 from enum import StrEnum
@@ -1267,12 +1268,27 @@ def parse_message(raw: str | bytes) -> Any:
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
     try:
-        data = json.loads(raw)
+        data = json.loads(raw, parse_float=_finite_float, parse_constant=_no_constant)
     except RecursionError:
         raise ValueError("frame nested too deeply to parse") from None
     if _nesting_depth(data) > MAX_FRAME_NESTING:
         raise ValueError(f"frame nested more than {MAX_FRAME_NESTING} levels deep")
     return _MESSAGE_ADAPTER.validate_python(data)
+
+
+# JSON has no NaN or Infinity, but Python's json reads them, and reads a
+# number past a float's range (1e999) as infinity. A frame carrying one is
+# refused: the audit record of a computer tool call holding one failed (the
+# canonical form has no spelling for them) while the call went on.
+def _finite_float(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(f"frame holds a number that isn't finite: {text}")
+    return value
+
+
+def _no_constant(name: str) -> Any:
+    raise ValueError(f"frame holds a number that isn't finite: {name}")
 
 
 # How deeply an inbound frame may nest. No message comes close: a run_steps

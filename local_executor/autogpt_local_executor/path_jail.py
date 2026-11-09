@@ -313,16 +313,20 @@ def write_jail_file(
     The data goes to a new file beside the target, which is then renamed over
     it, so a write that fails part way (a full disk, say) leaves the old
     contents whole. An existing file keeps its mode, less set-user-ID and
-    set-group-ID; a new one gets 0o666 less the umask. Where the directory
-    takes no new entries, or (on Windows) another program has the file open,
-    the file is overwritten in place.
+    set-group-ID, and its owner and group; a new one gets 0o666 less the
+    umask. Where the directory takes no new entries, (on Windows) another
+    program has the file open, or the shim may not give the new file the old
+    one's owner and group (a file another account owns, a group the shim
+    isn't in), the file is overwritten in place.
     """
     path = assert_inside_jail(requested_path, allowed_root)
+    owner: tuple[int, int] | None = None
     try:
         existing = path.stat()
     except FileNotFoundError:
         mode = None
     else:
+        owner = (existing.st_uid, existing.st_gid)
         _assert_safe_content_stat(existing)
         # A rename ignores the target's mode, so a file the person made
         # read-only would be replaced whole; refuse it, as writing it in
@@ -334,7 +338,7 @@ def write_jail_file(
         # drops them itself, so a privileged one (root, say) does too.
         mode = stat.S_IMODE(existing.st_mode) & ~(stat.S_ISUID | stat.S_ISGID)
     try:
-        _replace_with(path, data, mode)
+        _replace_with(path, data, mode, owner)
     except PermissionError:
         with open_jail_file(path, allowed_root, write=True) as file:
             if mode is not None and hasattr(os, "fchmod"):
@@ -347,7 +351,9 @@ def write_jail_file(
             file.write(data)
 
 
-def _replace_with(path: Path, data: bytes, mode: int | None) -> None:
+def _replace_with(
+    path: Path, data: bytes, mode: int | None, owner: tuple[int, int] | None = None
+) -> None:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     flags |= getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
     # Opened with 0o666 so the umask applies, as it does to a plain create.
@@ -355,6 +361,14 @@ def _replace_with(path: Path, data: bytes, mode: int | None) -> None:
     descriptor = os.open(temp, flags, 0o666)
     try:
         with os.fdopen(descriptor, "wb") as file:
+            if owner is not None and hasattr(os, "fchown"):
+                created = os.fstat(file.fileno())
+                if (created.st_uid, created.st_gid) != owner:
+                    # The new file is the shim's, in its group or the
+                    # directory's, and the old mode would then apply to them.
+                    # A PermissionError here (an owner or group the shim may
+                    # not give) sends the write in place, which keeps both.
+                    os.fchown(file.fileno(), *owner)
             if mode is not None and hasattr(os, "fchmod"):
                 os.fchmod(file.fileno(), mode)
             file.write(data)

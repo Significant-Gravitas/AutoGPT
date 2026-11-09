@@ -10,7 +10,9 @@ prompts when they are missing. See docs/CUA_DRIVER.md.
 Returns exit 0 when everything required is healthy, 78 (EX_CONFIG) when
 computer use is requested but a prerequisite is missing.
 
-Output is plain ASCII (no emoji) — the markers are:
+Output has no emoji. A character stdout's encoding can't carry (a legacy
+Windows code page has no em dash, nor most of a path's characters) prints
+as an escape. The markers are:
   OK    everything good
   WARN  degraded but won't block (e.g. computer-use not requested)
   FAIL  required and missing
@@ -23,9 +25,9 @@ import asyncio
 import contextlib
 import json
 import os
-import secrets
 import shutil
 import subprocess
+import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -73,7 +75,17 @@ def run_doctor(config: ShimConfig) -> int:
 def _print_checks(checks: list[CheckResult]) -> None:
     width = max(len(c.label) for c in checks) if checks else 0
     for c in checks:
-        print(f"[{c.marker:<4}] {c.label.ljust(width)}  {c.detail}")
+        print(_printable(f"[{c.marker:<4}] {c.label.ljust(width)}  {c.detail}"))
+
+
+def _printable(text: str) -> str:
+    """`text` with what stdout's encoding can't carry written as escapes, so
+    a path or a driver message can't stop doctor before it reports."""
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        return text.encode(encoding, "backslashreplace").decode(encoding)
+    except LookupError:
+        return text
 
 
 def _check_allowed_root(config: ShimConfig) -> CheckResult:
@@ -115,6 +127,11 @@ def _check_directory_browser() -> CheckResult:
 
 # A locked keychain can block on an unlock prompt; doctor must not hang on it.
 KEYCHAIN_PROBE_SECONDS = 10.0
+# The probe's name in the keychain. One name, not one per run: a probe the
+# keychain stores after doctor stopped waiting may outlive doctor, which
+# doesn't wait for its thread to delete it, and the next run's probe then
+# overwrites and deletes it rather than leaving it there for good.
+KEYCHAIN_PROBE_NAME = "doctor-probe"
 
 
 def _check_keychain() -> CheckResult:
@@ -163,14 +180,13 @@ def _probe_keychain() -> CheckResult:
 def _round_trip(keyring, name: str) -> CheckResult:
     from .auth import KEYCHAIN_SERVICE
 
-    key = f"doctor-probe-{secrets.token_hex(4)}"
     try:
-        keyring.set_password(KEYCHAIN_SERVICE, key, "ok")
+        keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_PROBE_NAME, "ok")
         try:
-            stored = keyring.get_password(KEYCHAIN_SERVICE, key)
+            stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_PROBE_NAME)
         finally:
             try:
-                keyring.delete_password(KEYCHAIN_SERVICE, key)
+                keyring.delete_password(KEYCHAIN_SERVICE, KEYCHAIN_PROBE_NAME)
             except Exception:
                 pass
     except Exception as exc:
@@ -212,6 +228,13 @@ def _check_computer_use(config: ShimConfig, plat: str) -> list[CheckResult]:
     out = _driver_doctor(binary)
     if any(check.blocking for check in out):
         return out
+    if plat == "linux":
+        # The daemon's own test (can_do_computer_use): without it, HELLO
+        # leaves computer use out, whatever cua-driver's doctor said.
+        problem = platform_info.linux_display_problem()
+        if problem is not None:
+            out.append(CheckResult("FAIL", "display", problem, blocking=True))
+            return out
     out.extend(asyncio.run(_probe_driver(config, plat)))
     if plat == "linux" and config.enable_clipboard and config.enable_clipboard_read_foreign:
         out.append(_check_linux_clipboard_types())

@@ -93,7 +93,9 @@ def driver_commands(monkeypatch: pytest.MonkeyPatch) -> _Commands:
 
 @pytest.fixture
 def a_fake_driver(monkeypatch: pytest.MonkeyPatch, fake_log: Path):
-    """doctor's driver probes run the fake, as if on `platform`."""
+    """doctor's driver probes run the fake, as if on `platform`, in a
+    desktop session."""
+    monkeypatch.setenv("DISPLAY", ":0")
     settings: dict[str, Any] = {"platform": "linux"}
 
     def bridge(*, tools, binary):
@@ -115,6 +117,30 @@ def _report(out: str) -> dict[str, tuple[str, str]]:
 
 def _with_driver(tmp_path: Path, plat: str = "linux", **overrides) -> ShimConfig:
     return _config(tmp_path, enable_computer_use=True, cua_driver_path=str(FAKE), **overrides)
+
+
+def test_doctor_prints_what_stdout_cannot_encode_as_escapes(monkeypatch) -> None:
+    """A Windows console code page such as CP437 has no em dash, which the
+    UAC lines carry, nor most characters a path or a driver message can
+    hold: doctor raised UnicodeEncodeError before it reported anything."""
+    import io
+    import sys
+
+    raw = io.BytesIO()
+    stdout = io.TextIOWrapper(raw, encoding="cp437", errors="strict")
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    doctor._print_checks(
+        [
+            doctor.CheckResult("INFO", "UAC", "not elevated — can't drive admin windows"),
+            doctor.CheckResult("OK", "folder_browser", "C:\\Users\\Jürgen\\文档"),
+        ]
+    )
+    stdout.flush()
+
+    out = raw.getvalue().decode("cp437")
+    assert r"not elevated \u2014 can't drive admin windows" in out
+    assert r"C:\Users\Jürgen\\u6587\u6863" in out
 
 
 def test_doctor_fails_without_cua_driver(tmp_path, monkeypatch, capsys) -> None:
@@ -177,6 +203,29 @@ def test_doctor_runs_the_drivers_own_probes_and_starts_it(
     assert "cua-driver binary" not in lines
     assert lines["cua-driver start"] == ("OK", "0.38.0, 38 tools offered")
     assert lines["display"] == ("OK", "1920x1080 (scale 1)")
+
+
+@pytest.mark.parametrize(
+    "env", [{}, {"WAYLAND_DISPLAY": "wayland-0"}], ids=["no-display", "wayland-only"]
+)
+def test_doctor_fails_on_linux_without_a_display_the_driver_can_drive(
+    tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver, env
+) -> None:
+    """The daemon leaves computer_use out of HELLO without a display
+    cua-driver can drive, but doctor took the driver's own warning about it
+    and exited 0."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    for name in ("DISPLAY", "WAYLAND_DISPLAY", "CUA_DRIVER_RS_ENABLE_WAYLAND"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    rc = doctor.run_doctor(_with_driver(tmp_path))
+
+    lines = _report(capsys.readouterr().out)
+    assert rc == doctor.EX_CONFIG
+    assert lines["display"][0] == "FAIL"
+    assert lines["display"][1] == doctor.platform_info.linux_display_problem()
 
 
 def test_doctor_fails_on_a_driver_probe_error(
@@ -538,6 +587,33 @@ def test_doctor_round_trips_a_probe_through_the_keychain(monkeypatch, keeps, mar
     result = doctor._check_keychain()
 
     assert result.marker == marker
+    assert backend.stored == {}
+
+
+def test_a_probe_left_in_the_keychain_is_cleared_by_the_next_doctor(monkeypatch) -> None:
+    """A probe the keychain stored after doctor stopped waiting for it, with
+    doctor gone before its thread deleted it, stayed under the token
+    service for good: each run probed a new name, so none touched it."""
+    import sys
+
+    class GoneBeforeTheDelete(_MemoryKeyring):
+        def __init__(self) -> None:
+            super().__init__()
+            self.first = True
+
+        def delete_password(self, service: str, name: str) -> None:
+            if self.first:
+                self.first = False
+                return
+            super().delete_password(service, name)
+
+    backend = GoneBeforeTheDelete()
+    monkeypatch.setitem(sys.modules, "keyring", _keyring_module(backend))
+
+    doctor._check_keychain()
+    assert len(backend.stored) == 1
+    doctor._check_keychain()
+
     assert backend.stored == {}
 
 

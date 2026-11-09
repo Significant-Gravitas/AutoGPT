@@ -22,6 +22,7 @@ import socket
 import subprocess
 import sys
 import uuid
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
 
@@ -111,8 +112,7 @@ def available_recording_channels() -> list[str]:
 
 def can_do_computer_use(cua_driver_path: str | None = None) -> bool:
     """Whether computer use can be offered: cua-driver is installed and, on
-    Linux, has a display to drive, an X server or a Wayland compositor (it
-    uses XWayland unless CUA_DRIVER_RS_ENABLE_WAYLAND=1). WSL2 has neither
+    Linux, has a display it can drive (linux_display_problem). WSL2 has none
     for Windows apps. The daemon advertises it only once the driver starts."""
     from .computer_use.driver import find_driver_binary
 
@@ -122,8 +122,29 @@ def can_do_computer_use(cua_driver_path: str | None = None) -> bool:
     if find_driver_binary(cua_driver_path) is None:
         return False
     if plat == "linux":
-        return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+        return linux_display_problem() is None
     return True
+
+
+def linux_display_problem(environ: Mapping[str, str] | None = None) -> str | None:
+    """Why cua-driver can't drive this Linux session's display, or None.
+
+    cua-driver 0.38 drives X11 through DISPLAY, which XWayland provides on a
+    Wayland desktop. It uses its own Wayland backend only when
+    CUA_DRIVER_RS_ENABLE_WAYLAND is set to anything but empty, 0 or false
+    (the driver inherits it), so WAYLAND_DISPLAY alone is not enough."""
+    env = os.environ if environ is None else environ
+    if env.get("DISPLAY"):
+        return None
+    if not env.get("WAYLAND_DISPLAY"):
+        return "neither DISPLAY nor WAYLAND_DISPLAY is set in the shim's environment"
+    opt_in = env.get("CUA_DRIVER_RS_ENABLE_WAYLAND", "").strip()
+    if opt_in and opt_in != "0" and opt_in.lower() != "false":
+        return None
+    return (
+        "WAYLAND_DISPLAY is set but DISPLAY isn't: cua-driver needs XWayland's DISPLAY, "
+        "or CUA_DRIVER_RS_ENABLE_WAYLAND=1 for its experimental Wayland backend"
+    )
 
 
 # ── Machine ID ───────────────────────────────────────────────────────────────
@@ -328,5 +349,6 @@ __all__ = [
     "detect_machine_id",
     "detect_platform",
     "is_case_insensitive_fs",
+    "linux_display_problem",
     "resolve_shell",
 ]

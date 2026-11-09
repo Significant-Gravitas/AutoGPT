@@ -150,7 +150,7 @@ async def test_recording_preview_fails_startup_closed(
 ) -> None:
     import autogpt_local_executor.daemon as daemon_module
 
-    monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda: b"a" * 32)
+    monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda _log=None: b"a" * 32)
     config = ShimConfig(
         session_id="session-1",
         enable_recording=True,
@@ -693,6 +693,8 @@ def test_install_carries_the_deployment_flags_into_the_service(
         "argv",
         [
             "autogpt-shim",
+            "--config",
+            str(_empty_config(tmp_path)),
             "--platform-url",
             "https://platform.example.com",
             "--platform-oauth-url",
@@ -901,7 +903,7 @@ async def test_start_exits_by_how_the_audit_storage_failed(
     def refuse(**_kwargs) -> None:
         raise OSError(number, os.strerror(number))
 
-    monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda: b"k" * 32)
+    monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda _log=None: b"k" * 32)
     monkeypatch.setattr(daemon_module, "AuditWriter", refuse)
     monkeypatch.delenv("AUTOGPT_SHIM_SUPERVISOR", raising=False)
     config = ShimConfig(

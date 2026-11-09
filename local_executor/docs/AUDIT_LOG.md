@@ -85,7 +85,7 @@ single JSON object with this shape:
 | `FILE_LIST` | `{path, glob, recursive, include_hidden, max_entries, entries_returned}` |
 | `FILE_DELETE` | `{path, recursive, missing_ok}` |
 | `FILE_MOVE` | `{src, dst, overwrite}` |
-| `COMPUTER_TOOL_CALL` | `{tool, arguments}` — the cua-driver tool and its arguments, with `text`, `value`, `script` and `prompt_text` replaced by `{"redacted_chars": n}` (inside `run_steps` steps too) and other strings over 200 characters cut short. `launch_app` arguments are kept in full, since they decide what runs, and so are the arguments of a call with approved disk arguments, which `approved_arguments` names. On success `details` adds `is_error` (the driver's verdict), `images`, `images_withheld` (left out for the per-minute budget or the frame limit) and `text_bytes`. See [CUA_DRIVER.md](CUA_DRIVER.md#audit). |
+| `COMPUTER_TOOL_CALL` | `{tool, arguments}` — the cua-driver tool and its arguments, with `text`, `value`, `script` and `prompt_text` replaced by `{"redacted_chars": n}` (inside `run_steps` steps too), as are a `press_key` `key` that is a single character and the character of a `hotkey` chord that only holds shift (named keys and command chords such as ctrl+c stay), and other strings over 200 characters cut short. `launch_app` arguments are kept in full, since they decide what runs, and so are the arguments of a call with approved disk arguments, which `approved_arguments` names. On success `details` adds `is_error` (the driver's verdict), `images`, `images_withheld` (left out for the per-minute budget or the frame limit) and `text_bytes`. See [CUA_DRIVER.md](CUA_DRIVER.md#audit). |
 | `LOCAL_LLM_COMPLETION` | `{model, prompt_chars, response_chars, finish_reason, stream, tokens_prompt?, tokens_completion?, tokens_total?}` — never the prompt text, never the response text. `tokens_*` may be `null` if the backend doesn't report them. See [LOCAL_LLM.md](LOCAL_LLM.md). |
 | `DIRECTORY_LIST` | `{browse_id, path, entries_returned, truncated}` — logs the canonical directory being viewed, never returned entry-name arrays or opaque references |
 | `SESSION_ALLOWED_ROOT_SET` | `{previous_allowed_root, allowed_root, fingerprint, revision}` |
@@ -145,8 +145,10 @@ OS keychain (same backend as the OAuth tokens — see CROSS_PLATFORM.md
 
 If the keychain is unavailable, a legacy audit-only fallback uses
 `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`. It uses HMAC-derived XOR obfuscation, without
-authenticated encryption or a slow password KDF. OAuth tokens have no file
-fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
+authenticated encryption or a slow password KDF. It makes a new key only while
+there is no log yet; with one, which the keychain's key signed, the daemon
+waits for the keychain instead (it exits 75 to be restarted). OAuth tokens have
+no file fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
 
 Malformed stored keys are preserved and rejected rather than regenerated.
 Before appending to an existing active log, startup verifies its chain using
@@ -195,7 +197,9 @@ and `±Infinity` are rejected: the canonicalizer raises on them rather
 than silently producing non-JSON.
 A string UTF-8 can't encode (a POSIX path whose bytes aren't UTF-8
 decodes to lone surrogates) is written with those code points as
-`\udcXX` escapes, so its record is never dropped.
+`\udcXX` escapes, so its record is never dropped. In an object with such
+a key, every key's backslashes are written doubled, so an escaped key
+can't be spelled like another key and take its place.
 
 ### Verification
 
