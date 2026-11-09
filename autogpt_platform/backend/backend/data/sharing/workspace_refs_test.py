@@ -182,6 +182,11 @@ class TestExtractArtifactLinks:
     def test_a_reply_without_links_is_kept_even_with_no_letters(self, text):
         assert extract_artifact_links(text) == (text, [])
 
+    def test_an_emoji_beside_a_link_is_kept(self):
+        text, artifacts = extract_artifact_links("👍 [file.pdf](workspace://1)")
+        assert text == "👍 `file.pdf`"
+        assert artifacts[0].file_id == "1"
+
     def test_a_backtick_in_a_name_cannot_break_out_of_the_code_span(self):
         text, artifacts = extract_artifact_links("See [a`b.txt](workspace://1) now")
         assert text == "See `ab.txt` now"

@@ -22,6 +22,7 @@ All three forms are handled by a single recursive walker.
 """
 
 import re
+import unicodedata
 from typing import Any
 
 from pydantic import BaseModel
@@ -78,8 +79,9 @@ def extract_artifact_links(text: str) -> tuple[str, list[WorkspaceArtifactLink]]
     Raw ``workspace://`` URIs are useless to a chat-platform user, so callers
     strip them here and deliver the referenced file (or a link to it)
     separately. The name stays so a sentence like "I saved [a](…) · [b](…)"
-    still says what was saved. Text that is nothing but links comes back
-    empty: the delivered files are the whole message.
+    still says what was saved. Text that is nothing but links, whitespace and
+    punctuation comes back empty: the delivered files are the whole message.
+    An emoji or other symbol beside a link is content and is kept.
     """
     artifacts: list[WorkspaceArtifactLink] = []
 
@@ -95,8 +97,8 @@ def extract_artifact_links(text: str) -> tuple[str, list[WorkspaceArtifactLink]]
         return f"`{display_name.replace('`', '')}`"
 
     stripped = _WORKSPACE_ARTIFACT_LINK_RE.sub(_capture, text)
-    if artifacts and not any(
-        ch.isalnum() for ch in _WORKSPACE_ARTIFACT_LINK_RE.sub("", text)
+    if artifacts and all(
+        _is_link_separator(ch) for ch in _WORKSPACE_ARTIFACT_LINK_RE.sub("", text)
     ):
         return "", artifacts
     # Clean up the gaps the removed links leave behind so surrounding prose
@@ -104,6 +106,11 @@ def extract_artifact_links(text: str) -> tuple[str, list[WorkspaceArtifactLink]]
     stripped = re.sub(r"[ \t]+\n", "\n", stripped)
     stripped = re.sub(r"\n{3,}", "\n\n", stripped)
     return stripped.strip(), artifacts
+
+
+def _is_link_separator(ch: str) -> bool:
+    """Whitespace or punctuation, like the "·" or "," between links."""
+    return ch.isspace() or unicodedata.category(ch).startswith("P")
 
 
 def cut_lands_inside_artifact_link(text: str, cut: int) -> int:
