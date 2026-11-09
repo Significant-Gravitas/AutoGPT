@@ -398,45 +398,42 @@ async def test_a_request_that_finds_every_machine_slot_held_is_refused(
     assert machine.locked()  # the held slot stays held
 
 
-async def test_a_computer_call_waiting_for_a_machine_slot_stops_at_its_deadline(
+async def test_a_computer_call_takes_no_machine_slot(
     shim_config: ShimConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A computer tool call waited the machine's whole limit for a request
-    slot, whatever its own deadline, then got SHIM_OVERLOADED: a call given
-    one second was answered nine seconds late, as if the machine had
-    refused it rather than its time having run out."""
-    import autogpt_local_executor.daemon as daemon_module
+    """A computer tool call took one of the machine's request slots, then
+    waited for its turn at the computer holding it. With one long call
+    running, three waiting held every slot, and other chats' file and shell
+    requests got machine_busy until it ended. The computer's calls take
+    turns at it instead, each within its own deadline, and take no slot."""
     from autogpt_local_executor.protocol import ComputerToolCallMessage, ComputerToolCallPayload
 
-    monkeypatch.setattr(daemon_module, "MACHINE_WORK_WAIT_SECONDS", 60)
     machine = asyncio.Semaphore(1)
     await machine.acquire()  # held by another chat's work
     shim_config.enable_computer_use = True
     child = _child(shim_config, machine)
     child._granted_capabilities = frozenset({"computer_use"})
+    handled: list[str] = []
+
+    async def handle(msg: Any, *, received_at: float | None = None) -> AckMessage:
+        handled.append(msg.id)
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(child._computer_handler, "handle", handle)
     call = ComputerToolCallMessage(
         id="req",
         ts=now_ts(),
         payload=ComputerToolCallPayload(tool="click", arguments={"pid": 7}, timeout_seconds=1),
     )
-    ws = _FakeWS()
-    task = asyncio.ensure_future(child._dispatch(ws, call))
+    task = asyncio.ensure_future(child._dispatch(_FakeWS(), call))
     try:
         done, _ = await asyncio.wait({task}, timeout=20)
         assert task in done
     finally:
         task.cancel()
 
-    [answer] = [parse_message(raw) for raw in ws.sent]
-    assert answer.payload.code == "COMMAND_TIMEOUT"
-    assert answer.payload.details == {"tool": "click", "timeout_seconds": 1, "started": False}
-    [record] = [
-        json.loads(line)
-        for line in shim_config.audit_log_path.read_text().splitlines()
-        if json.loads(line)["op"] == "COMPUTER_TOOL_CALL"
-    ]
-    assert record["result"]["error_code"] == "COMMAND_TIMEOUT"
-    assert machine.locked()  # never taken
+    assert handled == ["req"]
+    assert machine.locked()  # the other chat's slot, untouched
 
 
 async def test_a_computer_calls_deadline_counts_from_its_frames_arrival(

@@ -1162,14 +1162,14 @@ assigns each request its own async task and responds with matching `id` when com
 Max concurrent requests: `HELLO_ACK.max_concurrent` (default 4).
 The chats on a machine also share the control connection's `max_concurrent`
 slots. A request waits up to ten seconds for one, then gets
-`SHIM_OVERLOADED` with `details.reason: "machine_busy"`. A
-`COMPUTER_TOOL_CALL` waits no longer than its own deadline, which this wait
-counts toward; one whose deadline comes first gets `COMMAND_TIMEOUT` with
-`details.started: false`. A slot stays taken
+`SHIM_OVERLOADED` with `details.reason: "machine_busy"`. A slot stays taken
 until its work ends, including work still running in a thread after its
 session ended.
-`COMPUTER_TOOL_CALL`s from every session on a machine take turns, since
-they share one screen.
+`COMPUTER_TOOL_CALL`s take no slot: those from every session on a machine
+take turns, since they share one screen, so calls waiting their turn would
+otherwise hold every slot while a long one ran. Each waits for its turn no
+longer than its own deadline; one whose deadline comes first gets
+`COMMAND_TIMEOUT` with `details.started: false`.
 
 ---
 

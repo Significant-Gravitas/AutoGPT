@@ -1523,7 +1523,17 @@ class ShimDaemon:
                     queue_owed = False
                     in_flight_owed = True
                     try:
-                        if self._machine_work_semaphore is not None and not self._control_mode:
+                        # A computer tool call takes no machine slot: the
+                        # computer's calls take turns at it, each waiting no
+                        # longer than its own deadline, and calls waiting
+                        # their turn while a long one ran held every slot,
+                        # so other chats' file and shell requests got
+                        # machine_busy.
+                        if (
+                            self._machine_work_semaphore is not None
+                            and not self._control_mode
+                            and not isinstance(msg, ComputerToolCallMessage)
+                        ):
                             response = await self._handle_in_a_machine_slot(
                                 self._machine_work_semaphore, msg, _stream_send
                             )
@@ -1587,23 +1597,12 @@ class ShimDaemon:
         """Handle `msg` in one of the machine's request slots, shared by every
         chat, or refuse it when none frees up in MACHINE_WORK_WAIT_SECONDS.
         Only the wait is bounded: a slot taken is held until the work ends,
-        since a thread already running it can't be stopped. A computer tool
-        call waits no longer than its own deadline, which the wait counts
-        toward, and one still waiting then gets COMMAND_TIMEOUT, unstarted."""
+        since a thread already running it can't be stopped."""
         give_up = asyncio.get_running_loop().time() + MACHINE_WORK_WAIT_SECONDS
-        call_deadline = None
-        if (
-            isinstance(msg, ComputerToolCallMessage)
-            and "computer_use" in self._granted_capabilities
-        ):
-            call_deadline = ComputerUseHandler.call_deadline(msg, _request_received_at.get())
-        limit = give_up if call_deadline is None else min(give_up, call_deadline)
         try:
-            async with asyncio.timeout_at(limit):
+            async with asyncio.timeout_at(give_up):
                 await slots.acquire()
         except TimeoutError:
-            if call_deadline is not None and call_deadline <= give_up:
-                return await self._computer_handler.refuse_unstarted(msg)
             return make_error(
                 msg.id,
                 ErrorCode.SHIM_OVERLOADED,

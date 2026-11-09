@@ -1671,14 +1671,6 @@ class ComputerUseHandler:
         seconds = float(msg.payload.timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
         return (asyncio.get_running_loop().time() if received_at is None else received_at) + seconds
 
-    async def refuse_unstarted(self, msg: ComputerToolCallMessage) -> Any:
-        """Answer a call whose deadline passed before it could be taken (it
-        waited for one of the machine's request slots), as one whose
-        deadline passed waiting for the computer is answered."""
-        if not self.config.enable_computer_use:
-            return await self.handle(msg)
-        return await self._not_started(msg, self._call_details(msg), time.monotonic())
-
     @staticmethod
     def _call_details(msg: ComputerToolCallMessage) -> dict[str, Any]:
         tool = msg.payload.tool
