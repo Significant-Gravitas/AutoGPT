@@ -232,7 +232,7 @@ Shim creates the directory on first run if missing. User can override via
 |---|---|
 | Default port | `41899` |
 | Fallback strategy | If `41899` is in use, scan `41899–41910` and bind the first free port. |
-| Listener address | `127.0.0.1` only — never `0.0.0.0`. |
+| Listener address | Loopback only: `127.0.0.1`, and `::1` on the same port where the machine has IPv6 (the redirect says `localhost`, which a browser may try as either). Never `0.0.0.0` or `::`. A port taken on either address is skipped. |
 | Firewall behavior | Most OSes prompt for inbound localhost binds on first run (macOS Application Firewall, Windows Defender Firewall). User must approve. |
 
 ### Network isolation (future, not v0)
