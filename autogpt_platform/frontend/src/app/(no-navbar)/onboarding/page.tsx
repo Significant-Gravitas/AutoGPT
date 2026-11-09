@@ -9,6 +9,7 @@ import { ProgressError } from "./components/ProgressError";
 import { StepIndicator } from "./components/StepIndicator";
 import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
 import { ConnectStep } from "./steps/ConnectStep/ConnectStep";
+import { InterviewStep } from "./steps/InterviewStep/InterviewStep";
 import { IntroStep } from "./steps/IntroStep/IntroStep";
 import { PreparingStep } from "./steps/PreparingStep";
 import { RoleStep } from "./steps/RoleStep";
@@ -133,6 +134,7 @@ export default function OnboardingPage() {
         {currentStep === steps.autopilot && <IntroStep slide="autopilot" />}
         {currentStep === steps.role && <RoleStep />}
         {currentStep === steps.painPoints && <BrainDumpStep />}
+        {currentStep === steps.interview && <InterviewStep />}
         {isSelfHostConnectEnabled && currentStep === steps.connect && (
           <ConnectStep />
         )}

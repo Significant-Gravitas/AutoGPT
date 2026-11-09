@@ -49,6 +49,27 @@ describe("semantic progress", () => {
     const paywall = buildStepLayout({ hasPaywall: true });
     expect(resumeStep({ progress, steps: paywall })).toBe(paywall.subscription);
   });
+  it("resumes a draft saved on the interview where the layout has it, and at the brain dump where it does not", () => {
+    const progress = readProgress(
+      makeProgress({
+        currentStep: "interview",
+        completedSteps: ["team", "autopilot", "role"],
+      }),
+    );
+    expect(progress).not.toBeNull();
+
+    const withInterview = buildStepLayout({
+      hasPaywall: true,
+      hasInterview: true,
+    });
+    expect(resumeStep({ progress, steps: withInterview })).toBe(
+      withInterview.interview,
+    );
+    const withBrainDump = buildStepLayout({ hasPaywall: true });
+    expect(resumeStep({ progress, steps: withBrainDump })).toBe(
+      withBrainDump.painPoints,
+    );
+  });
   it("honors a previous-step URL without allowing an incomplete step to be skipped", () => {
     const progress = makeProgress({
       currentStep: "subscription",

@@ -15,7 +15,10 @@ export interface StepLayout {
   team?: number;
   autopilot?: number;
   role: number;
-  painPoints: number;
+  /** The brain dump. Absent when the interview takes its place. */
+  painPoints?: number;
+  /** The typed interview with Otto, in the brain dump's place. */
+  interview?: number;
   /** Retired with the plan step. Never laid out; saved progress from before
    *  may still name it, and resuming skips over it. */
   hire?: number;
@@ -31,17 +34,19 @@ export function buildStepLayout({
   hasPaywall = false,
   hasPlan = false,
   hasConnect = false,
+  hasInterview = false,
 }: {
   hasPaywall?: boolean;
   /** The plan alone, for a deployment with no paywall configured. */
   hasPlan?: boolean;
   hasConnect?: boolean;
+  hasInterview?: boolean;
 }): StepLayout {
   const order: (keyof StepLayout)[] = [
     "team",
     "autopilot",
     "role",
-    "painPoints",
+    hasInterview ? "interview" : "painPoints",
     ...(hasPaywall || hasPlan ? (["subscription"] as const) : []),
     ...(!hasPaywall && hasConnect ? (["connect"] as const) : []),
     "preparing",

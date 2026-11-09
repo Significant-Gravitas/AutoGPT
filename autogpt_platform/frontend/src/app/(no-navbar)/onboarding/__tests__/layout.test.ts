@@ -5,9 +5,14 @@ const source = vi.hoisted(() => ({
   payment: { isPaymentEnabled: true, isResolved: true, isError: false },
   local: false,
   paid: false,
+  interview: { enabled: false, ready: true },
 }));
 vi.mock("@/hooks/usePlatformPayment", () => ({
   usePlatformPayment: () => source.payment,
+}));
+vi.mock("@/services/feature-flags/use-get-flag", () => ({
+  Flag: { ONBOARDING_INTERVIEW: "onboarding-interview" },
+  useFlagStatus: () => ({ ...source.interview, answered: true }),
 }));
 vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
@@ -34,8 +39,39 @@ beforeEach(() => {
   source.payment = { isPaymentEnabled: true, isResolved: true, isError: false };
   source.local = false;
   source.paid = false;
+  source.interview = { enabled: false, ready: true };
 });
 describe("onboarding layout", () => {
+  it("lays the interview out in the brain dump's place when its flag is on", () => {
+    source.interview = { enabled: true, ready: true };
+
+    const { result } = renderHook(useOnboardingLayout, { initialProps });
+
+    expect(result.current.steps).toEqual({
+      team: 1,
+      autopilot: 2,
+      role: 3,
+      interview: 4,
+      subscription: 5,
+      preparing: 6,
+    });
+  });
+
+  it("waits for the interview flag before freezing the layout", () => {
+    source.interview = { enabled: false, ready: false };
+    const { result, rerender } = renderHook(useOnboardingLayout, {
+      initialProps,
+    });
+    expect(result.current.isReady).toBe(false);
+
+    source.interview = { enabled: true, ready: true };
+    rerender(initialProps);
+
+    expect(result.current.isReady).toBe(true);
+    expect(result.current.steps.interview).toBe(4);
+    expect(result.current.steps.painPoints).toBeUndefined();
+  });
+
   it("includes team introductions, brain dump, and the plan + trial step without rollout flags", () => {
     const { result } = renderHook(useOnboardingLayout, { initialProps });
     expect(result.current.isReady).toBe(true);

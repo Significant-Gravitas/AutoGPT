@@ -1,5 +1,6 @@
 import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import { environment } from "@/services/environment";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { useRef } from "react";
 import { buildStepLayout, type Step } from "./store";
 import { usePaidCheckoutStatus } from "./usePaidCheckoutStatus";
@@ -16,11 +17,13 @@ export function useOnboardingLayout({
   trialConfirmation: { ready: boolean; active: boolean | undefined };
 }) {
   const payment = usePlatformPayment();
+  const interview = useFlagStatus(Flag.ONBOARDING_INTERVIEW);
 
-  const flagsReady = payment.isResolved;
+  const flagsReady = payment.isResolved && interview.ready;
   const snapshot = useRef<{
     userID: string | null;
     payment: boolean;
+    interview: boolean;
   } | null>(null);
   if (snapshot.current?.userID !== userID) snapshot.current = null;
   // Resolve once per account: a setting change must not reorder an active wizard.
@@ -29,6 +32,7 @@ export function useOnboardingLayout({
     snapshot.current = {
       userID,
       payment: payment.isPaymentEnabled,
+      interview: interview.enabled,
     };
   }
   const paidConfirmation = usePaidCheckoutStatus(
@@ -44,6 +48,7 @@ export function useOnboardingLayout({
     // already paid for was seen on the way to Stripe, so it is not repeated.
     hasPlan: !snapshot.current?.payment,
     hasConnect: isSelfHostConnectEnabled,
+    hasInterview: !!snapshot.current?.interview,
   });
   return {
     steps,

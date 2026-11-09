@@ -216,18 +216,15 @@ describe("getCatalogLabel", () => {
     );
   });
 
-  it("names the first task an onboarding interview ends on", () => {
+  it("wraps an onboarding interview up without naming its first task", () => {
     const input = { first_task: "Answer order emails in Gmail" };
 
     expect(getCatalogLabel("end_interview", input, "running")).toEqual({
       category: "team",
-      text: 'Setting your team\'s first task "Answer order emails in Gmail"…',
+      text: "Wrapping up…",
     });
     expect(getCatalogLabel("end_interview", input, "done")?.text).toBe(
-      'Set your team\'s first task "Answer order emails in Gmail"',
-    );
-    expect(getCatalogLabel("end_interview", {}, "done")?.text).toBe(
-      "Set your team's first task",
+      "Wrapped up",
     );
   });
 

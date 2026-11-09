@@ -301,8 +301,7 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   end_interview: {
     category: "team",
-    running: "Setting your team's first task",
-    done: "Set your team's first task",
-    subject: (input) => quoted(input, "first_task", 60),
+    running: "Wrapping up",
+    done: "Wrapped up",
   },
 };
