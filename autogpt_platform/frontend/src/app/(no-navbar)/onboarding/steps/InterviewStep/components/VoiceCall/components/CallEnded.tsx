@@ -83,7 +83,8 @@ export function CallEnded({
       )}
       {ending.kind === "retry" && (
         <Text variant="body" align="center">
-          We couldn&apos;t save what you said yet.
+          What you said is kept, but we couldn&apos;t finish setting up from it
+          yet.
         </Text>
       )}
 

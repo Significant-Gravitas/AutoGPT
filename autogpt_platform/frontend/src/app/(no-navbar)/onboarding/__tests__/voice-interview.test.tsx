@@ -906,9 +906,15 @@ describe("onboarding interview by voice: how a call ends", () => {
     const socket = await liveCall();
 
     endCall(socket, "finished");
-    await userEvent
-      .setup()
-      .click(await screen.findByRole("button", { name: "Try again" }));
+    const tryAgain = await screen.findByRole("button", { name: "Try again" });
+    expect(
+      screen.getByText(
+        "What you said is kept, but we couldn't finish setting up from it yet.",
+      ),
+    ).toBeDefined();
+    // The call ran to its close: the one way on is to hand it off again.
+    expect(screen.queryByRole("button", { name: "Call again" })).toBeNull();
+    await userEvent.setup().click(tryAgain);
 
     await expectPlanStep();
     expect(finishes).toEqual([CALL_ID]);
