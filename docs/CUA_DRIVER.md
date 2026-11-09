@@ -243,8 +243,12 @@ approves the call (see Enforcement), and `clipboard_read` returns:
   (`computer_use/concealed.py`: AppKit, the Win32 API through ctypes, or
   `xclip`/`wl-paste`), checks the types the driver returned with the text,
   and checks the OS again after; a change counter that moved in between
-  (macOS, Windows) refuses the read as `changed`. A clipboard whose types
-  can't be read counts as marked.
+  (macOS, Windows) refuses the read as `changed`. Linux keeps no such
+  counter, and the driver reads the types and then the text, so a copy
+  between the two would pass with another copy's types: there the shim
+  reads through the driver a second time, and anything but the same text
+  with no marker is refused as `changed`. A clipboard whose types can't be
+  read counts as marked.
 
 The text of a refused read never leaves the shim.
 
