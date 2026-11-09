@@ -225,6 +225,20 @@ class TestPlaceholderSubstitution:
         assert "120s" in out
         assert "stays done" in out
 
+    def test_a_computer_tool_that_never_started_says_nothing_ran(self):
+        """The companion answers a call still waiting for the computer at its
+        deadline with `started: false`; the old text told Otto to check what
+        the call had done."""
+        out = translate_shim_error(
+            "COMMAND_TIMEOUT",
+            "click didn't start",
+            {"tool": "click", "timeout_seconds": 30, "started": False},
+            _make_shim(),
+        )
+        assert "`click` didn't start" in out
+        assert "Nothing ran" in out
+        assert "stays done" not in out
+
     def test_capability_not_granted_includes_capability_name(self):
         out = translate_shim_error(
             "CAPABILITY_NOT_GRANTED",
