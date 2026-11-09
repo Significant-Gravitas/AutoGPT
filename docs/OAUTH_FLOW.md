@@ -33,13 +33,16 @@ Grant types:   authorization_code, refresh_token
 
 Ports 41899–41910 (12 ports) are reserved for the shim's local callback
 server. The shim binds the first free port in that range, from
-`oauth_redirect_port` on and never past 41910 (a configured port outside the
-range is the only one it tries, since no other is known to be registered), so a busy 41899
+`oauth_redirect_port` on and never past 41910, so a busy 41899
 (held by another app, a stale shim process, or a developer's local dev
 server) doesn't break first-time auth. The platform's OAuth client
 registration MUST accept all ports in this range as valid `redirect_uri`
 values for `client_id=autogpt-local-executor` — registering only 41899
-would defeat the fallback. The listener is bound to loopback only:
+would defeat the fallback. A configured `oauth_redirect_port` outside the
+range is the only port the shim tries, since no other is known to be
+registered, and sign-in through it works only once the deployment's operator
+has added `http://localhost:<port>/callback` to the OAuth app's redirect
+URIs; otherwise pick a port in the range. The listener is bound to loopback only:
 `127.0.0.1`, and where the machine has IPv6, `::1` on the same port, since
 a browser may try `localhost` as either; never `0.0.0.0` or `::`. A port
 another program holds on either address (on `::1`, or on every address
