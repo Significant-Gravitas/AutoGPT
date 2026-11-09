@@ -1219,6 +1219,94 @@ async def test_a_call_kept_waiting_past_its_deadline_never_starts(
     assert [r["tool"] for r in _records(fake_log, "call")] == ["drag"]
 
 
+class _HeldStart:
+    """A client factory whose drivers don't finish starting until `go` is
+    set, counting the starts."""
+
+    def __init__(self) -> None:
+        self.go = asyncio.Event()
+        self.starting = asyncio.Event()
+        self.started: list[StdioMcpClient] = []
+
+    def __call__(self, argv: list[str], **kwargs: Any) -> StdioMcpClient:
+        held = self
+
+        class Held(StdioMcpClient):
+            async def start(self, *, timeout: float) -> Any:
+                held.starting.set()
+                await held.go.wait()
+                return await super().start(timeout=timeout)
+
+        client = Held([sys.executable, *argv], **kwargs)
+        self.started.append(client)
+        return client
+
+
+async def test_a_call_gives_up_on_a_slow_start_and_leaves_it_running(fake_log) -> None:
+    """Starting the driver on a call's first use ignored the call's deadline,
+    holding the driver's turn for as long as the start took, which kept
+    HELLO's screen size and other chats' calls waiting past theirs. The
+    start isn't stopped either: that would count against the restart
+    budget."""
+    held = _HeldStart()
+    bridge = CuaDriverBridge(
+        tools=catalog.offered_tools(enable_clipboard=False),
+        binary=FAKE,
+        platform="linux",
+        client_factory=held,
+    )
+    try:
+        first = asyncio.ensure_future(bridge.call_tool("get_screen_size", {}, timeout=0.3))
+        done, _ = await asyncio.wait({first}, timeout=20)
+        assert first in done
+        with pytest.raises(driver.CallNotStarted):
+            first.result()
+        # The driver's turn is free, and the start goes on.
+        assert not bridge._turn.locked()
+        assert held.starting.is_set() and len(held.started) == 1
+
+        held.go.set()
+        result = await bridge.call_tool("get_screen_size", {}, timeout=30)
+
+        assert result["structuredContent"]["width"] == 1920
+        assert len(held.started) == 1
+        assert held.started[0].alive
+    finally:
+        held.go.set()
+        await bridge.close()
+
+
+async def test_a_call_whose_deadline_passes_while_the_driver_starts_never_runs(
+    tmp_path, fake_log
+) -> None:
+    held = _HeldStart()
+    config = _config(tmp_path)
+    handler = ComputerUseHandler(
+        config,
+        audit=AuditWriter(config.audit_log_path, b"a" * 32),
+        driver=CuaDriverBridge(
+            tools=catalog.offered_tools(enable_clipboard=False),
+            binary=FAKE,
+            platform="linux",
+            client_factory=held,
+        ),
+    )
+    try:
+        call = asyncio.ensure_future(handler.handle(_call("click", {"pid": 7}, timeout_seconds=1)))
+        done, _ = await asyncio.wait({call}, timeout=20)
+        assert call in done
+        response = call.result()
+
+        assert isinstance(response, ErrorMessage)
+        assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+        assert response.payload.details == {"tool": "click", "timeout_seconds": 1, "started": False}
+        assert "starting" in response.payload.message
+        assert _records(fake_log, "call") == []
+    finally:
+        held.go.set()
+        await handler.close()
+
+
 async def test_the_deadline_counts_from_when_the_shim_received_the_call(
     make_handler, fake_log
 ) -> None:

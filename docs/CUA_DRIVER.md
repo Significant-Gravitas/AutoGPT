@@ -163,8 +163,10 @@ sixteen tools; all of them are in the catalog, which
 - The clipboard rules, the screenshot budget and the frame limit below.
 - One call at a time per machine, and one deadline per call (120 s unless
   the platform asks for 1-600 s), counted from when the shim receives it, so
-  the wait for its turn counts. A call still waiting at its deadline never
-  reaches the driver (`started: false`). Past the deadline of a running
+  the wait for its turn counts, and so does the wait for the driver to start.
+  A call still waiting at its deadline never reaches the driver (`started:
+  false`); a start it waited for goes on for the calls after it, since
+  stopping one part way would count toward the three restarts. Past the deadline of a running
   call, the shim stops the driver (`started: true`), and the next call
   starts a new one; its sessions, element tokens and launched browsers'
   pages start over too.

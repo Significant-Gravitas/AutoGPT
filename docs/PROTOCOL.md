@@ -881,10 +881,11 @@ connection. Listing tools never waits for a running action.
 `tool` matches `^[a-z][a-z0-9_]{0,63}$`. `arguments` follows the tool's
 `input_schema`. Calls from every session on a machine take turns: there is
 one screen. `timeout_seconds` (1-600, default 120) bounds the whole call,
-from when the shim receives it: the wait for its turn counts. A call whose
-deadline passes while it waits never reaches the driver and gets
+from when the shim receives it: the wait for its turn counts, and so does
+the wait for cua-driver to start, on the first call or after it stopped. A
+call whose deadline passes while it waits never reaches the driver and gets
 `COMMAND_TIMEOUT` with `details.started: false`; nothing ran, so it can be
-sent again. At the deadline of a call the driver is running, the shim stops
+sent again. A start that outlasts it goes on, for the calls after it. At the deadline of a call the driver is running, the shim stops
 the driver, which can't cancel a call it is running, and answers
 `COMMAND_TIMEOUT` with `details.started: true`, though an action the driver
 already made stays made. The next call starts the driver afresh, without the
@@ -979,9 +980,9 @@ Error codes:
 - `COMMAND_TIMEOUT` — a `COMPUTER_TOOL_CALL` ran out of `timeout_seconds`
   (`details.tool`, `details.timeout_seconds`). `details.started` says
   whether anything ran: `false` when the call was still waiting for its
-  turn, so nothing reached the driver; `true` when the driver was running
-  it, so the shim stopped the driver, and what the call already did stays
-  done. Neither is retried automatically (see
+  turn or for cua-driver to start, so nothing reached the driver; `true`
+  when the driver was running it, so the shim stopped the driver, and what
+  the call already did stays done. Neither is retried automatically (see
   [Idempotency](#idempotency)); the model decides, and may send a call that
   didn't start again. `EXECUTE_COMMAND` doesn't use this code: on timeout it
   returns `COMMAND_RESULT` with `timed_out: true` and `exit_code = -1`, so

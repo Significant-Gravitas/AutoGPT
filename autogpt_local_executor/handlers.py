@@ -1637,8 +1637,9 @@ class ComputerUseHandler:
         return make_error(
             msg.id,
             ErrorCode.COMMAND_TIMEOUT,
-            f"{msg.payload.tool} didn't start: this computer was busy with another call "
-            "until its deadline passed. Nothing ran; call it again.",
+            f"{msg.payload.tool} didn't start: this computer was busy with another call, "
+            "or cua-driver was still starting, until its deadline passed. Nothing ran; "
+            "call it again.",
             details={
                 "tool": msg.payload.tool,
                 "timeout_seconds": msg.payload.timeout_seconds
@@ -1654,7 +1655,7 @@ class ComputerUseHandler:
         deadline: float,
         approved: list[str],
     ) -> tuple[ComputerToolResultPayload, dict[str, Any]]:
-        snapshot = await self.driver.snapshot()
+        snapshot = await self.driver.snapshot(deadline=deadline)
         spec = snapshot.tool(tool)
         if spec is None:
             raise ComputerUseError(
@@ -1678,7 +1679,6 @@ class ComputerUseHandler:
             ) from exc
         if takes_session(spec.get("inputSchema") or {}):
             arguments["session"] = self.session_label
-        # Starting the driver, on the first call, has its own deadline.
         timeout = deadline - asyncio.get_running_loop().time()
         if timeout <= 0:
             raise CallNotStarted(f"{tool}'s deadline passed before the driver took it")

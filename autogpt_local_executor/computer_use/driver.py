@@ -226,6 +226,8 @@ class CuaDriverBridge:
         self._client: StdioMcpClient | None = None
         self._snapshot: DriverSnapshot | None = None
         self._lock = asyncio.Lock()
+        # A start a call waits for up to its deadline, then leaves running.
+        self._start: asyncio.Task[StdioMcpClient] | None = None
         # Held for each tool call: the driver runs one at a time anyway.
         self._turn = asyncio.Lock()
         self._starts: list[float] = []
@@ -242,8 +244,13 @@ class CuaDriverBridge:
         """The running driver, if one has started."""
         return self._snapshot.info if self._snapshot is not None else None
 
-    async def snapshot(self) -> DriverSnapshot:
-        await self._ensure_client()
+    async def snapshot(self, *, deadline: float | None = None) -> DriverSnapshot:
+        """What the driver offers, starting it if need be. With `deadline`
+        (loop time), a start still running then raises CallNotStarted."""
+        if deadline is None:
+            await self._ensure_client()
+        else:
+            await self._client_by(deadline, "the tool list")
         assert self._snapshot is not None
         return self._snapshot
 
@@ -268,7 +275,7 @@ class CuaDriverBridge:
         except TimeoutError as exc:
             raise CallNotStarted(f"{name} waited its whole deadline for the driver") from exc
         try:
-            client = await self._ensure_client()
+            client = await self._client_by(deadline, name)
             remaining = deadline - loop.time()
             if remaining <= 0:
                 raise CallNotStarted(f"{name}'s deadline passed while the driver started")
@@ -284,6 +291,12 @@ class CuaDriverBridge:
             self._turn.release()
 
     async def close(self) -> None:
+        start = self._start
+        if start is not None and not start.done():
+            # Shutting down: a start no call waits for any more is stopped.
+            start.cancel()
+            with contextlib.suppress(BaseException):
+                await start
         async with self._lock:
             self._closed = True
             await self._stop_client()
@@ -292,6 +305,29 @@ class CuaDriverBridge:
                 self._policy_dir = None
 
     # ── Starting ─────────────────────────────────────────────────────
+
+    async def _client_by(self, deadline: float, name: str) -> StdioMcpClient:
+        """The running driver, started if need be, by `deadline` (loop time).
+
+        A start still running at the deadline goes on without the caller,
+        who gets CallNotStarted: stopping it part way would count against
+        the restart budget, and the next call finds the driver ready. Every
+        caller in the meantime waits for that one start."""
+        client = self._client
+        if client is not None and client.alive:
+            return client
+        start = self._start
+        if start is None or start.done():
+            start = self._start = asyncio.ensure_future(self._ensure_client())
+            start.add_done_callback(_retrieved)
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining > 0:
+            await asyncio.wait({start}, timeout=remaining)
+        if not start.done():
+            raise CallNotStarted(f"{name}'s deadline passed while the driver started")
+        if start.cancelled():
+            raise DriverUnavailable("the local executor is stopping")
+        return start.result()
 
     async def _ensure_client(self) -> StdioMcpClient:
         async with self._lock:
@@ -426,6 +462,13 @@ class CuaDriverBridge:
         logger.info("Stopping cua-driver (pid %s) to end a call that overran", client.pid)
         with contextlib.suppress(Exception):
             await client.close(now=True)
+
+
+def _retrieved(task: asyncio.Task[StdioMcpClient]) -> None:
+    """Mark a start's failure seen: the callers that waited for it may all
+    have given up, and the next call starts the driver again."""
+    if not task.cancelled():
+        task.exception()
 
 
 __all__ = [
