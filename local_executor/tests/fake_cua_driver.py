@@ -18,6 +18,7 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_NEXT_CURSOR   tools/list pages without end: `same` cursor or a `new` one
   FAKE_CUA_SLOW_SECONDS  how long the slow drag (pid -2) takes (default 30)
   FAKE_CUA_INITIALIZE    JSON object merged into initialize's result
+  FAKE_CUA_SCREEN_ERROR  get_screen_size answers with this error
 """
 
 from __future__ import annotations
@@ -104,6 +105,8 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
             error=True,
         )
     if name == "get_screen_size":
+        if os.environ.get("FAKE_CUA_SCREEN_ERROR"):
+            return text_result(os.environ["FAKE_CUA_SCREEN_ERROR"], error=True)
         size = json.loads(
             os.environ.get("FAKE_CUA_SCREEN")
             or '{"width": 1920, "height": 1080, "scale_factor": 1.0}'

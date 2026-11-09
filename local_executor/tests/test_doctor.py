@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -345,6 +346,40 @@ async def test_doctor_warns_on_a_screen_size_it_cannot_read(
     assert (check.marker, check.label) == ("WARN", "display")
 
 
+@pytest.mark.parametrize(
+    ("env", "marker"),
+    [
+        ({"DISPLAY": ":0"}, "FAIL"),
+        ({"DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-0"}, "FAIL"),
+        # The native Wayland backend still sizes the screen through X11 on
+        # most compositors, so there a refusal doesn't mean it can't work.
+        ({"WAYLAND_DISPLAY": "wayland-0", "CUA_DRIVER_RS_ENABLE_WAYLAND": "1"}, "WARN"),
+    ],
+    ids=["x11", "xwayland", "native-wayland"],
+)
+def test_doctor_fails_when_the_driver_cannot_read_an_x_display(
+    tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver, env: dict[str, str], marker: str
+) -> None:
+    """An X display the driver can't reach (refused, or a server gone) made
+    doctor warn and exit 0, though the daemon offers computer use there and
+    every call then fails."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    for name in ("DISPLAY", "WAYLAND_DISPLAY", "CUA_DRIVER_RS_ENABLE_WAYLAND"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("FAKE_CUA_SCREEN_ERROR", "cannot open display :0")
+
+    rc = doctor.run_doctor(_with_driver(tmp_path))
+
+    lines = _report(capsys.readouterr().out)
+    assert lines["display"] == (
+        marker,
+        "cua-driver could not read the screen: cannot open display :0",
+    )
+    assert rc == (doctor.EX_CONFIG if marker == "FAIL" else 0)
+
+
 def test_doctor_blocks_computer_use_on_wsl2(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "wsl2")
 
@@ -390,12 +425,40 @@ def test_doctor_checks_the_tool_foreign_clipboard_reads_need(
     monkeypatch, present: bool, marker: str
 ) -> None:
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-    monkeypatch.setattr(doctor.shutil, "which", lambda name: name if present else None)
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setattr(shutil, "which", lambda name: name if present else None)
 
     result = doctor._check_linux_clipboard_types()
 
     assert result.marker == marker
     assert "xclip" in result.detail
+
+
+@pytest.mark.parametrize(
+    ("env", "installed", "marker", "tool"),
+    [
+        ({"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}, {"xclip"}, "OK", "xclip"),
+        ({"WAYLAND_DISPLAY": "wayland-0"}, {"wl-paste"}, "OK", "wl-paste"),
+        ({}, {"xclip", "wl-paste"}, "WARN", "xclip"),
+    ],
+    ids=["mixed-session-xclip-only", "wayland", "no-display"],
+)
+def test_doctor_picks_the_clipboard_tool_the_check_uses(
+    monkeypatch, env: dict[str, str], installed: set[str], marker: str, tool: str
+) -> None:
+    """doctor asked for wl-paste whenever WAYLAND_DISPLAY was set, where the
+    check itself goes on to xclip with an X display, and took xclip without
+    any display, where the check counts the clipboard as unreadable."""
+    for name in ("WAYLAND_DISPLAY", "DISPLAY"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(shutil, "which", lambda name: name if name in installed else None)
+
+    result = doctor._check_linux_clipboard_types()
+
+    assert result.marker == marker
+    assert tool in result.detail
 
 
 # ── Daemon preflight ─────────────────────────────────────────────────────

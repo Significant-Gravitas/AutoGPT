@@ -321,12 +321,14 @@ def write_jail_file(
     """
     path = assert_inside_jail(requested_path, allowed_root)
     owner: tuple[int, int] | None = None
+    set_id = False
     try:
         existing = path.stat()
     except FileNotFoundError:
         mode = None
     else:
         owner = (existing.st_uid, existing.st_gid)
+        set_id = bool(existing.st_mode & (stat.S_ISUID | stat.S_ISGID))
         _assert_safe_content_stat(existing)
         # A rename ignores the target's mode, so a file the person made
         # read-only would be replaced whole; refuse it, as writing it in
@@ -343,10 +345,15 @@ def write_jail_file(
         with open_jail_file(path, allowed_root, write=True) as file:
             if mode is not None and hasattr(os, "fchmod"):
                 # Before the contents change, so they never carry the bits,
-                # even when the write fails part way. Best-effort: the write
-                # still goes ahead if this fails (a file someone else owns).
-                with contextlib.suppress(OSError):
+                # even when the write fails part way. Best effort for the
+                # rest of the mode (a file someone else owns), but a file
+                # whose set-ID bits stay isn't written: the kernel doesn't
+                # drop them for a shim with CAP_FSETID.
+                try:
                     os.fchmod(file.fileno(), mode)
+                except OSError:
+                    if set_id:
+                        raise
             file.truncate(0)
             file.write(data)
 

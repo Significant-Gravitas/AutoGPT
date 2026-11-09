@@ -297,22 +297,40 @@ def test_a_frame_with_ordinary_numbers_parses() -> None:
     assert parse_message(frame).payload.arguments == {"x": -12.5, "y": 3, "z": 1e300}
 
 
-def test_a_frame_nested_exactly_to_the_limit_parses() -> None:
-    from autogpt_local_executor.protocol import MAX_FRAME_NESTING
+# PROTOCOL.md: a frame whose objects and arrays nest more than 64 levels
+# deep is dropped. The number as documented, not the constant, so a change
+# to either shows.
+_DOCUMENTED_NESTING_LIMIT = 64
 
+
+def _computer_call_frame_of_arrays(depth: int) -> str:
+    """Like _computer_call_frame, with the arguments object holding arrays
+    nested to `depth` levels in all."""
+    arrays = "[" * (depth - 1) + "1" + "]" * (depth - 1)
+    return (
+        '{"type":"COMPUTER_TOOL_CALL","id":"req","ts":1.0,'
+        '"payload":{"tool":"click","arguments":{"a":' + arrays + "}}}"
+    )
+
+
+@pytest.mark.parametrize(
+    "frame", [_computer_call_frame, _computer_call_frame_of_arrays], ids=["objects", "arrays"]
+)
+def test_a_frame_nested_exactly_to_the_limit_parses(frame) -> None:
     # The envelope and the payload add two levels to the arguments' own.
-    message = parse_message(_computer_call_frame(MAX_FRAME_NESTING - 2))
+    message = parse_message(frame(_DOCUMENTED_NESTING_LIMIT - 2))
 
     assert message.payload.tool == "click"
 
 
-def test_a_frame_nested_one_level_past_the_limit_is_refused() -> None:
+@pytest.mark.parametrize(
+    "frame", [_computer_call_frame, _computer_call_frame_of_arrays], ids=["objects", "arrays"]
+)
+def test_a_frame_nested_one_level_past_the_limit_is_refused(frame) -> None:
     """The deep cases start hundreds of levels down, so the limit could move
     by one, or be off by one, with every test passing."""
-    from autogpt_local_executor.protocol import MAX_FRAME_NESTING
-
     with pytest.raises(ValueError, match="nested"):
-        parse_message(_computer_call_frame(MAX_FRAME_NESTING - 1))
+        parse_message(frame(_DOCUMENTED_NESTING_LIMIT - 1))
 
 
 def test_parse_rejects_missing_id() -> None:

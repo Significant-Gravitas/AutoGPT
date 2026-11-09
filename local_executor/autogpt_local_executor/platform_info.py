@@ -134,16 +134,27 @@ def linux_display_problem(environ: Mapping[str, str] | None = None) -> str | Non
     CUA_DRIVER_RS_ENABLE_WAYLAND is set to anything but empty, 0 or false
     (the driver inherits it), so WAYLAND_DISPLAY alone is not enough."""
     env = os.environ if environ is None else environ
-    if env.get("DISPLAY"):
+    if env.get("DISPLAY") or linux_native_wayland(env):
         return None
     if not env.get("WAYLAND_DISPLAY"):
         return "neither DISPLAY nor WAYLAND_DISPLAY is set in the shim's environment"
-    opt_in = env.get("CUA_DRIVER_RS_ENABLE_WAYLAND", "").strip()
-    if opt_in and opt_in != "0" and opt_in.lower() != "false":
-        return None
     return (
         "WAYLAND_DISPLAY is set but DISPLAY isn't: cua-driver needs XWayland's DISPLAY, "
         "or CUA_DRIVER_RS_ENABLE_WAYLAND=1 for its experimental Wayland backend"
+    )
+
+
+def linux_native_wayland(environ: Mapping[str, str] | None = None) -> bool:
+    """Whether cua-driver uses its own Wayland backend: a Wayland session
+    with CUA_DRIVER_RS_ENABLE_WAYLAND set to anything but empty, 0 or false.
+    Otherwise it drives X11 alone, through DISPLAY."""
+    env = os.environ if environ is None else environ
+    opt_in = env.get("CUA_DRIVER_RS_ENABLE_WAYLAND", "").strip()
+    return (
+        bool(env.get("WAYLAND_DISPLAY"))
+        and bool(opt_in)
+        and opt_in != "0"
+        and opt_in.lower() != "false"
     )
 
 
@@ -350,5 +361,6 @@ __all__ = [
     "detect_platform",
     "is_case_insensitive_fs",
     "linux_display_problem",
+    "linux_native_wayland",
     "resolve_shell",
 ]

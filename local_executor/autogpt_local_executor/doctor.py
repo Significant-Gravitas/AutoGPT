@@ -25,7 +25,6 @@ import asyncio
 import contextlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 import threading
@@ -321,7 +320,7 @@ async def _probe_driver(config: ShimConfig, plat: str) -> list[CheckResult]:
                 f"{snapshot.info.version}, {len(snapshot.tools)} tools offered",
             )
         )
-        out.append(await _check_screen(bridge))
+        out.append(await _check_screen(bridge, plat))
         if plat == "darwin":
             out.extend(await _check_macos_permissions(bridge))
     finally:
@@ -329,7 +328,7 @@ async def _probe_driver(config: ShimConfig, plat: str) -> list[CheckResult]:
     return out
 
 
-async def _check_screen(bridge: CuaDriverBridge) -> CheckResult:
+async def _check_screen(bridge: CuaDriverBridge, plat: str | None = None) -> CheckResult:
     try:
         raw = await bridge.call_tool("get_screen_size", {}, timeout=PROBE_SECONDS)
     except (DriverUnavailable, McpError, TimeoutError) as exc:
@@ -344,7 +343,17 @@ async def _check_screen(bridge: CuaDriverBridge) -> CheckResult:
             for block in (content if isinstance(content, list) else [])
             if isinstance(block, dict)
         )
-        return CheckResult("WARN", "display", f"cua-driver could not read the screen: {text}")
+        # On Linux without its Wayland backend the driver drives X11 alone,
+        # so its refusal means the display can't be reached, and every call
+        # would fail although the daemon offers computer use. (That backend
+        # sizes the screen through X11 on most compositors too.)
+        failed = raw.get("isError") and plat == "linux" and not platform_info.linux_native_wayland()
+        return CheckResult(
+            "FAIL" if failed else "WARN",
+            "display",
+            f"cua-driver could not read the screen: {text}",
+            blocking=bool(failed),
+        )
     return CheckResult("OK", "display", f"{width:g}x{height:g} (scale {scale:g})")
 
 
@@ -426,16 +435,19 @@ async def _macos_grants(bridge: CuaDriverBridge) -> dict[str, bool] | None:
 
 def _check_linux_clipboard_types() -> CheckResult:
     """Reading clipboard content the shim didn't write first checks it for
-    a password manager's marker, with wl-paste or xclip."""
-    wayland = bool(os.environ.get("WAYLAND_DISPLAY"))
-    tool = "wl-paste" if wayland else "xclip"
-    if shutil.which(tool):
-        return CheckResult("OK", "clipboard types", f"{tool} present")
+    a password manager's marker, with wl-paste or xclip, picked as the
+    check itself picks them."""
+    from .computer_use.concealed import linux_clipboard_types_command
+
+    argv = linux_clipboard_types_command()
+    if argv is not None:
+        return CheckResult("OK", "clipboard types", f"{argv[0]} present")
     return CheckResult(
         "WARN",
         "clipboard types",
-        f"{tool} not on PATH — clipboard_read refuses content the shim didn't write, "
-        "since it can't check it for a password manager's marker",
+        "neither wl-paste (with WAYLAND_DISPLAY) nor xclip (with DISPLAY) is usable — "
+        "clipboard_read refuses content the shim didn't write, since it can't check it "
+        "for a password manager's marker",
     )
 
 

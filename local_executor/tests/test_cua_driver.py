@@ -1498,6 +1498,48 @@ async def test_foreign_clipboard_reads_refuse_a_copy_made_during_the_read(
     assert response.payload.details == {"reason": "changed"}
 
 
+async def test_foreign_clipboard_reads_without_a_sequence_number_read_twice(
+    make_handler, tmp_path, a_clean_clipboard
+) -> None:
+    """Linux keeps no clipboard sequence number, and cua-driver reads the
+    types and then the text: a password manager's copy between the two,
+    replaced before the shim looked again, came back as clean text."""
+    handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
+    clipboard = tmp_path / "clipboard.txt"
+    clipboard.write_text("s3cret")  # read while its marker went unseen
+    a_clean_clipboard.extend([concealed.ClipboardState(None), concealed.ClipboardState(None)])
+    driver = handler.driver
+    real_call = driver.call_tool
+
+    async def call_tool(name: str, arguments: dict, **kwargs: Any) -> dict:
+        result = await real_call(name, arguments, **kwargs)
+        if name == "clipboard_read":
+            clipboard.write_text("copied after it")  # the clipboard moves on
+        return result
+
+    driver.call_tool = call_tool  # type: ignore[method-assign]
+
+    response = await handler.handle(_call("clipboard_read"))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.CLIPBOARD_CONCEALED
+    assert response.payload.details == {"reason": "changed"}
+    assert "s3cret" not in response.model_dump_json()
+
+
+async def test_a_second_read_that_finds_the_same_text_returns_it(
+    make_handler, tmp_path, a_clean_clipboard
+) -> None:
+    handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+    a_clean_clipboard.extend([concealed.ClipboardState(None), concealed.ClipboardState(None)])
+
+    response = await handler.handle(_call("clipboard_read"))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert response.payload.structured_content["text"] == "a copied paragraph"
+
+
 def test_marker_in_finds_each_platforms_marker() -> None:
     assert concealed.marker_in(["public.utf8-plain-text"]) is None
     assert concealed.marker_in(None) is None

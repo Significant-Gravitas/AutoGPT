@@ -897,6 +897,17 @@ def test_prune_refuses_a_duration_that_is_not_a_positive_whole_number(duration: 
     assert cli._parse_duration(duration) is None
 
 
+def test_prune_refuses_a_duration_past_what_a_cutoff_can_hold(tmp_path: Path, capsys) -> None:
+    """A duration hundreds of digits long parsed, then the cutoff's
+    subtraction raised OverflowError, and prune ended in a traceback
+    instead of saying the duration was bad."""
+    duration = "9" * 400 + "d"
+
+    assert cli._parse_duration(duration) is None
+    assert cli._audit_prune(tmp_path / "audit.log", duration) == 2
+    assert "Could not parse duration" in capsys.readouterr().out
+
+
 @pytest.mark.asyncio
 async def test_export_refuses_to_write_over_an_audit_log(
     tmp_path: Path, monkeypatch, capsys

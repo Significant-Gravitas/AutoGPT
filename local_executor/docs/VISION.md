@@ -162,6 +162,12 @@ The shim executes these using `pyautogui` (cross-platform) or `xdotool` (Linux X
 - File content never serialized into WebSocket messages in privacy mode
 - Local inference result summary sent back instead
 
+**Limit**: this keeps the file from being uploaded, not its contents out of
+the cloud. The local model's answer goes back unfiltered, and a task such as
+"quote the second paragraph" returns file text by design; one that asks for
+the whole file gets it. Until an enforced output control exists, the dream
+above is not met. See [PRIVACY_MODE.md](PRIVACY_MODE.md).
+
 ---
 
 ### 6. Multi-Machine Orchestration

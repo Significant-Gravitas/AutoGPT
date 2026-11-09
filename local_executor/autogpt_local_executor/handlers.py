@@ -1721,6 +1721,7 @@ class ComputerUseHandler:
         --enable-clipboard-read-foreign anything does, unless a password
         manager marked it private."""
         arguments["include_text"] = True
+        deadline = asyncio.get_running_loop().time() + timeout
         foreign = self.config.enable_clipboard_read_foreign
         before = await asyncio.to_thread(clipboard_state) if foreign else None
         if before is not None and before.marker:
@@ -1737,6 +1738,26 @@ class ComputerUseHandler:
             listed = marker_in(structured.get("types"))
             if listed:
                 raise ClipboardConcealedError("concealed_type", marker=listed)
+            if before.sequence is None:
+                # No sequence number to tell a copy made meanwhile (Linux),
+                # and the driver reads the types, then the text: a password
+                # manager's copy between the two would pass as clean. Read
+                # again; the same text with no marker belongs to one copy.
+                again = await self.driver.call_tool(
+                    "clipboard_read",
+                    arguments,
+                    timeout=max(deadline - asyncio.get_running_loop().time(), 0.001),
+                )
+                checked = again.get("structuredContent")
+                checked = checked if isinstance(checked, dict) else {}
+                listed = marker_in(checked.get("types"))
+                if listed:
+                    raise ClipboardConcealedError("concealed_type", marker=listed)
+                if again.get("isError") or checked.get("text") != text:
+                    raise ClipboardConcealedError(
+                        "changed",
+                        message="The clipboard changed while it was read. Read it again.",
+                    )
             after = await asyncio.to_thread(clipboard_state)
             if after.marker:
                 raise ClipboardConcealedError("concealed_type", marker=after.marker)

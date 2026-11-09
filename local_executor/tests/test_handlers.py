@@ -1591,6 +1591,62 @@ def test_an_in_place_write_drops_set_id_bits_before_the_contents_change(
     assert program.stat().st_mode & 0o7777 == 0o755
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+@pytest.mark.parametrize("privilege", [0o4000, 0o2000], ids=["setuid", "setgid"])
+def test_an_in_place_write_that_cannot_drop_set_id_bits_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, privilege: int
+) -> None:
+    """The in-place fallback dropped the set-ID bits best effort and wrote
+    anyway. A shim the kernel doesn't strip them for (CAP_FSETID) but that
+    may not chmod the file (someone else's) left the new contents running
+    with the owner's privileges."""
+    import autogpt_local_executor.path_jail as path_jail
+
+    program = tmp_path / "tool"
+    program.write_text("old")
+    program.chmod(0o755 | privilege)
+
+    def no_new_entries(*_args, **_kwargs):
+        raise PermissionError("the directory takes no new entries")
+
+    def not_the_owner(*_args) -> None:
+        raise PermissionError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setattr(path_jail, "_replace_with", no_new_entries)
+    monkeypatch.setattr(path_jail.os, "fchmod", not_the_owner)
+
+    with pytest.raises(PermissionError):
+        path_jail.write_jail_file(program, tmp_path, b"new")
+    monkeypatch.undo()
+
+    assert program.read_text() == "old"
+    assert program.stat().st_mode & 0o7777 == 0o755 | privilege
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+def test_an_in_place_write_goes_ahead_when_only_the_mode_cannot_be_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import autogpt_local_executor.path_jail as path_jail
+
+    notes = tmp_path / "notes.txt"
+    notes.write_text("old")
+
+    def no_new_entries(*_args, **_kwargs):
+        raise PermissionError("the directory takes no new entries")
+
+    def not_the_owner(*_args) -> None:
+        raise PermissionError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setattr(path_jail, "_replace_with", no_new_entries)
+    monkeypatch.setattr(path_jail.os, "fchmod", not_the_owner)
+
+    path_jail.write_jail_file(notes, tmp_path, b"new")
+    monkeypatch.undo()
+
+    assert notes.read_text() == "new"
+
+
 @pytest.mark.parametrize("char", ["\u6587", "\U0001f600"], ids=["cjk", "emoji"])
 @pytest.mark.asyncio
 async def test_a_file_whose_name_is_long_in_bytes_can_be_written(tmp_path: Path, char: str) -> None:

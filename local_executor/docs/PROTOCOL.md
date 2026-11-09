@@ -509,7 +509,8 @@ below, it leaves a partial file instead). An existing file keeps its
 owner and group, and its mode, except set-user-ID and set-group-ID, which a
 write drops so that new contents never run with the file owner's privileges
 (Linux drops them for an unprivileged writer; the shim drops them whatever
-it runs as); a new one gets the usual default (0o666 less the umask). An existing file with more than
+it runs as, and refuses the write when it can't, as for someone else's file
+written in place); a new one gets the usual default (0o666 less the umask). An existing file with more than
 one hard link is refused with `PATH_OUTSIDE_ALLOWED_ROOT`, as `FILE_READ`
 refuses one: its other names may be outside the root, and the shim can't
 tell, so the write neither succeeds nor replaces it. Because a target the
