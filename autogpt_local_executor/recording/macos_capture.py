@@ -41,6 +41,9 @@ _KEY_DOWN_TYPE: int | None = None
 _RUN_LOOP_SLICE_SECONDS = 0.25
 # How long stop() waits for the tap thread to end.
 _STOP_JOIN_SECONDS = 2.0
+# The event types macOS sends a tap it has turned off (CGEventTypes.h:
+# kCGEventTapDisabledByTimeout, kCGEventTapDisabledByUserInput).
+_TAP_DISABLED = frozenset({0xFFFFFFFE, 0xFFFFFFFF})
 
 
 class MacInputCaptureSource(CaptureSource):
@@ -145,6 +148,14 @@ class MacInputCaptureSource(CaptureSource):
         (listen-only passthrough)."""
         import Quartz
 
+        if int(etype) in _TAP_DISABLED:
+            # Not an action: macOS turned the tap off (a slow callback, or
+            # secure input). What the person did meanwhile went unseen, so
+            # the recording is incomplete; the tap goes back on for the rest.
+            self.dropped_events += 1
+            if self._tap is not None:
+                Quartz.CGEventTapEnable(self._tap, True)
+            return event
         try:
             loc = Quartz.CGEventGetLocation(event)
             record = {

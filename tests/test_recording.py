@@ -1431,6 +1431,40 @@ async def test_a_capture_whose_tap_thread_does_not_stop_fails_the_recording(
         source._thread.join(30)
 
 
+@pytest.mark.parametrize("notice", [0xFFFFFFFE, 0xFFFFFFFF], ids=["timeout", "user-input"])
+def test_a_tap_macos_turned_off_is_turned_back_on_and_fails_the_recording(
+    monkeypatch, notice: int
+) -> None:
+    """macOS turns a tap off when its callback is slow, or during secure
+    input, and says so with a callback of its own type. That callback was
+    queued as a click at a meaningless place, the tap stayed off, and what
+    the person did after it was lost without counting as dropped."""
+    import sys
+    from types import SimpleNamespace
+
+    from autogpt_local_executor.recording import macos_capture
+
+    enabled: list[tuple[object, bool]] = []
+    monkeypatch.setitem(
+        sys.modules,
+        "Quartz",
+        SimpleNamespace(
+            CGEventGetLocation=lambda _event: SimpleNamespace(x=1, y=2),
+            CGEventGetIntegerValueField=lambda *_args: 0,
+            kCGKeyboardEventKeycode=9,
+            CGEventTapEnable=lambda tap, on: enabled.append((tap, on)),
+        ),
+    )
+    source = macos_capture.MacInputCaptureSource()
+    source._tap = "tap"
+
+    source._on_event(None, notice, object(), None)
+
+    assert source._q.qsize() == 0
+    assert enabled == [("tap", True)]
+    assert source.dropped_events == 1
+
+
 @pytest.mark.parametrize("size", [0, -1])
 def test_the_macos_capture_refuses_a_queue_without_a_bound(size: int) -> None:
     """queue.Queue takes a size of zero or less as no bound at all, so a
