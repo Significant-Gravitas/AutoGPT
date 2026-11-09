@@ -449,6 +449,18 @@ async def _tag_load_test_account(
     return engine, True
 
 
+def _is_plain_user_turn(entry: CoPilotExecutionEntry) -> bool:
+    """Whether *entry* is a message its owner sent: not fired by the
+    scheduler, a user message, and not sent from another session."""
+    sent_from = (entry.message_metadata or {}).get("from_session_id")
+    return (
+        entry.scheduled is None
+        and not entry.unattended
+        and entry.is_user_message
+        and not sent_from
+    )
+
+
 class CoPilotProcessor:
     """Per-worker execution logic for CoPilot sessions.
 
@@ -717,6 +729,7 @@ class CoPilotProcessor:
             from backend.copilot.model import get_chat_session
             from backend.copilot.onboarding_interview import (
                 INTERVIEW_CLOSED,
+                INTERVIEW_PLAIN_USER_TURNS_ONLY,
                 interview_is_over,
                 is_onboarding_interview,
             )
@@ -768,13 +781,23 @@ class CoPilotProcessor:
             session = await _normalize_private_expert_session_tenancy(session)
             # An onboarding interview runs before the plan step, on bounds of
             # its own (``onboarding_dump.interview``) instead of the
-            # allowance. The bound that holds whatever queued the turn is
-            # here: an interview that is over takes no turn.
+            # allowance. The bounds that hold whatever queued the turn are
+            # here: an interview that is over takes no turn, and one that is
+            # open takes only its owner's own messages.
             interview = is_onboarding_interview(session)
             if interview and interview_is_over(session):
                 log.info("Turn not started: the onboarding interview is over")
                 error_msg = "The interview is over."
                 error_code = INTERVIEW_CLOSED
+                scheduled_watch = None
+                return
+            if interview and not _is_plain_user_turn(entry):
+                log.info(
+                    "Turn not started: an onboarding interview takes only "
+                    "its owner's own messages"
+                )
+                error_msg = "This message can't be added to the interview."
+                error_code = INTERVIEW_PLAIN_USER_TURNS_ONLY
                 scheduled_watch = None
                 return
             # The allowance, budget and tier checks that set up the turn share

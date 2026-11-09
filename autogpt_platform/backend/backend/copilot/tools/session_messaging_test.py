@@ -15,7 +15,12 @@ import pytest
 
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.context import MAX_SESSION_MESSAGES_PER_TURN, reset_consult_budget
-from backend.copilot.model import ChatSession, ChatSessionInfo, ChatSessionMetadata
+from backend.copilot.model import (
+    ONBOARDING_INTERVIEW_KIND,
+    ChatSession,
+    ChatSessionInfo,
+    ChatSessionMetadata,
+)
 from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
 from backend.copilot.session_permissions import BUILDER_BLOCKED_TOOLS
 from backend.copilot.tools.find_session import (
@@ -600,6 +605,29 @@ class TestMessageSessionGuards:
         assert isinstance(result, ErrorResponse)
         assert "No session" in (result.error or result.message or "")
         deliver.assert_not_awaited()
+
+    async def test_an_onboarding_interview_reads_as_not_found(self) -> None:
+        """An interview takes only its owner's own messages, and is answered
+        the same way as a session that is not there."""
+        target = _info(TARGET_SESSION)
+        target.metadata.kind = ONBOARDING_INTERVIEW_KIND
+        foreign = _info(TARGET_SESSION, user_id="user-2")
+        replies = []
+        for found in (target, foreign):
+            with patch(
+                f"{_MSG}.get_chat_session_metadata", new=AsyncMock(return_value=found)
+            ):
+                with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
+                    replies.append(
+                        await MessageSessionTool()._execute(
+                            OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+                        )
+                    )
+                deliver.assert_not_awaited()
+        interview_reply, foreign_reply = replies
+        assert isinstance(interview_reply, ErrorResponse)
+        assert interview_reply.message == foreign_reply.message
+        assert interview_reply.error == foreign_reply.error
 
     async def test_messaging_yourself_is_refused(self) -> None:
         with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:

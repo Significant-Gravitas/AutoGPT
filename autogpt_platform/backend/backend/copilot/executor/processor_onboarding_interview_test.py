@@ -10,7 +10,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.executor.processor import CoPilotProcessor
-from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.executor.utils import (
+    CoPilotExecutionEntry,
+    CoPilotLogMetadata,
+    ScheduledTurnOrigin,
+)
 from backend.copilot.model import (
     INTERVIEW_STAGE_CLOSED,
     INTERVIEW_STAGE_HANDED_OFF,
@@ -19,7 +23,11 @@ from backend.copilot.model import (
     ChatMessage,
     ChatSession,
 )
-from backend.copilot.onboarding_interview import INTERVIEW_CLOSED, INTERVIEW_TURN_CAP
+from backend.copilot.onboarding_interview import (
+    INTERVIEW_CLOSED,
+    INTERVIEW_PLAIN_USER_TURNS_ONLY,
+    INTERVIEW_TURN_CAP,
+)
 from backend.copilot.turn_pause import TurnPause
 
 _PROC = "backend.copilot.executor.processor"
@@ -67,12 +75,13 @@ class _Turn:
         self.dummy = MagicMock(return_value=MagicMock())
         self.use_sdk = AsyncMock(return_value=True)
 
-    async def run(self, *, test_mode: bool = False) -> None:
+    async def run(self, *, test_mode: bool = False, **entry_fields) -> None:
         entry = CoPilotExecutionEntry(
             session_id=self.session.session_id,
             turn_id="turn-1",
             user_id="user-1",
             message="I run a bakery.",
+            **entry_fields,
         )
         with (
             patch(f"{_PROC}.refusal_for", self.refusal),
@@ -195,3 +204,48 @@ async def test_an_interview_with_its_replies_used_up_takes_no_turn():
 
     turn.dummy.assert_not_called()
     assert turn.complete.await_args.kwargs["error_code"] == INTERVIEW_CLOSED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "entry_fields",
+    [
+        pytest.param(
+            {"scheduled": ScheduledTurnOrigin(schedule_id="sched-1")},
+            id="scheduled",
+        ),
+        pytest.param({"unattended": True}, id="fired-by-the-scheduler"),
+        pytest.param({"is_user_message": False}, id="not-a-user-message"),
+        pytest.param(
+            {"message_metadata": {"from_session_id": "another-session"}},
+            id="sent-from-another-session",
+        ),
+    ],
+)
+async def test_an_interview_takes_only_its_owner_s_own_messages(
+    entry_fields: dict,
+):
+    """Whatever queued it, a turn the person did not send never runs in an
+    interview, and is refused before the allowance step."""
+    turn = _Turn(_interview(*_answered(2)))
+
+    await turn.run(**entry_fields)
+
+    turn.baseline.assert_not_called()
+    turn.sdk.assert_not_called()
+    turn.refusal.assert_not_awaited()
+    assert (
+        turn.complete.await_args.kwargs["error_code"] == INTERVIEW_PLAIN_USER_TURNS_ONLY
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_ordinary_chat_still_takes_a_message_sent_from_another_session():
+    session = _interview(*_answered(2))
+    session.metadata.kind = "normal"
+    turn = _Turn(session)
+    turn.refusal.return_value = None
+
+    await turn.run(message_metadata={"from_session_id": "another-session"})
+
+    turn.sdk.assert_called_once()
