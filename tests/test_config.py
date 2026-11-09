@@ -359,6 +359,27 @@ def test_a_default_config_path_that_is_not_a_file_is_an_error(
         load_config()
 
 
+def test_a_file_where_the_default_configs_directory_belongs_is_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A config written to the directory's own name (autogpt-local-executor
+    instead of autogpt-local-executor/config.toml) made the default path
+    unreachable, and the shim ran on the defaults without a word, its
+    platform and allowed_root settings ignored."""
+    import autogpt_local_executor.config as config_module
+    from autogpt_local_executor.config import ConfigFileError
+
+    (tmp_path / "autogpt-local-executor").write_text('platform_url = "https://example.com"\n')
+    monkeypatch.setattr(
+        config_module,
+        "_default_config_path",
+        lambda: tmp_path / "autogpt-local-executor" / "config.toml",
+    )
+
+    with pytest.raises(ConfigFileError, match="config.toml"):
+        load_config()
+
+
 @pytest.mark.parametrize("port", [0, -1, 65536])
 def test_the_oauth_redirect_port_must_be_a_real_port(tmp_path: Path, port: int) -> None:
     """Port 0 bound an ephemeral port while the redirect URI said 0, so

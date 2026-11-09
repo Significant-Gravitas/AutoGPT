@@ -333,7 +333,7 @@ def load_config(
     # reach crashed it, or was skipped for the defaults.
     try:
         is_file = stat.S_ISREG(path.stat().st_mode)
-    except (FileNotFoundError, NotADirectoryError):
+    except FileNotFoundError:
         is_file = False
         if config_path is not None:
             # A --config that names nothing ran the shim on the defaults
@@ -341,6 +341,9 @@ def load_config(
             # means defaults.)
             raise ConfigFileError(f"{path}: no such config file") from None
     except OSError as exc:
+        # NotADirectoryError among them: a file where one of the path's
+        # directories belongs, such as the config written to the directory's
+        # own name, which the shim would otherwise skip for the defaults.
         raise ConfigFileError(f"{path}: {exc}") from exc
     else:
         if not is_file:
