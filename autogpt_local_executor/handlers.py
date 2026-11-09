@@ -1733,6 +1733,11 @@ class ComputerUseHandler:
         before = await asyncio.to_thread(clipboard_state) if foreign else None
         if before is not None and before.marker:
             raise ClipboardConcealedError("concealed_type", marker=before.marker)
+        # The check above can take seconds (xclip, wl-paste): the read gets
+        # what is left of the deadline, and none left means it never starts.
+        timeout = deadline - asyncio.get_running_loop().time()
+        if timeout <= 0:
+            raise CallNotStarted("clipboard_read's deadline passed in the marker check")
         raw = await self.driver.call_tool("clipboard_read", arguments, timeout=timeout)
         if raw.get("isError"):
             return raw

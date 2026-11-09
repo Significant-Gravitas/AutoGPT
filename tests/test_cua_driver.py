@@ -1553,6 +1553,32 @@ async def test_a_second_read_that_finds_the_same_text_returns_it(
     assert response.payload.structured_content["text"] == "a copied paragraph"
 
 
+async def test_a_clipboard_read_whose_deadline_passes_in_the_marker_check_never_starts(
+    make_handler, tmp_path, fake_log, monkeypatch
+) -> None:
+    """The check for a password manager's marker (xclip or wl-paste, up to
+    three seconds) ran before the driver's read, which still got the call's
+    whole timeout, so the read could start after the deadline."""
+    import time
+
+    from autogpt_local_executor import handlers
+
+    def slow_look() -> concealed.ClipboardState:
+        time.sleep(2)
+        return concealed.ClipboardState(None, 7)
+
+    monkeypatch.setattr(handlers, "clipboard_state", slow_look)
+    handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+
+    response = await handler.handle(_call("clipboard_read", timeout_seconds=1))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+    assert response.payload.details["started"] is False
+    assert [r for r in _records(fake_log, "call") if r["tool"] == "clipboard_read"] == []
+
+
 def test_marker_in_finds_each_platforms_marker() -> None:
     assert concealed.marker_in(["public.utf8-plain-text"]) is None
     assert concealed.marker_in(None) is None
