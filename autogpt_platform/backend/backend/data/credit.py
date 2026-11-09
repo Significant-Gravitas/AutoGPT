@@ -134,6 +134,9 @@ class InvoiceListItem(BaseModel):
 # best-effort: a malformed ID must never break Checkout.
 _STRIPE_METADATA_VALUE_MAX_LEN = 500
 
+# Stripe fills this in the URL it redirects to, never in the success_url we keep.
+CHECKOUT_SESSION_ID_PLACEHOLDER = "{CHECKOUT_SESSION_ID}"
+
 # Stripe caps a USD charge at 8 digits, $999,999.99 (https://stripe.com/docs/currencies).
 MAX_TOP_UP_AMOUNT = 99_999_900
 
@@ -3031,6 +3034,7 @@ async def _create_subscription_checkout(
                 **(
                     {"pro_activation_return_to": return_to}
                     if len(return_to) <= 500
+                    and CHECKOUT_SESSION_ID_PLACEHOLDER not in return_to
                     else {}
                 ),
                 **datafast,

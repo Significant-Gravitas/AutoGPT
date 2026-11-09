@@ -4,6 +4,7 @@ from urllib.parse import urlsplit
 
 import stripe
 
+from backend.data.credit import CHECKOUT_SESSION_ID_PLACEHOLDER
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_activation_models import ActivationPreviewRequest
 from backend.data.subscription_activation_stripe import BillingSubscription
@@ -12,7 +13,8 @@ from backend.util.settings import Settings
 
 async def activation_return_to(subscription: BillingSubscription) -> str:
     destination = subscription.metadata.get("pro_activation_return_to")
-    if destination:
+    # Older subscriptions stored the success URL template; the Session has it filled.
+    if destination and CHECKOUT_SESSION_ID_PLACEHOLDER not in destination:
         return ActivationPreviewRequest(return_to=destination).return_to
     sessions = await stripe_call(
         stripe.checkout.Session.list_async,
@@ -29,7 +31,7 @@ async def activation_return_to(subscription: BillingSubscription) -> str:
         ):
             continue
         return checkout_destination(
-            session.success_url.replace("{CHECKOUT_SESSION_ID}", session.id)
+            session.success_url.replace(CHECKOUT_SESSION_ID_PLACEHOLDER, session.id)
         )
     return "/settings/billing"
 
