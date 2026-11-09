@@ -1282,6 +1282,34 @@ async def test_an_accessibility_result_with_no_fields_leaves_the_step_unenriched
     assert step.enrichment.kind == "none"
 
 
+@pytest.mark.parametrize(
+    "answer",
+    [
+        ["button"],  # not a mapping
+        {"role": 7, "label": "Save"},  # a field that isn't text
+        {"role": "button", "label": object()},  # a native object, not a str
+    ],
+)
+async def test_an_accessibility_answer_the_step_cant_hold_leaves_it_unenriched(
+    answer: object,
+) -> None:
+    """Only the resolver's call was guarded: an answer that wasn't a dict of
+    text raised AttributeError or a ValidationError in the enricher, which
+    ended the recording's whole step stream instead of leaving that one
+    step `kind: none`, as a failing resolver does."""
+    from autogpt_local_executor.recording import A11yEnricher
+    from autogpt_local_executor.recording.capture import MockCaptureSource
+
+    def resolver(**_where):
+        return answer
+
+    enricher = A11yEnricher(floor=MockCaptureSource([_step(1), _step(2)]), resolver=resolver)
+
+    steps = [step async for step in enricher.steps()]
+
+    assert [step.enrichment.kind for step in steps] == ["none", "none"]
+
+
 async def test_an_accessibility_result_with_fields_tags_the_step_ax() -> None:
     """The test above alone passes for an enricher that never attaches
     anything."""
