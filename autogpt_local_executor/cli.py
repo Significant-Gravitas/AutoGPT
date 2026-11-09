@@ -289,8 +289,12 @@ def _cmd_auth(config) -> int:
         print(f"Authentication failed: {exc}")
         return 1
     except OAuthDenied as exc:
-        # The platform's own reason, from the redirect: safe to show.
-        print(f"Sign-in was refused: {exc}")
+        from .doctor import _printable
+
+        # The platform's own reason, from the redirect: safe to show, with
+        # what stdout's encoding can't carry (a legacy Windows code page, a
+        # redirect to a file) written as escapes rather than raising.
+        print(_printable(f"Sign-in was refused: {exc}"))
         return 1
     except Exception:
         print(
