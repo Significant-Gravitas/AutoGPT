@@ -1591,8 +1591,12 @@ class ComputerUseHandler:
         named session left idle for five minutes and refuses every later call
         that names it until the driver restarts, so a call refused for that
         moves this session to a new label and goes again, once: the refused
-        call never ran."""
-        deadline = asyncio.get_running_loop().time() + timeout
+        call never ran. It goes again within what is left of the timeout and
+        of `start_within`, so it waits no longer for the driver than the
+        first try would have."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        start_by = None if start_within is None else loop.time() + start_within
         raw = await self.driver.call_tool(
             tool, arguments, timeout=timeout, start_within=start_within
         )
@@ -1603,10 +1607,16 @@ class ComputerUseHandler:
         logger.info(
             f"cua-driver ended this session's driver session; going on as {arguments['session']}"
         )
-        remaining = deadline - asyncio.get_running_loop().time()
+        now = loop.time()
+        remaining = deadline - now
         if remaining <= 0:
             raise CallNotStarted(f"{tool}'s deadline passed while its driver session was renewed")
-        return await self.driver.call_tool(tool, arguments, timeout=remaining)
+        return await self.driver.call_tool(
+            tool,
+            arguments,
+            timeout=remaining,
+            start_within=None if start_by is None else max(start_by - now, 0.0),
+        )
 
     async def handle(self, msg: Any, *, received_at: float | None = None) -> Any:
         """`received_at` (loop time) is when the shim received the message;
