@@ -202,6 +202,26 @@ export const OnboardingEvent = {
   ONBOARDING_STEP_VIEWED: "onboarding_step_viewed",
 } as const;
 
+// The onboarding interview's call (SECRT-3362). The ending experiment's arm
+// is stored on the server, so analysis splits these by it whatever the
+// browser's consent.
+export const InterviewEvent = {
+  // A call went live: `mode` (`voice`) and `leg`.
+  INTERVIEW_STARTED: "interview_started",
+  // A call ended: `mode`, the relay's `reason`, `elapsed_s` and Otto's
+  // `turns`. A call lost on the way is reported once its end is known.
+  INTERVIEW_ENDED: "interview_ended",
+  // A dropped call's socket re-attached after `gap_s`.
+  VOICE_INTERVIEW_RECONNECTED: "voice_interview_reconnected",
+  VOICE_INTERVIEW_MIC_DENIED: "voice_interview_mic_denied",
+  // A call's ending showed (`ending`), and what the person chose on it
+  // (`action`).
+  ENDING_SHOWN: "ending_shown",
+  ENDING_ACTION: "ending_action",
+  // The person left the interview for their team: `mode`, `path`.
+  TEAM_SCREEN_REACHED: "team_screen_reached",
+} as const;
+
 export const MonetizationEvent = {
   PAYWALL_VIEWED: "paywall_viewed",
   PLAN_SELECTED: "plan_selected",
@@ -224,12 +244,17 @@ export const PostHogEvent = {
   ...TrialEvent,
   ...TourEvent,
   ...OnboardingEvent,
+  ...InterviewEvent,
   ...MonetizationEvent,
 } as const;
 
 // In the tracking plan and NOT sent yet. Move a name into its group above in
 // the change that starts sending it.
-export const PlannedPostHogEvent: Record<string, string> = {};
+export const PlannedPostHogEvent: Record<string, string> = {
+  // A call's audio fell from LiveKit to the control socket (`why`); sent
+  // once calls have the LiveKit leg.
+  VOICE_INTERVIEW_LEG_FALLBACK: "voice_interview_leg_fallback",
+};
 
 export type EventName<Group extends Record<string, string>> =
   Group[keyof Group];

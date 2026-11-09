@@ -6,6 +6,8 @@ import { Text } from "@/components/atoms/Text/Text";
 interface Props {
   mode: "voice" | "typed";
   canRecord: boolean;
+  // The fresh take's button: a recording again, or a call.
+  recordLabel?: string;
   onRecordAgain: () => void;
   onTypeInstead: () => void;
   onSkip: () => void;
@@ -19,6 +21,7 @@ interface Props {
 export function InsufficientState({
   mode,
   canRecord,
+  recordLabel = "Record again",
   onRecordAgain,
   onTypeInstead,
   onSkip,
@@ -45,7 +48,7 @@ export function InsufficientState({
             size="small"
             onClick={onRecordAgain}
           >
-            Record again
+            {recordLabel}
           </Button>
         )}
         <Button

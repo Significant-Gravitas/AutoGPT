@@ -2,8 +2,10 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { MicBlockedNotice } from "../BrainDumpStep/components/MicBlockedNotice";
 import { SkipButton } from "../BrainDumpStep/components/SkipButton";
 import { InterviewChat } from "./components/InterviewChat";
+import { VoiceCall } from "./components/VoiceCall/VoiceCall";
 import { startFailureCopy } from "./helpers";
 import { useInterviewStep } from "./useInterviewStep";
 
@@ -12,7 +14,7 @@ export function InterviewStep() {
 
   return (
     <>
-      {!interview.isOver && (
+      {interview.canSkip && (
         <SkipButton
           isHidden={false}
           isProcessing={interview.isLeaving}
@@ -28,44 +30,56 @@ export function InterviewStep() {
           </Text>
         </div>
 
-        {interview.startFailure ? (
-          <div
-            role="alert"
-            className="flex flex-col items-center gap-3 text-center"
-          >
-            <Text variant="body">
-              {startFailureCopy(interview.startFailure)}
-            </Text>
-            <Button
-              variant="secondary"
-              size="small"
-              onClick={() => void interview.retryStart()}
-            >
-              Try again
-            </Button>
-          </div>
-        ) : interview.sessionId ? (
-          <InterviewChat
-            sessionId={interview.sessionId}
-            messages={interview.messages}
-            status={interview.status}
-            error={interview.error}
-            queuedMessages={interview.queuedMessages}
-            isHydrating={interview.isHydrating}
-            isTurnSettling={interview.isTurnSettling}
-            isTurnRunning={interview.isTurnRunning}
-            isOver={interview.isOver}
-            canFinishEarly={interview.canFinishEarly}
-            isLeaving={interview.isLeaving}
-            finishFailure={interview.finishFailure}
-            onSend={interview.onSend}
-            onStop={interview.stop}
-            onFinish={interview.finish}
-          />
+        {interview.mode === "choose" || interview.mode === "talk" ? (
+          <VoiceCall call={interview.voice} />
         ) : (
-          <Text variant="body" tone="muted" role="status">
-            Starting your interview…
-          </Text>
+          <>
+            <MicBlockedNotice
+              isBlocked={interview.isMicBlocked}
+              isUnavailable={interview.isMicUnavailable}
+              permission={interview.micPermission}
+              onRetry={() => void interview.retryMicrophone()}
+            />
+            {interview.startFailure ? (
+              <div
+                role="alert"
+                className="flex flex-col items-center gap-3 text-center"
+              >
+                <Text variant="body">
+                  {startFailureCopy(interview.startFailure)}
+                </Text>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onClick={() => void interview.retryStart()}
+                >
+                  Try again
+                </Button>
+              </div>
+            ) : interview.sessionId ? (
+              <InterviewChat
+                sessionId={interview.sessionId}
+                messages={interview.messages}
+                status={interview.status}
+                error={interview.error}
+                queuedMessages={interview.queuedMessages}
+                isHydrating={interview.isHydrating}
+                isTurnSettling={interview.isTurnSettling}
+                isTurnRunning={interview.isTurnRunning}
+                isOver={interview.isOver}
+                canFinishEarly={interview.canFinishEarly}
+                isLeaving={interview.isLeaving}
+                finishFailure={interview.finishFailure}
+                onSend={interview.onSend}
+                onStop={interview.stop}
+                onFinish={interview.finish}
+              />
+            ) : (
+              <Text variant="body" tone="muted" role="status">
+                Starting your interview…
+              </Text>
+            )}
+          </>
         )}
       </div>
     </>

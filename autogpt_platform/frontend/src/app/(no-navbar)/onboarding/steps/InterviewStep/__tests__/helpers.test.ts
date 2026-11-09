@@ -1,18 +1,23 @@
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { UIMessage } from "ai";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   describeWait,
   finishFailureCopy,
   finishFailureOf,
   finishPathOf,
+  forgetTyping,
   hasAnswered,
   isEndedStage,
   isInterviewClosedError,
+  isTypingRemembered,
+  refusalOf,
+  rememberTyping,
   STAGE_READ_INTERVAL_MS,
   STAGE_READ_WINDOW_MS,
   startFailureCopy,
   startFailureOf,
+  turnRefusalOf,
   withoutKickoff,
 } from "../helpers";
 
@@ -164,5 +169,107 @@ describe("what a finish answered", () => {
     expect(finishFailureCopy(finishFailureOf(new Error("offline")))).toBe(
       "That didn't go through. Try again.",
     );
+  });
+});
+
+describe("a refusal because a voice call holds the interview", () => {
+  const CALL_ID = "e".repeat(32);
+
+  it("names the live call a start was refused for", () => {
+    const refusal = refusalOf(
+      new ApiError("held", 409, {
+        detail: { code: "call_in_progress", call_id: CALL_ID },
+      }),
+    );
+
+    expect(refusal).toEqual({
+      status: 409,
+      retryAfterSeconds: null,
+      heldBy: { kind: "call_in_progress", callId: CALL_ID },
+    });
+  });
+
+  it("names the call that took the interview, or none when the typed interview is over", () => {
+    expect(
+      refusalOf(
+        new ApiError("closed", 409, {
+          detail: { code: "onboarding_interview_closed", call_id: CALL_ID },
+        }),
+      ).heldBy,
+    ).toEqual({ kind: "closed", callId: CALL_ID });
+    expect(
+      refusalOf(
+        new ApiError("closed", 409, {
+          detail: { code: "onboarding_interview_closed" },
+        }),
+      ).heldBy,
+    ).toEqual({ kind: "closed", callId: null });
+  });
+
+  it("finds no call in any other refusal", () => {
+    expect(
+      refusalOf(new ApiError("busy", 409, { detail: "turn_in_progress" }))
+        .heldBy,
+    ).toBeNull();
+    expect(
+      refusalOf(
+        new ApiError("held", 409, { detail: { code: "call_in_progress" } }),
+      ).heldBy,
+    ).toBeNull();
+    expect(refusalOf(new Error("offline"))).toEqual({
+      status: null,
+      retryAfterSeconds: null,
+      heldBy: null,
+    });
+  });
+
+  it("reads the call a refused typed turn names from the response the chat reports", () => {
+    const refused = new Error(
+      JSON.stringify({
+        detail: { code: "onboarding_interview_closed", call_id: CALL_ID },
+      }),
+    );
+
+    expect(turnRefusalOf(refused)).toEqual({ kind: "closed", callId: CALL_ID });
+  });
+
+  it("leaves a typed turn refused for the typed interview's own close to the chat", () => {
+    expect(
+      turnRefusalOf(
+        new Error(JSON.stringify({ detail: "onboarding_interview_closed" })),
+      ),
+    ).toBeNull();
+    expect(
+      turnRefusalOf(
+        new Error(
+          JSON.stringify({ detail: { code: "onboarding_interview_closed" } }),
+        ),
+      ),
+    ).toBeNull();
+    expect(turnRefusalOf(new Error("Failed to fetch"))).toBeNull();
+    expect(turnRefusalOf(new Error("null"))).toBeNull();
+    expect(turnRefusalOf(undefined)).toBeNull();
+  });
+});
+
+describe("a choice to type, kept for this tab", () => {
+  afterEach(() => sessionStorage.clear());
+
+  it("is kept per person until it is forgotten", () => {
+    rememberTyping("typist");
+
+    expect(isTypingRemembered("typist")).toBe(true);
+    expect(isTypingRemembered("someone-else")).toBe(false);
+
+    forgetTyping("typist");
+    expect(isTypingRemembered("typist")).toBe(false);
+  });
+
+  it("keeps nothing for nobody", () => {
+    rememberTyping(null);
+    forgetTyping(null);
+
+    expect(isTypingRemembered(null)).toBe(false);
+    expect(sessionStorage.length).toBe(0);
   });
 });

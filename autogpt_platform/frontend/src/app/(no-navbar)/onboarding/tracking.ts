@@ -1,5 +1,9 @@
 import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
-import { OnboardingEvent } from "@/services/analytics/posthog-events";
+import {
+  type EventName,
+  type InterviewEvent,
+  OnboardingEvent,
+} from "@/services/analytics/posthog-events";
 import type { StepLayout } from "./store";
 
 export type OnboardingStepKey =
@@ -55,4 +59,13 @@ export function trackOnboardingStep(key: OnboardingStepKey) {
     { step: key },
     { oncePerTabKey: `${POSTHOG_SENT_KEY_PREFIX}${key}` },
   );
+}
+
+/** Reports what happened on the interview step's call, as research/17 §2.9
+ * lists it. Consent-gated like every browser event. */
+export function trackInterview(
+  event: EventName<typeof InterviewEvent>,
+  properties: Record<string, unknown> = {},
+) {
+  capturePostHogEvent(event, properties);
 }

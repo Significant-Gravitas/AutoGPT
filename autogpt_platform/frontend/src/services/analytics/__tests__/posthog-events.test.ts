@@ -33,6 +33,8 @@ const LIVE_EVENT_NAMES = [
   "credential_oauth_popup_blocked",
   "credential_proceed_stuck_after_connect",
   "credential_scope_shortfall_blocked_selection",
+  "ending_action",
+  "ending_shown",
   "expert_profile_opened",
   "expert_thread_created",
   "experts_section_viewed",
@@ -49,6 +51,8 @@ const LIVE_EVENT_NAMES = [
   "home_suggestions_expanded",
   "home_team_member_clicked",
   "home_viewed",
+  "interview_ended",
+  "interview_started",
   "intro_followup_sent",
   "intro_path",
   "later_dump_completed",
@@ -60,6 +64,7 @@ const LIVE_EVENT_NAMES = [
   "tab_intro_cta_clicked",
   "tab_intro_dismissed",
   "tab_intro_shown",
+  "team_screen_reached",
   "tour_cta_clicked",
   "tour_scenario_completed",
   "tour_scenario_started",
@@ -69,6 +74,8 @@ const LIVE_EVENT_NAMES = [
   "trial_offer_viewed",
   "trial_resume_clicked",
   "trial_subscribe_now_clicked",
+  "voice_interview_mic_denied",
+  "voice_interview_reconnected",
   "voice_mode_error",
   "voice_mode_permission_denied",
   "voice_mode_started",
@@ -82,7 +89,7 @@ const LIVE_EVENT_NAMES = [
   "welcome_dialog_closed",
 ];
 
-const PLANNED_EVENT_NAMES: string[] = [];
+const PLANNED_EVENT_NAMES: string[] = ["voice_interview_leg_fallback"];
 
 // No longer sent, or renamed (SECRT-2722). The names stay reserved: reusing one would
 // splice a different action onto the history PostHog already holds for it.
