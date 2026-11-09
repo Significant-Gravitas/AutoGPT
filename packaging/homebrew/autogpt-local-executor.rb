@@ -35,9 +35,9 @@ class AutogptLocalExecutor < Formula
   # Every Python dependency needs a `resource` block here. Homebrew's pip
   # install runs with `--no-deps`, so it fetches nothing else. With no
   # resource blocks, pydantic, websockets, httpx, keyring and the rest are
-  # missing, and `autogpt-shim` fails on its first import (the `test do`
-  # block catches this). `scripts/update_packaging.sh` warns while there
-  # are none.
+  # missing, and `autogpt-shim` fails on its first import. The `test do`
+  # block imports every runtime dependency, so it catches one that is
+  # missing too. `scripts/update_packaging.sh` warns while there are none.
   #
   # Generate them on every release, after `scripts/update_packaging.sh` has
   # set the PyPI `url`:
@@ -74,5 +74,10 @@ class AutogptLocalExecutor < Formula
 
   test do
     assert_match "autogpt-shim #{version}", shell_output("#{bin}/autogpt-shim --version")
+    # --version needs only pydantic, and `start` every runtime dependency,
+    # each of which came from a resource block. Import them all, so one
+    # missing from the resource blocks fails here rather than at `start`.
+    # tests/test_packaging.py keeps this list to pyproject.toml's.
+    system libexec/"bin/python", "-c", "import pydantic, pydantic_settings, websockets, httpx, keyring"
   end
 end
