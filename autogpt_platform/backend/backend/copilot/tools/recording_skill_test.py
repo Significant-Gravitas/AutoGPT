@@ -175,6 +175,41 @@ class TestCoPilotConfirmation:
         assert "First Name" in names
         assert "Email" not in names
 
+    def test_a_constant_confirmed_by_field_key_drops_the_parameter(self):
+        """`confirmations.get(key) or confirmations.get(label)` turned a False
+        given by key into None, so the field stayed an unconfirmed candidate."""
+        skill = generate_skill_from_recording(
+            _single_row_recording(),
+            clarifications={
+                "confirmed_parameters": {"fill|First Name": True, "fill|Email": False}
+            },
+        )
+
+        assert skill.needs_confirmation is False
+        assert {p.label for p in skill.parameters} == {"First Name"}
+
+    @pytest.mark.parametrize(
+        "clarifications",
+        [
+            {"confirmed_parameters": None, "data_source_columns": None},
+            {"confirmed_parameters": ["Email"], "data_source_columns": "Email"},
+            {
+                "confirmed_parameters": {"Email": "no"},
+                "data_source_columns": {"Email": 3},
+            },
+        ],
+        ids=["null", "not-a-map", "mistyped-answers"],
+    )
+    def test_an_unreadable_confirmation_map_is_no_answer(self, clarifications):
+        """`.get(..., {})` returned a null or a list as it was, and the next
+        `.get` on it raised AttributeError."""
+        skill = generate_skill_from_recording(
+            _single_row_recording(), clarifications=clarifications
+        )
+
+        assert skill.needs_confirmation is True
+        assert not any(p.confirmed for p in skill.parameters)
+
 
 class TestMultiRowInference:
     def test_two_rows_varied_value_is_confirmed_parameter(self):
@@ -333,6 +368,8 @@ class TestDryRun:
         assert submit_steps and all(
             s.detail == "destructive_skipped" for s in submit_steps
         )
+        # A held-back last step leaves nothing untested.
+        assert result.ok is True
 
     @pytest.mark.asyncio
     async def test_a_dry_run_clicks_only_into_fields_until_actions_are_allowed(
@@ -376,6 +413,11 @@ class TestDryRun:
             "click",
             "destructive_skipped",
         )
+        # So the row proves nothing about them, and the dry run isn't a pass:
+        # it reported ok though only the first fill had been tested.
+        assert row.ok is False
+        assert row.error is not None and "2 step(s) after it" in row.error
+        assert result.ok is False
         assert [c.args[1]["x"] for c in _calls(allowed, "click")] == [101, 103, 105]
 
     @pytest.mark.asyncio
