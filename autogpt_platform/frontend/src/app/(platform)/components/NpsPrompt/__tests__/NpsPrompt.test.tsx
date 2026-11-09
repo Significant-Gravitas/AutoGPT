@@ -14,6 +14,7 @@ import {
 import { http, HttpResponse } from "msw";
 import { beforeEach, expect, test, vi } from "vitest";
 import { NpsPrompt } from "../NpsPrompt";
+import { isNpsDue } from "../helpers";
 
 const auth = vi.hoisted(() => ({
   user: null as { id: string; created_at: string } | null,
@@ -145,4 +146,11 @@ test("waits for the top-up card to close before claiming", async () => {
   rerender(tree(false));
   expect(await screen.findByText(QUESTION)).toBeDefined();
   expect(claims).toEqual([{ kind: "nps" }]);
+});
+
+test("NPS becomes due at exactly fourteen days", () => {
+  const created = "2026-11-01T12:00:00Z";
+  const due = Date.parse(created) + 14 * DAY_MS;
+  expect(isNpsDue(created, due - 1)).toBe(false);
+  expect(isNpsDue(created, due)).toBe(true);
 });

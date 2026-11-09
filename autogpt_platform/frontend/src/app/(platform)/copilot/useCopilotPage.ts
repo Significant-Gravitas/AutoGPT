@@ -494,7 +494,7 @@ function useCopilotPageChat(
         await queueFollowUpMessage(sessionId, trimmed);
         if (heldForLocalSettle) releaseFollowUp(sessionId, trimmed);
         queueMessage(trimmed);
-        return;
+        return sessionId;
       } catch (err) {
         // Any other failure propagates to the composer, which restores the
         // draft and shows the one toast for it.
@@ -532,7 +532,7 @@ function useCopilotPageChat(
       void sendNewMessage(message, files, workspaceFiles, metadata).catch(
         (err: unknown) => recoverFailedDeferredSend(trimmed, [], err),
       );
-      return;
+      return sessionId;
     }
     return await sendNewMessage(message, files, workspaceFiles, metadata);
   }

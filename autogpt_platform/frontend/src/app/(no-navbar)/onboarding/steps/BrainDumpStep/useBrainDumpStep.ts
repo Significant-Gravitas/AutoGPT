@@ -66,6 +66,7 @@ export function useBrainDumpStep() {
   // For answers that arrive after the render that asked, like a permission
   // prompt answered once the typed text is already on its way.
   const screenRef = useRef(screen);
+  const startVersionRef = useRef(0);
   useEffect(() => {
     screenRef.current = screen;
   });
@@ -167,8 +168,12 @@ export function useBrainDumpStep() {
   }, [screen, recorder.hitTimeLimit]);
 
   async function handleStart() {
-    const started = await recorder.start();
-    if (started) setScreen("recording");
+    const version = ++startVersionRef.current;
+    const started = await recorder.start({
+      shouldRecord: () =>
+        version === startVersionRef.current && screenRef.current === "rest",
+    });
+    if (started && version === startVersionRef.current) setScreen("recording");
   }
 
   async function handleDone() {
@@ -300,6 +305,7 @@ export function useBrainDumpStep() {
   // local parts and the server's half-uploaded buffer both — before the
   // orb starts listening again under a new recording id.
   async function handleRestart() {
+    const version = ++startVersionRef.current;
     const previousId = recorder.recordingId;
     const actionToken = previousId
       ? claimTakeAction(previousId, "discard")
@@ -317,9 +323,12 @@ export function useBrainDumpStep() {
       }
       recorder.resetQueue();
       if (previousId) await discardTake(previousId);
-      started = await recorder.start();
+      started = await recorder.start({
+        shouldRecord: () => version === startVersionRef.current,
+      });
     } finally {
-      setScreen(started ? "recording" : "rest");
+      if (version === startVersionRef.current)
+        setScreen(started ? "recording" : "rest");
       if (actionToken) releaseTakeAction(actionToken);
     }
   }
@@ -430,7 +439,13 @@ export function useBrainDumpStep() {
   // can't hold the step up, so the skip itself runs the moment one is given.
   function openSkipReason() {
     if (isSubmittingRef.current) return;
-    void skipPrompt.claim();
+    startVersionRef.current += 1;
+    screenRef.current = "skip-reason";
+    void recorder.stop().catch(() => undefined);
+    void skipPrompt.claim().then(({ id, failed }) => {
+      if (!id && !failed && screenRef.current === "skip-reason")
+        void handleSkip();
+    });
     setScreen("skip-reason");
   }
 

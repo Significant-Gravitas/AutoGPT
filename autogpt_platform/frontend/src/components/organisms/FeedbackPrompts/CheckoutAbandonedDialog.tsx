@@ -27,6 +27,7 @@ const COPY: Record<Kind, { title: string; body: string; thanks: string }> = {
 interface Props {
   kind: Kind;
   initialReason?: string | null;
+  onDismiss?: () => void;
   onReason?: (value: string) => void;
   onSubmit?: (answer: { reason: string; note: string }) => void;
 }
@@ -34,6 +35,7 @@ interface Props {
 export function CheckoutAbandonedDialog({
   kind,
   initialReason = null,
+  onDismiss,
   onReason,
   onSubmit,
 }: Props) {
@@ -44,7 +46,13 @@ export function CheckoutAbandonedDialog({
     <Dialog
       title={copy.title}
       styling={{ maxWidth: "38rem", minWidth: "auto" }}
-      controlled={{ isOpen, set: setIsOpen }}
+      controlled={{
+        isOpen,
+        set: (open) => {
+          setIsOpen(open);
+          if (!open) onDismiss?.();
+        },
+      }}
     >
       <Dialog.Content>
         <NoInitialFocus />

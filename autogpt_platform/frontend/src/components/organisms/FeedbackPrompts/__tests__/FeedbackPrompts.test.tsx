@@ -10,6 +10,8 @@ import { OnboardingSkipPrompt } from "../OnboardingSkipPrompt";
 import { OttoMistakeCard } from "../OttoMistakeCard";
 import { TopUpDismissedCard } from "../TopUpDismissedCard";
 import { WorkCheckCard } from "../WorkCheckCard";
+import { ThanksLine } from "../components/ThanksLine";
+import { CHANGELOG_BASE_URL } from "@/components/molecules/ChangelogPopup/changelog-constants";
 import { NoInitialFocus } from "../components/NoInitialFocus";
 import { BRAIN_DUMP_SKIP_REASONS, SAMPLE_STARTERS } from "../helpers";
 
@@ -247,4 +249,13 @@ test("closing a card without answering reports a dismissal", async () => {
   render(<NpsCard onDismiss={onDismiss} />);
   await userEvent.click(screen.getByRole("button", { name: "Close" }));
   expect(onDismiss).toHaveBeenCalledOnce();
+});
+
+test("the thanks link opens the published changelog", () => {
+  render(<ThanksLine />);
+  expect(
+    screen
+      .getByRole("link", { name: "See what we've changed lately" })
+      .getAttribute("href"),
+  ).toBe(CHANGELOG_BASE_URL);
 });

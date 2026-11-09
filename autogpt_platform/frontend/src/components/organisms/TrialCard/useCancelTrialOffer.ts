@@ -35,7 +35,7 @@ export function useCancelTrialOffer() {
 
   function handleOpen() {
     setHasOpened(true);
-    void prompt.claim();
+    void prompt.claim(true);
   }
 
   function startTask(title: string) {

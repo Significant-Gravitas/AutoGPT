@@ -45,8 +45,8 @@ export function useFeedbackPrompt(kind: FeedbackPromptKind) {
   const claimRef = useRef<Promise<FeedbackPromptClaim> | null>(null);
   const savesRef = useRef<Promise<unknown>>(Promise.resolve());
 
-  function claim() {
-    if (!claimRef.current) claimRef.current = requestClaim(kind);
+  function claim(fresh = false) {
+    if (fresh || !claimRef.current) claimRef.current = requestClaim(kind);
     return claimRef.current;
   }
 

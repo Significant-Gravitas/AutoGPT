@@ -22,6 +22,7 @@ import {
 import type { Reason } from "./components/ReasonTiles";
 
 export const OTHER_VALUE = "other";
+export const MAX_FEEDBACK_NOTE_CHARS = 2000;
 
 const OTHER: Reason = {
   value: OTHER_VALUE,

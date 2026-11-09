@@ -1,3 +1,5 @@
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import {
   getPatchV2UpdateFeedbackPromptMockHandler200,
   getPostV2ClaimFeedbackPromptMockHandler200,
@@ -139,4 +141,33 @@ test("closing the card saves a dismissal and frees the card state", async () => 
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
   await waitFor(() => expect(patches).toEqual([{ dismissed: true }]));
   expect(screen.getByText("card closed")).toBeDefined();
+});
+
+test("closing during a failed payment request still offers feedback", async () => {
+  setup();
+  let release = () => {};
+  const payment = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = vi.fn();
+  server.use(
+    http.post("*/api/credits", async () => {
+      started();
+      await payment;
+      return HttpResponse.json({ detail: "payment failed" }, { status: 500 });
+    }),
+  );
+  try {
+    fireEvent.click(screen.getByRole("button", { name: "Open top-up" }));
+    await userEvent.type(
+      await screen.findByRole("textbox", { name: "Amount" }),
+      "5",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Top up" }));
+    await waitFor(() => expect(started).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  } finally {
+    release();
+  }
+  expect(await screen.findByText(CARD_TITLE)).toBeDefined();
 });

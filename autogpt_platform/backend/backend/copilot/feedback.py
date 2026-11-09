@@ -24,7 +24,7 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from pydantic import BaseModel, Field
 
 from backend.copilot import feedback_db
-from backend.data.feedback_prompts import REASONS_BY_KIND
+from backend.data.feedback_prompts import REASONS_BY_KIND, SCORES_BY_KIND
 from backend.util.posthog_client import capture
 from backend.util.posthog_events import PostHogEvent
 
@@ -34,8 +34,8 @@ FeedbackScoreValue = Literal[0, 1, 2]
 SCORE_VALUES_BY_NAME: dict[FeedbackScoreName, frozenset[int]] = {
     "user-feedback": frozenset({0, 1}),
     "copy": frozenset({1}),
-    "work_check": frozenset({0, 1, 2}),
-    "otto_mistake": frozenset({0}),
+    "work_check": SCORES_BY_KIND["work_check"],
+    "otto_mistake": SCORES_BY_KIND["otto_mistake"],
 }
 REASONS_BY_SCORE_NAME: dict[FeedbackScoreName, frozenset[str]] = {
     "work_check": REASONS_BY_KIND["work_check"],

@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { PromptCard } from "./components/PromptCard";
 import { ThanksLine } from "./components/ThanksLine";
+import { MAX_FEEDBACK_NOTE_CHARS } from "./helpers";
 
 const SCORES = Array.from({ length: 11 }, (_, i) => i);
 
@@ -96,6 +97,7 @@ export function NpsCard({
                 {followUpFor(score)}
               </Text>
               <Textarea
+                maxLength={MAX_FEEDBACK_NOTE_CHARS}
                 rows={3}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}

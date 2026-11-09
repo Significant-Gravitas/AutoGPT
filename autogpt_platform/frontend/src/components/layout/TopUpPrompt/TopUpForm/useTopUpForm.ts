@@ -15,9 +15,13 @@ const topUpSchema = z.object({
 
 interface Args {
   onRequestingChange?: (isRequesting: boolean) => void;
+  onRequestFailed?: () => void;
 }
 
-export function useTopUpForm({ onRequestingChange }: Args = {}) {
+export function useTopUpForm({
+  onRequestingChange,
+  onRequestFailed,
+}: Args = {}) {
   const toastOnFail = useToastOnFail();
   const { requestTopUp } = useCredits();
 
@@ -35,7 +39,10 @@ export function useTopUpForm({ onRequestingChange }: Args = {}) {
     onRequestingChange?.(true);
     await requestTopUp(Math.round(data.amount * 100))
       .then(() => checkoutRedirect.markRedirecting())
-      .catch(toastOnFail("request top-up"))
+      .catch((error: unknown) => {
+        onRequestFailed?.();
+        toastOnFail("request top-up")(error);
+      })
       .finally(() => {
         setIsRequesting(false);
         onRequestingChange?.(false);

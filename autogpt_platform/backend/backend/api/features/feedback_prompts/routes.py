@@ -23,6 +23,7 @@ from backend.api.features.feedback_prompts.model import (
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.data.feedback_prompts import (
     REASONS_BY_KIND,
+    SCORES_BY_KIND,
     FeedbackPromptKind,
     claim_feedback_prompt,
     get_feedback_prompt,
@@ -74,6 +75,13 @@ async def update_prompt(
     """Save the fields given and keep the rest."""
     prompt = await _owned_prompt(user_id, id)
     _check_reason(prompt, body.reason)
+    if body.score is not None and body.score not in SCORES_BY_KIND.get(
+        cast(FeedbackPromptKind, prompt.kind), frozenset()
+    ):
+        raise HTTPException(
+            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="This prompt does not offer that score",
+        )
     if is_impersonated_request(request):
         return FeedbackPromptState.from_row(prompt)
     updated = await update_feedback_prompt(

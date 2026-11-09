@@ -3,6 +3,7 @@ import {
   getPatchV2UpdateFeedbackPromptMockHandler200,
 } from "@/app/api/__generated__/endpoints/feedback-prompts/feedback-prompts.msw";
 import { getPostV2SubmitMessageFeedbackMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { useGetV2GetFeedbackPrompt } from "@/app/api/__generated__/endpoints/feedback-prompts/feedback-prompts";
 import { server } from "@/mocks/mock-server";
 import {
   cleanup,
@@ -11,6 +12,7 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import { http, HttpResponse } from "msw";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import type { ComponentProps, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -171,6 +173,11 @@ function setup(
   return { ratings, patches };
 }
 
+function FeedbackLoaded() {
+  const { isSuccess } = useGetV2GetFeedbackPrompt("prompt-1");
+  return isSuccess ? <output>Feedback state loaded</output> : null;
+}
+
 describe("feedback cards in a chat", () => {
   beforeEach(() => {
     vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
@@ -272,12 +279,15 @@ describe("feedback cards in a chat", () => {
   it("shows nothing for a closed check after a reload", async () => {
     setup({ dismissed: true });
     render(
-      <ChatMessagesContainer
-        {...baseProps}
-        messages={[USER, reply([workCheck()])]}
-      />,
+      <>
+        <FeedbackLoaded />
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[USER, reply([workCheck()])]}
+        />
+      </>,
     );
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await screen.findByText("Feedback state loaded");
     expect(screen.queryByText("How did Otto do?")).toBeNull();
   });
 
@@ -363,9 +373,8 @@ describe("feedback cards in a chat", () => {
         target: { value: "Needed another pass" },
       });
       fireEvent.click(screen.getByRole("button", { name: "Send" }));
-      await waitFor(() =>
-        expect(patches).toContainEqual({ note: "Needed another pass" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+      await waitFor(() => expect(patches).toContainEqual({ dismissed: true }));
       expect(started).toHaveBeenCalledOnce();
     } finally {
       releaseScore();
@@ -384,6 +393,28 @@ describe("feedback cards in a chat", () => {
         comment: "Needed another pass",
       }),
     ]);
+  });
+
+  it("does not persist an answered card when the rating request fails", async () => {
+    const { patches } = setup();
+    const failed = vi.fn();
+    server.use(
+      http.post("*/api/chat/sessions/:id/feedback", () => {
+        failed();
+        return HttpResponse.json({ detail: "offline" }, { status: 500 });
+      }),
+    );
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[USER, reply([workCheck()])]}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Great" }));
+    await waitFor(() => expect(failed).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+    await waitFor(() => expect(patches).toContainEqual({ dismissed: true }));
+    expect(patches).toEqual([{ dismissed: true }]);
   });
 
   it("shows the mistake card as Otto even in an expert chat", async () => {

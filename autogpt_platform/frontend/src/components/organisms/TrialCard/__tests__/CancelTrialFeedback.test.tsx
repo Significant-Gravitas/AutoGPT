@@ -12,6 +12,7 @@ import { formatTrialEnd } from "@/components/organisms/TrialCard/helpers";
 import { TrialCard } from "@/components/organisms/TrialCard/TrialCard";
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -23,7 +24,14 @@ import {
   trialResponse,
 } from "@/tests/integrations/trial-fixtures";
 import { http, HttpResponse } from "msw";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from "vitest";
 
 const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", async (importOriginal) => ({
@@ -116,6 +124,23 @@ test("Skip reaches the confirmation with no reason saved", async () => {
 
 test("a failed save still cancels the trial and shows no toast", async () => {
   const { cancel } = setup();
+  let finishResponse = () => {};
+  const failedResponse = new Promise<void>((resolve) => {
+    finishResponse = resolve;
+  });
+  function observeFailure({
+    request,
+    response,
+  }: {
+    request: Request;
+    response: Response;
+  }) {
+    if (request.method === "PATCH" && response.status === 500) finishResponse();
+  }
+  server.events.on("response:mocked", observeFailure);
+  onTestFinished(() =>
+    server.events.removeListener("response:mocked", observeFailure),
+  );
   server.use(
     http.patch("*/api/feedback-prompts/:id", () =>
       HttpResponse.json({ detail: "boom" }, { status: 500 }),
@@ -129,6 +154,10 @@ test("a failed save still cancels the trial and shows no toast", async () => {
     "Cancel trial",
   );
   await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+  await act(async () => {
+    await failedResponse;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
   expect(toast).not.toHaveBeenCalled();
 });
 
@@ -181,4 +210,56 @@ test("the confirmation shows the real end date", async () => {
   expect(
     within(confirm).getByText(formatTrialEnd(trialResponse().ends_at)).tagName,
   ).toBe("STRONG");
+});
+
+test("reopening cancellation claims a new showing without the old note", async () => {
+  setup();
+  let claims = 0;
+  const saves: { id: string; body: unknown }[] = [];
+  server.use(
+    getPostV2ClaimFeedbackPromptMockHandler200(() => ({
+      id: `prompt-${++claims}`,
+    })),
+    getPatchV2UpdateFeedbackPromptMockHandler200(
+      async ({ request, params }) => {
+        saves.push({
+          id: String(params.id),
+          body: await request.clone().json(),
+        });
+        return {
+          id: String(params.id),
+          kind: "trial_cancel",
+          answered: true,
+          dismissed: false,
+          reason: null,
+          score: null,
+        };
+      },
+    ),
+  );
+  let dialog = await openDialog();
+  clickIn(dialog, "Something else");
+  fireEvent.change(screen.getByRole("textbox"), {
+    target: { value: "First attempt" },
+  });
+  clickIn(dialog, "Continue");
+  clickIn(
+    await screen.findByRole("dialog", { name: "Cancel your trial?" }),
+    "Keep trial",
+  );
+  await waitFor(() =>
+    expect(saves).toContainEqual({
+      id: "prompt-1",
+      body: { note: "First attempt" },
+    }),
+  );
+  dialog = await openDialog();
+  clickIn(dialog, "It costs too much");
+  await waitFor(() =>
+    expect(saves).toContainEqual({
+      id: "prompt-2",
+      body: { reason: "too_expensive" },
+    }),
+  );
+  expect(claims).toBe(2);
 });

@@ -89,6 +89,28 @@ describe("useWorkflowImportAutoSubmit", () => {
       expect(window.location.search).toBe("");
     });
 
+    it("sends the selected task before a stored import and keeps that import", async () => {
+      storeAutoSubmitPrompt();
+      landWithTaskPrompt();
+      const onSend = vi.fn().mockResolvedValue("session-1");
+      const onTaskStarted = vi.fn();
+      renderHook(() =>
+        useWorkflowImportAutoSubmit({
+          onSend,
+          setPendingFileParts: vi.fn(),
+          onTaskStarted,
+        }),
+      );
+      await waitFor(() => expect(onSend).toHaveBeenCalledWith("Do it"));
+      await waitFor(() =>
+        expect(onTaskStarted).toHaveBeenCalledWith({
+          taskID: "task-1",
+          sessionID: "session-1",
+        }),
+      );
+      expect(sessionStorage.getItem("importWorkflowPrompt")).toBe(PROMPT);
+    });
+
     it.each([
       ["no chat came of it", () => Promise.resolve(undefined)],
       ["the send failed", () => Promise.reject(new Error("boom"))],

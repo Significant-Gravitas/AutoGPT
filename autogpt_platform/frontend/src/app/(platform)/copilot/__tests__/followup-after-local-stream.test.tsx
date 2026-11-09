@@ -182,6 +182,21 @@ afterEach(() => {
 });
 
 describe("useCopilotPage — follow-up refused by the backend mid-stream", () => {
+  it("returns the chat for a suggested task accepted into the queue", async () => {
+    queueFollowUpMessage.mockResolvedValue(undefined);
+    const { result } = renderHook(() => useCopilotPage());
+    let chat: unknown;
+    await act(async () => {
+      chat = await result.current.onStartTask("The selected task");
+    });
+    expect(queueFollowUpMessage).toHaveBeenCalledWith(
+      "session-1",
+      "The selected task",
+    );
+    expect(chat).toBe("session-1");
+    expect(sendNewMessage).not.toHaveBeenCalled();
+  });
+
   it.each(["ready", "error"] as const)(
     "starts a new turn directly after the stream settles with status %s",
     async (status) => {

@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Textarea } from "@/components/atoms/Textarea/Textarea";
 import { useState } from "react";
-import { OTHER_VALUE } from "../helpers";
+import { MAX_FEEDBACK_NOTE_CHARS, OTHER_VALUE } from "../helpers";
 import { ReasonTiles, type Reason } from "./ReasonTiles";
 import { ThanksLine } from "./ThanksLine";
 
@@ -61,6 +61,7 @@ export function ReasonFlow({
       />
       {reason === OTHER_VALUE ? (
         <Textarea
+          maxLength={MAX_FEEDBACK_NOTE_CHARS}
           autoFocus
           rows={2}
           value={note}

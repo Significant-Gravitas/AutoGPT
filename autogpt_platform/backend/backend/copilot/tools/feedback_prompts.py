@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from backend.api.features.feedback_prompts.analytics import capture_prompt_shown
+from backend.copilot.context import is_unattended_turn
 from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import feedback_prompts_db
@@ -120,7 +121,7 @@ class FlagMistakeTool(BaseTool):
         prompt_id = await _claim(user_id, "otto_mistake", session)
         if prompt_id is None:
             return _no_card("otto_mistake", session)
-        _capture_mistake_flagged(user_id, prompt_id, described, session)
+        _capture_mistake_flagged(user_id, prompt_id, session)
         if not _can_show_card(session):
             return _no_card("otto_mistake", session)
         capture_prompt_shown(user_id, prompt_id, "otto_mistake")
@@ -137,6 +138,7 @@ def _can_show_card(session: ChatSession) -> bool:
     metadata = session.metadata
     return (
         metadata.source_platform is None
+        and not is_unattended_turn()
         # A row from before ``origin`` existed has None; those are web chats.
         and metadata.origin != "automation"
         and metadata.delegated_by_session_id is None
@@ -179,10 +181,9 @@ async def _is_first_work_check(user_id: str) -> bool:
 
 
 def _capture_mistake_flagged(
-    user_id: str, prompt_id: str, described: str, session: ChatSession
+    user_id: str, prompt_id: str, session: ChatSession
 ) -> None:
     properties: dict[str, Any] = {
-        "what_went_wrong": described,
         "$ai_session_id": session.session_id,
         "chat_session_id": session.session_id,
         "prompt_id": prompt_id,

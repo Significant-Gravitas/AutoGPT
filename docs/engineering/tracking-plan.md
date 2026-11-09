@@ -580,7 +580,7 @@ acting as a user sends none.
 | --- | --- | --- | --- | --- |
 | `feedback_prompt_shown` | backend | live | `prompt_id`, `kind` | A prompt's limit allows it and the app or Otto claims it (`POST /api/feedback-prompts/claim`, `copilot/tools/feedback_prompts.py`). |
 | `feedback_prompt_answered` | backend | live | `prompt_id`, `kind`, `reason`, `note`, `score`, `offer_taken` | A tap on a page-level prompt is saved (`PATCH /api/feedback-prompts/{id}`). Each tap sends another event; the latest per `prompt_id` stands. Work checks and mistake cards send `$ai_metric` instead. |
-| `otto_mistake_flagged` | backend | live | `what_went_wrong`, `$ai_session_id` and `chat_session_id`, `prompt_id`; `$ai_trace_id` when the turn has one | Otto calls `flag_mistake`, at most once per chat, on every surface including chat platforms. |
+| `otto_mistake_flagged` | backend | live | `$ai_session_id` and `chat_session_id`, `prompt_id`; `$ai_trace_id` when the turn has one; no conversation content | Otto calls `flag_mistake`, at most once per chat, on every surface including chat platforms. |
 
 ## Experiments
 

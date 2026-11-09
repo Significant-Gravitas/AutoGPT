@@ -30,13 +30,14 @@ export function TopUpDialog({
   const isOutOfCredits = variant === "out-of-credits";
   const { isRedirecting } = useCheckoutRedirect();
   const isRequestingRef = useRef(false);
+  const closedWhileRequestingRef = useRef(false);
 
   function handleOpenChange(open: boolean) {
     if (open) return;
     onClose();
-    if (isOutOfCredits && !isRedirecting && !isRequestingRef.current) {
-      onDismissed?.();
-    }
+    if (!isOutOfCredits || isRedirecting) return;
+    if (isRequestingRef.current) closedWhileRequestingRef.current = true;
+    else onDismissed?.();
   }
 
   return (
@@ -74,6 +75,12 @@ export function TopUpDialog({
           submitLabel="Top up"
           onRequestingChange={(isRequesting) => {
             isRequestingRef.current = isRequesting;
+            if (isRequesting) closedWhileRequestingRef.current = false;
+          }}
+          onRequestFailed={() => {
+            if (!closedWhileRequestingRef.current) return;
+            closedWhileRequestingRef.current = false;
+            onDismissed?.();
           }}
         />
       </Dialog.Content>

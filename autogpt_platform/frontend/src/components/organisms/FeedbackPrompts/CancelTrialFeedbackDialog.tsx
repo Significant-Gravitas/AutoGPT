@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 import { NoInitialFocus } from "./components/NoInitialFocus";
 import { OttoOfferCard } from "./components/OttoOfferCard";
 import { ReasonTiles } from "./components/ReasonTiles";
-import { TRIAL_CANCEL_REASONS } from "./helpers";
+import { MAX_FEEDBACK_NOTE_CHARS, TRIAL_CANCEL_REASONS } from "./helpers";
 import { type Step, useCancelTrialFeedback } from "./useCancelTrialFeedback";
 
 const TITLES: Record<Step, string> = {
@@ -80,6 +80,7 @@ export function CancelTrialFeedbackDialog({
             />
             {flow.asksForNote ? (
               <Textarea
+                maxLength={MAX_FEEDBACK_NOTE_CHARS}
                 rows={3}
                 value={flow.note}
                 onChange={(e) => flow.setNote(e.target.value)}

@@ -55,6 +55,11 @@ REASONS_BY_KIND: dict[FeedbackPromptKind, frozenset[str]] = {
 NPS_ROLLOUT_AT = datetime(2026, 11, 9, tzinfo=UTC)
 NPS_AFTER = timedelta(days=14)
 WEEKLY_COOLDOWN = timedelta(days=7)
+SCORES_BY_KIND: dict[FeedbackPromptKind, frozenset[int]] = {
+    "nps": frozenset(range(11)),
+    "work_check": frozenset({0, 1, 2}),
+    "otto_mistake": frozenset({0}),
+}
 
 
 async def claim_feedback_prompt(

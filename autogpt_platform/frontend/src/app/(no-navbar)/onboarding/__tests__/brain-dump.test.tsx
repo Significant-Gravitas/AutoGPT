@@ -424,7 +424,9 @@ function landOnPainPointsStep() {
 }
 
 beforeEach(() => {
-  server.use(getPostV2ClaimFeedbackPromptMockHandler200({ id: null }));
+  server.use(
+    getPostV2ClaimFeedbackPromptMockHandler200({ id: "prompt-default" }),
+  );
   installBrowserRecordingAPIs();
   getUserMedia.mockReset();
   getUserMedia.mockResolvedValue({ getTracks: () => [] });
@@ -754,6 +756,40 @@ describe("onboarding brain dump — why it was skipped", () => {
     await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
     expect(await screen.findByText(SKIP_QUESTION)).toBeDefined();
   }
+
+  it("keeps skip reasons open and releases a microphone granted after Skip", async () => {
+    mockPrompt();
+    let allowMicrophone = (_stream: {
+      getTracks: () => { stop: () => void }[];
+    }) => {};
+    const microphone = new Promise<{ getTracks: () => { stop: () => void }[] }>(
+      (resolve) => {
+        allowMicrophone = resolve;
+      },
+    );
+    const stop = vi.fn();
+    getUserMedia.mockReturnValueOnce(microphone);
+    landOnPainPointsStep();
+    render(<OnboardingPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Talk" }));
+    await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+    expect(await screen.findByText(SKIP_QUESTION)).toBeDefined();
+    await act(async () => allowMicrophone({ getTracks: () => [{ stop }] }));
+    await waitFor(() => expect(stop).toHaveBeenCalledOnce());
+    expect(screen.getByText(SKIP_QUESTION)).toBeDefined();
+  });
+
+  it("continues without asking when the feedback claim is refused", async () => {
+    finalizeReturns({ status: "completed" });
+    server.use(getPostV2ClaimFeedbackPromptMockHandler200({ id: null }));
+    landOnPainPointsStep();
+    render(<OnboardingPage />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Skip for now" }),
+    );
+    expect(await screen.findByTestId("step-plan")).toBeDefined();
+    expect(screen.queryByText(SKIP_QUESTION)).toBeNull();
+  });
 
   it("shows the tiles and stays on the step", async () => {
     finalizeReturns({ status: "completed" });

@@ -26,7 +26,7 @@ function extractPromptFromUrl(): {
   // Check sessionStorage first (used by workflow import for large prompts
   // and by the marketing-site CTA handoff via useCaptureMarketingPrompt).
   const storedPrompt = sessionStorage.getItem("importWorkflowPrompt");
-  if (storedPrompt) {
+  if (storedPrompt && !searchParams.has(SUGGESTED_TASK_PARAM)) {
     sessionStorage.removeItem("importWorkflowPrompt");
 
     // Onboarding wipes URL params before we reach /copilot, so the

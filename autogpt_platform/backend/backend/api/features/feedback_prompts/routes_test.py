@@ -309,3 +309,34 @@ def test_impersonated_patch_writes_and_sends_nothing(
     assert response.json()["reason"] is None
     update.assert_not_awaited()
     posthog_capture.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("kind", "score"),
+    [("work_check", 3), ("work_check", 10), ("otto_mistake", 1), ("top_up", 0)],
+)
+def test_score_must_fit_the_prompt_kind(mocker, test_user_id, kind, score):
+    _mock_get(mocker, _row(test_user_id, kind=kind))
+    update = _mock_update(mocker, None)
+    assert client.patch(f"/{PROMPT_ID}", json={"score": score}).status_code == 422
+    update.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("kind", "score"),
+    [
+        ("nps", 0),
+        ("nps", 10),
+        ("work_check", 0),
+        ("work_check", 1),
+        ("work_check", 2),
+        ("otto_mistake", 0),
+    ],
+)
+def test_supported_scores_are_saved(mocker, test_user_id, kind, score):
+    _mock_get(mocker, _row(test_user_id, kind=kind))
+    update = _mock_update(mocker, _row(test_user_id, kind=kind, score=score))
+    response = client.patch(f"/{PROMPT_ID}", json={"score": score})
+    assert response.status_code == 200
+    assert response.json()["score"] == score
+    update.assert_awaited_once()

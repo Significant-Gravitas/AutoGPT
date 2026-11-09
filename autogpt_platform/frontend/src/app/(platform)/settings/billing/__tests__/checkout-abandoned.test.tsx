@@ -1,5 +1,5 @@
 import { http, HttpResponse, type JsonBodyType } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   getPatchV2UpdateFeedbackPromptMockHandler200,
@@ -12,6 +12,8 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+
+import { setTrialUser } from "@/tests/integrations/trial-fixtures";
 
 import SettingsBillingPage from "../page";
 
@@ -94,7 +96,9 @@ function setup(params: Record<string, string>) {
   return { claims, patches };
 }
 
+beforeEach(() => setTrialUser());
 afterEach(() => {
+  setTrialUser(null);
   mockSearchParams.current = new URLSearchParams();
   mockRouterReplace.mockReset();
   toast.mockClear();
@@ -138,6 +142,23 @@ describe("returning from an abandoned checkout", () => {
     expect(claims).toEqual([]);
     expect(screen.queryByText(UPGRADE_TITLE)).toBeNull();
     expect(screen.queryByText(TRIAL_TITLE)).toBeNull();
+  });
+
+  it("records closing an unanswered checkout prompt", async () => {
+    const { patches } = setup({ trial: "cancelled" });
+    render(<SettingsBillingPage />);
+    await screen.findByText(TRIAL_TITLE);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(patches).toEqual([{ dismissed: true }]));
+  });
+
+  it("hides an open checkout prompt when the account changes", async () => {
+    const { claims } = setup({ trial: "cancelled" });
+    render(<SettingsBillingPage />);
+    await screen.findByText(TRIAL_TITLE);
+    setTrialUser("another-user");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(claims).toHaveLength(1);
   });
 
   it("claims once across re-renders", async () => {

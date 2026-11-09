@@ -184,7 +184,6 @@ async def test_flag_mistake_without_a_card_still_takes_the_slot_and_sends(
     user_id, event, properties = flagged.call_args.args
     assert user_id == USER_ID
     assert event == PostHogEvent.OTTO_MISTAKE_FLAGGED
-    assert properties["what_went_wrong"] == WHAT
     assert properties["$ai_session_id"] == web_chat.session_id
     shown.assert_not_called()
 
@@ -230,3 +229,21 @@ def test_both_tools_work_in_expert_chats_and_render_their_cards(name: str) -> No
     assert name in TOOL_REGISTRY
     assert name in EAGER_CORE
     assert name not in TOOL_GROUPS
+
+
+async def test_scheduled_followup_cannot_use_the_weekly_work_check_slot(
+    mocker, db, shown, web_chat
+):
+    mocker.patch.object(feedback_tools, "is_unattended_turn", return_value=True)
+    assert (await _work_check(web_chat)).prompt_id is None
+    db.claim_feedback_prompt.assert_not_awaited()
+    shown.assert_not_called()
+
+
+async def test_mistake_event_does_not_export_conversation_content(
+    db, flagged, web_chat
+):
+    await FlagMistakeTool()._execute(
+        USER_ID, web_chat, what_went_wrong="Private Gmail content"
+    )
+    assert "Private Gmail content" not in str(flagged.call_args)

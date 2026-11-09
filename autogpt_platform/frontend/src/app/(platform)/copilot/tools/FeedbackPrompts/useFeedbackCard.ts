@@ -24,7 +24,21 @@ export function useFeedbackCard({ kind, promptId, target }: Args) {
   const prompt = useFeedbackPrompt(kind);
   const scoreRef = useRef<0 | 1 | 2>(0);
   const { mutate: submitRating } = usePostV2SubmitMessageFeedback({
-    mutation: { scope: { id: `feedback-card:${promptId}` } },
+    mutation: {
+      scope: { id: `feedback-card:${promptId}` },
+      onSuccess(_response, { data }) {
+        prompt.save({
+          score: data.score_value,
+          reason: data.reason,
+          note: data.comment,
+        });
+        updateCard({
+          answered: true,
+          score: data.score_value,
+          ...(data.reason ? { reason: data.reason } : {}),
+        });
+      },
+    },
   });
   const { data: state, isPending } = useGetV2GetFeedbackPrompt(promptId, {
     query: {
@@ -64,19 +78,14 @@ export function useFeedbackCard({ kind, promptId, target }: Args) {
   function rate(score: 0 | 1 | 2) {
     scoreRef.current = score;
     sendRating({});
-    prompt.save({ score });
-    updateCard({ answered: true, score });
   }
 
   function pickReason(reason: string) {
     sendRating({ reason });
-    prompt.save({ reason });
-    updateCard({ answered: true, reason });
   }
 
   function submit({ reason, note }: { reason: string; note: string }) {
     sendRating({ reason, comment: note || undefined });
-    if (note) prompt.save({ note });
   }
 
   function dismiss() {

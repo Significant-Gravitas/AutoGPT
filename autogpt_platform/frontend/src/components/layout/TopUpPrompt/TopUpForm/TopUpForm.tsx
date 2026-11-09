@@ -7,15 +7,18 @@ interface Props {
   submitLabel?: string;
   size?: "small" | "normal";
   onRequestingChange?: (isRequesting: boolean) => void;
+  onRequestFailed?: () => void;
 }
 
 export function TopUpForm({
   submitLabel = "Top up",
   size = "normal",
   onRequestingChange,
+  onRequestFailed,
 }: Props) {
   const { form, isLoading, isRedirecting, submitTopUp } = useTopUpForm({
     onRequestingChange,
+    onRequestFailed,
   });
   const inputSize = size === "small" ? "small" : "medium";
   const buttonSize = size === "small" ? "small" : "large";
