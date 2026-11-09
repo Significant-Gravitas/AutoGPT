@@ -93,7 +93,9 @@ def driver_commands(monkeypatch: pytest.MonkeyPatch) -> _Commands:
 
 @pytest.fixture
 def a_fake_driver(monkeypatch: pytest.MonkeyPatch, fake_log: Path):
-    """doctor's driver probes run the fake, as if on `platform`."""
+    """doctor's driver probes run the fake, as if on `platform`, in a
+    desktop session."""
+    monkeypatch.setenv("DISPLAY", ":0")
     settings: dict[str, Any] = {"platform": "linux"}
 
     def bridge(*, tools, binary):
@@ -177,6 +179,29 @@ def test_doctor_runs_the_drivers_own_probes_and_starts_it(
     assert "cua-driver binary" not in lines
     assert lines["cua-driver start"] == ("OK", "0.38.0, 38 tools offered")
     assert lines["display"] == ("OK", "1920x1080 (scale 1)")
+
+
+@pytest.mark.parametrize(
+    "env", [{}, {"WAYLAND_DISPLAY": "wayland-0"}], ids=["no-display", "wayland-only"]
+)
+def test_doctor_fails_on_linux_without_a_display_the_driver_can_drive(
+    tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver, env
+) -> None:
+    """The daemon leaves computer_use out of HELLO without a display
+    cua-driver can drive, but doctor took the driver's own warning about it
+    and exited 0."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    for name in ("DISPLAY", "WAYLAND_DISPLAY", "CUA_DRIVER_RS_ENABLE_WAYLAND"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    rc = doctor.run_doctor(_with_driver(tmp_path))
+
+    lines = _report(capsys.readouterr().out)
+    assert rc == doctor.EX_CONFIG
+    assert lines["display"][0] == "FAIL"
+    assert lines["display"][1] == doctor.platform_info.linux_display_problem()
 
 
 def test_doctor_fails_on_a_driver_probe_error(

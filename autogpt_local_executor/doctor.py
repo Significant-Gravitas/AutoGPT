@@ -212,6 +212,13 @@ def _check_computer_use(config: ShimConfig, plat: str) -> list[CheckResult]:
     out = _driver_doctor(binary)
     if any(check.blocking for check in out):
         return out
+    if plat == "linux":
+        # The daemon's own test (can_do_computer_use): without it, HELLO
+        # leaves computer use out, whatever cua-driver's doctor said.
+        problem = platform_info.linux_display_problem()
+        if problem is not None:
+            out.append(CheckResult("FAIL", "display", problem, blocking=True))
+            return out
     out.extend(asyncio.run(_probe_driver(config, plat)))
     if plat == "linux" and config.enable_clipboard and config.enable_clipboard_read_foreign:
         out.append(_check_linux_clipboard_types())
