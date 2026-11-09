@@ -4410,6 +4410,46 @@ async def test_list_experts_includes_last_run(server: SpinTestServer, test_user)
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_last_run_with_a_failed_step_reports_failed(
+    server: SpinTestServer, test_user
+):
+    """A step that fails without a typed reason (a bad credential) leaves the
+    run COMPLETED with node_error_count > 0. The expert must report it as
+    failed: the expert page and Home read last_run_status, and a failed run
+    can never show done."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    wf = hired.expert.workflows[0]
+    assert wf.library_agent_id is not None
+    library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": wf.library_agent_id}
+    )
+    assert library_agent is not None
+    await prisma.models.AgentGraphExecution.prisma().create(
+        data={
+            "agentGraphId": library_agent.agentGraphId,
+            "agentGraphVersion": library_agent.agentGraphVersion,
+            "userId": test_user.id,
+            "executionStatus": prisma.enums.AgentExecutionStatus.COMPLETED,
+            "expertId": hired.expert.id,
+            "stats": SafeJson({"node_count": 1, "node_error_count": 1}),
+        }
+    )
+
+    experts = await experts_db.list_experts(test_user.id)
+    me = next(e for e in experts if e.id == hired.expert.id)
+    assert me.last_run_status == "FAILED"
+
+    fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert fetched is not None
+    assert fetched.last_run_status == "FAILED"
+
+    runs = await experts_db.list_expert_runs(test_user.id, hired.expert.id)
+    assert [run.status for run in runs] == ["failed"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_hired_workflows_order_by_created_at_then_id(
     server: SpinTestServer, test_user
 ):
