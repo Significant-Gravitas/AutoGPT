@@ -18736,6 +18736,368 @@
         }
       }
     },
+    "/api/tasks": {
+      "get": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "List My Tasks",
+        "operationId": "list_tasks",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/TaskStatus" },
+                { "type": "null" }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "owner_expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Owner Expert Id"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Only the tasks linked to this chat",
+              "title": "Session Id"
+            },
+            "description": "Only the tasks linked to this chat"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Create My Task",
+        "operationId": "create_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}": {
+      "delete": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Archive My Task",
+        "operationId": "archive_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Get My Task",
+        "operationId": "get_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Update My Task",
+        "operationId": "update_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/sessions/{session_id}": {
+      "delete": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Detach My Task Session",
+        "operationId": "detach_task_session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A chat the caller owns",
+              "title": "Session Id"
+            },
+            "description": "A chat the caller owns"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Attach My Task Session",
+        "operationId": "attach_task_session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A chat the caller owns",
+              "title": "Session Id"
+            },
+            "description": "A chat the caller owns"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/transfers": {
       "get": {
         "tags": ["v2", "transfers", "transfers"],
@@ -22229,6 +22591,28 @@
             "type": "boolean",
             "title": "Allow Multiple",
             "default": false
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "goal_ambiguous",
+                  "user_only_fact",
+                  "irreversible_choice",
+                  "conflict",
+                  "preference"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Reason",
+            "description": "Why the work cannot go on without the answer."
+          },
+          "default_guess": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Guess",
+            "description": "What the assistant does if the user says to use its best guess."
           }
         },
         "type": "object",
@@ -33723,6 +34107,11 @@
           "folder_moved",
           "folder_deleted",
           "agents_moved_to_folder",
+          "task_created",
+          "task_list",
+          "task_details",
+          "task_updated",
+          "task_archived",
           "browser_navigate",
           "browser_act",
           "browser_screenshot",
@@ -36710,6 +37099,117 @@
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
       },
+      "Task": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "title": { "type": "string", "title": "Title" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "status": { "$ref": "#/components/schemas/TaskStatus" },
+          "owner_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Owner Expert Id",
+            "description": "The expert doing the work; None means Otto."
+          },
+          "created_by": { "$ref": "#/components/schemas/TaskCreator" },
+          "created_by_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created By Expert Id"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "is_archived": {
+            "type": "boolean",
+            "title": "Is Archived",
+            "default": false
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
+          "session_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Session Ids"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "title",
+          "status",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Task",
+        "description": "A task as callers see it, with the chats it was worked on in."
+      },
+      "TaskCreateRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              { "type": "string", "maxLength": 10000 },
+              { "type": "null" }
+            ],
+            "title": "Description"
+          },
+          "owner_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Owner Expert Id",
+            "description": "The expert who does the work; omit for Otto."
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id",
+            "description": "A chat of the caller's to attach the task to."
+          }
+        },
+        "type": "object",
+        "required": ["title"],
+        "title": "TaskCreateRequest"
+      },
+      "TaskCreator": {
+        "type": "string",
+        "enum": ["USER", "OTTO", "EXPERT"],
+        "title": "TaskCreator"
+      },
       "TaskDecompositionResponse": {
         "properties": {
           "type": {
@@ -36742,6 +37242,61 @@
         "required": ["message", "goal", "steps"],
         "title": "TaskDecompositionResponse",
         "description": "Response for decompose_goal tool — shows the plan to the user."
+      },
+      "TaskListResponse": {
+        "properties": {
+          "tasks": {
+            "items": { "$ref": "#/components/schemas/Task" },
+            "type": "array",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": ["tasks"],
+        "title": "TaskListResponse"
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": ["TODO", "IN_PROGRESS", "DONE", "FAILED", "CANCELLED"],
+        "title": "TaskStatus"
+      },
+      "TaskUpdateRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 200, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              { "type": "string", "maxLength": 10000 },
+              { "type": "null" }
+            ],
+            "title": "Description",
+            "description": "An empty string clears the description."
+          },
+          "status": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskStatus" },
+              { "type": "null" }
+            ]
+          },
+          "owner_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Owner Expert Id"
+          },
+          "assign_to_otto": {
+            "type": "boolean",
+            "title": "Assign To Otto",
+            "description": "Clear the owner expert so Otto owns the task.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TaskUpdateRequest",
+        "description": "Fields left out, or sent as null, stay as they are."
       },
       "TeamMemberResponse": {
         "properties": {

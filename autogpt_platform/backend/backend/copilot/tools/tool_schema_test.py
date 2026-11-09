@@ -324,7 +324,12 @@ from ._test_data import make_session
 #     dev 4c59c1c4b2                              77,899 (89 tools)
 #     + task tools                    +2,528      80,427 (94 tools)
 #     + headroom                      +300        80,727
-_CHAR_BUDGET = 80_727
+# Raised again for ask_question's per-question `reason` and `default_guess`,
+# which every question needs so the card can offer "use your best guess":
+#     task tools tree                             80,427 (94 tools)
+#     + reason / default_guess        +386        80,813 (94 tools)
+#     + headroom                      +300        81,113
+_CHAR_BUDGET = 81_113
 
 
 @pytest.fixture(scope="module")
@@ -548,7 +553,11 @@ def test_total_schema_char_budget() -> None:
 #     dev 4c59c1c4b2                              70,214
 #     + task tools                    +2,213      72,427
 #     + headroom                      +300        72,727
-_SESSION_WIRE_BUDGET = 72_727
+# And for ask_question's `reason` and `default_guess`, as above:
+#     task tools tree                             72,427
+#     + reason / default_guess        +368        72,795
+#     + headroom                      +300        73,095
+_SESSION_WIRE_BUDGET = 73_095
 
 
 def test_largest_declared_session_wire_budget() -> None:

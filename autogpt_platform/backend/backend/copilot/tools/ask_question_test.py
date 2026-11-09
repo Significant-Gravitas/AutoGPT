@@ -6,12 +6,13 @@ import pytest
 
 from backend.copilot.model import ChatSession, clear_pending_question
 from backend.copilot.tools.ask_question import (
+    MAX_DEFAULT_GUESS_LENGTH,
     MAX_OPTION_LENGTH,
     MAX_OPTIONS,
     MAX_QUESTIONS,
     AskQuestionTool,
 )
-from backend.copilot.tools.models import ClarificationNeededResponse
+from backend.copilot.tools.models import QUESTION_REASONS, ClarificationNeededResponse
 
 
 @pytest.fixture()
@@ -517,3 +518,84 @@ async def test_clearing_a_session_with_no_question_touches_nothing(
         await clear_pending_question(session)
 
     db.clear_session_pending_question.assert_not_called()
+
+
+# ── Reason and default guess ─────────────────────────────────────────
+
+
+@pytest.fixture()
+def quiet_db():
+    """Stand in for the pending-question write, so these tests need no DB."""
+    with patch(
+        "backend.copilot.tools.ask_question.chat_db",
+        MagicMock(return_value=MagicMock(set_session_pending_question=AsyncMock())),
+    ):
+        yield
+
+
+@pytest.mark.asyncio
+async def test_reason_and_default_guess_reach_the_card(
+    tool: AskQuestionTool, session: ChatSession, quiet_db
+):
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[
+            {
+                "question": "Which team gets the report?",
+                "reason": " Goal_Ambiguous ",
+                "default_guess": "  The sales team  ",
+            }
+        ],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    question = result.questions[0]
+    assert question.reason == "goal_ambiguous"
+    assert question.default_guess == "The sales team"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reason, default_guess",
+    [(None, None), ("because", "   "), (7, ["x"])],
+)
+async def test_unknown_reason_and_blank_guess_read_as_missing(
+    tool: AskQuestionTool, session: ChatSession, quiet_db, reason, default_guess
+):
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[
+            {
+                "question": "Which team?",
+                "reason": reason,
+                "default_guess": default_guess,
+            }
+        ],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert result.questions[0].reason is None
+    assert result.questions[0].default_guess is None
+
+
+@pytest.mark.asyncio
+async def test_default_guess_is_capped(
+    tool: AskQuestionTool, session: ChatSession, quiet_db
+):
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[{"question": "Which team?", "default_guess": "x" * 1000}],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert result.questions[0].default_guess == "x" * MAX_DEFAULT_GUESS_LENGTH
+
+
+def test_schema_requires_a_reason_and_a_default_guess(tool: AskQuestionTool):
+    item = tool.parameters["properties"]["questions"]["items"]
+
+    assert item["required"] == ["question", "reason", "default_guess"]
+    assert set(item["properties"]["reason"]["enum"]) == set(QUESTION_REASONS)

@@ -8,7 +8,13 @@ from backend.copilot.model import ChatSession, PendingQuestion
 from backend.data.db_accessors import chat_db
 
 from .base import BaseTool
-from .models import ClarificationNeededResponse, ClarifyingQuestion, ToolResponseBase
+from .models import (
+    QUESTION_REASONS,
+    ClarificationNeededResponse,
+    ClarifyingQuestion,
+    QuestionReason,
+    ToolResponseBase,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +24,7 @@ MAX_QUESTIONS = 10
 MAX_OPTIONS = 25
 MAX_OPTION_LENGTH = 200
 MAX_OPTION_SCAN = 500
+MAX_DEFAULT_GUESS_LENGTH = 300
 
 
 class AskQuestionTool(BaseTool):
@@ -38,7 +45,8 @@ class AskQuestionTool(BaseTool):
         return (
             "Ask the user one or more clarifying questions. Use when the "
             "request is ambiguous and you need to confirm intent, choose "
-            "between options, or gather missing details before proceeding."
+            "between options, or gather missing details before proceeding. "
+            "Give each question why it blocks you and your default answer."
         )
 
     @property
@@ -78,13 +86,22 @@ class AskQuestionTool(BaseTool):
                                 "type": "string",
                                 "description": "Short label for this question.",
                             },
+                            "reason": {
+                                "type": "string",
+                                "enum": list(QUESTION_REASONS),
+                                "description": "Why you cannot go on without it.",
+                            },
+                            "default_guess": {
+                                "type": "string",
+                                "description": "Your answer if the user says guess.",
+                            },
                         },
-                        "required": ["question"],
+                        "required": ["question", "reason", "default_guess"],
                     },
                     "description": (
                         "One or more clarifying questions. Each item has "
-                        "'question' (required), 'options', 'allow_multiple' "
-                        "and 'keyword'."
+                        "'question', 'reason' and 'default_guess' (required), "
+                        "'options', 'allow_multiple' and 'keyword'."
                     ),
                 },
             },
@@ -182,7 +199,24 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
         # A free-text question has nothing to multi-select, so the flag is
         # dropped rather than sent on for the card to render a lone checkbox.
         allow_multiple=bool(options) and parse_allow_multiple(item),
+        reason=_parse_reason(item.get("reason")),
+        default_guess=_parse_default_guess(item.get("default_guess")),
     )
+
+
+def _parse_reason(raw: Any) -> QuestionReason | None:
+    """The reason code, or None when the model sent none or an unknown one."""
+    if not isinstance(raw, str):
+        return None
+    cleaned = raw.strip().lower()
+    return next((reason for reason in QUESTION_REASONS if reason == cleaned), None)
+
+
+def _parse_default_guess(raw: Any) -> str | None:
+    """The fallback answer, trimmed and capped; None when it is blank."""
+    if not isinstance(raw, str):
+        return None
+    return raw.strip()[:MAX_DEFAULT_GUESS_LENGTH] or None
 
 
 def _parse_options(raw: Any) -> list[str]:

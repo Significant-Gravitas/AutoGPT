@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, get_args
 
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
@@ -879,6 +879,18 @@ class ExpertChangeAppliedResponse(ToolResponseBase):
     handoff: ExpertHandoffOutcome | None = None
 
 
+# Why a question blocks the work. Every reason but ``preference`` means no
+# tool, card or default can answer it; a preference only matters in Ask First.
+QuestionReason = Literal[
+    "goal_ambiguous",
+    "user_only_fact",
+    "irreversible_choice",
+    "conflict",
+    "preference",
+]
+QUESTION_REASONS: tuple[QuestionReason, ...] = get_args(QuestionReason)
+
+
 # Agent generation models
 class ClarifyingQuestion(BaseModel):
     """A question that needs user clarification."""
@@ -890,6 +902,13 @@ class ClarifyingQuestion(BaseModel):
     # Several of `options` may be picked. Only ever set alongside options:
     # there is nothing to multi-select in a free-text question.
     allow_multiple: bool = False
+    reason: QuestionReason | None = Field(
+        default=None, description="Why the work cannot go on without the answer."
+    )
+    default_guess: str | None = Field(
+        default=None,
+        description="What the assistant does if the user says to use its best guess.",
+    )
 
 
 class AgentPreviewResponse(ToolResponseBase):
