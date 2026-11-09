@@ -11,6 +11,7 @@ import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
+import { resetErrorToast } from "./helpers";
 
 interface Args {
   expertId: string;
@@ -46,12 +47,8 @@ export function useResetExpertDialog({ expertId, expertName, onClose }: Args) {
         });
         onClose();
       },
-      onError: () => {
-        toast({
-          title: `Could not finish resetting ${expertName}`,
-          description: "Please try again.",
-          variant: "destructive",
-        });
+      onError: (error) => {
+        toast(resetErrorToast(error, expertName));
       },
     },
   });

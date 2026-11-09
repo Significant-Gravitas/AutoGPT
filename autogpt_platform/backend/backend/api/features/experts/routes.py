@@ -719,6 +719,7 @@ async def resume_expert_schedules(
     operation_id="reset_expert",
     responses={
         404: {"description": "Expert not found"},
+        409: {"description": "The expert has a turn running; reset once it ends"},
         503: {"description": "The reset did not finish; it is safe to retry"},
     },
 )
@@ -731,6 +732,11 @@ async def reset_expert(
         return await expert_reset.reset_expert(user_id, expert_id)
     except experts_db.ExpertNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except expert_reset.ExpertBusyError as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f"{e.expert_name} is still working. Reset once they finish.",
+        )
     except Exception as e:
         # Every step is safe to repeat, so trying again finishes the reset.
         logger.exception(f"Reset of expert #{expert_id} failed")

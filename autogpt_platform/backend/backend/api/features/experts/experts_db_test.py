@@ -7609,12 +7609,14 @@ async def test_reset_puts_a_hire_back_to_how_it_arrived(
     result = await expert_reset.reset_expert(test_user.id, expert_id)
 
     assert result.model_dump() == {
-        "memory_nodes_erased": 12,
+        # Erased first, and once more after the chats are archived.
+        "memory_nodes_erased": 24,
         "computer_erased": True,
         "soul_reset": True,
         "routines_reset": 1,
         "chats_archived": 1,
     }
+    assert reset_externals.erase.await_count == 2
     scope = reset_externals.erase.await_args.args[0]
     assert (scope.owner_user_id, scope.expert_id) == (test_user.id, expert_id)
     reset_externals.computer.assert_awaited_once_with(expert_id)
@@ -7698,3 +7700,26 @@ async def test_reset_stops_when_a_routine_job_cannot_be_deleted(
         where={"expertId": expert_id, "key": "owner-routine"}
     )
     assert [r.scheduleIds for r in kept] == [["sched-live"]]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_waits_for_a_turn_in_flight(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """A turn ending mid-reset would hand its conversation to memory
+    ingestion after the erase, so a busy expert is not reset."""
+    expert_id, _, thread = await _hire_with_history(test_user.id)
+    await prisma.models.ChatSession.prisma().update(
+        where={"id": thread},
+        data={"chatStatus": prisma.enums.ChatSessionStatus.running},
+    )
+
+    with pytest.raises(expert_reset.ExpertBusyError):
+        await expert_reset.reset_expert(test_user.id, expert_id)
+
+    reset_externals.erase.assert_not_awaited()
+    reset_externals.computer.assert_not_awaited()
+    still_open = await prisma.models.ChatSession.prisma().find_unique(
+        where={"id": thread}
+    )
+    assert still_open is not None and still_open.archivedAt is None

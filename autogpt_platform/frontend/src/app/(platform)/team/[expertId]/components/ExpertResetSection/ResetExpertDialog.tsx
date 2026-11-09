@@ -44,7 +44,8 @@ export function ResetExpertDialog({
         <div className="flex flex-col gap-4">
           <Text variant="body" tone="secondary">
             {expertName} goes back to how they were the day you hired them. This
-            can&apos;t be undone.
+            can&apos;t be undone. If {expertName} is working on something, wait
+            for them to finish first.
           </Text>
           <ResetGroup label="Erased">
             <ResetLine>Everything {expertName} remembers</ResetLine>

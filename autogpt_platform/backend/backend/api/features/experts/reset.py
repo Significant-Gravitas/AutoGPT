@@ -45,6 +45,14 @@ class ExpertResetError(Exception):
     """A step of the reset could not be completed; trying again is safe."""
 
 
+class ExpertBusyError(Exception):
+    """The expert has a turn running or queued; reset once it finishes."""
+
+    def __init__(self, expert_name: str):
+        super().__init__(f"{expert_name} is still working")
+        self.expert_name = expert_name
+
+
 class ExpertResetResult(BaseModel):
     """What one reset did."""
 
@@ -73,8 +81,13 @@ async def reset_expert(user_id: str, expert_id: str) -> ExpertResetResult:
     )
     if expert is None:
         raise ExpertNotFoundError(expert_id)
+    # A turn that ends during the reset hands its conversation to memory
+    # ingestion, which would write it back after the erase.
+    if await _has_turn_in_flight(user_id, expert_id):
+        raise ExpertBusyError(expert.name)
 
-    memory_nodes = await erase_scope(MemoryScope.for_expert(user_id, expert_id))
+    scope = MemoryScope.for_expert(user_id, expert_id)
+    memory_nodes = await erase_scope(scope)
     computer_erased = await _erase_computer(expert_id)
     template = (
         await prisma.models.Expert.prisma().find_unique(
@@ -88,6 +101,11 @@ async def reset_expert(user_id: str, expert_id: str) -> ExpertResetResult:
         await _reset_soul(expert_id, template)
         routines = await _reset_routines(user_id, expert_id, template.id)
     chats = await _archive_chats(user_id, expert_id)
+    # Again, now nothing can reach the archived chats: catches an episode
+    # whose ingestion landed while the steps above ran. One queued before the
+    # reset can still land later; closing that needs a reset generation the
+    # ingestion worker checks (follow-up on SECRT-2692).
+    memory_nodes += await erase_scope(scope)
     logger.info(
         f"Reset expert #{expert_id}: {memory_nodes} memory nodes, computer "
         f"{'erased' if computer_erased else 'untouched'}, {routines} routines, "
@@ -100,6 +118,23 @@ async def reset_expert(user_id: str, expert_id: str) -> ExpertResetResult:
         routines_reset=routines,
         chats_archived=chats,
     )
+
+
+async def _has_turn_in_flight(user_id: str, expert_id: str) -> bool:
+    busy = await prisma.models.ChatSession.prisma().count(
+        where={
+            "userId": user_id,
+            "expertId": expert_id,
+            "archivedAt": None,
+            "chatStatus": {
+                "in": [
+                    prisma.enums.ChatSessionStatus.running,
+                    prisma.enums.ChatSessionStatus.queued,
+                ]
+            },
+        }
+    )
+    return busy > 0
 
 
 async def _erase_computer(expert_id: str) -> bool:

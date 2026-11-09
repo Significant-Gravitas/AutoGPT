@@ -144,6 +144,35 @@ describe("Reset expert", () => {
     );
   });
 
+  test("asks to wait when Maria is still working", async () => {
+    server.use(
+      http.post(RESET_URL, () =>
+        HttpResponse.json(
+          { detail: "Maria is still working. Reset once they finish." },
+          { status: 409 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    render(<ExpertResetSection expert={maria} />);
+
+    await user.click(screen.getByTestId("expert-reset-button"));
+    expect(
+      (await screen.findByRole("dialog", { name: "Reset Maria?" })).textContent,
+    ).toContain("wait for them to finish first");
+    await user.click(screen.getByTestId("reset-expert-confirm"));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({
+        title: "Maria is still working",
+        description: "Reset Maria once they finish.",
+      }),
+    );
+    expect(
+      window.localStorage.getItem(kickoffStorageKey("user-1", "expert-maria")),
+    ).toBe("done:1:a");
+  });
+
   test("says so when the reset did not finish", async () => {
     server.use(
       http.post(RESET_URL, () =>

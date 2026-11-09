@@ -39,6 +39,7 @@ from backend.api.features.experts.models import (
     RaiseAttachmentFailure,
     RaiseResult,
 )
+from backend.api.features.experts import reset as expert_reset_module
 from backend.api.features.experts.reset import ExpertResetResult
 from backend.api.features.experts.routes import public_router, router
 from backend.api.features.store.skill_model import MarketplaceSkill
@@ -1683,6 +1684,21 @@ def test_reset_of_an_expert_the_user_does_not_have_is_404(
     )
 
     assert client.post("/experts/expert-1/reset").status_code == 404
+
+
+def test_reset_of_a_busy_expert_is_409(mocker: pytest_mock.MockerFixture) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.expert_reset.reset_expert",
+        new_callable=AsyncMock,
+        side_effect=expert_reset_module.ExpertBusyError("Maria"),
+    )
+
+    response = client.post("/experts/expert-1/reset")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Maria is still working. Reset once they finish."
+    )
 
 
 def test_reset_that_did_not_finish_asks_for_a_retry(
