@@ -1,0 +1,226 @@
+{
+  "models": {
+    "backend": "claude-native",
+    "otto": "claude-opus-5-5",
+    "user": "claude-sonnet-5-5",
+    "reviewers": [
+      "claude:claude-opus-5-5",
+      "cursor:grok-4.7-medium-fast"
+    ]
+  },
+  "overall": {
+    "claude:claude-opus-5-5": {
+      "cases": 250,
+      "score": 92.4,
+      "pass_rate": 82.0,
+      "partial": 36,
+      "fail": 9
+    },
+    "cursor:grok-4.7-medium-fast": {
+      "cases": 250,
+      "score": 92.5,
+      "pass_rate": 70.0,
+      "partial": 55,
+      "fail": 20
+    }
+  },
+  "categories": {
+    "approval_mode": {
+      "claude:claude-opus-5-5": {
+        "cases": 20,
+        "score": 91.8,
+        "pass_rate": 80.0,
+        "partial": 4,
+        "fail": 0
+      },
+      "cursor:grok-4.7-medium-fast": {
+        "cases": 20,
+        "score": 90.8,
+        "pass_rate": 55.0,
+        "partial": 9,
+        "fail": 0
+      }
+    },
+    "async_task": {
+      "claude:claude-opus-5-5": {
+        "cases": 45,
+        "score": 95.6,
+        "pass_rate": 97.8,
+        "partial": 1,
+        "fail": 0
+      },
+      "cursor:grok-4.7-medium-fast": {
+        "cases": 45,
+        "score": 97.6,
+        "pass_rate": 93.3,
+        "partial": 3,
+        "fail": 0
+      }
+    },
+    "chat_while_running": {
+      "claude:claude-opus-5-5": {
+        "cases": 15,
+        "score": 94.2,
+        "pass_rate": 86.7,
+        "partial": 2,
+        "fail": 0
+      },
+      "cursor:grok-4.7-medium-fast": {
+        "cases": 15,
+        "score": 94.2,
+        "pass_rate": 80.0,
+        "partial": 2,
+        "fail": 1
+      }
+    },
+    "delegation": {
+      "claude:claude-opus-5-5": {
+        "cases": 15,
+        "score": 96.7,
+        "pass_rate": 100.0,
+        "partial": 0,
+        "fail": 0
+      },
+      "cursor:grok-4.7-medium-fast": {
+        "cases": 15,
+        "score": 99.3,
+        "pass_rate": 100.0,
+        "partial": 0,
+        "fail": 0
+      }
+    },
+    "greeting": {
+      "claude:claude-opus-5-5": {
+        "cases": 15,
+        "score": 92.7,
+        "pass_rate": 80.0,
+        "partial": 3,
+        "fail": 0
+      },
+      "cursor:grok-4.7-medium-fast": {
+        "cases": 15,
+        "score": 89.7,
+        "pass_rate": 40.0,
+        "partial": 9,
+        "fail": 0
+      }
+    },
+    "injection": {
+      "claude:claude-opus-5-5": {
+        "cases": 15,
+        "score": 82.3,
+        "pass_rate": 40.0,
+        "partial": 6,
+        "fail": 3
+      },
+      "cursor:grok-4.7-medium-fast": {
+        "cases": 15,
+        "score": 79.7,
+        "pass_rate": 33.3,
+        "partial": 2,
+        "fail": 8
+      }
+    },
+    "missing_account": {
+      "claude:claude-opus-5-5": {
+        "cases": 15,
+        "score": 97.7,
+        "pass_rate": 100.0,
+        "partial": 0,
+        "fail": 0
+      },
+      "cursor:grok-4.7-medium-fast": {
+        "cases": 15,
+        "score": 99.0,
+        "pass_rate": 93.3,
+        "partial": 1,
+        "fail": 0
+      }
+    },
+    "multi_task": {
+      "claude:claude-opus-5-5": {
+        "cases": 10,
+        "score": 96.0,
+        "pass_rate": 100.0,
+        "partial": 0,
+        "fail": 0
+      },
+      "cursor:grok-4.7-medium-fast": {
+        "cases": 10,
+        "score": 99.5,
+        "pass_rate": 100.0,
+        "partial": 0,
+        "fail": 0
+      }
+    },
+    "must_ask": {
+      "claude:claude-opus-5-5": {
+        "cases": 25,
+        "score": 86.8,
+        "pass_rate": 60.0,
+        "partial": 8,
+        "fail": 2
+      },
+      "cursor:grok-4.7-medium-fast": {
+        "cases": 25,
+        "score": 85.0,
+        "pass_rate": 40.0,
+        "partial": 11,
+        "fail": 4
+      }
+    },
+    "must_not_ask": {
+      "claude:claude-opus-5-5": {
+        "cases": 30,
+        "score": 90.1,
+        "pass_rate": 76.7,
+        "partial": 5,
+        "fail": 2
+      },
+      "cursor:grok-4.7-medium-fast": {
+        "cases": 30,
+        "score": 88.9,
+        "pass_rate": 56.7,
+        "partial": 9,
+        "fail": 4
+      }
+    },
+    "simple_qa": {
+      "claude:claude-opus-5-5": {
+        "cases": 30,
+        "score": 92.5,
+        "pass_rate": 76.7,
+        "partial": 5,
+        "fail": 2
+      },
+      "cursor:grok-4.7-medium-fast": {
+        "cases": 30,
+        "score": 92.2,
+        "pass_rate": 70.0,
+        "partial": 6,
+        "fail": 3
+      }
+    },
+    "task_management": {
+      "claude:claude-opus-5-5": {
+        "cases": 15,
+        "score": 94.0,
+        "pass_rate": 86.7,
+        "partial": 2,
+        "fail": 0
+      },
+      "cursor:grok-4.7-medium-fast": {
+        "cases": 15,
+        "score": 95.3,
+        "pass_rate": 80.0,
+        "partial": 3,
+        "fail": 0
+      }
+    }
+  },
+  "tokens": {
+    "prompt": 15232786,
+    "completion": 213219
+  },
+  "seconds_per_turn": 23.5
+}
