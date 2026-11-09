@@ -219,6 +219,26 @@ async def test_a_schedule_saved_without_a_tenant_runs_in_the_default_team(
 
 
 @pytest.mark.asyncio
+async def test_a_schedule_with_only_a_team_keeps_it():
+    default_tenant = AsyncMock(return_value=("org-a", "team-a"))
+    found = await _find_graph_schedule(
+        _graph_schedule(organization_id="", team_id="team-b"),
+        default_tenant=default_tenant,
+    )
+    assert found is None
+    default_tenant.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_true_is_not_the_same_input_as_one():
+    found = await _find_graph_schedule(
+        _graph_schedule(input_data={"repo": "x", "flag": {"on": True}}),
+        inputs={"repo": "x", "flag": {"on": 1}},
+    )
+    assert found is None
+
+
+@pytest.mark.asyncio
 async def test_the_default_team_is_only_looked_up_for_an_untagged_schedule():
     default_tenant = AsyncMock(return_value=("org-a", "team-a"))
     await _find_graph_schedule(_graph_schedule(), default_tenant=default_tenant)

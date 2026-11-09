@@ -8,6 +8,7 @@ Only active schedules count: a paused one does not run, and a one-shot that
 has fired is spent, so setting the same thing up again is a real request.
 """
 
+import json
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from typing import Any
@@ -94,8 +95,9 @@ async def find_duplicate_graph_schedule(
     out the same as one given as nothing. Its name is only a label, so a
     different one doesn't make it a different schedule.
 
-    A job saved before schedules carried a tenant runs in the owner's default
-    team, so *default_tenant* is asked for that, and only when one turns up."""
+    A job saved with neither an organization nor a team runs in the owner's
+    default team, so *default_tenant* is asked for that, and only when one
+    turns up."""
     jobs = await scheduler.get_execution_schedules(
         user_id=user_id, graph_id=graph_id, kind="graph"
     )
@@ -116,7 +118,7 @@ async def find_duplicate_graph_schedule(
         if session.expert_id is not None:
             return job
         job_tenant = _tenant(job.organization_id, job.team_id)
-        if job_tenant[0] is None:
+        if job_tenant == (None, None):
             job_tenant = _tenant(*await default_tenant())
         if job_tenant == _tenant(*tenant):
             return job
@@ -138,13 +140,19 @@ def _tenant(organization_id: str | None, team_id: str | None) -> Tenant:
     return organization_id or None, team_id or None
 
 
-def _as_run_sees(inputs: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
+def _as_run_sees(inputs: dict[str, Any], defaults: dict[str, Any]) -> str:
+    """Canonical JSON, so ``True`` and ``1`` stay different the way they do
+    for the workflow, which a dict comparison would not keep."""
     merged = {**defaults, **inputs}
-    return {
-        name: value
-        for name, value in merged.items()
-        if value is not None or defaults.get(name) is not None
-    }
+    return json.dumps(
+        {
+            name: value
+            for name, value in merged.items()
+            if value is not None or defaults.get(name) is not None
+        },
+        sort_keys=True,
+        default=str,
+    )
 
 
 def _same_words(a: str | None, b: str | None) -> bool:
