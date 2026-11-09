@@ -2,6 +2,7 @@ import { getGetTrialsGetTrialStatusResponseMock200 } from "@/app/api/__generated
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { fireEvent, screen } from "@/tests/integrations/test-utils";
 
 export const trialOffer: TrialOfferResponse = {
   token: "a".repeat(64),
@@ -47,4 +48,10 @@ export function deferredTrialResponse<T>() {
     resolve = complete;
   });
   return { promise, resolve };
+}
+
+// Past the "why are you leaving" step, which the cancel flow opens on.
+export async function findCancelConfirmation() {
+  fireEvent.click(await screen.findByRole("button", { name: "Skip" }));
+  return screen.findByRole("dialog", { name: "Cancel your trial?" });
 }
