@@ -180,3 +180,22 @@ def test_only_reparse_points_that_redirect_are_refused(tag: int, redirects: bool
     from autogpt_local_executor.directory_browser import _reparse_tag_redirects
 
     assert _reparse_tag_redirects(tag) is redirects
+
+
+def test_sibling_directories_that_differ_only_in_case_get_their_own_refs() -> None:
+    """A Windows path compares without case, and refs were reused by path,
+    so in a case-sensitive folder (one WSL uses, say) `foo` got the ref
+    already minted for its sibling `Foo`, and choosing it attached the
+    chat to `Foo`."""
+    from pathlib import PureWindowsPath
+
+    from autogpt_local_executor.directory_browser import _BrowseSession
+
+    session = _BrowseSession(expires_at=0.0)
+    upper = DirectoryBrowser._add_ref(session, PureWindowsPath(r"C:\Work\Foo"), "parent")  # type: ignore[arg-type]
+    lower = DirectoryBrowser._add_ref(session, PureWindowsPath(r"C:\Work\foo"), "parent")  # type: ignore[arg-type]
+    again = DirectoryBrowser._add_ref(session, PureWindowsPath(r"C:\Work\foo"), "parent")  # type: ignore[arg-type]
+
+    assert upper != lower
+    assert again == lower
+    assert str(session.refs[lower].path) == r"C:\Work\foo"
