@@ -1057,6 +1057,38 @@ def _raise_computer_use(resp: dict, shim: "LocalPCShim | None", fallback: str) -
     )
 
 
+# The transport's own errors, which the computer-use handlers and the held-call
+# replay don't catch: the shim too busy to take the call (nothing ran), a read
+# that timed out or lost its connection on the retry too, and a reply that
+# broke the wire contract. Each is raised as a ShimComputerUseError instead.
+_COMPUTER_USE_TRANSPORT_ERRORS = (
+    TimeoutError,
+    OpUnconfirmedError,
+    ShimOverloadedError,
+    ShimProtocolError,
+)
+
+
+def _computer_use_transport_error(
+    exc: BaseException, shim: "LocalPCShim | None", details: dict[str, Any]
+) -> ShimComputerUseError:
+    if isinstance(exc, (ShimOverloadedError, OpUnconfirmedError)):
+        code = exc.code
+    elif isinstance(exc, TimeoutError):
+        code = "COMMAND_TIMEOUT"
+    else:
+        code = "INTERNAL_ERROR"
+    return ShimComputerUseError(
+        code=code,
+        message=_friendly(
+            {"code": code, "message": str(exc), "details": details},
+            shim,
+            f"{details.get('tool') or details.get('op')} failed",
+        ),
+        details=details,
+    )
+
+
 class _ComputerProxy:
     """The shim's cua-driver tools: COMPUTER_TOOLS_REQUEST lists them with
     the driver's guidance, COMPUTER_TOOL_CALL runs one. See
@@ -1074,9 +1106,14 @@ class _ComputerProxy:
         generation = self._shim._connection_generation
         if self._catalog is not None and self._catalog[0] == generation:
             return self._catalog[1]
-        resp = await self._shim._rpc(
-            "COMPUTER_TOOLS_REQUEST", {}, connection_guard=_guard
-        )
+        try:
+            resp = await self._shim._rpc(
+                "COMPUTER_TOOLS_REQUEST", {}, connection_guard=_guard
+            )
+        except _COMPUTER_USE_TRANSPORT_ERRORS as exc:
+            raise _computer_use_transport_error(
+                exc, self._shim, {"op": "COMPUTER_TOOLS_REQUEST"}
+            ) from exc
         _raise_computer_use(resp, self._shim, "COMPUTER_TOOLS_REQUEST failed")
         payload = resp.get("payload") or {}
         self._catalog = (generation, payload)
@@ -1118,6 +1155,10 @@ class _ComputerProxy:
                     extra_details={"tool": tool},
                 ),
                 details={"tool": tool, "op": exc.op},
+            ) from exc
+        except _COMPUTER_USE_TRANSPORT_ERRORS as exc:
+            raise _computer_use_transport_error(
+                exc, self._shim, {"tool": tool, "op": "COMPUTER_TOOL_CALL"}
             ) from exc
         _raise_computer_use(resp, self._shim, f"{tool} failed")
         return resp.get("payload") or {}

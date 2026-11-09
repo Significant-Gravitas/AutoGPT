@@ -957,6 +957,35 @@ class TestComputerProxy:
         assert "local_pc_computer_tools" in str(exc_info.value)
 
     @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        ("error", "code"),
+        [
+            (TimeoutError("RPC timed out (retry also failed)"), "COMMAND_TIMEOUT"),
+            (OpUnconfirmedError("COMPUTER_TOOLS_REQUEST", "id-1"), "OP_UNCONFIRMED"),
+            (ShimOverloadedError("no capacity"), "SHIM_OVERLOADED"),
+            (ShimProtocolError("unexpected reply"), "INTERNAL_ERROR"),
+        ],
+        ids=["timeout", "disconnected", "overloaded", "malformed"],
+    )
+    async def test_a_transport_failure_comes_back_as_a_computer_use_error(
+        self, error: Exception, code: str
+    ):
+        """The handlers and the held-call replay catch ShimComputerUseError
+        only, so these escaped them with no code or guidance for Otto."""
+        shim = _make_shim_with_rpc({})
+        shim._rpc = AsyncMock(side_effect=error)
+
+        with pytest.raises(ShimComputerUseError) as listing:
+            await shim.computer.tools()
+        with pytest.raises(ShimComputerUseError) as calling:
+            await shim.computer.call("click", {"element_token": "s1:2"})
+
+        assert listing.value.code == code
+        assert listing.value.details == {"op": "COMPUTER_TOOLS_REQUEST"}
+        assert calling.value.details["tool"] == "click"
+        assert calling.value.code == code
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_an_unconfirmed_call_is_never_retried(self):
         shim = _make_shim_with_send_and_wait(
             [_RpcAttemptFailed("id-call-1", "COMPUTER_TOOL_CALL", timed_out=True)]
