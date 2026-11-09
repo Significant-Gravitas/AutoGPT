@@ -665,3 +665,22 @@ class TestDrainPendingCostLogs:
 
         await drain_pending_cost_logs(timeout=2.0)
         assert finished == [1], "drain_pending_cost_logs should have awaited the task"
+
+    @pytest.mark.asyncio
+    async def test_drain_also_awaits_copilot_cost_logs(self):
+        """The copilot cost logs are drained through token_tracking."""
+        import backend.copilot.token_tracking as tt
+
+        finished = []
+
+        async def _slow():
+            await asyncio.sleep(0)
+            finished.append(1)
+
+        task = asyncio.ensure_future(_slow())
+        with tt._pending_log_tasks_lock:
+            tt._pending_log_tasks.add(task)
+        task.add_done_callback(lambda t: tt._pending_log_tasks.discard(t))
+
+        await drain_pending_cost_logs(timeout=2.0)
+        assert finished == [1], "the copilot cost log task should have been awaited"
