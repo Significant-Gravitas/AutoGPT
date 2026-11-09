@@ -56,7 +56,7 @@ export function ExpertWorkflowCard({
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex w-full flex-col overflow-hidden rounded-2xl bg-surface transition-colors smooth-shadow-ring-sm hover:bg-surface-muted"
+      className="group relative flex w-full flex-col overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm transition-colors hover:bg-surface-muted"
     >
       {libraryHref ? (
         <NextLink
@@ -88,7 +88,7 @@ export function ExpertWorkflowCard({
             </div>
           </>
         )}
-        <div className="pointer-events-auto absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100">
+        <div className="pointer-events-auto absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100">
           <ExpertWorkflowActions
             workflow={workflow}
             expertId={expertId}
@@ -101,49 +101,43 @@ export function ExpertWorkflowCard({
         </div>
       </div>
 
-      <div className="pointer-events-none relative flex flex-1 flex-col px-3 pb-3 pt-2.5">
-        <Text
-          variant="large-medium"
-          tone="primary"
-          className="line-clamp-2 hyphens-auto break-words"
-        >
-          {name}
-        </Text>
+      <div className="pointer-events-none relative flex flex-1 flex-col px-3 pt-2.5 pb-3">
+        <div className="hyphens-auto">
+          <Text
+            variant="large-medium"
+            tone="primary"
+            className="line-clamp-2 break-words"
+          >
+            {name}
+          </Text>
+        </div>
         {workflow.schedule_cron ? (
           <Text variant="small" tone="muted" className="mt-0.5">
             {safeHumanizeCronExpression(workflow.schedule_cron)}
           </Text>
         ) : null}
         {workflow.description ? (
-          <Text
-            variant="body"
-            tone="muted"
-            className="mt-1.5 line-clamp-2 leading-5"
-          >
+          <Text variant="body-md" tone="muted" className="mt-1.5 line-clamp-2">
             {workflow.description}
           </Text>
         ) : null}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {runCount !== undefined ? (
-            <Text
-              variant="body"
-              tone="muted"
-              className="flex items-center gap-1.5 leading-5"
-            >
+            <div className="flex items-center gap-1.5 text-foreground-tertiary">
               <Icon icon={Activity01Icon} size={14} className="shrink-0" />
-              {runCount} {runCount === 1 ? "run" : "runs"}
-            </Text>
+              <Text variant="body-md" tone="muted">
+                {runCount} {runCount === 1 ? "run" : "runs"}
+              </Text>
+            </div>
           ) : null}
-          <Text
-            variant="small-medium"
-            as="span"
+          <span
             className={cn(
-              "rounded-md px-2 py-0.5 ring-1 ring-inset ring-border-base/80",
+              "rounded-md px-2 py-0.5 font-sans text-caption font-medium ring-1 ring-border-base/80 ring-inset",
               status.className,
             )}
           >
             {status.label}
-          </Text>
+          </span>
         </div>
         {libraryAgent ? (
           <div className="relative z-10 mt-auto flex items-center justify-between gap-3 pt-3">

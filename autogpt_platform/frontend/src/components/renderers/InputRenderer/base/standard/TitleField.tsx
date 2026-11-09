@@ -41,23 +41,22 @@ export default function TitleField(props: TitleFieldProps) {
         <InputNodeHandle handleId={uiOptions.handleId} nodeId={nodeId} />
       )}
       <Text
-        variant={isArrayItemFlag ? "small" : "body"}
+        variant={smallText ? "body-tight" : "body"}
         id={getFieldDomId(id, registry.formContext)}
-        className={cn(
-          "line-clamp-1",
-          smallText && "text-sm text-foreground-body",
-          isInputBroken && "text-error line-through",
-        )}
+        tone={isInputBroken ? "error" : smallText ? "body" : undefined}
+        decoration={isInputBroken ? "line-through" : undefined}
+        className="line-clamp-1"
       >
         {title}
       </Text>
-      <Text variant="small" className={"mr-1 text-error"}>
+      <Text variant="small" tone="error" className="mr-1">
         {required ? "*" : null}
       </Text>
       {!isAnyOf && (
         <Text
           variant="small"
-          className={cn("ml-2", isInputBroken && "line-through", colorClass)}
+          decoration={isInputBroken ? "line-through" : undefined}
+          className={cn("ml-2", colorClass)}
           id={getFieldDomId(description_id, registry.formContext)}
         >
           ({displayType})

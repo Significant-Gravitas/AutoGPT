@@ -25,6 +25,7 @@ from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_STEP_CARD_PREFIX,
 )
+from backend.copilot.context import replaying_bound_args
 from backend.copilot.google_data_redaction import (
     is_google_call,
     is_google_output,
@@ -77,7 +78,9 @@ _RESEND = (
 def is_answer_row(message: "ChatMessage") -> bool:
     """A user row the gate wrote for an answered card, not something the user typed."""
     return bool(message.metadata) and (
-        _WAKE_KEY in message.metadata or _RESULT_KEY in message.metadata
+        _WAKE_KEY in message.metadata
+        or _RESULT_KEY in message.metadata
+        or message.metadata.get("background_task_stage") == "followup"
     )
 
 
@@ -98,6 +101,9 @@ class HeldCall(BaseModel):
     tool_name: str
     tool_call_id: str
     args: dict[str, Any]
+    # The args were resolved before the gate (file references expanded), so a
+    # replay runs them as they are instead of resolving them a second time.
+    args_bound: bool = False
     # What a rejection sets to ask for the rest of the chat; the tool when None.
     rule_key: str | None = None
     held_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -610,7 +616,8 @@ async def _run(
     user_id: str, session: ChatSession, call: HeldCall, tool: "BaseTool"
 ) -> tuple[Outcome, str]:
     # The gate finds the approval for exactly these arguments and spends it.
-    result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
+    with replaying_bound_args(call.args_bound):
+        result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
     # With the flag switched off since, the gate ran it without spending the
     # approval; spend it here so no later identical call rides on it.
     await review_store.consume(call.review_id, user_id)

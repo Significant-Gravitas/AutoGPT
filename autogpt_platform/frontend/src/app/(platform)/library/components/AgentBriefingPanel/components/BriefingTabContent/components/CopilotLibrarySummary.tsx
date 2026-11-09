@@ -42,13 +42,13 @@ export function CopilotLibrarySummary() {
       className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-separator pt-3"
       data-testid="copilot-library-summary"
     >
-      <Text variant="small" className="!text-foreground-tertiary">
+      <Text variant="small" tone="muted">
         Skills and follow-ups
       </Text>
       {showSkills ? (
         <Link
           href="/library/skills"
-          className="text-sm text-accent-strong hover:underline"
+          className="text-body text-accent-strong hover:underline"
           data-testid="copilot-library-skills-link"
         >
           {skillsCount} skill{skillsCount === 1 ? "" : "s"}
@@ -60,8 +60,7 @@ export function CopilotLibrarySummary() {
       {showFollowups ? (
         <Link
           href="/library/followups"
-          // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
-          className="text-sm text-yellow-700 hover:underline"
+          className="text-body text-yellow-foreground hover:underline"
           data-testid="copilot-library-followups-link"
         >
           {followupCount} follow-up{followupCount === 1 ? "" : "s"}

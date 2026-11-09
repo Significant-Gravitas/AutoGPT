@@ -6,15 +6,18 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import functools
+import hashlib
 import ipaddress
 import os
 import re
 import secrets
 import stat
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
+from typing import NamedTuple
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 CONFIG_VERSION = "2"
 SAFE_SECRET = re.compile(r"^[A-Za-z0-9._~-]+={0,2}$")
@@ -22,6 +25,72 @@ SAFE_USERNAME = re.compile(r"^[A-Za-z0-9._-]+$")
 SAFE_DNS_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 # A ``NAME=`` line in a .env file, i.e. a secret left blank for setup to fill.
 BLANK_ASSIGNMENT = re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)=[ \t]*\r?\n?$")
+# What Docker Compose's .env parser counts as blank: Go's unicode.IsSpace,
+# line breaks included, and BLANKS, the ones within a line.
+SPACES = "\t\n\v\f\r \x85\xa0" + "".join(
+    chr(code)
+    for code in (0x1680, *range(0x2000, 0x200B), 0x2028, 0x2029, 0x202F, 0x205F, 0x3000)
+)
+BLANKS = "\t\v\f\r \x85\xa0"
+EXPORT = re.compile(r"export[\t\n\f\r ]+")
+# A line break or other control character, which no service password carries.
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+# The escapes Docker Compose decodes in a double-quoted .env value, besides
+# octal `\0ddd`. It keeps the backslash of any other. `\$` becomes `$$`,
+# which interpolation then reads as `$`.
+ESCAPES = {
+    "a": "\a",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+    '"': '"',
+    "\\": "\\",
+    "$": "$$",
+}
+ESCAPE = re.compile(r"\\(?:[abfnrtv\"\\$]|0[0-9]{0,3})")
+# What Docker Compose substitutes in an unquoted or double-quoted .env value,
+# as compose-go's template pattern finds it: `$$` by `$`, and `$NAME` or
+# `${NAME...}` by the environment the stack starts in. A name is what Go's
+# case-insensitive `[_a-z]` takes, the Kelvin sign and the long s included. In
+# `${...}` it stands alone or is followed by `-`, `+` or `?` (each optionally
+# after `:`) and a default, alternative or message that runs to the last `}`
+# on the line; a `${` that opens no name is a template Compose refuses.
+NAME = r"[_A-Za-z\u017f\u212a][_A-Za-z0-9\u017f\u212a]*"
+TEMPLATE = re.compile(
+    r"\$(?:(?P<escaped>\$)|(?P<named>"
+    + NAME
+    + r")|\{(?:(?P<braced>"
+    + NAME
+    + r"(?::?[-+?](?P<nested>.*))?)\}|(?P<invalid>)))"
+)
+# Characters that a password can't carry into a connection string as is, or
+# that Docker Compose would read as a variable reference.
+UNSAFE_IN_URL = re.compile(r"[@/?#%$\[\]\s\"'\\`\x00-\x1f\x7f]")
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+LOCAL_DATABASE_HOSTS = LOCAL_HOSTS | {"db"}
+# Each service password's host settings in backend/.env, in the order the
+# backend reads them (it takes REDIS_CLUSTER_HOST over REDIS_HOST), and the
+# host names that mean the service the stack bundles: this machine, or its
+# Compose name. The password of a service that runs anywhere else is that
+# service's, so setup neither generates nor replaces it.
+BUNDLED_SERVICE_HOSTS = {
+    "DB_PASS": (("DB_HOST",), LOCAL_DATABASE_HOSTS),
+    "REDIS_PASSWORD": (
+        ("REDIS_CLUSTER_HOST", "REDIS_HOST"),
+        LOCAL_HOSTS | {"redis-0", "redis-1", "redis-2"},
+    ),
+    "RABBITMQ_DEFAULT_PASS": (
+        ("RABBITMQ_CLUSTER_HOST", "RABBITMQ_HOST"),
+        LOCAL_HOSTS | {"rabbitmq"},
+    ),
+    "GRAPHITI_FALKORDB_PASSWORD": (
+        ("GRAPHITI_FALKORDB_HOST",),
+        LOCAL_HOSTS | {"falkordb"},
+    ),
+}
 
 
 def main() -> int:
@@ -32,7 +101,7 @@ def main() -> int:
     ensure_parser.add_argument("--path", type=Path, required=True)
 
     fill_parser = subparsers.add_parser("fill-env")
-    fill_parser.add_argument("--path", type=Path, required=True)
+    fill_parser.add_argument("--path", type=Path, action="append", required=True)
     fill_parser.add_argument("--missing-ok", action="store_true")
 
     check_parser = subparsers.add_parser("check-env-defaults")
@@ -46,14 +115,32 @@ def main() -> int:
         if args.command == "ensure":
             ensure_runtime_config(args.path, os.environ)
         elif args.command == "fill-env":
-            if args.missing_ok and not args.path.exists():
-                return 0
-            if args.path.is_symlink():
-                print(f"{args.path}: symlink, left untouched", file=sys.stderr)
-                return 0
-            names = fill_env_blanks(args.path)
-            if names:
-                print(f"{args.path}: generated {', '.join(names)}")
+            for path in args.path:
+                if args.missing_ok and not path.exists():
+                    continue
+                if path.is_symlink():
+                    print(f"{path}: symlink, left untouched", file=sys.stderr)
+                    continue
+                names = fill_env_blanks(path)
+                generated = [
+                    name for name in names if name != FRONTEND_VAPID_PUBLIC_KEY
+                ]
+                if generated:
+                    print(f"{path}: generated {', '.join(generated)}")
+                if FRONTEND_VAPID_PUBLIC_KEY in names:
+                    print(
+                        f"{path}: cleared {FRONTEND_VAPID_PUBLIC_KEY}, which held the "
+                        "published key; the app now takes the public key from the "
+                        "backend. Rebuild the frontend if it was built with the old one."
+                    )
+                if _shell_overrides_database_password(path, os.environ):
+                    print(
+                        f"{path}: POSTGRES_PASSWORD is also set in this shell, and "
+                        "Docker Compose takes it over this file, so the database "
+                        "and the services would get that value instead. Unset it "
+                        "before `docker compose up`.",
+                        file=sys.stderr,
+                    )
         elif args.command == "check-env-defaults":
             offenders = check_env_defaults(args.root)
             for location in offenders:
@@ -76,9 +163,10 @@ def main() -> int:
 def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[str, str]:
     """Return the existing secrets or atomically create them on first boot.
 
-    A version 1 config, written before INTERNAL_API_KEY existed, gets one. It
-    is saved as the current version once it passes every check, so a boot that
-    fails them leaves the file as it was."""
+    A version 1 config, written before INTERNAL_API_KEY existed, gets one, and
+    a config whose Web Push pair is the published one gets the pair a first
+    boot would make today. Either is saved once it passes every check, so a
+    boot that fails them leaves the file as it was."""
     if path.is_symlink():
         raise ValueError(f"refusing symlink at {path}")
     if path.exists():
@@ -86,9 +174,12 @@ def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[st
         upgrade = values.get("AUTOGPT_RUNTIME_CONFIG_VERSION") == "1"
         if upgrade:
             values = _upgraded_from_version_1(values, environment)
+        rotated = _with_a_published_vapid_pair_replaced(values, environment)
+        if rotated is not None:
+            values = rotated
         _validate_values(values)
         _verify_environment_matches(values, environment)
-        if upgrade:
+        if upgrade or rotated is not None:
             _write_config(path, values)
         path.chmod(0o600)
         return values
@@ -102,28 +193,559 @@ def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[st
 def fill_env_blanks(path: Path) -> list[str]:
     """Give every blank secret in a .env file a freshly generated value.
 
-    Idempotent by construction: only ``NAME=`` lines with nothing after the
-    ``=`` are touched, so re-running setup never rotates a value an operator
-    (or an earlier run) already put there. Returns the names that were filled.
+    Idempotent by construction: re-running setup never rotates a value an
+    operator (or an earlier run) already put there. Passwords of the stack's
+    own services (`CREDENTIALS`) go further, because each service reads its
+    password from these files whenever it starts, so a new one costs only a
+    restart: one the file's .env.default declares is added if the file predates
+    it, and one that still holds a published value is replaced. That holds for
+    the services the stack bundles only: a password for a service backend/.env
+    points at another host is that service's, and stays as it is. The database
+    password lives in three files and is filled from one value. The file is
+    read the way Docker Compose reads it, and only values change in it.
+    Returns the names that were given a value.
     """
     if path.is_symlink():
         raise ValueError(f"refusing symlink at {path}")
-    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    text = _read(path)
+    settings = _parse_settings(path, text)
+    _check_passwords_are_plain(path, settings)
+    database_password = functools.lru_cache(maxsize=None)(
+        lambda: _shared_database_password(path)
+    )
+
+    vapid_keypair = functools.lru_cache(maxsize=None)(_generate_vapid_keypair)
 
     filled: list[str] = []
-    for index, line in enumerate(lines):
-        match = BLANK_ASSIGNMENT.match(line)
-        if match is None:
-            continue
-        generator = SECRET_GENERATORS.get(match.group("name"))
-        if generator is None:
-            continue
-        lines[index] = f"{match.group('name')}={generator()}\n"
-        filled.append(match.group("name"))
+    replacements: list[tuple[Setting, str]] = []
+    for setting in settings:
+        value = _new_value(setting, text, path, database_password, vapid_keypair)
+        if value is not None:
+            replacements.append((setting, value))
+            filled.append(setting.name)
+    # From the end, so each value's offsets still hold when its turn comes.
+    for setting, value in reversed(replacements):
+        text = text[: setting.start] + value + text[setting.end :]
 
+    added: list[tuple[str, str]] = []
+    for name in _missing_credentials(path, {setting.name for setting in settings}):
+        value = _new_value(
+            Setting(name, "", True, 0, 0), "", path, database_password, vapid_keypair
+        )
+        if value is not None:
+            added.append((name, value))
+    if added:
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += "# Generated for this install by `make init-env`.\n"
+        text += "".join(f"{name}={value}\n" for name, value in added)
+        filled.extend(name for name, _ in added)
+
+    if path.parent.name not in ("backend", "frontend"):
+        # Compose puts this one into every connection string as it is.
+        password = _effective(_parse_settings(path, text)).get("POSTGRES_PASSWORD")
+        _check_database_password(password.value if password else "")
     if filled:
-        _replace_atomically(path, "".join(lines))
+        _replace_atomically(path, text)
     return filled
+
+
+def _shell_overrides_database_password(
+    path: Path, environment: Mapping[str, str]
+) -> bool:
+    """Whether Docker Compose, started from `environment`, would put that
+    environment's POSTGRES_PASSWORD in place of the one in `path`, the stack's
+    own .env: Compose takes a variable the shell sets over that file."""
+    if path.parent.name in ("backend", "frontend"):
+        return False
+    if "POSTGRES_PASSWORD" not in environment:
+        return False
+    setting = _file_settings(path).get("POSTGRES_PASSWORD")
+    return setting is None or setting.value != environment["POSTGRES_PASSWORD"]
+
+
+def _check_passwords_are_plain(path: Path, settings: list[Setting]) -> None:
+    """Refuse a service password Docker Compose works out only when the stack
+    starts, from an environment this can't see (`$NAME`, `${NAME}`, or the
+    name alone on a line), so it could come out blank or short, and one with a
+    line break or other control character, which no service can take."""
+    effective = _effective(settings)
+    for name in sorted(CREDENTIALS - {"DATABASE_URL"}):
+        setting = effective.get(name)
+        if setting is None or (setting.literal and not CONTROL.search(setting.value)):
+            continue
+        if name in BUNDLED_SERVICE_HOSTS and not _uses_bundled_service(name, effective):
+            continue  # The password of a service of the backend's own.
+        raise ValueError(
+            f"{name} in {path} is not a plain value: Docker Compose takes it "
+            "from the environment when the stack starts (a $ reference, or the "
+            "name alone on a line), so it could come out blank or short, or it "
+            "has a line break or other control character. Write the password "
+            "itself (in single quotes if it has a $ in it), or clear it and run "
+            "this again to generate one."
+        )
+
+
+def _new_value(
+    setting: Setting,
+    text: str,
+    path: Path,
+    database_password: Callable[[], str],
+    vapid_keypair: Callable[[], tuple[str, str]],
+) -> str | None:
+    """What `fill_env_blanks` writes in place of a setting's value as written,
+    or None to keep it."""
+    name, value = setting.name, setting.value
+    if not setting.literal:
+        return None
+    if name in ("DATABASE_URL", "DIRECT_URL"):
+        written = text[setting.start : setting.end]
+        return _database_url(written, value, path, database_password)
+    if name in VAPID_KEY_SETTINGS:
+        return _vapid_value(name, path, vapid_keypair)
+    if name == FRONTEND_VAPID_PUBLIC_KEY:
+        # The app takes this over the backend's key, so the published one
+        # would keep browsers subscribing under a pair the backend no longer
+        # signs with. Blank, the app fetches the backend's current key.
+        return "" if _is_published_vapid_key(value) else None
+    if name in BUNDLED_SERVICE_HOSTS and not _uses_bundled_service(
+        name, _file_settings(path)
+    ):
+        return None  # The password of a service of the backend's own.
+    if name in DATABASE_PASSWORD_SETTINGS:
+        return database_password() if _is_unset(value) else None
+    generator = SECRET_GENERATORS.get(name)
+    if generator is None:
+        return None
+    if not value or (name in CREDENTIALS and _is_published(value)):
+        return generator()
+    return None
+
+
+def _vapid_value(
+    name: str, path: Path, vapid_keypair: Callable[[], tuple[str, str]]
+) -> str | None:
+    """The Web Push key pair is filled as one: a blank or published pair gets a
+    freshly generated private key and the public key that belongs to it. A
+    pair with one side set and the other blank can't be completed (the public
+    key is derived from the private one, never the reverse), so it is refused
+    rather than half-filled. Nothing stored depends on the pair, so replacing
+    a published one costs only the browsers' push subscriptions."""
+    effective = _file_settings(path)
+    # A bare name or a `$NAME` reference is Compose's to fill in from the
+    # environment when the stack starts, so it counts as set, not blank.
+    unset = [
+        setting is None or (setting.literal and _is_unset_vapid_key(setting.value))
+        for setting in (effective.get(key) for key in VAPID_KEY_SETTINGS)
+    ]
+    if not any(unset):
+        _refuse_a_mismatched_vapid_pair(effective, path)
+        return None
+    if not all(unset):
+        raise ValueError(
+            f"VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY in {path} must be set "
+            "together: one is set and the other is blank (or the published "
+            "value). Clear both and run this again to generate a pair, or set "
+            "both from one pair you generated."
+        )
+    return vapid_keypair()[VAPID_KEY_SETTINGS.index(name)]
+
+
+def _refuse_a_mismatched_vapid_pair(
+    effective: Mapping[str, Setting], path: Path
+) -> None:
+    """A kept pair has to be one: browsers subscribe under the public key and
+    the backend signs with the private one, and every push service rejects a
+    push whose keys don't belong together, so `make init-env` names that
+    rather than keeping it, as the single container does on boot. A private
+    key that isn't a raw scalar (py-vapid reads a DER key too) is the
+    backend's to load, and a `$NAME` reference is Compose's to fill in when
+    the stack starts, from an environment this can't see."""
+    private, public = (effective[name] for name in VAPID_KEY_SETTINGS)
+    if not (private.literal and public.literal):
+        return
+    scalar = _raw_vapid_scalar(private.value)
+    if scalar is None:
+        return
+    if not 0 < scalar < _P256_N:
+        raise ValueError(
+            f"VAPID_PRIVATE_KEY in {path} is not a P-256 private key. Clear "
+            "both VAPID keys and run this again to generate a pair, or set "
+            "both from one pair you generated."
+        )
+    if _base64url(_p256_public_point(scalar)) != _canonical_vapid_key(public.value):
+        raise ValueError(
+            f"VAPID_PUBLIC_KEY in {path} is not the public key of "
+            "VAPID_PRIVATE_KEY. Clear both and run this again to generate a "
+            "pair, or set both from one pair you generated."
+        )
+
+
+def _is_unset_vapid_key(value: str) -> bool:
+    return not value or _is_published_vapid_key(value)
+
+
+def _is_published_vapid_key(value: str) -> bool:
+    """Whether a Web Push key is one this repository published, however it is
+    spelled: py-vapid drops newlines, restores Base64 padding and takes the
+    standard alphabet too, and a decoder ignores the unused bits of the last
+    character, so every spelling that decodes to the published bytes is the
+    published key."""
+    return _vapid_key_digest(value) in PUBLISHED_VAPID_DIGESTS
+
+
+def _vapid_key_digest(value: str) -> str:
+    return hashlib.sha256(_canonical_vapid_key(value).encode()).hexdigest()
+
+
+_URLSAFE_TO_STANDARD = str.maketrans("-_", "+/")
+
+
+def _canonical_vapid_key(value: str) -> str:
+    """The unpadded Base64url spelling of the bytes `value` decodes to, or
+    `value` without whitespace and padding when it does not decode. A copy
+    of `backend/util/secrets_guard.py`'s, which the package boundary keeps
+    apart; the pinned-spelling test in each suite holds the two in step."""
+    compact = "".join(value.split()).rstrip("=")
+    try:
+        decoded = base64.b64decode(
+            compact.translate(_URLSAFE_TO_STANDARD) + "=" * (-len(compact) % 4),
+            validate=True,
+        )
+    except (ValueError, binascii.Error):
+        return compact
+    return _base64url(decoded)
+
+
+def _database_url(
+    written: str, value: str, path: Path, database_password: Callable[[], str]
+) -> str | None:
+    """frontend/.env's blank DATABASE_URL, or a connection string to the local
+    database that still carries a published password, pointed at the shared
+    database password. Only the password changes; quotes and the rest of the
+    value stay as they were written."""
+    if not value:
+        if path.parent.name != "frontend":
+            return None
+        return FRONTEND_DATABASE_URL.format(
+            password=quote(database_password(), safe="")
+        )
+    password, host = _password_and_host(value)
+    if (
+        password is None
+        or not _is_local_host(host)
+        or not _is_published(unquote(password))
+    ):
+        return None
+    published = f":{password}@"
+    if published not in written:
+        return None
+    new = quote(database_password(), safe="")
+    return written.lstrip(BLANKS).replace(published, f":{new}@", 1)
+
+
+def _shared_database_password(path: Path) -> str:
+    password = (
+        _existing_database_password(path) or SECRET_GENERATORS["POSTGRES_PASSWORD"]()
+    )
+    _check_database_password(password)
+    return password
+
+
+def _existing_database_password(path: Path) -> str | None:
+    """The database password another of the platform's .env files already
+    holds, so a blank or published copy takes it instead of a new value."""
+    parent = path.parent
+    root = parent.parent if parent.name in ("backend", "frontend") else parent
+    for value in _database_password_copies(root):
+        if not _is_unset(value):
+            return value
+    return None
+
+
+def _database_password_copies(root: Path) -> Iterator[str]:
+    """The bundled database's password as each .env file holds it. backend/.env
+    and frontend/.env count only while they point at the bundled database: a
+    database of their own has a password that is not ours to copy. Neither
+    does a value Compose works out only when the stack starts."""
+    backend = _file_settings(root / "backend" / ".env")
+    copies = [_file_settings(root / ".env").get("POSTGRES_PASSWORD")]
+    if _uses_bundled_service("DB_PASS", backend):
+        copies.append(backend.get("DB_PASS"))
+    for setting in copies:
+        if setting is not None and setting.literal:
+            yield setting.value
+    url = _file_settings(root / "frontend" / ".env").get("DATABASE_URL")
+    if url is not None and url.literal:
+        password, host = _password_and_host(url.value)
+        if password is not None and _is_local_host(host):
+            yield unquote(password)
+
+
+def _check_database_password(password: str) -> None:
+    if UNSAFE_IN_URL.search(password):
+        raise ValueError(
+            "the database password in autogpt_platform/.env, backend/.env or "
+            "frontend/.env has a character a connection string can't carry as "
+            "is (@ / ? # % $, a quote, a backslash, a space or a control "
+            "character). Change it in all three to letters, digits, -, _, . "
+            "and ~, or clear all three and run this again to generate one."
+        )
+
+
+def _uses_bundled_service(name: str, settings: Mapping[str, Setting]) -> bool:
+    """Whether backend/.env, as Compose reads it, points the service that
+    password `name` logs in to at the one the stack bundles. The first of its
+    host settings with a value decides, as in the backend; with none, it is
+    the bundled one, the backend's default. A host Compose works out only when
+    the stack starts does not count as that."""
+    host_settings, bundled_hosts = BUNDLED_SERVICE_HOSTS[name]
+    for host_setting in host_settings:
+        host = settings.get(host_setting)
+        if host is None or (host.literal and not host.value):
+            continue
+        return host.literal and host.value.lower().rstrip(".") in bundled_hosts
+    return True
+
+
+def _password_and_host(url: str) -> tuple[str | None, str | None]:
+    """A connection string's password, still percent-encoded, and its host;
+    Nones for one urllib can't take apart."""
+    try:
+        parts = urlsplit(url)
+        return parts.password, parts.hostname
+    except ValueError:
+        return None, None
+
+
+def _is_local_host(host: str | None) -> bool:
+    return not host or host.lower().rstrip(".") in LOCAL_DATABASE_HOSTS
+
+
+class Setting(NamedTuple):
+    """A `NAME=value` statement of a .env file, as Docker Compose reads it."""
+
+    name: str
+    # Its value, with any `$` reference left as written.
+    value: str
+    # False if Compose works the value out only when the stack starts: it
+    # fills in a `$NAME` or `${NAME}`, or the name stands alone on a line.
+    literal: bool
+    # Where the value as written begins, just after the `=`, and ends: after
+    # the closing quote, or before an unquoted value's ` # comment`.
+    start: int
+    end: int
+
+
+def _file_settings(path: Path) -> dict[str, Setting]:
+    """What Compose takes from a .env file: the last setting of each name. A
+    symlinked file is read, although `fill_env_blanks` never writes through
+    one."""
+    if not path.is_file():
+        return {}
+    return _effective(_parse_settings(path, _read(path)))
+
+
+def _read(path: Path) -> str:
+    """A .env file byte for byte, line endings included, as Compose reads it."""
+    return path.read_bytes().decode("utf-8")
+
+
+def _parse_settings(path: Path, text: str) -> list[Setting]:
+    try:
+        return _settings(text)
+    except ValueError as exc:
+        raise ValueError(f"Docker Compose can't read {path}: {exc}") from None
+
+
+def _effective(settings: list[Setting]) -> dict[str, Setting]:
+    """Of several settings of one name, Compose takes the last."""
+    return {setting.name: setting for setting in settings}
+
+
+def _settings(text: str) -> list[Setting]:
+    """The statements of a .env file, read as Docker Compose reads the whole
+    file: past a byte-order mark, blank lines and `#` lines; a name, indented
+    or after `export `, then `=` or `:`; a quoted value that may run on over
+    lines, and may have another statement after it on the same line; a name
+    alone on a line, which takes the environment's value. Raises ValueError
+    where Compose refuses the file."""
+    settings: list[Setting] = []
+    position = 1 if text.startswith("\ufeff") else 0
+    while (position := _statement_start(text, position)) < len(text):
+        if EXPORT.match(text, position):
+            position += len("export")
+            while position < len(text) and text[position] in BLANKS:
+                position += 1
+        name_start = position
+        while position < len(text) and text[position] not in "=:\n":
+            character = text[position]
+            if not (character in BLANKS or character in "_.-[]" or character.isalnum()):
+                raise ValueError(f"unexpected character {character!r} in a name")
+            position += 1
+        if position == len(text):
+            break  # Compose files the last word of a file under no name.
+        name = text[name_start:position].rstrip(SPACES)
+        if " " in name:
+            raise ValueError(f"a name with a space in it: {name!r}")
+        separator = text[position]
+        position += 1
+        if separator == "\n":
+            settings.append(Setting(name, "", False, position - 1, position - 1))
+            continue
+        start = position
+        while position < len(text) and text[position] in BLANKS:
+            if text.startswith("\r\n", position):
+                break  # Blank to Compose too, but it ends the line: leave it be.
+            position += 1
+        value, literal, end, position = _value(text, position)
+        settings.append(Setting(name, value, literal, start, end))
+    return settings
+
+
+def _statement_start(text: str, position: int) -> int:
+    """Where the next statement begins: past blanks, line breaks and `#` lines."""
+    while True:
+        while position < len(text) and text[position] in SPACES:
+            position += 1
+        if position >= len(text) or text[position] != "#":
+            return position
+        line_end = text.find("\n", position)
+        position = len(text) if line_end == -1 else line_end
+
+
+def _value(text: str, position: int) -> tuple[str, bool, int, int]:
+    """The value at `position`: what Compose takes, whether it is literal (see
+    `Setting`), where it ends as written, and where the next statement may
+    begin. Single-quoted values are literal, and a backslash escapes only the
+    quote. Double-quoted values decode `\\n`, `\\t`, `\\"`, `\\\\`, `\\$` and the
+    like, then are interpolated, as are unquoted ones, which end at ` #`."""
+    quote_character = text[position : position + 1]
+    if quote_character not in ("'", '"'):
+        line_end = text.find("\n", position)
+        line_end = len(text) if line_end == -1 else line_end
+        written = text[position:line_end].split(" #", 1)[0].rstrip(SPACES)
+        value, literal = _interpolate(written)
+        return value, literal, position + len(written), min(line_end + 1, len(text))
+    characters: list[str] = []
+    escaped = False
+    for index in range(position + 1, len(text)):
+        character = text[index]
+        if character == quote_character and not escaped:
+            value = "".join(characters)
+            if quote_character == "'":
+                return value, True, index + 1, index + 1
+            value, literal = _interpolate(ESCAPE.sub(_unescape, value))
+            return value, literal, index + 1, index + 1
+        if character == quote_character:
+            characters.append(character)
+        elif escaped:
+            characters.append("\\" + character)
+        elif character == "\\":
+            escaped = True
+            continue
+        else:
+            characters.append(character)
+        escaped = False
+    raise ValueError("a quoted value with no closing quote")
+
+
+def _unescape(match: re.Match[str]) -> str:
+    """One escape, as Compose decodes it with Go's strconv.UnquoteChar after
+    turning `\\0ddd` into `\\ddd`: an octal one needs all three digits."""
+    escape = match.group(0)
+    if escape[1] != "0":
+        return ESCAPES[escape[1]]
+    digits = escape[2:]
+    if len(digits) == 3 and set(digits) <= set("01234567") and int(digits, 8) < 256:
+        return chr(int(digits, 8))
+    return "\\" + digits
+
+
+def _interpolate(value: str) -> tuple[str, bool]:
+    """`value` with each `$$` read as `$`, and False if anything else in it
+    is one of Compose's variable references. Raises ValueError for a `${`
+    Compose can't read, which makes it refuse the whole file."""
+    _check_templates(value)
+    literal = True
+
+    def substitute(match: re.Match[str]) -> str:
+        nonlocal literal
+        if match.group("escaped"):
+            return "$"
+        literal = False
+        return match.group(0)
+
+    return TEMPLATE.sub(substitute, value), literal
+
+
+def _check_templates(text: str) -> None:
+    """Raise ValueError for a template in `text` that compose-go's
+    template.Substitute refuses, read step for step as it reads them: a
+    `${...}` is cut at the `}` that closes it, or runs to the last `}` on its
+    line if none does, and its default, alternative or message is read the
+    same way, like whatever follows the cut. Compose reads a default only
+    when the environment calls for it; this reads every one, so it can refuse
+    a template Compose would read, never the other way round."""
+    for match in TEMPLATE.finditer(text):
+        if match.group("escaped") or match.group("named"):
+            continue
+        template = match.group(0)
+        close = _closing_brace(template)
+        if close >= 0:
+            _check_templates(template[close + 1 :])
+            template = template[: close + 1]
+        braced = TEMPLATE.match(template)
+        if braced is None or braced.group("braced") is None:
+            raise ValueError("a ${ that starts no variable it can read")
+        if braced.group("nested"):
+            _check_templates(braced.group("nested"))
+
+
+def _closing_brace(template: str) -> int:
+    """Where compose-go's getFirstBraceClosingIndex puts the end of the
+    template: the `}` that leaves no brace open, where every `{` opens one
+    and the character after it is skipped; -1 if no `}` does."""
+    depth = 0
+    index = 0
+    while index < len(template):
+        if template[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+        if template[index] == "{":
+            depth += 1
+            index += 1
+        index += 1
+    return -1
+
+
+def _missing_credentials(path: Path, assigned: set[str]) -> list[str]:
+    """Credentials, and the Web Push key pair, the file's .env.default leaves
+    for setup to fill that the file has no line for, typically because it was
+    copied before they existed. Without them the services would fall back to a
+    blank .env.default value."""
+    defaults = path.with_name(".env.default")
+    if path.name == defaults.name or not defaults.is_file():
+        return []
+    names = [
+        match.group("name")
+        for line in defaults.read_text(encoding="utf-8").splitlines(keepends=True)
+        if (match := BLANK_ASSIGNMENT.match(line)) is not None
+    ]
+    return [
+        name
+        for name in names
+        if (name in CREDENTIALS or name in VAPID_KEY_SETTINGS) and name not in assigned
+    ]
+
+
+def _is_unset(value: str) -> bool:
+    return not value or _is_published(value)
+
+
+def _is_published(value: str) -> bool:
+    return hashlib.sha256(value.encode()).hexdigest() in PUBLISHED_CREDENTIAL_DIGESTS
 
 
 def check_env_defaults(root: Path) -> list[str]:
@@ -145,7 +767,7 @@ def _replace_atomically(path: Path, content: str) -> None:
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as stream:
             stream.write(content)
         os.replace(temporary, path)
     except BaseException:
@@ -236,6 +858,20 @@ def _upgraded_from_version_1(
     }
 
 
+def _with_a_published_vapid_pair_replaced(
+    values: dict[str, str], environment: Mapping[str, str]
+) -> dict[str, str] | None:
+    """A config whose persisted Web Push pair is the published one, with the
+    pair a first boot would make today in its place: the environment's own,
+    or a generated one. An earlier release persisted whatever pair the
+    environment gave it, the published one included, and the backend sends
+    no push with that pair. None when the persisted pair is anyone else's."""
+    if not _is_published_vapid_key(values.get("VAPID_PRIVATE_KEY", "")):
+        return None
+    private, public = _configured_or_generated_vapid(environment)
+    return {**values, "VAPID_PRIVATE_KEY": private, "VAPID_PUBLIC_KEY": public}
+
+
 def _configured_or_generated_vapid(
     environment: Mapping[str, str],
 ) -> tuple[str, str]:
@@ -243,14 +879,64 @@ def _configured_or_generated_vapid(
     public = environment.get("VAPID_PUBLIC_KEY")
     if bool(private) != bool(public):
         raise ValueError("VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY must be set together")
-    return (private, public) if private and public else _generate_vapid_keypair()
+    if not private or not public:
+        return _generate_vapid_keypair()
+    if _is_published_vapid_key(private) != _is_published_vapid_key(public):
+        # Replacing the published half would drop the other, which every
+        # later boot would then read as a changed value and refuse.
+        raise ValueError(
+            "VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY must be set together: one "
+            "is the published key and the other is not; set both from one "
+            "generated pair, or clear both"
+        )
+    if _is_published_vapid_key(private):
+        return _generate_vapid_keypair()
+    expected = _public_key_for(private)
+    if expected is not None and expected != _canonical_vapid_key(public):
+        # Subscriptions would be taken under one key and pushes signed with
+        # another, and every push service would reject them.
+        raise ValueError(
+            "VAPID_PUBLIC_KEY is not the public key of VAPID_PRIVATE_KEY; set "
+            "both from one generated pair"
+        )
+    return private, public
+
+
+def _public_key_for(private: str) -> str | None:
+    """The Base64url public key of a raw P-256 private key, in any spelling
+    py-vapid reads, or None when `private` is not one, which whoever asked
+    reports in its own words."""
+    scalar = _raw_vapid_scalar(private)
+    if scalar is None or not 0 < scalar < _P256_N:
+        return None
+    return _base64url(_p256_public_point(scalar))
+
+
+def _raw_vapid_scalar(private: str) -> int | None:
+    """The number a raw (32-byte) private key spells, however it is spelled,
+    or None for anything else."""
+    try:
+        raw = _decode_base64url(_canonical_vapid_key(private))
+    except ValueError:
+        return None
+    return int.from_bytes(raw, "big") if len(raw) == 32 else None
 
 
 def _generate_vapid_keypair() -> tuple[str, str]:
+    """A fresh P-256 key pair in the form Web Push takes: the raw 32-byte
+    private scalar and the 65-byte uncompressed public point, base64url."""
+    private, public = _generate_p256_keypair()
+    return _base64url(private), _base64url(public)
+
+
+def _generate_p256_keypair() -> tuple[bytes, bytes]:
     try:
         from cryptography.hazmat.primitives.asymmetric import ec
-    except ImportError as exc:
-        raise ValueError("cryptography is required to generate VAPID keys") from exc
+    except ImportError:
+        # `make init-env` runs this under the system interpreter, which has
+        # no `cryptography`; the single-container image always has it.
+        scalar = secrets.randbelow(_P256_N - 1) + 1
+        return scalar.to_bytes(32, "big"), _p256_public_point(scalar)
 
     key = ec.generate_private_key(ec.SECP256R1())
     numbers = key.private_numbers()
@@ -261,7 +947,62 @@ def _generate_vapid_keypair() -> tuple[str, str]:
         + public_numbers.x.to_bytes(32, "big")
         + public_numbers.y.to_bytes(32, "big")
     )
-    return _base64url(private), _base64url(public)
+    return private, public
+
+
+# NIST P-256 (secp256r1), the curve Web Push (RFC 8292) signs with. Only key
+# generation is done here, once per install, so plain affine arithmetic
+# with no constant-time concern is enough.
+_P256_P = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF
+_P256_A = _P256_P - 3
+_P256_N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+_P256_G = (
+    0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296,
+    0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5,
+)
+
+
+def _p256_public_point(scalar: int) -> bytes:
+    """The uncompressed public point for a private scalar, as X9.62 bytes."""
+    point = _p256_multiply(scalar, _P256_G)
+    if point is None:
+        raise ValueError("P-256 scalar out of range")
+    x, y = point
+    return b"\x04" + x.to_bytes(32, "big") + y.to_bytes(32, "big")
+
+
+def _p256_multiply(
+    scalar: int, point: tuple[int, int] | None
+) -> tuple[int, int] | None:
+    result = None
+    addend = point
+    while scalar:
+        if scalar & 1:
+            result = _p256_add(result, addend)
+        addend = _p256_add(addend, addend)
+        scalar >>= 1
+    return result
+
+
+def _p256_add(
+    first: tuple[int, int] | None, second: tuple[int, int] | None
+) -> tuple[int, int] | None:
+    if first is None:
+        return second
+    if second is None:
+        return first
+    x1, y1 = first
+    x2, y2 = second
+    if x1 == x2 and (y1 + y2) % _P256_P == 0:
+        return None
+    if first == second:
+        slope = (3 * x1 * x1 + _P256_A) * pow(2 * y1, -1, _P256_P)
+    else:
+        slope = (y2 - y1) * pow(x2 - x1, -1, _P256_P)
+    slope %= _P256_P
+    x3 = (slope * slope - x1 - x2) % _P256_P
+    y3 = (slope * (x1 - x3) - y1) % _P256_P
+    return x3, y3
 
 
 def _fernet_key() -> str:
@@ -282,17 +1023,86 @@ SECRET_GENERATORS: dict[str, Callable[[], str]] = {
     "INTERNAL_API_KEY": lambda: secrets.token_urlsafe(32),
 }
 
+# Passwords of the stack's own services. Each service takes its password from
+# the .env files whenever it starts (the database's is applied on every boot by
+# db/entrypoint.sh), so `fill-env` may add one or replace a published one: a
+# restart is all it costs. Keys that encrypt or sign stored data are never
+# replaced, since data written under the old key would become unreadable.
+CREDENTIALS = frozenset(
+    {
+        "POSTGRES_PASSWORD",
+        "DB_PASS",
+        "DATABASE_URL",
+        "RABBITMQ_DEFAULT_PASS",
+        "REDIS_PASSWORD",
+        "GRAPHITI_FALKORDB_PASSWORD",
+    }
+)
+
+# The database password: POSTGRES_PASSWORD in autogpt_platform/.env, which
+# Compose gives the `db` service and every service's connection string, and its
+# copies for running outside Docker, DB_PASS in backend/.env and the password
+# in frontend/.env's DATABASE_URL. They are filled from one value.
+DATABASE_PASSWORD_SETTINGS = ("POSTGRES_PASSWORD", "DB_PASS")
+FRONTEND_DATABASE_URL = "postgresql://postgres:{password}@localhost:5432/postgres"
+
+# SHA-256 of every value the public .env.default and .env.example files have
+# given a credential. They are published, so `fill-env` treats them as blank.
+# Re-derive one from git history rather than writing the value down, e.g.
+#   git log -p -- autogpt_platform/backend/.env.default | grep '^+DB_PASS='
+PUBLISHED_CREDENTIAL_DIGESTS = frozenset(
+    {
+        "53d3eb3d9500cdcdbbe39c030eb2959438bcc459d5de9380db2a3c85b5de5360",  # pragma: allowlist secret
+        "9b8769a4a742959a2d0298c36fb70623f2dfacda8436237df08d8dfd5b37374c",  # pragma: allowlist secret
+        "e4b879cfddda5d56e0d4c5b1ec46e605159469234adbabc5c5bcf2ebce5755cd",  # pragma: allowlist secret
+        "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",  # pragma: allowlist secret
+        "d417f13ced355a54a9444aed43c7ba4f47a81c0c07b8fedf3207cc876bcb8db3",  # pragma: allowlist secret
+    }
+)
+
+# The Web Push (VAPID) signing key pair in backend/.env. `fill-env` fills the
+# two as one, from a single generated key, and a published pair counts as
+# blank: the pair signs nothing that is stored, so replacing it costs only
+# the browsers' push subscriptions. frontend/.env's copy of the public key
+# is cleared when it is the published one and otherwise left alone: blank,
+# the app fetches the public key from the backend.
+VAPID_KEY_SETTINGS = ("VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY")
+FRONTEND_VAPID_PUBLIC_KEY = "NEXT_PUBLIC_VAPID_PUBLIC_KEY"
+
+# SHA-256 of the private and public key backend/.env.default shipped from
+# #12723 (2026-04-29) until the pair was retired. Re-derive from git history:
+#   git log -p -- autogpt_platform/backend/.env.default | grep '^+VAPID_'
+PUBLISHED_VAPID_DIGESTS = frozenset(
+    {
+        "9c17b969b0d1d745c4fea96adce535472a5ce3c39dc1339905692c2177c950d5",  # pragma: allowlist secret
+        "e43d052ec7d9be1b083d4843020f8c468cd65c67479c325ff3799531a7bbeaab",  # pragma: allowlist secret
+    }
+)
+
 # Secrets already retired from the public .env.default files (SECRT-2611).
 # `check-env-defaults` keeps them blank: entropy scanners do not reliably catch
 # a freshly generated key pasted back into one of these lines, so the invariant
 # is asserted directly. Paths are relative to autogpt_platform/.
 BLANK_IN_ENV_DEFAULT: dict[str, tuple[str, ...]] = {
+    ".env.default": ("POSTGRES_PASSWORD",),
     "backend/.env.default": (
+        "DB_PASS",
+        "RABBITMQ_DEFAULT_PASS",
+        "REDIS_PASSWORD",
         "ENCRYPTION_KEY",
         "UNSUBSCRIBE_SECRET_KEY",
         "INTERNAL_API_KEY",
+        "GRAPHITI_FALKORDB_PASSWORD",
+        *VAPID_KEY_SETTINGS,
     ),
-    "frontend/.env.default": ("BETTER_AUTH_SECRET",),
+    # The frontend's copy of the public key stays blank by design: the app
+    # fetches the backend's key, and setup clears a published value rather
+    # than filling one in.
+    "frontend/.env.default": (
+        "BETTER_AUTH_SECRET",
+        "DATABASE_URL",
+        FRONTEND_VAPID_PUBLIC_KEY,
+    ),
 }
 
 
@@ -340,6 +1150,8 @@ def _validate_values(values: dict[str, str]) -> None:
     vapid_public = _decode_base64url(values["VAPID_PUBLIC_KEY"])
     if len(vapid_private) != 32:
         raise ValueError("VAPID_PRIVATE_KEY must decode to exactly 32 bytes")
+    if not 0 < int.from_bytes(vapid_private, "big") < _P256_N:
+        raise ValueError("VAPID_PRIVATE_KEY must be a P-256 private scalar")
     if len(vapid_public) != 65 or vapid_public[0] != 4:
         raise ValueError("VAPID_PUBLIC_KEY must be an uncompressed P-256 public key")
 
@@ -375,11 +1187,16 @@ def _verify_environment_matches(
 ) -> None:
     for name, persisted in values.items():
         configured = environment.get(name)
-        if configured and configured != persisted:
-            raise ValueError(
-                f"{name} differs from the value persisted on first boot; "
-                "restore the original value or start with a new data volume"
-            )
+        if not configured or configured == persisted:
+            continue
+        if name in VAPID_KEY_SETTINGS and _is_published_vapid_key(configured):
+            # The first boot replaced the published pair, so the environment
+            # still carrying it is not a changed value.
+            continue
+        raise ValueError(
+            f"{name} differs from the value persisted on first boot; "
+            "restore the original value or start with a new data volume"
+        )
 
 
 def _write_config(path: Path, values: dict[str, str]) -> None:
@@ -395,26 +1212,34 @@ def _write_config(path: Path, values: dict[str, str]) -> None:
             os.close(descriptor)
             raise
         with stream:
-            os.fchmod(stream.fileno(), 0o600)
+            if hasattr(os, "fchmod"):
+                os.fchmod(stream.fileno(), 0o600)
             stream.write("# Generated once by the AutoGPT all-in-one image.\n")
             for name, value in values.items():
                 stream.write(f"{name}={value}\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
-        directory_flags = os.O_RDONLY
-        if hasattr(os, "O_DIRECTORY"):
-            directory_flags |= os.O_DIRECTORY
-        if hasattr(os, "O_CLOEXEC"):
-            directory_flags |= os.O_CLOEXEC
-        directory_descriptor = os.open(path.parent, directory_flags)
-        try:
-            os.fsync(directory_descriptor)
-        finally:
-            os.close(directory_descriptor)
+        _fsync_directory(path.parent)
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Persist the rename on POSIX; Windows cannot open directories this way."""
+    if os.name == "nt":
+        return
+    directory_flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        directory_flags |= os.O_DIRECTORY
+    if hasattr(os, "O_CLOEXEC"):
+        directory_flags |= os.O_CLOEXEC
+    directory_descriptor = os.open(directory, directory_flags)
+    try:
+        os.fsync(directory_descriptor)
+    finally:
+        os.close(directory_descriptor)
 
 
 if __name__ == "__main__":

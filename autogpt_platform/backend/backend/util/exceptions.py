@@ -132,8 +132,26 @@ class RaisedExpertLifetimeLimitExceededError(Exception):
         return f"Raised expert lifetime limit of {self.limit} reached"
 
 
+class RoutineNotFoundError(NotFoundError):
+    """No such routine on this owner."""
+
+
+class RoutineUnansweredAsksError(ValueError):
+    """The routine still has questions nobody answered.
+
+    A seeded proposal names what it needs to know — which repo, which inbox,
+    what hour. Scheduling it before those are answered would run it against
+    guesses on somebody's account, every day, unattended.
+    """
+
+
 class GraphNotFoundError(NotFoundError):
     """The requested Agent Graph was not found, resulting in an error condition"""
+
+
+class GraphInUseError(Exception):
+    """The graph can't be permanently deleted because other users, or a store
+    listing, still reference it."""
 
 
 class NeedConfirmation(Exception):
@@ -297,6 +315,14 @@ class GraphValidationError(ValueError):
         )
 
 
+class GraphActivationError(ValueError):
+    """A graph cannot be activated, e.g. a required credential is missing,
+    revoked, or its OAuth token can no longer be refreshed.
+
+    Its message is written for the user; the API layer answers it with a 400.
+    """
+
+
 class InvalidInputError(ValueError):
     """Raised when user input validation fails (e.g., search term too long)"""
 
@@ -329,6 +355,10 @@ class LinkFlowMismatchError(ValueError):
 
 class DuplicateChatMessageError(ValueError):
     """The same user message is already in flight for this chat session."""
+
+
+class SharedCredentialsRefusedError(ValueError):
+    """A block was asked to run on a platform-owned key it may not use."""
 
 
 class WebhookRegistrationError(Exception):
