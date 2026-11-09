@@ -467,6 +467,19 @@ async def test_pending_question_query_avoids_select_star_and_excludes_delegated(
     assert raw.call_args.kwargs["model"] is PrismaChatSession
 
 
+@pytest.mark.asyncio
+async def test_the_pending_question_query_leaves_out_the_onboarding_interview():
+    """Home's "Needs You" never lists the sign-up interview, NULL-safely like
+    dreams, so a legacy session with no kind is still listed."""
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await get_sessions_with_pending_question("u1", limit=5)
+
+    query = raw.call_args.args[0]
+    assert _NULL_SAFE_INTERVIEW_FILTER in query
+    assert "IS DISTINCT FROM 'dream'" in query
+
+
 def test_pending_question_projection_columns_exist_in_schema():
     """Guard the hand-maintained projection in the Home pending-question query.
 
@@ -543,6 +556,30 @@ async def test_pending_question_excludes_delegated_but_keeps_handed_off(
     assert normal.session_id in pending_ids
     assert handed_off.session_id in pending_ids
     assert delegated.session_id not in pending_ids
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_onboarding_interview_s_waiting_question_never_reaches_home(
+    setup_test_user, test_user_id
+):
+    now = datetime.now(UTC)
+    normal = await create_chat_session(str(uuid4()), test_user_id)
+    await set_session_pending_question(
+        normal.session_id, test_user_id, "Which inbox?", now
+    )
+    interview = await create_chat_session(
+        str(uuid4()),
+        test_user_id,
+        metadata=ChatSessionMetadata(kind=ONBOARDING_INTERVIEW_KIND),
+    )
+    await set_session_pending_question(
+        interview.session_id, test_user_id, "How many people work with you?", now
+    )
+
+    pending_ids = await _pending_question_ids(test_user_id)
+
+    assert normal.session_id in pending_ids
+    assert interview.session_id not in pending_ids
 
 
 @pytest.mark.asyncio(loop_scope="session")
