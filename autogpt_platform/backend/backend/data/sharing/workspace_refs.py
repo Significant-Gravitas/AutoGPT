@@ -73,24 +73,30 @@ class WorkspaceArtifactLink(BaseModel):
 def extract_artifact_links(text: str) -> tuple[str, list[WorkspaceArtifactLink]]:
     """Pull ``[name](workspace://id#mime)`` markdown links out of *text*.
 
-    Returns the text with those links removed (surrounding whitespace tidied)
-    plus the parsed artifacts in document order. Raw ``workspace://`` URIs are
-    useless to a chat-platform user, so callers strip them here and deliver the
-    referenced file (or a link to it) separately.
+    Returns the text with each link replaced by its name in backticks
+    (surrounding whitespace tidied) plus the parsed artifacts in document order.
+    Raw ``workspace://`` URIs are useless to a chat-platform user, so callers
+    strip them here and deliver the referenced file (or a link to it)
+    separately. The name stays so a sentence like "I saved [a](…) · [b](…)"
+    still says what was saved. Text that is nothing but links comes back
+    empty: the delivered files are the whole message.
     """
     artifacts: list[WorkspaceArtifactLink] = []
 
     def _capture(match: re.Match[str]) -> str:
+        display_name = match.group(1).strip()
         artifacts.append(
             WorkspaceArtifactLink(
-                display_name=match.group(1).strip(),
+                display_name=display_name,
                 file_id=match.group(2),
                 mime_hint=match.group(3) or None,
             )
         )
-        return ""
+        return f"`{display_name.replace('`', '')}`"
 
     stripped = _WORKSPACE_ARTIFACT_LINK_RE.sub(_capture, text)
+    if not any(ch.isalnum() for ch in _WORKSPACE_ARTIFACT_LINK_RE.sub("", text)):
+        return "", artifacts
     # Clean up the gaps the removed links leave behind so surrounding prose
     # still reads naturally.
     stripped = re.sub(r"[ \t]+\n", "\n", stripped)
