@@ -119,7 +119,9 @@ async def test_a_later_calls_take_displaces_an_earlier_calls_in_any_status(
         db, "get_dump", AsyncMock(return_value=_row(status, EARLIER_CALL_TAKE))
     )
 
-    await db.start_dump(USER_ID, LATER_CALL_TAKE, BrainDumpInputMode.typed)
+    await db.start_dump(
+        USER_ID, LATER_CALL_TAKE, BrainDumpInputMode.typed, call_take=True
+    )
 
     upsert.assert_awaited_once()
     update = upsert.await_args.kwargs["data"]["update"]
@@ -128,6 +130,22 @@ async def test_a_later_calls_take_displaces_an_earlier_calls_in_any_status(
         None,
         None,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", PROCESSING)
+async def test_a_take_named_like_a_calls_displaces_nothing_unless_a_call_made_it(
+    mocker: MockerFixture, upsert: AsyncMock, status: BrainDumpStatus
+):
+    """The name alone is no proof: only the call's hand-off says its take is
+    a call's."""
+    existing = _row(status, EARLIER_CALL_TAKE)
+    mocker.patch.object(db, "get_dump", AsyncMock(return_value=existing))
+
+    result = await db.start_dump(USER_ID, LATER_CALL_TAKE, BrainDumpInputMode.typed)
+
+    assert result is existing
+    upsert.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -159,7 +177,12 @@ async def test_no_other_typed_take_displaces_a_take_still_processing(
     existing = _row(status, held)
     mocker.patch.object(db, "get_dump", AsyncMock(return_value=existing))
 
-    result = await db.start_dump(USER_ID, taking, BrainDumpInputMode.typed)
+    result = await db.start_dump(
+        USER_ID,
+        taking,
+        BrainDumpInputMode.typed,
+        call_take=taking == LATER_CALL_TAKE,
+    )
 
     assert result is existing
     upsert.assert_not_awaited()

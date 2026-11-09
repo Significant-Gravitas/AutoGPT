@@ -22,6 +22,7 @@ from pytest_mock import MockerFixture
 
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert, HireResult
+from backend.api.features.onboarding_dump import db as dump_db
 from backend.api.features.onboarding_dump import (
     interview,
     intro,
@@ -181,11 +182,17 @@ class DumpStore:
         return True
 
     async def start_dump(
-        self, user_id: str, recording_id: str, input_mode: BrainDumpInputMode
+        self,
+        user_id: str,
+        recording_id: str,
+        input_mode: BrainDumpInputMode,
+        *,
+        call_take: bool = False,
     ) -> OnboardingBrainDump:
         # Mirrors the real `start_dump`: a take already moving through
         # the pipeline is returned untouched, so a replayed part 0 or a
-        # repeated finalize cannot reset it.
+        # repeated finalize cannot reset it, and a typed take displaces
+        # another only as a call's take displaces another call's.
         if (
             self.row is not None
             and self.row.status
@@ -198,7 +205,12 @@ class DumpStore:
             )
             and (
                 self.row.recordingId == recording_id
-                or input_mode != BrainDumpInputMode.voice
+                or (
+                    input_mode != BrainDumpInputMode.voice
+                    and not dump_db.call_take_displaces(
+                        recording_id, self.row.recordingId, call_take=call_take
+                    )
+                )
             )
         ):
             return self.row
@@ -716,6 +728,44 @@ def test_a_duration_past_the_ceiling_is_rejected(stt_create: AsyncMock):
 
     assert response.status_code == 422
     stt_create.assert_not_awaited()
+
+
+SERVER_NAMED_TAKES = ["interview-" + "a" * 32, "interview-a-typed-interview"]
+
+
+@pytest.mark.parametrize("recording_id", SERVER_NAMED_TAKES)
+@pytest.mark.parametrize("input_mode", ["voice", "typed", "skipped"])
+def test_a_finalize_naming_a_take_only_the_server_makes_is_refused(
+    dumps: DumpStore, recording_id: str, input_mode: str
+):
+    """The server names interview and call takes itself; a client's take is
+    never read as one."""
+    response = client.post(
+        FINALIZE_URL,
+        json={"recording_id": recording_id, "input_mode": input_mode, "text": "Hi."},
+    )
+
+    assert response.status_code == 422
+    assert dumps.row is None
+
+
+@pytest.mark.parametrize("recording_id", SERVER_NAMED_TAKES)
+def test_a_part_or_a_discard_naming_a_take_only_the_server_makes_is_refused(
+    dumps: DumpStore, storage_mocks: dict[str, AsyncMock], recording_id: str
+):
+    part = client.post(
+        PARTS_URL,
+        files={"file": ("part-0.webm", b"chunk", "audio/webm")},
+        data={"recording_id": recording_id, "part_index": "0"},
+    )
+    discard = client.delete(
+        DISCARD_URL.rstrip("/"), params={"recording_id": recording_id}
+    )
+
+    assert (part.status_code, discard.status_code) == (422, 422)
+    assert dumps.row is None
+    storage_mocks["append_part"].assert_not_awaited()
+    storage_mocks["mark_discarded"].assert_not_awaited()
 
 
 def test_typed_finalize_with_empty_text_is_rejected():

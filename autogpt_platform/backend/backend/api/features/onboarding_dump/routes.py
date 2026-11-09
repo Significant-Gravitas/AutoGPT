@@ -9,6 +9,7 @@ from autogpt_libs.auth.dependencies import get_user_id
 from fastapi import APIRouter, Form, Path, Security, UploadFile
 from fastapi.responses import RedirectResponse
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
+from pydantic import AfterValidator
 
 from backend.api.features.onboarding_dump import (
     db,
@@ -40,6 +41,7 @@ from backend.api.features.onboarding_dump.models import (
     VoiceCallFinishRequest,
     VoiceCallStartResponse,
     VoiceCallStatusResponse,
+    clients_recording_id,
 )
 from backend.api.features.onboarding_dump.plan_models import (
     PlanHireResponse,
@@ -51,6 +53,10 @@ from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
+
+
+def _clients_recording_id_or_none(recording_id: str | None) -> str | None:
+    return None if recording_id is None else clients_recording_id(recording_id)
 
 
 router = APIRouter(
@@ -66,7 +72,11 @@ router = APIRouter(
 async def upload_brain_dump_part(
     user_id: Annotated[str, Security(get_user_id)],
     file: UploadFile,
-    recording_id: Annotated[str, Form(pattern=RECORDING_ID_PATTERN)],
+    recording_id: Annotated[
+        str,
+        Form(pattern=RECORDING_ID_PATTERN),
+        AfterValidator(clients_recording_id),
+    ],
     part_index: Annotated[int, Form(ge=0)],
     resent: Annotated[bool, Form()] = False,
 ) -> UploadPartResponse:
@@ -600,7 +610,9 @@ async def download_brain_dump_recording(
 async def discard_brain_dump(
     user_id: Annotated[str, Security(get_user_id)],
     recording_id: Annotated[
-        str | None, fastapi.Query(pattern=RECORDING_ID_PATTERN)
+        str | None,
+        fastapi.Query(pattern=RECORDING_ID_PATTERN),
+        AfterValidator(_clients_recording_id_or_none),
     ] = None,
 ) -> DumpStatusResponse:
     """Drop a half-uploaded take's server buffer when the user re-records.

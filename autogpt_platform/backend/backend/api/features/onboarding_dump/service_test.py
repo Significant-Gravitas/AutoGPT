@@ -78,7 +78,12 @@ class DumpStore:
         return self.row is not None and self.row.recordingId == recording_id
 
     async def start_dump(
-        self, user_id: str, recording_id: str, input_mode: BrainDumpInputMode
+        self,
+        user_id: str,
+        recording_id: str,
+        input_mode: BrainDumpInputMode,
+        *,
+        call_take: bool = False,
     ) -> OnboardingBrainDump:
         # Mirrors the real `start_dump`: a take already moving through
         # the pipeline is returned untouched, so a replayed part 0 or a
@@ -98,7 +103,9 @@ class DumpStore:
             or (
                 input_mode != BrainDumpInputMode.voice
                 and self.row.status in processing
-                and not db.call_take_displaces(recording_id, self.row.recordingId)
+                and not db.call_take_displaces(
+                    recording_id, self.row.recordingId, call_take=call_take
+                )
             )
         ):
             return self.row
