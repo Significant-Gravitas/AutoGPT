@@ -571,6 +571,17 @@ that are not attributed yet (the baseline path's context compaction, the
 action gate's classifiers, web search, Graphiti memory) arrive without the
 user or chat when their client goes through OpenRouter.
 
+## Feedback prompts
+
+Sent server-side for every user, whatever their cookie consent. An admin
+acting as a user sends none.
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `feedback_prompt_shown` | backend | live | `prompt_id`, `kind` | A prompt's limit allows it and the app or Otto claims it (`POST /api/feedback-prompts/claim`, `copilot/tools/feedback_prompts.py`). |
+| `feedback_prompt_answered` | backend | live | `prompt_id`, `kind`, `reason`, `note`, `score`, `offer_taken` | A tap on a page-level prompt is saved (`PATCH /api/feedback-prompts/{id}`). Each tap sends another event; the latest per `prompt_id` stands. Work checks and mistake cards send `$ai_metric` instead. |
+| `otto_mistake_flagged` | backend | live | `what_went_wrong`, `$ai_session_id` and `chat_session_id`, `prompt_id`; `$ai_trace_id` when the turn has one | Otto calls `flag_mistake`, at most once per chat, on every surface including chat platforms. |
+
 ## Experiments
 
 | Event | Sender | Status | Required properties | Fires when |
