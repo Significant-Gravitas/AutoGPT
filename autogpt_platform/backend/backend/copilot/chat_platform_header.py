@@ -95,6 +95,14 @@ def label_covering(body: str, position: int) -> tuple[str, int]:
     return (text if text.endswith("\n") else text + "\n"), covering.end()
 
 
+def label_starting_within(body: str, start: int, end: int) -> int | None:
+    """Where the first per-message label in ``body`` that starts at or after
+    ``start``, and before ``end``, begins; None when there is none."""
+    for label in _LABEL_LINE_RE.finditer(body, start):
+        return label.start() if label.start() < end else None
+    return None
+
+
 def strip_chat_platform_header(message: str, *, bridge_origin: bool = False) -> str:
     """The user's own words: ``message`` without the bot's header and labels.
 

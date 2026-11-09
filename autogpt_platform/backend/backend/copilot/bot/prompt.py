@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from backend.copilot.chat_platform_header import (
     SECTION_PREFIXES,
     label_covering,
+    label_starting_within,
     neutralize_forged_labels,
     split_chat_platform_header,
 )
@@ -53,11 +54,15 @@ def clamp_prompt(message: str, max_chars: int) -> str:
     keep = room - len(_TRUNCATION_NOTICE)
     cut = len(body) - keep
     # In a batch, keep the label of the message the cut lands in so every
-    # kept line still has its speaker.
+    # kept line still has its speaker. Making room for that label must not
+    # skip into the next message's label: then the kept text starts there.
     label, label_end = label_covering(body, cut)
     if label and len(label) < keep:
         start = max(label_end, len(body) - (keep - len(label)))
-        return header + _TRUNCATION_NOTICE + label + _kept_from(body, start)
+        next_label = label_starting_within(body, cut, start)
+        if next_label is None:
+            return header + _TRUNCATION_NOTICE + label + _kept_from(body, start)
+        cut = next_label
     return header + _TRUNCATION_NOTICE + _kept_from(body, cut)
 
 
