@@ -48,6 +48,33 @@ def test_nested_objects_inside_any_of_collapse_too():
     assert maybe["anyOf"][0] == {"type": "object", "field_names": ["detail"]}
 
 
+def test_a_collapsed_object_s_other_schemas_are_trimmed_too():
+    deep = _object(a={"type": "string"})
+    extra = _object(deep=deep)
+    nested = {**_object(x={"type": "string"}), "additionalProperties": extra}
+    schema = _object(pin=_object(nested=nested))
+
+    collapsed = collapse_nested_objects(schema)
+
+    assert collapsed["properties"]["pin"]["properties"]["nested"] == {
+        "type": "object",
+        "additionalProperties": {"type": "object", "field_names": ["deep"]},
+        "field_names": ["x"],
+    }
+
+
+def test_examples_and_defaults_are_data_and_stay_whole():
+    example = {"properties": {"kept": 1}}
+    nested = {**_object(x={"type": "string"}), "examples": [example]}
+    schema = _object(pin=_object(nested=nested, other={"default": example}))
+
+    collapsed = collapse_nested_objects(schema)
+
+    fields = collapsed["properties"]["pin"]["properties"]
+    assert fields["nested"]["examples"] == [example]
+    assert fields["other"]["default"] == example
+
+
 def test_a_field_named_properties_is_a_field_not_a_schema_keyword():
     schema = _object(pin=_object(properties={"type": "string"}))
     assert collapse_nested_objects(schema) == schema

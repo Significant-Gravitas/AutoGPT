@@ -10,6 +10,8 @@ ENUM_SAMPLE = 8
 # Levels of ``properties`` an output schema keeps: the output pins, then the
 # fields of each pin.  Objects nested below that are listed by field name.
 OUTPUT_FIELD_DEPTH = 2
+# Keywords whose value is data rather than a schema, so it is never rewritten.
+_DATA_KEYWORDS = frozenset({"default", "examples", "example", "const", "enum"})
 
 
 def collapse_large_enums(node: Any, limit: int = ENUM_COLLAPSE_LIMIT) -> Any:
@@ -41,22 +43,21 @@ def collapse_nested_objects(node: Any, depth: int = OUTPUT_FIELD_DEPTH) -> Any:
     if not isinstance(node, dict):
         return node
     properties = node.get("properties")
-    if depth <= 0 and isinstance(properties, dict):
-        cleaned = {
-            key: value
-            for key, value in node.items()
-            if key not in ("properties", "required")
-        }
+    collapse = depth <= 0 and isinstance(properties, dict)
+    cleaned: dict[str, Any] = {}
+    for key, value in node.items():
+        if key in _DATA_KEYWORDS:
+            cleaned[key] = value
+        elif key == "properties" and isinstance(value, dict):
+            if not collapse:
+                cleaned[key] = {
+                    name: collapse_nested_objects(sub, depth - 1)
+                    for name, sub in value.items()
+                }
+        elif not (collapse and key == "required"):
+            # A collapsed object's other schemas (``additionalProperties``,
+            # ``items``, ``anyOf``) are trimmed too, not kept whole.
+            cleaned[key] = collapse_nested_objects(value, depth)
+    if collapse:
         cleaned["field_names"] = list(properties)
-        return cleaned
-    return {
-        key: (
-            {
-                name: collapse_nested_objects(sub, depth - 1)
-                for name, sub in value.items()
-            }
-            if key == "properties" and isinstance(value, dict)
-            else collapse_nested_objects(value, depth)
-        )
-        for key, value in node.items()
-    }
+    return cleaned
