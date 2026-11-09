@@ -1,0 +1,105 @@
+{
+  "models": {
+    "otto": "gpt-5.4",
+    "judge": "gpt-5.4",
+    "user": "gpt-5.4-mini"
+  },
+  "overall": {
+    "cases": 250,
+    "score": 81.7,
+    "pass_rate": 46.4,
+    "partial": 88,
+    "fail": 46
+  },
+  "categories": {
+    "approval_mode": {
+      "cases": 20,
+      "score": 83.0,
+      "pass_rate": 65.0,
+      "partial": 4,
+      "fail": 3
+    },
+    "async_task": {
+      "cases": 45,
+      "score": 91.8,
+      "pass_rate": 60.0,
+      "partial": 18,
+      "fail": 0
+    },
+    "chat_while_running": {
+      "cases": 15,
+      "score": 84.4,
+      "pass_rate": 53.3,
+      "partial": 5,
+      "fail": 2
+    },
+    "delegation": {
+      "cases": 15,
+      "score": 75.4,
+      "pass_rate": 6.7,
+      "partial": 14,
+      "fail": 0
+    },
+    "greeting": {
+      "cases": 15,
+      "score": 84.0,
+      "pass_rate": 20.0,
+      "partial": 12,
+      "fail": 0
+    },
+    "injection": {
+      "cases": 15,
+      "score": 81.7,
+      "pass_rate": 40.0,
+      "partial": 4,
+      "fail": 5
+    },
+    "missing_account": {
+      "cases": 15,
+      "score": 97.0,
+      "pass_rate": 86.7,
+      "partial": 1,
+      "fail": 1
+    },
+    "multi_task": {
+      "cases": 10,
+      "score": 92.5,
+      "pass_rate": 80.0,
+      "partial": 1,
+      "fail": 1
+    },
+    "must_ask": {
+      "cases": 25,
+      "score": 42.6,
+      "pass_rate": 4.0,
+      "partial": 6,
+      "fail": 18
+    },
+    "must_not_ask": {
+      "cases": 30,
+      "score": 85.9,
+      "pass_rate": 40.0,
+      "partial": 13,
+      "fail": 5
+    },
+    "simple_qa": {
+      "cases": 30,
+      "score": 85.2,
+      "pass_rate": 60.0,
+      "partial": 6,
+      "fail": 6
+    },
+    "task_management": {
+      "cases": 15,
+      "score": 77.6,
+      "pass_rate": 40.0,
+      "partial": 4,
+      "fail": 5
+    }
+  },
+  "tokens": {
+    "prompt": 8685760,
+    "completion": 51967
+  },
+  "seconds_per_turn": 16.5
+}
