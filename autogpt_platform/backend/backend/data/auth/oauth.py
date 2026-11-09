@@ -9,6 +9,7 @@ Hashing strategy:
 - Client secrets: Scrypt with salt (lookup by client_id, then verify with salt)
 """
 
+import asyncio
 import hashlib
 import logging
 import secrets
@@ -315,8 +316,9 @@ async def validate_client_credentials(
     if not app.is_active:
         raise InvalidClientError("Application is not active")
 
-    # Verify client secret
-    if not app.verify_secret(client_secret):
+    # Scrypt costs tens of milliseconds of CPU, which on the event loop
+    # stalls every other request the worker is serving.
+    if not await asyncio.to_thread(app.verify_secret, client_secret):
         raise InvalidClientError("Invalid client_secret")
 
     # Return without secret hash
