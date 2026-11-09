@@ -131,6 +131,7 @@ async def persist_and_record_usage(
     skip_daily: bool = False,
     execution_path: str = "sync",
     expert_id: str | None = None,
+    charge_plan: bool = True,
 ) -> int:
     """Persist token usage to session and record generation cost for rate limiting.
 
@@ -155,6 +156,10 @@ async def persist_and_record_usage(
         provider: Cost provider name (e.g. "anthropic", "open_router").
         expert_id: The expert the spend is attributed to on the cost log
             row (``PlatformCostLog.expertId``); ``None`` for the account's own.
+        charge_plan: ``False`` for spend the platform pays for, such as the
+            onboarding voice interview: the cost log row is still written,
+            and the user's plan windows, credit balance and turn tree are
+            left alone.
 
     Returns:
         The computed total_tokens (prompt + completion; cache excluded).
@@ -229,7 +234,7 @@ async def persist_and_record_usage(
 
     cost_microdollars = usd_to_microdollars(cost_float)
 
-    if cost_microdollars is not None and cost_microdollars > 0:
+    if charge_plan and cost_microdollars is not None and cost_microdollars > 0:
         # A turn billed to credits is charged to the credit balance as its cost
         # lands, and spends nothing from the plan's daily and weekly windows.
         if user_id and not await record_credit_billed_cost(user_id, cost_microdollars):

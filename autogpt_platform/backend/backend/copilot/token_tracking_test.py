@@ -327,6 +327,49 @@ class TestRateLimitRecording:
             )
         mock_record.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_platform_paid_spend_is_logged_without_touching_the_plan(
+        self, monkeypatch
+    ):
+        """Spend the platform pays for still lands in the cost log, but charges
+        neither the user's plan windows, nor their credits, nor a turn tree."""
+        from backend.copilot import token_tracking
+        from backend.copilot.context import set_execution_context
+        from backend.copilot.tree import TurnEnvelope
+
+        record_cost = AsyncMock()
+        record_credits = AsyncMock(return_value=False)
+        charge_tree = AsyncMock()
+        logged: list = []
+        monkeypatch.setattr(token_tracking, "record_cost_usage", record_cost)
+        monkeypatch.setattr(token_tracking, "record_credit_billed_cost", record_credits)
+        monkeypatch.setattr(token_tracking, "charge_turn", charge_tree)
+        monkeypatch.setattr(token_tracking, "_schedule_cost_log", logged.append)
+
+        set_execution_context(
+            "user-abc", None, envelope=TurnEnvelope(tree_id="tree-1", depth=1)
+        )
+        try:
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-abc",
+                prompt_tokens=400,
+                completion_tokens=0,
+                cost_usd=0.0012,
+                provider="google",
+                block_name_override="onboarding:voice_interview",
+                charge_plan=False,
+            )
+        finally:
+            set_execution_context(None, None, envelope=None)
+
+        record_cost.assert_not_awaited()
+        record_credits.assert_not_awaited()
+        charge_tree.assert_not_awaited()
+        assert len(logged) == 1
+        assert logged[0].cost_microdollars == 1_200
+        assert logged[0].block_name == "onboarding:voice_interview"
+
 
 # ---------------------------------------------------------------------------
 # PlatformCostLog integration
