@@ -26,6 +26,7 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Never, cast
 
 import httpx
@@ -181,6 +182,20 @@ def _audit_storage_failure(message: str, exc: OSError) -> DaemonPreflightError:
         permanent=permanent,
         transient=not permanent,
     )
+
+
+def _allowed_root_failure(root: Path, exc: OSError) -> DaemonPreflightError:
+    """A preflight failure for a legacy session's allowed_root that couldn't
+    be created: permanent when no restart can fix it (no permission, a
+    read-only disk, a file in the way), transient otherwise (a full disk,
+    say). On macOS, EPERM is a folder the app may not open yet (Files and
+    Folders), which a grant fixes, so it stays a missing permission: launchd
+    relaunches the shim until it is granted."""
+    message = f"Could not create allowed_root {root}: {exc}"
+    if exc.errno == errno.EPERM and platform_info.detect_platform() == "darwin":
+        return DaemonPreflightError(message)
+    permanent = exc.errno in _PERMANENT_STORAGE_ERRNOS or exc.errno == errno.EEXIST
+    return DaemonPreflightError(message, permanent=permanent, transient=not permanent)
 
 
 # Storage errors a restart can't fix: the path, or what it may do, is wrong,
@@ -444,9 +459,7 @@ class ShimDaemon:
                 try:
                     self.config.allowed_root.mkdir(parents=True, exist_ok=True)
                 except OSError as exc:
-                    raise DaemonPreflightError(
-                        f"Could not create allowed_root {self.config.allowed_root}: {exc}"
-                    ) from exc
+                    raise _allowed_root_failure(self.config.allowed_root, exc) from exc
             if self._manage_audit_lifecycle:
                 await self._audit_shim_start()
         except BaseException:

@@ -167,7 +167,11 @@ launchd it exits 0 like the other permanent failures; check it with
 `autogpt-shim audit verify` and move it aside to start a new log. Nor can
 audit storage the shim may not write (permission denied, read-only) or
 whose device failed or is gone (an I/O error): fix it, then start the
-shim again.
+shim again. A legacy session's `allowed_root` that can't be created is
+sorted the same way: a full disk restarts; no permission, a read-only
+disk or a file in its place doesn't. The exception is a folder the app may
+not open yet on macOS (Files and Folders), a missing permission that exits
+78, so launchd relaunches the shim until it is granted.
 
 ### Packaging & install
 

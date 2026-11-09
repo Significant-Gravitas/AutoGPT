@@ -700,6 +700,63 @@ async def test_a_failed_first_audit_write_says_whether_a_restart_can_fix_it(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("code", "platform", "permanent", "transient"),
+    [
+        ("EACCES", "linux", True, False),
+        ("EROFS", "linux", True, False),
+        ("ENOTDIR", "linux", True, False),
+        # A file where the folder belongs.
+        ("EEXIST", "linux", True, False),
+        ("ENOSPC", "linux", False, True),
+        ("EPERM", "linux", True, False),
+        # A folder the app may not open yet (Files and Folders): a missing
+        # permission, which launchd relaunches until it is granted.
+        ("EPERM", "darwin", False, False),
+    ],
+)
+async def test_a_legacy_allowed_root_that_cannot_be_created_says_whether_a_restart_can_fix_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    code: str,
+    platform: str,
+    permanent: bool,
+    transient: bool,
+) -> None:
+    """A legacy session's allowed_root the shim couldn't create was a
+    preflight error neither permanent nor transient, so `start` exited 78,
+    which the LaunchAgent relaunches every few seconds for as long as the
+    folder stays unwritable, and the systemd unit never retried a full disk."""
+    import errno
+    import os
+
+    root = tmp_path / "root"
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=root,
+        audit_log_path=tmp_path / "audit.log",
+    )
+    daemon = ShimDaemon(config, token_store=object(), audit=MagicMock(spec=AuditWriter))
+    monkeypatch.setattr(daemon, "_preflight_or_raise", AsyncMock())
+    monkeypatch.setattr(daemon_module.platform_info, "detect_platform", lambda: platform)
+    number = getattr(errno, code)
+    real_mkdir = Path.mkdir
+
+    def mkdir(self: Path, *args: object, **kwargs: object) -> None:
+        if self == root:
+            raise OSError(number, os.strerror(number), str(self))
+        real_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "mkdir", mkdir)
+
+    with pytest.raises(daemon_module.DaemonPreflightError, match="allowed_root") as raised:
+        await daemon.run()
+
+    assert raised.value.permanent is permanent
+    assert raised.value.transient is transient
+
+
+@pytest.mark.asyncio
 async def test_run_retries_a_keychain_that_is_still_locked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
