@@ -1,15 +1,12 @@
 """Score a run: code checks from the case, then a reviewer model that
 compares what Otto did with the human example."""
 
-import asyncio
 import json
 from typing import Any
 
-import openai
-
+from .llm import Backend, first_json_object
 from .models import Case, CaseResult, CheckResult, Review, Run, Verdict
 
-_ATTEMPTS = 6
 _REVIEW_PROMPT = """You review an AI chief of staff called Otto. A user talked to Otto; you get
 the case (what the user asked, the behaviour expected, what a great human
 chief of staff would have done) and the transcript of what Otto did (replies,
@@ -72,6 +69,8 @@ def run_checks(case: Case, run: Run) -> list[CheckResult]:
             "ends_with_question",
             (first.ended_by == "question") == checks.ends_with_question,
         )
+    if checks.delegates is not None:
+        add("delegates", _delegated(calls) == checks.delegates)
     for service in checks.services_called:
         add(f"service:{service}", service in services)
     for service in checks.services_not_called:
@@ -83,7 +82,7 @@ async def review(
     case: Case,
     run: Run,
     checks: list[CheckResult],
-    client: openai.AsyncOpenAI,
+    backend: Backend,
     model: str,
 ) -> Review:
     payload = {
@@ -99,27 +98,16 @@ async def review(
         "failed_checks": [c.model_dump() for c in checks if not c.passed],
         "run_error": run.error,
     }
-    for attempt in range(_ATTEMPTS):
-        try:
-            completion = await client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": _REVIEW_PROMPT},
-                    {"role": "user", "content": json.dumps(payload, default=str)},
-                ],
-                response_format={"type": "json_object"},
-                max_completion_tokens=3000,
-                reasoning_effort="low",
-                timeout=180,
-            )
-            return Review.model_validate_json(
-                completion.choices[0].message.content or ""
-            )
-        except Exception as e:
-            if attempt == _ATTEMPTS - 1:
-                return Review(verdict="fail", score=0, reasons=[f"review failed: {e}"])
-            await asyncio.sleep(min(60, 4 * 2**attempt))
-    raise AssertionError("unreachable")
+    try:
+        raw = await backend.text(
+            model, _REVIEW_PROMPT, json.dumps(payload, default=str), json_out=True
+        )
+        data = first_json_object(raw)
+        if data is None:
+            raise ValueError(f"no JSON in review: {raw[:200]}")
+        return Review.model_validate(data)
+    except Exception as e:
+        return Review(verdict="fail", score=0, reasons=[f"review failed: {e}"])
 
 
 def score_case(
@@ -142,6 +130,14 @@ def score_case(
         review=verdict,
         score=score,
         verdict=final,
+    )
+
+
+def _delegated(calls: list[Any]) -> bool:
+    return any(
+        c.name == "delegate_to_expert"
+        or (c.name in ("start_task", "create_task") and c.arguments.get("expert_id"))
+        for c in calls
     )
 
 

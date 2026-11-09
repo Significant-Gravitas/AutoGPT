@@ -71,6 +71,11 @@ class Checks(_Open):
     ends_with_question: bool | None = None
     services_called: list[str] = Field(default_factory=list)
     services_not_called: list[str] = Field(default_factory=list)
+    delegates: bool | None = Field(
+        default=None,
+        description="Hands the work to a hired expert: delegate_to_expert, or "
+        "start_task / create_task with their expert_id.",
+    )
 
 
 class Expected(_Open):
@@ -149,7 +154,18 @@ class Review(BaseModel):
     reasons: list[str] = Field(default_factory=list)
 
 
+class Rating(BaseModel):
+    """One reviewer's rating of a case."""
+
+    review: Review
+    score: float
+    verdict: Verdict
+
+
 class CaseResult(BaseModel):
+    """The case's result; ``review``, ``score`` and ``verdict`` are the first
+    reviewer's, and ``ratings`` holds every reviewer's by name."""
+
     case_id: str
     category: str
     title: str
@@ -159,3 +175,4 @@ class CaseResult(BaseModel):
     review: Review
     score: float
     verdict: Verdict
+    ratings: dict[str, Rating] = Field(default_factory=dict)

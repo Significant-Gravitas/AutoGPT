@@ -4,18 +4,15 @@ The system prompt and tool list come from production (``eval/style``
 assembly: plain Otto with the SDK supplement, delegation and memory, plus
 the case's approval mode). The turn follows production's rules for closing
 (``turn_end``): a valid question ends the turn and refuses every later call;
-after a started task only more tasks and a closing line may follow. Which questions may be asked is decided by the
-production rules (``tools/question_rules``). A simulated user answers
+after a started task only more tasks and a closing line may follow. Which
+questions may be asked is decided by the production rules
+(``tools/question_rules``). Model calls go through ``llm.Backend``. A simulated user answers
 questions from the case's answer sheet, in the persona's voice.
 """
 
-import asyncio
 import json
 import time
-from typing import Any, cast
-
-import openai
-from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
+from typing import Any
 
 from backend.copilot.autopilot_mode import AutopilotMode
 from backend.copilot.eval.style.assembly import chat_system_prompt
@@ -26,20 +23,20 @@ from backend.copilot.tools import question_rules
 from backend.copilot.tools.ask_question import parse_questions
 from backend.copilot.turn_end import ENDED_REFUSAL, WRAP_UP_REFUSAL
 
+from .llm import Backend, Call, Reply
 from .models import Case, Question, Run, ToolCall, TurnRecord, World
 from .simulator import Simulator
 
 MAX_ROUNDS = 10
 MAX_ANSWERS_PER_TURN = 2
-_ATTEMPTS = 7  # a rate-limited burst backs off for up to a minute
 TODAY = "Monday 2026-11-09"
 
 
 class Models:
     """The models a run uses: Otto's, and the simulated user's."""
 
-    def __init__(self, client: openai.AsyncOpenAI, otto: str, user: str) -> None:
-        self.client, self.otto, self.user = client, otto, user
+    def __init__(self, backend: Backend, otto: str, user: str) -> None:
+        self.backend, self.otto, self.user = backend, otto, user
 
 
 async def run_case(case: Case, world: World, models: Models) -> Run:
@@ -87,14 +84,12 @@ async def _turn(
         message = await _complete(models, messages, tools, run)
         if message.content:
             replies.append(message.content)
-        calls = [tc for tc in message.tool_calls or [] if tc.type == "function"]
+        calls = message.tool_calls
         messages.append(_assistant(message.content, calls))
         if not calls:
             break
         for call in calls:
-            result = _execute(
-                call.function.name, call.function.arguments, sim, mode, run, record
-            )
+            result = _execute(call.name, call.arguments, sim, mode, run, record)
             messages.append(
                 {"role": "tool", "tool_call_id": call.id, "content": result}
             )
@@ -174,35 +169,24 @@ async def _complete(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],
     run: Run,
-) -> Any:
-    for attempt in range(_ATTEMPTS):
-        try:
-            completion = await models.client.chat.completions.create(
-                model=models.otto,
-                messages=cast(list[ChatCompletionMessageParam], messages),
-                tools=cast(list[ChatCompletionToolParam], tools),
-                max_completion_tokens=6000,
-                timeout=180,
-            )
-            if completion.usage:
-                run.prompt_tokens += completion.usage.prompt_tokens
-                run.completion_tokens += completion.usage.completion_tokens
-            return completion.choices[0].message
-        except (
-            openai.RateLimitError,
-            openai.APIConnectionError,
-            openai.APITimeoutError,
-            openai.InternalServerError,
-        ):
-            if attempt == _ATTEMPTS - 1:
-                raise
-            await asyncio.sleep(min(60, 4 * 2**attempt))
+) -> Reply:
+    reply = await models.backend.chat(models.otto, messages, tools)
+    run.prompt_tokens += reply.prompt_tokens
+    run.completion_tokens += reply.completion_tokens
+    return reply
 
 
-def _assistant(content: str | None, calls: list[Any]) -> dict[str, Any]:
-    message: dict[str, Any] = {"role": "assistant", "content": content or ""}
+def _assistant(content: str, calls: list[Call]) -> dict[str, Any]:
+    message: dict[str, Any] = {"role": "assistant", "content": content}
     if calls:
-        message["tool_calls"] = [c.model_dump(exclude_none=True) for c in calls]
+        message["tool_calls"] = [
+            {
+                "id": c.id,
+                "type": "function",
+                "function": {"name": c.name, "arguments": c.arguments},
+            }
+            for c in calls
+        ]
     return message
 
 
@@ -240,10 +224,5 @@ async def simulated_answer(
         f"Answer only from what you know. For anything not covered, reply "
         f"'{case.default_answer}'. One or two lines, in your own voice, no preamble."
     )
-    completion = await models.client.chat.completions.create(
-        model=models.user,
-        messages=[{"role": "user", "content": prompt}],
-        max_completion_tokens=1500,
-        timeout=120,
-    )
-    return (completion.choices[0].message.content or case.default_answer).strip()
+    answer = await models.backend.text(models.user, prompt, "", json_out=False)
+    return (answer or case.default_answer).strip()
