@@ -221,9 +221,15 @@ Known gaps:
   argument. On Linux the driver also runs `name` as a command line before
   it looks for an app of that name, so the shim refuses a `name` whose first
   word is a program, a program's own name included (`reboot` would run it;
-  an app goes by the name `list_apps` shows, such as `Firefox`), and on
-  every OS a `name`, `bundle_id` or `aumid` with a
-  path, a URL scheme or a leading `-`. A plain launch, an app by its name or
+  an app goes by the name `list_apps` shows, such as `Firefox`). On Windows
+  the driver hands a `name` that matches no installed app, and a
+  `bundle_id` that isn't an AUMID (`Package!App`), to ShellExecuteEx, which
+  runs a program of that name from PATH (`logoff` would sign the person
+  out), so the shim refuses such a `bundle_id`, and lets a `name` through
+  only when an installed app, as `list_apps` lists it, would match it the
+  way the driver matches: the exact name, ignoring case and a trailing
+  `.exe`, or one that starts with it. On every OS it refuses a `name`,
+  `bundle_id` or `aumid` with a path, a URL scheme or a leading `-`. A plain launch, an app by its name or
   id, asks nothing, and a launched app can do whatever it does.
 - `set_value` writes a field's value directly, without visible keystrokes.
   `type_text` does the same in the background through the accessibility

@@ -246,6 +246,11 @@ class CuaDriverBridge:
         self._display: tuple[str | None, ...] | None = None
 
     @property
+    def platform(self) -> str:
+        """The OS the driver runs on, as sys.platform names it."""
+        return self._platform
+
+    @property
     def offered_tools(self) -> frozenset[str]:
         return self._offered
 
