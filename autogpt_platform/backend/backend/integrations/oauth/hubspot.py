@@ -83,7 +83,8 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
         hub_id = tokens.get("hub_id") or token_info.get("hub_id")
         return OAuth2Credentials(
             provider=self.PROVIDER_NAME,
-            title=token_info.get("hub_domain"),
+            title=token_info.get("hub_domain")
+            or (f"portal {hub_id}" if hub_id else None),
             username=_portal_username(token_info.get("user"), hub_id),
             access_token=tokens["access_token"],
             refresh_token=tokens.get("refresh_token"),
@@ -201,8 +202,10 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
 
     @staticmethod
     def _granted_scopes(tokens: dict[str, Any], fallback: list[str]) -> list[str]:
-        # HubSpot returns the granted scopes as a list under `scopes`.
-        granted = " ".join(tokens.get("scopes") or [])
+        # HubSpot returns the granted scopes as a list under `scopes`; accept a
+        # space-delimited string too rather than joining it char by char.
+        scopes = tokens.get("scopes") or []
+        granted = scopes if isinstance(scopes, str) else " ".join(scopes)
         return parse_granted_scopes(granted, fallback=fallback)
 
 

@@ -158,7 +158,18 @@ async def test_exchange_survives_a_failed_introspection(mocker: MockerFixture):
 
     assert creds.access_token.get_secret_value() == "new-access-token"
     assert creds.username is None
+    assert creds.title == "portal 1234567"
     assert creds.metadata == {"hub_id": 1234567}
+
+
+async def test_exchange_accepts_scopes_as_a_string(mocker: MockerFixture):
+    tokens = {**TOKEN_RESPONSE, "scopes": " ".join(SCOPES)}
+    post = AsyncMock(side_effect=[_response(tokens), _response(INTROSPECT_RESPONSE)])
+    _mock_requests(mocker, post=post)
+
+    creds = await _handler().exchange_code_for_tokens("auth-code", SCOPES, None)
+
+    assert creds.scopes == SCOPES
 
 
 async def test_same_user_in_two_portals_gets_two_usernames(mocker: MockerFixture):
@@ -277,6 +288,16 @@ async def test_revoke_revokes_the_refresh_token(mocker: MockerFixture):
         "token": "na1-refresh-token",
     }
     assert post.await_args.kwargs["allow_redirects"] is False
+
+
+async def test_revoke_without_a_refresh_token_calls_nothing(mocker: MockerFixture):
+    post = AsyncMock()
+    _mock_requests(mocker, post=post)
+    creds = _creds()
+    creds.refresh_token = None
+
+    assert await _handler().revoke_tokens(creds) is False
+    post.assert_not_awaited()
 
 
 async def test_failed_revoke_does_not_raise(mocker: MockerFixture):
