@@ -18,6 +18,7 @@ from backend.api.features.onboarding_dump import (
     service,
     storage,
     suggested_tasks,
+    voice,
 )
 from backend.api.features.onboarding_dump.models import (
     ALLOWED_AUDIO_MIME_TYPES,
@@ -35,6 +36,7 @@ from backend.api.features.onboarding_dump.models import (
     SuggestedTasksResponse,
     SuggestedTasksUpdate,
     UploadPartResponse,
+    VoiceCallStartResponse,
 )
 from backend.api.features.onboarding_dump.plan_models import (
     PlanHireResponse,
@@ -237,6 +239,29 @@ def _with_wait_in_body(refusal: fastapi.HTTPException) -> fastapi.HTTPException:
         },
         headers=refusal.headers,
     )
+
+
+@router.post("/interview/voice", operation_id="start_onboarding_voice_call")
+async def start_onboarding_voice_call(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> VoiceCallStartResponse:
+    """Start a voice call for the person's onboarding interview.
+
+    Answers with the relay's call socket and a start token good for this one
+    call within a minute: the browser opens the socket and sends the token as
+    its first message. 404 while voice is off for the person; 409 once their
+    interview is over, or while a call of theirs is live (``call_id`` names
+    it); 429 past their call allowance; 503 past the platform's voice budget
+    or live-call ceiling, or while voice cannot be served. A 429 or 503
+    carries its wait in the body (``retry_after_seconds``) as well as in
+    ``Retry-After``.
+    """
+    try:
+        return await voice.start_voice_call(user_id)
+    except fastapi.HTTPException as e:
+        if e.status_code in (429, 503):
+            raise _with_wait_in_body(e) from e
+        raise
 
 
 @router.post("/interview/finish", operation_id="finish_onboarding_interview")

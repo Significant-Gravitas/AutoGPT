@@ -301,3 +301,37 @@ class InterviewStartResponse(BaseModel):
     stage: str | None = None
     """``ChatSessionMetadata.onboarding_interview_stage``; None while Otto is
     still asking."""
+
+
+class VoiceCallCaps(BaseModel):
+    """A voice call's limits. The relay enforces them; the browser shows them."""
+
+    max_call_s: float
+    soft_wrap_s: float
+    """Otto is told to sum up this long before ``max_call_s``."""
+    max_agent_turns: int
+    soft_wrap_turns: int
+    """Otto is told to sum up this many turns before ``max_agent_turns``."""
+    idle_s: float
+    """The call ends after this long with nothing heard from the person."""
+
+
+class VoiceCallLeg(BaseModel):
+    """How the call's audio travels. The control socket always carries the
+    call's events; on the ``websocket`` leg it carries the audio too."""
+
+    kind: Literal["websocket"]
+
+
+class VoiceCallStartResponse(BaseModel):
+    """A voice call the person can now open on the relay."""
+
+    call_id: str
+    relay_url: str
+    """The relay's call socket."""
+    token: str
+    """The socket's first message carries it, ``{"type": "start", "token"}``.
+    Good for this one call, within ``expires_in`` seconds."""
+    expires_in: int
+    leg: VoiceCallLeg
+    caps: VoiceCallCaps
