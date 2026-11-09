@@ -1,6 +1,9 @@
 import asyncio
 import json
 import signal
+import subprocess
+import sys
+from pathlib import Path
 
 import httpx
 import pytest
@@ -262,3 +265,26 @@ async def test_a_call_starting_as_the_drain_begins_runs_and_the_drain_waits_for_
         assert (await read_until(ws, "ended"))["reason"] == "user_hangup"
         await asyncio.wait_for(running.serving, timeout=10)
     assert running.recorded == {"user-1": call_id}
+
+
+def test_the_relay_process_does_not_load_the_executor():
+    # A fresh interpreter: this one has loaded the executor through other tests.
+    probe = (
+        "import json, sys\n"
+        "import backend.voice_relay.serve\n"
+        "loaded = sorted(m for m in sys.modules"
+        " if m.split('.')[:2] == ['backend', 'executor'])\n"
+        "print('EXECUTOR_MODULES=' + json.dumps(loaded))\n"
+    )
+    run = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        cwd=Path(__file__).resolve().parents[2],
+    )
+    assert run.returncode == 0, run.stderr[-2000:]
+    reported = next(
+        line for line in run.stdout.splitlines() if line.startswith("EXECUTOR_MODULES=")
+    )
+    assert json.loads(reported.split("=", 1)[1]) == []

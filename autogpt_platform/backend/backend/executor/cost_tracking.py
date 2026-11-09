@@ -6,9 +6,8 @@ import threading
 from typing import TYPE_CHECKING, Any, cast
 
 from backend.blocks._base import Block, BlockSchema
-from backend.copilot.token_tracking import _pending_log_tasks as _copilot_tasks
 from backend.copilot.token_tracking import (
-    _pending_log_tasks_lock as _copilot_tasks_lock,
+    drain_pending_cost_logs as drain_copilot_cost_logs,
 )
 from backend.data.execution import NodeExecutionEntry
 from backend.data.model import NodeExecutionStats
@@ -60,10 +59,11 @@ def _get_log_semaphore() -> asyncio.Semaphore:
 async def drain_pending_cost_logs(timeout: float = 5.0) -> None:
     """Await all in-flight cost log tasks with a timeout.
 
-    Drains both the executor cost log tasks (_pending_log_tasks in this module,
-    used for block execution cost tracking via DatabaseManagerAsyncClient) and
-    the copilot cost log tasks (token_tracking._pending_log_tasks, used for
-    copilot LLM turns via platform_cost_db()).
+    Drains the executor cost log tasks (_pending_log_tasks in this module,
+    used for block execution cost tracking via DatabaseManagerAsyncClient),
+    then the copilot cost log tasks through
+    ``token_tracking.drain_pending_cost_logs`` (copilot LLM turns via
+    platform_cost_db()).
 
     Call this during graceful shutdown to flush pending INSERT tasks before
     the process exits. Tasks that don't complete within `timeout` seconds are
@@ -86,18 +86,7 @@ async def drain_pending_cost_logs(timeout: float = 5.0) -> None:
                 len(still_pending),
                 timeout,
             )
-    # Also drain copilot cost log tasks (token_tracking._pending_log_tasks)
-    with _copilot_tasks_lock:
-        copilot_pending = [t for t in _copilot_tasks if t.get_loop() is current_loop]
-    if copilot_pending:
-        logger.info("Draining %d copilot cost log task(s)", len(copilot_pending))
-        _, still_pending = await asyncio.wait(copilot_pending, timeout=timeout)
-        if still_pending:
-            logger.warning(
-                "%d copilot cost log task(s) did not complete within %.1fs",
-                len(still_pending),
-                timeout,
-            )
+    await drain_copilot_cost_logs(timeout=timeout)
 
 
 def schedule_platform_cost_log(

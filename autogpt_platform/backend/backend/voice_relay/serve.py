@@ -28,10 +28,10 @@ from backend.copilot.onboarding_interview_voice import (
     VOICE_INTERVIEW_END_TOOL_PARAMETERS,
     VOICE_INTERVIEW_PROMPT,
 )
+from backend.copilot.token_tracking import drain_pending_cost_logs
 from backend.data import db, redis_client
 from backend.data.onboarding import record_onboarding_voice_call
 from backend.data.user import get_user_by_id
-from backend.executor.cost_tracking import drain_pending_cost_logs
 from backend.monitoring.instrumentation import start_metrics_server
 from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.settings import Settings
