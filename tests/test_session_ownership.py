@@ -221,6 +221,36 @@ async def test_session_revoked_audits_closes_disables_reconnect(
     assert details["new_shim_machine_id"] == "other-machine-1"
 
 
+async def test_a_revoked_session_closes_while_its_audit_record_waits(
+    daemon: ShimDaemon, audit: _RecordingAudit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The close waited for the SESSION_REVOKED record, so an audit writer
+    held up (its lock taken by `audit verify` on a large log, say) kept the
+    revoked connection open until it was done."""
+    ws = _FakeWebSocket([_session_revoked_frame()])
+    daemon._semaphore = asyncio.Semaphore(4)
+    writer_free = asyncio.Event()
+    real_write = audit.write
+
+    async def held_write(op: str, **kwargs: Any) -> None:
+        await writer_free.wait()
+        await real_write(op, **kwargs)
+
+    monkeypatch.setattr(audit, "write", held_write)
+    handling = asyncio.ensure_future(daemon._on_frame(ws, await ws.__anext__()))
+    try:
+        async with asyncio.timeout(10):
+            while not ws.close_calls:
+                await asyncio.sleep(0.01)
+        assert ws.close_calls[0]["code"] == WS_CLOSE_SESSION_REVOKED
+        assert not handling.done()
+    finally:
+        writer_free.set()
+    await asyncio.wait_for(handling, timeout=10)
+
+    assert [op for op, _ in audit.events] == ["SESSION_REVOKED"]
+
+
 @pytest.mark.parametrize("reason", SESSION_REVOKED_REASONS)
 async def test_session_revoked_accepts_each_spec_reason(
     daemon: ShimDaemon, audit: _RecordingAudit, reason: str
@@ -645,22 +675,22 @@ async def test_a_handler_that_finishes_after_revocation_sends_nothing(
     assert await asyncio.to_thread(running.wait, 30)
     work = tuple(daemon._dispatch_tasks)
 
-    # The revocation's audit record waits until the handler has finished,
-    # so the socket is still open when the handler tries to reply: only the
-    # guard can stop that reply. (A timer that freed the thread after the
-    # close let a closed socket refuse it instead.)
-    auditing = asyncio.Event()
-    audited = asyncio.Event()
-    real_audit = daemon._audit_session_revoked
+    # The revocation's close is still under way (its handshake) until the
+    # handler has finished, so the socket is open when the handler tries to
+    # reply: only the guard can stop that reply. (A timer that freed the
+    # thread after the close let a closed socket refuse it instead.)
+    closing = asyncio.Event()
+    closed = asyncio.Event()
+    real_close = ws.close
 
-    async def held_audit(**kwargs: Any) -> None:
-        auditing.set()
-        await audited.wait()
-        await real_audit(**kwargs)
+    async def slow_close(**kwargs: Any) -> None:
+        closing.set()
+        await closed.wait()
+        await real_close(**kwargs)
 
-    monkeypatch.setattr(daemon, "_audit_session_revoked", held_audit)
+    monkeypatch.setattr(ws, "close", slow_close)
     revocation = asyncio.create_task(daemon._on_frame(ws, _session_revoked_frame()))
-    await asyncio.wait_for(auditing.wait(), timeout=30)
+    await asyncio.wait_for(closing.wait(), timeout=30)
     release.set()
     await asyncio.wait(work, timeout=30)
 
@@ -668,7 +698,7 @@ async def test_a_handler_that_finishes_after_revocation_sends_nothing(
     assert ws.close_calls == []
     assert ws.sent == []
 
-    audited.set()
+    closed.set()
     await asyncio.wait_for(revocation, timeout=30)
     assert ws.close_calls
     assert ws.sent == []

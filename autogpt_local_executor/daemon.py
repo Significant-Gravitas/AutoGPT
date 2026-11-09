@@ -1279,10 +1279,15 @@ class ShimDaemon:
             reason,
             new_machine,
         )
-        await self._audit_session_revoked(
-            reason=reason,
-            source="frame",
-            new_shim_machine_id=new_machine,
+        # The record and the close don't wait for each other: an audit
+        # writer held up (its lock taken by `audit verify` on a large log, a
+        # slow disk) left the revoked connection open until it was done.
+        record = asyncio.ensure_future(
+            self._audit_session_revoked(
+                reason=reason,
+                source="frame",
+                new_shim_machine_id=new_machine,
+            )
         )
         try:
             # We send no further protocol frames; just close cleanly.
@@ -1290,6 +1295,7 @@ class ShimDaemon:
         except Exception:
             logger.debug("ws.close after SESSION_REVOKED failed", exc_info=True)
         await self._stop_status_ticker()
+        await record
         await self._drain_dispatch_tasks(cancelled)
 
     async def _audit_session_revoked(
