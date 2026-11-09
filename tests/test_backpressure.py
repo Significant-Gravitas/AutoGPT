@@ -322,9 +322,18 @@ async def test_cancel_dispatch_tasks_resets_capacity_and_cancels_handlers(
     assert daemon._available_capacity() == 1
 
 
+# The arguments' depth that puts a frame one level past MAX_FRAME_NESTING:
+# the envelope and the payload add two.
+_ONE_PAST_THE_LIMIT = 63
+
+
+@pytest.mark.parametrize("depth", [_ONE_PAST_THE_LIMIT, 600], ids=["one-past", "deep"])
 async def test_a_frame_nested_too_deeply_is_dropped_before_any_handler(
-    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch, depth: int
 ) -> None:
+    from autogpt_local_executor.protocol import MAX_FRAME_NESTING
+
+    assert _ONE_PAST_THE_LIMIT + 2 == MAX_FRAME_NESTING + 1
     handled: list[Any] = []
 
     async def fake_handle(msg: Any, *, send: Any = None) -> AckMessage:
@@ -333,7 +342,7 @@ async def test_a_frame_nested_too_deeply_is_dropped_before_any_handler(
 
     monkeypatch.setattr(daemon, "_handle", fake_handle)
     daemon._semaphore = asyncio.Semaphore(daemon.config.max_concurrent)
-    arguments = '{"a":' * 600 + "1" + "}" * 600
+    arguments = '{"a":' * depth + "1" + "}" * depth
     frame = (
         '{"type":"COMPUTER_TOOL_CALL","id":"req","ts":1.0,'
         '"payload":{"tool":"click","arguments":' + arguments + "}}"
