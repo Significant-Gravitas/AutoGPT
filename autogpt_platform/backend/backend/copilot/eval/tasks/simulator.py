@@ -133,8 +133,9 @@ class Simulator:
                 "type": "task_started",
                 "task": task.model_dump(),
                 "in_background": True,
-                "message": f"Started '{task.title}' in the background. Tell the "
-                "user in one short line; the result comes back to this chat.",
+                "message": f"Started '{task.title}' in the background; the result "
+                "comes back to this chat. If you have not told the user yet, tell "
+                "them in one short line; if you have, write nothing more.",
             }
         )
 

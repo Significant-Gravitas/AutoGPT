@@ -120,9 +120,10 @@ class StartTaskTool(BaseTool):
         turn_end.request_wrap_up(session.session_id)
         return TaskStartedResponse(
             message=(
-                f"Started '{task.title}' in the background. Tell the user in one "
-                "short line; the result comes back to this chat. Do none of the "
-                "task here."
+                f"Started '{task.title}' in the background; the result comes back "
+                "to this chat. If you have not told the user yet, tell them in one "
+                "short line; if you have, write nothing more. Do none of the task "
+                "here."
             ),
             task=TaskInfo.from_task(task),
             in_background=True,

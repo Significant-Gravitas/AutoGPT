@@ -224,5 +224,7 @@ async def simulated_answer(
         f"Answer only from what you know. For anything not covered, reply "
         f"'{case.default_answer}'. One or two lines, in your own voice, no preamble."
     )
-    answer = await models.backend.text(models.user, prompt, "", json_out=False)
+    answer = await models.backend.text(
+        models.user, "You play a busy user replying to their assistant.", prompt, False
+    )
     return (answer or case.default_answer).strip()

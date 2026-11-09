@@ -149,7 +149,7 @@ def _turn(turn: Any) -> dict[str, Any]:
             {
                 "tool": c.name,
                 "service": c.service,
-                "arguments": json.dumps(c.arguments, default=str)[:400],
+                "arguments": json.dumps(c.arguments, default=str)[:4000],
                 "refused": c.refused,
             }
             for c in turn.tool_calls

@@ -66,15 +66,41 @@ def parse_reviewers(specs: list[str]) -> list[tuple[str, Backend, str]]:
     return reviewers
 
 
+def new_run_dir() -> Path:
+    out = HERE / "runs" / datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    out.mkdir(parents=True)
+    return out
+
+
+def resume(name: str) -> tuple[list[CaseResult], Path]:
+    """Keep a run's cases that finished cleanly, and rerun the rest into it."""
+    out = HERE / "runs" / name
+    path = out / "results.jsonl"
+    results = [
+        CaseResult.model_validate_json(line) for line in path.read_text().splitlines()
+    ]
+    kept = [r for r in results if not r.run.error and not _review_failed(r)]
+    path.write_text("".join(r.model_dump_json() + "\n" for r in kept))
+    return kept, out
+
+
+def _review_failed(result: CaseResult) -> bool:
+    return any(
+        reason.startswith("review failed")
+        for rating in result.ratings.values()
+        for reason in rating.review.reasons
+    )
+
+
 async def evaluate(args: argparse.Namespace) -> Path:
     models = Models(make_backend(args.backend), otto=args.model, user=args.user_model)
     reviewers = parse_reviewers(args.reviewer or [f"{args.backend}:{args.model}"])
     worlds = load_worlds()
     cases = [c for c in load_cases(args.category, args.limit) if c.world in worlds]
-    out = HERE / "runs" / datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    out.mkdir(parents=True)
+    results, out = resume(args.resume) if args.resume else ([], new_run_dir())
+    done = {r.case_id for r in results}
+    cases = [c for c in cases if c.id not in done]
     gate = asyncio.Semaphore(args.concurrency)
-    results: list[CaseResult] = []
 
     async def one(case: Case) -> None:
         async with gate:
@@ -99,7 +125,7 @@ async def evaluate(args: argparse.Namespace) -> Path:
             f"{name.split(':')[-1]}: {r.verdict} {r.score}"
             for name, r in result.ratings.items()
         )
-        print(f"[{len(results)}/{len(cases)}] {case.id}: {marks}", flush=True)
+        print(f"[{len(results)}] {case.id}: {marks}", flush=True)
 
     await asyncio.gather(*(one(c) for c in cases))
     write_report(out, results, args, [name for name, _, _ in reviewers])
@@ -196,6 +222,10 @@ def write_report(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--category", action="append")
+    parser.add_argument(
+        "--resume",
+        help="a run folder name under runs/: keep its clean cases, rerun the rest",
+    )
     parser.add_argument("--limit", type=int, help="cases per category file")
     parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument(

@@ -650,7 +650,7 @@ class TestBuilderBlockRoles:
         assert "calls to the graph id in that `<graph>` tag" in context_rule
 
     def test_greeting_offers_one_thing_like_the_reply_style(self):
-        assert "offer the one most useful thing you could do" in CACHEABLE_SYSTEM_PROMPT
+        assert "Offer the one most useful thing you could do" in CACHEABLE_SYSTEM_PROMPT
         assert "one thing you can do" in prompting.SHARED_TOOL_NOTES
 
 

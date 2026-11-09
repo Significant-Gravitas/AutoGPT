@@ -165,9 +165,9 @@ class ClaudeBackend:
 
     async def text(self, model: str, system: str, user: str, json_out: bool) -> str:
         suffix = "\n\nAnswer with the JSON object only." if json_out else ""
-        return await self._run(
-            model, system or "You are a helpful assistant.", user + suffix
-        )
+        if not user.strip():  # claude -p needs a prompt on stdin
+            system, user = "You are a helpful assistant.", system
+        return await self._run(model, system, user + suffix)
 
     async def _run(self, model: str, system: str, prompt: str) -> str:
         args = [
@@ -220,7 +220,8 @@ else:
  "tool_calls": [{"name": "<tool name>", "arguments": {<arguments>}}]}
 Use "tool_calls": [] when you are done for this turn. Tool results come back
 in the next message. Never write tool calls inside "text", and never use
-XML or <invoke> function-call syntax: only this JSON object."""
+XML or <invoke> function-call syntax: only this JSON object. Saying you will
+do something does not do it: put the calls in the same answer."""
 
 
 def render_chat_prompt(

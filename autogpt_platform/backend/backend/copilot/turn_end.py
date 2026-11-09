@@ -26,7 +26,8 @@ ENDED_REFUSAL = (
 )
 WRAP_UP_REFUSAL = (
     "Not run: you started this as a background task, so the worker does it. "
-    "Tell the user in one short line that it has started, and stop."
+    "If you have not told the user it started, say so in one short line; "
+    "then stop."
 )
 _STILL_ALLOWED_AFTER_TASK = frozenset({"start_task"})
 
