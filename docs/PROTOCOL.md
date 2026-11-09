@@ -861,7 +861,12 @@ offered). The model should see it before it acts. `tools` holds only what
 this machine offers: the clipboard tools appear only with
 `--enable-clipboard`, and a tool the driver lacks on this OS is absent.
 Schemas never show `session`: the shim sets it on every call, one label per
-shim session, so each session gets its own agent cursor and cleanup. The
+shim session, so each session gets its own agent cursor and cleanup.
+cua-driver ends a label left idle for five minutes and refuses later calls
+naming it; the shim then moves the session to a new label and sends the
+refused call again, once (it never ran). Element tokens and other state
+from the ended label are gone, so the model takes a fresh snapshot, as
+after any stale state. The
 list doesn't change while the shim runs; the platform may cache it per
 connection. Listing tools never waits for a running action.
 

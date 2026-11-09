@@ -919,6 +919,50 @@ async def test_the_platform_cannot_choose_the_session(make_handler, fake_log) ->
     assert call["arguments"]["session"] == handler.session_label
 
 
+async def test_a_session_the_driver_ended_goes_on_under_a_new_label(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    # cua-driver ends a named session left idle for five minutes and refuses
+    # every later call naming it.
+    handler = make_handler()
+    ended = handler.session_label
+    monkeypatch.setenv("FAKE_CUA_ENDED_SESSIONS", ended)
+
+    first = await handler.handle(_call("click", {"pid": 5}))
+    second = await handler.handle(_call("click", {"pid": 6}))
+
+    for response in (first, second):
+        assert isinstance(response, ComputerToolResultMessage)
+        assert response.payload.is_error is False
+    calls = _records(fake_log, "call")
+    assert [call["arguments"]["session"] for call in calls] == [ended, f"{ended}.1", f"{ended}.1"]
+    assert [call["arguments"]["pid"] for call in calls] == [5, 5, 6]
+    assert handler.session_label == f"{ended}.1"
+
+
+async def test_hellos_screen_size_survives_an_ended_session(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    handler = make_handler()
+    monkeypatch.setenv("FAKE_CUA_ENDED_SESSIONS", handler.session_label)
+
+    assert await handler.screen_size() == (1920, 1080)
+
+
+async def test_a_refusal_for_another_reason_is_not_sent_again(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    handler = make_handler()
+    label = handler.session_label
+    monkeypatch.setenv("FAKE_CUA_ENDED_SESSIONS", "autogpt-someone-else")
+
+    response = await handler.handle(_call("click", {"pid": 5}))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    [call] = _records(fake_log, "call")
+    assert call["arguments"]["session"] == label == handler.session_label
+
+
 async def test_sessions_get_their_own_labels(make_handler) -> None:
     assert make_handler(session_id="a").session_label != make_handler(session_id="b").session_label
 
