@@ -6,7 +6,7 @@ import {
   screen,
   fireEvent,
   waitFor,
-} from "@testing-library/react";
+} from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 import AutoGPTServerAPI from "@/lib/autogpt-server-api";
