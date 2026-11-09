@@ -41,6 +41,9 @@ MAX_WEBSOCKET_MESSAGE_BYTES: int = 16 * 1024 * 1024
 MAX_WIRE_TEXT_CONTENT_BYTES: int = (MAX_WEBSOCKET_MESSAGE_BYTES - 64 * 1024) // 6
 MAX_WIRE_BASE64_CONTENT_BYTES: int = (MAX_WEBSOCKET_MESSAGE_BYTES - 64 * 1024) * 3 // 4
 SESSION_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+# A HELLO_ACK's session_id: a session's, or on the control connection null or
+# empty (PROTOCOL.md).
+_ACK_SESSION_ID_PATTERN = r"^(?:[A-Za-z0-9][A-Za-z0-9._:-]{0,255})?$"
 
 
 def _split_version(v: str) -> tuple[int, int]:
@@ -325,7 +328,7 @@ class HelloPayload(_Payload):
 
 
 class HelloAckPayload(_Payload):
-    session_id: str | None = Field(default=None, pattern=SESSION_ID_PATTERN)
+    session_id: str | None = Field(default=None, pattern=_ACK_SESSION_ID_PATTERN)
     connection_id: str | None = None
     granted_capabilities: list[str]
     max_file_size_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
