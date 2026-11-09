@@ -1365,6 +1365,72 @@ async def test_the_macos_capture_reports_events_dropped_or_queued_at_the_stop(
             pass
 
 
+async def test_an_event_a_callback_queues_while_the_capture_stops_is_kept(
+    monkeypatch,
+) -> None:
+    """A stop() from another thread let steps() leave its loop while a tap
+    callback was still running. steps() drained the queue, found it empty
+    and finished, and the callback then queued its event into a recording
+    that was over: the action was lost, and nothing said so."""
+    import threading
+
+    from autogpt_local_executor.recording import macos_capture
+
+    _fake_quartz(monkeypatch)
+    source = macos_capture.MacInputCaptureSource(poll_interval=0.01)
+    source._tap = object()
+    joined = threading.Event()
+
+    def callback_still_running() -> None:
+        # Runs until the producer is joined, then queues its event.
+        joined.wait(30)
+        source._on_event(None, 1, object(), None)
+
+    thread = threading.Thread(target=callback_still_running)
+    real_join = thread.join
+
+    def join(timeout: float | None = None) -> None:
+        joined.set()
+        real_join(timeout)
+
+    thread.join = join  # type: ignore[method-assign]
+    source._thread = thread
+    thread.start()
+    source._stop.set()
+    try:
+        steps = [step async for step in source.steps()]
+    finally:
+        joined.set()
+        real_join(30)
+
+    assert [step.cursor for step in steps] == [(1, 2)]
+
+
+async def test_a_capture_whose_tap_thread_does_not_stop_fails_the_recording(
+    monkeypatch,
+) -> None:
+    import threading
+
+    from autogpt_local_executor.recording import macos_capture
+    from autogpt_local_executor.recording.session import RecordingError
+
+    _fake_quartz(monkeypatch)
+    monkeypatch.setattr(macos_capture, "_STOP_JOIN_SECONDS", 0.05, raising=False)
+    source = macos_capture.MacInputCaptureSource(poll_interval=0.01)
+    source._tap = object()
+    release = threading.Event()
+    source._thread = threading.Thread(target=release.wait, args=(30,))
+    source._thread.start()
+    source._stop.set()
+    try:
+        with pytest.raises(RecordingError, match="didn't stop"):
+            async for _step_ in source.steps():
+                pass
+    finally:
+        release.set()
+        source._thread.join(30)
+
+
 async def test_the_macos_capture_fails_a_recording_that_dropped_events(monkeypatch) -> None:
     """An unbounded queue grew without limit behind a stalled consumer; a
     bounded one must not then lose events silently."""

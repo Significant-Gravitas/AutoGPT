@@ -39,6 +39,8 @@ _KEY_DOWN_TYPE: int | None = None
 # Longest the tap thread runs its run loop before it re-checks the stop flag.
 # This bounds how long a stop() that races the thread's startup can take.
 _RUN_LOOP_SLICE_SECONDS = 0.25
+# How long stop() waits for the tap thread to end.
+_STOP_JOIN_SECONDS = 2.0
 
 
 class MacInputCaptureSource(CaptureSource):
@@ -171,7 +173,7 @@ class MacInputCaptureSource(CaptureSource):
             # Ends the current slice early; the flag catches a stop that this misses.
             Quartz.CFRunLoopStop(self._runloop)
         if self._thread is not None:
-            self._thread.join(timeout=2.0)
+            self._thread.join(timeout=_STOP_JOIN_SECONDS)
 
     # ── frontmost app / window (best-effort) ───────────────────────────────
 
@@ -249,8 +251,15 @@ class MacInputCaptureSource(CaptureSource):
                 except queue.Empty:
                     continue
                 yield self._to_step(rec)
-            # Events queued before the stop belong to the recording, and a
-            # drop after the last check above must still fail it.
+            # A callback still running when the stop came can queue its
+            # event after a drain, so the tap thread ends first. Events
+            # queued before the stop belong to the recording, and a drop
+            # after the last check above must still fail it.
+            await asyncio.to_thread(self.stop)
+            if self._thread is not None and self._thread.is_alive():
+                raise RecordingError(
+                    "The input capture didn't stop, so the recording may be missing actions"
+                )
             while True:
                 try:
                     rec = self._q.get_nowait()
