@@ -380,6 +380,36 @@ def test_a_file_where_the_default_configs_directory_belongs_is_an_error(
         load_config()
 
 
+def test_a_file_in_the_default_configs_way_is_an_error_where_it_reads_as_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows reports a file where one of the path's folders belongs as a
+    missing path (FileNotFoundError), not NotADirectoryError, so there the
+    shim still ran on the defaults without a word."""
+    import errno
+
+    import autogpt_local_executor.config as config_module
+    from autogpt_local_executor.config import ConfigFileError
+
+    (tmp_path / "autogpt-local-executor").write_text('platform_url = "https://example.com"\n')
+    blocked = tmp_path / "autogpt-local-executor" / "config.toml"
+    monkeypatch.setattr(config_module, "_default_config_path", lambda: blocked)
+    real_stat = Path.stat
+
+    def windows_stat(self: Path, *args, **kwargs):
+        try:
+            return real_stat(self, *args, **kwargs)
+        except NotADirectoryError:
+            raise FileNotFoundError(
+                errno.ENOENT, "The system cannot find the path specified", str(self)
+            ) from None
+
+    monkeypatch.setattr(Path, "stat", windows_stat)
+
+    with pytest.raises(ConfigFileError, match="is a file, not a folder"):
+        load_config()
+
+
 @pytest.mark.parametrize("port", [0, -1, 65536])
 def test_the_oauth_redirect_port_must_be_a_real_port(tmp_path: Path, port: int) -> None:
     """Port 0 bound an ephemeral port while the redirect URI said 0, so
