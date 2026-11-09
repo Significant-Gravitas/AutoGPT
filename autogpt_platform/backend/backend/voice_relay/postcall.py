@@ -90,7 +90,9 @@ CRASHED = "crashed"
 # the call's finish route can hand off again.
 TRANSCRIPTION_UNAVAILABLE = "transcription_unavailable"
 
-# The silence between the segments of one turn's clip.
+# Audio kept on each side of a segment of speech, and the silence between
+# the segments of one turn's clip.
+SEGMENT_PAD_S = 0.2
 SEGMENT_GAP_S = 0.3
 # Between a turn's transcription attempts, times the attempt number.
 RETRY_BACKOFF_S = 1.0
@@ -169,18 +171,21 @@ def user_turn_clips(pcm: bytes, boundaries: Sequence[int]) -> list[bytes]:
     """The person's speech in a call's recording, one clip per turn of theirs.
 
     *boundaries* are where Otto's turns ended, in samples of the recording.
-    Each segment of speech goes to the stretch it starts in, from the end of
-    one of Otto's turns to the end of the next, so a turn of the person's is
-    what they said between two of Otto's. What they said before Otto's first
-    turn ended joins their answer to it, and what they said after the last
-    joins their answer to that. A turn's segments are joined with a short
+    Each segment of speech goes to the stretch its speech starts in, from the
+    end of one of Otto's turns to the end of the next, so a turn of the
+    person's is what they said between two of Otto's. What they said before
+    Otto's first turn ended joins their answer to it, and what they said after
+    the last joins their answer to that. Each segment is padded on both sides
+    for the transcription, and a turn's segments are joined with a short
     silence; a turn with no speech is an empty clip.
     """
     slots = max(1, len(boundaries))
     grouped: list[list[tuple[int, int]]] = [[] for _ in range(slots)]
-    for start, end in vad.segments(pcm):
+    pad = int(SEGMENT_PAD_S * IN_RATE)
+    total = len(pcm) // 2
+    for start, end in vad.segments(pcm, pad_s=0.0):
         slot = min(max(bisect.bisect_right(boundaries, start) - 1, 0), slots - 1)
-        grouped[slot].append((start, end))
+        grouped[slot].append((max(0, start - pad), min(total, end + pad)))
     gap = bytes(int(SEGMENT_GAP_S * IN_RATE) * 2)
     return [
         gap.join(pcm[start * 2 : end * 2] for start, end in segments)

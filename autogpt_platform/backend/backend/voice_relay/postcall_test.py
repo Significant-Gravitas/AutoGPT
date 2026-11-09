@@ -240,6 +240,20 @@ def test_speech_over_the_greeting_joins_the_answer_to_it():
     assert clips[1] == b""
 
 
+def test_an_answer_that_starts_as_ottos_turn_ends_answers_that_turn():
+    """The padding kept around speech reaches back past Otto's turn; the
+    speech itself does not."""
+    first = tone(0.6) + quiet(0.8)
+    second = tone(0.6) + quiet(0.8)
+    pcm = first + second
+
+    clips = user_turn_clips(pcm, [0, len(first) // 2, len(pcm) // 2])
+
+    assert len(clips[0]) / 2 / IN_RATE == pytest.approx(0.6 + 0.2, abs=0.05)
+    assert len(clips[1]) / 2 / IN_RATE == pytest.approx(0.6 + 0.4, abs=0.05)
+    assert clips[2] == b""
+
+
 def test_a_call_with_no_turn_marked_is_one_turn():
     pcm = answer(0.5) + answer(0.5)
     [clip] = user_turn_clips(pcm, [])
