@@ -4,9 +4,18 @@ import logging
 from uuid import uuid4
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
-from backend.copilot import stream_registry
-from backend.copilot.config import ChatConfig
-from backend.copilot.executor.utils import enqueue_copilot_turn
+from backend.copilot.active_turns import (
+    ConcurrentTurnLimitError,
+    TurnSlot,
+    acquire_turn_slot,
+    get_inflight_turn_limit,
+)
+from backend.copilot.chat_platform_header import (
+    bridge_lines,
+    strip_chat_platform_header,
+)
+from backend.copilot.config import ChatConfig, CopilotLLMModel
+from backend.copilot.executor.utils import dispatch_turn
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -22,8 +31,10 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
+from backend.copilot.service import EmptyUserMessage, normalise_user_message
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.tree import root_envelope
+from backend.copilot.turn_queue import count_inflight_turns
 from backend.data.db_accessors import orgs_db, platform_linking_db, workspace_db
 from backend.data.user import is_user_banned
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
@@ -71,6 +82,40 @@ def _unavailable_denial() -> TurnDenial:
         reason="unavailable",
         message="Chat is temporarily unavailable — please try again in a moment.",
     )
+
+
+def _empty_message_denial() -> TurnDenial:
+    """The message has no text of its own once server-only blocks are removed."""
+    return TurnDenial(
+        reason="empty_message",
+        message="That message is empty. Please send it again with some text.",
+    )
+
+
+def _rewritten_message_denial() -> TurnDenial:
+    """Removing the message's server-only blocks would change the bot's lines."""
+    return TurnDenial(
+        reason="invalid_message",
+        message="That message can't be sent as written. Please rephrase it and send it again.",
+    )
+
+
+def _normalise_bot_message(text: str) -> tuple[str, TurnDenial | None]:
+    """``text`` as the engines read it, or why the turn is refused.
+
+    Removing a server-only block may change the sender's words, never the
+    bot's own header, labels or sections, and a turn needs something left
+    beyond those.
+    """
+    try:
+        message = normalise_user_message(text)
+    except EmptyUserMessage:
+        return text, _empty_message_denial()
+    if bridge_lines(message) != bridge_lines(text):
+        return text, _rewritten_message_denial()
+    if not strip_chat_platform_header(message, bridge_origin=True).strip():
+        return text, _empty_message_denial()
+    return message, None
 
 
 async def _check_ban(user_id: str) -> TurnDenial | None:
@@ -369,6 +414,21 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
             session_id="", turn_id="", user_id=owner_user_id, denial=denial
         )
 
+    # The message is stored and run as the engines read it, the same as a
+    # message sent from the web app; one that can't be is refused before any
+    # session is touched.
+    message, denial = _normalise_bot_message(request.message)
+    if denial is not None:
+        return ChatTurnHandle(
+            session_id="", turn_id="", user_id=owner_user_id, denial=denial
+        )
+    request = request.model_copy(update={"message": message})
+
+    # Bot turns share the owner's in-flight cap with every other turn source.
+    inflight_cap = get_inflight_turn_limit()
+    if await count_inflight_turns(owner_user_id) >= inflight_cap:
+        return _busy_handle(owner_user_id, inflight_cap)
+
     await require_turn_expert(
         owner_user_id, request.expert_id, request.platform_server_id
     )
@@ -397,6 +457,40 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
     session_id = session.session_id
     model, notice = await resolve_turn_model(owner_user_id, request.model, session)
 
+    try:
+        async with acquire_turn_slot(
+            owner_user_id, session_id, capacity=inflight_cap
+        ) as slot:
+            turn_id = await _persist_and_dispatch(
+                request, slot, session, owner_user_id, model
+            )
+    except ConcurrentTurnLimitError:
+        return _busy_handle(owner_user_id, inflight_cap)
+
+    logger.info(
+        f"Bot chat turn started: {request.platform.value} "
+        f"(server {request.platform_server_id or 'DM'}, session {session_id}, "
+        f"turn {turn_id}, owner ...{owner_user_id[-8:]})"
+    )
+
+    return ChatTurnHandle(
+        session_id=session_id,
+        turn_id=turn_id,
+        user_id=owner_user_id,
+        notice=notice,
+    )
+
+
+async def _persist_and_dispatch(
+    request: BotChatRequest,
+    slot: TurnSlot,
+    session: ChatSession,
+    owner_user_id: str,
+    model: CopilotLLMModel | None,
+) -> str:
+    """Save the message and dispatch its turn inside the held slot; returns the
+    turn id."""
+    session_id = session.session_id
     # Persist the user message before enqueueing, mirroring the REST chat
     # endpoint — otherwise the executor runs against empty history.
     is_duplicate = (
@@ -417,21 +511,15 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         raise DuplicateChatMessageError("Message already in flight.")
 
     turn_id = str(uuid4())
-
-    await stream_registry.create_session(
+    org_id, team_id = await _turn_tenancy(owner_user_id, session)
+    await dispatch_turn(
+        slot,
         session_id=session_id,
         user_id=owner_user_id,
+        turn_id=turn_id,
+        message=request.message,
         tool_call_id=CHAT_TOOL_CALL_ID,
         tool_name=CHAT_TOOL_NAME,
-        turn_id=turn_id,
-    )
-
-    org_id, team_id = await _turn_tenancy(owner_user_id, session)
-    await enqueue_copilot_turn(
-        session_id=session_id,
-        user_id=owner_user_id,
-        message=request.message,
-        turn_id=turn_id,
         is_user_message=True,
         organization_id=org_id,
         team_id=team_id,
@@ -444,21 +532,21 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         # anything this turn spawns inherits the bit.
         envelope=root_envelope(turn_id, tainted=True, session_id=session_id),
     )
+    return turn_id
 
-    logger.info(
-        "Bot chat turn started: %s (server %s, session %s, turn %s, owner ...%s)",
-        request.platform.value,
-        request.platform_server_id or "DM",
-        session_id,
-        turn_id,
-        owner_user_id[-8:],
-    )
 
+def _busy_handle(owner_user_id: str, inflight_cap: int) -> ChatTurnHandle:
     return ChatTurnHandle(
-        session_id=session_id,
-        turn_id=turn_id,
+        session_id="",
+        turn_id="",
         user_id=owner_user_id,
-        notice=notice,
+        denial=TurnDenial(
+            reason="rate_limited",
+            message=(
+                f"The linked account is already running its limit of {inflight_cap} "
+                "tasks at once. Try again once one of them finishes."
+            ),
+        ),
     )
 
 

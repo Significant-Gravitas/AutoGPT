@@ -87,7 +87,8 @@ export function WalletRefill() {
       <Text
         variant="small-medium-tight"
         as="p"
-        className="mx-0 mt-4 text-accent-strong"
+        tone="accent"
+        className="mx-0 mt-4"
       >
         Add credits to your balance
       </Text>

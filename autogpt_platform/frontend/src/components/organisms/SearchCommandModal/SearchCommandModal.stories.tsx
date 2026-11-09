@@ -123,7 +123,7 @@ function SearchCommandModalDemo({
       {!isOpen && (
         <button
           type="button"
-          className="m-4 rounded-md border border-border-base bg-surface px-3 py-2 text-sm shadow-sm"
+          className="m-4 rounded-md border border-border-base bg-surface px-3 py-2 text-body shadow-sm"
           onClick={() => setIsOpen(true)}
         >
           Open search
