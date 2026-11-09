@@ -1068,7 +1068,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
     automod_fail_open: bool = Field(
         default=False,
-        description="If True, allow execution to continue if AutoMod fails",
+        description="If True, allow execution to continue if AutoMod fails or "
+        "times out; if False, the execution fails",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
