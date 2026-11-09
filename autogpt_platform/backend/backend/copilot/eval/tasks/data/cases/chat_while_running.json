@@ -1,0 +1,698 @@
+[
+  {
+    "id": "chat_while_running_001",
+    "category": "chat_while_running",
+    "world": "lumen_skincare",
+    "title": "Black Friday email calendar, then a quick calendar question",
+    "turns": [
+      {
+        "user": "pls build the black friday email calendar, teaser + early access + last chance, w subject line ideas"
+      },
+      {
+        "user": "btw what time is the cac deep dive w priya today"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "calendar",
+      "shopify"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "turn 1: starts one task for the BF email calendar and replies in one short line",
+        "turn 2: answers that the CAC deep-dive with Priya is at 2pm (14:00) today, from the calendar",
+        "turn 2: replies directly without waiting for the first task"
+      ],
+      "must_not": [
+        "starts the first task again or a second task for the same work",
+        "turn 2: makes the answer wait for the task result",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Turn 1: on it, building the bf email calendar as a task, will post it here\nTurn 2: 2pm today, the cac deep-dive w priya",
+      "actions": [
+        "start_task(title='Black Friday email calendar with subject lines', brief=...)",
+        "run_capability(calendar lookup for today)"
+      ],
+      "why": "The first request is multi-step so it goes to the background; the follow-up is a one-glance calendar lookup that Otto answers normally while the task runs."
+    }
+  },
+  {
+    "id": "chat_while_running_002",
+    "category": "chat_while_running",
+    "world": "oakline_furniture",
+    "title": "Backorder email plan, then Monday update time",
+    "turns": [
+      {
+        "user": "Please plan the delay emails for the 37 backorder customers: segments, wording, send timing."
+      },
+      {
+        "user": "Quick one: what time is the Monday update with Marcus?"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "shopify",
+      "gmail",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "turn 1: starts one task for the backorder email plan",
+        "turn 2: answers that the Monday update with Marcus is at 11:00 today",
+        "turn 2: gives the answer in one line"
+      ],
+      "must_not": [
+        "starts the first task again or a second task for the same work",
+        "turn 2: says it cannot answer until the task finishes"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Turn 1: On it. I'm planning the backorder emails (segments, wording, timing) and will post it here.\nTurn 2: 11:00 today.",
+      "actions": [
+        "start_task(title='Backorder customer email plan (37 orders)', brief=...)",
+        "run_capability(calendar lookup)"
+      ],
+      "why": "Different requests: the plan is background work, the time check is a direct calendar answer."
+    }
+  },
+  {
+    "id": "chat_while_running_003",
+    "category": "chat_while_running",
+    "world": "saffron_kitchens",
+    "title": "Licence tracker, then ops review time",
+    "turns": [
+      {
+        "user": "licence aur medical certificates ka expiry tracker bana do sab outlets ka"
+      },
+      {
+        "user": "aur ye bata aaj ops review kitne baje hai"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "drive",
+      "sheets",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "turn 1: starts one task for the expiry tracker",
+        "turn 2: answers that the weekly ops review is at 11:00 today, short and in matching Hinglish or plain English"
+      ],
+      "must_not": [
+        "starts the first task again or a second task for the same work",
+        "turn 2: lectures about the task"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Turn 1: theek hai, expiry tracker bana raha hu, yahin share karunga.\nTurn 2: aaj ops review 11 baje hai.",
+      "actions": [
+        "start_task(title='Licence and medical certificate expiry tracker', brief=...)",
+        "run_capability(calendar lookup)"
+      ],
+      "why": "Same user, two different asks; the quick question is answered at once while the tracker is built."
+    }
+  },
+  {
+    "id": "chat_while_running_004",
+    "category": "chat_while_running",
+    "world": "forgepoint_devtools",
+    "title": "Board section draft, then the Bluepeak check-in time",
+    "turns": [
+      {
+        "user": "Please draft the engineering section of the board update: incident #482, SOC 2 readiness and DevRel hiring."
+      },
+      {
+        "user": "Unrelated: at what time is the Bluepeak renewal check-in today?"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "slack",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "turn 1: starts one task for the board engineering section",
+        "turn 2: answers that the Bluepeak renewal check-in is at 15:00 today"
+      ],
+      "must_not": [
+        "starts the first task again or a second task for the same work",
+        "turn 2: starts a task for a simple calendar question"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Turn 1: Understood. I am drafting the engineering section and will post it here.\nTurn 2: The Bluepeak renewal check-in is at 15:00 today.",
+      "actions": [
+        "start_task(title='Board update: engineering section', brief=...)",
+        "run_capability(calendar lookup)"
+      ],
+      "why": "A drafting task runs in the background; the calendar question is answered immediately."
+    }
+  },
+  {
+    "id": "chat_while_running_005",
+    "category": "chat_while_running",
+    "world": "kestrel_agency",
+    "title": "Motion editor shortlist, then budget review time",
+    "turns": [
+      {
+        "user": "- shortlist 5 freelance motion editors for finlo, rates + availability\n- before the 16th"
+      },
+      {
+        "user": "when's the finlo budget review today"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "turn 1: starts one task for the motion editor shortlist",
+        "turn 2: answers that the Finlo budget review (Dana + Greg) is at 15:30 today, tersely"
+      ],
+      "must_not": [
+        "starts the first task again or a second task for the same work",
+        "adds pleasantries or preamble"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Turn 1: on it. shortlisting 5 motion editors, will post here.\nTurn 2: 3:30pm, with dana + greg.",
+      "actions": [
+        "start_task(title='Shortlist 5 freelance motion editors for Finlo', brief=...)",
+        "run_capability(calendar lookup)"
+      ],
+      "why": "Research is a task; the time check is direct. Sam wants terse replies."
+    }
+  },
+  {
+    "id": "chat_while_running_006",
+    "category": "chat_while_running",
+    "world": "shah_realty",
+    "title": "Open house kit, then Vinod Kapoor call time",
+    "turns": [
+      {
+        "user": "Hi Otto! Please make the open house kit for Aravali Heights B-14 on Saturday - invite list from HubSpot leads, signage checklist, run-of-show. Thanks!"
+      },
+      {
+        "user": "oh and what time is my call with Vinod Kapoor today? bhool gayi"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "hubspot",
+      "calendar",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "turn 1: starts one task for the open house kit",
+        "turn 2: answers that the call with Vinod Kapoor is at 18:00 (6pm) today"
+      ],
+      "must_not": [
+        "starts the first task again or a second task for the same work",
+        "turn 2: asks which Vinod Kapoor"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Turn 1: Sure Priya, building the B-14 open house kit and will share it here.\nTurn 2: Your call with Vinod Kapoor is at 6pm today.",
+      "actions": [
+        "start_task(title='Open house kit: Aravali Heights B-14', brief=...)",
+        "run_capability(calendar lookup)"
+      ],
+      "why": "The kit is multi-step; the time question is a direct answer from the calendar."
+    }
+  },
+  {
+    "id": "chat_while_running_007",
+    "category": "chat_while_running",
+    "world": "greenroots_ngo",
+    "title": "Rotary concept note, then thank-you calls time",
+    "turns": [
+      {
+        "user": "Dear Otto, please prepare the Rotary Karen concept note (two pages, budget, schools) before our session on the 12th. Asante."
+      },
+      {
+        "user": "Asante. Unrelated: what time is the donor thank-you calls block today?"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "notion",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "turn 1: starts one task for the concept note",
+        "turn 2: answers that the donor thank-you calls block is at 14:00 today"
+      ],
+      "must_not": [
+        "starts the first task again or a second task for the same work",
+        "turn 2: starts a task for the calendar question"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Turn 1: Karibu, Amani. I am preparing the two-page Rotary Karen concept note and will share it here.\nTurn 2: The donor thank-you calls block is at 14:00 today.",
+      "actions": [
+        "start_task(title='Rotary Karen garden tools concept note', brief=...)",
+        "run_capability(calendar lookup)"
+      ],
+      "why": "Background work for the note; an immediate answer for the calendar question."
+    }
+  },
+  {
+    "id": "chat_while_running_008",
+    "category": "chat_while_running",
+    "world": "brightsmile_dental",
+    "title": "Thanksgiving coverage plan, then a thank-you",
+    "turns": [
+      {
+        "user": "Hi Otto! 🦃 Can you build the Thanksgiving week coverage plan - Dr. Khan is off Nov 25-27 - and a list of patients we'd need to move?"
+      },
+      {
+        "user": "thank you!! you're the best 😊💛"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "calendar",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "turn 1: starts one task for the coverage plan",
+        "turn 2: replies with a short, warm line in Carla's tone and says the plan will arrive in the chat"
+      ],
+      "must_not": [
+        "starts the first task again or a second task for the same work",
+        "turn 2: calls any tool",
+        "turn 2: asks a question"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Turn 1: On it! 🦃 Building the Thanksgiving coverage plan and the patient list, will post it here.\nTurn 2: Aww, happy to help! 😊 I'll ping you here the moment the plan is ready.",
+      "actions": [
+        "start_task(title='Thanksgiving week coverage plan', brief=...)"
+      ],
+      "why": "Small talk deserves a warm one-liner, not a new task or a tool call."
+    }
+  },
+  {
+    "id": "chat_while_running_009",
+    "category": "chat_while_running",
+    "world": "pixelmoth_games",
+    "title": "Patch notes, then a trivia question",
+    "turns": [
+      {
+        "user": "Hey! 0.9.4 is live 🎉 can you write the Steam patch notes + Discord announcement? Arc A750 black screen still open, 2 save bugs too"
+      },
+      {
+        "user": "au fait, c'est quoi la capitale du Québec? 😂 mon cousin demande"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "github",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "turn 1: starts one task for the patch notes and announcement",
+        "turn 2: answers that the capital of Québec is Québec City, briefly"
+      ],
+      "must_not": [
+        "starts the first task again or a second task for the same work",
+        "turn 2: searches the web for a simple fact",
+        "turn 2: starts a task"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Turn 1: Yay 🎉 writing the 0.9.4 patch notes and Discord announcement, will post them here.\nTurn 2: Québec City 😄 Patch notes are coming in the chat soon!",
+      "actions": [
+        "start_task(title='0.9.4 patch notes + Discord announcement', brief=...)"
+      ],
+      "why": "Trivia is answered from knowledge, no tool; the task keeps running."
+    }
+  },
+  {
+    "id": "chat_while_running_010",
+    "category": "chat_while_running",
+    "world": "ledgerly_accounting",
+    "title": "Hartley assessment, then how is it progressing",
+    "turns": [
+      {
+        "user": "Dear Otto, please assess the penalty exposure on the late Hartley & Sons VAT return and draft a note to Mr Hartley for my review. Kind regards, Oliver"
+      },
+      {
+        "user": "Thank you. How is that progressing?"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "turn 1: starts one task for the Hartley assessment",
+        "turn 2: reports the task is in progress, ideally after reading it with list_tasks or get_task",
+        "turn 2: does not invent findings or figures"
+      ],
+      "must_not": [
+        "starts the first task again or a second task for the same work",
+        "turn 2: does the assessment inline",
+        "turn 2: asks a question"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Turn 1: Dear Oliver, understood. I am assessing the exposure and preparing a draft; nothing will be sent.\nTurn 2: The Hartley & Sons assessment is in progress; I will post the exposure figure and the draft here as soon as it is ready.",
+      "actions": [
+        "start_task(title='Hartley & Sons: late VAT assessment and draft note', brief=...)",
+        "get_task(task_id=...) or list_tasks()"
+      ],
+      "why": "A status question is answered from the task record, never by starting the work again."
+    }
+  },
+  {
+    "id": "chat_while_running_011",
+    "category": "chat_while_running",
+    "world": "kestrel_agency",
+    "title": "Nuvo reconciliation, then a status ping",
+    "turns": [
+      {
+        "user": "- reconcile nuvo tiktok spend (client 9,400 vs ours 9,150)\n- short client note on the diff"
+      },
+      {
+        "user": "status?"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "slack",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "turn 1: starts one task for the Nuvo reconciliation",
+        "turn 2: gives the task status in a terse line, after reading the task if useful",
+        "turn 2: does not invent results"
+      ],
+      "must_not": [
+        "starts the first task again or a second task for the same work",
+        "turn 2: restarts or duplicates the work"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Turn 1: on it. reconciling nuvo tiktok spend + drafting the note.\nTurn 2: in progress. nothing to review yet, i'll post when done.",
+      "actions": [
+        "start_task(title='Reconcile Nuvo TikTok spend + client note', brief=...)",
+        "list_tasks()"
+      ],
+      "why": "One-word status question, one-line status answer from the task record."
+    }
+  },
+  {
+    "id": "chat_while_running_012",
+    "category": "chat_while_running",
+    "world": "brightsmile_dental",
+    "title": "How are the October claim appeals going?",
+    "turns": [
+      {
+        "user": "How's the appeal work for October's denied claims going? 😊"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "reads the existing appeals task with list_tasks or get_task and reports it is in progress, owned by Penny",
+        "does not claim progress details the task record does not contain"
+      ],
+      "must_not": [
+        "starts a new task for the appeals",
+        "asks a question",
+        "does the appeals work inline"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Penny is working on it: the task 'Prepare appeals/resubmissions for October's 14 denied claims' is still in progress. I'll post here as soon as there's something to review! 😊",
+      "actions": [
+        "list_tasks() or get_task(task_2)"
+      ],
+      "why": "The work is already running as task_2; a status question is answered from the task, not by starting a duplicate."
+    }
+  },
+  {
+    "id": "chat_while_running_013",
+    "category": "chat_while_running",
+    "world": "oakline_furniture",
+    "title": "PO-2291 monitoring: any ETA change?",
+    "turns": [
+      {
+        "user": "Where are we on the PO-2291 monitoring? Any ETA change?"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "reads the existing PO-2291 monitoring task and reports its status",
+        "may add the latest known ETA (Nov 19) from the data, if it checks the inbox"
+      ],
+      "must_not": [
+        "starts a second PO-2291 monitoring task",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "The 'Monitor PO-2291 container and report ETA changes' task is in progress with Atlas. The last ETA I have is Nov 19 at Long Beach; I'll post here if it moves.",
+      "actions": [
+        "list_tasks() or get_task(task_1)",
+        "optionally search gmail for the latest PO-2291 update"
+      ],
+      "why": "The monitoring task already exists and is running; answer from it (plus the latest email if needed) instead of starting another."
+    }
+  },
+  {
+    "id": "chat_while_running_014",
+    "category": "chat_while_running",
+    "world": "saffron_kitchens",
+    "title": "FSSAI binder status",
+    "turns": [
+      {
+        "user": "fssai binder ka kya status hai? kitne gaps bache"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "drive",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "reads the existing FSSAI binder task and says it is in progress with Saffron-Sage",
+        "is honest that the task record does not give a gap count"
+      ],
+      "must_not": [
+        "starts a new FSSAI binder task",
+        "invents a number of gaps",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Binder wala task abhi in progress hai (Saffron-Sage dekh raha hai). Exact gaps count task me nahi dikh raha, main outlet-wise gaps check karke yahin bata deta hu.",
+      "actions": [
+        "list_tasks() or get_task(task_1)"
+      ],
+      "why": "The binder task already runs; Otto reports its status honestly and does not start a duplicate."
+    }
+  },
+  {
+    "id": "chat_while_running_015",
+    "category": "chat_while_running",
+    "world": "forgepoint_devtools",
+    "title": "SOC 2 evidence collection status",
+    "turns": [
+      {
+        "user": "How is the SOC 2 evidence collection for the Brightline ERL going?"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "notion",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "reads the existing SOC 2 evidence task and reports it is in progress with Cipher",
+        "does not invent progress numbers"
+      ],
+      "must_not": [
+        "starts a second SOC 2 evidence task",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "The task 'Collect SOC 2 evidence for the Brightline ERL' is in progress with Cipher. Evidence is due on 20 November; I can pull the open ERL items from Notion if you would like the detail.",
+      "actions": [
+        "list_tasks() or get_task(task_1)"
+      ],
+      "why": "An existing task answers the question. No second SOC 2 task."
+    }
+  }
+]

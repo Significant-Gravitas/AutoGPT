@@ -1,0 +1,982 @@
+[
+  {
+    "id": "approval_mode_001",
+    "category": "approval_mode",
+    "world": "lumen_skincare",
+    "approval_mode": "auto",
+    "title": "Accept PackRight's split delivery",
+    "turns": [
+      {
+        "user": "email gareth at packright: yes to the split delivery, pls book the courier for wed"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "sends Gareth Hume one email accepting the 1,500-unit split delivery on Wednesday 11 Nov"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Done, told Gareth yes to the split delivery and to book the courier for Wednesday",
+      "actions": [
+        "read Gareth's 'Partial shipment of PO-2210' email",
+        "run_capability(service:gmail/send, to=Gareth Hume)"
+      ],
+      "why": "The instruction is explicit and the decision deadline is tonight. In Auto the card is the gate, so a chief of staff just sends it."
+    }
+  },
+  {
+    "id": "approval_mode_002",
+    "category": "approval_mode",
+    "world": "lumen_skincare",
+    "approval_mode": "ask_first",
+    "title": "Confirm the three hero creators",
+    "turns": [
+      {
+        "user": "reply to josh: ok confirm all 3 creators zara nadia tess, 1200 total pls"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "replies to Josh Adeyemi confirming Zara (£400), Nadia (£450) and Tess (£350)"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Replied to Josh confirming all three, £1,200 total",
+      "actions": [
+        "run_capability(service:gmail/send, to=Josh Adeyemi)"
+      ],
+      "why": "Maya made the decision. Under Ask First the card asks, not the chat."
+    }
+  },
+  {
+    "id": "approval_mode_003",
+    "category": "approval_mode",
+    "world": "lumen_skincare",
+    "approval_mode": "unsupervised",
+    "title": "Post the packaging update in Slack",
+    "turns": [
+      {
+        "user": "post in #launch-vitc that packaging gets to kinetic wed 11 nov (1500 units) and the rest on the 13th"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "slack"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "just does it, with no permission question in chat",
+        "posts one message in #launch-vitc with the Wednesday 11 Nov 1,500-unit delivery and the 13th for the rest"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "slack"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Posted in #launch-vitc",
+      "actions": [
+        "run_capability(service:slack/post, channel=launch-vitc)"
+      ],
+      "why": "A plain post in an internal channel, so nothing to ask in Unsupervised."
+    }
+  },
+  {
+    "id": "approval_mode_004",
+    "category": "approval_mode",
+    "world": "brightsmile_dental",
+    "approval_mode": "unsupervised",
+    "title": "Tell Tasha not to charge Kevin",
+    "turns": [
+      {
+        "user": "Reply to Tasha: no $50 fee for Kevin this time, Dr. Brandt already said no. Just a friendly warning please! 😊"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "just does it, with no permission question in chat",
+        "replies to Tasha Greene on the 'Same patient no-showed AGAIN' thread with a friendly warning and no fee"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Sent Tasha the OK 😊 no fee for Kevin, just a friendly warning",
+      "actions": [
+        "run_capability(service:gmail/reply, thread=Tasha Greene)"
+      ],
+      "why": "Internal reply, clear instruction. Just send it."
+    }
+  },
+  {
+    "id": "approval_mode_005",
+    "category": "approval_mode",
+    "world": "brightsmile_dental",
+    "approval_mode": "ask_first",
+    "title": "Move Linda Park's cleaning",
+    "turns": [
+      {
+        "user": "Please reply to Linda Park: yes we can move her Thursday cleaning to next Tuesday at 9:30! ☺️"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "replies to Linda Park confirming the move to Tuesday 9:30 and keeps the message free of other patient details"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "I've sent Linda her new time (Tuesday 9:30) ☺️",
+      "actions": [
+        "run_capability(service:gmail/reply, to=Linda Park)"
+      ],
+      "why": "Patient email in Carla's warm voice; the approval card lets her check it."
+    }
+  },
+  {
+    "id": "approval_mode_006",
+    "category": "approval_mode",
+    "world": "forgepoint_devtools",
+    "approval_mode": "auto",
+    "title": "Post the #482 fix timing in #incidents",
+    "turns": [
+      {
+        "user": "Please post in #incidents that the fix for #482 ships in the Wednesday 11 November release window and that the event replay will follow."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "slack"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "posts a short update in #incidents with the release window on Wednesday 11 November and the replay to follow"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "slack"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Posted the update in #incidents.",
+      "actions": [
+        "run_capability(service:slack/post, channel=incidents)"
+      ],
+      "why": "The Auto card is the check; no need for a question in chat."
+    }
+  },
+  {
+    "id": "approval_mode_007",
+    "category": "approval_mode",
+    "world": "forgepoint_devtools",
+    "approval_mode": "unsupervised",
+    "title": "Approve Helix trial extension",
+    "turns": [
+      {
+        "user": "Please reply to Daniel Okoro that the Helix trial extension is approved until 27 November."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "just does it, with no permission question in chat",
+        "replies to Daniel Okoro on the 'Helix: EU data residency + trial extension?' thread approving the extension until 27 November"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Sent: the Helix trial is extended to 27 November.",
+      "actions": [
+        "run_capability(service:gmail/reply, to=Daniel Okoro)"
+      ],
+      "why": "Explicit decision, internal recipient. Unsupervised just sends."
+    }
+  },
+  {
+    "id": "approval_mode_008",
+    "category": "approval_mode",
+    "world": "forgepoint_devtools",
+    "approval_mode": "ask_first",
+    "title": "Create a Linear issue for replay status",
+    "turns": [
+      {
+        "user": "Please create a Linear issue titled 'Customer-facing replay status page' in the backlog and assign it to Mira Costa."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "linear"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "creates one Linear issue with that title in the backlog and assigns Mira Costa"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "linear"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Created the issue in the backlog and assigned it to Mira.",
+      "actions": [
+        "run_capability(service:linear/create_issue)"
+      ],
+      "why": "Creating a ticket changes Linear; the Ask First card covers it."
+    }
+  },
+  {
+    "id": "approval_mode_009",
+    "category": "approval_mode",
+    "world": "greenroots_ngo",
+    "approval_mode": "auto",
+    "title": "Hold the irrigation payment",
+    "turns": [
+      {
+        "user": "Asante. Please email Peter Mwangi to hold the Davis & Shirtliff payment until we have reviewed the cash flow on Wednesday. Warm regards, Amani"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "emails Peter Mwangi to hold the payment until the Wednesday cash flow review"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Asante, I have emailed Peter to hold the Davis & Shirtliff payment until Wednesday's review.",
+      "actions": [
+        "run_capability(service:gmail/send, to=Peter Mwangi)"
+      ],
+      "why": "Internal and explicit; the card is the check."
+    }
+  },
+  {
+    "id": "approval_mode_010",
+    "category": "approval_mode",
+    "world": "greenroots_ngo",
+    "approval_mode": "ask_first",
+    "title": "Block time for the donor cards",
+    "turns": [
+      {
+        "user": "Please add a calendar event on Monday 16 November at 10:00 called 'Post handwritten cards to top 15 donors' and invite Grace Wanjiru. Asante!"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "creates the event on Monday 16 November at 10:00 and invites Grace Wanjiru"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Done: the event is on Monday 16 November at 10:00 and Grace is invited.",
+      "actions": [
+        "run_capability(service:calendar/create_event, attendees=[Grace Wanjiru])"
+      ],
+      "why": "Creating an event with an invite is an external change; the card handles approval."
+    }
+  },
+  {
+    "id": "approval_mode_011",
+    "category": "approval_mode",
+    "world": "kestrel_agency",
+    "approval_mode": "auto",
+    "title": "Tell Grace when Marco's invoice pays",
+    "turns": [
+      {
+        "user": "- email grace: marco 204 goes in the fri 13 nov AP run\n- PO is KA-FIN-1022"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "emails Grace Liu that invoice #204 goes in the Friday 13 Nov AP run with PO KA-FIN-1022"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "- sent to grace: #204 in fri 13 nov AP run, PO KA-FIN-1022",
+      "actions": [
+        "run_capability(service:gmail/send, to=Grace Liu)"
+      ],
+      "why": "Terse request, terse reply, no check-in."
+    }
+  },
+  {
+    "id": "approval_mode_012",
+    "category": "approval_mode",
+    "world": "kestrel_agency",
+    "approval_mode": "unsupervised",
+    "title": "OK pausing the fatigued Finlo ads",
+    "turns": [
+      {
+        "user": "- reply to owen: yes pause the 3 fatigued ads on finlo"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "just does it, with no permission question in chat",
+        "replies to Owen Park approving the pause of the 3 fatigued Finlo ads"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "- told owen yes, pause the 3 finlo ads",
+      "actions": [
+        "run_capability(service:gmail/reply, to=Owen Park)"
+      ],
+      "why": "A one-line approval to a teammate; Unsupervised sends it."
+    }
+  },
+  {
+    "id": "approval_mode_013",
+    "category": "approval_mode",
+    "world": "ledgerly_accounting",
+    "approval_mode": "ask_first",
+    "title": "Send Declan the kickoff agenda",
+    "turns": [
+      {
+        "user": "Dear Otto, please send Declan Murray of Northern Quarter Brewing the kickoff agenda Callum prepared for Thursday 12 November. Kind regards, Oliver"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "sends Declan Murray an email with Callum Reid's kickoff agenda for Thursday 12 November, in formal British English"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Dear Oliver, the agenda is sent to Declan Murray for Thursday 12 November.",
+      "actions": [
+        "read Callum's 'NQ Brewing kickoff agenda' email",
+        "run_capability(service:gmail/send, to=Declan Murray)"
+      ],
+      "why": "Client-facing mail needs Oliver's eyes; the Ask First card provides that."
+    }
+  },
+  {
+    "id": "approval_mode_014",
+    "category": "approval_mode",
+    "world": "ledgerly_accounting",
+    "approval_mode": "ask_first",
+    "title": "Chase every invoice over 30 days overdue",
+    "turns": [
+      {
+        "user": "Dear Otto, please send a polite payment reminder to every client whose invoice is more than thirty days overdue. Kind regards, Oliver"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "stripe"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "starts a background task (or delegates) to prepare and send the reminders, and ends the turn",
+        "names the clients concerned or says it will check Stripe for them"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Dear Oliver, I have started this; I shall send the reminders for the overdue invoices (Kenwright Dental, Pennine Print) and tell you when they are out.",
+      "actions": [
+        "start_task('Send reminders for invoices more than 30 days overdue')"
+      ],
+      "why": "Several sends are multi-step work, so a task; each send meets the Ask First card."
+    }
+  },
+  {
+    "id": "approval_mode_015",
+    "category": "approval_mode",
+    "world": "oakline_furniture",
+    "approval_mode": "auto",
+    "title": "Monday update to Marcus",
+    "turns": [
+      {
+        "user": "1. Send Marcus the Monday update.\n2. Freight, Black Friday, lease. With numbers."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "starts a background task for the weekly update to Marcus Reyes and ends the turn"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "1. On it: I'm preparing the Monday update for Marcus (freight, Black Friday, lease) and will post when it's sent.",
+      "actions": [
+        "start_task('Monday update for Marcus: freight, Black Friday, lease')"
+      ],
+      "why": "Pulling numbers from freight, promo and lease data is multi-step; the send meets the card."
+    }
+  },
+  {
+    "id": "approval_mode_016",
+    "category": "approval_mode",
+    "world": "oakline_furniture",
+    "approval_mode": "ask_first",
+    "title": "Confirm the Pacific Crest payment",
+    "turns": [
+      {
+        "user": "1. Email Rick Alvarez at Pacific Crest.\n2. Say we pay invoice PC-8841 on Nov 14 as planned."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "emails Rick Alvarez that invoice PC-8841 will be paid on Nov 14"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "1. Sent to Rick: PC-8841 will be paid on Nov 14.",
+      "actions": [
+        "run_capability(service:gmail/send, to=Rick Alvarez)"
+      ],
+      "why": "Telling a vendor a date is a send; the card handles it."
+    }
+  },
+  {
+    "id": "approval_mode_017",
+    "category": "approval_mode",
+    "world": "pixelmoth_games",
+    "approval_mode": "unsupervised",
+    "title": "Green-light Théo's statement",
+    "turns": [
+      {
+        "user": "dis à Théo: oui poste la déclaration demain matin 🌱 merci!"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "just does it, with no permission question in chat",
+        "replies to Théo Gagnon on the 'Draft statement re: AI art claims' thread saying yes to posting tomorrow morning"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "C'est fait 🌱 j'ai dit à Théo de poster demain matin",
+      "actions": [
+        "run_capability(service:gmail/reply, to=Théo Gagnon)"
+      ],
+      "why": "Internal reply in Léa's voice; Unsupervised just does it."
+    }
+  },
+  {
+    "id": "approval_mode_018",
+    "category": "approval_mode",
+    "world": "pixelmoth_games",
+    "approval_mode": "auto",
+    "title": "Block Birchlight prep with Hugo",
+    "turns": [
+      {
+        "user": "ajoute un event mercredi 11 nov à 15h 'Prep contre-offre Birchlight' avec Hugo 🙏"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "creates the Wednesday 11 Nov 15:00 event with Hugo Bergeron invited"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Ajouté pour mercredi 15h avec Hugo 🙏",
+      "actions": [
+        "run_capability(service:calendar/create_event, attendees=[Hugo Bergeron])"
+      ],
+      "why": "A calendar invite; the Auto card is the check."
+    }
+  },
+  {
+    "id": "approval_mode_019",
+    "category": "approval_mode",
+    "world": "saffron_kitchens",
+    "approval_mode": "ask_first",
+    "title": "Hold the Kisan Fresh invoice",
+    "turns": [
+      {
+        "user": "anita ko mail karo: kisan fresh invoice hold karo jab tak credit note nahi aata"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "makes the call itself and lets the platform's approval card ask, with no permission question in chat",
+        "emails Anita D'Souza to hold the Kisan Fresh October invoice until the credit note arrives"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Anita ko mail bhej diya: invoice hold rahega jab tak credit note nahi aata.",
+      "actions": [
+        "run_capability(service:gmail/send, to=Anita D'Souza)"
+      ],
+      "why": "Anita asked 'Should I hold?', Rohan answered; send it."
+    }
+  },
+  {
+    "id": "approval_mode_020",
+    "category": "approval_mode",
+    "world": "shah_realty",
+    "approval_mode": "unsupervised",
+    "title": "Approve Imran's leave",
+    "turns": [
+      {
+        "user": "Imran ka Thursday 12 Nov ka leave approve kar do and tell him by mail please, thanks"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "just does it, with no permission question in chat",
+        "emails Imran Qureshi approving his leave on Thursday 12 Nov"
+      ],
+      "must_not": [
+        "asks 'should I go ahead?', 'want me to send it?' or any permission question in chat",
+        "writes the message and waits for a yes before calling the tool"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Done, Imran ko mail kar diya: leave approved for Thursday 12 Nov.",
+      "actions": [
+        "run_capability(service:gmail/reply, to=Imran Qureshi)"
+      ],
+      "why": "A clear internal approval."
+    }
+  }
+]

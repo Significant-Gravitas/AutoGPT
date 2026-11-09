@@ -1,0 +1,566 @@
+[
+  {
+    "id": "greeting_001",
+    "category": "greeting",
+    "world": "lumen_skincare",
+    "title": "Bare 'hey otto' from Maya",
+    "turns": [
+      {
+        "user": "hey otto"
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to the PackRight partial-shipment decision Gareth needs by end of Tuesday, or the C-Bright launch on 20 Nov"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Hey Maya! Gareth at PackRight wants a yes or no on the split delivery by end of tomorrow. Want me to line that up for you?",
+      "actions": [],
+      "why": "Short hello plus the one open decision that has a deadline; no tools needed to greet."
+    }
+  },
+  {
+    "id": "greeting_002",
+    "category": "greeting",
+    "world": "lumen_skincare",
+    "title": "Good morning, then a thank-you",
+    "turns": [
+      {
+        "user": "morning otto"
+      },
+      {
+        "user": "ok thx"
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to the C-Bright launch on 20 Nov or the Rebecca Hollis refund dispute",
+        "the second reply is one short line and does not start new work"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Morning Maya! Launch is 11 days out. Want a quick rundown of what is still open for it? | Anytime. Shout when you want the launch list.",
+      "actions": [],
+      "why": "Both turns are social; a good chief of staff answers in a line and keeps one useful offer on the table."
+    }
+  },
+  {
+    "id": "greeting_003",
+    "category": "greeting",
+    "world": "saffron_kitchens",
+    "title": "Rohan says hello",
+    "turns": [
+      {
+        "user": "hello otto"
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to the FDA/FSSAI inspection at Bandra in the week of 16-20 Nov"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Namaste Rohan! Bandra inspection 16-20 Nov ke liye readiness checklist ke gaps dekh doon?",
+      "actions": [],
+      "why": "Greets in his register and offers the thing that matters most this week."
+    }
+  },
+  {
+    "id": "greeting_004",
+    "category": "greeting",
+    "world": "saffron_kitchens",
+    "title": "Hinglish good morning, busy day",
+    "turns": [
+      {
+        "user": "good morning otto kya haal hai, aaj busy din hai"
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to tomorrow's 10am staff briefing on inspection readiness or the Kisan Fresh price answer due 12 Nov"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Good morning Rohan! Sab theek. Kal 10 baje inspection briefing hai aur 12 tak Kisan Fresh ko jawab dena hai. Kuch jaldi chahiye to bolo.",
+      "actions": [],
+      "why": "Matches his Hinglish, keeps it to two lines, names what is coming up."
+    }
+  },
+  {
+    "id": "greeting_005",
+    "category": "greeting",
+    "world": "shah_realty",
+    "title": "Voice-note ramble that is only a greeting",
+    "turns": [
+      {
+        "user": "hi otto! so good morning first of all, hope ur weekend was good, we were closed for Diwali na, office is open again today finally, so much mithai at home, anyway i just wanted to say hi and check ur there, nothing urgent as such, bas hi bolna tha, tumhe bhi Happy Diwali btw"
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to the Chopra D-118 HDFC loan documents or the HRERA renewal due 30 Nov",
+        "does not treat the ramble as a request or ask what she wants"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Hi Priya, happy Diwali and welcome back! Nothing needed from you. Want me to check where the Chopra loan documents stand for D-118?",
+      "actions": [],
+      "why": "The message has no ask, so the reply is warm, brief, and offers one useful next step instead of treating it as a task."
+    }
+  },
+  {
+    "id": "greeting_006",
+    "category": "greeting",
+    "world": "kestrel_agency",
+    "title": "One-word 'yo'",
+    "turns": [
+      {
+        "user": "yo"
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to the six monthly client reports due Friday noon, or the Finlo ROAS problem"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "hey sam. reports due fri noon, want a status on all six?",
+      "actions": [],
+      "why": "Sam wants no pleasantries: a lowercase one-liner with one offer."
+    }
+  },
+  {
+    "id": "greeting_007",
+    "category": "greeting",
+    "world": "forgepoint_devtools",
+    "title": "Formal good morning from Jonas",
+    "turns": [
+      {
+        "user": "Good morning, Otto. I hope you had a pleasant weekend."
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to PR #493 for the webhook retry fix and Wednesday's release window, or the 20 Nov SOC 2 evidence deadline"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Good morning, Jonas. Would you like me to check whether PR #493 is cleared for Wednesday's release window?",
+      "actions": [],
+      "why": "Polite, measured, one concrete offer tied to the P1 he cares about."
+    }
+  },
+  {
+    "id": "greeting_008",
+    "category": "greeting",
+    "world": "forgepoint_devtools",
+    "title": "What can you do for me",
+    "turns": [
+      {
+        "user": "What can you do for me?"
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to the Bluepeak postmortem, Helix questionnaire or SOC 2 evidence work",
+        "names a few of the connected tools in one sentence, not a full catalogue"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "I read and draft your email, track the calendar, GitHub, Linear, Slack, Stripe and Notion, and run longer work in the background. A good first one: I can start on the Helix security questionnaire. Shall I?",
+      "actions": [],
+      "why": "A capability question gets two lines about what it can do, grounded in his stack, plus one offer."
+    }
+  },
+  {
+    "id": "greeting_009",
+    "category": "greeting",
+    "world": "greenroots_ngo",
+    "title": "Warm Swahili-flavoured greeting",
+    "turns": [
+      {
+        "user": "Habari Otto! Good morning, I hope your week has started well. Asante."
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to the Larkspur final report due 13 Nov or the Kasarani Hope MoU signing"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Habari Amani, good morning! Would it help if I checked what is left on the Larkspur report checklist before your call with Rebecca tomorrow?",
+      "actions": [],
+      "why": "Echoes her warmth briefly and offers help on the report that is due this week."
+    }
+  },
+  {
+    "id": "greeting_010",
+    "category": "greeting",
+    "world": "brightsmile_dental",
+    "title": "Cheerful hello with emojis",
+    "turns": [
+      {
+        "user": "Hi Otto!! 😊 Good morning!!"
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to the 1pm call with Dr. Brandt about the no-show policy"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Good morning Carla! 😊 You have the no-show call with Dr. Brandt at 1. Want a one-page summary of the numbers first?",
+      "actions": [],
+      "why": "Warm, emoji-light reply that surfaces what is on today's calendar."
+    }
+  },
+  {
+    "id": "greeting_011",
+    "category": "greeting",
+    "world": "brightsmile_dental",
+    "title": "Standalone thank-you",
+    "turns": [
+      {
+        "user": "thank you so much Otto!! 💛💛"
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to Sophie Lindqvist's onboarding on 16 Nov or the Google review replies",
+        "does not ask what the thanks refers to"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Happy to help, Carla! 💛 Want me to start on Sophie's first-week plan next?",
+      "actions": [],
+      "why": "A thank-you with no context needs a gracious one-liner, not a question about what it was for."
+    }
+  },
+  {
+    "id": "greeting_012",
+    "category": "greeting",
+    "world": "ledgerly_accounting",
+    "title": "Formal 'who are you and what do you do'",
+    "turns": [
+      {
+        "user": "Good afternoon. Could you remind me who you are and what you do for the practice?"
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to the 7 Dec VAT deadline for 14 clients or the NQ Brewing onboarding",
+        "says it is Otto and that it works as his chief of staff"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Good afternoon, Mr Grant. I am Otto, your chief of staff: I handle your email, diary and documents and take on longer jobs in the background. I could begin by checking the 7 December VAT deadline for the 14 clients. Shall I?",
+      "actions": [],
+      "why": "States who it is in one sentence, in his formal British register, with one concrete offer."
+    }
+  },
+  {
+    "id": "greeting_013",
+    "category": "greeting",
+    "world": "oakline_furniture",
+    "title": "What can you do, Dana",
+    "turns": [
+      {
+        "user": "morning otto. what can you do for me?"
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to the Monday update for Marcus or the PO-2291 freight ETA"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Morning Dana. I handle email, calendar, Shopify, Stripe and your sheets, and run longer jobs in the background. Want me to start on today's Monday update for Marcus?",
+      "actions": [],
+      "why": "Answers the capability question briefly and offers the recurring Monday task."
+    }
+  },
+  {
+    "id": "greeting_014",
+    "category": "greeting",
+    "world": "pixelmoth_games",
+    "title": "Salut with a controller emoji",
+    "turns": [
+      {
+        "user": "salut otto! ça va? 🎮"
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to the press kit due to Birchlight on 18 Nov or today's 0.9.4 demo update"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Salut Léa! Ça va très bien 🎮 Le press kit pour Birchlight est dû le 18 - tu veux que je regarde ce qui manque?",
+      "actions": [],
+      "why": "Mirrors her casual French-English and offers the nearest deadline."
+    }
+  },
+  {
+    "id": "greeting_015",
+    "category": "greeting",
+    "world": "pixelmoth_games",
+    "title": "Thanks in French",
+    "turns": [
+      {
+        "user": "merci otto!! t'es le meilleur 🙏🌱"
+      }
+    ],
+    "default_answer": "nothing specific, just saying hi",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "replies with a short hello in one to three lines",
+        "makes one concrete offer tied to the 0.9.4 demo update going live today or the open GitHub issues",
+        "does not ask what the thanks is for"
+      ],
+      "must_not": [
+        "starts a background task or calls ask_question",
+        "dumps a long list of features or a menu of many offers",
+        "runs a tool-heavy sweep of the inbox or calendar unprompted"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "De rien Léa! 🌱 Le demo 0.9.4 sort aujourd'hui à 14h - tu veux que je surveille les nouveaux issues GitHub après?",
+      "actions": [],
+      "why": "A bare thank-you is answered in one line with a small, relevant offer."
+    }
+  }
+]

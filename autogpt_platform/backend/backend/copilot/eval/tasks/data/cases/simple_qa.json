@@ -1,0 +1,1259 @@
+[
+  {
+    "id": "simple_qa_001",
+    "category": "simple_qa",
+    "world": "saffron_kitchens",
+    "title": "Flight time Delhi to Mumbai, in Hinglish",
+    "turns": [
+      {
+        "user": "bhai delhi se mumbai flight kitni der ki hoti hai"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "answers about 2 hours to 2 hours 15 minutes",
+        "answers in a line or two"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Lagbhag 2 ghante 10-15 minute ki direct flight.",
+      "actions": [],
+      "why": "General knowledge; one line is the whole job."
+    }
+  },
+  {
+    "id": "simple_qa_002",
+    "category": "simple_qa",
+    "world": "saffron_kitchens",
+    "title": "GST on a round figure",
+    "turns": [
+      {
+        "user": "45000 pe 18% gst kitna hota hai"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "states GST of 8,100",
+        "states the total of 53,100 or offers it"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question",
+        "explains GST slabs or asks if it is inclusive or exclusive"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "18% of 45,000 = Rs 8,100. Total with GST: Rs 53,100.",
+      "actions": [],
+      "why": "Simple arithmetic; show the tax and the total and stop."
+    }
+  },
+  {
+    "id": "simple_qa_003",
+    "category": "simple_qa",
+    "world": "oakline_furniture",
+    "title": "Time in Ho Chi Minh City",
+    "turns": [
+      {
+        "user": "what time is it in Ho Chi Minh City when it's 9am in Portland? Binh Duong is calling me later"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says midnight at the start of Nov 10 (15 hours ahead of Portland, PST)",
+        "gives a clear time, not a range"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question",
+        "claims 14 hours"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "When it is 9:00 am Monday in Portland (PST), it is 12:00 am Tuesday Nov 10 in Ho Chi Minh City: 15 hours ahead. To reach Lan Nguyen in her morning, call around 6-7 pm Portland time.",
+      "actions": [],
+      "why": "Gives the number first, adds one useful hint for the factory call."
+    }
+  },
+  {
+    "id": "simple_qa_004",
+    "category": "simple_qa",
+    "world": "oakline_furniture",
+    "title": "Centimetres to inches",
+    "turns": [
+      {
+        "user": "Alder dining table is 180cm - what's that in inches?"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "answers about 70.9 inches",
+        "may add 5 ft 11 in"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question",
+        "calls Shopify to look up the product"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "180 cm = 70.9 in (about 5 ft 11 in).",
+      "actions": [],
+      "why": "Pure conversion; the product name is just context."
+    }
+  },
+  {
+    "id": "simple_qa_005",
+    "category": "simple_qa",
+    "world": "lumen_skincare",
+    "title": "VAT on a supplier invoice amount",
+    "turns": [
+      {
+        "user": "whats 20% vat on 14820 pls"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "states VAT of 2,964",
+        "states a gross of 17,784 or offers it"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question",
+        "checks whether INV-3381 already includes VAT"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "20% of £14,820 is £2,964, so £17,784 with VAT.",
+      "actions": [],
+      "why": "Straight maths in Maya's currency; no tools."
+    }
+  },
+  {
+    "id": "simple_qa_006",
+    "category": "simple_qa",
+    "world": "lumen_skincare",
+    "title": "One-line rewrite of a pasted sentence",
+    "turns": [
+      {
+        "user": "make this one line and less cringe: 'we are very very excited to be telling you all that c-bright is finally launching on the 20th of november'"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "plain and friendly"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "returns one rewritten line that keeps the 20 Nov date",
+        "does not add product claims"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question",
+        "adds claims about results or ingredients",
+        "offers several versions to choose from"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "C-Bright launches on 20 November.",
+      "actions": [],
+      "why": "Does the edit; any extra claim would need Sasha's sign-off."
+    }
+  },
+  {
+    "id": "simple_qa_007",
+    "category": "simple_qa",
+    "world": "forgepoint_devtools",
+    "title": "Define idempotency key",
+    "turns": [
+      {
+        "user": "Please explain 'idempotency key' in two sentences, as I need it for a customer note."
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "defines it in about two sentences",
+        "ties it to safe retries"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question",
+        "writes more than three sentences"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "An idempotency key is a unique identifier a client sends with a request so the server can recognise a retry and process it only once. It makes retries safe: repeating the same request yields the same result rather than a duplicate side effect.",
+      "actions": [],
+      "why": "A definition with the requested length."
+    }
+  },
+  {
+    "id": "simple_qa_008",
+    "category": "simple_qa",
+    "world": "forgepoint_devtools",
+    "title": "Annual prepay arithmetic",
+    "turns": [
+      {
+        "user": "What does the Business plan cost for a year if the customer prepays annually? Business is EUR 499 a month and annual prepay is 10% off."
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "states EUR 5,389.20",
+        "may mention the list total of EUR 5,988 and the EUR 598.80 saving"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question",
+        "asks which customer this is for"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "EUR 499 x 12 = EUR 5,988. With 10% off: EUR 5,389.20 (saving EUR 598.80).",
+      "actions": [],
+      "why": "The inputs are in the message; compute and answer."
+    }
+  },
+  {
+    "id": "simple_qa_009",
+    "category": "simple_qa",
+    "world": "brightsmile_dental",
+    "title": "Dental billing code definition",
+    "turns": [
+      {
+        "user": "what does D2740 mean again? the Cigna claim mentions it 😅"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says D2740 is a crown, porcelain/ceramic",
+        "answers in one or two lines"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "D2740 is the CDT code for a porcelain/ceramic crown. Cigna wants more info on that one, so I can look at the request next if you like!",
+      "actions": [],
+      "why": "Definition first; the claim is only context, so no lookup is required."
+    }
+  },
+  {
+    "id": "simple_qa_010",
+    "category": "simple_qa",
+    "world": "brightsmile_dental",
+    "title": "Polish a pasted sentence",
+    "turns": [
+      {
+        "user": "can u make this friendlier? 'ur 3rd missed appt so there is a $50 fee now'"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "gives one friendlier line that keeps the $50 fee on the third miss",
+        "no patient names or visit details"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question",
+        "asks who the patient is"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Since this is your third missed appointment, a $50 fee applies - we would love to see you back in the chair soon! 😊",
+      "actions": [],
+      "why": "One polished line, in the practice's warm voice, per the cancellation policy."
+    }
+  },
+  {
+    "id": "simple_qa_011",
+    "category": "simple_qa",
+    "world": "greenroots_ngo",
+    "title": "USD to KES at the house rate",
+    "turns": [
+      {
+        "user": "How much is USD 85,000 in shillings at our usual rate?"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "states KES 10,965,000 (85,000 x 129)",
+        "names the 129 rate"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question",
+        "asks which exchange rate to use"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "At KES 129 per USD: KES 10,965,000.",
+      "actions": [],
+      "why": "The house rate is a known memory; one multiplication."
+    }
+  },
+  {
+    "id": "simple_qa_012",
+    "category": "simple_qa",
+    "world": "kestrel_agency",
+    "title": "Revenue from ROAS",
+    "turns": [
+      {
+        "user": "roas 1.9 on 20k spend = how much revenue"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "states 38,000 in revenue",
+        "terse answer"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question",
+        "explains what ROAS is"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "$38k. (1.9 x $20k)",
+      "actions": [],
+      "why": "Sam wants the number, nothing else."
+    }
+  },
+  {
+    "id": "simple_qa_013",
+    "category": "simple_qa",
+    "world": "ledgerly_accounting",
+    "title": "Cash accounting vs flat rate scheme",
+    "turns": [
+      {
+        "user": "Kindly remind me, in a few lines, of the difference between the VAT cash accounting scheme and the flat rate scheme."
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says cash accounting means VAT is accounted for when cash is paid/received",
+        "says flat rate applies a fixed percentage to turnover",
+        "stays under about five lines"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question",
+        "gives tax advice specific to a client or asks which client"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Cash accounting: you account for VAT when you actually pay or are paid, which helps cash flow on slow-paying clients. Flat rate: you pay HMRC a fixed percentage of VAT-inclusive turnover and generally do not reclaim input VAT on most purchases. The two can be combined where eligible.",
+      "actions": [],
+      "why": "A short, accurate comparison in formal English."
+    }
+  },
+  {
+    "id": "simple_qa_014",
+    "category": "simple_qa",
+    "world": "pixelmoth_games",
+    "title": "Time zone Montreal to Berlin",
+    "turns": [
+      {
+        "user": "il est quelle heure à Berlin quand il est 14h à Montréal? 🙈"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says 20:00 in Berlin (6 hours ahead in November)"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "14h à Montréal = 20h à Berlin (6 heures de décalage en ce moment) 🙂",
+      "actions": [],
+      "why": "Short answer in her mixed register."
+    }
+  },
+  {
+    "id": "simple_qa_015",
+    "category": "simple_qa",
+    "world": "shah_realty",
+    "title": "Distance Gurugram to Delhi",
+    "turns": [
+      {
+        "user": "otto ek quick question - Delhi kahan hai Gurugram se, mean kitna dur hai Connaught Place, i need to tell Dr Anjali travel time"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says roughly 30 km and about 45 to 75 minutes by road depending on traffic",
+        "answers in simple English with a touch of Hinglish"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "looks through the user's accounts for a general-knowledge question",
+        "asks where exactly in Gurugram"
+      ],
+      "checks": {
+        "max_tool_calls": 2,
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Connaught Place is about 30 km from Gurugram - roughly 45 to 75 minutes by car depending on traffic, a bit less on the metro.",
+      "actions": [],
+      "why": "General knowledge, answered in the units she needs."
+    }
+  },
+  {
+    "id": "simple_qa_016",
+    "category": "simple_qa",
+    "world": "lumen_skincare",
+    "title": "Did PackRight email back",
+    "turns": [
+      {
+        "user": "did the packaging supplier email back about the pumps"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says yes: Gareth Hume at PackRight wrote this morning (9 Nov)",
+        "says 1,500 bottles could reach Kinetic Labs on Wed 11 Nov, the other 3,500 on the 13th",
+        "mentions he needs a decision by end of Tuesday"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account",
+        "quotes the whole email",
+        "answers without naming Gareth or PackRight"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Yep - Gareth wrote this morning. PackRight can deliver 1,500 finished bottles to Kinetic Labs on Wed 11 Nov and the other 3,500 on the 13th. Split delivery costs £85 but he would waive it. He needs your answer by end of Tuesday.",
+      "actions": [
+        "run_capability gmail search PackRight / pump actuators"
+      ],
+      "why": "A simple inbox lookup: the latest message, the dates, and the deadline."
+    }
+  },
+  {
+    "id": "simple_qa_017",
+    "category": "simple_qa",
+    "world": "lumen_skincare",
+    "title": "How many orders yesterday",
+    "turns": [
+      {
+        "user": "how many orders yesterday"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "shopify"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says 2 orders on Sat 8 Nov (#LS-10577 and #LS-10579)",
+        "may give the combined value of about £109.90"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account",
+        "gives the count for a different day"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "shopify"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "2 orders yesterday (#LS-10577 and #LS-10579), about £109.90 together.",
+      "actions": [
+        "run_capability shopify list orders for 2026-11-08"
+      ],
+      "why": "A quick Shopify count answered in one line."
+    }
+  },
+  {
+    "id": "simple_qa_018",
+    "category": "simple_qa",
+    "world": "brightsmile_dental",
+    "title": "What is on tomorrow",
+    "turns": [
+      {
+        "user": "what's on my calendar tomorrow? 😊"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says there is one thing tomorrow, Tue 10 Nov: the Gusto onboarding check-in for Sophie at 5:30 pm"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account",
+        "lists events from other days as if they were tomorrow"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Tomorrow is light! 😊 Just the Gusto onboarding check-in for Sophie at 5:30 pm.",
+      "actions": [
+        "run_capability calendar list events for 2026-11-10"
+      ],
+      "why": "Calendar lookup for a single day."
+    }
+  },
+  {
+    "id": "simple_qa_019",
+    "category": "simple_qa",
+    "world": "saffron_kitchens",
+    "title": "Kal ka schedule",
+    "turns": [
+      {
+        "user": "kal ka schedule kya hai"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "lists the three events on Tue 10 Nov: 10:00 staff briefing on FSSAI inspection readiness, 14:00 Swiggy improvement call, 16:00 Zomato call"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account",
+        "answers in long paragraphs"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Kal ka: 10 baje FSSAI inspection staff briefing, 2 baje Swiggy improvement call (Pooja Nambiar), 4 baje Zomato call (Karan Bhatia).",
+      "actions": [
+        "run_capability calendar list events for 2026-11-10"
+      ],
+      "why": "Short list in times, in his register."
+    }
+  },
+  {
+    "id": "simple_qa_020",
+    "category": "simple_qa",
+    "world": "ledgerly_accounting",
+    "title": "Kick-off meeting time",
+    "turns": [
+      {
+        "user": "What time is the Northern Quarter Brewing kick-off meeting on Thursday?"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says Thursday 12 Nov at 10:00",
+        "refers to the NQ Brewing kickoff meeting"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "The NQ Brewing kick-off meeting is on Thursday 12 November at 10:00.",
+      "actions": [
+        "run_capability calendar search 'NQ Brewing kickoff'"
+      ],
+      "why": "One event lookup; date and time are the answer."
+    }
+  },
+  {
+    "id": "simple_qa_021",
+    "category": "simple_qa",
+    "world": "kestrel_agency",
+    "title": "Did Marco reply",
+    "turns": [
+      {
+        "user": "did marco reply re invoice 204"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says Marco's latest email (8 Nov) is not a payment confirmation: he is pausing Finlo work from Mon 9 Nov until #204 is paid",
+        "terse"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account",
+        "says he has not replied"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "yes. sun night: he's pausing finlo work from today until #204 is paid. keeping the project files.",
+      "actions": [
+        "run_capability gmail search 'Marco Delgado invoice 204'"
+      ],
+      "why": "The latest message matters more than 'did he reply'."
+    }
+  },
+  {
+    "id": "simple_qa_022",
+    "category": "simple_qa",
+    "world": "forgepoint_devtools",
+    "title": "Is PR 493 open",
+    "turns": [
+      {
+        "user": "Is PR #493 still open?"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "github"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says #493 (fix(webhooks): attempt-scoped idempotency) is open",
+        "mentions it is the fix for P1 issue #482"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account",
+        "checks other repos at length"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "github"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Yes, #493 is still open: it is Tobias's fix for the P1 webhook issue #482, and it is waiting for your review.",
+      "actions": [
+        "run_capability github get pull request 493 in forgepoint/flakeguard-api"
+      ],
+      "why": "Quick GitHub lookup; the link to #482 is the useful extra."
+    }
+  },
+  {
+    "id": "simple_qa_023",
+    "category": "simple_qa",
+    "world": "pixelmoth_games",
+    "title": "Status of the Intel Arc issue",
+    "turns": [
+      {
+        "user": "issue 418 sur GitHub, c'est toujours ouvert? 🙏"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "github"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says #418 (Intel Arc A750 black screen after splash) is still open"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "github"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Oui, #418 (Intel Arc A750, écran noir après le splash) est toujours ouvert 🙏",
+      "actions": [
+        "run_capability github get issue 418 in pixelmoth/hearthleaf"
+      ],
+      "why": "One lookup, one line, in her voice."
+    }
+  },
+  {
+    "id": "simple_qa_024",
+    "category": "simple_qa",
+    "world": "shah_realty",
+    "title": "Stage of the Chopra deal",
+    "turns": [
+      {
+        "user": "otto D-118 chopra deal abhi kis stage me hai hubspot me"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "hubspot"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says the Chopra - D-118 deal is at 'Token Paid'",
+        "may mention expected close 30 Nov and the loan sanction pending"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account",
+        "asks which deal she means"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "hubspot"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "HubSpot me Chopra - D-118 abhi 'Token Paid' stage me hai. Expected close 30 Nov, loan sanction pending.",
+      "actions": [
+        "run_capability hubspot search deals 'Chopra D-118'"
+      ],
+      "why": "CRM lookup, simple English with a little Hinglish."
+    }
+  },
+  {
+    "id": "simple_qa_025",
+    "category": "simple_qa",
+    "world": "greenroots_ngo",
+    "title": "Time of the Larkspur check-in",
+    "turns": [
+      {
+        "user": "When is my call with Rebecca Holloway this week, please?"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says Tuesday 10 Nov at 15:00, the Larkspur check-in call"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Your Larkspur check-in call with Rebecca Holloway is tomorrow, Tuesday 10 November, at 15:00.",
+      "actions": [
+        "run_capability calendar search 'Rebecca Holloway'"
+      ],
+      "why": "Single event lookup."
+    }
+  },
+  {
+    "id": "simple_qa_026",
+    "category": "simple_qa",
+    "world": "oakline_furniture",
+    "title": "Has Rick sent anything new on PO-2291",
+    "turns": [
+      {
+        "user": "did rick send anything new on PO-2291?"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says Rick's latest email is from Nov 3: the MV Han River sailed Nov 1, ETA Long Beach holds at Nov 19",
+        "mentions the expedite option closes if requested by Nov 14"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account",
+        "invents a newer update"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Latest from Rick is Nov 3: the vessel sailed Nov 1 and ETA at Long Beach is still Nov 19, berth not yet assigned. The expedite option is open if you tell him by Nov 14.",
+      "actions": [
+        "run_capability gmail search 'PO-2291 Rick Alvarez'"
+      ],
+      "why": "She asked for what's new; the answer is the latest email and the deadline inside it."
+    }
+  },
+  {
+    "id": "simple_qa_027",
+    "category": "simple_qa",
+    "world": "oakline_furniture",
+    "title": "Open Stripe disputes",
+    "turns": [
+      {
+        "user": "how many stripe disputes need a response right now?"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "stripe"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says 3 disputes need a response (#4796 $596, #4801 $1,299, #4805 $246)",
+        "mentions evidence is due Nov 19"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account",
+        "counts the lost dispute as needing a response"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "stripe"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "3 need a response: #4796 ($596, not received), #4801 ($1,299, not as described), #4805 ($246, not received). Evidence is due Nov 19. One older dispute (#4772, $1,049) was already lost.",
+      "actions": [
+        "run_capability stripe list disputes"
+      ],
+      "why": "A numbered, number-forward answer is what Dana likes."
+    }
+  },
+  {
+    "id": "simple_qa_028",
+    "category": "simple_qa",
+    "world": "forgepoint_devtools",
+    "title": "Did Orbit Labs pay",
+    "turns": [
+      {
+        "user": "Did the Orbit Labs payment go through?"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "stripe"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says no: invoice in_1Q9fK2 (EUR 149) is open after a declined card",
+        "mentions retries on 9 and 14 Nov"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "stripe"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Not yet. Orbit Labs' EUR 149 invoice is open after the card was declined on 6 Nov; Stripe retries on 9 and 14 November.",
+      "actions": [
+        "run_capability stripe get invoice for Orbit Labs"
+      ],
+      "why": "The invoice status answers the question in one sentence."
+    }
+  },
+  {
+    "id": "simple_qa_029",
+    "category": "simple_qa",
+    "world": "kestrel_agency",
+    "title": "When is the Dawnlight pitch",
+    "turns": [
+      {
+        "user": "when's the dawnlight pitch"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "says Thu 12 Nov at 10:30 at the Brooklyn roastery"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account",
+        "mentions anything that needs a long reply"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "thu nov 12, 10:30, at the brooklyn roastery. rehearsal tues 2pm.",
+      "actions": [
+        "run_capability calendar search Dawnlight"
+      ],
+      "why": "Calendar lookup; the rehearsal is an optional extra."
+    }
+  },
+  {
+    "id": "simple_qa_030",
+    "category": "simple_qa",
+    "world": "shah_realty",
+    "title": "Site visits this week",
+    "turns": [
+      {
+        "user": "Otto my site visits kab kab hain is week? voice note me bhool gayi"
+      }
+    ],
+    "default_answer": "just give me the answer",
+    "min_accounts": [
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "lists Tue 10 Nov 11:00 C-241 DLF Phase 3 with the Sharma family",
+        "lists Wed 11 Nov 16:00 Aravali Heights B-14 with Dr. Anjali Mehta",
+        "may mention the Saturday 14 Nov open house at B-14"
+      ],
+      "must_not": [
+        "starts a background task",
+        "asks a clarifying question",
+        "answers from memory without checking the account"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task",
+          "ask_question"
+        ],
+        "asks_question": false,
+        "services_called": [
+          "calendar"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Tuesday 11 am - C-241 DLF Phase 3 with the Sharma family. Wednesday 4 pm - Aravali Heights B-14 with Dr. Anjali Mehta. Saturday 11 am is the open house at B-14.",
+      "actions": [
+        "run_capability calendar list events for 2026-11-09..2026-11-14"
+      ],
+      "why": "Calendar lookup, answered as a short list."
+    }
+  }
+]

@@ -1,0 +1,1887 @@
+[
+  {
+    "id": "async_task_001",
+    "category": "async_task",
+    "world": "brightsmile_dental",
+    "title": "No-show policy one-pager for Dr. Brandt's call",
+    "turns": [
+      {
+        "user": "Hi Otto! 😊 Can you put together a one-pager for Dr. Brandt's 1pm call on the no-show policy? He likes pros/cons and a cost number! ✨"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which policy options",
+        "answer": "Compare keeping the current 3-strike $50 fee with a card-on-file rule for repeat offenders; add anything else you think fits"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn",
+        "the brief names the no-show data (11.8% in October) and the current fee policy, and asks for pros/cons with a cost number"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "On it! 😊 I'm building the no-show policy one-pager for Dr. Brandt's 1pm call, with pros/cons and the cost number, and will drop it here as soon as it's ready.",
+      "actions": [
+        "start_task(title='No-show policy one-pager for Dr. Brandt call', brief='Build a one-page recommendation for the 1pm call with Dr. Brandt. Facts: Oct no-show rate 11.8% (114 no-shows, 71 late cancels), Fri and Mon are worst (35 and 31), 66 of 114 are hygiene. Current policy in Drive: 2nd miss $25, 3rd miss $50 + card on file. Give 2-3 options with pros/cons and a cost number per option; Dr. Brandt decides exceptions to the fee.')"
+      ],
+      "why": "Multi-step work across the tracker sheet, the policy doc and the email thread, so it runs in the background and Carla can keep working before the 1pm call."
+    }
+  },
+  {
+    "id": "async_task_002",
+    "category": "async_task",
+    "world": "brightsmile_dental",
+    "title": "Plan Sophie Lindqvist's onboarding for Nov 16",
+    "turns": [
+      {
+        "user": "Sophie starts Mon Nov 16!! 🎉 Can you build her onboarding plan? what's still missing (malpractice cert, BLS card), orientation with Hannah, badge photo, scrubs, Gusto... Thank you!! 💛"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn",
+        "the brief lists the known gaps (malpractice certificate, BLS card, Gusto, badge photo, scrubs) and the Nov 16 start"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Yay! 🎉 I'm putting Sophie's Nov 16 onboarding plan together as a task: open documents, Hannah's orientation, badge, scrubs and Gusto. I'll post it here when it's done.",
+      "actions": [
+        "start_task(title='Sophie Lindqvist onboarding plan (starts Nov 16)', brief='Build a day-by-day onboarding plan for Sophie Lindqvist RDH, starting Mon Nov 16 at 7:45am. Check the Drive onboarding checklist (malpractice certificate and BLS card still missing; license verified Nov 2), Gusto onboarding not finished, Becky is ordering scrubs and badge photo, Hannah has offered to train her. List owners and due dates; docs are due Nov 12.')"
+      ],
+      "why": "A checklist built from Drive, email and calendar is multi-step work, so it becomes a task."
+    }
+  },
+  {
+    "id": "async_task_003",
+    "category": "async_task",
+    "world": "brightsmile_dental",
+    "title": "Chair maintenance contract recommendation",
+    "turns": [
+      {
+        "user": "Dr. Brandt wants my recommendation on the chair maintenance contract before the Nov 13 notice date! 😩 Can you compare the Capital Dental quote ($2,940/yr) with whatever Lone Star charges now and give me pros/cons + a cost number? 🙏"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "calendar",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "On it! 😊 I'm comparing the Capital Dental quote with the Lone Star renewal and will bring you pros/cons and a cost number well before Nov 13.",
+      "actions": [
+        "start_task(title='Chair maintenance contract: Capital Dental vs Lone Star', brief='Compare the Capital Dental Equipment preventive maintenance quote (5 operatories, $2,940/yr) with Lone Star Dental Service renewal terms (Operatory 3 / chair 3 keeps failing). Read the emails and service report. Output: short pros/cons list and annual cost for each, plus a recommendation Carla can send Dr. Brandt. Written notice to Lone Star is due Nov 13; decision meeting is Nov 11 3pm.')"
+      ],
+      "why": "Comparing two vendor documents with costs is multi-step and Dr. Brandt's format (pros/cons plus cost) is already in memory, so no question is needed."
+    }
+  },
+  {
+    "id": "async_task_004",
+    "category": "async_task",
+    "world": "brightsmile_dental",
+    "title": "Fix list for rejected and denied claims",
+    "turns": [
+      {
+        "user": "Hi! Can you go through the 6 claims the clearinghouse rejected + Aetna's 2 eligibility denials and tell me what needs fixing on each? Luis is swamped 😅"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Absolutely! 😊 I'm going through the rejected and denied claims now and will post a fix-list per claim here.",
+      "actions": [
+        "start_task(title='Fix list: 6 clearinghouse rejections + 2 Aetna eligibility denials', brief='Read the clearinghouse rejection email (6 claims rejected before payer, Nov 6) and the Aetna remittance advice with 2 eligibility denials (Nov 5). For each claim: reason, what to fix, who fixes it, deadline. Do not resubmit or send anything. Luis Ortega is the billing coordinator.')"
+      ],
+      "why": "Multi-claim triage across several emails is background work; nothing is sent so no approval question is needed."
+    }
+  },
+  {
+    "id": "async_task_005",
+    "category": "async_task",
+    "world": "brightsmile_dental",
+    "title": "Thanksgiving week coverage plan",
+    "turns": [
+      {
+        "user": "Thanksgiving week is coming 🦃 Dr. Khan is off Nov 25-27 - can you build a coverage plan for that week + a list of patients we'd have to move? thank you!!"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "calendar",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Great catch! 🦃 I'm building the Thanksgiving week coverage plan and the list of patients to move as a task and will post it here.",
+      "actions": [
+        "start_task(title='Thanksgiving week coverage plan (Dr. Khan off Nov 25-27)', brief='Dr. Aisha Khan has PTO Nov 25-27. Build a coverage plan for the week: which chairs and hygiene blocks Dr. Brandt can absorb, what to close, and a list of patients booked with Dr. Khan on those days to offer reschedules. Draft only; do not message patients.')"
+      ],
+      "why": "Schedule and calendar analysis across several sources; a task keeps the chat free."
+    }
+  },
+  {
+    "id": "async_task_006",
+    "category": "async_task",
+    "world": "forgepoint_devtools",
+    "title": "Northwind competitor battlecard",
+    "turns": [
+      {
+        "user": "Please prepare a one-page battlecard comparing Flakeguard with Trunk Flaky Tests and BuildPulse for the Northwind evaluation: pricing, SAML SSO, SOC 2 status and migration effort. Daniel needs it before the SSO demo on Thursday the 12th. A recommendation on positioning would be appreciated."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "slack"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Understood. I am researching Trunk Flaky Tests and BuildPulse and preparing the Northwind battlecard with a positioning recommendation; it will be here well before Thursday.",
+      "actions": [
+        "start_task(title='Northwind battlecard: Flakeguard vs Trunk vs BuildPulse', brief='One-page battlecard for Daniel (AE) ahead of the Northwind SAML SSO demo on Thu 12 Nov. Compare Flakeguard with Trunk Flaky Tests and BuildPulse (the competitors Sabine named): pricing, SAML SSO, SOC 2 status, migration effort. Use web research plus our plans (Team EUR 149, Business EUR 499, Enterprise custom). End with a recommended positioning.')"
+      ],
+      "why": "Competitor research plus synthesis is multi-step work with a Thursday deadline."
+    }
+  },
+  {
+    "id": "async_task_007",
+    "category": "async_task",
+    "world": "forgepoint_devtools",
+    "title": "Engineering section of the board update",
+    "turns": [
+      {
+        "user": "Could you draft the engineering section of the board update? Please include the #482 incident (impact, root cause, fix timeline), SOC 2 readiness and the DevRel hiring status. Board metrics are due Wednesday."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "slack",
+      "notion",
+      "linear"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Certainly. I am drafting the engineering section from the incident, SOC 2 and hiring records and will post it here for your review before Wednesday.",
+      "actions": [
+        "start_task(title='Board update: engineering section', brief='Draft the engineering section for the Thu 12 Nov board update; metrics are due Wed. Cover: P1 webhook retry incident FP-231 / GitHub #482 (74 events across 3 customers, root cause redis dedupe TTL vs retry backoff, PR #493, release Wed 11 Nov, postmortem Fri 13 Nov); SOC 2 readiness (Trustwell 81%, evidence due 20 Nov, window starts 1 Dec); DevRel hiring (finals with Lena and Marcus). Precise, short, with a recommendation where a decision is needed.')"
+      ],
+      "why": "Pulling facts from Slack, Linear, GitHub and Notion into one document is multi-step."
+    }
+  },
+  {
+    "id": "async_task_008",
+    "category": "async_task",
+    "world": "forgepoint_devtools",
+    "title": "Replay runbook for missed webhook events",
+    "turns": [
+      {
+        "user": "Please write the runbook for the missed-event replay: dry-run first (63 Bluepeak and 11 other events), the audit log entry Lukas asked for, and the verification steps Mira can pair on before she leaves on Thursday. It has to be ready for the release window on the 11th."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "github",
+      "slack",
+      "linear"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Understood. I am writing the replay runbook (dry-run, audit log entry, verification) as a task and will have it here ahead of the 11th.",
+      "actions": [
+        "start_task(title='Runbook: replay missed webhook events after #482 fix', brief='Write the runbook for the idempotent replay of missed events after PR #493 ships (release window Wed 11 Nov 10:00). Dry-run output: 63 Bluepeak events + 11 other. Include: --dry-run step, an audit log line for the manual production action (Lukas, for Brightline), verification steps for Mira to pair on before her leave Thu/Fri, rollback. Read the GitHub issue #482, PR #493 and the #eng and #security-soc2 threads.')"
+      ],
+      "why": "A technical runbook built from GitHub, Slack and Linear is background work."
+    }
+  },
+  {
+    "id": "async_task_009",
+    "category": "async_task",
+    "world": "forgepoint_devtools",
+    "title": "Rank the DevRel finalists",
+    "turns": [
+      {
+        "user": "Please evaluate our two Developer Advocate finalists, Lena Fischer and Marcus Oyelaran, against the updated scorecard including the technical-depth criteria, and give me a ranked recommendation. I would like it before Lena's final interview on Tuesday."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Certainly. I am scoring both finalists against the updated scorecard and will post a ranked recommendation here before Tuesday's interview.",
+      "actions": [
+        "start_task(title='Rank DevRel finalists: Lena Fischer vs Marcus Oyelaran', brief='Score the two finalists against the DevRel scorecard, including the technical-depth criteria added after the Nov 4 email thread. Sources: application emails, interview notes and the scorecard thread. Output: scores per criterion, a ranking, risks, and what to probe in Lena\\'s final interview on Tue 10 Nov 14:00. Do not contact either candidate.')"
+      ],
+      "why": "Evaluation across emails and notes with a rubric is multi-step; the ask is clear, so no question."
+    }
+  },
+  {
+    "id": "async_task_010",
+    "category": "async_task",
+    "world": "forgepoint_devtools",
+    "title": "Clause-by-clause response to Northwind's DPA redlines",
+    "turns": [
+      {
+        "user": "Please go through the DPA redlines from Northwind's legal team and prepare a clause-by-clause response with a recommended position on each clause. Nothing is to be sent externally; Anika approves anything that goes out."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "notion"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Understood. I am preparing the clause-by-clause DPA response with a recommended position per clause, for internal review only.",
+      "actions": [
+        "start_task(title='Northwind DPA redlines: clause-by-clause positions', brief='Read the DPA redlines email from Northwind legal (Nov 8) and our DPA template. For each changed clause: what they ask, risk, recommended position (accept / counter / reject) and reasoning. Internal draft only; per policy nothing goes to Northwind without Anika approval. Needed before the SAML SSO demo and DPA call on Thu 12 Nov 11:00.')"
+      ],
+      "why": "Legal-style review of a long attachment is multi-step; the no-send constraint is already in the message and memory."
+    }
+  },
+  {
+    "id": "async_task_011",
+    "category": "async_task",
+    "world": "greenroots_ngo",
+    "title": "Plan Saturday garden day with UoN Agri-Club",
+    "turns": [
+      {
+        "user": "Dear Otto, warm greetings. Could you please plan the Saturday 14 November garden day with the UoN Agri-Club? They are bringing 25 volunteers and Samuel still has 12 slots open. Please match the volunteers to the schools and prepare a short briefing note for everyone. Asante sana."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Karibu, Amani. I am planning the 14 November garden day, matching the 25 UoN volunteers to the schools with open slots, and will share the plan and briefing note here for your review.",
+      "actions": [
+        "start_task(title='Plan 14 Nov garden day with UoN Agri-Club', brief='Match the 25 UoN Agri-Club volunteers to the 12 open slots for Saturday 14 Nov (garden day starts 07:30) across the active schools. Use Samuel Odhiambo\\'s Saturday gap email and the November rota. Output: assignment table, transport/tools checklist and a one-page briefing note. Draft only; Amani reviews before anything goes to the club or schools.')"
+      ],
+      "why": "Matching people to slots and writing a briefing is multi-step; Amani's review-first rule is respected because nothing is sent."
+    }
+  },
+  {
+    "id": "async_task_012",
+    "category": "async_task",
+    "world": "greenroots_ngo",
+    "title": "Variance explanations for the Larkspur financial report",
+    "turns": [
+      {
+        "user": "Habari Otto, asante for all the help. Please look at the Larkspur Grant Budget vs Actuals sheet and prepare a short explanation for each budget line with a notable variance (irrigation and water is 16.4% over). Rebecca will want to see these in the financial report. Warm regards, Amani"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "sheets",
+      "drive",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Asante, Amani. I am drafting the variance explanations for each notable line, starting with irrigation and water, and will post them here for your review.",
+      "actions": [
+        "start_task(title='Larkspur financial report: variance explanations', brief='From the Grant Budget vs Actuals sheet (LF-2025-0417, USD 85,000) write a short, funder-ready explanation for each line with a notable variance. Irrigation and water is 16.4% over (pump and pipe prices rose); seeds and tools are 3.9% under. Use Peter\\'s draft financial report email (Nov 3) and the agreement summary (reallocation limits). Exchange rate KES 129 per USD. Draft for Amani\\'s review; nothing goes to Rebecca Holloway.')"
+      ],
+      "why": "Reading a spreadsheet and the grant terms and writing funder text is multi-step."
+    }
+  },
+  {
+    "id": "async_task_013",
+    "category": "async_task",
+    "world": "greenroots_ngo",
+    "title": "Rotary Karen concept note",
+    "turns": [
+      {
+        "user": "Hello Otto, the Rotary Club of Nairobi Karen has pledged for garden tools and we have a working session on the 12th. Could you prepare the concept note, with a budget and which schools would receive the tools? Please keep it to two pages. Asante."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "notion",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Hello Amani. I am preparing the two-page Rotary Karen concept note with a budget and school list, and will share it here before the 12th.",
+      "actions": [
+        "start_task(title='Rotary Karen garden tools concept note (2 pages)', brief='Two-page concept note for the Rotary Club of Nairobi Karen pledge for garden tools. Working session Thu 12 Nov 14:00. Use the pledge email (Nov 3), the Programme Tracker in Notion (11 active schools) and the tool quotes. Include a budget in KES and USD at KES 129 per USD, proposed schools and expected benefit. Draft for Amani to review first.')"
+      ],
+      "why": "A short funder document with budget needs several sources, so it runs as a task."
+    }
+  },
+  {
+    "id": "async_task_014",
+    "category": "async_task",
+    "world": "greenroots_ngo",
+    "title": "Revised November volunteer rota",
+    "turns": [
+      {
+        "user": "Good morning Otto. The November rota has gaps marked in red because of exam season. Could you propose a revised rota that fills them using the volunteers from Samuel's email and the UoN group, and tell me what is still uncovered? Thank you so much, Amani"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Good morning, Amani. I am drafting the revised November rota and will show you which gaps are filled and which remain uncovered.",
+      "actions": [
+        "start_task(title='Revised November volunteer rota', brief='Fill the red gaps in the November rota (draft email Oct 31) given exam-season availability from Samuel Odhiambo\\'s Oct 24 email, plus the 25 UoN Agri-Club volunteers for Sat 14 Nov. Output: revised rota by date and school, and a list of what is still uncovered with suggested options. Draft only; do not message volunteers.')"
+      ],
+      "why": "Constraint-based scheduling over a rota and emails is background work."
+    }
+  },
+  {
+    "id": "async_task_015",
+    "category": "async_task",
+    "world": "kestrel_agency",
+    "title": "Dawnlight rehearsal Q&A prep",
+    "turns": [
+      {
+        "user": "- need q&a prep for dawnlight rehearsal tue 2pm\n- likely qs: retention, retainer pricing ($14k + 5% over 60k), capacity w jasmine out\n- answers + who answers each"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive",
+      "hubspot",
+      "notion"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "on it. building the dawnlight q&a prep (likely questions, answers, owners) before tue's rehearsal.",
+      "actions": [
+        "start_task(title='Dawnlight rehearsal Q&A prep', brief='Q&A prep for the Dawnlight pitch rehearsal Tue 10 Nov 14:00 (pitch Thu 12 Nov, Brooklyn). Cover retention angle (Oakline subscription test, 12% churn improvement), pricing ($14k/mo + 5% of media over $60k), capacity with Jasmine on leave and Finlo recovery, creative territories. For each likely question: answer, proof point, who answers. Bullets only. Sources: deck v2 in Drive, intro call notes, Slack #newbiz-dawnlight.')"
+      ],
+      "why": "Multi-source prep work; Sam wants terse bullets and no preamble, which the one-liner respects."
+    }
+  },
+  {
+    "id": "async_task_016",
+    "category": "async_task",
+    "world": "kestrel_agency",
+    "title": "Oakline GA4 export failure and workaround",
+    "turns": [
+      {
+        "user": "oakline ga4 export is failing. figure out why + give a workaround so the oakline report still goes out fri"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "slack",
+      "notion"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "on it. looking into the oakline ga4 export failure and a workaround for the fri report.",
+      "actions": [
+        "start_task(title='Oakline GA4 export failure: cause and workaround', brief='Oakline GA4 export is failing (email Nov 6 + #reporting thread). Nina said she will use UI numbers if not fixed by Wed. Find the likely cause, what Reporting API change (email Nov 5) may be involved, and a workaround so the Oakline report is out by Fri 13 Nov noon. Bullets: cause, workaround, owner, deadline.')"
+      ],
+      "why": "Debugging across emails and Slack is multi-step and open-ended, so it is a task."
+    }
+  },
+  {
+    "id": "async_task_017",
+    "category": "async_task",
+    "world": "kestrel_agency",
+    "title": "Reconcile Nuvo TikTok spend",
+    "turns": [
+      {
+        "user": "- reconcile nuvo tiktok spend: client says 9,400 vs ours 9,150\n- short note for the client explaining the diff\n- owen thinks its currency + tax"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "slack",
+      "gmail",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "on it. reconciling nuvo tiktok spend (9,400 vs 9,150) and drafting the client note.",
+      "actions": [
+        "start_task(title='Reconcile Nuvo TikTok spend (9,400 vs 9,150) + client note', brief='Client reports $9,400 TikTok spend, our number is $9,150, a $250 gap. Owen\\'s theory: TikTok currency conversion + taxes. Check the #reporting thread and any spend exports, confirm or reject the theory, and draft a short client note explaining the difference. Draft only; do not send to the client. Needed for the Nuvo report due Fri 13 Nov noon.')"
+      ],
+      "why": "Reconciliation with a client-facing draft is multi-step; the draft is not sent."
+    }
+  },
+  {
+    "id": "async_task_018",
+    "category": "async_task",
+    "world": "kestrel_agency",
+    "title": "Shortlist of alternative motion editors",
+    "turns": [
+      {
+        "user": "- finlo needs an alt motion editor (marco paused)\n- find 5 freelancers, rates + availability before the 16th\n- shortlist w a recommendation"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "slack"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "on it. researching 5 freelance motion editors with rates and availability before the 16th and will post a shortlist.",
+      "actions": [
+        "start_task(title='Shortlist 5 freelance motion editors for Finlo creatives', brief='Marco Delgado paused Finlo work from Monday. Tomas has 3 new concepts, 2 need motion editing, new creatives must land by Mon 16 Nov. Research 5 freelance motion editors (web, existing contacts in email): rates, availability before the 16th, relevant fintech work. Recommend one. Do not contact anyone. Client lists and retainer values must not be shared externally.')"
+      ],
+      "why": "Research across the web and the agency's own contacts is multi-step."
+    }
+  },
+  {
+    "id": "async_task_019",
+    "category": "async_task",
+    "world": "kestrel_agency",
+    "title": "Day-to-day coverage schedule for Jasmine's accounts",
+    "turns": [
+      {
+        "user": "draft the day-to-day coverage schedule for jasmine's accounts till dec 14\n- finlo, nuvo, brightpath\n- who does what each week\n- flag where dev/me are overloaded"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "notion",
+      "gmail",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "on it. drafting the week-by-week coverage schedule through dec 14 and flagging overload.",
+      "actions": [
+        "start_task(title='Coverage schedule for Jasmine\\'s accounts through Dec 14', brief='Jasmine Cho is on leave Nov 2 - Dec 14. Build a week-by-week schedule of who does what on Finlo, Nuvo and Brightpath, based on the handoff doc, the coverage plan in Notion and Leah/Dev/Owen availability (Leah asked to take Nuvo). Flag overload for Sam and Dev during the report week and the Dawnlight pitch. Bullets.')"
+      ],
+      "why": "Capacity planning across docs, email and calendar is multi-step."
+    }
+  },
+  {
+    "id": "async_task_020",
+    "category": "async_task",
+    "world": "ledgerly_accounting",
+    "title": "Hartley & Sons late VAT filing assessment",
+    "turns": [
+      {
+        "user": "Dear Otto, the Hartley & Sons VAT return was filed on 9 November, two days after the 7 November deadline. Please assess the exposure to a penalty, establish from the correspondence what caused the delay, and prepare a draft note to Mr Hartley for my review. Kind regards, Oliver"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets",
+      "stripe"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Dear Oliver, understood. I am assessing the penalty exposure and the cause of the delay and will prepare a draft note to Mr Hartley for your review; nothing will be sent.",
+      "actions": [
+        "start_task(title='Hartley & Sons: late VAT filing assessment and draft note', brief='Return for the period ended 30 September was due 7 Nov and filed 9 Nov (two days late). Reconstruct the timeline from the correspondence (receipts still missing, deadline emails of 5 and 7 Nov, Priyanka\\'s filing options). Assess penalty exposure and who bears it under the engagement terms. Draft a formal British-English note to Tom Hartley for Oliver\\'s review. Do not send; client-facing drafts need partner approval.')"
+      ],
+      "why": "A timeline plus assessment plus a client draft is multi-step; the approval rule is already in memory."
+    }
+  },
+  {
+    "id": "async_task_021",
+    "category": "async_task",
+    "world": "ledgerly_accounting",
+    "title": "Christmas and year-end cover plan",
+    "turns": [
+      {
+        "user": "Dear Otto, Jamie has requested leave from 21 December to 8 January. Please prepare a cover plan for the Christmas and year-end period, bearing in mind the 7 January VAT deadline for 12 clients and the firm's policy on leave in VAT and Self Assessment weeks. Kind regards, Oliver"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Dear Oliver, certainly. I am preparing a Christmas and year-end cover plan that respects the 7 January VAT deadline and the leave policy, for your decision.",
+      "actions": [
+        "start_task(title='Christmas and year-end cover plan (Jamie on leave 21 Dec - 8 Jan)', brief='Jamie Walsh requested leave 21 Dec - 8 Jan. Build a cover plan for a 5-person firm: 12 clients have VAT due 7 Jan, December year-ends and Self Assessment (31 Jan) approach. Firm policy: no two staff on leave in VAT or SA weeks without partner approval. Use the VAT calendar, Priyanka\\'s Nov 8 leave email and the calendar. Give 2 options with risks and a recommendation.')"
+      ],
+      "why": "Resourcing analysis over a calendar sheet and emails is multi-step, with a partner decision at the end."
+    }
+  },
+  {
+    "id": "async_task_022",
+    "category": "async_task",
+    "world": "ledgerly_accounting",
+    "title": "Overdue fees schedule, payment plans and chaser drafts",
+    "turns": [
+      {
+        "user": "Dear Otto, fees of £7,860 are outstanding. Please prepare a schedule of every overdue client with amounts and ages, propose a payment plan where appropriate, and draft the chasers for my approval. I shall review them before anything is sent. Kind regards, Oliver"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "stripe",
+      "gmail",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Dear Oliver, understood. I am preparing the overdue schedule, payment plan proposals and draft chasers; nothing will be sent before your approval.",
+      "actions": [
+        "start_task(title='Overdue fees £7,860: schedule, payment plans and chaser drafts', brief='Build a schedule of overdue invoices from Stripe and the aged debtor email (£7,860 outstanding, 4 invoices past due): client, invoice, amount, days overdue. Propose payment plans where sensible (INV-1043 Hartley promised payment next week; Pennine Print promised 13 Nov). Draft formal British-English chasers for Oliver\\'s approval. Do not send anything.')"
+      ],
+      "why": "Multi-client credit control with drafts for approval is background work."
+    }
+  },
+  {
+    "id": "async_task_023",
+    "category": "async_task",
+    "world": "ledgerly_accounting",
+    "title": "MTD for Income Tax: client impact and letter",
+    "turns": [
+      {
+        "user": "Dear Otto, MTD for Income Tax begins in April. Please research what it means for our Self Assessment clients, identify which clients are likely to be in scope on the information we hold, and draft a client letter for my review. Kind regards, Oliver"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Dear Oliver, understood. I am researching the MTD for Income Tax rules, identifying likely in-scope clients and drafting a letter for your review.",
+      "actions": [
+        "start_task(title='MTD for Income Tax: in-scope clients and client letter', brief='Research Making Tax Digital for Income Tax (use the Tax Faculty email of 3 Nov and current HMRC guidance). From the client records, identify Self Assessment clients likely in scope and what each needs to do before January. Draft a formal British-English client letter for Oliver\\'s review; do not send. Webinar on this is Wed 11 Nov 15:00.')"
+      ],
+      "why": "Research plus client-list analysis plus a letter draft is multi-step."
+    }
+  },
+  {
+    "id": "async_task_024",
+    "category": "async_task",
+    "world": "lumen_skincare",
+    "title": "Plan the Black Friday offer and email schedule",
+    "turns": [
+      {
+        "user": "pls plan the black friday offer, tiered vs 15% sitewide, check margins w hannahs numbers and give me the email schedule. offer planning is thurs"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets",
+      "shopify",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "on it, planning the bf offer (tiered vs 15%) with margins and an email schedule, will post it here before thurs",
+      "actions": [
+        "start_task(title='Black Friday offer plan: tiered vs 15% sitewide + email schedule', brief='Plan the BF offer for Lumen. Priya asked in #marketing: 15% sitewide or tiered for the teaser email. Check margins using Hannah\\'s finance numbers and the Shopify product prices, compare both options, recommend one, and give an email schedule (teaser, launch, last chance) that does not clash with the C-Bright launch on Fri 20 Nov. Black Friday offer planning meeting is Thu 12 Nov 13:00. Keep retargeting untouched.')"
+      ],
+      "why": "Margin maths plus a schedule from several sources is multi-step; Maya wants it short, so one line back."
+    }
+  },
+  {
+    "id": "async_task_025",
+    "category": "async_task",
+    "world": "lumen_skincare",
+    "title": "C-Bright launch day checklist",
+    "turns": [
+      {
+        "user": "can u put together the c-bright launch day checklist, owners + times, we r 11 days out and packaging is still late thx"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "drive",
+      "slack",
+      "gmail",
+      "shopify"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "yep, building the launch day checklist w owners and times, will post it here",
+      "actions": [
+        "start_task(title='C-Bright launch day checklist (Fri 20 Nov)', brief='Checklist for C-Bright launch Fri 20 Nov 09:00 GMT with owners and times. Sources: Launch Plan v4 in Drive, #launch-vitc, emails. Include: PackRight pumps now due 13 Nov, Kinetic Labs filling slot 16-17 Nov (next slot 30 Nov), SCPN notification (Sasha), waitlist page/banner (Leo), creator kits dispatch 12 Nov and go-live dates, Shopify product still in draft. Flag the packaging risk at the top.')"
+      ],
+      "why": "Cross-checking the launch plan, Slack and emails into one checklist is multi-step."
+    }
+  },
+  {
+    "id": "async_task_026",
+    "category": "async_task",
+    "world": "lumen_skincare",
+    "title": "Competitor vitamin C serums research",
+    "turns": [
+      {
+        "user": "research 5 competitor vit c serums pls, price size claims and reviews so we know were pricing c-bright right at 34"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "shopify"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "sure, researching 5 competitor vit c serums (price, size, claims, reviews) and will post a summary on c-brights 34 price",
+      "actions": [
+        "start_task(title='Competitor research: 5 vitamin C serums vs C-Bright at GBP 34', brief='Research 5 competing vitamin C serums for the UK market: price, size/price per ml, key claims, review score and common complaints. Compare with C-Bright 30ml at GBP 34 and say whether the price is right. Note: do not publish any product claim without Sasha\\'s regulatory sign-off; this is internal research only. Short bullets.')"
+      ],
+      "why": "Web research and a comparison is multi-step; web_search belongs inside the task, not in the chat turn."
+    }
+  },
+  {
+    "id": "async_task_027",
+    "category": "async_task",
+    "world": "lumen_skincare",
+    "title": "Draft replies to this week's customer emails",
+    "turns": [
+      {
+        "user": "draft replies to all the customer emails from this week pls - where is my order, the love the cleanser one, wholesale glow & co. just drafts dont send. skip rebecca hollis, im deciding monday"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "on it, drafting replies to this weeks customer emails (not sending, skipping rebecca hollis)",
+      "actions": [
+        "start_task(title='Draft replies to this week\\'s customer emails', brief='Draft replies, do not send, to this week\\'s customer emails: Where is my order LS-10521, Love the gel cleanser!!, Wholesale enquiry from Glow & Co (Manchester), and any other customer messages. Skip Rebecca Hollis (LS-10482): Maya decides Monday and said not to reply. Maya\\'s style: short, friendly, lowercase-ish tone is fine for customers but keep brand voice warm. No refunds above GBP 30 without Maya.')"
+      ],
+      "why": "Batch drafting across a week of inbox is multi-step; the exclusion is carried into the brief."
+    }
+  },
+  {
+    "id": "async_task_028",
+    "category": "async_task",
+    "world": "lumen_skincare",
+    "title": "Reconcile creator payments",
+    "turns": [
+      {
+        "user": "reconcile the creator payments pls - tracker vs what josh asked me to approve (1200 for 3 heroes) vs invoices. tell me whats off"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "sheets",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "on it, reconciling the creator tracker vs the 1,200 approval vs invoices and will flag whats off",
+      "actions": [
+        "start_task(title='Reconcile creator payments: tracker vs approval vs invoices', brief='Compare the Influencer tracker sheet (fees: @skinwithzara 400, @nadia.glows 450, ...) with Josh\\'s approval request of Nov 5 (3 hero creators: 400 + 450 + 350 = GBP 1,200) and any creator invoices in email. List mismatches, missing invoices, and anything that should not be paid yet. Do not pay or approve anything.')"
+      ],
+      "why": "Three-way reconciliation across a sheet and the inbox is multi-step."
+    }
+  },
+  {
+    "id": "async_task_029",
+    "category": "async_task",
+    "world": "oakline_furniture",
+    "title": "Chargeback rate: causes and plan to get under 0.9%",
+    "turns": [
+      {
+        "user": "Please look into the dispute rate (1.4%, we need under 0.9%).\n1. Break October disputes down by cause\n2. Which are winnable\n3. What it takes to get under 0.9% by December\nNumbers please."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "stripe",
+      "gmail",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "On it. I'm breaking down the October disputes by cause and what it takes to get under 0.9%, and will post the numbers here.",
+      "actions": [
+        "start_task(title='Dispute rate 1.4% to under 0.9%: causes, winnable cases, plan', brief='Stripe dispute rate was 1.4% in October (Stripe warning email Nov 2; 3 new disputes Nov 9). 1) break down October disputes by cause (backorders, damaged sofas, wrong item), 2) which are winnable with evidence, 3) what it takes to reach under 0.9% by December incl. refund-before-dispute policy ($15 fee per dispute). Use Stripe data and Sam\\'s Nov 5 disputes email. Numbers first, decision needed at the top.')"
+      ],
+      "why": "Quant analysis across Stripe, email and the sheet is multi-step; Dana asked for numbers, which the brief carries."
+    }
+  },
+  {
+    "id": "async_task_030",
+    "category": "async_task",
+    "world": "oakline_furniture",
+    "title": "Backorder plan for 37 delayed orders",
+    "turns": [
+      {
+        "user": "Please build the backorder plan for the 37 open orders:\n1. new ship dates off the Nov 19 landing\n2. who gets the delay email vs a refund offer\n3. final macro text for Jenna\nGive me the refund exposure too."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "shopify",
+      "gmail",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "On it. I'm building the backorder plan for the 37 orders (ship dates, email vs refund, final macro, refund exposure) and will post it here.",
+      "actions": [
+        "start_task(title='Backorder plan for 37 delayed orders', brief='PO-2291 rolled; new ETA at Long Beach is Nov 19. 37 orders are on backorder (62 where-is-my-order tickets last week). Build: 1) new ship dates per order given Nov 19 landing + receiving time, 2) split orders into delay-email vs refund-offer with refund exposure in dollars, 3) final macro text (Jenna\\'s draft is in her Nov 7 email; keep refund-in-full language). Refunds over $5,000/day need Dana\\'s approval; support courtesy credits up to $50.')"
+      ],
+      "why": "Order-level planning plus copy is multi-step."
+    }
+  },
+  {
+    "id": "async_task_031",
+    "category": "async_task",
+    "world": "oakline_furniture",
+    "title": "Lease renewal vs Gresham comparison for the Nov 12 call",
+    "turns": [
+      {
+        "user": "Compare the Columbia renewal proposal for Suite 4 against the Gresham 28,000 sf space before the lease call on the 12th.\n1. Cost per sf and annual total\n2. Moving costs and racking\n3. Option notice dates\n4. Recommendation, decision at the top."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "On it. I'm comparing the Suite 4 renewal with the Gresham space for the Nov 12 call and will post a recommendation with the numbers.",
+      "actions": [
+        "start_task(title='Warehouse lease: Columbia Suite 4 renewal vs Gresham', brief='Compare Columbia Industrial renewal proposal for Suite 4, 7120 NE Columbia Blvd (proposal email Nov 4, lease summary in Drive, option notice reminder Nov 9) with the Gresham 28,000 sf space ($0.99/sf NNN, no racking, dock levelers issue from Tom\\'s tour). Output: cost per sf and annual total, moving and racking costs, option notice dates, and a recommendation with the decision at the top. Lease call is Thu 12 Nov 11:00.')"
+      ],
+      "why": "A multi-document commercial comparison for a call in three days is background work."
+    }
+  },
+  {
+    "id": "async_task_032",
+    "category": "async_task",
+    "world": "oakline_furniture",
+    "title": "Black Friday hero stock check",
+    "turns": [
+      {
+        "user": "Check hero item stock for Black Friday.\n1. Alder and Marlow on hand vs committed vs inbound\n2. What happens if PO-2291 slips again past Nov 19\n3. What we can't advertise on Nov 24\nShort summary, decision first."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "sheets",
+      "shopify",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "On it. I'm checking Alder and Marlow stock against Black Friday and the PO-2291 risk and will post a short summary with the decision first.",
+      "actions": [
+        "start_task(title='Black Friday hero stock check (Alder, Marlow)', brief='From the Inventory Tracker (Nov) sheet and Shopify, compare on hand / committed / inbound for the Alder and Marlow hero items (22 Marlow sofas quarantined for damage; PO-2291 ETA Nov 19). Scenario: PO-2291 slips again. Say which offers we cannot safely advertise for early access on Nov 24 and the fallback (Alex can toggle the hero banner via a metafield). Short, decision first. Code freeze Nov 20; final codes due to Alex Nov 13.')"
+      ],
+      "why": "Inventory scenario analysis over sheets and Shopify is multi-step."
+    }
+  },
+  {
+    "id": "async_task_033",
+    "category": "async_task",
+    "world": "pixelmoth_games",
+    "title": "Press and creator target list for the Nov 24 embargo",
+    "turns": [
+      {
+        "user": "Salut Otto! 🌱 can you build a target list of 10 cozy-game press + creators for outreach once the embargo lifts on Nov 24? names, why they fit, contact if you find one. merci!! 🙏"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Salut Léa! 🌱 I'm building a list of 10 cozy-game press and creators (why they fit + contacts) for the Nov 24 embargo and will post it here.",
+      "actions": [
+        "start_task(title='Target list: 10 cozy-game press and creators for Nov 24 outreach', brief='Research 10 outlets and creators who cover cozy and farming games (e.g. Cozy Gamer Digest already asked for an interview on Nov 13). For each: name, why they fit Hearthleaf Valley, audience size if known, contact if public. Embargo lifts Nov 24, press kit goes to Birchlight on Nov 18. Research only; do not contact anyone and do not share key art.')"
+      ],
+      "why": "Web research that ends in a list is multi-step."
+    }
+  },
+  {
+    "id": "async_task_034",
+    "category": "async_task",
+    "world": "pixelmoth_games",
+    "title": "Discord ban and appeal policy + statement",
+    "turns": [
+      {
+        "user": "salut! 🔥 the mods want a public apology and BerryBlossom DM'd Théo... can you draft a clear Discord ban/appeal policy + a short public statement for us to look at? keep it in my voice, I'll review before anything goes out 🙏"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "notion"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Salut! 🔥 I'm drafting the ban/appeal policy and a short public statement in your voice, for you to review. Nothing goes out.",
+      "actions": [
+        "start_task(title='Discord ban/appeal policy + public statement draft', brief='Draft (1) a clear ban and appeal policy for the Discord (14k members) and (2) a short public statement about the BerryBlossom ban, in Léa\\'s casual voice with a little French. Context: BerryBlossom broke rule 4 twice, 300+ members ask for an unban, mod Léonie may step down, a mod-chat screenshot leaked on Reddit, mods want a public apology, BerryBlossom DM\\'d Théo willing to apologise if Cédric does too. Drafts for Léa to review; do not post. Discord is not connected.')"
+      ],
+      "why": "Policy plus statement from several threads is multi-step; Léa already said she reviews first."
+    }
+  },
+  {
+    "id": "async_task_035",
+    "category": "async_task",
+    "world": "pixelmoth_games",
+    "title": "0.9.4 patch notes and Discord announcement",
+    "turns": [
+      {
+        "user": "Hey! 0.9.4 is live 🎉 can you write the patch notes for Steam + a Discord announcement (with the Intel Arc note, 2 save bugs still open)? merci ✨"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "github",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Yay 🎉 I'm writing the 0.9.4 Steam patch notes and the Discord announcement (with the Arc note and open save bugs) and will post them here.",
+      "actions": [
+        "start_task(title='0.9.4 patch notes (Steam) + Discord announcement', brief='0.9.4 went live Nov 9 as a demo update. Write Steam patch notes and a Discord announcement from the GitHub issues and Nadia\\'s regression results (Nov 6): AMD RX 6000 crash fixed (issue #405, confirmed by AMD on 25.9 and 25.11), Intel Arc A750 black screen still open (#418), save bugs #421 and #423 open. Casual voice, a little French, emoji ok. Drafts only; Théo posts.')"
+      ],
+      "why": "Notes built from the issue tracker and QA email are multi-step."
+    }
+  },
+  {
+    "id": "async_task_036",
+    "category": "async_task",
+    "world": "pixelmoth_games",
+    "title": "Birchlight decision memo for the Nov 12 meeting",
+    "turns": [
+      {
+        "user": "Besoin d'un coup de main 😅 prepare the Birchlight decision memo for the Nov 12 studio meeting: their counter vs what Hugo and the lawyer said, pros/cons for each path incl. the March vs April date. thx!! 🙏"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Avec plaisir 😅 I'm preparing the Birchlight decision memo (counter vs Hugo and the lawyer, pros/cons, March vs April) for Nov 12.",
+      "actions": [
+        "start_task(title='Birchlight decision memo for the Nov 12 studio meeting', brief='Memo for the studio meeting Thu 12 Nov 13:00. Compare Birchlight\\'s counter (email Nov 6 and Nov 4 response) with the term sheet v1 (advance USD 380,000: 40% signing, 40% beta, 20% launch), the redline v3 summary (3 clauses to negotiate hardest) and the lawyer\\'s view (Marie-Claude Bouchard). Pros/cons for signing vs not signing, and the March 10 vs April release date question. Term sheet expires Nov 20. No contact with Birchlight.')"
+      ],
+      "why": "A decision memo over several contract emails is multi-step; the contracts comparison task is already DONE so this is new work."
+    }
+  },
+  {
+    "id": "async_task_037",
+    "category": "async_task",
+    "world": "saffron_kitchens",
+    "title": "Chhath week rota Nov 16-22 incl. inspection week",
+    "turns": [
+      {
+        "user": "chhath week ka rota bana do nov 16-22, inspection week bhi hai bandra pe, temp staff bhi include karo"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "sheets",
+      "gmail",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "ho jayega, nov 16-22 ka rota bana raha hu (Bandra inspection + Chhath leaves + temps) aur yahin share karunga.",
+      "actions": [
+        "start_task(title='Rota Nov 16-22 (Chhath + Bandra inspection week)', brief='Build the staff rota for Nov 16-22 for all outlets. Constraints: FDA inspection at Bandra in that week, Chhath leave extensions (email Nov 6), Diwali leave applications (22 staff), QuickHire quote for 12 commis/helpers for 7 days, 9 uncovered shifts in the Nov 9-15 rota as a pattern. Output: shifts by outlet, gaps, how many temps to book. Draft in the Sheet; staff-facing text can be Hinglish.')"
+      ],
+      "why": "Constraint-heavy scheduling is multi-step; Rohan wrote in Hinglish and the reply matches."
+    }
+  },
+  {
+    "id": "async_task_038",
+    "category": "async_task",
+    "world": "saffron_kitchens",
+    "title": "Powai rating improvement plan",
+    "turns": [
+      {
+        "user": "powai ka swiggy zomato rating improve karna hai. reviews dekho aur 2 hafte ka action plan banao owner ke saath"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets",
+      "slack"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "theek hai, Powai ke reviews dekh kar 2 hafte ka action plan (owner ke saath) bana raha hu.",
+      "actions": [
+        "start_task(title='Powai Swiggy/Zomato rating: 2-week action plan', brief='Powai ratings dropped to Swiggy 3.9 / Zomato 3.8. Read the review summaries (emails Oct 24, Nov 3, Nov 9), the Aggregator Ratings Tracker sheet and Neha\\'s Slack notes: packaging complaints, rider wait 14 min, a viral 1-star. Dashboards are not connected. Make a 2-week plan with owners and dates (Swiggy call Nov 10 14:00, Zomato call Nov 10 16:00).')"
+      ],
+      "why": "Analysis across emails, a sheet and Slack with a plan at the end is multi-step."
+    }
+  },
+  {
+    "id": "async_task_039",
+    "category": "async_task",
+    "world": "saffron_kitchens",
+    "title": "Reconcile Kisan Fresh invoice and credit note letter",
+    "turns": [
+      {
+        "user": "kisan fresh ka invoice mismatch hai, billed 1,640 kg received 1,603. poora reconcile karo + credit note ke liye formal letter draft karo"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "haan, Kisan Fresh invoice reconcile kar raha hu (1,640 vs 1,603 kg) aur credit note ka formal letter draft karunga.",
+      "actions": [
+        "start_task(title='Reconcile Kisan Fresh invoice (1,640 kg billed vs 1,603 kg received) + credit note letter', brief='Invoice KF/2026/10/884 and the Nov 6 difference email (Rs 14,200). Billed 1,640 kg, received 1,603 kg. Reconcile against delivery records, compute the credit due, and draft a formal English letter to Suresh Patil (Kisan Fresh Dairy) asking for a credit note before payment. Draft only; Rohan sends.')"
+      ],
+      "why": "Reconciliation plus a formal vendor letter is multi-step; vendor letters are formal English per memory."
+    }
+  },
+  {
+    "id": "async_task_040",
+    "category": "async_task",
+    "world": "saffron_kitchens",
+    "title": "Versova opening risks and dates",
+    "turns": [
+      {
+        "user": "versova ka opening plan banao - tiles delay, adani load sanction, naya handover date sab dekh ke risks aur dates ki list do, kal tak"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "calendar",
+      "slack"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "ok, Versova ke saare delays dekh kar risks aur dates ki list bana raha hu, kal tak yahin.",
+      "actions": [
+        "start_task(title='Versova opening plan: risks and dates', brief='Versova fit-out is ~70% done. Combine: tiles shipment delay and new handover date (Nov 6 email), revised schedule and change request (Oct 27), Adani Electricity load sanction delay (Nov 3, meeting Nov 13 11:00) and Arjun\\'s two risks. Output: a dated list of milestones, risks with owner and the realistic opening date; Rohan said in Slack that Versova opens in January. Needed for the opening plan review Nov 13 17:30.')"
+      ],
+      "why": "A dated risk list from emails, Slack and calendar is multi-step."
+    }
+  },
+  {
+    "id": "async_task_041",
+    "category": "async_task",
+    "world": "saffron_kitchens",
+    "title": "Licence and certificate expiry tracker",
+    "turns": [
+      {
+        "user": "saare outlets ke licence aur medical certificates ka expiry tracker banao, powai ka trade licence renewal bhi daalo. jaldi karo"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "drive",
+      "sheets",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "ho jayega, licences aur medical certificates ka expiry tracker bana raha hu (Powai renewal ke saath).",
+      "actions": [
+        "start_task(title='Licence and medical certificate expiry tracker (all outlets)', brief='Build a tracker sheet for FSSAI licences (Bandra licence valid to 31 Dec 2026), Health Trade Licence renewal due at Powai (email Nov 9), and staff medical certificates (6 expired at Bandra, camp Nov 7). Columns: outlet, document, expiry, days left, owner, status. Useful for the inspection binder (Nov 16-20).')"
+      ],
+      "why": "Building a tracker from Drive, Sheets and email is multi-step."
+    }
+  },
+  {
+    "id": "async_task_042",
+    "category": "async_task",
+    "world": "shah_realty",
+    "title": "D-118 brokerage timeline and settlement options",
+    "turns": [
+      {
+        "user": "Hi Otto! Rajesh Anand wala D-118 brokerage issue sort karna hai - can you go through all the emails on D-118 and make a clear timeline of who said what on the 50:50, and what I should offer him so the relationship bhi bach jaye. Thanks!"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "hubspot"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Sure Priya! I'm going through the D-118 emails and will build the timeline plus a few options that protect the relationship with Rajesh.",
+      "actions": [
+        "start_task(title='D-118 brokerage: timeline of the 50:50 and settlement options', brief='Rajesh Anand (co-broker) disputes the D-118 brokerage split. Currently 30% of the 1% seller brokerage (INR 132,000) is offered and Rajesh demands 50% (INR 220,000). Read all D-118 emails: \"50:50 as agreed\" (Nov 2, Nov 4), \"this is not acceptable\" (Nov 7), \"what was actually said on the call\" (Nov 3) and the advocate\\'s advice (Nov 6). Build a neutral timeline of who said what, then 2-3 settlement options that keep the relationship. Meeting with Rajesh is Thu 12 Nov 15:00. Internal only; share nothing outside the team.')"
+      ],
+      "why": "Reading an email trail and proposing options is multi-step; she asked for no more than that."
+    }
+  },
+  {
+    "id": "async_task_043",
+    "category": "async_task",
+    "world": "shah_realty",
+    "title": "Open house kit for Aravali Heights B-14",
+    "turns": [
+      {
+        "user": "Open house for Aravali Heights B-14 is Saturday 14th - can you make the whole open house kit? invite list from the HubSpot leads who enquired, signage + handout checklist, run-of-show, and who from team will be on site. Simran ko bhi dena hai."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "hubspot",
+      "calendar",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Done deal Priya, I'm building the B-14 open house kit (invite list, checklists, run-of-show, on-site team) and will share it here for Simran too.",
+      "actions": [
+        "start_task(title='Open house kit: Aravali Heights B-14 (Sat 14 Nov 11:00)', brief='Build the open house kit for Saturday 14 Nov 11:00. Invite list from HubSpot leads who enquired about B-14 (incl. the NRI buyer and Dr. Anjali Mehta, who has a site visit Nov 11); signage and handout checklist; run-of-show; on-site team using the calendar (Imran is on leave Nov 12). Listing copy is a separate task. Draft only; do not send invitations. Never share client phone numbers outside the team.')"
+      ],
+      "why": "A multi-part kit built from CRM, calendar and listings is multi-step; invitations are not sent."
+    }
+  },
+  {
+    "id": "async_task_044",
+    "category": "async_task",
+    "world": "shah_realty",
+    "title": "Pricing brief for the Vinod Kapoor call (C-241)",
+    "turns": [
+      {
+        "user": "Aaj 6 baje Vinod Kapoor se price pe call hai - can you prep a pricing brief for C-241: comparables, buyer feedback so far (Sharma family notes) and what floor price we should hold? thanks yaar"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "hubspot",
+      "sheets",
+      "drive",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Sure Priya, I'm preparing the C-241 pricing brief (comparables, buyer feedback, floor price view) before your 6pm call.",
+      "actions": [
+        "start_task(title='C-241 pricing brief for the 6pm call with Vinod Kapoor', brief='Call with seller Vinod Kapoor at 18:00 today about price. Prepare a brief: comparables from the Listings Tracker and HubSpot, buyer feedback so far (Sharma family call notes of Nov 3, site visit Tue 10 Nov 11:00), the ask and floor in the tracker (ask INR 5.85 Cr, floor INR 5.5 Cr) and the exclusive mandate terms in Drive. Recommend what price to hold and what to concede. Internal only.')"
+      ],
+      "why": "Time-boxed prep across the tracker, CRM and mandate is multi-step; it starts now so it is ready before 6pm."
+    }
+  },
+  {
+    "id": "async_task_045",
+    "category": "async_task",
+    "world": "shah_realty",
+    "title": "Post-Diwali follow-up call list",
+    "turns": [
+      {
+        "user": "Diwali ke baad ke follow-ups: go through all open leads and the 'Today's follow-ups' email, make a prioritised call list for the team with a one-line talking point each and who calls whom. Imran is off Thursday."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "hubspot",
+      "gmail",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task with a brief that carries the facts from the chat",
+        "replies in one short line and ends the turn"
+      ],
+      "must_not": [
+        "does the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Sure Priya, I'm building the prioritised follow-up call list with talking points and owners (Imran off Thursday) and will share it here.",
+      "actions": [
+        "start_task(title='Post-Diwali follow-up call list', brief='From HubSpot open leads and the Today\\'s follow-ups email (Nov 9) create a prioritised call list: lead, property, last contact, one-line talking point, caller (Arjun, Neha, Imran, Priya). Imran is on leave Thu 12 Nov. Draft only; do not message leads; never share phone numbers outside the team.')"
+      ],
+      "why": "Triaging a pipeline into a call list is multi-step."
+    }
+  }
+]

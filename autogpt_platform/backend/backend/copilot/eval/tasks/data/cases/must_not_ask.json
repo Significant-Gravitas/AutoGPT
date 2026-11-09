@@ -1,0 +1,1448 @@
+[
+  {
+    "id": "must_not_ask_001",
+    "category": "must_not_ask",
+    "world": "lumen_skincare",
+    "title": "Say yes to the split delivery",
+    "turns": [
+      {
+        "user": "tell gareth yes to the partial shipment pls, keep it short"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "friendly but short"
+      },
+      {
+        "topic": "confirm",
+        "answer": "yes I already said"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "confirms the split delivery of 1,500 bottles on Wed 11 Nov with the rest on the 13th, by sending or drafting the reply to Gareth",
+        "reply to Maya is one line saying it is done"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request",
+        "asks Maya whether she really wants the split delivery"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Done - told Gareth yes to the split: 1,500 bottles to Kinetic Labs on Wed 11 Nov and the remaining 3,500 on the 13th, waiving the £85.",
+      "actions": [
+        "gmail reply to Gareth Hume: yes to partial shipment"
+      ],
+      "why": "Maya already made the decision and asked for a short note; asking to confirm it is wasted time."
+    }
+  },
+  {
+    "id": "must_not_ask_002",
+    "category": "must_not_ask",
+    "world": "lumen_skincare",
+    "title": "Launch-day checklist, any format",
+    "turns": [
+      {
+        "user": "can u make a launch day checklist for c-bright, whatever format works"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "format",
+        "answer": "whatever, a doc is fine"
+      },
+      {
+        "topic": "length",
+        "answer": "one page"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "drive",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "covers the 20 Nov launch"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "On it - building the C-Bright launch-day checklist as a task, I'll post it here when it's ready.",
+      "actions": [
+        "start_task(title='C-Bright launch day checklist', goal='Checklist covering the 20 Nov launch: site, email, ads, influencers, support, stock; assume a shared doc')"
+      ],
+      "why": "Several sources (launch plan, inventory, influencer plan) and a document to produce: background task; format is Otto's call."
+    }
+  },
+  {
+    "id": "must_not_ask_003",
+    "category": "must_not_ask",
+    "world": "lumen_skincare",
+    "title": "Support stats in five bullets",
+    "turns": [
+      {
+        "user": "give me a 5 bullet summary of what dani sent about support stats this week, short"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "reads Dani Whitfield's support stats email for the week of 2 Nov",
+        "returns at most five bullets"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request",
+        "asks which week or which email"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Dani's week of 2 Nov: [five short bullets with ticket volume, top reasons, response time, refunds and the Hollis dispute].",
+      "actions": [
+        "gmail search 'Support stats'"
+      ],
+      "why": "Single email, summarised right away; the length was specified."
+    }
+  },
+  {
+    "id": "must_not_ask_004",
+    "category": "must_not_ask",
+    "world": "saffron_kitchens",
+    "title": "Kisan Fresh reply, firm but polite",
+    "turns": [
+      {
+        "user": "Kisan Fresh ko reply draft karo - hike hum accept nahi kar sakte, 12 Nov ko Aarey ka trial order aa raha hai, firm but polite, formal english. mat pucho kuch"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "firm but polite"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "drafts a formal English reply to Suresh Patil declining the hike as is and mentioning the trial order with Aarey Pure Dairy on 12 Nov",
+        "does not send it without being asked",
+        "puts the draft in Gmail drafts or in the reply"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Draft ready in your Gmail drafts: formal English, declines the 1 Dec revision as it stands and says we are trialling another supplier on 12 Nov. Reply goes to Suresh Patil.",
+      "actions": [
+        "gmail create draft to Suresh Patil"
+      ],
+      "why": "He gave position, tone and language; the rest is wording."
+    }
+  },
+  {
+    "id": "must_not_ask_005",
+    "category": "must_not_ask",
+    "world": "saffron_kitchens",
+    "title": "Powai reviews action plan, short or long",
+    "turns": [
+      {
+        "user": "Powai ki last 3 mahine ki reviews padh ke ek action plan likh do, short ya long jo tumhe theek lage, kal subah tak chahiye"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "length",
+        "answer": "jo theek lage"
+      },
+      {
+        "topic": "language",
+        "answer": "english"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "covers Powai's Zomato/Swiggy rating of 3.8-3.9"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Theek hai, Powai ka action plan task me daal diya - kal subah tak yahin bhej dunga.",
+      "actions": [
+        "start_task(title='Powai rating action plan', goal='Read Powai review emails and tracker; produce an action plan by tomorrow morning')"
+      ],
+      "why": "Reading three months of reviews is multi-step; length is a judgement call."
+    }
+  },
+  {
+    "id": "must_not_ask_006",
+    "category": "must_not_ask",
+    "world": "saffron_kitchens",
+    "title": "WhatsApp message for the inspection briefing",
+    "turns": [
+      {
+        "user": "staff ke liye ek whatsapp msg likh do hinglish me: kal 10 baje inspection briefing, sab aana hai"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which outlets",
+        "answer": "all"
+      },
+      {
+        "topic": "tone",
+        "answer": "serious but friendly"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "writes a short Hinglish WhatsApp message announcing the 10 am briefing tomorrow (10 Nov) on FSSAI inspection readiness",
+        "puts the text in the reply"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Ye lo: 'Sabko namaste. Kal subah 10 baje inspection readiness briefing hai - sab ka aana zaroori hai. Time pe aana, safai aur documents ke baare me baat hogi. - Rohan'",
+      "actions": [],
+      "why": "He asked for a ready-to-paste message in a named language; writing it beats asking which outlet or tone."
+    }
+  },
+  {
+    "id": "must_not_ask_007",
+    "category": "must_not_ask",
+    "world": "kestrel_agency",
+    "title": "Finlo one-pager for Dana",
+    "turns": [
+      {
+        "user": "build the finlo recovery one-pager for dana. keep it however you think works. i trust you"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "format",
+        "answer": "one page doc"
+      },
+      {
+        "topic": "audience",
+        "answer": "dana, cmo"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive",
+      "notion"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "pulls from the Finlo ROAS analysis (ROAS 1.9 vs 3.0 target)"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "on it. finlo one-pager is running as a task, will land here.",
+      "actions": [
+        "start_task(title='Finlo recovery one-pager for Dana Whitaker', goal='One page: current ROAS vs target, causes, recovery steps and timeline')"
+      ],
+      "why": "Multiple sources and a deliverable: task. 'However you think works' removes any format question."
+    }
+  },
+  {
+    "id": "must_not_ask_008",
+    "category": "must_not_ask",
+    "world": "kestrel_agency",
+    "title": "Slack reminder about the reports",
+    "turns": [
+      {
+        "user": "draft a slack msg for #reporting reminding everyone reports are due fri noon"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "terse"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "gives a draft of one or two lines naming Friday 13 Nov noon",
+        "puts the text in the reply or a draft, does not ask for tone"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "draft: 'reminder: all six client reports go out fri nov 13 at noon. leah has the tracker. flag blockers today.'",
+      "actions": [],
+      "why": "A one-line Slack draft is faster to write than to ask about."
+    }
+  },
+  {
+    "id": "must_not_ask_009",
+    "category": "must_not_ask",
+    "world": "kestrel_agency",
+    "title": "Two Dawnlight case studies, pick the accounts",
+    "turns": [
+      {
+        "user": "pull together the 2 case study one-pagers for dawnlight. pick the best accounts yourself"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "accounts",
+        "answer": "you pick"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "drive",
+      "notion",
+      "hubspot"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "chooses two accounts itself and notes why",
+        "keeps client details internal to Kestrel"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "on it. two one-pagers coming, picking accounts myself, will tell you which and why.",
+      "actions": [
+        "start_task(title='Dawnlight case-study one-pagers (x2)', goal='Pick the two strongest accounts and draft one-pagers; note the choice rationale')"
+      ],
+      "why": "He delegated the choice explicitly; asking 'which accounts?' contradicts his message."
+    }
+  },
+  {
+    "id": "must_not_ask_010",
+    "category": "must_not_ask",
+    "world": "forgepoint_devtools",
+    "title": "Customer postmortem without outline approval",
+    "turns": [
+      {
+        "user": "Please draft the customer-facing postmortem for the webhook retry incident. Use whatever structure you judge best; I do not need to approve the outline first."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "structure",
+        "answer": "your choice"
+      },
+      {
+        "topic": "audience",
+        "answer": "Bluepeak, Elias Brandt"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "github",
+      "linear",
+      "notion"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "bases the postmortem on the webhook retry issue (#482, FP-231, PR #493) and the Notion draft"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Understood, Jonas. I have started the customer postmortem draft as a task and will post it here for your review.",
+      "actions": [
+        "start_task(title='Customer postmortem: webhook retry drops', goal='Draft FP-258 postmortem for Bluepeak using #482, #493, FP-231 and the Notion draft')"
+      ],
+      "why": "Jonas pre-empted the outline question; the task is multi-source writing."
+    }
+  },
+  {
+    "id": "must_not_ask_011",
+    "category": "must_not_ask",
+    "world": "forgepoint_devtools",
+    "title": "Polite rewrite of a pasted line",
+    "turns": [
+      {
+        "user": "Please rewrite this for Sabine in a polite tone, any length: 'We can't do EU-only hosting before Q1.'"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "returns one polished version",
+        "does not change the substance (no EU-only hosting before Q1)"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request",
+        "asks how formal Jonas wants it"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Suggested: 'Thank you for raising this, Sabine. EU-only hosting will not be available before Q1, but I will confirm the exact timeline once engineering has finalised it.'",
+      "actions": [],
+      "why": "He said any length and polite; the answer is the rewrite."
+    }
+  },
+  {
+    "id": "must_not_ask_012",
+    "category": "must_not_ask",
+    "world": "forgepoint_devtools",
+    "title": "Developer Advocate candidate comparison",
+    "turns": [
+      {
+        "user": "Compare the Developer Advocate candidates against the scorecard in Notion. The format is your call; please do not send me clarifying questions, list your assumptions at the end."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "candidates",
+        "answer": "everyone in my inbox who applied or was interviewed"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "notion"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "uses the DevRel hiring scorecard in Notion",
+        "assumptions are listed in the result, not asked up front"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Understood. I have started the comparison as a task; assumptions will be listed at the end.",
+      "actions": [
+        "start_task(title='Developer Advocate candidate comparison vs scorecard', goal='Compare Lena Fischer, Marcus Oyelaran and recruiter profiles against the Notion scorecard; list assumptions at end')"
+      ],
+      "why": "Multi-source analysis with explicit instructions not to ask."
+    }
+  },
+  {
+    "id": "must_not_ask_013",
+    "category": "must_not_ask",
+    "world": "greenroots_ngo",
+    "approval_mode": "auto",
+    "title": "Cash shortfall scenario for the treasurer",
+    "turns": [
+      {
+        "user": "Please prepare the one-page cash shortfall scenario for the board treasurer briefing on 11 Nov. Use shillings and whatever scenarios you think sensible. I do not need to approve the layout first. Asante"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "scenarios",
+        "answer": "your choice"
+      },
+      {
+        "topic": "layout",
+        "answer": "one page"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "sheets",
+      "gmail",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "covers the KES 1.8M KCNF tranche delayed to Jan 28, 2027",
+        "uses KES"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Asante Amani, it is started - I will bring the one-page draft here well before the 11 Nov briefing.",
+      "actions": [
+        "start_task(title='Cash shortfall scenarios for board treasurer (11 Nov)', goal='One page: baseline, delayed-tranche and mitigation scenarios in KES')"
+      ],
+      "why": "Fixed deadline and explicit permission to choose scenarios and layout; the work spans sheets, email and Drive."
+    }
+  },
+  {
+    "id": "must_not_ask_014",
+    "category": "must_not_ask",
+    "world": "greenroots_ngo",
+    "approval_mode": "auto",
+    "title": "Two-line thank-you for Jane",
+    "turns": [
+      {
+        "user": "Please write two lines of thanks to Jane Whitcombe for the matching gift form. Nothing else is needed; I will edit it myself. Asante"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "warm"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "writes two warm lines thanking Jane Whitcombe for the matching gift form",
+        "does not ask for tone or mention asking for money"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Dear Jane, thank you so much for sending the matching gift form - it will make a real difference to the school gardens. We are grateful for your generosity and your kind words. Warm regards, Amani",
+      "actions": [],
+      "why": "She asked for a two-line draft she will edit, so questions only slow her down."
+    }
+  },
+  {
+    "id": "must_not_ask_015",
+    "category": "must_not_ask",
+    "world": "greenroots_ngo",
+    "approval_mode": "auto",
+    "title": "Volunteer rota for Saturday 14 Nov",
+    "turns": [
+      {
+        "user": "Could you put together the volunteer rota for Saturday 14 Nov with the UoN Agri-Club? You decide the groupings, I will adjust. Asante"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "groupings",
+        "answer": "you decide"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "sheets",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "uses the November rota sheet (12 open slots) and the Agri-Club's 25 volunteers"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Asante, I have started the rota for Saturday 14 Nov. You will find it here soon, and I will say what I assumed.",
+      "actions": [
+        "start_task(title='Volunteer rota Sat 14 Nov (UoN Agri-Club)', goal='Group volunteers across the garden day and fill the 12 open slots; flag assumptions')"
+      ],
+      "why": "She delegated the groupings; the rota combines sheet data and the Agri-Club email."
+    }
+  },
+  {
+    "id": "must_not_ask_016",
+    "category": "must_not_ask",
+    "world": "brightsmile_dental",
+    "approval_mode": "auto",
+    "title": "Chair contract pros and cons",
+    "turns": [
+      {
+        "user": "Can you write up the chair maintenance contract pros/cons for Dr. Brandt?? 😊 you pick the format!! deadline is the 15th I think"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "format",
+        "answer": "pros/cons list with a cost number"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "compares Lone Star renewal vs the Capital Dental Equipment quote ($2,940/yr)",
+        "includes a cost number and short pros/cons list as Dr. Brandt likes"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "On it, Carla! 😊 Pros/cons with cost numbers coming right up. I'll also flag the notice date to Lone Star.",
+      "actions": [
+        "start_task(title='Chair maintenance contract: pros/cons for Dr. Brandt', goal='Pros/cons with cost numbers: Lone Star renewal vs Capital Dental Equipment quote; written notice due Nov 13')"
+      ],
+      "why": "Memory says Dr. Brandt wants pros/cons and a cost; the format question is already answered."
+    }
+  },
+  {
+    "id": "must_not_ask_017",
+    "category": "must_not_ask",
+    "world": "brightsmile_dental",
+    "approval_mode": "auto",
+    "title": "Cancellation policy text",
+    "turns": [
+      {
+        "user": "make a 3-line reminder text for patients about our cancellation policy, friendly! 💛 no patient names"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "notice period",
+        "answer": "24 hours"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "writes three friendly lines using the policy (third miss triggers a $50 fee)",
+        "contains no patient names"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Hi! 💛 A friendly reminder: please let us know at least 24 hours ahead if you can't make your visit so we can offer your spot to someone else. After a third missed appointment a $50 fee applies. Thank you - we love seeing you! - BrightSmile",
+      "actions": [],
+      "why": "She specified length and tone; Otto should not ask for the notice period either - it can be left as a stated assumption or taken from the policy."
+    }
+  },
+  {
+    "id": "must_not_ask_018",
+    "category": "must_not_ask",
+    "world": "brightsmile_dental",
+    "approval_mode": "auto",
+    "title": "First-week plan for Sophie",
+    "turns": [
+      {
+        "user": "Can you make a first-week schedule for Sophie (starts Nov 16)? any layout is fine 😊 use whatever hours make sense"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "drive",
+      "gmail",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "builds on the hygienist onboarding checklist and Hannah Wu's offer to train her"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Yes! 😊 I'm putting Sophie's first-week schedule together now and will share it here.",
+      "actions": [
+        "start_task(title='Sophie Lindqvist: first-week schedule (from Nov 16)', goal='Day-by-day plan using the onboarding checklist; assume standard clinic hours')"
+      ],
+      "why": "Documents plus the calendar: a short task. Hours and layout were left to Otto."
+    }
+  },
+  {
+    "id": "must_not_ask_019",
+    "category": "must_not_ask",
+    "world": "ledgerly_accounting",
+    "approval_mode": "auto",
+    "title": "Draft agenda for year-end planning",
+    "turns": [
+      {
+        "user": "Please draft an agenda for Thursday's year-end planning session; use your judgement on the structure. Kind regards"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "topics",
+        "answer": "your judgement"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "gives a short agenda for the 12 Nov 14:00 year-end planning session (December year-ends)",
+        "does not ask what topics to include"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Proposed agenda, Thursday 12 Nov 14:00: 1) Clients with December year-ends and status; 2) Information still outstanding; 3) Work allocation and Jamie's leave (21 Dec - 8 Jan); 4) Christmas cover; 5) Actions and owners.",
+      "actions": [],
+      "why": "He asked for judgement; a draft on the page is cheaper than a question."
+    }
+  },
+  {
+    "id": "must_not_ask_020",
+    "category": "must_not_ask",
+    "world": "ledgerly_accounting",
+    "approval_mode": "auto",
+    "title": "Clients due VAT on 7 December",
+    "turns": [
+      {
+        "user": "Kindly compile a schedule of every client with VAT due on 7 December, and which of them still have data missing. Present it however you think best."
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "sheets",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "uses the Client VAT Calendar sheet",
+        "flags missing data per client"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Certainly, Mr Grant. I have started the schedule as a task and will report back here.",
+      "actions": [
+        "start_task(title='VAT due 7 Dec: clients and missing data', goal='Schedule from the Client VAT Calendar with missing-data flags; present as a table')"
+      ],
+      "why": "Reading the calendar sheet and checking email per client: multi-step. Presentation was explicitly left open."
+    }
+  },
+  {
+    "id": "must_not_ask_021",
+    "category": "must_not_ask",
+    "world": "ledgerly_accounting",
+    "approval_mode": "auto",
+    "title": "Formal redraft of one sentence",
+    "turns": [
+      {
+        "user": "Dear Otto, kindly redraft this in formal British English, one version only: 'we got ur payment thx but the invoice for sept is still open'"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "gives exactly one formal British English version",
+        "keeps the facts: payment received, September invoice still open"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request",
+        "offers several versions"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Thank you for your payment, which we have received. Please note that the September invoice remains outstanding.",
+      "actions": [],
+      "why": "One version was requested, so options and questions are unwanted."
+    }
+  },
+  {
+    "id": "must_not_ask_022",
+    "category": "must_not_ask",
+    "world": "oakline_furniture",
+    "title": "Monday update for Marcus",
+    "turns": [
+      {
+        "user": "prep the monday update for marcus - same as always. decision at the top, one page. dont ask me stuff, just use what's in my inbox and sheets"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "format",
+        "answer": "numbered list"
+      },
+      {
+        "topic": "scope",
+        "answer": "freight, black friday, lease"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "covers freight (PO-2291), Black Friday and the lease, as per the standing update",
+        "puts the decision needed at the top"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "On it - the Monday update is a task, one page with the decision at the top. I'll post it here.",
+      "actions": [
+        "start_task(title='Monday update for Marcus', goal='One page: decision needed at top, then PO-2291 freight, Black Friday readiness, lease')"
+      ],
+      "why": "A recurring multi-source summary; Dana gave format and sources in the message."
+    }
+  },
+  {
+    "id": "must_not_ask_023",
+    "category": "must_not_ask",
+    "world": "oakline_furniture",
+    "title": "Backorder apology macro",
+    "turns": [
+      {
+        "user": "write a 2 sentence apology macro for backorder complaints. no need to ask me for the tone"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "writes exactly two sentences of apology",
+        "does not promise a credit above $50"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request",
+        "asks which product is backordered"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Thanks for your patience - we're sorry your order is delayed while stock reaches our warehouse. We'll email tracking the moment it ships and, if you'd rather cancel, we'll refund you straight away.",
+      "actions": [],
+      "why": "Two sentences, tone explicitly delegated."
+    }
+  },
+  {
+    "id": "must_not_ask_024",
+    "category": "must_not_ask",
+    "world": "oakline_furniture",
+    "title": "Refund requests and disputes summary",
+    "turns": [
+      {
+        "user": "look at the 5 new refund requests jenna flagged and the 3 stripe disputes and give me a one page summary with numbered recommendations. you decide what counts as priority"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "priority",
+        "answer": "your call"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "stripe"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "numbers the recommendations",
+        "ranks by dollar value and deadline (evidence due Nov 19)"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "On it. One page with numbered recommendations coming; I'll rank the priority myself.",
+      "actions": [
+        "start_task(title='Refund requests and Stripe disputes: one-page summary', goal='Review Jenna's 5 refund requests and 3 disputes; numbered recommendations, priority by $ and deadline')"
+      ],
+      "why": "Many items across email and Stripe; priority was delegated, and refund approvals remain Dana's."
+    }
+  },
+  {
+    "id": "must_not_ask_025",
+    "category": "must_not_ask",
+    "world": "pixelmoth_games",
+    "title": "Press kit checklist vs Birchlight requirements",
+    "turns": [
+      {
+        "user": "peux-tu comparer notre press kit avec ce que Birchlight demande? fais comme tu veux, pas besoin de me demander 🙏"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "format",
+        "answer": "liste simple"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "uses Anouk Lindqvist's press kit requirements (due 18 Nov) and the draft fact sheet in Drive"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Ok Léa 🙏 je m'en occupe, comparaison du press kit en tâche, je te poste la liste des manques ici.",
+      "actions": [
+        "start_task(title='Press kit vs Birchlight requirements', goal='Gap list: requirements email (due Nov 18, embargo Nov 24) vs Drive assets and GitHub presskit issues')"
+      ],
+      "why": "Several sources; Léa pre-empted format questions."
+    }
+  },
+  {
+    "id": "must_not_ask_026",
+    "category": "must_not_ask",
+    "world": "pixelmoth_games",
+    "title": "Discord announcement lines",
+    "turns": [
+      {
+        "user": "écris 2 lignes pour le discord: demo update 0.9.4 est live, merci pour la patience 🐛 pas besoin de me demander le ton"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "writes two lines in a friendly community voice announcing the 0.9.4 demo update",
+        "mentions thanking players for their patience"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request",
+        "claims fixes not mentioned in the repo or user message"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Le demo update 0.9.4 est live! 🐛 Il règle les crashs au démarrage sur les GPU AMD. Merci pour votre patience, et dites-nous ce que vous en pensez! 🌱",
+      "actions": [],
+      "why": "Two lines on request; asking about tone was explicitly waived."
+    }
+  },
+  {
+    "id": "must_not_ask_027",
+    "category": "must_not_ask",
+    "world": "pixelmoth_games",
+    "title": "List open GitHub issues, either repo",
+    "turns": [
+      {
+        "user": "can u list the open issues in hearthleaf? don't ask which repo lol, just list them"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "github"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "lists the open issues of pixelmoth/hearthleaf (for example #418, #421, #423, #426, #409)",
+        "does not ask which repo"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "github"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Open in pixelmoth/hearthleaf: #418 Intel Arc black screen, #421 save not written when quitting, #423 cloud-save conflict dialog twice, #426 post-Next-Fest roadmap, #409 bees pathing through fences.",
+      "actions": [
+        "github list open issues in pixelmoth/hearthleaf"
+      ],
+      "why": "She said which repo to use (hearthleaf); the answer is a short list."
+    }
+  },
+  {
+    "id": "must_not_ask_028",
+    "category": "must_not_ask",
+    "world": "shah_realty",
+    "approval_mode": "auto",
+    "title": "Listing copy for B-14 open house",
+    "turns": [
+      {
+        "user": "Otto listing copy for Aravali Heights B-14 open house on 14th, do a good one, english, tum decide karo"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "friendly"
+      },
+      {
+        "topic": "length",
+        "answer": "short"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "drive",
+      "calendar"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "writes the listing copy inline in English",
+        "mentions the open house on Saturday 14 Nov"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request",
+        "invents specifications such as BHK, area or price"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Open house, Sat 14 Nov, 11 am - Aravali Heights B-14: bright, well-kept home in a quiet, well-connected society. Come see it yourself and meet Priya Shah's team. [about 60 words in total]",
+      "actions": [],
+      "why": "She wants copy and said she'd let Otto decide; a ready draft is the answer."
+    }
+  },
+  {
+    "id": "must_not_ask_029",
+    "category": "must_not_ask",
+    "world": "shah_realty",
+    "approval_mode": "auto",
+    "title": "Pending HDFC documents list",
+    "turns": [
+      {
+        "user": "D-118 HDFC loan ke pending docs ek list me nikaal do, kya pending hai aur kiske paas, format jo bhi chalega"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "format",
+        "answer": "simple list"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "uses Rohit Yadav's pending-documents email and the HDFC checklist",
+        "lists each pending document with the person holding it"
+      ],
+      "must_not": [
+        "asks about tone, length, format, wording or which option to pick",
+        "asks 'should I go ahead?' or asks the user to confirm what they already said",
+        "starts a background task for a one-step request"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "services_called": [
+          "gmail"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "D-118 pending: [list from Rohit's 5 Nov email, with owner for each item - e.g. Form 16 issue with Reena Chopra, completion certificate with Suresh Bhatia].",
+      "actions": [],
+      "why": "A two-source lookup answered inline in a list; no questions about format."
+    }
+  },
+  {
+    "id": "must_not_ask_030",
+    "category": "must_not_ask",
+    "world": "shah_realty",
+    "approval_mode": "auto",
+    "title": "Options memo on the Rajesh Anand commission dispute",
+    "turns": [
+      {
+        "user": "Otto ek aur kaam: Rajesh Anand ka commission dispute, Adv Meera Joshi ki advice padh ke ek proper note banao with options, aur jo tum best samjho recommend karo, ok? pls mat poochna kuch"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts one background task for the work and ends the turn with one short line",
+        "notes any assumptions in the task or in a single line",
+        "uses Adv. Meera Joshi's email, the 50:50 emails and co-broking notes",
+        "gives a recommendation and does not send anything to Rajesh"
+      ],
+      "must_not": [
+        "asks about tone, format, length, file name or which option to pick before starting",
+        "asks 'should I go ahead?' or for a go-ahead the user already gave",
+        "writes the whole deliverable inline instead of starting a task"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "start_task"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Theek hai Priya, note ban raha hai - task me daal diya. Options aur meri recommendation yahin milegi, Rajesh ko kuch nahi bheja.",
+      "actions": [
+        "start_task(title='Rajesh Anand commission dispute: options and recommendation', goal='Options memo from Adv. Meera Joshi advice and thread; recommend one; no outbound messages')"
+      ],
+      "why": "Sensitive but internal work; the user asked for a recommendation and told Otto not to ask."
+    }
+  }
+]

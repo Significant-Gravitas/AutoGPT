@@ -1,0 +1,797 @@
+[
+  {
+    "id": "delegation_001",
+    "category": "delegation",
+    "world": "lumen_skincare",
+    "title": "Black Friday email campaign",
+    "turns": [
+      {
+        "user": "ask nova to draft the email campaign for black friday pls, early access for the list first"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Nova (delegate_to_expert, or a start_task owned by Nova) instead of doing it itself",
+        "tells the user in a line that Nova has it"
+      ],
+      "must_not": [
+        "does the email campaign work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Nova's on it: she'll draft the Black Friday sequence with early access first and post it here",
+      "actions": [
+        "delegate_to_expert(expert='Nova', task='Draft the Black Friday email campaign, early access for the list first')"
+      ],
+      "why": "Email campaigns are what Nova owns. A chief of staff passes it on with the brief and tells Maya."
+    }
+  },
+  {
+    "id": "delegation_002",
+    "category": "delegation",
+    "world": "lumen_skincare",
+    "title": "Goodwill reply to Rebecca Hollis",
+    "turns": [
+      {
+        "user": "can sage write the reply to rebecca hollis, we offer the 30 quid goodwill, no more thx"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "shopify"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Sage (delegate_to_expert, or a start_task owned by Sage) instead of doing it itself",
+        "tells the user in a line that Sage has it"
+      ],
+      "must_not": [
+        "does the support reply work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Sage has it: a reply to Rebecca offering the £30 goodwill, for you to see before it goes",
+      "actions": [
+        "delegate_to_expert(expert='Sage', task='Draft reply to Rebecca Hollis (LS-10482) offering £30 goodwill')"
+      ],
+      "why": "Support replies and refund recommendations are Sage's area; Maya's £30 limit goes in the brief."
+    }
+  },
+  {
+    "id": "delegation_003",
+    "category": "delegation",
+    "world": "brightsmile_dental",
+    "approval_mode": "ask_first",
+    "title": "Cigna request for more information",
+    "turns": [
+      {
+        "user": "Penny, or whoever handles claims, please gather the documents for the Cigna request on claim CG-77120934 and reply to them! 🙏"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Penny (delegate_to_expert, or a start_task owned by Penny) instead of doing it itself",
+        "tells the user in a line that Penny has it"
+      ],
+      "must_not": [
+        "does the claims follow-up work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Penny has the Cigna request now! She'll gather the documents and draft the reply for you to see 🙏",
+      "actions": [
+        "delegate_to_expert(expert='Penny', task='Respond to Cigna additional-information request on claim CG-77120934')"
+      ],
+      "why": "Claims and payer follow-ups are Penny's. Don't answer Cigna directly."
+    }
+  },
+  {
+    "id": "delegation_004",
+    "category": "delegation",
+    "world": "brightsmile_dental",
+    "approval_mode": "ask_first",
+    "title": "Reply to the 5-star review",
+    "turns": [
+      {
+        "user": "Can Remy reply to Priya K.'s 5-star review? Keep it warm and no details about the visit! 😊"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Remy (delegate_to_expert, or a start_task owned by Remy) instead of doing it itself",
+        "tells the user in a line that Remy has it"
+      ],
+      "must_not": [
+        "does the review reply work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Remy's on it! A warm thank-you with no visit details 😊",
+      "actions": [
+        "delegate_to_expert(expert='Remy', task='Reply to Priya K.s 5-star Google review, warm, no patient details')"
+      ],
+      "why": "Review replies belong to Remy, with the HIPAA rule in the brief."
+    }
+  },
+  {
+    "id": "delegation_005",
+    "category": "delegation",
+    "world": "forgepoint_devtools",
+    "title": "DPA response for Northwind",
+    "turns": [
+      {
+        "user": "Please ask Cipher to draft our response to the DPA redlines from Northwind's legal team."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Cipher (delegate_to_expert, or a start_task owned by Cipher) instead of doing it itself",
+        "tells the user in a line that Cipher has it"
+      ],
+      "must_not": [
+        "does the DPA response work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Cipher has the Northwind DPA redlines and will draft our response.",
+      "actions": [
+        "delegate_to_expert(expert='Cipher', task='Draft response to Northwind DPA redlines')"
+      ],
+      "why": "DPAs are in Cipher's remit."
+    }
+  },
+  {
+    "id": "delegation_006",
+    "category": "delegation",
+    "world": "forgepoint_devtools",
+    "title": "Bluepeak renewal brief",
+    "turns": [
+      {
+        "user": "Mabel should prepare the Bluepeak renewal brief ahead of today's check-in. Include the webhook incident."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "notion"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Mabel (delegate_to_expert, or a start_task owned by Mabel) instead of doing it itself",
+        "tells the user in a line that Mabel has it"
+      ],
+      "must_not": [
+        "does the renewal brief work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Mabel is preparing the Bluepeak renewal brief, including the webhook incident.",
+      "actions": [
+        "delegate_to_expert(expert='Mabel', task='Bluepeak renewal brief incl. webhook incident')"
+      ],
+      "why": "Customer health and renewals are Mabel's."
+    }
+  },
+  {
+    "id": "delegation_007",
+    "category": "delegation",
+    "world": "greenroots_ngo",
+    "approval_mode": "ask_first",
+    "title": "Irrigation reallocation request",
+    "turns": [
+      {
+        "user": "Asante. Could Juniper please prepare the written request for the irrigation budget reallocation that Rebecca Holloway asked for? Warm regards, Amani"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Juniper (delegate_to_expert, or a start_task owned by Juniper) instead of doing it itself",
+        "tells the user in a line that Juniper has it"
+      ],
+      "must_not": [
+        "does the funder request work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Asante, Amani. Juniper is preparing the reallocation request for Rebecca and will bring it to you before anything is sent.",
+      "actions": [
+        "delegate_to_expert(expert='Juniper', task='Draft written irrigation reallocation request to Larkspur')"
+      ],
+      "why": "Funder reports and budgets are Juniper's; Amani reviews first."
+    }
+  },
+  {
+    "id": "delegation_008",
+    "category": "delegation",
+    "world": "greenroots_ngo",
+    "approval_mode": "ask_first",
+    "title": "Thank-you note for Jane Whitcombe",
+    "turns": [
+      {
+        "user": "Please let Marigold draft a thank-you note for Jane Whitcombe, the donor who sent the matching gift form. Asante!"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Marigold (delegate_to_expert, or a start_task owned by Marigold) instead of doing it itself",
+        "tells the user in a line that Marigold has it"
+      ],
+      "must_not": [
+        "does the donor note work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Marigold will draft Jane's thank-you note and show it to you.",
+      "actions": [
+        "delegate_to_expert(expert='Marigold', task='Draft thank-you note to Jane Whitcombe')"
+      ],
+      "why": "Thank-you messages belong to Marigold; no ask for money per the script."
+    }
+  },
+  {
+    "id": "delegation_009",
+    "category": "delegation",
+    "world": "kestrel_agency",
+    "title": "Research Dawnlight's competitors",
+    "turns": [
+      {
+        "user": "- have rhea research dawnlight's competitors before thursday\n- one page"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "notion"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Rhea (delegate_to_expert, or a start_task owned by Rhea) instead of doing it itself",
+        "tells the user in a line that Rhea has it"
+      ],
+      "must_not": [
+        "does the prospect research work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "- rhea's on dawnlight competitor research\n- one page before thursday",
+      "actions": [
+        "delegate_to_expert(expert='Rhea', task='One-page competitor research for Dawnlight pitch Thu')"
+      ],
+      "why": "Prospect research is Rhea's."
+    }
+  },
+  {
+    "id": "delegation_010",
+    "category": "delegation",
+    "world": "ledgerly_accounting",
+    "approval_mode": "ask_first",
+    "title": "Payment plan for Kenwright Dental",
+    "turns": [
+      {
+        "user": "Dear Otto, would Maple kindly draft a payment plan proposal for Kenwright Dental Practice? Their invoice LDG-0345 dates from August. Kind regards, Oliver"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "stripe",
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Maple (delegate_to_expert, or a start_task owned by Maple) instead of doing it itself",
+        "tells the user in a line that Maple has it"
+      ],
+      "must_not": [
+        "does the payment plan work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Dear Oliver, Maple is drafting a payment plan proposal for Kenwright Dental. You will see it before it is sent.",
+      "actions": [
+        "delegate_to_expert(expert='Maple', task='Draft payment plan proposal for Kenwright Dental, LDG-0345')"
+      ],
+      "why": "Payment plans are Maple's area."
+    }
+  },
+  {
+    "id": "delegation_011",
+    "category": "delegation",
+    "world": "oakline_furniture",
+    "title": "Chase Pacific Crest on PO-2291",
+    "turns": [
+      {
+        "user": "1. Get Atlas to chase Rick Alvarez for the PO-2291 container ETA and demurrage exposure.\n2. Report back here."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Atlas (delegate_to_expert, or a start_task owned by Atlas) instead of doing it itself",
+        "tells the user in a line that Atlas has it"
+      ],
+      "must_not": [
+        "does the freight chasing work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "1. Atlas has it: chasing Rick on the ETA and demurrage.\n2. He'll report here.",
+      "actions": [
+        "delegate_to_expert(expert='Atlas', task='Chase Pacific Crest on PO-2291 ETA and demurrage exposure')"
+      ],
+      "why": "Freight tracking and demurrage are Atlas's."
+    }
+  },
+  {
+    "id": "delegation_012",
+    "category": "delegation",
+    "world": "pixelmoth_games",
+    "title": "Pitch email to Cozy Gamer Digest",
+    "turns": [
+      {
+        "user": "Pip peux-tu écrire le mail pour Cozy Gamer Digest? Hannah veut l'interview vendredi 🌱"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Pip (delegate_to_expert, or a start_task owned by Pip) instead of doing it itself",
+        "tells the user in a line that Pip has it"
+      ],
+      "must_not": [
+        "does the outlet outreach work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Pip s'en occupe! Un mail pour Hannah pour l'interview de vendredi 🌱",
+      "actions": [
+        "delegate_to_expert(expert='Pip', task='Reply to Hannah Brooks at Cozy Gamer Digest, interview Fri')"
+      ],
+      "why": "Outlet outreach is Pip's."
+    }
+  },
+  {
+    "id": "delegation_013",
+    "category": "delegation",
+    "world": "pixelmoth_games",
+    "title": "Compare Birchlight's counter with redline v3",
+    "turns": [
+      {
+        "user": "Sterling, compare the Birchlight counter with our redline v3 clause by clause"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Sterling (delegate_to_expert, or a start_task owned by Sterling) instead of doing it itself",
+        "tells the user in a line that Sterling has it"
+      ],
+      "must_not": [
+        "does the term sheet comparison work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Sterling compare les deux, clause par clause 🙏",
+      "actions": [
+        "delegate_to_expert(expert='Sterling', task='Compare Birchlight counter vs redline v3')"
+      ],
+      "why": "Term-sheet comparison is Sterling's."
+    }
+  },
+  {
+    "id": "delegation_014",
+    "category": "delegation",
+    "world": "saffron_kitchens",
+    "title": "Powai BMC licence checklist",
+    "turns": [
+      {
+        "user": "saffron-sage se bolo Powai ka BMC health trade licence renewal ka checklist banaye"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Saffron-Sage (delegate_to_expert, or a start_task owned by Saffron-Sage) instead of doing it itself",
+        "tells the user in a line that Saffron-Sage has it"
+      ],
+      "must_not": [
+        "does the licence checklist work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Saffron-Sage ko bol diya, Powai BMC licence renewal ka checklist banayegi.",
+      "actions": [
+        "delegate_to_expert(expert='Saffron-Sage', task='Checklist for Powai BMC Health Trade Licence renewal')"
+      ],
+      "why": "Licences are Saffron-Sage's."
+    }
+  },
+  {
+    "id": "delegation_015",
+    "category": "delegation",
+    "world": "shah_realty",
+    "approval_mode": "ask_first",
+    "title": "Two asks: lead replies and HDFC chase",
+    "turns": [
+      {
+        "user": "Hi Otto, Aarav se bolo 99acres wale lead ko aur Dr. Anjali Mehta ke Housing.com enquiry ko reply karwaye, and Meher se HDFC wale Pooja Nair se pending documents chase karwao. Thanks!"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "tone",
+        "answer": "whatever you think works"
+      },
+      {
+        "topic": "deadline",
+        "answer": "end of the week"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "hubspot"
+    ],
+    "expected": {
+      "behaviour": "delegate",
+      "must": [
+        "hands the work to Aarav and Meher (delegate_to_expert, or a start_task owned by Aarav and Meher) instead of doing it itself",
+        "tells the user in a line that Aarav and Meher has it",
+        "delegates the lead replies to Aarav and the HDFC chase to Meher separately"
+      ],
+      "must_not": [
+        "does the lead replies and loan chase work inline in this turn",
+        "asks the user a question it can decide itself (tone, format, deadline)"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ],
+        "tools_called": [
+          "delegate_to_expert"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Done: Aarav has the two lead replies, Meher is chasing Pooja Nair at HDFC.",
+      "actions": [
+        "delegate_to_expert(expert='Aarav', ...)",
+        "delegate_to_expert(expert='Meher', ...)"
+      ],
+      "why": "Portal responses are Aarav's, loan paperwork Meher's."
+    }
+  }
+]

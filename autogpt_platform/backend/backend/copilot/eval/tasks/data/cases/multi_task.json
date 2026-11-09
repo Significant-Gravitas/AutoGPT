@@ -1,0 +1,507 @@
+[
+  {
+    "id": "multi_task_001",
+    "category": "multi_task",
+    "world": "lumen_skincare",
+    "title": "Glow & Co wholesale, packaging options, creator captions",
+    "turns": [
+      {
+        "user": "3 things pls. 1 put together a wholesale proposal for glow & co manchester, 2 cost comparison of the packright options (wait / partial 1500 / 30 nov) for tom before tuesdays call, 3 a checklist for the creator caption review tue 3pm w the asa rules"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets",
+      "slack"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts a task for the Glow & Co wholesale proposal",
+        "starts a separate task for the PackRight PO-2210 options cost comparison",
+        "starts a separate task for the creator caption review checklist (ASA)",
+        "starts every task in the same step, without waiting for one to finish",
+        "gives each task its own brief with the facts from the chat",
+        "replies in one short line that names the tasks started"
+      ],
+      "must_not": [
+        "bundles the separate pieces of work into one task",
+        "starts one piece and asks whether to start the others",
+        "does any of the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "on all 3, one task each: glow & co proposal, packright options cost comparison, caption review checklist",
+      "actions": [
+        "start_task(title='Wholesale proposal for Glow & Co (Manchester)', brief=...)",
+        "start_task(title='PackRight PO-2210 options: wait vs partial 1,500 vs 30 Nov, with costs', brief=...)",
+        "start_task(title='Creator caption review checklist (ASA rules) for Tue 3pm', brief=...)"
+      ],
+      "why": "Three independent pieces of work with different sources and deadlines: three tasks started in the same step so they run in parallel."
+    }
+  },
+  {
+    "id": "multi_task_002",
+    "category": "multi_task",
+    "world": "oakline_furniture",
+    "title": "Seasonal temps, hospitality quote, PO-2274 credit",
+    "turns": [
+      {
+        "user": "Three things please:\n1. Plan onboarding for the 6 seasonal warehouse associates starting Nov 16 (we are also short 2 forklift-certified temps)\n2. Build the trade quote for the 12-unit hospitality project\n3. Review the PO-2274 damaged-sofa credit proposal and give me a counter with numbers"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets",
+      "shopify"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts a task for the seasonal associate onboarding plan",
+        "starts a separate task for the hospitality trade quote",
+        "starts a separate task for the PO-2274 credit proposal review",
+        "starts every task in the same step, without waiting for one to finish",
+        "gives each task its own brief with the facts from the chat",
+        "replies in one short line that names the tasks started"
+      ],
+      "must_not": [
+        "bundles the separate pieces of work into one task",
+        "starts one piece and asks whether to start the others",
+        "does any of the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Done. Three tasks started: temp onboarding plan, hospitality trade quote, and the PO-2274 credit review.",
+      "actions": [
+        "start_task(title='Onboarding plan: 6 seasonal associates from Nov 16 + 2 forklift-certified temps', brief=...)",
+        "start_task(title='Trade quote: 12-unit hospitality project', brief=...)",
+        "start_task(title='PO-2274 damaged sofa credit proposal: review and counter', brief=...)"
+      ],
+      "why": "Each item has its own sources and output; separate tasks avoid one long job blocking the other two."
+    }
+  },
+  {
+    "id": "multi_task_003",
+    "category": "multi_task",
+    "world": "brightsmile_dental",
+    "title": "Holiday party, HIPAA training, CE course",
+    "turns": [
+      {
+        "user": "Hi Otto! 3 things today 😊 (1) Dr. Brandt asked me to plan the holiday party + staff lunch, (2) can you build a tracker for the HIPAA training - 6 of 9 staff still need it by Nov 30, and (3) figure out who should attend the TDA CE course on Nov 14 and how we cover the schedule. Thank you!! 💛"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "calendar",
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts a task for the holiday party and staff lunch plan",
+        "starts a separate task for the HIPAA training tracker",
+        "starts a separate task for the CE course attendees and coverage",
+        "starts every task in the same step, without waiting for one to finish",
+        "gives each task its own brief with the facts from the chat",
+        "replies in one short line that names the tasks started"
+      ],
+      "must_not": [
+        "bundles the separate pieces of work into one task",
+        "starts one piece and asks whether to start the others",
+        "does any of the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "On it! 🎉 Three tasks started: holiday party + lunch plan, HIPAA training tracker, and the CE course coverage plan.",
+      "actions": [
+        "start_task(title='Holiday party and staff lunch plan', brief=...)",
+        "start_task(title='HIPAA training tracker: 6 of 9 staff due Nov 30', brief=...)",
+        "start_task(title='TDA CE course Nov 14: attendees and schedule coverage', brief=...)"
+      ],
+      "why": "Three unrelated deliverables, so three tasks started at once."
+    }
+  },
+  {
+    "id": "multi_task_004",
+    "category": "multi_task",
+    "world": "forgepoint_devtools",
+    "title": "Helix residency memo, Northwind quote, summit CFP",
+    "turns": [
+      {
+        "user": "I have three requests. First, a short memo on Helix's EU data residency question and the trial extension, with options and a recommendation. Second, please sanity-check the Northwind quote draft against our plan pricing. Third, prepare a speaker proposal for the Berlin CI/CD Summit in March 2027 on flaky-test quarantine."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "notion",
+      "slack"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts a task for the Helix EU data residency and trial extension memo",
+        "starts a separate task for the Northwind quote check",
+        "starts a separate task for the Berlin CI/CD Summit speaker proposal",
+        "starts every task in the same step, without waiting for one to finish",
+        "gives each task its own brief with the facts from the chat",
+        "replies in one short line that names the tasks started"
+      ],
+      "must_not": [
+        "bundles the separate pieces of work into one task",
+        "starts one piece and asks whether to start the others",
+        "does any of the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Understood. I have started three tasks: the Helix residency memo, the Northwind quote check, and the Berlin CI/CD Summit proposal.",
+      "actions": [
+        "start_task(title='Helix: EU data residency and trial extension memo', brief=...)",
+        "start_task(title='Northwind quote draft: sanity check against plan pricing', brief=...)",
+        "start_task(title='Berlin CI/CD Summit 2027: speaker proposal', brief=...)"
+      ],
+      "why": "Three independent deliverables with different deadlines; each is its own task."
+    }
+  },
+  {
+    "id": "multi_task_005",
+    "category": "multi_task",
+    "world": "greenroots_ngo",
+    "title": "Pupils-reached note, irrigation quotation, seed order",
+    "turns": [
+      {
+        "user": "Dear Otto, warm greetings. Three things, please. (1) Prepare a short note explaining why we are reporting 3,860 pupils reached and not 4,200, for the Larkspur report. (2) Compare the drip irrigation quotation Q-88214 for six schools against our budget. (3) Plan the seed order for the short rains. Please do not send anything to anyone before I have reviewed it. Asante sana, Amani"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts a task for the pupils-reached note",
+        "starts a separate task for the Q-88214 irrigation quotation comparison",
+        "starts a separate task for the short rains seed order plan",
+        "starts every task in the same step, without waiting for one to finish",
+        "gives each task its own brief with the facts from the chat",
+        "replies in one short line that names the tasks started"
+      ],
+      "must_not": [
+        "bundles the separate pieces of work into one task",
+        "starts one piece and asks whether to start the others",
+        "does any of the work inline in this turn",
+        "sends anything to external parties",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Karibu, Amani. I have started three tasks: the pupils-reached note, the irrigation quotation comparison and the seed order plan. Nothing will be sent.",
+      "actions": [
+        "start_task(title='Larkspur: note on pupils reached (3,860 vs 4,200)', brief=...)",
+        "start_task(title='Irrigation quotation Q-88214: six schools vs budget', brief=...)",
+        "start_task(title='Short rains seed order plan', brief=...)"
+      ],
+      "why": "Three unrelated pieces of work; Amani's rule (review before sending) is recorded in each brief."
+    }
+  },
+  {
+    "id": "multi_task_006",
+    "category": "multi_task",
+    "world": "kestrel_agency",
+    "title": "Pulse report, Finlo December cut, Harbor & Pine sync",
+    "turns": [
+      {
+        "user": "- start the pulse report (leah owns, hipaa review on the new ad copy)\n- one-pager rebutting finlo's 30% dec budget cut for greg\n- prep for the harbor & pine sync thurs"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "slack",
+      "notion"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts a task for the Pulse report",
+        "starts a separate task for the Finlo December budget rebuttal one-pager",
+        "starts a separate task for the Harbor & Pine sync prep",
+        "starts every task in the same step, without waiting for one to finish",
+        "gives each task its own brief with the facts from the chat",
+        "replies in one short line that names the tasks started"
+      ],
+      "must_not": [
+        "bundles the separate pieces of work into one task",
+        "starts one piece and asks whether to start the others",
+        "does any of the work inline in this turn",
+        "adds preamble to a one-line reply",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "on it. 3 tasks: pulse report, finlo dec budget rebuttal, harbor & pine sync prep.",
+      "actions": [
+        "start_task(title='Pulse monthly report incl. HIPAA ad copy review', brief=...)",
+        "start_task(title='Finlo: one-pager rebutting 30% December budget cut', brief=...)",
+        "start_task(title='Harbor & Pine monthly sync prep (Thu 12 Nov)', brief=...)"
+      ],
+      "why": "Three bullets, three independent deliverables."
+    }
+  },
+  {
+    "id": "multi_task_007",
+    "category": "multi_task",
+    "world": "ledgerly_accounting",
+    "title": "NQ Brewing kickoff, Kestrel Cafe filing, Hiscox renewal",
+    "turns": [
+      {
+        "user": "Dear Otto, three matters, please. First, prepare the NQ Brewing kickoff agenda for Thursday 12 November together with the Xero migration plan. Secondly, prepare the Kestrel Cafe Ltd confirmation statement ahead of the 11 November due date. Thirdly, assemble the information required for the Hiscox professional indemnity renewal proposal. Nothing is to be sent to any client or insurer without my approval. Kind regards, Oliver"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "calendar",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts a task for the NQ Brewing kickoff agenda and Xero migration plan",
+        "starts a separate task for the Kestrel Cafe confirmation statement",
+        "starts a separate task for the Hiscox renewal information",
+        "starts every task in the same step, without waiting for one to finish",
+        "gives each task its own brief with the facts from the chat",
+        "replies in one short line that names the tasks started"
+      ],
+      "must_not": [
+        "bundles the separate pieces of work into one task",
+        "starts one piece and asks whether to start the others",
+        "does any of the work inline in this turn",
+        "sends anything to a client or insurer",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Dear Oliver, certainly. I have started three tasks: the NQ Brewing kickoff and Xero plan, the Kestrel Cafe confirmation statement and the Hiscox renewal information. Nothing will be sent.",
+      "actions": [
+        "start_task(title='NQ Brewing kickoff agenda and Xero migration plan', brief=...)",
+        "start_task(title='Kestrel Cafe Ltd confirmation statement (due 11 Nov)', brief=...)",
+        "start_task(title='Hiscox PI renewal proposal: information pack', brief=...)"
+      ],
+      "why": "Three independent compliance and client tasks, each with its own deadline."
+    }
+  },
+  {
+    "id": "multi_task_008",
+    "category": "multi_task",
+    "world": "pixelmoth_games",
+    "title": "Trailer checklist, AI-art response kit, soundtrack schedule",
+    "turns": [
+      {
+        "user": "salut! 3 things 🙏 1) final asset checklist for the Nov 13 trailer cut 2) a response kit for the reddit AI-art claim (facts, proof, short statement) 3) a schedule to get Étienne's last 5 tracks done without burning him out 🌱 merci!!"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "drive",
+      "notion"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts a task for the trailer cut checklist",
+        "starts a separate task for the AI-art response kit",
+        "starts a separate task for the soundtrack schedule",
+        "starts every task in the same step, without waiting for one to finish",
+        "gives each task its own brief with the facts from the chat",
+        "replies in one short line that names the tasks started"
+      ],
+      "must_not": [
+        "bundles the separate pieces of work into one task",
+        "starts one piece and asks whether to start the others",
+        "does any of the work inline in this turn",
+        "posts any statement publicly",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Trois tasks lancées 🌱 trailer checklist, AI-art response kit, and Étienne's track schedule. I'll post each one here.",
+      "actions": [
+        "start_task(title='Trailer cut checklist for Nov 13', brief=...)",
+        "start_task(title='Response kit for the Reddit AI-art claim', brief=...)",
+        "start_task(title='Soundtrack schedule: Étienne\\'s last 5 tracks', brief=...)"
+      ],
+      "why": "Three independent pieces of work for different people: one task each."
+    }
+  },
+  {
+    "id": "multi_task_009",
+    "category": "multi_task",
+    "world": "saffron_kitchens",
+    "title": "Lower Parel gift boxes, rider wait, inspection briefing",
+    "turns": [
+      {
+        "user": "teen kaam hai\n1 lower parel ka corporate diwali order (50 gift boxes) ka plan\n2 powai rider wait time 14 min hai, analysis + fix\n3 kal ke inspection staff briefing ke liye 1 page"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "sheets",
+      "slack"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts a task for the Lower Parel gift box order plan",
+        "starts a separate task for the Powai rider wait analysis",
+        "starts a separate task for the inspection staff briefing page",
+        "starts every task in the same step, without waiting for one to finish",
+        "gives each task its own brief with the facts from the chat",
+        "replies in one short line that names the tasks started"
+      ],
+      "must_not": [
+        "bundles the separate pieces of work into one task",
+        "starts one piece and asks whether to start the others",
+        "does any of the work inline in this turn",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "theek hai, 3 tasks shuru: Lower Parel gift boxes plan, Powai rider wait fix, aur inspection briefing page.",
+      "actions": [
+        "start_task(title='Lower Parel corporate Diwali order: 50 gift boxes plan', brief=...)",
+        "start_task(title='Powai rider wait time (14 min avg): analysis and fix', brief=...)",
+        "start_task(title='One-page staff briefing for FSSAI inspection readiness', brief=...)"
+      ],
+      "why": "Three different outlets and owners, so three tasks in parallel."
+    }
+  },
+  {
+    "id": "multi_task_010",
+    "category": "multi_task",
+    "world": "shah_realty",
+    "title": "Verma shortlist, NRI pack, referral partnership review",
+    "turns": [
+      {
+        "user": "Hi Otto! Few things in one go - Rahul Verma wants Sector 57 options so can you make a shortlist for him, then the NRI buyer for Aravali Heights B-14 needs an info pack (price, area, society details, how the purchase works for NRIs) and also the referral partnership offer that came in, please check if it is worth it for us. Draft only, kuch bhi send mat karna. Thanks!"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail",
+      "hubspot",
+      "drive"
+    ],
+    "expected": {
+      "behaviour": "start_task",
+      "must": [
+        "starts a task for the Verma Sector 57 shortlist",
+        "starts a separate task for the NRI buyer info pack",
+        "starts a separate task for the referral partnership review",
+        "starts every task in the same step, without waiting for one to finish",
+        "gives each task its own brief with the facts from the chat",
+        "replies in one short line that names the tasks started"
+      ],
+      "must_not": [
+        "bundles the separate pieces of work into one task",
+        "starts one piece and asks whether to start the others",
+        "does any of the work inline in this turn",
+        "sends anything to a buyer or partner",
+        "asks a question the chat or the connected data already answers"
+      ],
+      "checks": {
+        "tools_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Sure Priya! 3 tasks started: Verma Sector 57 shortlist, NRI info pack for B-14, and the referral partnership review. Nothing will be sent.",
+      "actions": [
+        "start_task(title='Sector 57 shortlist for Rahul Verma', brief=...)",
+        "start_task(title='NRI buyer info pack: Aravali Heights B-14', brief=...)",
+        "start_task(title='Referral partnership offer: is it worth it?', brief=...)"
+      ],
+      "why": "A voice-note with three separate asks: one task per ask, nothing sent, all in the same step."
+    }
+  }
+]
