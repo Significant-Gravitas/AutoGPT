@@ -3,7 +3,6 @@ import json
 import socket
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
 
 import numpy as np
 import pytest
@@ -133,13 +132,24 @@ class FakeSocket:
         self._changed.set()
 
 
-@dataclass
 class RunningRelay:
-    relay: Relay
-    server: DrainingServer
-    serving: asyncio.Task
-    port: int
-    rows: list[Row] = field(default_factory=list)
+    def __init__(
+        self,
+        relay: Relay,
+        server: DrainingServer,
+        serving: asyncio.Task,
+        port: int,
+        *,
+        rows: list[Row],
+        recorded: dict[str, str],
+    ) -> None:
+        self.relay = relay
+        self.server = server
+        self.serving = serving
+        self.port = port
+        self.rows = rows
+        # The calls recorded on onboarding rows: user id -> call id.
+        self.recorded = recorded
 
     @property
     def url(self) -> str:
@@ -160,9 +170,11 @@ async def running_relay(
     settle_s: float = 5.0,
     caps: Caps = CAPS,
     timing: Timing = TIMING,
+    record_fails: bool = False,
 ) -> AsyncIterator[RunningRelay]:
     """The relay app under a real uvicorn server on a free local port."""
     rows: list[Row] = []
+    recorded: dict[str, str] = {}
 
     async def get_redis():
         return redis
@@ -173,6 +185,11 @@ async def running_relay(
     async def sink(row: Row) -> None:
         rows.append(row)
 
+    async def record_call(user_id: str, call_id: str) -> None:
+        if record_fails:
+            raise ConnectionError("database is down")
+        recorded[user_id] = call_id
+
     relay = Relay(
         max_calls=max_calls,
         origins=build_cors_params([ORIGIN], AppEnvironment.LOCAL),
@@ -181,6 +198,7 @@ async def running_relay(
             classifier=None,
             redis=get_redis,
             account_name=account_name,
+            record_call=record_call,
             live_model="gemini-3.8-live",
             cost_sink=sink,
             caps=caps,
@@ -206,7 +224,14 @@ async def running_relay(
         if serving.done():
             serving.result()
         await asyncio.sleep(0.01)
-    running = RunningRelay(relay, server, serving, listener.getsockname()[1], rows=rows)
+    running = RunningRelay(
+        relay,
+        server,
+        serving,
+        listener.getsockname()[1],
+        rows=rows,
+        recorded=recorded,
+    )
     try:
         yield running
     finally:

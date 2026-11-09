@@ -209,3 +209,49 @@ async def test_a_self_hosted_interview_is_never_counted(admission, mocker):
     await rate_limit.enforce_interview_turn_budget("user-1")
     tier_lookup.assert_not_awaited()
     connect.assert_not_awaited()
+
+
+# ---------- the onboarding voice interview's calls ----------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tier", list(SubscriptionTier))
+async def test_a_voice_call_uses_its_own_budget_on_every_tier(admission, tier):
+    _, tier_lookup, redis, _ = admission
+    tier_lookup.return_value = tier
+    await rate_limit.enforce_voice_call_budget("user-1")
+    redis.eval.assert_awaited_once()
+    args = redis.eval.await_args.args
+    assert key_slot(args[2].encode()) == key_slot(args[3].encode())
+    assert "user-1" not in args[2]
+    assert args[2].startswith("onboarding:voice_interview:")
+    assert args[4:6] == (
+        str(rate_limit.VOICE_HOURLY_CALLS),
+        str(rate_limit.VOICE_DAILY_CALLS),
+    )
+    tier_lookup.assert_not_awaited()
+
+
+def test_voice_calls_never_spend_typed_interview_turns():
+    now = datetime(2026, 11, 9, 12, 30, tzinfo=UTC)
+    typed = rate_limit._budget_windows("user-1", now, "interview")
+    voice = rate_limit._budget_windows("user-1", now, "voice_interview")
+    assert typed[:2] != voice[:2]
+
+
+@pytest.mark.asyncio
+async def test_a_spent_voice_call_budget_is_a_429_with_retry_after(admission):
+    _, _, redis, _ = admission
+    redis.eval.return_value = 1200
+    with pytest.raises(HTTPException) as caught:
+        await rate_limit.enforce_voice_call_budget("user-1")
+    assert caught.value.status_code == 429
+    assert caught.value.headers == {"Retry-After": "1200"}
+
+
+@pytest.mark.asyncio
+async def test_a_self_hosted_voice_call_is_never_counted(admission, mocker):
+    _, _, _, connect = admission
+    mocker.patch.object(rate_limit.settings.config, "behave_as", BehaveAs.LOCAL)
+    await rate_limit.enforce_voice_call_budget("user-1")
+    connect.assert_not_awaited()

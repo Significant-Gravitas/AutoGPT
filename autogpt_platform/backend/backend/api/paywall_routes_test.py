@@ -160,6 +160,10 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/onboarding/profile",
     "POST /api/onboarding/reset",
     "POST /api/onboarding/step",
+    # The onboarding voice call starts before the plan step, so before anything
+    # is paid for. The person's own call allowance and the platform's daily
+    # voice budget bound it.
+    "POST /api/onboarding/brain-dump/interview/voice",
     # Reading the account's own data, or the catalog.
     "GET /api/blocks",
     "GET /api/briefings/latest",

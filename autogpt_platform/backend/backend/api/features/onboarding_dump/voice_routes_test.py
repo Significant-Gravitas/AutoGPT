@@ -10,10 +10,18 @@ import pytest
 from fakeredis import FakeServer
 from fakeredis.aioredis import FakeRedis
 from httpx import ASGITransport, AsyncClient
+from prisma.enums import SubscriptionTier
 from pytest_mock import MockerFixture
 
-from backend.api.features.onboarding_dump import routes, voice
-from backend.util.settings import AppEnvironment
+from backend.api.features.onboarding_dump import rate_limit, routes, voice
+from backend.copilot.model import (
+    INTERVIEW_STAGE_CLOSED,
+    INTERVIEW_STAGE_HANDED_OFF,
+    INTERVIEW_STAGE_WRAP_UP_ISSUED,
+    ONBOARDING_INTERVIEW_KIND,
+    ChatSession,
+)
+from backend.util.settings import AppEnvironment, BehaveAs
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.config import CAPS
 
@@ -58,7 +66,18 @@ def voice_on(mocker: MockerFixture, monkeypatch, redis) -> SimpleNamespace:
         redis=mocker.patch.object(
             voice, "get_redis_async", AsyncMock(return_value=redis)
         ),
+        # Someone who has not opened the typed interview.
+        interview=mocker.patch.object(
+            voice, "find_onboarding_interview_session", AsyncMock(return_value=None)
+        ),
     )
+
+
+def _interview(user_id: str, stage: str | None) -> ChatSession:
+    session = ChatSession.new(user_id, dry_run=False)
+    session.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    session.metadata.onboarding_interview_stage = stage
+    return session
 
 
 async def start():
@@ -186,3 +205,66 @@ async def test_a_start_is_refused_while_its_limits_cannot_be_read(voice_on):
     response = await start()
     assert response.status_code == 503
     assert response.json()["detail"]["retry_after_seconds"] == 30
+
+
+@pytest.mark.parametrize("stage", [INTERVIEW_STAGE_CLOSED, INTERVIEW_STAGE_HANDED_OFF])
+async def test_a_person_whose_interview_is_over_cannot_call(
+    voice_on, test_user_id, stage
+):
+    voice_on.interview.return_value = _interview(test_user_id, stage)
+    response = await start()
+    assert response.status_code == 409
+    assert response.json()["detail"] == {"code": "onboarding_interview_closed"}
+    voice_on.interview.assert_awaited_once_with(test_user_id)
+
+
+@pytest.mark.parametrize("stage", [None, INTERVIEW_STAGE_WRAP_UP_ISSUED])
+async def test_an_interview_still_under_way_can_move_to_a_call(
+    voice_on, test_user_id, stage
+):
+    voice_on.interview.return_value = _interview(test_user_id, stage)
+    assert (await start()).status_code == 200
+
+
+async def test_an_interview_that_cannot_be_read_holds_the_call_back(voice_on):
+    voice_on.interview.side_effect = ConnectionError("database is down")
+    response = await start()
+    assert response.status_code == 503
+    assert response.json()["detail"]["retry_after_seconds"] == 30
+
+
+@pytest.fixture
+def paying_platform(mocker: MockerFixture, set_platform_payment, redis) -> AsyncMock:
+    """Calls are counted: the platform takes payment and runs as the cloud."""
+    mocker.patch.object(rate_limit.settings.config, "behave_as", BehaveAs.CLOUD)
+    set_platform_payment(True)
+    mocker.patch.object(rate_limit, "get_redis_async", AsyncMock(return_value=redis))
+    return mocker.patch.object(
+        rate_limit,
+        "get_user_subscription_tier",
+        AsyncMock(return_value=SubscriptionTier.PRO),
+    )
+
+
+async def test_past_their_call_allowance_a_person_waits_with_the_wait_in_the_body(
+    paying_platform,
+):
+    for _ in range(rate_limit.VOICE_HOURLY_CALLS):
+        assert (await start()).status_code == 200
+    response = await start()
+    assert response.status_code == 429
+    wait = int(response.headers["Retry-After"])
+    assert 0 < wait <= 3600
+    assert response.json()["detail"]["retry_after_seconds"] == wait
+    # Counted whatever the plan: the tier is never asked.
+    paying_platform.assert_not_awaited()
+
+
+async def test_a_refused_start_spends_none_of_the_allowance(
+    paying_platform, redis, test_user_id
+):
+    await locks.take_user_lock(redis, test_user_id, "a" * 32)
+    for _ in range(rate_limit.VOICE_HOURLY_CALLS + 1):
+        assert (await start()).status_code == 409
+    await locks.release_user_lock(redis, test_user_id, "a" * 32)
+    assert (await start()).status_code == 200

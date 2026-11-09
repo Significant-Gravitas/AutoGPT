@@ -32,6 +32,12 @@ REDIS_TIMEOUT_SECONDS = 0.25
 INTERVIEW_HOURLY_TURNS = INTERVIEW_TURN_CAP + 4
 INTERVIEW_DAILY_TURNS = 2 * INTERVIEW_TURN_CAP
 
+# Onboarding voice calls a person may start: a call and a retry in an hour,
+# three in a day. The relay caps each call, so these bound how many calls,
+# not how long any one runs.
+VOICE_HOURLY_CALLS = 2
+VOICE_DAILY_CALLS = 3
+
 # Both counters share a cluster slot. Rejection changes neither counter, and
 # admission checks/increments both atomically across API workers.
 _ADMIT = """
@@ -83,6 +89,16 @@ _INTERVIEW = _Budget(
     all_tiers=True,
 )
 
+_VOICE_INTERVIEW = _Budget(
+    scope="voice_interview",
+    hourly=VOICE_HOURLY_CALLS,
+    daily=VOICE_DAILY_CALLS,
+    route="/api/onboarding/brain-dump/interview/voice",
+    unavailable="Voice calls are temporarily unavailable. Your progress is saved; please retry shortly.",
+    exhausted="You have started several voice calls. Your progress is saved; you can type instead, or call again later.",
+    all_tiers=True,
+)
+
 
 async def enforce_personalization_budget(user_id: str) -> None:
     await _enforce(user_id, _PERSONALIZATION)
@@ -97,6 +113,14 @@ async def enforce_interview_turn_budget(user_id: str) -> None:
     that cannot be read is a 503 rather than a turn nobody counted.
     """
     await _enforce(user_id, _INTERVIEW)
+
+
+async def enforce_voice_call_budget(user_id: str) -> None:
+    """Admit one onboarding voice call, on the interview turn budget's rules
+    and its own counters: on every subscription tier where the platform takes
+    payment, a call past it is a 429 with Retry-After, and a budget that
+    cannot be read is a 503."""
+    await _enforce(user_id, _VOICE_INTERVIEW)
 
 
 async def _enforce(user_id: str, budget: _Budget) -> None:

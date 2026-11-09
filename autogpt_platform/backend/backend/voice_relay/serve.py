@@ -27,6 +27,7 @@ from backend.copilot.onboarding_interview_voice import (
     VOICE_INTERVIEW_PROMPT,
 )
 from backend.data import db, redis_client
+from backend.data.onboarding import record_onboarding_voice_call
 from backend.data.user import get_user_by_id
 from backend.monitoring.instrumentation import start_metrics_server
 from backend.util.process import AppProcess
@@ -124,6 +125,7 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
             classifier=GeminiScopeClassifier(client),
             redis=redis_client.get_redis_async,
             account_name=_account_name,
+            record_call=record_onboarding_voice_call,
             live_model=model,
         )
     finally:

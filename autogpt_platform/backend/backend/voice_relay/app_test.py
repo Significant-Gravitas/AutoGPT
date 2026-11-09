@@ -86,7 +86,7 @@ async def test_a_socket_that_never_names_its_call_is_closed(redis, monkeypatch):
 
 
 async def test_a_token_is_good_for_one_call_only(redis):
-    async with running_relay(redis, FakeVendor([Reply("Hi")])) as running:
+    async with running_relay(redis, FakeVendor([Reply(text="Hi")])) as running:
         first = start()
         ws = await open_socket(running.url)
         await ws.send(json.dumps(first))
@@ -109,7 +109,7 @@ async def test_a_forged_token_is_refused(redis):
 async def test_a_second_live_call_for_the_same_person_is_refused_naming_the_first(
     redis,
 ):
-    async with running_relay(redis, FakeVendor([Reply("Hi")])) as running:
+    async with running_relay(redis, FakeVendor([Reply(text="Hi")])) as running:
         first_call = tokens.new_call_id()
         ws = await open_socket(running.url)
         await ws.send(json.dumps(start(call_id=first_call)))
@@ -125,7 +125,9 @@ async def test_a_second_live_call_for_the_same_person_is_refused_naming_the_firs
 
 
 async def test_a_full_relay_asks_new_calls_to_try_again(redis):
-    async with running_relay(redis, FakeVendor([Reply("Hi")]), max_calls=1) as running:
+    async with running_relay(
+        redis, FakeVendor([Reply(text="Hi")]), max_calls=1
+    ) as running:
         ws = await open_socket(running.url)
         await ws.send(json.dumps(start()))
         await read_until(ws, "ready")
@@ -137,7 +139,7 @@ async def test_a_full_relay_asks_new_calls_to_try_again(redis):
 
 
 async def test_a_dropped_socket_resumes_its_call_with_the_ticket(redis):
-    vendor = FakeVendor([Reply("Hi", audio_s=0.1)])
+    vendor = FakeVendor([Reply(text="Hi", audio_s=0.1)])
     async with running_relay(redis, vendor) as running:
         ws = await open_socket(running.url)
         await ws.send(json.dumps(start()))
@@ -156,7 +158,7 @@ async def test_a_dropped_socket_resumes_its_call_with_the_ticket(redis):
 
 
 async def test_a_ticket_resumes_only_its_own_users_call(redis):
-    async with running_relay(redis, FakeVendor([Reply("Hi")])) as running:
+    async with running_relay(redis, FakeVendor([Reply(text="Hi")])) as running:
         ws = await open_socket(running.url)
         await ws.send(json.dumps(start()))
         ready = await read_until(ws, "ready")
@@ -196,7 +198,7 @@ async def test_the_probes_report_a_ready_relay(redis):
 
 
 async def test_otto_greets_the_person_by_the_name_on_their_account(redis):
-    vendor = FakeVendor([Reply("Hi")])
+    vendor = FakeVendor([Reply(text="Hi")])
     async with running_relay(redis, vendor) as running:
         ws = await open_socket(running.url)
         await ws.send(json.dumps(start()))
@@ -225,3 +227,29 @@ async def test_otto_greets_the_person_by_the_name_on_their_account(redis):
 )
 def test_only_a_name_that_reads_as_one_reaches_the_call(name, first):
     assert first_name_of(name) == first
+
+
+async def test_a_started_call_is_recorded_on_the_persons_onboarding_row(redis):
+    async with running_relay(redis, FakeVendor([Reply(text="Hi")])) as running:
+        call_id = tokens.new_call_id()
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start(call_id=call_id)))
+        await read_until(ws, "ready")
+        assert running.recorded == {USER: call_id}
+        # A second call refused for the live one leaves the record alone.
+        second = await open_socket(running.url)
+        await second.send(json.dumps(start()))
+        await refusal(second)
+        assert running.recorded == {USER: call_id}
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+
+
+async def test_a_call_that_cannot_be_recorded_does_not_start(redis):
+    vendor = FakeVendor([Reply(text="Hi")])
+    async with running_relay(redis, vendor, record_fails=True) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start()))
+        assert await refusal(ws) == ({"type": "error", "error": "unavailable"}, 1013)
+    assert vendor.sessions == []
+    assert await locks.live_call_of(redis, USER) is None

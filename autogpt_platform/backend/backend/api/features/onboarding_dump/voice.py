@@ -7,11 +7,15 @@ the relay trusts without a platform session. In order, it checks:
 
 - the voice flag: 404 when it is off for the person or cannot be read;
 - that this deployment has a relay to call: 503 when it has none;
-- that the person's interview is not over: 409;
+- that the person's interview is not over: 409. A person has one interview,
+  typed or spoken, found on their onboarding row;
 - that the person has no call live already: 409 naming the live call;
 - the platform's daily voice budget and its live-call ceiling: 503 with
   ``Retry-After``;
-- the person's own call allowance: 429 with ``Retry-After``.
+- the person's own call allowance, on every tier: 429 with ``Retry-After``.
+
+The relay records the call on the person's onboarding row once the call
+starts.
 """
 
 import asyncio
@@ -26,6 +30,12 @@ from backend.api.features.onboarding_dump.models import (
     VoiceCallCaps,
     VoiceCallLeg,
     VoiceCallStartResponse,
+)
+from backend.api.features.onboarding_dump.rate_limit import enforce_voice_call_budget
+from backend.copilot.onboarding_interview import (
+    INTERVIEW_CLOSED,
+    find_onboarding_interview_session,
+    interview_is_over,
 )
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.util.feature_flag import (
@@ -70,6 +80,7 @@ async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
         raise _unavailable(
             "Voice calls are not available right now.", UNAVAILABLE_RETRY_AFTER_S
         )
+    await _refuse_if_interview_over(user_id)
     redis = await _bounded(get_redis_async())
     live_call = await _bounded(locks.live_call_of(redis, user_id))
     if live_call:
@@ -77,6 +88,7 @@ async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
             status_code=409, detail={"code": CALL_IN_PROGRESS, "call_id": live_call}
         )
     await _refuse_past_platform_limits(redis)
+    await enforce_voice_call_budget(user_id)
     leg = await _choose_leg(user_id)
     call_id = tokens.new_call_id()
     return VoiceCallStartResponse(
@@ -109,6 +121,21 @@ async def _voice_enabled(user_id: str) -> bool:
         logger.warning("Voice interview flag could not be read", exc_info=True)
         return False
     return enabled
+
+
+async def _refuse_if_interview_over(user_id: str) -> None:
+    try:
+        interview = await find_onboarding_interview_session(user_id)
+    except Exception as exc:
+        logger.warning(
+            f"Voice call: the interview could not be read: {type(exc).__name__}"
+        )
+        raise _unavailable(
+            "Voice calls are temporarily unavailable. Please retry shortly.",
+            BUSY_RETRY_AFTER_S,
+        ) from exc
+    if interview is not None and interview_is_over(interview):
+        raise HTTPException(status_code=409, detail={"code": INTERVIEW_CLOSED})
 
 
 async def _refuse_past_platform_limits(redis: AsyncRedisClient) -> None:

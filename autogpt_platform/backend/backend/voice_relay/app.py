@@ -20,11 +20,11 @@ import socket
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from dataclasses import dataclass
 from typing import Any
 
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict
 
 from backend.api.utils.cors import CorsParams
 from backend.data.redis_client import AsyncRedisClient
@@ -51,19 +51,23 @@ CLOSE_TRY_AGAIN = 1013
 CLOSE_NO_CALL = 4404
 
 FIRST_NAME_TIMEOUT_S = 2.0
+RECORD_CALL_TIMEOUT_S = 5.0
 MAX_FIRST_NAME_CHARS = 40
 _NAME_MARKS = "'-’"
 
 
-@dataclass
-class RelayDeps:
+class RelayDeps(BaseModel):
     """What calls run on: the production services, or test doubles."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     vendor: VendorConnector
     classifier: ScopeClassifier | None
     redis: Callable[[], Awaitable[AsyncRedisClient]]
     # The display name on a user's account, or None.
     account_name: Callable[[str], Awaitable[str | None]]
+    # Records a started call on the user's onboarding row: (user id, call id).
+    record_call: Callable[[str, str], Awaitable[None]]
     live_model: str
     # Where priced rows go; None logs them to PlatformCostLog.
     cost_sink: CostSink | None = None
@@ -216,8 +220,22 @@ async def _start(relay: Relay, ws: WebSocket, first: Mapping[str, Any]) -> None:
     if holder is not None:
         await _refuse(ws, "call_in_progress", CLOSE_POLICY, call_id=holder or None)
         return
-
     store = locks.CallStore(redis, call_id=claims.call_id, user_id=claims.user_id)
+    # Recorded once the call holds the lock, so the row names a call that ran.
+    try:
+        await asyncio.wait_for(
+            deps.record_call(claims.user_id, claims.call_id),
+            timeout=RECORD_CALL_TIMEOUT_S,
+        )
+    except Exception:
+        logger.warning(
+            f"Voice call {claims.call_id}: not recorded on the onboarding row",
+            exc_info=True,
+        )
+        await store.release()
+        await _refuse(ws, "unavailable", CLOSE_TRY_AGAIN)
+        return
+
     # This relay carries a call's audio on the control socket.
     leg: tokens.Leg = "websocket"
     try:

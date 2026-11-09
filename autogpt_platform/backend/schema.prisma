@@ -452,6 +452,11 @@ model UserOnboarding {
   // start creates the interview again at it.
   interviewSessionId String? @unique
 
+  // The user's latest onboarding voice call, recorded when the call starts on
+  // the voice relay (backend/voice_relay). The call's own record lives in
+  // Redis for a day; a later call replaces this one.
+  voiceCallId String? @unique
+
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

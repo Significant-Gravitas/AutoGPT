@@ -134,6 +134,20 @@ async def get_onboarding_interview_session_id(user_id: str) -> str | None:
     return onboarding.interviewSessionId if onboarding else None
 
 
+async def record_onboarding_voice_call(user_id: str, call_id: str) -> None:
+    """Record *call_id* as *user_id*'s latest onboarding voice call."""
+    await ensure_user_onboarding(user_id)
+    await UserOnboarding.prisma().update(
+        where={"userId": user_id}, data={"voiceCallId": call_id}
+    )
+
+
+async def get_onboarding_voice_call_id(user_id: str) -> str | None:
+    """*user_id*'s latest onboarding voice call, if they started one."""
+    onboarding = await UserOnboarding.prisma().find_unique(where={"userId": user_id})
+    return onboarding.voiceCallId if onboarding else None
+
+
 def _default_user_onboarding(user_id: str) -> UserOnboarding:
     """An unsaved row mirroring the column defaults in ``schema.prisma``.
 
