@@ -65,9 +65,14 @@ beforeEach(() => {
   useCopilotStreamStore.getState().resetAll();
 });
 
-function KickoffHarness() {
+interface HarnessProps {
+  /** Clear the kickoff param on settle, as the copilot page does. */
+  clearKickoffOnSettle?: boolean;
+}
+
+function KickoffHarness({ clearKickoffOnSettle = false }: HarnessProps) {
   const [expertId] = useQueryState("expertId", parseAsString);
-  const [kickoff] = useQueryState("kickoff", parseAsString);
+  const [kickoff, setKickoff] = useQueryState("kickoff", parseAsString);
   const [clientMessages, setClientMessages] = useState<UIMessage[]>([]);
   const [settledCount, setSettledCount] = useState(0);
   const {
@@ -122,6 +127,7 @@ function KickoffHarness() {
     },
     onSettled() {
       setSettledCount((count) => count + 1);
+      if (clearKickoffOnSettle) void setKickoff(null);
     },
   });
 
@@ -139,12 +145,12 @@ function KickoffHarness() {
   );
 }
 
-function renderKickoff(searchParams: string) {
+function renderKickoff(searchParams: string, props: HarnessProps = {}) {
   const Wrapper = withNuqsTestingAdapter({ searchParams, hasMemory: true });
   return render(
     <CredentialsProvidersContext.Provider value={{}}>
       <Wrapper>
-        <KickoffHarness />
+        <KickoffHarness {...props} />
       </Wrapper>
     </CredentialsProvidersContext.Provider>,
   );
@@ -296,6 +302,63 @@ describe("useExpertKickoff", () => {
     expect(sendSpy).not.toHaveBeenCalled();
     expect(createCount).toBe(0);
     expect(screen.getByTestId("session-id").textContent).toBe("none");
+  });
+
+  it("opens the chat a finished kickoff made when its link is opened again", async () => {
+    // SECRT-3401: the card's "Chat with <name>" link opens the same kickoff
+    // URL every time. The second time, the expert already introduced
+    // themselves: open that chat, don't land on an empty new chat.
+    const attemptToken = markKickoffPending(USER_ID, EXPERT_ID);
+    markKickoffDone(USER_ID, EXPERT_ID, attemptToken);
+    // Already adopted once in this tab, so only the kickoff can open it.
+    useCopilotUIStore.setState({
+      adoptedExpertThreads: new Set<string>([EXPERT_ID]),
+    });
+    let createCount = 0;
+    server.use(
+      stubTransports(),
+      http.get("*/api/chat/sessions", () =>
+        HttpResponse.json({
+          sessions: [
+            {
+              id: EXISTING_SESSION_ID,
+              created_at: "2026-01-01T00:00:00Z",
+              updated_at: "2026-01-02T00:00:00Z",
+              is_processing: false,
+              expert_id: EXPERT_ID,
+            },
+          ],
+          total: 1,
+        }),
+      ),
+      http.get(`*/api/chat/sessions/${EXISTING_SESSION_ID}`, () =>
+        HttpResponse.json(
+          makeSessionPayload(EXISTING_SESSION_ID, [
+            persistedKickoffMessage(),
+            persistedAssistantMessage(),
+          ]),
+        ),
+      ),
+      http.post("*/api/chat/sessions", () => {
+        createCount += 1;
+        return HttpResponse.json({ id: "should-not-happen" });
+      }),
+    );
+
+    renderKickoff(`?expertId=${EXPERT_ID}&kickoff=1`, {
+      clearKickoffOnSettle: true,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("session-id").textContent).toBe(
+        EXISTING_SESSION_ID,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("kickoff-param").textContent).toBe("none"),
+    );
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(createCount).toBe(0);
   });
 
   it("stands down while another tab holds a fresh pending latch", async () => {

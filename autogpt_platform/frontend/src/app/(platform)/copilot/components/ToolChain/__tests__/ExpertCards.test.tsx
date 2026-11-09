@@ -4,9 +4,12 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import { getListExpertIdentitiesQueryKey } from "@/app/api/__generated__/endpoints/experts/experts";
+import { QueryClient } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import type { ToolUIPart } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SESSION_LIST_QUERY_KEY } from "../../../useSessionList";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useCopilotUIStore } from "../../../store";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
@@ -237,7 +240,10 @@ describe("expert change cards", () => {
     expect(screen.getByText("Inbox triage")).toBeDefined();
     expect(screen.queryByText("Raised")).toBeNull();
     expect(screen.queryByText(/Couldn't set up/)).toBeNull();
-    expect(screen.queryByRole("link")).toBeNull();
+    // The one way on: no chat exists yet, so the card opens the first one.
+    expect(
+      screen.getByRole("link", { name: "Chat with Otto" }).getAttribute("href"),
+    ).toBe("/copilot?expertId=exp-otto&kickoff=1");
   });
 
   it("renders a handoff as the receiving teammate's sub-session", () => {
@@ -599,5 +605,80 @@ describe("expert approval", () => {
     expect(card).not.toBeNull();
     expect(card?.textContent).toContain("1 of 2");
     expect(card?.textContent).toContain("Approve");
+  });
+});
+
+describe("refreshing the team when a new expert lands", () => {
+  // SECRT-3401: the sidebar lists a new expert, and their chat link only
+  // works, once the roster knows them; neither should need a reload.
+  const appliedRaise = expertPart(
+    "output-available",
+    {
+      type: "expert_change_applied",
+      applied: true,
+      kind: "raise",
+      expert: { id: "exp-1", name: "Otto", role: "Inbox triage" },
+    },
+    "call-confirm",
+  );
+
+  function invalidations(calls: unknown[][]) {
+    return calls.map((call) =>
+      JSON.stringify((call[0] as { queryKey?: unknown }).queryKey),
+    );
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("refreshes the roster and the chat list when a confirm lands", async () => {
+    const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    const { rerender } = render(
+      <ExpertChangeGroup
+        parts={[expertPart("input-available", undefined, "call-confirm")]}
+        isCurrentlyStreaming
+      />,
+    );
+    expect(invalidate).not.toHaveBeenCalled();
+
+    rerender(<ExpertChangeGroup parts={[appliedRaise]} isCurrentlyStreaming />);
+
+    await waitFor(() =>
+      expect(invalidations(invalidate.mock.calls)).toEqual(
+        expect.arrayContaining([
+          JSON.stringify(getListExpertIdentitiesQueryKey()),
+          JSON.stringify(SESSION_LIST_QUERY_KEY),
+        ]),
+      ),
+    );
+  });
+
+  it("leaves the team alone when an old chat opens on an applied card", async () => {
+    const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    render(<ExpertChangeGroup parts={[appliedRaise]} />);
+
+    expect(await screen.findByText("Expert created")).toBeDefined();
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("leaves the team alone on a read-only transcript", async () => {
+    const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    const { rerender } = render(
+      <ExpertChangeGroup
+        parts={[expertPart("input-available", undefined, "call-confirm")]}
+        isCurrentlyStreaming
+        readOnly
+      />,
+    );
+
+    rerender(
+      <ExpertChangeGroup
+        parts={[appliedRaise]}
+        isCurrentlyStreaming
+        readOnly
+      />,
+    );
+
+    expect(await screen.findByText("Expert created")).toBeDefined();
+    expect(invalidate).not.toHaveBeenCalled();
   });
 });

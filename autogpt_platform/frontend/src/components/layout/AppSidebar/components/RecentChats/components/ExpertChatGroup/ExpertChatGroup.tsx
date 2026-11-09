@@ -84,27 +84,12 @@ export function ExpertChatGroup({
           // ExpertAvatar's initial; every other piece of copy is a toned Text.
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-body leading-5 font-medium max-md:py-2 max-md:text-body-lg max-md:leading-6"
         >
-          {isAutopilot ? (
-            <AutopilotAvatar
-              size={32}
-              transparent
-              className="rounded-full border border-border-base"
-            />
-          ) : (
-            <ExpertAvatar
-              name={label}
-              avatarUrl={avatarUrl}
-              color={color}
-              size={32}
-              className="rounded-full border border-border-base"
-            />
-          )}
-          <ExpertIdentityDetails
-            isOtto={isAutopilot}
-            name={label}
+          <ExpertGroupIdentity
+            label={label}
             role={role}
-            size="compact"
-            areaClassName="opacity-70"
+            avatarUrl={avatarUrl}
+            color={color}
+            isAutopilot={isAutopilot}
             nameAccessory={<SessionCount count={sessions.length} />}
           />
           {newChatHref && (
@@ -166,6 +151,54 @@ export function ExpertChatGroup({
   );
 }
 
+interface IdentityProps {
+  label: string;
+  role?: string | null;
+  avatarUrl: string | null;
+  color?: string | null;
+  isAutopilot?: boolean;
+  nameAccessory: ReactNode;
+}
+
+/** Avatar, name and role of a group header; shared with NewExpertGroup so a
+ *  new expert's entry looks the same before and after their first chat. */
+export function ExpertGroupIdentity({
+  label,
+  role,
+  avatarUrl,
+  color,
+  isAutopilot,
+  nameAccessory,
+}: IdentityProps) {
+  return (
+    <>
+      {isAutopilot ? (
+        <AutopilotAvatar
+          size={32}
+          transparent
+          className="rounded-full border border-border-base"
+        />
+      ) : (
+        <ExpertAvatar
+          name={label}
+          avatarUrl={avatarUrl}
+          color={color}
+          size={32}
+          className="rounded-full border border-border-base"
+        />
+      )}
+      <ExpertIdentityDetails
+        isOtto={isAutopilot}
+        name={label}
+        role={role}
+        size="compact"
+        areaClassName="opacity-70"
+        nameAccessory={nameAccessory}
+      />
+    </>
+  );
+}
+
 function SessionCount({ count }: { count: number }) {
   return (
     <span
@@ -217,7 +250,7 @@ function NewChatIcon() {
   return <Icon icon={PlusSignIcon} className="size-4 max-md:size-5" />;
 }
 
-function GroupBody({ children }: { children: ReactNode }) {
+export function GroupBody({ children }: { children: ReactNode }) {
   return (
     <div className="relative ml-[24px] pl-1.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gradient-to-b before:from-surface-active/70 before:to-transparent">
       {children}
