@@ -41,8 +41,8 @@ async def read_until(ws: ClientConnection, kind: str, timeout: float = 10.0) -> 
 async def test_sigterm_lets_a_live_call_finish_then_the_server_exits(redis):
     vendor = FakeVendor(
         [
-            Reply("Hi", audio_s=0.2),
-            Reply("Bye!", heard="I bake bread", first_task="Bake"),
+            Reply(text="Hi", audio_s=0.2),
+            Reply(text="Bye!", heard="I bake bread", first_task="Bake"),
         ]
     )
     async with running_relay(redis, vendor) as running:
@@ -73,7 +73,7 @@ async def test_sigterm_lets_a_live_call_finish_then_the_server_exits(redis):
 
 
 async def test_a_call_still_live_at_the_drain_limit_ends_as_server_restart(redis):
-    vendor = FakeVendor([Reply("Hi", audio_s=0.1)])
+    vendor = FakeVendor([Reply(text="Hi", audio_s=0.1)])
     async with running_relay(redis, vendor, drain_max_s=0.3) as running:
         ws, call_id = await start_call(running.url)
         await read_until(ws, "ready")

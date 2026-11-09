@@ -15,10 +15,10 @@ too, as a labelled estimate from the audio the relay counted itself.
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from prometheus_client import Counter, Gauge, Histogram
+from pydantic import BaseModel, ConfigDict
 
 from backend.copilot import token_tracking
 from backend.copilot.token_tracking import persist_and_record_usage
@@ -65,9 +65,10 @@ COST_USD = Counter(
 )
 
 
-@dataclass(frozen=True)
-class Row:
+class Row(BaseModel):
     """One priced line of a call's bill."""
+
+    model_config = ConfigDict(frozen=True)
 
     model: str
     meter: str
@@ -103,7 +104,12 @@ def priced_rows(model: str, usage: Usage) -> list[Row]:
         ("text_out", text_out),
     )
     return [
-        Row(model, meter, tokens, tokens * price.per_token(meter))
+        Row(
+            model=model,
+            meter=meter,
+            tokens=tokens,
+            usd=tokens * price.per_token(meter),
+        )
         for meter, tokens in quantities
         if tokens > 0
     ]
@@ -129,7 +135,13 @@ def estimated_rows(
     )
     audio_out = round(unreported_out_samples / OUT_RATE * AUDIO_TOKENS_PER_S)
     return [
-        Row(model, meter, tokens, tokens * price.per_token(meter), estimate=why)
+        Row(
+            model=model,
+            meter=meter,
+            tokens=tokens,
+            usd=tokens * price.per_token(meter),
+            estimate=why,
+        )
         for meter, tokens in (("audio_in", audio_in), ("audio_out", audio_out))
         if tokens > 0
     ]
@@ -186,7 +198,12 @@ class CallMeter:
         price = price_of(CLASSIFIER_MODEL)
         await self._record(
             [
-                Row(CLASSIFIER_MODEL, meter, tokens, tokens * price.per_token(meter))
+                Row(
+                    model=CLASSIFIER_MODEL,
+                    meter=meter,
+                    tokens=tokens,
+                    usd=tokens * price.per_token(meter),
+                )
                 for meter, tokens in (("text_in", tokens_in), ("text_out", tokens_out))
                 if tokens > 0
             ]

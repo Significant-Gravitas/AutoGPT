@@ -5,7 +5,7 @@ relay enforces them and the browser only displays them; nothing a caller sends
 can change them, and a test that needs shorter ones builds its own.
 """
 
-from dataclasses import asdict, dataclass
+from pydantic import BaseModel, ConfigDict
 
 # The browser's microphone and Gemini Live's speech, both mono PCM16.
 IN_RATE = 16_000
@@ -54,9 +54,10 @@ CLASSIFIER_MODEL = "gemini-3.8-flash"
 AUDIO_TOKENS_PER_S = 25
 
 
-@dataclass(frozen=True)
-class Caps:
+class Caps(BaseModel):
     """The limits of one call, sent to the browser in ``ready``."""
+
+    model_config = ConfigDict(frozen=True)
 
     max_call_s: float = 300.0
     # Otto is nudged to sum up this long before the wall clock.
@@ -68,15 +69,16 @@ class Caps:
     idle_s: float = 20.0
 
     def as_message(self) -> dict[str, float | int]:
-        return asdict(self)
+        return self.model_dump()
 
 
 CAPS = Caps()
 
 
-@dataclass(frozen=True)
-class Timing:
+class Timing(BaseModel):
     """How the relay paces a call."""
+
+    model_config = ConfigDict(frozen=True)
 
     # The watchdog's tick.
     tick_s: float = 0.25
@@ -101,9 +103,10 @@ class Timing:
 TIMING = Timing()
 
 
-@dataclass(frozen=True)
-class Price:
+class Price(BaseModel):
     """A model's list price in USD per million tokens, and where it was read."""
+
+    model_config = ConfigDict(frozen=True)
 
     source: str
     text_in: float = 0.0

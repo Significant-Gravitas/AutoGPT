@@ -9,11 +9,11 @@ double. Nothing outside this module touches the vendor SDK's own types.
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
-from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from google import genai
 from google.genai import types
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.voice_relay.config import IN_RATE
 
@@ -22,64 +22,59 @@ logger = logging.getLogger(__name__)
 CLOSE_TIMEOUT_S = 5.0
 
 
-@dataclass(frozen=True)
-class Usage:
+class _Event(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+
+class Usage(_Event):
     """A usage report: the tokens the vendor billed since its last one."""
 
     prompt_tokens: int = 0
     response_tokens: int = 0
     thoughts_tokens: int = 0
-    prompt_by_modality: Mapping[str, int] = field(default_factory=dict)
-    response_by_modality: Mapping[str, int] = field(default_factory=dict)
+    prompt_by_modality: dict[str, int] = Field(default_factory=dict)
+    response_by_modality: dict[str, int] = Field(default_factory=dict)
 
 
-@dataclass(frozen=True)
-class UserText:
+class UserText(_Event):
     """A caption fragment of what the vendor heard the person say."""
 
     text: str
 
 
-@dataclass(frozen=True)
-class AgentText:
+class AgentText(_Event):
     """A caption fragment of what Otto is saying."""
 
     text: str
 
 
-@dataclass(frozen=True)
-class AgentAudio:
+class AgentAudio(_Event):
     """Otto's speech: 24 kHz mono PCM16."""
 
     pcm: bytes
 
 
-@dataclass(frozen=True)
-class Interrupted:
+class Interrupted(_Event):
     """The person spoke over Otto; the rest of what Otto was saying is dropped."""
 
 
-@dataclass(frozen=True)
-class TurnComplete:
+class TurnComplete(_Event):
     """Otto has finished a turn."""
 
 
-@dataclass(frozen=True)
-class FunctionCall:
+class FunctionCall(_Event):
     call_id: str | None
     name: str
-    args: Mapping[str, Any]
+    args: dict[str, Any]
 
 
-@dataclass(frozen=True)
-class ToolCall:
+class ToolCall(_Event):
     """Otto called tools; each needs a result before it carries on."""
 
     calls: tuple[FunctionCall, ...]
 
 
-@dataclass(frozen=True)
-class GoingAway:
+class GoingAway(_Event):
     """The vendor will close the session soon."""
 
     time_left: str | None = None
@@ -97,13 +92,13 @@ VendorEvent = (
 )
 
 
-@dataclass(frozen=True)
-class ToolResult:
+class ToolResult(_Event):
     call_id: str | None
     name: str
-    response: Mapping[str, Any]
+    response: dict[str, Any]
 
 
+@runtime_checkable
 class VendorSession(Protocol):
     """One live voice session, held for one call (or until it drops)."""
 
@@ -126,6 +121,7 @@ class VendorSession(Protocol):
     async def close(self) -> None: ...
 
 
+@runtime_checkable
 class VendorConnector(Protocol):
     async def connect(self, *, opening: str) -> VendorSession:
         """Open a session and send *opening* as the conversation's first turn."""
@@ -271,15 +267,15 @@ def events_of(message: types.LiveServerMessage) -> list[VendorEvent]:
     if content is None:
         return events
     if content.input_transcription is not None and content.input_transcription.text:
-        events.append(UserText(content.input_transcription.text))
+        events.append(UserText(text=content.input_transcription.text))
     if content.output_transcription is not None and content.output_transcription.text:
-        events.append(AgentText(content.output_transcription.text))
+        events.append(AgentText(text=content.output_transcription.text))
     if content.interrupted:
         events.append(Interrupted())
     if content.model_turn is not None:
         for part in content.model_turn.parts or []:
             if part.inline_data is not None and part.inline_data.data:
-                events.append(AgentAudio(part.inline_data.data))
+                events.append(AgentAudio(pcm=part.inline_data.data))
     if content.turn_complete:
         events.append(TurnComplete())
     return events

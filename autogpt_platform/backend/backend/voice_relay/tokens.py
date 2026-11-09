@@ -24,8 +24,9 @@ import json
 import re
 import time
 import uuid
-from dataclasses import dataclass
 from typing import Literal, cast
+
+from pydantic import BaseModel, ConfigDict
 
 from backend.data.redis_client import AsyncRedisClient
 from backend.util.settings import Settings
@@ -53,16 +54,18 @@ class TokenError(Exception):
     """A token the relay refuses. The message is a short code, safe to send."""
 
 
-@dataclass(frozen=True)
-class StartClaims:
+class StartClaims(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     user_id: str
     call_id: str
     leg: Leg
     expires_at: float
 
 
-@dataclass(frozen=True)
-class ResumeClaims:
+class ResumeClaims(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     user_id: str
     call_id: str
     expires_at: float

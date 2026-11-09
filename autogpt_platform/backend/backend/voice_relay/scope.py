@@ -12,11 +12,11 @@ caps still bound the call.
 import json
 import logging
 import time
-from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from google import genai
 from google.genai import types
+from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.onboarding_interview_scope import ScopeLabel
 from backend.voice_relay.config import CLASSIFIER_MODEL
@@ -56,9 +56,10 @@ OTTO AFTER: {after}
 """
 
 
-@dataclass(frozen=True)
-class ScopeJudgement:
+class ScopeJudgement(BaseModel):
     """A label for one of the person's turns, and what it cost."""
+
+    model_config = ConfigDict(frozen=True)
 
     # None when the model's answer could not be read: the turn stays unjudged.
     label: ScopeLabel | None
@@ -67,6 +68,7 @@ class ScopeJudgement:
     latency_s: float
 
 
+@runtime_checkable
 class ScopeClassifier(Protocol):
     async def __call__(self, *, before: str, user: str) -> ScopeJudgement:
         """Label the person's turn *user*, which answered Otto's *before*."""

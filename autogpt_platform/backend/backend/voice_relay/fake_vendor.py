@@ -13,9 +13,9 @@ import asyncio
 import contextlib
 import time
 from collections.abc import AsyncIterator, Collection, Sequence
-from dataclasses import dataclass, field
 
 import numpy as np
+from pydantic import BaseModel, ConfigDict
 
 from backend.voice_relay import vad
 from backend.voice_relay.config import OUT_RATE
@@ -44,9 +44,10 @@ REPLY_USAGE = Usage(
 )
 
 
-@dataclass(frozen=True)
-class Reply:
+class Reply(BaseModel):
     """One turn of Otto's."""
+
+    model_config = ConfigDict(frozen=True)
 
     text: str = "Hi, I'm Otto, an AI."
     audio_s: float = 1.0
@@ -61,20 +62,28 @@ class _Drop:
     pass
 
 
-@dataclass
 class FakeVendor:
     """Opens scripted sessions; the script runs on across reconnects."""
 
-    replies: Sequence[Reply] = ()
-    # Sessions (counted from 1) that drop halfway through their first reply.
-    drop_sessions: Collection[int] = ()
-    # Seconds of silence after speech that end the person's turn.
-    end_of_speech_s: float = 0.3
-    # Seconds between audio chunks; 0 streams a reply as fast as it can.
-    pace_s: float = 0.0
-    connect_delay_s: float = 0.0
-    sessions: list["FakeVendorSession"] = field(default_factory=list)
-    _next: int = 0
+    def __init__(
+        self,
+        replies: Sequence[Reply] = (),
+        *,
+        drop_sessions: Collection[int] = (),
+        end_of_speech_s: float = 0.3,
+        pace_s: float = 0.0,
+        connect_delay_s: float = 0.0,
+    ) -> None:
+        self.replies = list(replies)
+        # Sessions (counted from 1) that drop halfway through their first reply.
+        self.drop_sessions = set(drop_sessions)
+        # Seconds of silence after speech that end the person's turn.
+        self.end_of_speech_s = end_of_speech_s
+        # Seconds between audio chunks; 0 streams a reply as fast as it can.
+        self.pace_s = pace_s
+        self.connect_delay_s = connect_delay_s
+        self.sessions: list[FakeVendorSession] = []
+        self._next = 0
 
     async def connect(self, *, opening: str) -> "FakeVendorSession":
         if self.connect_delay_s:
@@ -193,7 +202,7 @@ class FakeVendorSession:
         if reply is None:
             return
         if after_speech and reply.heard:
-            self.emit(UserText(reply.heard))
+            self.emit(UserText(text=reply.heard))
         if reply.first_task is not None:
             self._tool_answered.clear()
             self.emit(
@@ -214,12 +223,12 @@ class FakeVendorSession:
         drops = self.number in self.vendor.drop_sessions and self._replies_spoken == 0
         self._replies_spoken += 1
         chunks = max(1, round(reply.audio_s / CHUNK_S))
-        self.emit(AgentText(reply.text))
+        self.emit(AgentText(text=reply.text))
         for index in range(chunks):
             if drops and index >= chunks // 2:
                 self.drop()
                 return
-            self.emit(AgentAudio(_tone(CHUNK_S)))
+            self.emit(AgentAudio(pcm=_tone(CHUNK_S)))
             await asyncio.sleep(self.vendor.pace_s)
         self.emit(reply.usage, TurnComplete())
 

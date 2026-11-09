@@ -28,8 +28,9 @@ import json
 import logging
 import time
 from collections.abc import Awaitable, Callable, Coroutine, Mapping
-from dataclasses import dataclass
 from typing import Any, Literal, Protocol
+
+from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.onboarding_interview import MAX_FIRST_TASK_CHARS
 from backend.copilot.onboarding_interview_goals import END_SIGNAL_FIRST_TASK
@@ -131,8 +132,7 @@ class ClientSocket(Protocol):
     async def close(self, code: int = 1000, reason: str | None = None) -> None: ...
 
 
-@dataclass
-class AgentTurn:
+class AgentTurn(BaseModel):
     index: int = 0
     text: str = ""
     audio_s: float = 0.0
@@ -141,8 +141,9 @@ class AgentTurn:
     interrupted: bool = False
 
 
-@dataclass(frozen=True)
-class UserTurn:
+class UserTurn(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     # The agent turn this answers; -1 for words said before Otto's first.
     after: int
     text: str
@@ -656,7 +657,11 @@ class Session:
         for call in event.calls:
             if call.name != VOICE_INTERVIEW_END_TOOL:
                 results.append(
-                    ToolResult(call.call_id, call.name, {"error": "unknown tool"})
+                    ToolResult(
+                        call_id=call.call_id,
+                        name=call.name,
+                        response={"error": "unknown tool"},
+                    )
                 )
                 continue
             if not self.finish_called:
@@ -665,7 +670,11 @@ class Session:
             first_task = " ".join(str(call.args.get(END_SIGNAL_FIRST_TASK, "")).split())
             if first_task:
                 self.first_task = first_task[:MAX_FIRST_TASK_CHARS]
-            results.append(ToolResult(call.call_id, call.name, {"result": "saved"}))
+            results.append(
+                ToolResult(
+                    call_id=call.call_id, name=call.name, response={"result": "saved"}
+                )
+            )
         await self._vendor_call(
             "tool results", lambda live: live.send_tool_results(results)
         )
