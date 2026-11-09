@@ -203,9 +203,15 @@ export function useInterviewStep() {
     };
   }, [isTurnRunning, sessionId]);
 
+  // A retry, or the typed interview opening again: what failed before is
+  // cleared first.
   async function start() {
-    const attempt = ++startAttemptRef.current;
     setStartFailure(null);
+    await openInterview();
+  }
+
+  async function openInterview() {
+    const attempt = ++startAttemptRef.current;
     try {
       const response = await startOnboardingInterview();
       if (attempt !== startAttemptRef.current) return;
@@ -369,12 +375,12 @@ export function useInterviewStep() {
     showCallThatHolds(turnRefusal);
   });
 
-  // The typed interview opens once it is on the step; a retry calls start
-  // itself.
+  // The typed interview opens once it is on the step, with nothing failed
+  // yet to clear; a retry calls start itself.
   useEffect(() => {
     if (shown !== "type" || startedRef.current) return;
     startedRef.current = true;
-    void start();
+    void openInterview();
   });
 
   async function onSend(message: string) {
