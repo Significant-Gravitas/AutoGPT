@@ -34,7 +34,10 @@ from backend.api.features.onboarding_dump.interview_test import (
     opening,
     stored,
 )
-from backend.api.features.onboarding_dump.models import FinalizeResponse
+from backend.api.features.onboarding_dump.models import (
+    MAX_CORRECTION_CHARS,
+    FinalizeResponse,
+)
 from backend.api.features.onboarding_dump.service_test import (
     DumpStore,
     dumps,
@@ -1262,7 +1265,7 @@ async def test_a_typed_finish_while_the_pipeline_judges_the_call_hands_the_typed
     assert stored.session.metadata.onboarding_interview_stage == (
         INTERVIEW_STAGE_HANDED_OFF
     )
-    assert await rig.redis.hget(interview.OWED_HAND_OFFS_KEY, USER) is None
+    assert not await rig.redis.exists(interview.owed_hand_off_key(USER))
 
 
 async def test_the_sweep_hands_off_a_typed_interview_left_owed(
@@ -1272,14 +1275,17 @@ async def test_the_sweep_hands_off_a_typed_interview_left_owed(
     dumps: DumpStore,
 ):
     """The call's hand-off gave the row up, and the owed typed hand-off it
-    starts never ran: the REST API's sweep hands it off."""
+    starts never ran: the REST API's sweep hands it off. The owed hand-off
+    keeps the corrections as the hand-off would, and lapses a day after it
+    was owed."""
     rig.interviews.typed = stored.session
     call_id = await rig.call()
     judge = voice_handoff.close_voice_interview
+    kept = "x" * MAX_CORRECTION_CHARS
 
     async def judged_then_finished(*args, **kwargs):
         closure = await judge(*args, **kwargs)
-        await _close_typed(stored)
+        await _close_typed(stored, corrections=f"  {kept}{'y' * 50}  ")
         return closure
 
     mocker.patch.object(
@@ -1293,15 +1299,34 @@ async def test_the_sweep_hands_off_a_typed_interview_left_owed(
     assert stored.session.metadata.onboarding_interview_stage == (
         INTERVIEW_STAGE_CLOSED
     )
+    key = interview.owed_hand_off_key(USER)
+    owed = interview.OwedHandOff.model_validate_json(await rig.redis.get(key))
+    assert (owed.session_id, owed.corrections) == (stored.session.session_id, kept)
+    assert 0 < await rig.redis.ttl(key) <= interview.OWED_HAND_OFF_TTL_S
+    assert await rig.redis.zscore(interview.OWED_HAND_OFFS_KEY, USER) is not None
 
     await voice_handoff.sweep()
 
     assert dumps.row is not None
     assert dumps.row.recordingId == f"interview-{stored.session.session_id}"
+    assert dumps.row.transcript is not None and dumps.row.transcript.endswith(kept)
     assert stored.session.metadata.onboarding_interview_stage == (
         INTERVIEW_STAGE_HANDED_OFF
     )
-    assert await rig.redis.hget(interview.OWED_HAND_OFFS_KEY, USER) is None
+    assert not await rig.redis.exists(key)
+    assert await rig.redis.zscore(interview.OWED_HAND_OFFS_KEY, USER) is None
+
+
+async def test_an_owed_hand_off_that_lapsed_leaves_the_sweeps_index(rig: Rig):
+    """Its entry expired with its day, or its index entry outlived it."""
+    await rig.redis.zadd(
+        interview.OWED_HAND_OFFS_KEY,
+        {USER: time.time() - interview.OWED_HAND_OFF_TTL_S - 1, "user-2": time.time()},
+    )
+
+    await voice_handoff.sweep()
+
+    assert await rig.redis.zcard(interview.OWED_HAND_OFFS_KEY) == 0
 
 
 async def test_a_typed_interview_waiting_for_its_confirm_is_not_handed_off_for_it(
@@ -1519,6 +1544,61 @@ async def _cut_inside_the_judge(call_id: str, judge: Judge) -> None:
     cut.cancel()
     with pytest.raises(asyncio.CancelledError):
         await cut
+
+
+async def test_typing_claimed_on_a_later_call_beats_an_earlier_calls_take_on_the_row(
+    rig: Rig,
+    stored: StoredInterview,
+    allowance: AsyncMock,
+    quality_gate: AsyncMock,
+    dumps: DumpStore,
+):
+    """A stopped hand-off left the earlier call's take on the row, with no
+    claim on its record, and the person typed after a later call with words,
+    so typing's claim lands on the later call. The typed finish still reads
+    the earlier take as beaten, waits for the row, and lands once the
+    earlier call's retry gives it up."""
+    rig.interviews.typed = stored.session
+    judge = Judge()
+    quality_gate.side_effect = judge.rule
+    earlier = await rig.call()
+    await _cut_inside_the_judge(earlier, judge)
+    later = await rig.call(SAID[1])
+    await _type(stored)
+    assert await locks.interview_of(rig.redis, later) == locks.INTERVIEW_SUPERSEDED
+    assert await locks.interview_of(rig.redis, earlier) is None
+
+    finished = await _close_typed(stored)
+
+    assert finished.error_code == interview.SUPERSEDED
+    assert stored.session.metadata.onboarding_interview_stage == (
+        INTERVIEW_STAGE_CLOSED
+    )
+
+    record = await rig.hand_off(earlier)
+    await _typed_take_handed_off()
+
+    assert record.hand_off is not None
+    assert record.hand_off.error_code == interview.SUPERSEDED
+    assert dumps.row is not None
+    assert dumps.row.recordingId == f"interview-{stored.session.session_id}"
+    assert stored.session.metadata.onboarding_interview_stage == (
+        INTERVIEW_STAGE_HANDED_OFF
+    )
+
+
+async def test_finishing_a_call_that_heard_nothing_with_corrections_hands_nothing_off(
+    rig: Rig, dumps: DumpStore, quality_gate: AsyncMock
+):
+    """Corrections alone are no take: the call heard nothing, so there is
+    nothing to confirm or correct."""
+    call_id = await rig.call("", ending=InterviewEnding.PROFILE_CARD.value)
+
+    answered = await _finish(call_id, corrections="Eight staff, not five.")
+
+    assert answered.error_code == quality.NO_USABLE_SPEECH
+    assert dumps.row is None
+    quality_gate.assert_not_awaited()
 
 
 async def test_a_take_left_unjudged_on_the_row_is_given_up_once_typing_beat_its_call(

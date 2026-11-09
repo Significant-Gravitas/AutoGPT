@@ -306,7 +306,12 @@ async def finalize_typed_take(
     recording_id: str,
     text: str,
     background_tasks: BackgroundTasks,
+    *,
+    call_take: bool = False,
 ) -> TypedTake:
+    """A typed take through the pipeline. *call_take* says it is a voice
+    call's, made by the call's hand-off, which may displace another call's
+    take still being processed (``db.call_take_displaces``)."""
     # Same idempotency contract as the voice path: a repeated submit must
     # not reset the row or queue a second extraction and greeting on top
     # of the pair already running.
@@ -329,7 +334,9 @@ async def finalize_typed_take(
             judged=False,
         )
 
-    await db.start_dump(user_id, recording_id, BrainDumpInputMode.typed)
+    await db.start_dump(
+        user_id, recording_id, BrainDumpInputMode.typed, call_take=call_take
+    )
     # Same reasoning as the voice path: only the caller that wins this
     # transition queues the extraction and greeting pair.
     claimed = await db.claim_transition(
