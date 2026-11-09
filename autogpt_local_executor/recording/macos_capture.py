@@ -53,6 +53,9 @@ class MacInputCaptureSource(CaptureSource):
     """
 
     def __init__(self, *, poll_interval: float = 0.2, max_queued_events: int = 10_000) -> None:
+        if max_queued_events <= 0:
+            # queue.Queue takes that as no bound at all.
+            raise ValueError("max_queued_events must be positive")
         self._poll = poll_interval
         # Bounded, so a stalled consumer can't grow it without limit; events
         # it can't take are counted, and steps() then fails the recording.

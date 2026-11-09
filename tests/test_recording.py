@@ -1431,6 +1431,16 @@ async def test_a_capture_whose_tap_thread_does_not_stop_fails_the_recording(
         source._thread.join(30)
 
 
+@pytest.mark.parametrize("size", [0, -1])
+def test_the_macos_capture_refuses_a_queue_without_a_bound(size: int) -> None:
+    """queue.Queue takes a size of zero or less as no bound at all, so a
+    stalled consumer let events pile up without ever counting a drop."""
+    from autogpt_local_executor.recording import macos_capture
+
+    with pytest.raises(ValueError, match="positive"):
+        macos_capture.MacInputCaptureSource(max_queued_events=size)
+
+
 async def test_the_macos_capture_fails_a_recording_that_dropped_events(monkeypatch) -> None:
     """An unbounded queue grew without limit behind a stalled consumer; a
     bounded one must not then lose events silently."""
