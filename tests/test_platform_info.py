@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -146,6 +147,7 @@ _SESSION_VARIABLES = (
     "WAYLAND_DISPLAY",
     "XDG_SESSION_TYPE",
     "CUA_DRIVER_RS_ENABLE_WAYLAND",
+    "AUTOGPT_SHIM_SUPERVISOR",
 )
 
 
@@ -231,6 +233,168 @@ def test_computer_use_is_advertised_with_cua_driver(
     _session(monkeypatch, platform_name)
 
     assert "computer_use" in platform_info.detect_capabilities(enable_computer_use=True)
+
+
+class _Manager:
+    """The systemd user manager's environment, as `systemctl --user
+    show-environment` would give it, and how often it was read."""
+
+    def __init__(self, **env: str) -> None:
+        self.env: dict[str, str] | None = dict(env)
+        self.reads = 0
+
+    def __call__(self) -> dict[str, str] | None:
+        self.reads += 1
+        return None if self.env is None else dict(self.env)
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _follower(environ: dict[str, str], manager: _Manager, clock: _Clock | None = None):
+    return platform_info.SessionDisplay(environ, read=manager, clock=clock or _Clock())
+
+
+def test_a_service_started_before_the_desktop_takes_its_display() -> None:
+    """systemd starts the service at login, before GNOME or KDE export the
+    display to the manager, so the shim had no DISPLAY for as long as it ran,
+    and computer use stayed off until it restarted."""
+    environ = {"AUTOGPT_SHIM_SUPERVISOR": "systemd", "PATH": "/usr/bin"}
+    manager = _Manager(
+        DISPLAY=":0",
+        XAUTHORITY="/run/user/1000/.mutter-Xwaylandauth.ABC",
+        XDG_SESSION_TYPE="wayland",
+        WAYLAND_DISPLAY="wayland-0",
+        PATH="/elsewhere",
+        LD_PRELOAD="/tmp/evil.so",
+    )
+
+    assert _follower(environ, manager).follow() is True
+
+    assert environ == {
+        "AUTOGPT_SHIM_SUPERVISOR": "systemd",
+        "PATH": "/usr/bin",
+        "DISPLAY": ":0",
+        "XAUTHORITY": "/run/user/1000/.mutter-Xwaylandauth.ABC",
+        "XDG_SESSION_TYPE": "wayland",
+        "WAYLAND_DISPLAY": "wayland-0",
+    }
+    assert platform_info.linux_display_problem(environ) is None
+
+
+def test_the_display_follows_a_new_login_and_goes_with_the_session() -> None:
+    environ = {"AUTOGPT_SHIM_SUPERVISOR": "systemd"}
+    manager = _Manager(DISPLAY=":0", XAUTHORITY="/run/user/1000/xauth_A")
+    clock = _Clock()
+    follower = _follower(environ, manager, clock)
+    follower.follow()
+
+    manager.env = {"DISPLAY": ":1", "XAUTHORITY": "/run/user/1000/xauth_B"}
+    clock.now += 11
+    assert follower.follow() is True
+    assert (environ["DISPLAY"], environ["XAUTHORITY"]) == (":1", "/run/user/1000/xauth_B")
+
+    manager.env = {"XAUTHORITY": "/run/user/1000/xauth_B"}
+    clock.now += 11
+    assert follower.follow() is True
+    assert environ == {"AUTOGPT_SHIM_SUPERVISOR": "systemd"}
+
+
+def test_the_manager_is_read_at_most_every_ten_seconds() -> None:
+    manager = _Manager(DISPLAY=":0")
+    clock = _Clock()
+    follower = _follower({"AUTOGPT_SHIM_SUPERVISOR": "systemd"}, manager, clock)
+
+    follower.follow()
+    clock.now += 5
+    follower.follow()
+    clock.now += 6
+    follower.follow()
+
+    assert manager.reads == 2
+
+
+@pytest.mark.parametrize(
+    "environ",
+    [
+        {"DISPLAY": ":5"},
+        {"AUTOGPT_SHIM_SUPERVISOR": "systemd", "DISPLAY": ":5"},
+        {"AUTOGPT_SHIM_SUPERVISOR": "systemd", "WAYLAND_DISPLAY": "wayland-5"},
+        {"AUTOGPT_SHIM_SUPERVISOR": "launchd"},
+    ],
+    ids=["not-a-service", "own-display", "own-wayland", "launchd"],
+)
+def test_a_shim_keeps_its_own_environment(environ: dict[str, str]) -> None:
+    """Only the systemd service, started without a display, takes the
+    manager's: a shim run by hand keeps the display it was given, or none."""
+    before = dict(environ)
+    manager = _Manager(DISPLAY=":0", XAUTHORITY="/x")
+
+    assert _follower(environ, manager).follow() is False
+
+    assert environ == before
+    assert manager.reads == 0
+
+
+@pytest.mark.parametrize(
+    "manager",
+    [
+        _Manager(DISPLAY=":0\x00"),
+        _Manager(DISPLAY=":0\n1"),
+        _Manager(XAUTHORITY="/run/user/1000/xauth"),
+    ],
+    ids=["nul", "newline", "no-display"],
+)
+def test_nothing_is_taken_without_a_usable_display(manager: _Manager) -> None:
+    environ = {"AUTOGPT_SHIM_SUPERVISOR": "systemd"}
+
+    assert _follower(environ, manager).follow() is False
+
+    assert environ == {"AUTOGPT_SHIM_SUPERVISOR": "systemd"}
+
+
+def test_a_manager_that_cannot_be_read_changes_nothing() -> None:
+    environ = {"AUTOGPT_SHIM_SUPERVISOR": "systemd"}
+    manager = _Manager()
+    manager.env = None
+
+    assert _follower(environ, manager).follow() is False
+    assert environ == {"AUTOGPT_SHIM_SUPERVISOR": "systemd"}
+
+
+def test_the_systemd_service_advertises_computer_use_once_the_desktop_exports_its_display(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _session(monkeypatch, AUTOGPT_SHIM_SUPERVISOR="systemd")
+    monkeypatch.setattr(
+        platform_info,
+        "session_display",
+        platform_info.SessionDisplay(read=_Manager(DISPLAY=":0")),
+    )
+
+    assert "computer_use" in platform_info.detect_capabilities(enable_computer_use=True)
+
+
+def test_reading_the_manager_environment_parses_systemctl(monkeypatch: pytest.MonkeyPatch) -> None:
+    printed = b"DISPLAY=:0\nXAUTHORITY=/run/user/1000/a b\nODD=$'x y'\nnotavariable\n"
+    monkeypatch.setattr(platform_info.shutil, "which", lambda name: "/usr/bin/systemctl")
+
+    def run(argv, **kwargs):
+        assert argv == ["/usr/bin/systemctl", "--user", "show-environment"]
+        assert kwargs.get("timeout")
+        return subprocess.CompletedProcess(argv, 0, printed, b"")
+
+    monkeypatch.setattr(platform_info.subprocess, "run", run)
+
+    assert platform_info._manager_environment() == {
+        "DISPLAY": ":0",
+        "XAUTHORITY": "/run/user/1000/a b",
+    }
 
 
 def test_wsl2_never_advertises_computer_use(monkeypatch: pytest.MonkeyPatch) -> None:

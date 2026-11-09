@@ -175,6 +175,34 @@ async def test_a_call_past_its_deadline_stops_the_driver(fake_log: Path, monkeyp
     assert len(_records(fake_log, "initialize")) == driver.MAX_STARTS_PER_WINDOW + 2
 
 
+async def test_a_new_display_restarts_the_driver_off_the_budget(
+    fake_log: Path, monkeypatch
+) -> None:
+    """A driver keeps the environment it started with, so after a new login
+    (another display, and on GNOME another XAUTHORITY) it drove a display
+    that was gone until something else restarted it. The bridge now starts
+    a driver with the display the shim has, and that restart, the shim's own
+    doing, doesn't count against the restart budget."""
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setenv("XAUTHORITY", "/run/user/1000/xauth_0")
+    bridge = fake_bridge()
+    try:
+        await bridge.call_tool("click", {"pid": 1}, timeout=10)
+        for n in range(1, driver.MAX_STARTS_PER_WINDOW + 1):
+            monkeypatch.setenv("DISPLAY", f":{n}")
+            monkeypatch.setenv("XAUTHORITY", f"/run/user/1000/xauth_{n}")
+            await bridge.call_tool("click", {"pid": 1}, timeout=10)
+        await bridge.call_tool("click", {"pid": 2}, timeout=10)
+    finally:
+        await bridge.close()
+
+    started = [record["env"] for record in _records(fake_log, "initialize")]
+    assert [(env["DISPLAY"], env["XAUTHORITY"]) for env in started] == [
+        (f":{n}", f"/run/user/1000/xauth_{n}") for n in range(driver.MAX_STARTS_PER_WINDOW + 1)
+    ]
+    assert len(_records(fake_log, "call")) == driver.MAX_STARTS_PER_WINDOW + 2
+
+
 async def test_a_cancelled_call_stops_the_driver(fake_log: Path, monkeypatch) -> None:
     monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "2")
     bridge = fake_bridge()

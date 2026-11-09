@@ -71,13 +71,30 @@ Computer use needs a desktop session: an X11 display, or Wayland. On Wayland
 cua-driver uses XWayland unless you set `CUA_DRIVER_RS_ENABLE_WAYLAND=1` in
 the shim's environment for its native backend, whose support varies by
 compositor (see cua-driver's Linux notes). The accessibility tree comes from
-AT-SPI over the session bus: a shim started as a systemd user service needs
-`DISPLAY` (XWayland's, on Wayland) and `DBUS_SESSION_BUS_ADDRESS` in its
-environment, which desktop sessions usually import into the user manager.
+AT-SPI over the session bus, which a systemd user service already has.
 `WAYLAND_DISPLAY` stands in for `DISPLAY` only with
 `CUA_DRIVER_RS_ENABLE_WAYLAND=1`; without either, the shim doesn't offer
 computer use. `doctor` runs cua-driver's own checks for the display server
 and AT-SPI.
+
+The systemd user service starts at login, before the desktop has exported
+its display to the user manager, and a service keeps the environment it
+started with. So when the service starts without `DISPLAY` or
+`WAYLAND_DISPLAY`, the shim reads them from the manager
+(`systemctl --user show-environment`, at most every 10 seconds) when it
+decides whether to offer computer use and before each call, together with
+`XAUTHORITY` and the other variables cua-driver reads (`XDG_SESSION_TYPE`,
+`XDG_CURRENT_DESKTOP`, `XDG_SESSION_DESKTOP`, `DESKTOP_SESSION`, `SWAYSOCK`,
+`HYPRLAND_INSTANCE_SIGNATURE`). It follows them when a new login brings a
+new display (on GNOME, a new `XAUTHORITY` too) and restarts cua-driver with
+them, and lets them go when the session ends. GNOME and KDE export them, as
+do the Xsession and xinit scripts of most distributions. A session that
+doesn't, such as some standalone window managers, needs
+`dbus-update-activation-environment --systemd DISPLAY XAUTHORITY` (or
+`WAYLAND_DISPLAY`) in its startup. A shim started by hand, or a service that
+started with a display, keeps its own. The service has
+`AUTOGPT_SHIM_SUPERVISOR=systemd` in its unit; an install from before
+2026-11-09 picks it up with `autogpt-shim install`.
 
 WSL2 can't drive Windows apps; run the shim on Windows itself.
 

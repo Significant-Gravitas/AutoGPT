@@ -134,6 +134,14 @@ def test_plist_keeps_each_argument_and_path_whole() -> None:
     assert plist["StandardErrorPath"] == _AWKWARD.stderr_log
 
 
+def test_systemd_unit_marks_the_shim_as_its_service() -> None:
+    """The shim takes the desktop's display from the user manager only as
+    this service (platform_info.SessionDisplay)."""
+    lines = install_mod.render_template("systemd.service.template", _AWKWARD).splitlines()
+
+    assert "Environment=AUTOGPT_SHIM_SUPERVISOR=systemd" in lines
+
+
 def test_systemd_unit_keeps_each_argument_whole() -> None:
     lines = install_mod.render_template("systemd.service.template", _AWKWARD).splitlines()
     values = dict(line.split("=", 1) for line in lines if "=" in line and not line.startswith("#"))

@@ -139,6 +139,11 @@ Computer use runs on cua-driver; see [COMPUTER_USE.md](COMPUTER_USE.md) and
 | Logs | `~/Library/Logs/autogpt-local-executor/*.log` | `journalctl --user -u autogpt-shim` + `$XDG_STATE_HOME/autogpt-local-executor/` | `%LOCALAPPDATA%\autogpt-local-executor\logs\` | Audit log location per row "Audit log" below. |
 | Headless server / no DM | Works (still has launchd) | Works (with `enable-linger`) | Works | None require a logged-in GUI session for the WebSocket loop. |
 
+The systemd user unit sets `AUTOGPT_SHIM_SUPERVISOR=systemd`. It starts at
+login, before the desktop exports its display to the user manager, so the
+shim takes `DISPLAY` and the rest from the manager once they are there and
+follows them across logins; see [COMPUTER_USE.md](COMPUTER_USE.md#linux).
+
 An authentication failure (`start` exits 77, `EX_NOPERM`) stops the
 service instead of restarting it, since a restart would only retry the
 rejected credentials. The systemd unit sets `RestartPreventExitStatus=77`.
