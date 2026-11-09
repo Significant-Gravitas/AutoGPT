@@ -22,6 +22,7 @@ from backend.api.features.experts.models import Expert
 from backend.api.features.onboarding_dump import (
     db,
     intro,
+    otto_reply,
     plan_job,
     prompts,
     quality,
@@ -368,7 +369,8 @@ async def _quality_rejection(
     Shared by the voice and typed paths so the reject contract (log, mark
     failed, surface the error code and reason) cannot drift between them.
     An ``insufficient_content`` reject also sends back what was heard, so
-    the not-enough screen can show it, and the judge's reply to it. ``no_usable_speech`` never does: its
+    the not-enough screen can show it, and which of Otto's fixed first lines
+    fits it (``otto_reply``). ``no_usable_speech`` never does: its
     text is empty, symbols, a decoder loop or words the person never said.
     """
     logger.info(
@@ -385,7 +387,13 @@ async def _quality_rejection(
         error_reason=rejection.reason,
         transcript_words=quality.count_words(transcript),
         transcript_preview=(heard or None) if is_insufficient else None,
-        otto_reply=rejection.reply if is_insufficient else None,
+        otto_reply_kind=(
+            await otto_reply.pick_reply_kind(
+                heard, typed=input_mode == BrainDumpInputMode.typed
+            )
+            if is_insufficient and heard
+            else None
+        ),
     )
 
 

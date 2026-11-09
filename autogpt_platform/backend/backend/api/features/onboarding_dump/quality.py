@@ -34,12 +34,6 @@ from typing import Literal
 from prisma.enums import BrainDumpInputMode
 from pydantic import BaseModel
 
-from backend.api.features.onboarding_dump.otto_reply import (
-    REPLY_JSON_SHAPE,
-    TYPED_REPLY_INSTRUCTIONS,
-    VOICE_REPLY_INSTRUCTIONS,
-    clean_reply,
-)
 from backend.api.features.onboarding_dump.structured import request_json
 from backend.api.features.onboarding_dump.stt_artifacts import is_stt_artifact
 from backend.util.clients import get_openai_client
@@ -59,14 +53,11 @@ QUALITY_ERROR_CODES = frozenset(
 
 _MODEL = os.environ.get("BRAIN_DUMP_QUALITY_MODEL", "anthropic/claude-haiku-5.5")
 # The gate runs inside the finalize request, after transcription already
-# spent part of the frontend proxy's 30s budget. A short Haiku verdict
+# spent part of the frontend proxy's 30s budget. A 100-token Haiku verdict
 # typically lands in a couple of seconds; a stalled provider must degrade
 # to the recoverable reject quickly instead of eating the rest of the
 # request budget.
 _TIMEOUT_SECONDS = 8
-# The verdict plus Otto's one-sentence reply (``otto_reply``), with room to
-# spare: a cut-off reply drops the whole JSON, verdict included.
-_MAX_TOKENS = 160
 
 # Above this many words a transcript is clearly substantial and skips the
 # LLM entirely — the vast majority of real dumps land here, which is what
@@ -95,8 +86,7 @@ MAX_COMPRESSION_RATIO = 2.4
 # the opening still counts against it.
 REPETITION_WINDOW_CHARS = 1000
 
-_VOICE_PROMPT = (
-    """A new user of an automation platform was asked to describe \
+_VOICE_PROMPT = """A new user of an automation platform was asked to describe \
 their work and what they'd like automated. Below is the raw transcript \
 (spoken or typed). Decide whether it contains enough concrete information \
 to personalize a greeting or propose work for them — anything about who \
@@ -110,18 +100,13 @@ Answer "usable": false when the text is only filler, greetings, mic \
 testing, repeated fragments, or generic phrases a speech model produces \
 from silence or background noise (e.g. "thank you for watching").
 
-"""
-    + VOICE_REPLY_INSTRUCTIONS
-    + f"""
-Return ONLY valid JSON: {{{{"usable": true}}}} or {REPLY_JSON_SHAPE}.
+Return ONLY valid JSON: {{"usable": true}} or {{"usable": false}}.
 
 Transcript:
-{{transcript}}
+{transcript}
 """
-)
 
-_TYPED_PROMPT = (
-    """A new user of an automation platform was asked to describe \
+_TYPED_PROMPT = """A new user of an automation platform was asked to describe \
 their work and what they'd like automated. They typed the reply below.
 
 "usable": true — any real statement about their business, role, customers, \
@@ -132,15 +117,11 @@ any language.
 mashing, placeholders ("test", "asdf", "hello") or non-answers ("no", \
 "skip", "idk").
 
-"""
-    + TYPED_REPLY_INSTRUCTIONS
-    + f"""
-Return ONLY valid JSON: {{{{"usable": true}}}} or {REPLY_JSON_SHAPE}.
+Return ONLY valid JSON: {{"usable": true}} or {{"usable": false}}.
 
 Reply:
-{{transcript}}
+{transcript}
 """
-)
 
 
 class QualityRejection(BaseModel):
@@ -155,10 +136,6 @@ class QualityRejection(BaseModel):
 
     error_code: str
     reason: str
-    reply: str | None = None
-    """Otto's first line for the not-enough screen, written by the judge for
-    what was said (``otto_reply``). Only on ``judge_unusable``, and only when
-    it came back usable; the frontend falls back to a fixed line."""
 
 
 async def check_transcript_quality(
@@ -268,7 +245,7 @@ async def _semantic_verdict(
             model=_MODEL,
             prompt=template.format(transcript=text),
             temperature=0,
-            max_tokens=_MAX_TOKENS,
+            max_tokens=100,
             timeout=_TIMEOUT_SECONDS,
         )
     except TimeoutError as e:
@@ -281,11 +258,7 @@ async def _semantic_verdict(
         return _judge_unavailable("judge_malformed", detail=reply.describe())
     if data["usable"]:
         return None
-    return QualityRejection(
-        error_code=INSUFFICIENT_CONTENT,
-        reason="judge_unusable",
-        reply=clean_reply(data.get("reply")),
-    )
+    return QualityRejection(error_code=INSUFFICIENT_CONTENT, reason="judge_unusable")
 
 
 def _judge_unavailable(

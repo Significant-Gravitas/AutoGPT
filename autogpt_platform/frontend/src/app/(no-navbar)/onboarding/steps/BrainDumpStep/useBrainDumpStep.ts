@@ -277,8 +277,8 @@ export function useBrainDumpStep() {
             errorCode,
             heardText:
               response.status === 200 ? response.data.transcript_preview : null,
-            ottoReply:
-              response.status === 200 ? response.data.otto_reply : null,
+            replyKind:
+              response.status === 200 ? response.data.otto_reply_kind : null,
           });
           setScreen("insufficient");
         } else fail(errorCode ?? null);
@@ -423,8 +423,8 @@ export function useBrainDumpStep() {
             mode: "typed",
             errorCode,
             heardText: text,
-            ottoReply:
-              response.status === 200 ? response.data.otto_reply : null,
+            replyKind:
+              response.status === 200 ? response.data.otto_reply_kind : null,
           });
           setScreen("insufficient");
         } else fail(errorCode ?? null);
@@ -627,7 +627,7 @@ export function useBrainDumpStep() {
     screen,
     insufficientMode: reply.mode,
     heardText: reply.heardText,
-    ottoReply: reply.ottoReply,
+    replyKind: reply.replyKind,
     isFollowUp: reply.isFollowUp,
     typingPlaceholder: reply.typingPlaceholder,
     submittedMode,

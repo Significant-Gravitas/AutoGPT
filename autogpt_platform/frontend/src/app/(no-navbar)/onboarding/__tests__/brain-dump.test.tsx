@@ -4,6 +4,7 @@ import {
   getGetBrainDumpStatusMockHandler200,
   getUploadBrainDumpPartMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import type { FinalizeResponseOttoReplyKind } from "@/app/api/__generated__/models/finalizeResponseOttoReplyKind";
 import openapi from "@/app/api/openapi.json";
 import { server } from "@/mocks/mock-server";
 import {
@@ -373,7 +374,7 @@ function finalizeReturns(response: {
   status: "completed" | "failed";
   error_code?: string;
   transcript_preview?: string;
-  otto_reply?: string;
+  otto_reply_kind?: FinalizeResponseOttoReplyKind;
 }) {
   const bodies: unknown[] = [];
   server.use(
@@ -1175,7 +1176,7 @@ describe("onboarding brain dump — insufficient content", () => {
       await screen.findByRole("heading", { name: OFF_YOUR_PLATE }),
     ).toBeDefined();
     expect(screen.getByText("Um, okay. Hi. Is this working?")).toBeDefined();
-    expect(screen.getByText("Loud and clear! So tell me,")).toBeDefined();
+    expect(screen.getByText("Got it. So tell me,")).toBeDefined();
     // The progress fixture's role.
     expect(
       screen.getByText(
@@ -1197,12 +1198,12 @@ describe("onboarding brain dump — insufficient content", () => {
     expect(recordingStoreState.parts).toHaveLength(1);
   });
 
-  it("answers what was said when the gate wrote Otto a reply", async () => {
+  it("answers what was said with the line picked for it", async () => {
     finalizeReturns({
       status: "failed",
       error_code: "insufficient_content",
       transcript_preview: "I don't want to do this.",
-      otto_reply: "No pressure at all. So tell me,",
+      otto_reply_kind: "reluctant",
     });
 
     await recordAndSend();
@@ -1211,8 +1212,10 @@ describe("onboarding brain dump — insufficient content", () => {
       await screen.findByRole("heading", { name: OFF_YOUR_PLATE }),
     ).toBeDefined();
     expect(screen.getByText("I don't want to do this.")).toBeDefined();
-    expect(screen.getByText("No pressure at all. So tell me,")).toBeDefined();
-    expect(screen.queryByText("Loud and clear! So tell me,")).toBeNull();
+    expect(
+      screen.getByText("No worries, we'll keep it quick. So tell me,"),
+    ).toBeDefined();
+    expect(screen.queryByText("Got it. So tell me,")).toBeNull();
   });
 
   it("offers a retry of the same take when the quality check was unavailable", async () => {
@@ -1377,7 +1380,7 @@ describe("onboarding brain dump — insufficient content", () => {
         mode: "voice",
         error_code: "insufficient_content",
         heard: true,
-        ai_reply: false,
+        reply_kind: null,
         prompt_set: "Engineering",
       },
     );

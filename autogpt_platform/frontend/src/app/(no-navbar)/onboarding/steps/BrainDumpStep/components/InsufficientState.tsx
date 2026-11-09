@@ -10,6 +10,7 @@ import {
   heardTextOf,
   ottoFirstLine,
   type InsufficientMode,
+  type OttoReplyKind,
 } from "./insufficient-copy";
 import { OttoReply } from "./OttoReply";
 import { YourMessage } from "./YourMessage";
@@ -18,8 +19,8 @@ interface Props {
   mode: InsufficientMode;
   // What Otto heard (voice) or read (typed); null when no words came through.
   heardText: string | null;
-  // Otto's reply to it, written by the gate's judge; null for the fixed line.
-  ottoReply: string | null;
+  // Which of Otto's fixed lines fits it; null for the default line.
+  replyKind: OttoReplyKind | null;
   role: string;
   canRecord: boolean;
   onTalk: () => void;
@@ -34,7 +35,7 @@ interface Props {
 export function InsufficientState({
   mode,
   heardText,
-  ottoReply,
+  replyKind,
   role,
   canRecord,
   onTalk,
@@ -62,7 +63,7 @@ export function InsufficientState({
         <AutopilotAvatar transparent size={ottoSize} className="relative" />
       </div>
       <div className="mt-4 w-full md:mt-5">
-        <OttoReply firstLine={ottoFirstLine(mode, heard, ottoReply)} />
+        <OttoReply firstLine={ottoFirstLine(mode, heard, replyKind)} />
       </div>
       <Text variant="body" tone="muted" className="mt-3 w-full text-left">
         Like:{" "}

@@ -10,13 +10,14 @@ vi.mock("framer-motion", async (importOriginal) => ({
 }));
 
 import { InsufficientState } from "../InsufficientState";
+import { REPLY_LINES, type OttoReplyKind } from "../insufficient-copy";
 
 const QUESTION = "What do you want off your plate?";
 
 interface Overrides {
   mode?: "voice" | "typed";
   heardText?: string | null;
-  ottoReply?: string | null;
+  replyKind?: OttoReplyKind | null;
   role?: string;
   canRecord?: boolean;
 }
@@ -31,7 +32,7 @@ function renderScreen(overrides: Overrides = {}) {
           ? "Um, okay. Hi. Is this working?"
           : overrides.heardText
       }
-      ottoReply={overrides.ottoReply ?? null}
+      replyKind={overrides.replyKind ?? null}
       role={overrides.role ?? "Founder/CEO"}
       canRecord={overrides.canRecord ?? true}
       {...handlers}
@@ -57,13 +58,13 @@ afterEach(() => {
 });
 
 describe("InsufficientState — what Otto heard", () => {
-  it("shows the words heard and answers loud and clear", () => {
+  it("shows the words heard, with the default line when none was picked", () => {
     renderScreen();
 
     expect(screen.getByText("You")).toBeDefined();
     expect(screen.getByText("Um, okay. Hi. Is this working?")).toBeDefined();
     expect(screen.getByText("Otto")).toBeDefined();
-    expect(screen.getByText("Loud and clear! So tell me,")).toBeDefined();
+    expect(screen.getByText("Got it. So tell me,")).toBeDefined();
     expect(screen.getByRole("heading", { name: QUESTION })).toBeDefined();
     expect(buttonNames()).toEqual(["Talk", "Write", "Continue without it"]);
   });
@@ -104,36 +105,41 @@ describe("InsufficientState — what Otto heard", () => {
 
   it.each([
     { mode: "voice" as const, heardText: "I don't want to do this." },
-    { mode: "typed" as const, heardText: "skip" },
+    { mode: "typed" as const, heardText: "no" },
   ])(
-    "answers what was said with the judge's reply ($mode)",
+    "answers what was said with the line picked for it ($mode)",
     ({ mode, heardText }) => {
-      renderScreen({
-        mode,
-        heardText,
-        ottoReply: "No pressure at all. So tell me,",
-      });
+      renderScreen({ mode, heardText, replyKind: "reluctant" });
 
       expect(screen.getByText(heardText)).toBeDefined();
-      expect(screen.getByText("No pressure at all. So tell me,")).toBeDefined();
-      expect(screen.queryByText("Loud and clear! So tell me,")).toBeNull();
-      expect(
-        screen.queryByText("No problem. Let's start with an easy one."),
-      ).toBeNull();
+      expect(screen.getByText(REPLY_LINES.reluctant)).toBeDefined();
+      expect(screen.queryByText("Got it. So tell me,")).toBeNull();
       expect(screen.getByRole("heading", { name: QUESTION })).toBeDefined();
     },
   );
 
-  it("keeps the fixed line when the reply is blank", () => {
-    renderScreen({ ottoReply: "   " });
+  it("keeps loud and clear for a mic check", () => {
+    renderScreen({ replyKind: "mic_check" });
 
     expect(screen.getByText("Loud and clear! So tell me,")).toBeDefined();
   });
 
-  it("never shows a reply when no words came through", () => {
-    renderScreen({ heardText: null, ottoReply: "Loud and clear!" });
+  it.each([
+    { mode: "voice" as const, line: "Got it. So tell me," },
+    {
+      mode: "typed" as const,
+      line: "No problem. Let's start with an easy one.",
+    },
+  ])("uses the default line for other ($mode)", ({ mode, line }) => {
+    renderScreen({ mode, heardText: "I like pizza.", replyKind: "other" });
 
-    expect(screen.queryByText("Loud and clear!")).toBeNull();
+    expect(screen.getByText(line)).toBeDefined();
+  });
+
+  it("never answers a take with no words", () => {
+    renderScreen({ heardText: null, replyKind: "mic_check" });
+
+    expect(screen.queryByText(REPLY_LINES.mic_check)).toBeNull();
     expect(screen.getByText("No words came through")).toBeDefined();
   });
 
@@ -205,9 +211,7 @@ describe("InsufficientState — Otto typing", () => {
     const message = screen.getByTestId("otto-reply-message");
     expect(dots()).not.toBeNull();
     expect(dots()?.getAttribute("aria-hidden")).toBe("true");
-    expect(
-      within(message).getByText("Loud and clear! So tell me,"),
-    ).toBeDefined();
+    expect(within(message).getByText("Got it. So tell me,")).toBeDefined();
     expect(message.className).toContain("opacity-0");
 
     act(() => {
@@ -233,9 +237,7 @@ describe("InsufficientState — Otto typing", () => {
     renderScreen();
 
     const reply = screen.getByRole("alert");
-    expect(
-      within(reply).getByText("Loud and clear! So tell me,"),
-    ).toBeDefined();
+    expect(within(reply).getByText("Got it. So tell me,")).toBeDefined();
     expect(
       within(reply).getByRole("heading", { name: QUESTION }),
     ).toBeDefined();

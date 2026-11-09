@@ -222,6 +222,14 @@ class DumpStore:
 
 
 @pytest.fixture(autouse=True)
+def reply_kind(mocker: MockerFixture) -> AsyncMock:
+    """Jev's pick of Otto's line on a not-enough reject: none by default."""
+    return mocker.patch.object(
+        service.otto_reply, "pick_reply_kind", new=AsyncMock(return_value=None)
+    )
+
+
+@pytest.fixture(autouse=True)
 def personalization_admission(mocker: MockerFixture) -> AsyncMock:
     return mocker.patch.object(
         service, "enforce_personalization_budget", new=AsyncMock()
@@ -1337,25 +1345,29 @@ async def test_no_usable_speech_sends_back_no_text(
 @pytest.mark.parametrize(
     "input_mode", [BrainDumpInputMode.voice, BrainDumpInputMode.typed]
 )
-async def test_an_insufficient_take_sends_back_otto_s_reply(
+async def test_an_insufficient_take_sends_back_which_line_otto_says(
     dumps: DumpStore,
     quality_gate: AsyncMock,
     transcribe: AsyncMock,
+    reply_kind: AsyncMock,
     input_mode: BrainDumpInputMode,
 ):
-    replied = JUDGED_UNUSABLE.model_copy(update={"reply": "No pressure. So tell me,"})
+    reply_kind.return_value = "wants_to_skip"
 
     response = await _rejected_with(
-        dumps, quality_gate, transcribe, replied, input_mode, "I'd rather not."
+        dumps, quality_gate, transcribe, JUDGED_UNUSABLE, input_mode, " Can I skip? "
     )
 
-    assert response.otto_reply == "No pressure. So tell me,"
-    # The reply is for the screen only; the row keeps the verdict as before.
+    assert response.otto_reply_kind == "wants_to_skip"
+    reply_kind.assert_awaited_once_with(
+        "Can I skip?", typed=input_mode == BrainDumpInputMode.typed
+    )
+    # The pick is for the screen only; the row keeps the verdict as before.
     assert dumps.row is not None and dumps.row.errorReason == "judge_unusable"
 
 
 @pytest.mark.asyncio
-async def test_an_insufficient_take_without_a_reply_leaves_the_fixed_line(
+async def test_no_pick_leaves_the_default_line(
     dumps: DumpStore, quality_gate: AsyncMock, transcribe: AsyncMock
 ):
     response = await _rejected_with(
@@ -1367,27 +1379,31 @@ async def test_an_insufficient_take_without_a_reply_leaves_the_fixed_line(
         "Hello?",
     )
 
-    assert response.otto_reply is None
+    assert response.otto_reply_kind is None
 
 
 @pytest.mark.asyncio
-async def test_only_an_insufficient_reject_sends_a_reply(
-    dumps: DumpStore, quality_gate: AsyncMock, transcribe: AsyncMock
+async def test_only_an_insufficient_reject_asks_for_a_line(
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    transcribe: AsyncMock,
+    reply_kind: AsyncMock,
 ):
     # Nothing the person said can be answered on a no-words reject.
-    with_reply = DETERMINISTIC.model_copy(update={"reply": "Loud and clear!"})
+    reply_kind.return_value = "mic_check"
 
     response = await _rejected_with(
         dumps,
         quality_gate,
         transcribe,
-        with_reply,
+        DETERMINISTIC,
         BrainDumpInputMode.voice,
         "Thank you.",
     )
 
     assert response.error_code == "no_usable_speech"
-    assert response.otto_reply is None
+    assert response.otto_reply_kind is None
+    reply_kind.assert_not_awaited()
 
 
 @pytest.mark.asyncio

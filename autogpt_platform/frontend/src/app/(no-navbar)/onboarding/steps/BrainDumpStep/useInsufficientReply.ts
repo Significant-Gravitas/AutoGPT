@@ -4,6 +4,7 @@ import {
   followUpPlaceholder,
   heardTextOf,
   type InsufficientMode,
+  type OttoReplyKind,
 } from "./components/insufficient-copy";
 import { offYourPlateExampleForRole } from "./prompts";
 
@@ -12,8 +13,8 @@ interface ShowArgs {
   errorCode: string;
   // The voice take's `transcript_preview`, or the text that was typed.
   heardText: string | null | undefined;
-  // What the gate's judge wrote back to it (`otto_reply`), when it did.
-  ottoReply?: string | null;
+  // Which of Otto's fixed lines fits it (`otto_reply_kind`), when one was picked.
+  replyKind?: OttoReplyKind | null;
 }
 
 // The not-enough screen's state: how the rejected take was sent, what Otto
@@ -28,20 +29,20 @@ export function useInsufficientReply({
 }) {
   const [mode, setMode] = useState<InsufficientMode>("voice");
   const [heardText, setHeardText] = useState<string | null>(null);
-  const [ottoReply, setOttoReply] = useState<string | null>(null);
+  const [replyKind, setReplyKind] = useState<OttoReplyKind | null>(null);
   const [isFollowUp, setIsFollowUp] = useState(false);
 
   function show(args: ShowArgs) {
     const heard = heardTextOf(args.heardText);
-    const written = heard ? heardTextOf(args.ottoReply) : null;
+    const kind = heard ? (args.replyKind ?? null) : null;
     setMode(args.mode);
     setHeardText(heard);
-    setOttoReply(written);
+    setReplyKind(kind);
     trackBrainDump("brain_dump_insufficient_shown", {
       mode: args.mode,
       error_code: args.errorCode,
       heard: heard !== null,
-      ai_reply: written !== null,
+      reply_kind: kind,
       prompt_set: promptSet,
     });
   }
@@ -63,7 +64,7 @@ export function useInsufficientReply({
   return {
     mode,
     heardText,
-    ottoReply,
+    replyKind,
     isFollowUp,
     typingPlaceholder: isFollowUp
       ? followUpPlaceholder(offYourPlateExampleForRole(role))

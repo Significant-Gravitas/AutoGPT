@@ -758,14 +758,14 @@ describe("useBrainDumpStep — insufficient content", () => {
 });
 
 describe("useBrainDumpStep — Otto replies", () => {
-  function rejected(code: string, preview?: string, ottoReply?: string) {
+  function rejected(code: string, preview?: string, replyKind?: string) {
     return {
       status: 200,
       data: {
         status: "failed",
         error_code: code,
         ...(preview === undefined ? {} : { transcript_preview: preview }),
-        ...(ottoReply === undefined ? {} : { otto_reply: ottoReply }),
+        ...(replyKind === undefined ? {} : { otto_reply_kind: replyKind }),
       },
     };
   }
@@ -773,10 +773,10 @@ describe("useBrainDumpStep — Otto replies", () => {
   async function rejectVoiceTake(
     code: string,
     preview?: string,
-    ottoReply?: string,
+    replyKind?: string,
   ) {
     recorderState.recordingId = "rec-1";
-    finalizeBrainDump.mockResolvedValueOnce(rejected(code, preview, ottoReply));
+    finalizeBrainDump.mockResolvedValueOnce(rejected(code, preview, replyKind));
     const view = await renderStep();
     await act(async () => {
       await view.result.current.handleDone();
@@ -787,10 +787,10 @@ describe("useBrainDumpStep — Otto replies", () => {
   async function rejectTypedText(
     text: string,
     code = "insufficient_content",
-    ottoReply?: string,
+    replyKind?: string,
   ) {
     finalizeBrainDump.mockResolvedValueOnce(
-      rejected(code, undefined, ottoReply),
+      rejected(code, undefined, replyKind),
     );
     const view = await renderStep();
     act(() => {
@@ -827,7 +827,7 @@ describe("useBrainDumpStep — Otto replies", () => {
           mode: "voice",
           error_code: "insufficient_content",
           heard: true,
-          ai_reply: false,
+          reply_kind: null,
           prompt_set: "Other",
         },
       ],
@@ -857,7 +857,7 @@ describe("useBrainDumpStep — Otto replies", () => {
             mode: "voice",
             error_code: code,
             heard: false,
-            ai_reply: false,
+            reply_kind: null,
             prompt_set: "Other",
           },
         ],
@@ -880,21 +880,21 @@ describe("useBrainDumpStep — Otto replies", () => {
           mode: "typed",
           error_code: "no_usable_speech",
           heard: true,
-          ai_reply: false,
+          reply_kind: null,
           prompt_set: "Marketing",
         },
       ],
     ]);
   });
 
-  it("keeps Otto's reply to a voice take and says it had one", async () => {
+  it("keeps the line picked for a voice take and says which", async () => {
     const { result } = await rejectVoiceTake(
       "insufficient_content",
       "I don't want to do this.",
-      "No pressure at all. So tell me,",
+      "reluctant",
     );
 
-    expect(result.current.ottoReply).toBe("No pressure at all. So tell me,");
+    expect(result.current.replyKind).toBe("reluctant");
     expect(shown()).toEqual([
       [
         "brain_dump_insufficient_shown",
@@ -902,36 +902,37 @@ describe("useBrainDumpStep — Otto replies", () => {
           mode: "voice",
           error_code: "insufficient_content",
           heard: true,
-          ai_reply: true,
+          reply_kind: "reluctant",
           prompt_set: "Other",
         },
       ],
     ]);
   });
 
-  it("keeps Otto's reply to typed text", async () => {
+  it("keeps the line picked for typed text", async () => {
     const { result } = await rejectTypedText(
       "skip",
       "insufficient_content",
-      "That's fine, but one small thing helps.",
+      "wants_to_skip",
     );
 
-    expect(result.current.ottoReply).toBe(
-      "That's fine, but one small thing helps.",
-    );
-    expect(shown()[0]?.[1]).toMatchObject({ mode: "typed", ai_reply: true });
+    expect(result.current.replyKind).toBe("wants_to_skip");
+    expect(shown()[0]?.[1]).toMatchObject({
+      mode: "typed",
+      reply_kind: "wants_to_skip",
+    });
   });
 
-  it("drops a reply when no words came through", async () => {
+  it("drops a pick when no words came through", async () => {
     const { result } = await rejectVoiceTake(
       "insufficient_content",
       undefined,
-      "Loud and clear!",
+      "mic_check",
     );
 
     expect(result.current.heardText).toBeNull();
-    expect(result.current.ottoReply).toBeNull();
-    expect(shown()[0]?.[1]).toMatchObject({ heard: false, ai_reply: false });
+    expect(result.current.replyKind).toBeNull();
+    expect(shown()[0]?.[1]).toMatchObject({ heard: false, reply_kind: null });
   });
 
   it("is not a follow-up until the person leaves the screen to talk or write", async () => {

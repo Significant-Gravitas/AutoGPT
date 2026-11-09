@@ -410,83 +410,6 @@ async def test_typed_text_is_judged_without_the_speech_rules(
     assert prompt.endswith("I run a bakery.\n")
 
 
-# --- Otto's reply: written by the judge, never needed for the verdict -----
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "input_mode", [BrainDumpInputMode.voice, BrainDumpInputMode.typed]
-)
-async def test_an_unusable_verdict_carries_the_judges_reply(
-    llm, input_mode: BrainDumpInputMode
-):
-    llm(
-        _llm_client('{"usable": false, "reply": "  No pressure at all. So tell me,  "}')
-    )
-
-    rejection = await quality.check_transcript_quality(
-        "I don't really want to do this.", input_mode=input_mode
-    )
-
-    assert rejection == quality.QualityRejection(
-        error_code=quality.INSUFFICIENT_CONTENT,
-        reason="judge_unusable",
-        reply="No pressure at all. So tell me,",
-    )
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "content",
-    [
-        '{"usable": false}',
-        '{"usable": false, "reply": null}',
-        '{"usable": false, "reply": 7}',
-        '{"usable": false, "reply": "What do you do?"}',
-        json.dumps({"usable": False, "reply": "word " * 40}),
-    ],
-    ids=["missing", "null", "not-text", "question", "too-long"],
-)
-async def test_a_reply_that_cannot_be_shown_still_rejects_as_insufficient(
-    llm, content: str
-):
-    # The verdict stands on its own: the screen falls back to its fixed line.
-    llm(_llm_client(content))
-
-    assert await quality.check_transcript_quality("Hello? Hello?") == JUDGED_UNUSABLE
-
-
-@pytest.mark.asyncio
-async def test_a_usable_verdict_ignores_any_reply(llm):
-    llm(_llm_client('{"usable": true, "reply": "Great, thanks."}'))
-
-    assert await quality.check_transcript_quality("Automate my invoices.") is None
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "input_mode", [BrainDumpInputMode.voice, BrainDumpInputMode.typed]
-)
-async def test_both_judges_ask_for_otto_s_reply_with_room_to_write_it(
-    llm, input_mode: BrainDumpInputMode
-):
-    client = _llm_client('{"usable": false}')
-    llm(client)
-
-    await quality.check_transcript_quality("Hi.", input_mode=input_mode)
-
-    kwargs = client.chat.completions.create.await_args.kwargs
-    prompt = kwargs["messages"][0]["content"]
-    assert '{"usable": false, "reply": "..."}' in prompt
-    assert "What do you want off your plate?" in prompt
-    assert "{" + "{" not in prompt and "}" + "}" not in prompt
-    assert kwargs["max_tokens"] >= 160
-    # A keyboard can't be heard: the typed brief must not say it was.
-    typed = input_mode == BrainDumpInputMode.typed
-    assert ("never mention hearing" in prompt) is typed
-    assert ("a mic check gets a yes" in prompt) is not typed
-
-
 def test_count_words_skips_tokens_without_a_letter_or_digit():
     assert quality.count_words("  Uh... -- I run 2 shops !!! ") == 5
 
@@ -521,7 +444,7 @@ def _no_choices_client() -> MagicMock:
 async def test_the_judge_asks_for_no_reasoning_and_logs_why_a_verdict_is_missing(
     llm, caplog
 ):
-    # Thinking counts against the token cap on Haiku 5.5, so a judge that
+    # Thinking counts against the 100-token cap on Haiku 5.5, so a judge that
     # thinks answers nothing; the log has to say so without the content.
     client = _llm_client('{"usa', finish_reason="length")
     llm(client)

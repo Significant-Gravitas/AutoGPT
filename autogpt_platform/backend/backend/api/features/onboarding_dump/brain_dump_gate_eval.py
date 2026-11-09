@@ -39,8 +39,6 @@ class GateFileResult(BaseModel):
     correct: bool
     transcript_preview: str = ""
     transcription_error: str | None = None
-    otto_reply: str | None = None
-    """What Otto would say back on the not-enough screen, to read over."""
 
 
 class GateReport(BaseModel):
@@ -89,7 +87,6 @@ async def evaluate_transcript(
         outcome=outcome,
         error_code=rejection.error_code if rejection else None,
         reason=rejection.reason if rejection else None,
-        otto_reply=rejection.reply if rejection else None,
         correct=judged and outcome == expected,
         transcript_preview=transcript.strip()[:TRANSCRIPT_PREVIEW_CHARS],
     )
@@ -171,8 +168,6 @@ def _gate_detail(result: GateFileResult) -> str:
         if result.error_code
         else result.transcript_preview or "(empty transcript)"
     )
-    if result.otto_reply:
-        detail += f"  Otto: {result.otto_reply}"
     if result.transcription_error:
         detail += f"  [stt error: {result.transcription_error[:40]}]"
     return detail
