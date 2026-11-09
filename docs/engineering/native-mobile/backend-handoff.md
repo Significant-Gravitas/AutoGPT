@@ -58,6 +58,8 @@ Browser requests retain HttpOnly session cookies and never receive the native `s
 
 Session authority uses an uncached indexed PostgreSQL lookup per authenticated request and new WebSocket connection. The same bearer shares validation within one request only. An unavailable auth database returns 503/1013 instead of allowing a request through with signature validation alone; provision and monitor database capacity accordingly.
 
+Optional-auth store and marketplace routes preserve this distinction: a request with no token remains anonymous, and an invalid or revoked token falls back to anonymous access. A supplied token that cannot be verified because JWKS or session authority is unavailable returns 503 with retry guidance. This is intentional: an authentication outage must not silently turn an authenticated request into an anonymous one. Clients that explicitly want anonymous browsing can omit the bearer token.
+
 Rejected WebSocket authentication now completes the protocol upgrade before sending its close code. Proxy access logs therefore count those attempts as upgraded connections; authenticated-connection metrics still start only after authentication. Existing perimeter rate limits should include the WebSocket route.
 
 The signer change affects web-issued JWTs too, so include existing web sign-in, token renewal and request flows in rollout checks. Rolling back the validator removes the new revocation guarantee for already issued tokens; treat that explicitly as a rollback limitation.

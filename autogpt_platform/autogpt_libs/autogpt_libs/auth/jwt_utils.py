@@ -147,7 +147,7 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
         raise
     # Covers PyJWKClientError and the lookup's DecodeError on a non-object payload.
     except jwt.PyJWTError as e:
-        raise ValueError(f"Invalid token: {str(e)}") from e
+        raise ValueError(f"Invalid token: {e!s}") from e
 
     # Checked before decoding: PyJWT's key loader raises TypeError, not a token
     # error, for a key of another type.
@@ -165,7 +165,7 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
     except jwt.ExpiredSignatureError as e:
         raise ValueError("Token has expired") from e
     except jwt.PyJWTError as e:
-        raise ValueError(f"Invalid token: {str(e)}") from e
+        raise ValueError(f"Invalid token: {e!s}") from e
 
 
 def _get_jwks_client() -> jwt.PyJWKClient:

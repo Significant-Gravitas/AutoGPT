@@ -124,6 +124,9 @@ async def get_optional_user_id(
     supplied, it parses the JWT and extracts the user ID. If the token is missing or invalid, it returns None,
     treating the request as anonymous.
 
+    Authentication-service failures propagate for token-bearing requests; an unavailable
+    verifier is not treated as an invalid token. Requests without a token remain anonymous.
+
     Args:
         credentials: Optional HTTPAuthorizationCredentials object from FastAPI Security dependency.
 

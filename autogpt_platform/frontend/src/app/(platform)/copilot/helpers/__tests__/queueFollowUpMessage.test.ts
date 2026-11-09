@@ -141,6 +141,19 @@ describe("queueFollowUpMessage", () => {
     );
   });
 
+  it("explains a temporary outage without exposing the endpoint", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Service unavailable" }), {
+        status: 503,
+        headers: { "Retry-After": "5" },
+      }),
+    );
+
+    await expect(queueFollowUpMessage("sess-1", "keep this")).rejects.toThrow(
+      "This conversation is temporarily unavailable; try again shortly",
+    );
+  });
+
   it("reports a full buffer with guidance to wait for earlier messages", async () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(
       new Response(

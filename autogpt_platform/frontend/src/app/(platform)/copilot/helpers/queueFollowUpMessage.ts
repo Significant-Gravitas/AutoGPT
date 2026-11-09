@@ -63,6 +63,12 @@ export async function queueFollowUpMessage(
     throw new QueueFollowUpNotActiveError();
   }
 
+  if (res.status === 503) {
+    throw new Error(
+      "This conversation is temporarily unavailable; try again shortly",
+    );
+  }
+
   if (
     res.status === 429 &&
     res.headers.get("X-Error-Code") === "pending_buffer_full"

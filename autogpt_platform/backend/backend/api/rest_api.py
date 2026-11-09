@@ -104,6 +104,7 @@ from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
+from .external.v1.app import v1_app
 from .external.v2.app import v2_app
 from .external.v2.mcp_server import (
     WELL_KNOWN_PROTECTED_RESOURCE_PATH,
@@ -307,7 +308,7 @@ app = fastapi.FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
 )
 
-for authenticated_app in (app, external_api, v2_app):
+for authenticated_app in (app, external_api, v1_app, v2_app):
     authenticated_app.state.jwt_payload_validator = require_active_auth_session
 
 # First, so it sits inside the others and its 413 carries their headers. It
