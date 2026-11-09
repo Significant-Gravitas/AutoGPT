@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import json
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -12,11 +13,14 @@ from fastapi import HTTPException
 from pydantic import SecretStr
 from starlette.requests import Request
 
+from backend.api.features.library.model import node_input_mask_key
+from backend.blocks.exa import _webhook
 from backend.blocks.exa._exa_rest import ExaApiError
 from backend.blocks.exa._test import TEST_CREDENTIALS
 from backend.blocks.exa._webhook import (
     FILTER_FIELD_EVENTS,
     SEARCH_MONITOR_SECRET_INPUT,
+    SIGNATURE_TOLERANCE_SECONDS,
     ExaEventType,
     ExaWebhookManager,
     exa_event_names,
@@ -31,6 +35,9 @@ from backend.blocks.exa.webhook_blocks import ExaWebsetWebhookBlock, WebsetEvent
 SECRET = "whsec_test_secret"
 BODY = b'{"id":"event_1","object":"event","type":"webset.item.created","data":{}}'
 TIMESTAMP = "1767225600"
+# The trigger node of a preset's graph: the preset stores the trigger block's
+# inputs under this node's mask key.
+TRIGGER_NODE_ID = "5b0f3c1e-7d2a-4e8f-9a6b-2c4d6e8f0a1b"
 
 # The 19 values of `EventType` in Exa's OpenAPI spec (components/schemas).
 SPEC_EVENT_TYPES = {
@@ -86,14 +93,62 @@ def _webset_webhook(config: dict | None = None) -> Any:
     )
 
 
-def _monitor_webhook(*node_inputs: dict) -> Any:
+def _monitor_webhook(
+    nodes: list[dict] | None = None, presets: list[dict] | None = None
+) -> Any:
+    """A Search Monitor webhook used by trigger nodes and presets with these
+    inputs."""
     return SimpleNamespace(
         id="wh-2",
         webhook_type="search_monitor",
         config={},
-        triggered_nodes=[SimpleNamespace(input_default=i) for i in node_inputs],
-        triggered_presets=[],
+        triggered_nodes=[SimpleNamespace(input_default=i) for i in nodes or []],
+        triggered_presets=[SimpleNamespace(inputs=i) for i in presets or []],
     )
+
+
+def _nested(trigger_config: dict) -> dict:
+    """A preset's inputs as trigger setup stores them: the trigger block's inputs
+    under the trigger node's mask key, beside the graph's own inputs."""
+    return {"topic": "news", node_input_mask_key(TRIGGER_NODE_ID): trigger_config}
+
+
+def _node_webhook(*trigger_configs: dict) -> Any:
+    return _monitor_webhook(nodes=list(trigger_configs))
+
+
+def _preset_webhook(*trigger_configs: dict) -> Any:
+    return _monitor_webhook(presets=[_nested(c) for c in trigger_configs])
+
+
+def _flat_preset_webhook(*trigger_configs: dict) -> Any:
+    """Presets from before the trigger config was nested; boot migrates them."""
+    return _monitor_webhook(presets=list(trigger_configs))
+
+
+@pytest.fixture(
+    params=[_node_webhook, _preset_webhook, _flat_preset_webhook],
+    ids=["node", "preset", "flat-preset"],
+)
+def monitor_webhook(request: pytest.FixtureRequest) -> Callable[..., Any]:
+    """Builds a Search Monitor webhook from its triggers' inputs, stored in each
+    layout a trigger's inputs can have."""
+    return request.param
+
+
+@pytest.fixture
+def pinned_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the verifier's clock to TIMESTAMP, when the test deliveries are signed."""
+    monkeypatch.setattr(
+        _webhook, "time", SimpleNamespace(time=lambda: float(TIMESTAMP))
+    )
+
+
+async def _refusal(webhook: Any, headers: dict[str, str]) -> HTTPException:
+    with pytest.raises(HTTPException) as exc:
+        await ExaWebhookManager.verify_signature(webhook, _request(headers))
+    assert exc.value.status_code == 403
+    return exc.value
 
 
 class TestEventCatalogue:
@@ -249,6 +304,7 @@ class TestDeregistration:
         exa.assert_not_called()
 
 
+@pytest.mark.usefixtures("pinned_clock")
 class TestWebsetSignature:
     async def test_valid_signature_passes(self):
         header = f"t={TIMESTAMP},v1={_sign(BODY)}"
@@ -272,15 +328,12 @@ class TestWebsetSignature:
         ],
     )
     async def test_invalid_signature_is_rejected(self, header):
-        with pytest.raises(HTTPException) as exc:
-            await ExaWebhookManager.verify_signature(
-                _webset_webhook(), _request({"Exa-Signature": header})
-            )
-        assert exc.value.status_code == 403
+        refusal = await _refusal(_webset_webhook(), {"Exa-Signature": header})
+        assert refusal.detail == "Invalid webhook signature"
 
     async def test_tampered_body_is_rejected(self):
         header = f"t={TIMESTAMP},v1={_sign(BODY)}"
-        with pytest.raises(HTTPException):
+        with pytest.raises(HTTPException, match="Invalid webhook signature"):
             await ExaWebhookManager.verify_signature(
                 _webset_webhook(),
                 _request({"Exa-Signature": header}, body=BODY + b" "),
@@ -302,74 +355,139 @@ class TestWebsetSignature:
             )
 
 
+@pytest.mark.usefixtures("pinned_clock")
 class TestSearchMonitorSignature:
-    async def test_valid_signature_with_block_secret_passes(self):
+    async def test_valid_signature_with_block_secret_passes(self, monitor_webhook):
         header = f"t={TIMESTAMP},v1={_sign(BODY)}"
         await ExaWebhookManager.verify_signature(
-            _monitor_webhook({"webhook_secret": SECRET}),
+            monitor_webhook({"webhook_secret": SECRET}),
             _request({"Exa-Signature": header}),
         )
 
-    async def test_secret_stored_as_secretstr_works(self):
+    async def test_secret_stored_as_secretstr_works(self, monitor_webhook):
         header = f"t={TIMESTAMP},v1={_sign(BODY)}"
         await ExaWebhookManager.verify_signature(
-            _monitor_webhook({"webhook_secret": SecretStr(SECRET)}),
+            monitor_webhook({"webhook_secret": SecretStr(SECRET)}),
             _request({"Exa-Signature": header}),
         )
 
-    async def test_invalid_signature_is_rejected(self):
+    async def test_invalid_signature_is_rejected(self, monitor_webhook):
         header = f"t={TIMESTAMP},v1={_sign(BODY, secret='other')}"
-        with pytest.raises(HTTPException):
+        with pytest.raises(HTTPException, match="Invalid webhook signature"):
             await ExaWebhookManager.verify_signature(
-                _monitor_webhook({"webhook_secret": SECRET}),
+                monitor_webhook({"webhook_secret": SECRET}),
                 _request({"Exa-Signature": header}),
             )
 
-    async def test_missing_header_is_rejected_once_a_secret_is_set(self):
-        with pytest.raises(HTTPException):
+    async def test_missing_header_is_rejected_once_a_secret_is_set(
+        self, monitor_webhook
+    ):
+        with pytest.raises(HTTPException, match="Missing Exa-Signature header"):
             await ExaWebhookManager.verify_signature(
-                _monitor_webhook({"webhook_secret": SECRET}), _request({})
+                monitor_webhook({"webhook_secret": SECRET}), _request({})
             )
 
     @pytest.mark.parametrize("unreadable", [{"not": "a secret"}, ["a", "b"], 123])
-    async def test_an_unreadable_secret_fails_closed(self, unreadable):
+    async def test_an_unreadable_secret_fails_closed(self, monitor_webhook, unreadable):
         # A secret is set but can't be read as one. Treating it as "no secret"
         # would accept unsigned deliveries, so the delivery is refused, even
         # one signed with the real secret.
         header = f"t={TIMESTAMP},v1={_sign(BODY)}"
-        with pytest.raises(HTTPException) as exc:
-            await ExaWebhookManager.verify_signature(
-                _monitor_webhook({"webhook_secret": unreadable}),
-                _request({"Exa-Signature": header}),
-            )
-        assert exc.value.status_code == 403
-        assert "could not be read" in exc.value.detail
+        refusal = await _refusal(
+            monitor_webhook({"webhook_secret": unreadable}), {"Exa-Signature": header}
+        )
+        assert "could not be read" in refusal.detail
 
     @pytest.mark.parametrize(
         "inputs", [{}, {"webhook_secret": None}, {"webhook_secret": "  "}]
     )
-    async def test_no_secret_yet_accepts_the_delivery(self, inputs):
-        await ExaWebhookManager.verify_signature(_monitor_webhook(inputs), _request({}))
+    async def test_no_secret_yet_accepts_the_delivery(self, monitor_webhook, inputs):
+        await ExaWebhookManager.verify_signature(monitor_webhook(inputs), _request({}))
 
     @pytest.mark.parametrize("signing_secret", ["a", "b"])
     async def test_a_delivery_signed_by_any_monitor_on_the_webhook_passes(
-        self, signing_secret
+        self, monitor_webhook, signing_secret
     ):
         # Two monitors' triggers share the webhook; each monitor signs with
         # its own secret.
         header = f"t={TIMESTAMP},v1={_sign(BODY, secret=signing_secret)}"
         await ExaWebhookManager.verify_signature(
-            _monitor_webhook({"webhook_secret": "a"}, {"webhook_secret": "b"}),
+            monitor_webhook({"webhook_secret": "a"}, {"webhook_secret": "b"}),
             _request({"Exa-Signature": header}),
         )
 
-    async def test_a_delivery_signed_by_no_monitor_on_the_webhook_is_refused(self):
+    async def test_a_delivery_signed_by_no_monitor_on_the_webhook_is_refused(
+        self, monitor_webhook
+    ):
         header = f"t={TIMESTAMP},v1={_sign(BODY, secret='other')}"
         with pytest.raises(HTTPException, match="Invalid webhook signature"):
             await ExaWebhookManager.verify_signature(
-                _monitor_webhook({"webhook_secret": "a"}, {"webhook_secret": "b"}),
+                monitor_webhook({"webhook_secret": "a"}, {"webhook_secret": "b"}),
                 _request({"Exa-Signature": header}),
             )
+
+    async def test_a_secret_on_any_trigger_of_the_webhook_is_enforced(self):
+        # A preset has its monitor's secret; a node sharing the webhook has
+        # none yet. Deliveries must still be signed.
+        webhook = _monitor_webhook(
+            nodes=[{}], presets=[_nested({"webhook_secret": SECRET})]
+        )
+        refusal = await _refusal(webhook, {})
+        assert refusal.detail == "Missing Exa-Signature header"
+
+
+@pytest.fixture(params=["webset", "search_monitor"])
+def signed_webhook(request: pytest.FixtureRequest) -> Any:
+    """A webhook of each Exa type whose deliveries are signed with SECRET."""
+    if request.param == "webset":
+        return _webset_webhook()
+    return _preset_webhook({"webhook_secret": SECRET})
+
+
+def _signed_at(offset: int) -> dict[str, str]:
+    """Headers of a delivery correctly signed `offset` seconds from TIMESTAMP."""
+    timestamp = str(int(TIMESTAMP) + offset)
+    return {"Exa-Signature": f"t={timestamp},v1={_sign(BODY, timestamp)}"}
+
+
+@pytest.mark.usefixtures("pinned_clock")
+class TestSignatureTimestamp:
+    """Both webhook types share the verifier: a delivery signed with the right
+    secret is still refused when its timestamp is too far from now."""
+
+    @pytest.mark.parametrize(
+        "offset", [0, -SIGNATURE_TOLERANCE_SECONDS, SIGNATURE_TOLERANCE_SECONDS]
+    )
+    async def test_a_delivery_signed_within_the_window_passes(
+        self, signed_webhook, offset
+    ):
+        await ExaWebhookManager.verify_signature(
+            signed_webhook, _request(_signed_at(offset))
+        )
+
+    @pytest.mark.parametrize("age", [SIGNATURE_TOLERANCE_SECONDS + 1, 86_400])
+    async def test_a_stale_delivery_is_refused(self, signed_webhook, age):
+        refusal = await _refusal(signed_webhook, _signed_at(-age))
+        assert "outside the accepted window" in refusal.detail
+
+    @pytest.mark.parametrize("ahead", [SIGNATURE_TOLERANCE_SECONDS + 1, 86_400])
+    async def test_a_future_dated_delivery_is_refused(self, signed_webhook, ahead):
+        refusal = await _refusal(signed_webhook, _signed_at(ahead))
+        assert "outside the accepted window" in refusal.detail
+
+    @pytest.mark.parametrize(
+        "timestamp",
+        [
+            pytest.param("soon", id="word"),
+            pytest.param("1767225600.5", id="fraction"),
+            pytest.param("1e9", id="exponent"),
+            pytest.param("9" * 400, id="too-large-for-a-float"),
+        ],
+    )
+    async def test_an_unreadable_timestamp_is_refused(self, signed_webhook, timestamp):
+        header = f"t={timestamp},v1={_sign(BODY, timestamp)}"
+        refusal = await _refusal(signed_webhook, {"Exa-Signature": header})
+        assert refusal.detail == "Malformed Exa-Signature header"
 
 
 class TestValidatePayload:
