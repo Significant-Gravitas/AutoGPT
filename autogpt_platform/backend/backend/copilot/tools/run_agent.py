@@ -145,8 +145,9 @@ MSG_DO_NOT_RUN_AGAIN = "Do not run again unless explicitly requested."
 MSG_DO_NOT_SCHEDULE_AGAIN = "Do not schedule again unless explicitly requested."
 SCHEDULED_STATUS = "SCHEDULED"
 MSG_ASK_USER_FOR_VALUES = (
-    "Ask the user what values to use, or call again with use_defaults=true "
-    "to run with default values."
+    "Call again with use_defaults=true when the defaults fit the request; "
+    "ask the user with ask_question (reason user_only_fact) only for values "
+    "you cannot work out."
 )
 MSG_WHAT_VALUES_TO_USE = (
     "What values would you like to use, or would you like to run with defaults?"

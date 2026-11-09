@@ -368,8 +368,10 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             return None
         return TriggerConfigRequiredResponse(
             message=(
-                "Before this trigger can be set up, ask the user for the "
-                "required values and pass them back — do NOT guess (e.g. don't "
+                "Before this trigger can be set up, ask the user with "
+                "ask_question (reason user_only_fact) for the required values "
+                "you cannot find, in one call, and pass them back — do NOT "
+                "guess (e.g. don't "
                 "invent a repository name). Pass trigger-block config as "
                 "`trigger_config` and regular graph inputs as `constant_inputs`. "
                 "The required fields and their schemas are below; once you have "
