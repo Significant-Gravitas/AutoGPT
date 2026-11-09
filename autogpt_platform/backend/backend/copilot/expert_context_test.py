@@ -568,9 +568,12 @@ class TestBuildExpertContextPlainSession:
         assert "exp-2" in result
         assert "Blog Writer" in result
         # Plain sessions may delegate to a listed expert (not just suggest
-        # opening their thread) as long as the model discloses it.
+        # chatting with them) as long as the model discloses it.
         assert "delegate_to_expert" in result
         assert "Never delegate silently." in result
+        # A new expert has no thread yet; Otto must not send the user to
+        # one (SECRT-3401).
+        assert "suggest their thread" not in result
 
     @pytest.mark.asyncio
     async def test_team_context_is_byte_identical_regardless_of_metrics(self):

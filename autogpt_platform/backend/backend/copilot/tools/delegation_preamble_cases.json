@@ -8,7 +8,8 @@
     "visible: what the frontend shows and copies for that row once the preamble",
     "is stripped. Rewording a backend preamble fails the backend test until this",
     "file is updated, and the updated file fails the frontend test until the",
-    "frontend regex is updated to match."
+    "frontend regex is updated to match.",
+    "first_task: a delegation that is a new hire's first task (hire_handoff)."
   ],
   "cases": [
     {
@@ -25,6 +26,22 @@
       "context": "Launch on Friday.",
       "prompt": "Review **all** links.\n\n- [ ] Footer",
       "message": "[Delegated task from Avery, a teammate on this user's team — not the user. They cannot see your thread, so report the outcome in your final message. If the task needs something only the user can provide, say what is missing instead of guessing.]\n\n[Context: Launch on Friday.]\n\nReview **all** links.\n\n- [ ] Footer",
+      "visible": "[Context: Launch on Friday.]\n\nReview **all** links.\n\n- [ ] Footer"
+    },
+    {
+      "kind": "first_task",
+      "caller": "Otto",
+      "context": "",
+      "prompt": "Draft the launch update.",
+      "message": "[Delegated task from Otto, a teammate on this user's team — not the user. They cannot see your thread, so report the outcome in your final message. If the task needs something only the user can provide, say what is missing instead of guessing.]\n\n[This is your first task since joining the team, and the user reads this thread: open with one line introducing yourself to them, then work on it or ask what you need. Don't run a workflow, create a schedule or send anything on this first turn; ask the user first.]\n\nDraft the launch update.",
+      "visible": "Draft the launch update."
+    },
+    {
+      "kind": "first_task",
+      "caller": "Otto",
+      "context": "Launch on Friday.",
+      "prompt": "Review **all** links.\n\n- [ ] Footer",
+      "message": "[Delegated task from Otto, a teammate on this user's team — not the user. They cannot see your thread, so report the outcome in your final message. If the task needs something only the user can provide, say what is missing instead of guessing.]\n\n[This is your first task since joining the team, and the user reads this thread: open with one line introducing yourself to them, then work on it or ask what you need. Don't run a workflow, create a schedule or send anything on this first turn; ask the user first.]\n\n[Context: Launch on Friday.]\n\nReview **all** links.\n\n- [ ] Footer",
       "visible": "[Context: Launch on Friday.]\n\nReview **all** links.\n\n- [ ] Footer"
     },
     {

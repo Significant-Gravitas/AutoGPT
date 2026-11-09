@@ -6,7 +6,7 @@ with AsyncMock at the route module's import site.
 """
 
 import json
-from datetime import date
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -891,6 +891,7 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
             color="orange-500",
             role="Marketing Specialist",
             is_archived=True,
+            created_at=datetime(2026, 11, 2, 9, 30, tzinfo=UTC),
         )
     ]
     mock_list = mocker.patch(
@@ -912,6 +913,7 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
             "job_title": None,
             "is_archived": True,
             "autopilot_mode": None,
+            "created_at": "2026-11-02T09:30:00Z",
         }
     ]
     mock_list.assert_awaited_once_with(test_user_id)

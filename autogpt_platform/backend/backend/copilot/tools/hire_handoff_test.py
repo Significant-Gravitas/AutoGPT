@@ -133,7 +133,7 @@ def _env(
         patch("backend.copilot.tools.hire_expert.experts_db", return_value=db),
         patch("backend.copilot.tools.expert_proposal.experts_db", return_value=db),
         patch("backend.copilot.tools.expert_delegation.experts_db", return_value=db),
-        patch("backend.copilot.tools.hire_expert.get_redis_async", redis),
+        patch("backend.copilot.tools.expert_handoff_proposal.get_redis_async", redis),
         patch("backend.copilot.tools.confirm_expert_change.get_redis_async", redis),
         patch(
             "backend.copilot.tools.delegate_to_expert.create_chat_session",
@@ -245,6 +245,8 @@ class TestHireAndHandOffInOneApproval:
         assert turn["session_id"] == "thread-1"
         assert _BRIEF in turn["message"]
         assert turn["timeout"] == 0
+        # The thread is the user's first look at the hire (SECRT-3401).
+        assert "open with one line introducing yourself" in turn["message"]
         # The card and Otto both learn where the work is happening.
         assert resp.handoff is not None
         # Only queued so far: a worker can still refuse it at pickup, so
@@ -264,6 +266,25 @@ class TestHireAndHandOffInOneApproval:
         assert "tool:get_sub_session_result (sub_session_id: thread-1)" in (
             resp.message
         )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_hire_with_no_task_points_at_the_chat_button(self):
+        """SECRT-3401: no chat exists until the user opens one from the
+        card's Chat with <name> button, so Otto must not send them looking
+        for a thread."""
+        with _env() as env:
+            session = make_session(_USER)
+            preview = await _hire(session, template_id="tpl-james")
+            assert isinstance(preview, ExpertChangeProposedResponse)
+            resp = await _confirm(_approve(session), preview.confirmation_id)
+
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        env.turn.assert_not_called()
+        assert resp.handoff is None
+        assert resp.message.startswith("James is hired and on the team")
+        assert "James has no chat yet" in resp.message
+        assert "Chat with James button" in resp.message
+        assert "Never say a thread or chat with them already exists" in resp.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_hire_only_hires_without_handing_anything_off(self):

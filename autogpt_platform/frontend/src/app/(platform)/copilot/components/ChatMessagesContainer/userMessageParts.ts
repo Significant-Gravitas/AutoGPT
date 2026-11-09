@@ -15,6 +15,15 @@ const HANDOFF_PREAMBLE = new RegExp(
     "them\\.\\]\\r?\\n\\r?\\n",
 );
 
+// Follows the delegation preamble on a new hire's first task.
+const FIRST_TASK_NOTE = new RegExp(
+  "^\\[This is your first task since joining the team, and the user reads " +
+    "this thread: open with one line introducing yourself to them, then work " +
+    "on it or ask what you need\\. Don't run a workflow, create a schedule " +
+    "or send anything on this first turn; ask the user first\\.\\]" +
+    "\\r?\\n\\r?\\n",
+);
+
 export function getVisibleUserMessageParts(parts: UIMessage["parts"]) {
   const firstTextIndex = parts.findIndex((part) => part.type === "text");
   const firstText = parts[firstTextIndex];
@@ -25,7 +34,9 @@ export function getVisibleUserMessageParts(parts: UIMessage["parts"]) {
     firstText.text.match(HANDOFF_PREAMBLE);
   if (!preamble) return parts;
 
-  const text = firstText.text.slice(preamble[0].length);
+  const afterPreamble = firstText.text.slice(preamble[0].length);
+  const note = afterPreamble.match(FIRST_TASK_NOTE);
+  const text = note ? afterPreamble.slice(note[0].length) : afterPreamble;
   if (!text.trim()) return parts;
 
   return parts.map((part, index) =>

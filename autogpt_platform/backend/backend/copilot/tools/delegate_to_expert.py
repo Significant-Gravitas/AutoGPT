@@ -282,6 +282,7 @@ async def run_delegated_turn(
     system_context: str = "",
     opened_here: bool,
     wait_for_result: int,
+    first_task: bool = False,
 ) -> ToolResponseBase:
     """Queue *prompt* on a delegation thread and report what happened.
 
@@ -290,7 +291,8 @@ async def run_delegated_turn(
     task handed to a new hire runs exactly like any other delegation: same
     provenance, permissions, mode and result contract. ``opened_here``
     drops a thread this call opened when its turn never reached it
-    (``TurnNotDispatched`` is re-raised after).
+    (``TurnNotDispatched`` is re-raised after). ``first_task`` marks the new
+    hire's first turn ever (see ``_FIRST_TASK_NOTE``).
     """
     caller = await _caller_name(user_id, session.expert_id)
     started_at = time.monotonic()
@@ -298,7 +300,9 @@ async def run_delegated_turn(
         outcome, result = await run_copilot_turn_via_queue(
             session_id=inner_session_id,
             user_id=user_id,
-            message=_handoff_message(caller, system_context, prompt),
+            message=_handoff_message(
+                caller, system_context, prompt, first_task=first_task
+            ),
             timeout=max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS)),
             permissions=get_current_permissions(),
             tool_call_id=(
@@ -460,7 +464,22 @@ async def _caller_name(user_id: str, caller_expert_id: str | None) -> str:
     return caller.name if caller else "a teammate"
 
 
-def _handoff_message(caller: str, system_context: str, prompt: str) -> str:
+# A new hire's first task is also the user's first look at them: the thread
+# opens from the card, so the expert says who they are before the work. Their
+# first turn stays ask-first, as the kickoff does (SECRT-2622): the user
+# approved the task on Otto's card and has not yet seen how the expert means
+# to do it.
+_FIRST_TASK_NOTE = (
+    "[This is your first task since joining the team, and the user reads this "
+    "thread: open with one line introducing yourself to them, then work on it "
+    "or ask what you need. Don't run a workflow, create a schedule or send "
+    "anything on this first turn; ask the user first.]"
+)
+
+
+def _handoff_message(
+    caller: str, system_context: str, prompt: str, *, first_task: bool = False
+) -> str:
     """Frame the task so the teammate knows a colleague — not the user — asked.
 
     Without this the delegated prompt reads as the user speaking, and the
@@ -474,6 +493,8 @@ def _handoff_message(caller: str, system_context: str, prompt: str) -> str:
         "final message. If the task needs something only the user can "
         "provide, say what is missing instead of guessing.]"
     )
+    if first_task:
+        preamble += f"\n\n{_FIRST_TASK_NOTE}"
     if system_context.strip():
         preamble += f"\n\n[Context: {system_context.strip()}]"
     return f"{preamble}\n\n{prompt}"

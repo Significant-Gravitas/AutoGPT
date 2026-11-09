@@ -152,6 +152,10 @@ class ExpertIdentity(BaseModel):
     is_archived: bool
     # The approval mode a new web chat with this expert starts on.
     autopilot_mode: AutopilotMode | None = None
+    # When the expert joined the team: the sidebar lists a new expert before
+    # their first chat. ``None`` only where a caller builds the identity by
+    # hand without it.
+    created_at: datetime | None = None
 
     @field_validator("avatar_url")
     @classmethod
