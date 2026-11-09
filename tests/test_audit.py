@@ -1118,6 +1118,26 @@ def test_a_record_with_a_non_finite_number_is_a_parse_error(tmp_path: Path, numb
     assert violation.kind == "parse_error"
 
 
+def test_a_record_that_parses_but_cannot_be_canonicalized_is_a_violation(
+    tmp_path: Path,
+) -> None:
+    """The case below is too deep for the JSON parser itself, so it passed
+    with the canonicalizer's RecursionError uncaught. Some hundreds of
+    levels parse and only the canonicalizer, which recurses deeper per
+    level, gives up (700 does on Python 3.11 to 3.13)."""
+    depth = 700
+    nested = '{"a":' * depth + "1" + "}" * depth
+    record = f'{{"seq": 1, "ts": 1.0, "details": {nested}, "hmac": "00"}}'
+    json.loads(record)  # this one parses
+    path = tmp_path / "audit.log"
+    path.write_text(record + "\n")
+
+    [violation] = AuditWriter.verify(path, KEY)
+
+    assert violation.kind == "parse_error"
+    assert "uncanonicalizable record" in violation.message
+
+
 def test_a_record_nested_too_deeply_to_check_is_a_parse_error(tmp_path: Path) -> None:
     """A record nested some hundreds of levels deep parses, but canonicalizing
     it raised RecursionError, which the verifier didn't catch, so verify and
