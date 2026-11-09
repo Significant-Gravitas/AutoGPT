@@ -595,10 +595,11 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
 
     Prefers the OS keychain. The legacy audit-only fallback requires
     AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE; OAuth tokens have no file fallback.
-    With no keychain, the fallback's key is used once it exists; a new one
-    is made only while `audit_log` (the log the key is for) doesn't exist
-    yet, since one the keychain's key signed would never verify with it.
-    With `create` false no key is made at all (load_audit_key).
+    With no keychain, the fallback's key is used once it exists, and so it
+    is when a keychain that turns up later holds none: that key signed the
+    log. A new one is made only while `audit_log` (the log the key is for)
+    doesn't exist yet, since a log another key signed would never verify
+    with it. With `create` false no key is made at all (load_audit_key).
     """
     try:
         import keyring
@@ -623,6 +624,11 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
                     "Stored audit key has an invalid length; refusing to replace it"
                 )
             return key
+        if _fallback_path().exists() and os.environ.get("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE"):
+            # The file fallback made the key while there was no keychain, so
+            # it signed the log; a new keychain key couldn't verify it.
+            logger.info("The keychain holds no audit key; using the file fallback's.")
+            return _fallback_audit_key()
         _refuse_a_new_key(audit_log, create, "The OS keychain")
         key = secrets.token_bytes(32)
         keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME, key.hex())
@@ -649,10 +655,15 @@ def _refuse_a_new_key(audit_log: Path | None, create: bool, holder: str) -> None
     if not create:
         raise AuditKeyError(f"{holder} holds no audit key, so there is none to read")
     if audit_log is not None and os.path.lexists(audit_log):
+        hint = (
+            " (the file fallback has one: set AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE to read it)"
+            if _fallback_path().exists()
+            else ""
+        )
         raise AuditKeyError(
             f"{holder} holds no audit key, but the audit log at {audit_log} was signed "
-            "with one, which a new key couldn't verify. Restore that key, or move the "
-            "log aside to start a new log with a new key"
+            f"with one{hint}, which a new key couldn't verify. Restore that key, or move "
+            "the log aside to start a new log with a new key"
         )
 
 

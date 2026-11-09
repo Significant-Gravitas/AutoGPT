@@ -1427,6 +1427,32 @@ def test_no_keyring_package_gets_no_new_file_key_for_a_signed_log(
     assert not (tmp_path / "audit-key.enc").exists()
 
 
+def test_a_keychain_that_turns_up_later_keeps_the_file_key_that_signed_the_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A first start without a keychain made a file key and signed the log
+    with it. Once a keychain was available, holding no audit key, the daemon
+    stored a new one there, the log no longer verified, and it stopped."""
+    import keyring
+    import keyring.errors
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    log = tmp_path / "audit.log"
+    with patch.object(keyring, "get_password", side_effect=keyring.errors.NoKeyringError("none")):
+        signing_key = get_or_create_audit_key(log)
+    log.write_text('{"seq": 1}\n')
+    stored: list[str] = []
+    with (
+        patch.object(keyring, "get_password", return_value=None),
+        patch.object(keyring, "set_password", side_effect=lambda *args: stored.append(args[2])),
+    ):
+        assert get_or_create_audit_key(log) == signing_key
+        assert cli._audit_verify(log) != 2  # the audit commands read it too
+
+    assert stored == []
+
+
 # ── Export: descriptors, a prune meanwhile, the default name ───────────
 
 
