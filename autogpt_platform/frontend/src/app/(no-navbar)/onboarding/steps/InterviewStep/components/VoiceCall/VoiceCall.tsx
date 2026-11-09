@@ -99,14 +99,18 @@ export function VoiceCall({ call }: Props) {
           >
             Hang up
           </Button>
-          <Button
-            variant="ghost"
-            size="large"
-            leadingIcon={KeyboardIcon}
-            onClick={() => void call.typeInstead()}
-          >
-            Type instead
-          </Button>
+          {/* Not while a dropped call re-attaches: its words are still on
+              their way, and the relay holds the call for the re-attach. */}
+          {call.phase !== "reconnecting" && (
+            <Button
+              variant="ghost"
+              size="large"
+              leadingIcon={KeyboardIcon}
+              onClick={() => void call.typeInstead()}
+            >
+              Type instead
+            </Button>
+          )}
         </div>
       )}
 

@@ -19,6 +19,8 @@ export interface CallAudio {
   // Drops what is queued, when the person talks over Otto.
   flush(): void;
   onFrame(listener: ((frame: ArrayBuffer) => void) | null): void;
+  // Releases the microphone now, and keeps playing what Otto still says.
+  mute(): void;
   // Releases the microphone and closes the context once Otto has finished.
   finish(): void;
   close(): void;
@@ -56,9 +58,9 @@ export async function connectCallAudio(
   });
   // A worklet only runs while its output is pulled, so the capture feeds the
   // speakers through a silent gain.
-  const mute = context.createGain();
-  mute.gain.value = 0;
-  source.connect(capture).connect(mute).connect(context.destination);
+  const silence = context.createGain();
+  silence.gain.value = 0;
+  source.connect(capture).connect(silence).connect(context.destination);
 
   const player = new AudioWorkletNode(context, "pcm-player", {
     numberOfInputs: 0,
@@ -111,6 +113,7 @@ export async function connectCallAudio(
     onFrame(listener) {
       frameListener = isMicrophoneOpen ? listener : null;
     },
+    mute: stopMicrophone,
     finish() {
       stopMicrophone();
       const deadline = Date.now() + MAX_DRAIN_MS;

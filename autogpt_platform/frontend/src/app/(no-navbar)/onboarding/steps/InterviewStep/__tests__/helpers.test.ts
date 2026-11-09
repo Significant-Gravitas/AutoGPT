@@ -223,6 +223,35 @@ describe("a refusal because a voice call holds the interview", () => {
     });
   });
 
+  it("takes a call only by its id, never by any other text a refusal carries", () => {
+    expect(
+      refusalOf(
+        new ApiError("held", 409, {
+          detail: { code: "call_in_progress", call_id: "../../voice/x/end" },
+        }),
+      ).heldBy,
+    ).toBeNull();
+    expect(
+      refusalOf(
+        new ApiError("closed", 409, {
+          detail: {
+            code: "onboarding_interview_closed",
+            call_id: "C".repeat(32),
+          },
+        }),
+      ).heldBy,
+    ).toEqual({ kind: "closed", callId: null });
+    expect(
+      turnRefusalOf(
+        new Error(
+          JSON.stringify({
+            detail: { code: "onboarding_interview_closed", call_id: "x?y" },
+          }),
+        ),
+      ),
+    ).toBeNull();
+  });
+
   it("reads the call a refused typed turn names from the response the chat reports", () => {
     const refused = new Error(
       JSON.stringify({

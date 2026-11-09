@@ -98,12 +98,17 @@ class FakeAudioNode {
 
 let audioContexts: FakeAudioContext[] = [];
 let workletNodes: FakeAudioWorkletNode[] = [];
+let workletFailure: Error | null = null;
 
 export class FakeAudioContext {
   state: AudioContextState = "running";
   sampleRate = 48_000;
   destination = new FakeAudioNode();
-  audioWorklet = { addModule: vi.fn(async (_url: string) => undefined) };
+  audioWorklet = {
+    addModule: vi.fn(async (_url: string) => {
+      if (workletFailure) throw workletFailure;
+    }),
+  };
   resume = vi.fn(async () => {
     this.state = "running";
   });
@@ -179,6 +184,8 @@ export interface VoiceFakes {
   refuseMicrophone(name: string): void;
   // The browser denied the microphone before the page asked.
   denyMicrophonePermission(): void;
+  // The audio worklets fail to load, as on a browser that cannot run them.
+  failWorklets(): void;
   uninstall(): void;
 }
 
@@ -187,6 +194,7 @@ export function installVoiceFakes(): VoiceFakes {
   relaySockets = sockets;
   audioContexts = [];
   workletNodes = [];
+  workletFailure = null;
   PassThroughWebSocket = globalThis.WebSocket;
   vi.stubGlobal("WebSocket", FakeWebSocket);
   vi.stubGlobal("AudioContext", FakeAudioContext);
@@ -245,6 +253,9 @@ export function installVoiceFakes(): VoiceFakes {
     },
     denyMicrophonePermission() {
       permission = "denied";
+    },
+    failWorklets() {
+      workletFailure = new Error("The audio worklet could not be loaded");
     },
     uninstall() {
       vi.unstubAllGlobals();

@@ -16,6 +16,7 @@ import {
   claimOnboardingHandoff,
   clearOnboardingHandoff,
 } from "@/services/onboarding/brain-dump-handoff";
+import { forgetCallTickets } from "@/services/onboarding/voice-call-ticket";
 import { teardownPushSubscriptionBeforeLogout } from "@/services/push-notifications/helpers";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
@@ -288,6 +289,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     // expired the session cookies, or a tab could reload into the old session.
     broadcastLogout();
     clearOnboardingHandoff();
+    forgetCallTickets();
   }
 
   async function validateSessionInternal(

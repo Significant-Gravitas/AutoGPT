@@ -4,6 +4,7 @@ import {
   getEndOnboardingVoiceCallMockHandler202,
   getFinalizeBrainDumpMockHandler200,
   getFinishOnboardingVoiceCallMockHandler200,
+  getGetOnboardingInterviewMockHandler200,
   getStartOnboardingInterviewMockHandler200,
   getStartOnboardingVoiceCallMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
@@ -16,6 +17,7 @@ import { FrontendFlag } from "@/app/api/__generated__/models/frontendFlag";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import type { VoiceCallStartResponse } from "@/app/api/__generated__/models/voiceCallStartResponse";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { server } from "@/mocks/mock-server";
 import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
@@ -79,6 +81,8 @@ vi.mock(
     END_POLL_MS: 20,
     END_WAIT_MS: 500,
     START_RETRY_MS: 20,
+    HANGUP_FALLBACK_MS: 150,
+    OPENING_READ_TIMEOUT_MS: 400,
   }),
 );
 
@@ -292,6 +296,8 @@ const KICKOFF_ROW = row(
 );
 const GREETING_ROW = row(2, "assistant", GREETING);
 const TYPED_ANSWER_ROW = row(3, "user", "I run a bakery with five staff.");
+const TYPED_GOODBYE = "Thanks! Your team starts on the order emails first.";
+const TYPED_GOODBYE_ROW = row(4, "assistant", TYPED_GOODBYE);
 
 let latestCall: CallRecord | null;
 let callStates: Record<string, (CallRecord | "missing")[]>;
@@ -303,6 +309,7 @@ let statusReads: string[];
 let finishes: string[];
 let ends: string[];
 let typedStartCount: number;
+let typedReads: number;
 let skipBodies: unknown[];
 let requests: string[];
 let fakes: VoiceFakes;
@@ -372,6 +379,13 @@ function handlers() {
         return undefined;
       },
     ),
+    http.get("/api/proxy/api/onboarding/brain-dump/interview", () => {
+      typedReads += 1;
+      return HttpResponse.json(
+        { detail: "No onboarding interview" },
+        { status: 404 },
+      );
+    }),
     getStartOnboardingInterviewMockHandler200(() => {
       typedStartCount += 1;
       return { session_id: SESSION_ID, turn_id: null, stage: null };
@@ -430,7 +444,6 @@ function keepTicket(callId = CALL_ID) {
     TICKET_KEY,
     JSON.stringify({
       callId,
-      relayUrl: RELAY_URL,
       ticket: TICKET,
       caps: CAPS,
       startedAt: Date.now() - 30_000,
@@ -481,6 +494,32 @@ function endCall(socket: FakeWebSocket, reason: string) {
   });
 }
 
+// The relay's answer to a start: the socket opens, and the relay refuses.
+async function refusedStart(code: number, error?: Record<string, unknown>) {
+  const socket = await callOtto();
+  act(() => {
+    if (error) socket.relay({ type: "error", ...error });
+    socket.drop(code);
+  });
+  return socket;
+}
+
+// A finish of the call that answers only when the test lets it.
+function holdFinish() {
+  let answer: () => void = () => undefined;
+  const answered = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  server.use(
+    http.post(`${VOICE}/:callId/finish`, async ({ params }) => {
+      finishes.push(String(params.callId));
+      await answered;
+      return HttpResponse.json(ACCEPTED);
+    }),
+  );
+  return answer;
+}
+
 function expectPlanStep() {
   return waitFor(() => expect(screen.getByTestId("step-plan")).toBeDefined());
 }
@@ -513,6 +552,7 @@ beforeEach(() => {
   finishes = [];
   ends = [];
   typedStartCount = 0;
+  typedReads = 0;
   skipBodies = [];
   requests = [];
   vi.mocked(capturePostHogEvent).mockClear();
@@ -530,6 +570,7 @@ beforeEach(() => {
   useOnboardingWizardStore.getState().reset();
   resetCopilotChatRegistry();
   useCopilotStreamStore.getState().resetAll();
+  useCopilotUIStore.getState().setInitialPrompt(null);
   localStorage.clear();
   sessionStorage.clear();
 });
@@ -672,6 +713,122 @@ describe("onboarding interview by voice: opening", () => {
     expect(await screen.findByRole("button", { name: "Rejoin" })).toBeDefined();
     expect(screen.getByRole("button", { name: "End that call" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+  });
+
+  it("falls back to the choice when the latest call's read does not answer in time", async () => {
+    server.use(http.get(VOICE, () => new Promise<never>(() => undefined)));
+
+    render(<OnboardingPage />);
+
+    expect(
+      await screen.findByRole("button", { name: "Talk to Otto" }),
+    ).toBeDefined();
+  });
+
+  it("starts no call when the browser cannot run the call's audio", async () => {
+    fakes.failWorklets();
+
+    render(<OnboardingPage />);
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Talk to Otto" }));
+
+    expect(
+      await screen.findByText(
+        "We couldn't start the call. Try again, or type instead.",
+      ),
+    ).toBeDefined();
+    expect(mints).toBe(0);
+  });
+
+  it("lets go of the call's audio when the start is refused", async () => {
+    refuseCallStartOnce({
+      status: 429,
+      body: { detail: { message: "Calls used.", retry_after_seconds: 600 } },
+    });
+
+    render(<OnboardingPage />);
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Talk to Otto" }));
+    await screen.findByText(/You've made a few calls already/);
+
+    const context = fakes
+      .contexts()
+      .find((each) => each.audioWorklet.addModule.mock.calls.length > 0);
+    expect(context?.close).toHaveBeenCalled();
+    const microphone = await fakes.getUserMedia.mock.results[0].value;
+    expect(microphone.getTracks()[0].stop).toHaveBeenCalled();
+  });
+
+  it("shows the live call the relay names when it refuses a start for it", async () => {
+    render(<OnboardingPage />);
+
+    await refusedStart(1008, {
+      error: "call_in_progress",
+      call_id: OTHER_CALL_ID,
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "End that call" }),
+    ).toBeDefined();
+  });
+
+  it("tries the start again with the same token when the relay asks, then says calls are unavailable", async () => {
+    render(<OnboardingPage />);
+    let socket = await refusedStart(1013);
+    for (let retry = 0; retry < 3; retry += 1) {
+      socket = await relaySocketAfter(socket);
+      act(() => socket.accept());
+      act(() => socket.drop(1013));
+    }
+
+    expect(
+      await screen.findByText(
+        "Otto can't take calls right now. You can type instead, or try again in a moment.",
+      ),
+    ).toBeDefined();
+    expect(fakes.sockets).toHaveLength(4);
+    expect(fakes.sockets.map((each) => each.messages()[0])).toEqual(
+      Array.from({ length: 4 }, () => ({
+        type: "start",
+        token: TOKEN,
+        leg: "websocket",
+      })),
+    );
+    expect(mints).toBe(1);
+  });
+
+  it("says the start failed when the relay refuses it outright", async () => {
+    render(<OnboardingPage />);
+
+    await refusedStart(1008, { error: "token_invalid" });
+
+    expect(
+      await screen.findByText(
+        "We couldn't start the call. Try again, or type instead.",
+      ),
+    ).toBeDefined();
+  });
+
+  it("treats a refusal that names no call id as a start that failed", async () => {
+    refuseCallStartOnce({
+      status: 409,
+      body: { detail: { code: "call_in_progress", call_id: "../../x/end" } },
+    });
+
+    render(<OnboardingPage />);
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Talk to Otto" }));
+
+    expect(
+      await screen.findByText(
+        "We couldn't start the call. Try again, or type instead.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "End that call" })).toBeNull();
+    expect(requests.filter((path) => path.includes(".."))).toEqual([]);
   });
 
   it("ends the live call and starts a new one from End that call", async () => {
@@ -845,6 +1002,7 @@ describe("onboarding interview by voice: the call", () => {
       end_reason: null,
       hand_off: null,
     });
+    callStates[CALL_ID] = [{ ...latestCall, relay_url: RELAY_URL }];
 
     render(<OnboardingPage />);
     await userEvent
@@ -852,6 +1010,8 @@ describe("onboarding interview by voice: the call", () => {
       .click(await screen.findByRole("button", { name: "Rejoin" }));
 
     const socket = await relaySocketAfter();
+    // The socket the server named for the call, read at the click.
+    expect(socket.url).toBe(RELAY_URL);
     act(() => socket.accept());
     expect(socket.messages()[0]).toEqual({ type: "resume", ticket: TICKET });
     act(() => socket.relay({ type: "resumed", gap_s: 4.1 }));
@@ -859,6 +1019,207 @@ describe("onboarding interview by voice: the call", () => {
     expect(await screen.findByText("Reconnected")).toBeDefined();
     expect(screen.getByText("12 turns left")).toBeDefined();
     expect(mints).toBe(0);
+  });
+
+  it("counts the turns heard before a rejoin when the call ends", async () => {
+    keepTicket();
+    latestCall = callRecord({
+      status: "live",
+      end_reason: null,
+      hand_off: null,
+    });
+    callStates[CALL_ID] = [{ ...latestCall, relay_url: RELAY_URL }];
+
+    render(<OnboardingPage />);
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Rejoin" }));
+    const socket = await relaySocketAfter();
+    act(() => socket.accept());
+    act(() => socket.relay({ type: "resumed", gap_s: 4.1 }));
+    callStates[CALL_ID] = [callRecord({ interview: "taken" })];
+    endCall(socket, "finished");
+
+    await screen.findByRole("button", { name: "Meet your team" });
+    // The ticket kept 12 of 16 turns left: four were heard.
+    expect(tracked("interview_ended")).toEqual([
+      { mode: "voice", reason: "finished", elapsed_s: 92.4, turns: 4 },
+    ]);
+  });
+
+  it("offers no Type instead while a dropped call re-attaches", async () => {
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    act(() => socket.drop(1006));
+
+    expect(await screen.findByText("Reconnecting…")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Type instead" })).toBeNull();
+  });
+
+  it("keeps Skip away while the call is live and while its words are saved", async () => {
+    callStates[CALL_ID] = [
+      callRecord({ status: "transcribing", hand_off: null }),
+    ];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+
+    endCall(socket, "finished");
+
+    expect(await screen.findByText("Wrapping up…")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+  });
+
+  it("ends a live call through the REST API when the person types instead, then opens the typed interview", async () => {
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Type instead" }));
+
+    expect(await screen.findByText(GREETING)).toBeDefined();
+    expect(ends).toEqual([CALL_ID]);
+    // The page told the relay nothing: the end route ends the call.
+    expect(socket.messages().filter((m) => m.type === "hangup")).toEqual([]);
+    expect(tracked("interview_ended")).toEqual([
+      {
+        mode: "voice",
+        reason: "type_instead",
+        elapsed_s: expect.any(Number),
+        turns: 0,
+      },
+    ]);
+  });
+
+  it("loses a dropped call once the relay's window passes, then reads its words", async () => {
+    callStates[CALL_ID] = [callRecord({ end_reason: "client_gone" })];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    // The network is gone: the re-attach never opens.
+    act(() => socket.drop(1006));
+    expect(await screen.findByText("Reconnecting…")).toBeDefined();
+
+    expect(
+      await screen.findByText(
+        "The connection dropped.",
+        {},
+        { timeout: 6_000 },
+      ),
+    ).toBeDefined();
+    expect(screen.getByText("What you said so far is saved.")).toBeDefined();
+    expect(statusReads).toContain(CALL_ID);
+  });
+
+  it("shows the ending of a call that ended before the rejoin, and opens no socket", async () => {
+    keepTicket();
+    latestCall = callRecord({
+      status: "live",
+      end_reason: null,
+      hand_off: null,
+    });
+    callStates[CALL_ID] = [callRecord({ interview: "taken" })];
+
+    render(<OnboardingPage />);
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Rejoin" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(fakes.sockets).toEqual([]);
+  });
+
+  it("lets the call go on in the tab that rejoined it, and takes nothing back", async () => {
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    const microphone = await fakes.getUserMedia.mock.results[0].value;
+
+    // The relay closes this socket because another tab rejoined the call.
+    act(() => socket.drop(4000));
+
+    expect(
+      await screen.findByText(
+        "Your call with Otto went on in another tab or on another device.",
+      ),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "End that call" })).toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(fakes.sockets).toEqual([socket]);
+    expect(microphone.getTracks()[0].stop).toHaveBeenCalled();
+  });
+
+  it("stops the microphone as soon as the person hangs up", async () => {
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    const microphone = await fakes.getUserMedia.mock.results[0].value;
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Hang up" }));
+    act(() => fakes.speak());
+
+    expect(microphone.getTracks()[0].stop).toHaveBeenCalled();
+    expect(socket.frames()).toEqual([]);
+  });
+
+  it("says Hang up again on the socket a re-attach brings", async () => {
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Hang up" }));
+
+    act(() => socket.drop(1006));
+    const again = await relaySocketAfter(socket);
+    act(() => again.accept());
+    act(() => again.relay({ type: "resumed", gap_s: 0.8 }));
+
+    expect(again.messages()).toEqual([
+      { type: "resume", ticket: TICKET },
+      { type: "hangup" },
+    ]);
+  });
+
+  it("ends the call through the REST API when the relay does not answer Hang up", async () => {
+    render(<OnboardingPage />);
+    await liveCall();
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Hang up" }));
+    expect(ends).toEqual([]);
+
+    await waitFor(() => expect(ends).toEqual([CALL_ID]));
+  });
+
+  it("keeps the captions out of session replays", async () => {
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    act(() => socket.relay({ type: "user_text", text: "I run a bakery." }));
+
+    const captions = await screen.findByRole("log", { name: "Call captions" });
+    expect(captions.classList.contains("ph-no-capture")).toBe(true);
+  });
+
+  it("carries on with the call past frames the relay never sends", async () => {
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    act(() => {
+      socket.relay({ type: "agent_text" });
+      socket.relay({ type: "turn_complete", turn: 0, turns_left: "many" });
+      socket.relay({ type: "ready", call_id: CALL_ID });
+      socket.relay({ type: "agent_text", text: "Still here." });
+    });
+
+    expect(await screen.findByText("Still here.")).toBeDefined();
+    expect(screen.getByText("16 turns left")).toBeDefined();
+    expect(screen.getByText("You're on the call with Otto")).toBeDefined();
   });
 });
 
@@ -947,6 +1308,92 @@ describe("onboarding interview by voice: how a call ends", () => {
 
     expect(await screen.findByText(GREETING)).toBeDefined();
     expect(typedStartCount).toBe(1);
+  });
+
+  it("offers another call or typing, never Try again, for a call that kept nothing to hand off", async () => {
+    callStates[CALL_ID] = [
+      callRecord({
+        status: "failed",
+        hand_off: {
+          status: "failed",
+          input_mode: "typed",
+          error_code: "transcription_unavailable",
+        },
+      }),
+    ];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "finished");
+
+    expect(
+      await screen.findByText(
+        "We couldn't keep what you said on that call. You can call again or type instead.",
+      ),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Call again" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Type instead" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(screen.queryByText(/What you said is kept/)).toBeNull();
+  });
+
+  it("keeps Skip and Back away while a call's finish is on its way", async () => {
+    callStates[CALL_ID] = [callRecord({ end_reason: "vendor_error" })];
+    const answerFinish = holdFinish();
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    endCall(socket, "vendor_error");
+
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Meet your team" }));
+    await waitFor(() => expect(finishes).toEqual([CALL_ID]));
+
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
+    answerFinish();
+    await expectPlanStep();
+  });
+
+  it("never moves on when the step goes away while a call's finish is on its way", async () => {
+    callStates[CALL_ID] = [callRecord({ end_reason: "vendor_error" })];
+    const answerFinish = holdFinish();
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    endCall(socket, "vendor_error");
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Meet your team" }));
+    await waitFor(() => expect(finishes).toEqual([CALL_ID]));
+    const stepBefore = useOnboardingWizardStore.getState().currentStep;
+
+    cleanup();
+    answerFinish();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(stepBefore);
+    expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
+  });
+
+  it("reports an ending once per call in a tab", async () => {
+    callStates[CALL_ID] = [callRecord({ interview: "taken" })];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "finished");
+    await screen.findByRole("button", { name: "Meet your team" });
+
+    expect(
+      vi
+        .mocked(capturePostHogEvent)
+        .mock.calls.filter(([name]) => name === "ending_shown"),
+    ).toEqual([
+      [
+        "ending_shown",
+        { mode: "voice", ending: "team" },
+        { oncePerTabKey: `voice_ending_shown_${CALL_ID}_team` },
+      ],
+    ]);
   });
 
   it("finishes a call that was cut off before Meet your team moves on", async () => {
@@ -1115,6 +1562,46 @@ describe("onboarding interview by voice: one interview, typed or spoken", () => 
     expect(typedStartCount).toBe(2);
   });
 
+  it("takes a turn refused for a live call off the chat and back into the composer", async () => {
+    turnAnswer = {
+      status: 409,
+      body: { detail: { code: "call_in_progress", call_id: OTHER_CALL_ID } },
+    };
+    callStates[OTHER_CALL_ID] = [
+      callRecord({ call_id: OTHER_CALL_ID, status: "live", end_reason: null }),
+    ];
+    render(<OnboardingPage />);
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Type instead" }),
+    );
+    const input = await screen.findByPlaceholderText("Type your answer…");
+    await waitFor(() => expect(input).toHaveProperty("disabled", false));
+
+    await user.type(input, "One more thing.");
+    await user.keyboard("{Enter}");
+
+    const endThatCall = await screen.findByRole("button", {
+      name: "End that call",
+    });
+    expect(useCopilotUIStore.getState().initialPrompt).toBe("One more thing.");
+
+    turnAnswer = null;
+    await user.click(endThatCall);
+
+    const again = await screen.findByPlaceholderText("Type your answer…");
+    await waitFor(() =>
+      expect(again).toHaveProperty("value", "One more thing."),
+    );
+    // The refused message is not on the chat, and counts as no answer.
+    expect(
+      screen.queryByText("One more thing.", {
+        ignore: "textarea, script, style",
+      }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "I'm done" })).toBeNull();
+  });
+
   it("shows the call's ending, not an error on the chat, when a typed turn is refused for a call that took the interview", async () => {
     turnAnswer = {
       status: 409,
@@ -1169,6 +1656,83 @@ describe("onboarding interview by voice: one interview, typed or spoken", () => 
     // The typed interview is never read first.
     expect(typedStartCount).toBe(0);
   });
+
+  it("opens a finished typed interview as its transcript in a new tab, with no choice and no Skip", async () => {
+    typedMessages = [
+      KICKOFF_ROW,
+      GREETING_ROW,
+      TYPED_ANSWER_ROW,
+      TYPED_GOODBYE_ROW,
+    ];
+    let answerTypedRead: () => void = () => undefined;
+    const typedReadAnswered = new Promise<void>((resolve) => {
+      answerTypedRead = resolve;
+    });
+    server.use(
+      getGetOnboardingInterviewMockHandler200(async () => {
+        typedReads += 1;
+        await typedReadAnswered;
+        return { session_id: SESSION_ID, stage: "handed_off", is_over: true };
+      }),
+      getStartOnboardingInterviewMockHandler200(() => {
+        typedStartCount += 1;
+        return { session_id: SESSION_ID, turn_id: null, stage: "handed_off" };
+      }),
+    );
+
+    render(<OnboardingPage />);
+    await waitFor(() => expect(typedReads).toBe(1));
+    // The latest call was read first; while the typed interview is read,
+    // neither the choice nor its Skip shows.
+    expect(latestReads).toBe(1);
+    expect(screen.queryByRole("button", { name: "Talk to Otto" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+
+    answerTypedRead();
+
+    expect(
+      await screen.findByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(await screen.findByText(TYPED_GOODBYE)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Talk to Otto" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+    expect(screen.queryByPlaceholderText("Type your answer…")).toBeNull();
+  });
+
+  it.each([
+    ["has none", { status: 404, body: { detail: "No onboarding interview" } }],
+    ["cannot be read", { status: 503, body: { detail: "Unavailable" } }],
+    [
+      "is under way",
+      {
+        status: 200,
+        body: { session_id: SESSION_ID, stage: null, is_over: false },
+      },
+    ],
+  ])(
+    "shows the choice with Skip when the person's typed interview %s",
+    async (_case, answer: Answer) => {
+      server.use(
+        http.get("/api/proxy/api/onboarding/brain-dump/interview", () => {
+          typedReads += 1;
+          return HttpResponse.json(answer.body ?? {}, {
+            status: answer.status,
+          });
+        }),
+      );
+
+      render(<OnboardingPage />);
+
+      expect(
+        await screen.findByRole("button", { name: "Talk to Otto" }),
+      ).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "Skip for now" }),
+      ).toBeDefined();
+      expect(typedReads).toBe(1);
+      expect(typedStartCount).toBe(0);
+    },
+  );
 
   it("keeps Skip as path B, with nothing handed off, while the interview is open", async () => {
     render(<OnboardingPage />);

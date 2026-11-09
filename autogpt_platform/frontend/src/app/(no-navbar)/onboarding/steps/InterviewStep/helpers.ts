@@ -1,5 +1,6 @@
 import type { FinalizeResponse } from "@/app/api/__generated__/models/finalizeResponse";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { isCallId } from "@/services/onboarding/voice-call-ticket";
 import type { UIMessage } from "ai";
 
 // The stages the backend records once the interview takes no more turns.
@@ -37,6 +38,21 @@ export function isEndedStage(stage: string | null | undefined) {
 // something the person said.
 export function withoutKickoff<T extends UIMessage>(messages: T[]): T[] {
   return messages.filter((message) => !isHiddenMessage(message));
+}
+
+// The person's last message, which a refused turn leaves on the chat though
+// the server never took it: its id and its text.
+export function refusedMessageOf(
+  messages: UIMessage[],
+): { id: string; text: string } | null {
+  const refused = withoutKickoff(messages).findLast(
+    (message) => message.role === "user",
+  );
+  if (!refused) return null;
+  const text = refused.parts
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("");
+  return { id: refused.id, text };
 }
 
 export function hasAnswered(messages: UIMessage[]) {
@@ -145,7 +161,8 @@ export function turnRefusalOf(error: Error | undefined): HeldBy | null {
 function heldByOf(detail: unknown): HeldBy | null {
   if (!detail || typeof detail !== "object") return null;
   const { code, call_id } = detail as { code?: unknown; call_id?: unknown };
-  const callId = typeof call_id === "string" && call_id ? call_id : null;
+  // Only a call id is ever put in a request path.
+  const callId = isCallId(call_id) ? call_id : null;
   if (code === CALL_IN_PROGRESS) {
     return callId ? { kind: "call_in_progress", callId } : null;
   }

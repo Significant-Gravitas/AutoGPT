@@ -1,22 +1,20 @@
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   answerOf,
-  type CallTicket,
   callStartFailureCopy,
   callStartFailureOf,
   callStatusCopy,
   ENDING_POLL_MS,
   ENDING_WINDOW_MS,
   endedCopy,
-  forgetCallTicket,
   interviewOf,
+  isRelaySocketUrl,
   microphoneRefusalOf,
   parseRelayMessage,
   REATTACH_WINDOW_MS,
   ranToClose,
-  readCallTicket,
-  saveCallTicket,
+  secondsBetween,
   timeLeftCopy,
   turnsLeftCopy,
   voiceFinishOutcome,
@@ -58,13 +56,72 @@ describe("the relay's messages", () => {
     ).toEqual({ type: "turn_complete", turn: 2, turns_left: 13 });
   });
 
+  it("keeps only the fields each message carries", () => {
+    expect(
+      parseRelayMessage(
+        JSON.stringify({ type: "agent_text", text: "Hi.", note: "extra" }),
+      ),
+    ).toEqual({ type: "agent_text", text: "Hi." });
+    expect(
+      parseRelayMessage(
+        JSON.stringify({
+          type: "error",
+          error: "call_in_progress",
+          call_id: 7,
+        }),
+      ),
+    ).toEqual({ type: "error", error: "call_in_progress", call_id: null });
+  });
+
   it.each([
     ["text that is not JSON", "not json"],
     ["a JSON value that is not an object", "42"],
     ["a message type the relay never sends", '{"type":"note","text":"hi"}'],
     ["a message with no type", '{"text":"hi"}'],
+    [
+      "a ready with no caps",
+      '{"type":"ready","call_id":"c","resume":"t","leg":"websocket"}',
+    ],
+    [
+      "a ready whose caps are not numbers",
+      '{"type":"ready","call_id":"c","resume":"t","leg":"websocket","caps":{"max_call_s":"300"}}',
+    ],
+    [
+      "a ready on a leg the relay has none of",
+      '{"type":"ready","call_id":"c","resume":"t","leg":"carrier","caps":{}}',
+    ],
+    ["a caption with no text", '{"type":"agent_text"}'],
+    ["a caption whose text is not text", '{"type":"user_text","text":{"a":1}}'],
+    [
+      "a turn count that is not a number",
+      '{"type":"turn_complete","turn":1,"turns_left":"many"}',
+    ],
+    ["an ended with no elapsed time", '{"type":"ended","reason":"finished"}'],
+    ["a resumed with no gap", '{"type":"resumed"}'],
+    ["an error with no error", '{"type":"error","call_id":"c"}'],
   ])("ignores %s", (_case, data) => {
     expect(parseRelayMessage(data)).toBeNull();
+  });
+});
+
+describe("the relay socket the server names", () => {
+  it("is a secure socket", () => {
+    expect(isRelaySocketUrl("wss://api.example.com/voice/call")).toBe(true);
+  });
+
+  it("is a plain socket only on a page served over plain HTTP", () => {
+    // The test page is served from http://localhost.
+    expect(isRelaySocketUrl("ws://localhost:8010/voice/call")).toBe(
+      window.location.protocol === "http:",
+    );
+  });
+
+  it.each([
+    ["a page address", "https://api.example.com/voice/call"],
+    ["no address at all", "not a url"],
+    ["something other than text", 42],
+  ])("is never %s", (_case, value) => {
+    expect(isRelaySocketUrl(value)).toBe(false);
   });
 });
 
@@ -193,6 +250,45 @@ describe("what a call's record answers", () => {
     ).toEqual({ kind: "retry", cutOff: true, reason: "vendor_error" });
   });
 
+  it.each([
+    ["transcription_unavailable"],
+    ["recording_unavailable"],
+    ["some_new_failure"],
+  ])(
+    "offers another call or typing for a call that kept nothing to hand off (%s)",
+    (code) => {
+      for (const reason of ["finished", "client_gone"]) {
+        expect(
+          answerOf(
+            call({
+              status: "failed",
+              end_reason: reason,
+              hand_off: failed(code),
+            }),
+          ),
+        ).toEqual({ kind: "unsaved", reason });
+      }
+    },
+  );
+
+  it.each([
+    ["quality_check_unavailable"],
+    ["rate_limited"],
+    ["personalization_unavailable"],
+    [null],
+  ])(
+    "offers Try again only for words the call kept and nobody ruled on (%s)",
+    (code) => {
+      expect(
+        answerOf(call({ status: "failed", hand_off: failed(code) })),
+      ).toEqual({
+        kind: "retry",
+        cutOff: false,
+        reason: "finished",
+      });
+    },
+  );
+
   it("knows only the two words the record can say on the interview", () => {
     expect(interviewOf(call({ interview: "taken" }))).toBe("taken");
     expect(interviewOf(call({ interview: "superseded" }))).toBe("superseded");
@@ -223,6 +319,12 @@ describe("what a finish of a call answers", () => {
     expect(voiceFinishOutcome(failed("rate_limited"))).toBeNull();
     expect(voiceFinishOutcome(failed(null))).toBeNull();
   });
+
+  it("says when the call kept nothing to hand off", () => {
+    expect(voiceFinishOutcome(failed("transcription_unavailable"))).toBe(
+      "unsaved",
+    );
+  });
 });
 
 describe("the call's copy", () => {
@@ -231,6 +333,10 @@ describe("the call's copy", () => {
       "We didn't hear anything for a while, so the call ended.",
     );
     expect(endedCopy("something_new")).toBe("The call ended.");
+    // Ended through the end route, by the person or from another device.
+    expect(endedCopy("superseded")).toBe(
+      "The call ended before Otto could finish.",
+    );
     expect(endedCopy(null)).toBe("The call ended.");
   });
 
@@ -261,6 +367,11 @@ describe("the call's copy", () => {
         isHangingUp: false,
       }),
     ).toBeNull();
+  });
+
+  it("counts a call's length to a tenth of a second", () => {
+    expect(secondsBetween(1_000, 93_440)).toBe(92.4);
+    expect(secondsBetween(5_000, 1_000)).toBe(0);
   });
 
   it("counts the time and the turns left", () => {
@@ -317,53 +428,6 @@ describe("a refused microphone", () => {
     expect(microphoneRefusalOf({ name: "SecurityError" })).toBe("blocked");
     expect(microphoneRefusalOf({ name: "NotFoundError" })).toBe("unavailable");
     expect(microphoneRefusalOf("no name at all")).toBe("unavailable");
-  });
-});
-
-describe("the call's ticket, kept for a reload", () => {
-  const USER = "ticket-user";
-  const ticket: CallTicket = {
-    callId: CALL_ID,
-    relayUrl: "wss://relay.test/voice/call",
-    ticket: "resume-ticket",
-    caps: {
-      max_call_s: 300,
-      soft_wrap_s: 30,
-      max_agent_turns: 16,
-      soft_wrap_turns: 2,
-      idle_s: 20,
-    },
-    startedAt: Date.now(),
-    turnsLeft: 9,
-  };
-
-  afterEach(() => sessionStorage.clear());
-
-  it("gives the ticket back for its own call", () => {
-    saveCallTicket(USER, ticket);
-    expect(readCallTicket(USER, CALL_ID)).toEqual(ticket);
-  });
-
-  it("gives nothing for another call, or another person", () => {
-    saveCallTicket(USER, ticket);
-    expect(readCallTicket(USER, "d".repeat(32))).toBeNull();
-    expect(readCallTicket("someone-else", CALL_ID)).toBeNull();
-  });
-
-  it("gives nothing once the ticket has outlived the call", () => {
-    saveCallTicket(USER, { ...ticket, startedAt: Date.now() - 361_000 });
-    expect(readCallTicket(USER, CALL_ID)).toBeNull();
-  });
-
-  it("gives nothing for a ticket that cannot be read", () => {
-    sessionStorage.setItem(`autogpt:onboarding-voice-call:${USER}`, "{oops");
-    expect(readCallTicket(USER, CALL_ID)).toBeNull();
-  });
-
-  it("forgets the ticket once the call is over", () => {
-    saveCallTicket(USER, ticket);
-    forgetCallTicket(USER);
-    expect(readCallTicket(USER, CALL_ID)).toBeNull();
   });
 });
 

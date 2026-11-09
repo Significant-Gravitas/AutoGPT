@@ -1,8 +1,8 @@
 import type { FinalizeResponse } from "@/app/api/__generated__/models/finalizeResponse";
-import type { VoiceCallCaps } from "@/app/api/__generated__/models/voiceCallCaps";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
+import { isVoiceCallCaps } from "@/services/onboarding/voice-call-ticket";
 import { describeWait, type Refusal } from "../../helpers";
-import type { RelayMessage, RelayMessageType } from "./protocol";
+import type { CallLeg, RelayMessage } from "./protocol";
 
 // A dropped socket may re-attach to its call for this long, as the relay
 // holds the call for it, trying this often.
@@ -17,40 +17,119 @@ export const ENDING_SLOW_POLL_MS = 5_000;
 // A call someone asked to end leaves the live state within a second or so.
 export const END_POLL_MS = 1_000;
 export const END_WAIT_MS = 10_000;
-// A relay that asks the browser to try again (1013) is retried with the same
-// start token, which stays good for that.
+// A relay that asks the browser to try again (1013) leaves the start token
+// good, so the same token is tried again, a few times.
 export const START_RETRIES = 3;
 export const START_RETRY_MS = 1_500;
 // "Reconnected" stays up this long after a re-attach.
 export const RESUMED_NOTICE_MS = 4_000;
+// A Hang up the relay has not answered with `ended` this soon is sent again
+// through the REST API's end route.
+export const HANGUP_FALLBACK_MS = 5_000;
+// A read the step opens on that has not answered this soon is given up, and
+// the choice shows.
+export const OPENING_READ_TIMEOUT_MS = 8_000;
 
-const RELAY_MESSAGE_TYPES = new Set<RelayMessageType>([
-  "ready",
-  "leg",
-  "user_text",
-  "agent_text",
-  "interrupted",
-  "turn_complete",
-  "wrap_up",
-  "resumed",
-  "ended",
-  "error",
-  "pong",
-]);
-
+// A message from the relay, read field by field, or null for anything the
+// relay does not send: a frame of another shape never reaches the handlers.
 export function parseRelayMessage(data: string): RelayMessage | null {
-  let message: unknown;
+  let value: unknown;
   try {
-    message = JSON.parse(data);
+    value = JSON.parse(data);
   } catch {
     return null;
   }
-  if (!message || typeof message !== "object") return null;
-  const type = (message as { type?: unknown }).type;
-  return typeof type === "string" &&
-    RELAY_MESSAGE_TYPES.has(type as RelayMessageType)
-    ? (message as RelayMessage)
-    : null;
+  if (!value || typeof value !== "object") return null;
+  const message = value as Record<string, unknown>;
+  switch (message.type) {
+    case "ready":
+      return typeof message.call_id === "string" &&
+        isVoiceCallCaps(message.caps) &&
+        typeof message.resume === "string" &&
+        isLeg(message.leg)
+        ? {
+            type: "ready",
+            call_id: message.call_id,
+            caps: message.caps,
+            resume: message.resume,
+            leg: message.leg,
+          }
+        : null;
+    case "leg":
+      return isLeg(message.leg) ? { type: "leg", leg: message.leg } : null;
+    case "user_text":
+    case "agent_text":
+      return typeof message.text === "string"
+        ? { type: message.type, text: message.text }
+        : null;
+    case "interrupted":
+      return { type: "interrupted" };
+    case "turn_complete":
+      return isCount(message.turn) && isCount(message.turns_left)
+        ? {
+            type: "turn_complete",
+            turn: message.turn,
+            turns_left: message.turns_left,
+          }
+        : null;
+    case "wrap_up":
+      return typeof message.reason === "string"
+        ? { type: "wrap_up", reason: message.reason }
+        : null;
+    case "resumed":
+      return isCount(message.gap_s)
+        ? { type: "resumed", gap_s: message.gap_s }
+        : null;
+    case "ended":
+      return typeof message.reason === "string" && isCount(message.elapsed_s)
+        ? {
+            type: "ended",
+            reason: message.reason,
+            elapsed_s: message.elapsed_s,
+          }
+        : null;
+    case "error":
+      return typeof message.error === "string"
+        ? {
+            type: "error",
+            error: message.error,
+            call_id:
+              typeof message.call_id === "string" ? message.call_id : null,
+          }
+        : null;
+    case "pong":
+      return {
+        type: "pong",
+        id:
+          typeof message.id === "number" || typeof message.id === "string"
+            ? message.id
+            : null,
+      };
+    default:
+      return null;
+  }
+}
+
+function isLeg(value: unknown): value is CallLeg {
+  return value === "websocket" || value === "livekit";
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+// The relay's call socket as the server named it: a secure socket, or a plain
+// one only for a page served over plain HTTP (a local install).
+export function isRelaySocketUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol === "wss:") return true;
+  return url.protocol === "ws:" && window.location.protocol === "http:";
 }
 
 // --- The call's screen ------------------------------------------------------
@@ -81,6 +160,8 @@ export interface HeldCall {
   // After "End that call": the typed start or the new call the live one
   // refused, or the ended call's own ending.
   then: "type" | "call" | "show";
+  // This tab had the call until another tab or device rejoined it.
+  wentElsewhere: boolean;
 }
 
 interface CallStatus {
@@ -119,7 +200,7 @@ export function callStatusCopy({
   }
 }
 
-// --- How a call ended (research/17 §2.2 step 9, §2.6) ---------------------
+// --- How a call ended -----------------------------------------------------
 
 // A call that ran to its close: Otto's goodbye, the server's caps, the scope
 // rule or the person's Hang up. Its accepted words take the interview. Every
@@ -149,6 +230,13 @@ const VERDICTS_ON_THE_WORDS = new Set([
   "no_usable_speech",
   "insufficient_content",
 ]);
+// The pipeline never ruled on words the call kept: the finish route hands
+// them off again. Any other failure kept nothing to hand off.
+const HANDED_OFF_AGAIN = new Set([
+  "quality_check_unavailable",
+  "rate_limited",
+  "personalization_unavailable",
+]);
 
 export type CallEnding =
   // "Meet your team". `path` is the one the hand-off decided; null when the
@@ -161,6 +249,8 @@ export type CallEnding =
   // The pipeline never ruled on the words: "Try again" through the finish
   // route, beside the other ways on after a cut-off call.
   | { kind: "retry"; cutOff: boolean; reason: string | null }
+  // The call kept nothing to hand off: "Call again" and "Type instead".
+  | { kind: "unsaved"; reason: string | null }
   // Nothing is left to read of the call.
   | { kind: "missing" };
 
@@ -173,8 +263,7 @@ export function isSettled(call: VoiceCallStatusResponse) {
 }
 
 // Who owns the interview, as the call's record says: its words took it, or
-// a take the person made after it did (research/17 §2.6). Absent while
-// neither has happened.
+// a take the person made after it did. Absent while neither has happened.
 export type CallInterview = "taken" | "superseded";
 
 export function interviewOf(
@@ -200,10 +289,10 @@ export function answerOf(
   const closed = taken || interview === "taken" || ranToClose(call.end_reason);
   const reason = call.end_reason ?? null;
   if (call.status === "failed") {
-    if (VERDICTS_ON_THE_WORDS.has(call.hand_off?.error_code ?? "")) {
-      return { kind: "insufficient" };
-    }
-    return { kind: "retry", cutOff: !closed, reason };
+    const failure = failureOf(call.hand_off?.error_code ?? null);
+    if (failure === "insufficient") return { kind: "insufficient" };
+    if (failure === "retry") return { kind: "retry", cutOff: !closed, reason };
+    return { kind: "unsaved", reason };
   }
   if (closed && call.status === "handed_off") {
     const path = call.hand_off ? voiceFinishOutcome(call.hand_off) : null;
@@ -220,12 +309,20 @@ export function answerOf(
 // again.
 export function voiceFinishOutcome(
   response: FinalizeResponse,
-): "A" | "insufficient" | null {
+): "A" | "insufficient" | "unsaved" | null {
   if (response.status !== "failed") return "A";
-  const code = response.error_code ?? "";
+  const code = response.error_code ?? null;
   if (code === SUPERSEDED) return "A";
-  if (VERDICTS_ON_THE_WORDS.has(code)) return "insufficient";
-  return null;
+  const failure = failureOf(code);
+  return failure === "retry" ? null : failure;
+}
+
+// A failed hand-off, read for what the person can do next: a verdict on the
+// words; words kept to hand off again; or nothing kept.
+function failureOf(code: string | null): "insufficient" | "retry" | "unsaved" {
+  if (code !== null && VERDICTS_ON_THE_WORDS.has(code)) return "insufficient";
+  if (code === null || HANDED_OFF_AGAIN.has(code)) return "retry";
+  return "unsaved";
 }
 
 const ENDED_COPY: Record<string, string> = {
@@ -239,7 +336,7 @@ const ENDED_COPY: Record<string, string> = {
   idle: "We didn't hear anything for a while, so the call ended.",
   vendor_error: "Otto's line dropped.",
   server_restart: "Our server restarted during the call.",
-  superseded: "The call was ended from another tab or device.",
+  superseded: "The call ended before Otto could finish.",
   crashed: "Our server stopped during the call.",
 };
 
@@ -288,65 +385,6 @@ export function microphoneRefusalOf(error: unknown): MicrophoneRefusal {
     : "unavailable";
 }
 
-// --- The call's resume ticket, kept for a reload in this tab ---------------
-
-const STORED_CALL_KEY_PREFIX = "autogpt:onboarding-voice-call:";
-// A ticket outlives the call cap by a minute.
-const TICKET_GRACE_MS = 60_000;
-
-export interface CallTicket {
-  callId: string;
-  relayUrl: string;
-  ticket: string;
-  caps: VoiceCallCaps;
-  // When the call went live (epoch ms): its clock runs from here.
-  startedAt: number;
-  turnsLeft: number;
-}
-
-export function saveCallTicket(userId: string, call: CallTicket) {
-  try {
-    sessionStorage.setItem(
-      `${STORED_CALL_KEY_PREFIX}${userId}`,
-      JSON.stringify(call),
-    );
-  } catch {
-    // A call goes on without its ticket; it just cannot be rejoined.
-  }
-}
-
-export function readCallTicket(
-  userId: string,
-  callId: string,
-): CallTicket | null {
-  let call: CallTicket;
-  try {
-    const raw = sessionStorage.getItem(`${STORED_CALL_KEY_PREFIX}${userId}`);
-    if (!raw) return null;
-    call = JSON.parse(raw) as CallTicket;
-  } catch {
-    return null;
-  }
-  if (
-    call?.callId !== callId ||
-    typeof call.ticket !== "string" ||
-    typeof call.relayUrl !== "string"
-  ) {
-    return null;
-  }
-  const expiresAt =
-    call.startedAt + call.caps.max_call_s * 1000 + TICKET_GRACE_MS;
-  return Date.now() < expiresAt ? call : null;
-}
-
-export function forgetCallTicket(userId: string) {
-  try {
-    sessionStorage.removeItem(`${STORED_CALL_KEY_PREFIX}${userId}`);
-  } catch {
-    // Nothing kept, nothing to forget.
-  }
-}
-
 // --- Captions ---------------------------------------------------------------
 
 export interface CaptionLine {
@@ -371,6 +409,12 @@ export function withCaption(
 }
 
 // --- The clock and the turns ------------------------------------------------
+
+// Seconds from *start* (epoch ms) to *end*, to a tenth, as the relay counts
+// a call's length.
+export function secondsBetween(start: number, end: number) {
+  return Math.round(Math.max(0, end - start) / 100) / 10;
+}
 
 export function timeLeftCopy(msLeft: number) {
   const seconds = Math.max(0, Math.round(msLeft / 1000));

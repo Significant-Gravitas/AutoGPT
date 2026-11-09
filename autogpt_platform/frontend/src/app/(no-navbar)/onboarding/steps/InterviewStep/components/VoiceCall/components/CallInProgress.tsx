@@ -18,9 +18,7 @@ export function CallInProgress({ held, onRejoin, onEnd }: Props) {
     <div className="flex w-full max-w-md flex-col items-center gap-4">
       <CallAura levels={null} isActive={false} />
       <Text variant="body" align="center">
-        {held.canRejoin
-          ? "Your call with Otto is still going."
-          : "Your call with Otto is still going in another tab or on another device."}
+        {heldCopy(held)}
       </Text>
       <div className="flex flex-wrap items-center justify-center gap-3">
         {held.canRejoin && (
@@ -38,4 +36,13 @@ export function CallInProgress({ held, onRejoin, onEnd }: Props) {
       </div>
     </div>
   );
+}
+
+function heldCopy(held: HeldCall) {
+  if (held.wentElsewhere) {
+    return "Your call with Otto went on in another tab or on another device.";
+  }
+  return held.canRejoin
+    ? "Your call with Otto is still going."
+    : "Your call with Otto is still going in another tab or on another device.";
 }

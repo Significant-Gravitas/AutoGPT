@@ -18,8 +18,8 @@ interface Props {
   onSkip: () => void;
 }
 
-// What became of a call's words, read by how the call ended first and the
-// hand-off's answer second (research/17 §2.2 step 9).
+// What became of a call's words: read from how the call ended first, then
+// from the hand-off's answer.
 export function CallEnded({
   ending,
   endReason,
@@ -44,10 +44,12 @@ export function CallEnded({
     );
   }
 
+  // With nothing to hand off, calling again leads.
+  const leadsWithCall = ending.kind === "missing" || ending.kind === "unsaved";
   const otherWays = (
     <>
       <Button
-        variant="secondary"
+        variant={leadsWithCall ? "primary" : "secondary"}
         size="large"
         disabled={isLeaving}
         onClick={onCallAgain}
@@ -87,6 +89,12 @@ export function CallEnded({
           yet.
         </Text>
       )}
+      {ending.kind === "unsaved" && (
+        <Text variant="body" align="center">
+          We couldn&apos;t keep what you said on that call. You can call again
+          or type instead.
+        </Text>
+      )}
 
       <div className="flex flex-wrap items-center justify-center gap-3">
         {(ending.kind === "team" || ending.kind === "lost") && (
@@ -113,6 +121,7 @@ export function CallEnded({
         )}
         {(ending.kind === "lost" ||
           ending.kind === "missing" ||
+          ending.kind === "unsaved" ||
           (ending.kind === "retry" && ending.cutOff)) &&
           otherWays}
       </div>

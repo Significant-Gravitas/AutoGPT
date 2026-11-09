@@ -1,4 +1,5 @@
 import {
+  endOnboardingVoiceCall,
   finishOnboardingVoiceCall,
   getLatestOnboardingVoiceCall,
   startOnboardingVoiceCall,
@@ -6,6 +7,13 @@ import {
 import type { VoiceCallCaps } from "@/app/api/__generated__/models/voiceCallCaps";
 import type { VoiceCallStartResponse } from "@/app/api/__generated__/models/voiceCallStartResponse";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
+import {
+  type CallTicket,
+  forgetCallTicket,
+  isCallId,
+  readCallTicket,
+  saveCallTicket,
+} from "@/services/onboarding/voice-call-ticket";
 import { useEffect, useRef, useState } from "react";
 import { trackInterview } from "../../../../tracking";
 import { finishFailureOf, refusalOf, type StartFailure } from "../../helpers";
@@ -34,22 +42,22 @@ import {
   type CallEnding,
   type CallPhase,
   type CallStartFailure,
-  type CallTicket,
   type CaptionLine,
   callStartFailureOf,
   ENDING_POLL_MS,
   ENDING_SLOW_POLL_MS,
   ENDING_WINDOW_MS,
-  forgetCallTicket,
+  HANGUP_FALLBACK_MS,
   type HeldCall,
+  OPENING_READ_TIMEOUT_MS,
+  isRelaySocketUrl,
   type MicrophoneRefusal,
   microphoneRefusalOf,
   parseRelayMessage,
   REATTACH_RETRY_MS,
   REATTACH_WINDOW_MS,
-  readCallTicket,
   RESUMED_NOTICE_MS,
-  saveCallTicket,
+  secondsBetween,
   START_RETRIES,
   START_RETRY_MS,
   timeLeftCopy,
@@ -60,6 +68,7 @@ import {
   CALL_IN_PROGRESS,
   CLOSE_NO_CALL,
   CLOSE_POLICY,
+  CLOSE_REPLACED,
   CLOSE_TRY_AGAIN,
   type ClientMessage,
   type RelayMessage,
@@ -147,11 +156,17 @@ export function useVoiceCall(args: Args) {
     const attempt = ++conn.attempt;
     setPhase("checking");
     let call: VoiceCallStatusResponse | null = null;
+    const giveUp = new AbortController();
+    const timer = setTimeout(() => giveUp.abort(), OPENING_READ_TIMEOUT_MS);
     try {
-      const response = await getLatestOnboardingVoiceCall();
+      const response = await getLatestOnboardingVoiceCall({
+        signal: giveUp.signal,
+      });
       if (response.status === 200) call = response.data;
     } catch {
-      // No call yet, or none that can be read.
+      // No call yet, none that can be read, or no answer in time.
+    } finally {
+      clearTimeout(timer);
     }
     if (attempt !== conn.attempt) return;
     if (!call) {
@@ -208,35 +223,20 @@ export function useVoiceCall(args: Args) {
       if (attempt === conn.attempt) refuseMicrophone(error);
       return;
     }
-    function releaseDevices() {
-      stopTracks(microphone);
-      closeContext(context);
-    }
     // A later click took over: only one start may spend a call.
     if (attempt !== conn.attempt) {
-      releaseDevices();
+      stopTracks(microphone);
+      closeContext(context);
       return;
     }
-    let started: VoiceCallStartResponse;
-    try {
-      const response = await startOnboardingVoiceCall();
-      if (response.status !== 200) throw new Error("No call started");
-      started = response.data;
-    } catch (error) {
-      releaseDevices();
-      if (attempt === conn.attempt) refuseStart(error);
-      return;
-    }
-    if (attempt !== conn.attempt) {
-      releaseDevices();
-      return;
-    }
-    argsRef.current.onCallStarted();
+    // The audio graph is built before the call is started, so a browser
+    // that cannot run it never spends a call from the person's allowance.
     let audio: CallAudio;
     try {
       audio = await connectCallAudio(context, microphone);
     } catch {
-      releaseDevices();
+      stopTracks(microphone);
+      closeContext(context);
       if (attempt !== conn.attempt) return;
       setStartFailure({ kind: "failed" });
       setPhase("idle");
@@ -246,6 +246,27 @@ export function useVoiceCall(args: Args) {
       audio.close();
       return;
     }
+    let started: VoiceCallStartResponse;
+    try {
+      const response = await startOnboardingVoiceCall();
+      if (
+        response.status !== 200 ||
+        !isCallId(response.data.call_id) ||
+        !isRelaySocketUrl(response.data.relay_url)
+      ) {
+        throw new Error("No call started");
+      }
+      started = response.data;
+    } catch (error) {
+      audio.close();
+      if (attempt === conn.attempt) refuseStart(error);
+      return;
+    }
+    if (attempt !== conn.attempt) {
+      audio.close();
+      return;
+    }
+    argsRef.current.onCallStarted();
     attachAudio(audio);
     conn.call = {
       callId: started.call_id,
@@ -418,6 +439,12 @@ export function useVoiceCall(args: Args) {
     const conn = connRef.current;
     conn.isReady = true;
     conn.dropDeadline = null;
+    // A Hang up the drop may have swallowed is said again.
+    if (conn.isHangingUp) {
+      conn.socket?.send(
+        JSON.stringify({ type: "hangup" } satisfies ClientMessage),
+      );
+    }
     setHeld(null);
     setResumedAt(Date.now());
     setNow(Date.now());
@@ -430,6 +457,7 @@ export function useVoiceCall(args: Args) {
     const call = conn.call;
     conn.call = null;
     conn.isReady = false;
+    conn.isHangingUp = false;
     conn.dropDeadline = null;
     clearTimers(conn);
     finishAudio();
@@ -453,6 +481,13 @@ export function useVoiceCall(args: Args) {
     // The call ended, or this page let it go.
     if (!call) return;
     conn.isReady = false;
+    // Another tab or device rejoined the call: it goes on there, and this
+    // tab lets it go rather than taking it back.
+    if (code === CLOSE_REPLACED) {
+      dropCall();
+      showHeld(call.callId, "show", { wentElsewhere: true });
+      return;
+    }
     if (!call.ticket) {
       onStartClosed(code, first);
       return;
@@ -469,7 +504,7 @@ export function useVoiceCall(args: Args) {
     const conn = connRef.current;
     const call = conn.call;
     const relayError = conn.relayError;
-    if (relayError?.error === CALL_IN_PROGRESS && relayError.callId) {
+    if (relayError?.error === CALL_IN_PROGRESS && isCallId(relayError.callId)) {
       dropCall();
       showHeld(relayError.callId, "call");
       return;
@@ -520,6 +555,7 @@ export function useVoiceCall(args: Args) {
   function openDropWindow(call: OpenCall) {
     const conn = connRef.current;
     const drop = ++conn.drop;
+    conn.droppedAt = Date.now();
     conn.dropDeadline = Date.now() + REATTACH_WINDOW_MS;
     setResumedAt(null);
     setPhase("reconnecting");
@@ -538,9 +574,14 @@ export function useVoiceCall(args: Args) {
     const conn = connRef.current;
     const call = conn.call;
     if (!call) return;
-    conn.lostCall = { turns: call.turns, startedAt: call.startedAt };
+    conn.lostCall = {
+      turns: call.turns,
+      startedAt: call.startedAt,
+      droppedAt: conn.droppedAt ?? Date.now(),
+    };
     conn.call = null;
     conn.isReady = false;
+    conn.isHangingUp = false;
     conn.dropDeadline = null;
     clearTimers(conn);
     closeSocket(conn);
@@ -601,7 +642,7 @@ export function useVoiceCall(args: Args) {
         mode: "voice",
         reason: call.end_reason,
         elapsed_s: lost.startedAt
-          ? Math.round((Date.now() - lost.startedAt) / 1000)
+          ? secondsBetween(lost.startedAt, lost.droppedAt)
           : null,
         turns: lost.turns,
       });
@@ -610,17 +651,38 @@ export function useVoiceCall(args: Args) {
     setEnding(next);
     setFinishFailure(null);
     setPhase("ended");
-    trackInterview("ending_shown", { mode: "voice", ending: next.kind });
+    trackInterview(
+      "ending_shown",
+      { mode: "voice", ending: next.kind },
+      {
+        oncePerTabKey: `voice_ending_shown_${conn.shownCallId ?? "none"}_${next.kind}`,
+      },
+    );
   }
 
   // --- The person's choices -------------------------------------------------
 
+  // The person's own close. The microphone stops at once; a re-attach says
+  // it again; and a relay that has not ended the call a few seconds later is
+  // asked to through the REST API.
   function hangUp() {
     const conn = connRef.current;
+    const call = conn.call;
     const socket = conn.socket;
-    if (!conn.isReady || socket?.readyState !== WebSocket.OPEN) return;
+    if (!call || !conn.isReady || socket?.readyState !== WebSocket.OPEN) return;
+    conn.isHangingUp = true;
     setIsHangingUp(true);
+    conn.audio?.mute();
     socket.send(JSON.stringify({ type: "hangup" } satisfies ClientMessage));
+    later(
+      conn,
+      () => {
+        if (conn.call === call) {
+          void endOnboardingVoiceCall(call.callId).catch(() => undefined);
+        }
+      },
+      HANGUP_FALLBACK_MS,
+    );
   }
 
   // Leaves the call for the typed interview. A live call is ended first, so
@@ -633,6 +695,14 @@ export function useVoiceCall(args: Args) {
     conn.poll += 1;
     const call = conn.call;
     if (call) {
+      trackInterview("interview_ended", {
+        mode: "voice",
+        reason: "type_instead",
+        elapsed_s: call.startedAt
+          ? secondsBetween(call.startedAt, Date.now())
+          : null,
+        turns: call.turns,
+      });
       dropCall();
       forgetTicket();
       setPhase("ending_call");
@@ -678,15 +748,18 @@ export function useVoiceCall(args: Args) {
   // the hand-off as it stands, and read the answer for a call.
   async function finishCall(callId: string) {
     const conn = connRef.current;
+    const attempt = ++conn.attempt;
     conn.isLeaving = true;
     setIsLeaving(true);
     setFinishFailure(null);
-    let outcome: "A" | "insufficient" | null = null;
+    let outcome: ReturnType<typeof voiceFinishOutcome> = null;
     try {
       const response = await finishOnboardingVoiceCall(callId);
       outcome =
         response.status === 200 ? voiceFinishOutcome(response.data) : null;
     } catch (error) {
+      // The step went away while the finish was on its way.
+      if (attempt !== conn.attempt) return;
       conn.isLeaving = false;
       setIsLeaving(false);
       // The call's words are not ready to hand off yet.
@@ -698,6 +771,7 @@ export function useVoiceCall(args: Args) {
       setFinishFailure(finishFailureOf(error));
       return;
     }
+    if (attempt !== conn.attempt) return;
     if (outcome === "A") {
       await argsRef.current.onLeave("A");
       return;
@@ -706,6 +780,10 @@ export function useVoiceCall(args: Args) {
     setIsLeaving(false);
     if (outcome === "insufficient") {
       settle({ kind: "insufficient" }, null);
+      return;
+    }
+    if (outcome === "unsaved") {
+      settle({ kind: "unsaved", reason: endReason }, null);
       return;
     }
     setFinishFailure({ kind: "failed" });
@@ -724,7 +802,11 @@ export function useVoiceCall(args: Args) {
 
   // A live call of the person's holds the interview: rejoin it with the
   // ticket this tab kept, or end it.
-  function showHeld(callId: string, then: HeldCall["then"]) {
+  function showHeld(
+    callId: string,
+    then: HeldCall["then"],
+    { wentElsewhere = false }: { wentElsewhere?: boolean } = {},
+  ) {
     const conn = connRef.current;
     conn.hasChecked = true;
     conn.attempt += 1;
@@ -734,6 +816,7 @@ export function useVoiceCall(args: Args) {
       callId,
       canRejoin: !!userId && readCallTicket(userId, callId) !== null,
       then,
+      wentElsewhere,
     });
     setPhase("held");
   }
@@ -766,6 +849,29 @@ export function useVoiceCall(args: Args) {
     const conn = connRef.current;
     const attempt = beginAttempt();
     setPhase("reconnecting");
+    // The socket to rejoin on is the server's word, read now; the call may
+    // also have ended meanwhile.
+    const call = await readStatus(kept.callId);
+    if (attempt !== conn.attempt) {
+      closeContext(context);
+      return;
+    }
+    const isLive =
+      call !== null &&
+      call !== "missing" &&
+      (call.status === "connecting" || call.status === "live");
+    const relayUrl = isLive ? relayUrlOf(call) : null;
+    if (!relayUrl) {
+      closeContext(context);
+      if (call === null) {
+        setPhase("held");
+        return;
+      }
+      setHeld(null);
+      setPhase("wrapping_up");
+      void awaitEnding(kept.callId);
+      return;
+    }
     let microphone: MediaStream;
     try {
       microphone = await openMicrophone();
@@ -788,21 +894,21 @@ export function useVoiceCall(args: Args) {
       return;
     }
     attachAudio(audio);
-    const call: OpenCall = {
+    const rejoined: OpenCall = {
       callId: kept.callId,
-      relayUrl: kept.relayUrl,
+      relayUrl,
       caps: kept.caps,
       ticket: kept.ticket,
       startedAt: kept.startedAt,
       turnsLeft: kept.turnsLeft,
-      turns: 0,
+      turns: Math.max(0, kept.caps.max_agent_turns - kept.turnsLeft),
     };
-    conn.call = call;
+    conn.call = rejoined;
     conn.shownCallId = kept.callId;
     setNow(Date.now());
     setEndsAt(kept.startedAt + kept.caps.max_call_s * 1000);
     setTurnsLeft(kept.turnsLeft);
-    openDropWindow(call);
+    openDropWindow(rejoined);
     openSocket({ type: "resume", ticket: kept.ticket });
   }
 
@@ -850,6 +956,7 @@ export function useVoiceCall(args: Args) {
     conn.poll += 1;
     conn.taken = false;
     conn.isNewTurn = true;
+    conn.isHangingUp = false;
     conn.lostCall = null;
     resetView();
     return conn.attempt;
@@ -876,6 +983,7 @@ export function useVoiceCall(args: Args) {
     const conn = connRef.current;
     conn.call = null;
     conn.isReady = false;
+    conn.isHangingUp = false;
     conn.dropDeadline = null;
     clearTimers(conn);
     closeSocket(conn);
@@ -897,7 +1005,6 @@ export function useVoiceCall(args: Args) {
     if (!userId || !call.ticket || call.startedAt === null) return;
     saveCallTicket(userId, {
       callId: call.callId,
-      relayUrl: call.relayUrl,
       ticket: call.ticket,
       caps: call.caps,
       startedAt: call.startedAt,
@@ -952,3 +1059,8 @@ export function useVoiceCall(args: Args) {
 }
 
 export type VoiceCallState = ReturnType<typeof useVoiceCall>;
+
+// The relay socket the server names for a live call, when it is one.
+function relayUrlOf(call: VoiceCallStatusResponse) {
+  return isRelaySocketUrl(call.relay_url) ? call.relay_url : null;
+}

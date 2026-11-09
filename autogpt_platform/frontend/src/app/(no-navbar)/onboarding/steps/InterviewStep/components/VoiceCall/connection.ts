@@ -41,10 +41,18 @@ export interface Connection {
   attempt: number;
   poll: number;
   isNewTurn: boolean;
+  // The person pressed Hang up and the relay has not yet ended the call.
+  isHangingUp: boolean;
   isLeaving: boolean;
   hasChecked: boolean;
+  // When the live call's socket last dropped (epoch ms).
+  droppedAt: number | null;
   // A call lost on the way is reported ended once its end is known.
-  lostCall: { turns: number; startedAt: number | null } | null;
+  lostCall: {
+    turns: number;
+    startedAt: number | null;
+    droppedAt: number;
+  } | null;
   timers: Set<ReturnType<typeof setTimeout>>;
 }
 
@@ -63,8 +71,10 @@ export function newConnection(): Connection {
     attempt: 0,
     poll: 0,
     isNewTurn: true,
+    isHangingUp: false,
     isLeaving: false,
     hasChecked: false,
+    droppedAt: null,
     lostCall: null,
     timers: new Set(),
   };

@@ -61,11 +61,12 @@ export function trackOnboardingStep(key: OnboardingStepKey) {
   );
 }
 
-/** Reports what happened on the interview step's call, as research/17 §2.9
- * lists it. Consent-gated like every browser event. */
+/** Reports what happened on the interview step's call. Consent-gated like
+ * every browser event; with `oncePerTabKey`, sent at most once per tab. */
 export function trackInterview(
   event: EventName<typeof InterviewEvent>,
   properties: Record<string, unknown> = {},
+  { oncePerTabKey }: { oncePerTabKey?: string } = {},
 ) {
-  capturePostHogEvent(event, properties);
+  capturePostHogEvent(event, properties, { oncePerTabKey });
 }

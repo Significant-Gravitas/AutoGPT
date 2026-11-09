@@ -1,9 +1,11 @@
 import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
 import { queueFollowUpMessage } from "@/app/(platform)/copilot/helpers/queueFollowUpMessage";
 import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
 import {
   finishOnboardingInterview,
+  getOnboardingInterview,
   startOnboardingInterview,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import {
@@ -22,6 +24,7 @@ import { forgetShownPlan } from "../SubscriptionStep/components/PlanPanel/helper
 import {
   type MicrophoneRefusal,
   microphoneRefusalOf,
+  OPENING_READ_TIMEOUT_MS,
 } from "./components/VoiceCall/helpers";
 import { useVoiceCall } from "./components/VoiceCall/useVoiceCall";
 import {
@@ -34,6 +37,7 @@ import {
   isInterviewClosedError,
   isTypingRemembered,
   refusalOf,
+  refusedMessageOf,
   rememberTyping,
   STAGE_READ_INTERVAL_MS,
   STAGE_READ_WINDOW_MS,
@@ -162,10 +166,13 @@ export function useInterviewStep() {
           ? "choose"
           : "talk";
 
+  // Leaving, a call in flight, or a call's finish on its way: Back stays
+  // out of the way.
+  const isStepBusy = isLeaving || voice.isBusy || voice.isLeaving;
   useEffect(() => {
-    setStepBusy(isLeaving || voice.isBusy);
+    setStepBusy(isStepBusy);
     return () => setStepBusy(false);
-  }, [isLeaving, voice.isBusy, setStepBusy]);
+  }, [isStepBusy, setStepBusy]);
 
   // Otto's end signal closes the interview inside the turn; the reply cap and
   // the scope guard close it just after. So once a turn ends the stage is read
@@ -231,12 +238,22 @@ export function useInterviewStep() {
     }
   }
 
-  // No call to pick up: a refused microphone, or a choice to type made
-  // earlier in this tab, opens the typed interview; otherwise the choice.
-  // The permission is read now, not from the last render.
+  // No call to pick up. Before the choice and its Skip can show, the typed
+  // interview is read: one already over opens as its transcript with "Meet
+  // your team", since a Skip would record a take over it. A refused
+  // microphone, or a choice to type made earlier in this tab, opens the
+  // typed interview too; otherwise the choice. The permission is read now,
+  // not from the last render.
   async function openWithoutCall() {
-    const permission = await microphone.refresh();
-    if (permission === "denied" || isTypingRemembered(userID)) {
+    const [typed, permission] = await Promise.all([
+      readTypedInterview(),
+      microphone.refresh(),
+    ]);
+    if (
+      typed?.is_over ||
+      permission === "denied" ||
+      isTypingRemembered(userID)
+    ) {
       openTyped({ remember: false });
     }
   }
@@ -312,7 +329,7 @@ export function useInterviewStep() {
   }
 
   async function skip() {
-    if (isOver || voice.isBusy || isLeavingRef.current) return;
+    if (isOver || isStepBusy || isLeavingRef.current) return;
     isLeavingRef.current = true;
     setIsLeaving(true);
     setIntroPath("B");
@@ -322,12 +339,24 @@ export function useInterviewStep() {
     await recordSkippedTake();
   }
 
+  // The server never took the refused message: it leaves the chat, and its
+  // text waits in the composer for when the person types again.
+  function takeBackRefusedMessage() {
+    const refused = refusedMessageOf(messages);
+    if (!refused) return;
+    setMessages(messages.filter((message) => message.id !== refused.id));
+    if (refused.text) {
+      useCopilotUIStore.getState().setInitialPrompt(refused.text);
+    }
+  }
+
   // Before the person's first message after a call, the call's words can
   // still land and take the interview; the turn refused for it shows that
   // call's ending, as the typed start's refusal does.
   useEffect(() => {
     if (!turnRefusal || handledRefusalRef.current === error) return;
     handledRefusalRef.current = error;
+    takeBackRefusedMessage();
     showCallThatHolds(turnRefusal);
   });
 
@@ -386,7 +415,7 @@ export function useInterviewStep() {
     isOver,
     // Skip is for an open interview, and keeps out of the way of a call in
     // flight, whose words would land after it.
-    canSkip: !isOver && !voice.isBusy,
+    canSkip: !isOver && !isStepBusy,
     canFinishEarly: hasAnswered(messages) && !isTurnRunning && !isOver,
     isLeaving,
     finishFailure,
@@ -402,6 +431,21 @@ async function saveWizardAnswers() {
     .getState()
     .flushProgress?.()
     .catch(() => undefined);
+}
+
+// The typed interview as it stands, read without starting it; null when the
+// person has none or it cannot be read, which leaves the choice to show.
+async function readTypedInterview() {
+  const giveUp = new AbortController();
+  const timer = setTimeout(() => giveUp.abort(), OPENING_READ_TIMEOUT_MS);
+  try {
+    const response = await getOnboardingInterview({ signal: giveUp.signal });
+    return response.status === 200 ? response.data : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function fetchStage(sessionId: string) {
