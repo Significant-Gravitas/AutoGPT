@@ -386,6 +386,46 @@ async def test_a_driver_that_fails_to_start_says_why(fake_log, monkeypatch) -> N
     await bridge.close()
 
 
+@pytest.mark.parametrize(
+    "metadata",
+    [{"serverInfo": "cua-driver"}, {"capabilities": 1}, {"capabilities": ["tools"]}],
+    ids=["server-info", "capabilities", "capabilities-list"],
+)
+async def test_a_driver_with_malformed_initialize_metadata_is_stopped(
+    fake_log, monkeypatch, metadata: dict[str, Any]
+) -> None:
+    """A serverInfo or capabilities that wasn't an object was read after the
+    start's cleanup, so it raised a plain AttributeError or TypeError: the
+    driver it had started kept running, since the bridge didn't hold it
+    yet, and HELLO, which goes on without computer use only for
+    DriverUnavailable, failed."""
+    import json
+
+    monkeypatch.setenv("FAKE_CUA_INITIALIZE", json.dumps(metadata))
+    started: list[StdioMcpClient] = []
+
+    def factory(argv: list[str], **kwargs: Any) -> StdioMcpClient:
+        client = fake_client(argv, **kwargs)
+        started.append(client)
+        return client
+
+    bridge = CuaDriverBridge(
+        tools=catalog.offered_tools(enable_clipboard=False),
+        binary=FAKE,
+        platform="linux",
+        client_factory=factory,
+    )
+    try:
+        with pytest.raises(DriverUnavailable, match="isn't an object"):
+            await bridge.snapshot()
+        [client] = started
+        assert not client.alive
+    finally:
+        for client in started:
+            await client.close()
+        await bridge.close()
+
+
 async def test_a_policy_file_that_cannot_be_written_leaves_the_driver_unavailable(
     fake_log, monkeypatch
 ) -> None:

@@ -122,17 +122,25 @@ class StdioMcpClient:
                 },
                 timeout=timeout,
             )
+            # Checked before the process is handed over: an error past this
+            # block would leave it running, unheld.
+            server = result.get("serverInfo") or {}
+            capabilities = result.get("capabilities") or {}
+            if not isinstance(server, dict) or not isinstance(capabilities, dict):
+                raise McpError(
+                    INTERNAL_ERROR,
+                    "initialize answered with a serverInfo or capabilities that isn't an object",
+                )
             await self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
         except BaseException:
             await self.close()
             raise
-        server = result.get("serverInfo") or {}
         self.initialize_result = InitializeResult(
             protocol_version=str(result.get("protocolVersion") or ""),
             server_name=str(server.get("name") or ""),
             server_version=str(server.get("version") or ""),
             instructions=str(result.get("instructions") or ""),
-            capabilities=dict(result.get("capabilities") or {}),
+            capabilities=dict(capabilities),
         )
         return self.initialize_result
 
