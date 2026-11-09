@@ -2126,16 +2126,26 @@ async def test_typing_claims_back_past_calls_that_heard_nothing_to_the_take(
 
 @pytest.mark.parametrize("status", ["connecting", "live"])
 @pytest.mark.asyncio
-async def test_a_message_dispatched_after_a_new_call_started_claims_nothing_from_it(
+async def test_a_message_dispatched_after_a_new_call_started_claims_the_take_behind_it(
     stored: StoredInterview, voice_calls: VoiceCalls, status: str
 ):
-    """Admitted before the call started, the message is not the newer take."""
+    """Admitted before the new call started, the message is not the newer
+    take than that call, which takes no claim, but it is than the call
+    before it."""
+    await voice_calls.ended("call-1", status="transcribed")
+    await locks.write_call_record(
+        voice_calls.redis, "call-1", {"transcript_of_record": SAID}
+    )
     await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
     await voice_calls.ended("call-2", status=status)
+    await locks.write_call_record(voice_calls.redis, "call-2", {"prev": "call-1"})
 
     await interview.typed_message_accepted(USER_ID)
 
     assert await locks.interview_of(voice_calls.redis, "call-2") is None
+    assert await locks.interview_of(voice_calls.redis, "call-1") == (
+        locks.INTERVIEW_SUPERSEDED
+    )
 
 
 @pytest.mark.asyncio

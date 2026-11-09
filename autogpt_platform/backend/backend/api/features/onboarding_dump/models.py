@@ -4,14 +4,32 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
 # ``recording_id`` is concatenated into a cloud-storage object key and a
 # Redis key, so anything with a path or namespace separator in it would
 # let a caller reach outside their own prefix. The client sends a
 # ``crypto.randomUUID()``; this is the server refusing everything else.
 RECORDING_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
-RecordingId = Annotated[str, StringConstraints(pattern=RECORDING_ID_PATTERN)]
+
+# The takes the server makes itself, an interview's and a voice call's, are
+# named this and the interview's id. A client never names a take so.
+INTERVIEW_RECORDING_PREFIX = "interview-"
+
+
+def clients_recording_id(recording_id: str) -> str:
+    """*recording_id*, when it is a take a client may name: none named as
+    the server names its own takes."""
+    if recording_id.startswith(INTERVIEW_RECORDING_PREFIX):
+        raise ValueError("recording_id names a take only the server makes")
+    return recording_id
+
+
+RecordingId = Annotated[
+    str,
+    StringConstraints(pattern=RECORDING_ID_PATTERN),
+    AfterValidator(clients_recording_id),
+]
 
 # A 3s MediaRecorder timeslice of webm/opus voice is ~10 KB; 2 MB per part
 # leaves three orders of magnitude of headroom while still rejecting a

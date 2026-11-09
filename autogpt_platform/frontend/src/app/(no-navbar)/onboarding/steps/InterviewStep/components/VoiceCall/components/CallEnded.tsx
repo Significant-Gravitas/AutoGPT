@@ -49,6 +49,10 @@ export function CallEnded({
     ending.kind === "missing" ||
     ending.kind === "no_words" ||
     ending.kind === "unsaved";
+  const handOffFailed =
+    ending.kind === "no_words" ||
+    ending.kind === "retry" ||
+    ending.kind === "unsaved";
   const otherWays = (
     <>
       <Button
@@ -78,7 +82,7 @@ export function CallEnded({
         </Text>
       ) : (
         <Text variant="body" tone="muted" align="center">
-          {endedCopy(endReason)}
+          {endedCopy(endReason, { handOffFailed })}
         </Text>
       )}
       {ending.kind === "lost" && (

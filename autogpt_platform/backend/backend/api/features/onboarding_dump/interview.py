@@ -61,6 +61,7 @@ from backend.api.features.onboarding_dump.interview_endings import (
     hands_off_on_close,
 )
 from backend.api.features.onboarding_dump.models import (
+    INTERVIEW_RECORDING_PREFIX,
     MAX_CORRECTION_CHARS,
     MAX_TYPED_CHARS,
     FinalizeResponse,
@@ -122,8 +123,6 @@ from backend.util.exceptions import NotFoundError
 from backend.voice_relay import locks
 
 logger = logging.getLogger(__name__)
-
-INTERVIEW_RECORDING_PREFIX = "interview-"
 
 # The 409 detail for an interview with a turn already running in it, worded
 # as the chat continuation route words it. The start route answers it with
@@ -492,9 +491,10 @@ async def _calls_back_to_a_take(
 ) -> list[locks.CallRecord]:
     """The person's calls from the onboarding row's latest back along each
     record's ``prev``, through every one that settled without words
-    (:func:`call_words`), to the first that has words or is still to settle:
-    the person's latest take, last. Stops at a record that expired or is not
-    the person's."""
+    (:func:`call_words`) or that takes no claim yet, starting or running
+    (:func:`locks.claim_interview`), to the first that has words or is still
+    to settle: the person's latest take, last. Stops at a record that
+    expired or is not the person's."""
     calls: list[locks.CallRecord] = []
     current = await get_onboarding_voice_call_id(user_id)
     while current is not None and all(call.call_id != current for call in calls):
@@ -502,10 +502,16 @@ async def _calls_back_to_a_take(
         if record is None or record.uid != user_id:
             break
         calls.append(record)
-        if call_words(record) != "no_words":
+        if not _takes_no_claim(record) and call_words(record) != "no_words":
             break
         current = record.prev
     return calls
+
+
+def _takes_no_claim(record: locks.CallRecord) -> bool:
+    """Whether the call is still starting or running, which no claim on the
+    interview reaches."""
+    return record.status is None or record.status in locks.RUNNING
 
 
 async def record_onboarding_interview_turn_started(
@@ -820,21 +826,43 @@ async def _waits_on_a_beaten_call(
 
 
 async def _beaten_call_on_the_row(user_id: str) -> str | None:
-    """The call whose take is on the person's dump row, when the person's
-    typing beat it to the interview (the call's record says
-    ``superseded``); None for any other take."""
+    """The call whose take is on the person's dump row, when a newer take
+    beat it to the interview: its record, or the record of a call of the
+    person's after it, says ``superseded`` (:func:`_superseded_from`). None
+    for any other take."""
     row = await dump_db.get_dump(user_id)
     if row is None or not row.recordingId.startswith(INTERVIEW_RECORDING_PREFIX):
         return None
     call_id = row.recordingId[len(INTERVIEW_RECORDING_PREFIX) :]
-    record = await locks.read_call(await get_redis_async(), call_id)
-    if (
-        record is None
-        or record.uid != user_id
-        or record.interview != locks.INTERVIEW_SUPERSEDED
-    ):
+    if not await _superseded_from(await get_redis_async(), user_id, call_id):
         return None
     return call_id
+
+
+async def _superseded_from(redis: AsyncRedisClient, user_id: str, call_id: str) -> bool:
+    """Whether *call_id*'s record, or that of a later call of the person's,
+    says ``superseded``: the calls are walked from the onboarding row's
+    latest back along each record's ``prev`` to *call_id*, as
+    :func:`_call_standing` walks them. The person's typing claims on their
+    latest take, so a claim on a call after *call_id* outranks it too."""
+    seen: set[str] = set()
+    current = await get_onboarding_voice_call_id(user_id)
+    while current is not None and current not in seen:
+        seen.add(current)
+        record = await locks.read_call(redis, current)
+        if record is None or record.uid != user_id:
+            break
+        if record.interview == locks.INTERVIEW_SUPERSEDED:
+            return True
+        if current == call_id:
+            return False
+        current = record.prev
+    record = await locks.read_call(redis, call_id)
+    return (
+        record is not None
+        and record.uid == user_id
+        and record.interview == locks.INTERVIEW_SUPERSEDED
+    )
 
 
 async def _take_still_runs(user_id: str, recording_id: str) -> bool:
@@ -860,12 +888,17 @@ _TAKE_STILL_RUNS = frozenset(
 )
 
 # Typed interviews whose hand-off is owed (:func:`_waits_on_a_beaten_call`):
-# one field per person, naming their interview and the corrections its close
-# was handed.
+# one entry per person, naming their interview and the corrections its close
+# was handed (:func:`owed_hand_off_key`), and an index of the people owed
+# one, by when, for the REST API's sweep.
 OWED_HAND_OFFS_KEY = "onboarding:interview:hand_off:owed"
-# An owed hand-off still not handed off this long after it was first owed is
-# dropped; the person's next visit to the step hands the interview off.
+# An owed hand-off still not handed off this long after it was first owed
+# lapses; the person's next visit to the step hands the interview off.
 OWED_HAND_OFF_TTL_S = 24 * 3600
+
+
+def owed_hand_off_key(user_id: str) -> str:
+    return f"{OWED_HAND_OFFS_KEY}:{user_id}"
 
 
 class OwedHandOff(BaseModel):
@@ -880,7 +913,7 @@ class OwedHandOff(BaseModel):
 
 
 async def _owed_hand_off(user_id: str) -> OwedHandOff | None:
-    raw = as_str(await (await get_redis_async()).hget(OWED_HAND_OFFS_KEY, user_id))
+    raw = as_str(await (await get_redis_async()).get(owed_hand_off_key(user_id)))
     if raw is None:
         return None
     try:
@@ -893,25 +926,32 @@ async def _owed_hand_off(user_id: str) -> OwedHandOff | None:
 async def _owe_the_hand_off(
     user_id: str, session_id: str, corrections: str | None
 ) -> None:
-    """Record the person's typed hand-off as owed, with *corrections*,
-    keeping when it was first owed."""
+    """Record the person's typed hand-off as owed, with *corrections* as the
+    hand-off keeps them, until a day after it was first owed."""
     earlier = await _owed_hand_off(user_id)
+    now = time.time()
     owed = OwedHandOff(
         session_id=session_id,
-        corrections=corrections,
+        corrections=_own_corrections(corrections) or None,
         at=(
             earlier.at
             if earlier is not None and earlier.session_id == session_id
-            else time.time()
+            else now
         ),
     )
-    await (await get_redis_async()).hset(
-        OWED_HAND_OFFS_KEY, user_id, owed.model_dump_json()
+    redis = await get_redis_async()
+    await redis.set(
+        owed_hand_off_key(user_id),
+        owed.model_dump_json(),
+        ex=max(1, int(owed.at + OWED_HAND_OFF_TTL_S - now)),
     )
+    await redis.zadd(OWED_HAND_OFFS_KEY, {user_id: owed.at})
 
 
 async def _forget_the_hand_off(user_id: str) -> None:
-    await (await get_redis_async()).hdel(OWED_HAND_OFFS_KEY, user_id)
+    redis = await get_redis_async()
+    await redis.delete(owed_hand_off_key(user_id))
+    await redis.zrem(OWED_HAND_OFFS_KEY, user_id)
 
 
 def start_owed_typed_hand_off(user_id: str) -> asyncio.Task:
@@ -940,6 +980,8 @@ async def hand_off_owed_typed_interview(user_id: str) -> None:
     """
     owed = await _owed_hand_off(user_id)
     if owed is None:
+        # Lapsed, or already handed off.
+        await _forget_the_hand_off(user_id)
         return
     try:
         _, stored = await _read_interview(user_id, owed.session_id)
@@ -947,12 +989,6 @@ async def hand_off_owed_typed_interview(user_id: str) -> None:
         await _forget_the_hand_off(user_id)
         return
     if stored.metadata.onboarding_interview_stage != INTERVIEW_STAGE_CLOSED:
-        await _forget_the_hand_off(user_id)
-        return
-    if time.time() - owed.at > OWED_HAND_OFF_TTL_S:
-        logger.warning(
-            f"Onboarding interview {owed.session_id[:12]}: an owed hand-off " f"expired"
-        )
         await _forget_the_hand_off(user_id)
         return
     await close_onboarding_interview(
@@ -971,11 +1007,16 @@ async def hand_off_owed_typed_interviews(stop: asyncio.Event | None = None) -> i
     """Hand off, one at a time, every typed interview whose hand-off is owed
     (:func:`hand_off_owed_typed_interview`); *stop* ends it between them. For
     the REST API's sweep. Returns how many were owed."""
+    redis = await get_redis_async()
+    # People whose owed hand-off has lapsed leave the index.
+    await redis.zremrangebyscore(
+        OWED_HAND_OFFS_KEY, "-inf", time.time() - OWED_HAND_OFF_TTL_S
+    )
+    members = await redis.zrange(OWED_HAND_OFFS_KEY, 0, -1)
     owed = [
         user_id
         for user_id in (
-            as_str(field)
-            for field in await (await get_redis_async()).hkeys(OWED_HAND_OFFS_KEY)
+            as_str(member) for member in members if isinstance(member, (bytes, str))
         )
         if user_id
     ]
@@ -1099,9 +1140,11 @@ async def close_voice_interview(
         return InterviewClosure(ending=None, hand_off=superseded_take(), outranked=True)
     if standing == "waiting":
         raise LaterCallUnsettled
-    words = with_corrections(transcript, corrections)
-    if not words.strip():
+    if not transcript.strip():
+        # Nothing was said, so nothing to confirm or correct: corrections
+        # alone never make a call a take (:func:`call_words`).
         return InterviewClosure(ending=None, hand_off=_nothing_said())
+    words = with_corrections(transcript, corrections)
     if not (confirmed or hands_off_on_close(ending)):
         return InterviewClosure(ending=ending, hand_off=None)
     logger.info(f"Voice onboarding interview {call_id[:12]} handed off: {reason}")
@@ -1122,7 +1165,7 @@ async def _hand_off_call_words(
     text = words.strip()[:MAX_TYPED_CHARS]
     recording_id = interview_recording_id(call_id)
     take = await service.finalize_typed_take(
-        user_id, recording_id, text, background_tasks
+        user_id, recording_id, text, background_tasks, call_take=True
     )
     if (
         take.judged
@@ -1136,7 +1179,7 @@ async def _hand_off_call_words(
         f"words unjudged; judging them now"
     )
     take = await service.finalize_typed_take(
-        user_id, recording_id, text, background_tasks
+        user_id, recording_id, text, background_tasks, call_take=True
     )
     return take.response
 
@@ -1305,6 +1348,12 @@ async def _stamp_ending(
     return ending
 
 
+def _own_corrections(corrections: str | None) -> str:
+    """What the person changed on an ending screen, as the hand-off keeps it:
+    without the platform's own tags, trimmed, within its limit."""
+    return strip_server_injected_tags(corrections or "").strip()[:MAX_CORRECTION_CHARS]
+
+
 def with_corrections(transcript: str, corrections: str | None) -> str:
     """The words to hand off: the interview's, then what the person changed
     on an ending screen, as their own words too.
@@ -1312,8 +1361,7 @@ def with_corrections(transcript: str, corrections: str | None) -> str:
     The corrections are their latest word, so they are kept within the typed
     take's limit and the interview's words are cut to make room before them.
     """
-    extra = strip_server_injected_tags(corrections or "").strip()
-    extra = extra[:MAX_CORRECTION_CHARS]
+    extra = _own_corrections(corrections)
     if not extra:
         return transcript
     if not transcript.strip():
