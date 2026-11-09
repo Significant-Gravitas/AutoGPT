@@ -506,6 +506,8 @@ async def clear_pending_messages_unsafe(session_id: str) -> None:
 
     The ``_unsafe`` suffix warns: normal turn cleanup uses the atomic LPOP
     drain; this bypass drops queued follow-ups on the floor.
+    Admission receipts and client-message claims remain so retries cannot
+    replay discarded follow-ups. A new send requires a new message ID.
     """
     redis = await get_redis_async()
     await redis.delete(_buffer_key(session_id))

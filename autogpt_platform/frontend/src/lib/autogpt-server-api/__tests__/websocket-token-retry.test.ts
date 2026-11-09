@@ -88,7 +88,7 @@ describe("WebSocket token issuance recovery", () => {
 
   it.each([
     { token: null },
-    { token: null, error: "Session rejected", retryable: false },
+    { token: "rejected-token", error: "Session rejected", retryable: false },
   ])(
     "stops retrying when token issuance rejects the session: %j",
     async (result) => {

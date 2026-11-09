@@ -35,7 +35,8 @@ async def prepend_json_items_by_id(
     """Restore JSON objects with string IDs at the front, once and in order.
 
     Recovery bypasses admission capacity because every item was already accepted.
-    Existing copies are replaced atomically and the list's TTL never shrinks.
+    Existing copies are replaced atomically. Existing finite TTLs never shrink;
+    a persistent or missing list receives the recovery TTL.
     """
     return int(
         await cast(
