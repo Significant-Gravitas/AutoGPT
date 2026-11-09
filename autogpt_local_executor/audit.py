@@ -604,8 +604,10 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
         import keyring
         import keyring.errors
     except ImportError:
-        if not create and not _fallback_path().exists():
-            raise AuditKeyError("No audit key is stored, so there is none to read") from None
+        if not _fallback_path().exists():
+            _refuse_a_new_key(
+                audit_log, create, "No keyring package is installed, and the file fallback"
+            )
         return _fallback_audit_key()
     try:
         stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
@@ -621,8 +623,7 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
                     "Stored audit key has an invalid length; refusing to replace it"
                 )
             return key
-        if not create:
-            raise AuditKeyError("The OS keychain holds no audit key, so there is none to read")
+        _refuse_a_new_key(audit_log, create, "The OS keychain")
         key = secrets.token_bytes(32)
         keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME, key.hex())
         return key
@@ -638,6 +639,21 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
             f"The OS keychain couldn't be read for the audit key ({type(exc).__name__}); "
             "it may still be locked"
         ) from exc
+
+
+def _refuse_a_new_key(audit_log: Path | None, create: bool, holder: str) -> None:
+    """Raise AuditKeyError unless a new audit key may be made: never for the
+    audit commands (`create` false), and never while `audit_log`, the log
+    the key is for, exists, since a new key couldn't verify a log another
+    key signed. `holder` names where no key was found."""
+    if not create:
+        raise AuditKeyError(f"{holder} holds no audit key, so there is none to read")
+    if audit_log is not None and os.path.lexists(audit_log):
+        raise AuditKeyError(
+            f"{holder} holds no audit key, but the audit log at {audit_log} was signed "
+            "with one, which a new key couldn't verify. Restore that key, or move the "
+            "log aside to start a new log with a new key"
+        )
 
 
 def _no_keychain_yet(exc: Exception, audit_log: Path | None, *, create: bool = True) -> None:

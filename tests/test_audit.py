@@ -1384,6 +1384,49 @@ async def test_an_audit_command_never_stores_a_keychain_key(tmp_path: Path) -> N
     assert stored == []
 
 
+def test_an_empty_keychain_gets_no_new_key_for_a_signed_log(tmp_path: Path) -> None:
+    """With the keychain up but its audit key gone, the daemon stored a new
+    key, failed to verify its log with it, and stopped as if the log were
+    corrupt, leaving the new key behind in place of the one that signed it."""
+    import keyring
+
+    from autogpt_local_executor.audit import AuditKeyError
+
+    log = tmp_path / "audit.log"
+    log.write_text('{"seq": 1}\n')
+    stored: list[str] = []
+    with (
+        patch.object(keyring, "get_password", return_value=None),
+        patch.object(keyring, "set_password", side_effect=lambda *args: stored.append(args[2])),
+    ):
+        with pytest.raises(AuditKeyError, match="move the log aside"):
+            get_or_create_audit_key(log)
+        # A first start, with no log yet, makes one as before.
+        assert len(get_or_create_audit_key(tmp_path / "new.log")) == 32
+
+    assert len(stored) == 1
+
+
+def test_no_keyring_package_gets_no_new_file_key_for_a_signed_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without the keyring package, and with the passphrase set, the daemon
+    made a file key for a log the keychain's key had signed, so the log no
+    longer verified."""
+    from autogpt_local_executor.audit import AuditKeyError
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    monkeypatch.setitem(sys.modules, "keyring", None)
+    log = tmp_path / "audit.log"
+    log.write_text('{"seq": 1}\n')
+
+    with pytest.raises(AuditKeyError, match="move the log aside"):
+        get_or_create_audit_key(log)
+
+    assert not (tmp_path / "audit-key.enc").exists()
+
+
 # ── Export: descriptors, a prune meanwhile, the default name ───────────
 
 

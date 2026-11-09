@@ -150,9 +150,12 @@ there is no log yet; with one, which the keychain's key signed, the daemon
 waits for the keychain instead (it exits 75 to be restarted). OAuth tokens have
 no file fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
 
-Only the daemon makes a key. The `audit` commands (`verify`, `verify-all`,
-`rotate`, `export`) read the stored one and stop when there is none: a key
-they made couldn't check a log another key signed.
+Only the daemon makes a key, and only while there is no log yet: a log with
+no key stored for it (a keychain entry removed, say) stops it at start,
+saying to restore the key or move the log aside, rather than signing on with
+a new key the log can't verify with. The `audit` commands (`verify`,
+`verify-all`, `rotate`, `export`) read the stored key and stop when there is
+none.
 
 Malformed stored keys are preserved and rejected rather than regenerated.
 Before appending to an existing active log, startup verifies its chain using
