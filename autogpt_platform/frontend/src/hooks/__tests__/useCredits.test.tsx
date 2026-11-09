@@ -506,4 +506,67 @@ describe("useCredits identity scope", () => {
     await expect(refund).resolves.toBeNull();
     expect(followUpReads).toBe(0);
   });
+
+  test("appends a transaction page once when Load More is clicked twice before it answers", async () => {
+    let releasePages: () => void = () => {};
+    const pagesReleased = new Promise<void>((resolve) => {
+      releasePages = resolve;
+    });
+    const cursors: Array<string | null> = [];
+    server.use(
+      getGetV1GetCreditHistoryMockHandler(async ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get(
+          "transaction_time",
+        );
+        cursors.push(cursor);
+        if (cursor === null) {
+          return {
+            transactions: [{ user_id: "user-a", transaction_key: "first" }],
+            next_transaction_time: new Date("2026-08-28T00:00:00Z"),
+          };
+        }
+        await pagesReleased;
+        return {
+          transactions: [{ user_id: "user-a", transaction_key: "second" }],
+          next_transaction_time: null,
+        };
+      }),
+    );
+
+    const view = renderHook(() =>
+      useCredits({
+        identityKey: "user-a",
+        fetchInitialTransactionHistory: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(view.result.current.transactionHistory.transactions).toHaveLength(
+        1,
+      ),
+    );
+
+    let loads: Promise<void>[] = [];
+    act(() => {
+      loads = [
+        Promise.resolve(view.result.current.fetchTransactionHistory()),
+        Promise.resolve(view.result.current.fetchTransactionHistory()),
+      ];
+    });
+    await waitFor(() => expect(cursors).toHaveLength(3));
+    expect(cursors[2]).toBe(cursors[1]);
+
+    await act(async () => {
+      releasePages();
+      await Promise.all(loads);
+    });
+
+    expect(
+      view.result.current.transactionHistory.transactions.map(
+        (transaction) => transaction.transaction_key,
+      ),
+    ).toEqual(["first", "second"]);
+    expect(
+      view.result.current.transactionHistory.next_transaction_time,
+    ).toBeNull();
+  });
 });

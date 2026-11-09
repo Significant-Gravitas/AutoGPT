@@ -30,6 +30,11 @@ function isStale(ref: { current: IdentityScope }, requestScope: symbol) {
   return ref.current.token !== requestScope;
 }
 
+function isSameCursor(a: Date | null, b: Date | null) {
+  if (!a || !b) return !a && !b;
+  return new Date(a).getTime() === new Date(b).getTime();
+}
+
 interface BillingState {
   identityScope: symbol;
   credits: number | null;
@@ -269,22 +274,30 @@ export default function useCredits({
         return;
       }
       const response = await api.getTransactionHistory(nextTransactionTime, 20);
-      setBillingState((current) =>
-        current.identityScope === requestScope
-          ? {
-              ...current,
-              transactionHistory: {
-                transactions: replace
-                  ? response.transactions
-                  : [
-                      ...current.transactionHistory.transactions,
-                      ...response.transactions,
-                    ],
-                next_transaction_time: response.next_transaction_time,
-              },
-            }
-          : current,
-      );
+      setBillingState((current) => {
+        if (current.identityScope !== requestScope) return current;
+        if (
+          !replace &&
+          !isSameCursor(
+            current.transactionHistory.next_transaction_time,
+            nextTransactionTime,
+          )
+        ) {
+          return current;
+        }
+        return {
+          ...current,
+          transactionHistory: {
+            transactions: replace
+              ? response.transactions
+              : [
+                  ...current.transactionHistory.transactions,
+                  ...response.transactions,
+                ],
+            next_transaction_time: response.next_transaction_time,
+          },
+        };
+      });
     },
     [api, scopedIdentityKey, identityScope],
   );
