@@ -1206,15 +1206,66 @@ def test_a_locked_keychain_is_not_replaced_by_the_file_key(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize("error", ["NoKeyringError", "InitError"])
-def test_no_usable_keychain_still_falls_back_to_the_file_key(error: str) -> None:
+def test_no_usable_keychain_still_falls_back_to_the_file_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: str
+) -> None:
+    """With the passphrase set, and no audit log yet for another key to have
+    signed, the file key stands in, and stays the key from then on."""
     import keyring
     import keyring.errors
 
-    with (
-        patch.object(keyring, "get_password", side_effect=getattr(keyring.errors, error)("none")),
-        patch("autogpt_local_executor.audit._fallback_audit_key", return_value=b"k" * 32),
-    ):
-        assert get_or_create_audit_key() == b"k" * 32
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    with patch.object(keyring, "get_password", side_effect=getattr(keyring.errors, error)("none")):
+        first = get_or_create_audit_key(tmp_path / "audit.log")
+        (tmp_path / "audit.log").write_text("")
+        again = get_or_create_audit_key(tmp_path / "audit.log")
+
+    assert len(first) == 32
+    assert again == first
+
+
+@pytest.mark.parametrize("error", ["NoKeyringError", "InitError"])
+def test_a_keychain_missing_at_start_is_waited_for_without_the_file_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: str
+) -> None:
+    """With no keychain and no passphrase the audit key failed for good, so
+    the systemd unit stayed stopped when its Secret Service came up after
+    it (one the desktop session starts later, say). The shim can't run
+    without a keychain, which holds its sign-in, so a missing one at start
+    is waited for."""
+    import keyring
+    import keyring.errors
+
+    from autogpt_local_executor.audit import AuditKeyUnavailableError
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.delenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", raising=False)
+    with patch.object(keyring, "get_password", side_effect=getattr(keyring.errors, error)("none")):
+        with pytest.raises(AuditKeyUnavailableError, match="AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE"):
+            get_or_create_audit_key(tmp_path / "audit.log")
+
+
+def test_a_keychain_missing_at_start_is_not_replaced_by_a_new_file_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the passphrase set, a keychain that wasn't up yet made the shim
+    create a file key, a different one from the keychain's that had signed
+    the log, so the log stopped verifying and the stray file key stayed."""
+    import keyring
+    import keyring.errors
+
+    from autogpt_local_executor.audit import AuditKeyUnavailableError
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    log = tmp_path / "audit.log"
+    log.write_text('{"seq": 1}\n')
+    with patch.object(keyring, "get_password", side_effect=keyring.errors.NoKeyringError("none")):
+        with pytest.raises(AuditKeyUnavailableError, match="move it aside"):
+            get_or_create_audit_key(log)
+
+    assert not (tmp_path / "audit-key.enc").exists()
 
 
 # ── Export: descriptors, a prune meanwhile, the default name ───────────

@@ -553,10 +553,11 @@ class AuditKeyError(RuntimeError):
 
 
 class AuditKeyUnavailableError(RuntimeError):
-    """The OS keychain holding the audit key couldn't be used just now (still
-    locked at login, say). Unlike a missing keychain this can clear on its
-    own, so the file fallback doesn't stand in: its key is a different one,
-    and the log signed with the keychain's would no longer verify."""
+    """The OS keychain holding the audit key couldn't be used just now:
+    still locked at login, or not started yet. Either can clear on its own,
+    so the file fallback doesn't stand in for a keychain that may hold the
+    key: its key is a different one, and the log signed with the keychain's
+    would no longer verify."""
 
 
 class AuditLogCorruptError(RuntimeError):
@@ -564,11 +565,14 @@ class AuditLogCorruptError(RuntimeError):
     it. A restart can't fix this: someone has to look at the log."""
 
 
-def get_or_create_audit_key() -> bytes:
+def get_or_create_audit_key(audit_log: Path | None = None) -> bytes:
     """Return the persisted audit key, generating + storing one on first use.
 
     Prefers the OS keychain. The legacy audit-only fallback requires
     AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE; OAuth tokens have no file fallback.
+    With no keychain, the fallback's key is used once it exists; a new one
+    is made only while `audit_log` (the log the key is for) doesn't exist
+    yet, since one the keychain's key signed would never verify with it.
     """
     try:
         import keyring
@@ -595,12 +599,39 @@ def get_or_create_audit_key() -> bytes:
     except AuditKeyError:
         raise
     except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
+        if not _fallback_path().exists():
+            _no_keychain_yet(exc, audit_log)
         logger.warning("No usable keychain for the audit key (%s); using the file fallback.", exc)
         return _fallback_audit_key()
     except Exception as exc:
         raise AuditKeyUnavailableError(
             f"The OS keychain couldn't be read for the audit key ({type(exc).__name__}); "
             "it may still be locked"
+        ) from exc
+
+
+def _no_keychain_yet(exc: Exception, audit_log: Path | None) -> None:
+    """With no keychain and no file key yet, raise AuditKeyUnavailableError
+    unless the file fallback may start a new key.
+
+    The shim can't run without a keychain, which holds its sign-in, so one
+    missing at start is most often one that hasn't started yet: a Secret
+    Service the desktop session starts after the autostart service, say. It
+    is waited for (the daemon exits to be restarted) rather than taken as
+    gone, unless the person set the passphrase and no log exists for the
+    keychain's key to have signed."""
+    if not os.environ.get("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE"):
+        raise AuditKeyUnavailableError(
+            f"No OS keychain is available ({type(exc).__name__}) and "
+            "AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE is not set for the file fallback. A keychain "
+            "that starts later is picked up on the next try; otherwise set one up"
+        ) from exc
+    if audit_log is not None and os.path.lexists(audit_log):
+        raise AuditKeyUnavailableError(
+            f"No OS keychain is available ({type(exc).__name__}), and the audit log at "
+            f"{audit_log} was signed with the key it holds, which a new file key couldn't "
+            "verify. A keychain that starts later is picked up on the next try; to start a "
+            "new log with a file key instead, move it aside"
         ) from exc
 
 

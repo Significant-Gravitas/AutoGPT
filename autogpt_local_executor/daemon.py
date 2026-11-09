@@ -409,7 +409,7 @@ class ShimDaemon:
         """Build the mandatory audit writer or fail startup closed, saying
         whether a restart could fix the failure."""
         try:
-            key = get_or_create_audit_key()
+            key = get_or_create_audit_key(config.audit_log_path)
         except AuditKeyUnavailableError as exc:
             raise DaemonPreflightError(
                 f"{exc}; refusing to run without a mandatory audit log, which that key signs",

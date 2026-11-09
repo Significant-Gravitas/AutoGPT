@@ -151,7 +151,8 @@ and are logged.
 
 A keychain that can't be read yet (still locked at login, say) is not a
 failed sign-in: the shim keeps retrying with its reconnect backoff. Only a
-missing keychain backend stops it. The systemd unit doesn't restart on 78
+keychain backend missing once the shim runs stops it; one missing at start
+is waited for (below). The systemd unit doesn't restart on 78
 either (`RestartPreventExitStatus=77 78`): a bad config or a preflight
 failure fails the same way every time, and Linux has no permission prompt
 to wait for. Under launchd, a bad config and a preflight failure no
@@ -162,6 +163,11 @@ the shim once it is granted.
 A failure at start that can clear on its own exits 75 (`EX_TEMPFAIL`),
 which systemd and launchd both restart: audit storage that is full or
 not mounted yet, or a keychain still locked when the audit key is read.
+So does no keychain at all when the audit key is read, as with a Secret
+Service the desktop session starts after the systemd unit: the shim can't
+run without one, so it waits for it. The audit-key file fallback stands
+in only once its key exists, or, with `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`
+set, while there is no audit log yet that the keychain's key signed.
 An audit log that fails verification can't clear that way, so under
 launchd it exits 0 like the other permanent failures; check it with
 `autogpt-shim audit verify` and move it aside to start a new log. Nor can

@@ -385,7 +385,7 @@ def test_audit_initialization_failure_is_terminal(
 ) -> None:
     from autogpt_local_executor.daemon import DaemonPreflightError
 
-    def fail_key() -> bytes:
+    def fail_key(_audit_log: Path | None = None) -> bytes:
         raise RuntimeError("keychain unavailable")
 
     monkeypatch.setattr(daemon_module, "get_or_create_audit_key", fail_key)
@@ -609,6 +609,12 @@ async def test_a_keychain_failure_during_a_refresh_is_retried_unless_there_is_no
         ("disk-full", False, True),
         ("read-only", True, False),
         ("keychain-locked", False, True),
+        # No keychain at all yet, and no file key: one the session starts
+        # after the service.
+        ("no-keychain-yet", False, True),
+        # The same with the passphrase set, and a log the keychain's key
+        # signed, which a new file key would never verify.
+        ("no-keychain-yet-signed-log", False, True),
     ],
 )
 def test_an_audit_failure_at_start_says_whether_a_restart_can_fix_it(
@@ -635,14 +641,24 @@ def test_an_audit_failure_at_start_says_whether_a_restart_can_fix_it(
         audit_log_path=tmp_path / "audit.log",
     )
     monkeypatch.delenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", raising=False)
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path / "fallback"))
     if failure == "keychain-locked":
 
         def locked(*_args: object) -> None:
             raise keyring.errors.KeyringLocked("the keychain is locked")
 
         monkeypatch.setattr(keyring, "get_password", locked)
+    elif failure.startswith("no-keychain-yet"):
+
+        def missing(*_args: object) -> None:
+            raise keyring.errors.NoKeyringError("no recommended backend")
+
+        monkeypatch.setattr(keyring, "get_password", missing)
+        if failure == "no-keychain-yet-signed-log":
+            monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+            config.audit_log_path.write_text('{"seq": 1, "ts": 1.0, "op": "X", "hmac": "00"}\n')
     else:
-        monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda: b"k" * 32)
+        monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda _log=None: b"k" * 32)
     if failure == "corrupt":
         config.audit_log_path.write_text('{"seq": 1, "ts": 1.0, "op": "X", "hmac": "00"}\n')
     elif failure in ("disk-full", "read-only"):
@@ -658,6 +674,8 @@ def test_an_audit_failure_at_start_says_whether_a_restart_can_fix_it(
 
     assert raised.value.permanent is permanent
     assert getattr(raised.value, "transient", False) is transient
+    # No stray file key for a later start to pick up instead of the keychain.
+    assert not (tmp_path / "fallback" / "audit-key.enc").exists()
 
 
 @pytest.mark.asyncio

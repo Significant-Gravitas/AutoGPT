@@ -145,8 +145,10 @@ OS keychain (same backend as the OAuth tokens — see CROSS_PLATFORM.md
 
 If the keychain is unavailable, a legacy audit-only fallback uses
 `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`. It uses HMAC-derived XOR obfuscation, without
-authenticated encryption or a slow password KDF. OAuth tokens have no file
-fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
+authenticated encryption or a slow password KDF. It makes a new key only while
+there is no log yet; with one, which the keychain's key signed, the daemon
+waits for the keychain instead (it exits 75 to be restarted). OAuth tokens have
+no file fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
 
 Malformed stored keys are preserved and rejected rather than regenerated.
 Before appending to an existing active log, startup verifies its chain using
