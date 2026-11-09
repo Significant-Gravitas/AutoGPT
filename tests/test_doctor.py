@@ -288,6 +288,35 @@ def test_doctor_fails_on_a_driver_report_it_cannot_read(
     assert any(check.marker == "FAIL" and check.blocking for check in checks)
 
 
+def test_doctor_reads_the_driver_report_as_utf8(monkeypatch) -> None:
+    """cua-driver prints its report in UTF-8, and on Windows `text=True`
+    decodes with the ANSI code page: a path naming C:\\Users\\Álvaro
+    (UTF-8 0xC3 0x81, and 0x81 isn't cp1252) failed doctor."""
+    report = json.dumps(
+        {
+            "build": {"version": "0.38.0"},
+            "probes": [
+                {"label": "AT-SPI", "status": "ok", "message": "C:\\Users\\Álvaro reachable"}
+            ],
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+    def run(argv, **kwargs):
+        # Windows: without an encoding, text=True reads the ANSI code page.
+        decoded = report.decode(
+            kwargs.get("encoding") or "cp1252", kwargs.get("errors") or "strict"
+        )
+        return subprocess.CompletedProcess(argv, 0, decoded, "")
+
+    monkeypatch.setattr(doctor.subprocess, "run", run)
+
+    checks = {check.label: check for check in doctor._driver_doctor(FAKE)}
+
+    assert checks["cua-driver AT-SPI"].marker == "OK"
+    assert "Álvaro" in checks["cua-driver AT-SPI"].detail
+
+
 def test_doctor_keeps_the_probes_it_can_read(tmp_path, driver_commands) -> None:
     driver_commands.state["report"] = json.dumps(
         {
