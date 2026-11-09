@@ -411,7 +411,7 @@
       "behaviour": "ask",
       "must": [
         "asks in exactly one ask_question call, with the questions batched and the call last in the turn",
-        "asks which report and funder it means, naming the one it found due (the Larkspur final report, narrative draft v3) and noting it is still a draft that Amani reviews before any funder send; KCNF and Rotary Karen have no report due",
+        "confirms which report it means, naming the one it found due (the Larkspur final report, narrative draft v3), and raises that it is still a draft Amani reviews before any funder send",
         "gives a sensible default_guess with each question",
         "after the answer, proceeds with the work without asking again"
       ],
