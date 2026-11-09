@@ -1290,6 +1290,24 @@ async def test_text_is_measured_as_json_writes_it(make_handler, monkeypatch) -> 
     assert any("cut down" in text for text in texts)
 
 
+async def test_a_cut_down_result_fits_the_negotiated_limit_as_json(make_handler) -> None:
+    """The last cut held the text to the budget in UTF-8 bytes, but JSON
+    writes a control character as six: 600 NULs passed a 1,000-byte limit
+    and took over 3,600 bytes on the wire. The notes added after the check
+    weren't counted either."""
+    handler = make_handler()
+    handler.config.max_file_size_bytes = 1000
+
+    payload, _summary = handler._result_payload(
+        "get_window_state", {"content": [{"type": "text", "text": "\x00" * 600}]}
+    )
+
+    texts = [b.text for b in payload.content if isinstance(b, ComputerTextContent)]
+    assert sum(len(json.dumps(text, ensure_ascii=False).encode()) for text in texts) <= 1000
+    assert any("cut down" in text for text in texts)
+    assert texts[0] and set(texts[0]) == {"\x00"}
+
+
 async def test_a_call_past_its_timeout_is_stopped_at_the_driver(
     make_handler, fake_log, monkeypatch
 ) -> None:

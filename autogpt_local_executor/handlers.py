@@ -1922,36 +1922,38 @@ class ComputerUseHandler:
         structured = structured if isinstance(structured, dict) else None
 
         # Every operation's payload stays within the negotiated
-        # max_file_size_bytes (PROTOCOL.md), and within the frame.
+        # max_file_size_bytes (PROTOCOL.md), and within the frame, the notes
+        # added below included.
         budget = min(self.config.max_file_size_bytes, MAX_WIRE_BASE64_CONTENT_BYTES)
-        size = sum(_block_size(block) for block in content) + len(
-            json.dumps(structured) if structured is not None else ""
-        )
-        if size > budget:
+
+        def size() -> int:
+            return (
+                sum(_block_size(block) for block in content)
+                + sum(_json_text_size(note) for note in notes)
+                + len(json.dumps(structured) if structured is not None else "")
+            )
+
+        if size() > budget:
             images = [block for block in content if isinstance(block, ComputerImageContent)]
             content = [block for block in content if isinstance(block, ComputerTextContent)]
-            size -= sum(_block_size(block) for block in images)
             withheld += len(images)
             if images:
                 notes.append(
                     f"{len(images)} screenshot(s) left out: the result was too large to "
                     "send. Ask for a smaller image (max_image_dimension) or zoom in."
                 )
-        if size > budget:
+        if size() > budget:
             structured = None
             first_text = next(
                 (block for block in content if isinstance(block, ComputerTextContent)), None
             )
             content = []
-            if first_text is not None:
-                content.append(
-                    ComputerTextContent(
-                        text=_truncate_utf8(
-                            first_text.text, min(budget, MAX_WIRE_TEXT_CONTENT_BYTES)
-                        )
-                    )
-                )
             notes.append("The result was cut down to fit the connection's message limit.")
+            if first_text is not None:
+                # Measured as JSON writes it: a control character takes six
+                # bytes there, so its UTF-8 length can be far less.
+                room = min(budget, MAX_WIRE_TEXT_CONTENT_BYTES) - size()
+                content.append(ComputerTextContent(text=_truncate_json_text(first_text.text, room)))
         for block in content:
             if isinstance(block, ComputerImageContent):
                 self._screenshot_rate.allow()
@@ -2039,14 +2041,28 @@ def _block_size(block: ComputerTextContent | ComputerImageContent) -> int:
     a quote or backslash two."""
     if isinstance(block, ComputerImageContent):
         return len(block.data)
-    return len(json.dumps(block.text, ensure_ascii=False).encode("utf-8"))
+    return _json_text_size(block.text)
 
 
-def _truncate_utf8(text: str, limit: int) -> str:
-    encoded = text.encode("utf-8")
-    if len(encoded) <= limit:
+def _json_text_size(text: str) -> int:
+    """The bytes `text` takes as a JSON string, quotes and escapes included."""
+    return len(json.dumps(text, ensure_ascii=False).encode("utf-8"))
+
+
+def _truncate_json_text(text: str, limit: int) -> str:
+    """The longest start of `text` that takes at most `limit` bytes as a JSON
+    string. Every character takes at least one byte, so it is no longer than
+    `limit` characters."""
+    if _json_text_size(text) <= limit:
         return text
-    return encoded[:limit].decode("utf-8", "ignore")
+    low, high = 0, min(len(text), max(limit, 0))
+    while low < high:
+        middle = (low + high + 1) // 2
+        if _json_text_size(text[:middle]) <= limit:
+            low = middle
+        else:
+            high = middle - 1
+    return text[:low]
 
 
 def _shim_version() -> str:
