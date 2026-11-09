@@ -2792,6 +2792,160 @@ def test_create_session_maps_raced_expert_validation_to_404(
     assert response.json() == {"detail": "Expert not found"}
 
 
+def test_create_session_looks_the_expert_up_alongside_the_connection(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Neither lookup waits for the other: read one after another, the first
+    would never finish."""
+    mock_create = _mock_create_chat_session(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+    barrier: dict = {"started": 0, "event": None}
+
+    async def both_started() -> None:
+        if barrier["event"] is None:
+            barrier["event"] = asyncio.Event()
+        barrier["started"] += 1
+        if barrier["started"] == 2:
+            barrier["event"].set()
+        await asyncio.wait_for(barrier["event"].wait(), timeout=5)
+
+    async def expert(*_args):
+        await both_started()
+        return _make_expert("expert-1")
+
+    async def route(*_args):
+        await both_started()
+        return ("platform", None)
+
+    mocker.patch(
+        "backend.api.features.chat.routes.experts_db.get_expert", side_effect=expert
+    )
+    mocker.patch.object(
+        chat_routes, "_resolve_new_session_llm_route", side_effect=route
+    )
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.parametrize(
+    "expert", [None, _make_expert(is_archived=True)], ids=["missing", "archived"]
+)
+def test_create_session_reports_a_missing_or_archived_expert_before_a_bad_connection(
+    mocker: pytest_mock.MockerFixture,
+    expert,
+) -> None:
+    """Both lookups fail: the expert's 404 wins, as when it was looked up
+    first."""
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, expert)
+    mocker.patch.object(
+        chat_routes,
+        "_resolve_new_session_llm_route",
+        side_effect=fastapi.HTTPException(
+            status_code=422, detail="codex_credential_required"
+        ),
+    )
+
+    response = client.post(
+        "/sessions", json={"expert_id": "expert-1", "llm_auth_provider": "codex"}
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Expert not found"}
+    mock_create.assert_not_called()
+
+
+def test_create_session_reports_a_failed_expert_lookup_before_a_bad_connection(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The expert lookup errors and the connection is bad: the lookup's error
+    surfaces, as when it ran first, rather than reading as a missing expert."""
+    mock_create = _mock_create_chat_session(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("expert lookup failed"),
+    )
+    mocker.patch.object(
+        chat_routes,
+        "_resolve_new_session_llm_route",
+        side_effect=fastapi.HTTPException(
+            status_code=422, detail="codex_credential_required"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="expert lookup failed"):
+        client.post(
+            "/sessions", json={"expert_id": "expert-1", "llm_auth_provider": "codex"}
+        )
+    mock_create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_session_abandoned_mid_lookup_leaves_no_lookup_running(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The client goes away while the expert and the connection are being
+    looked up: every lookup stops with the request, the connection's three
+    reads included, and nothing is created."""
+    mock_create = _mock_create_chat_session(mocker)
+    started: list[str] = []
+    stopped: list[str] = []
+    all_started = asyncio.Event()
+
+    async def lookup(name: str) -> None:
+        started.append(name)
+        if len(started) == 4:
+            all_started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            stopped.append(name)
+            raise
+
+    async def expert(*_args) -> None:
+        await lookup("expert")
+
+    async def connections(_user_id: str, provider: str) -> None:
+        await lookup("chatgpt" if provider == "codex" else "microsoft")
+
+    async def saved_default(_user_id: str) -> None:
+        await lookup("saved default")
+
+    mocker.patch(
+        "backend.api.features.chat.routes.experts_db.get_expert", side_effect=expert
+    )
+    chat_transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        connections
+    )
+    chat_transports.user_db().get_user_default_chat_route.side_effect = saved_default
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as async_client:
+        request = asyncio.create_task(
+            async_client.post("/sessions", json={"expert_id": "expert-1"})
+        )
+        try:
+            await asyncio.wait_for(all_started.wait(), timeout=5)
+            request.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await request
+        finally:
+            request.cancel()
+            await asyncio.gather(request, return_exceptions=True)
+
+    assert sorted(started) == ["chatgpt", "expert", "microsoft", "saved default"]
+    assert sorted(stopped) == sorted(started)
+    mock_create.assert_not_called()
+
+
 def test_create_session_maps_missing_personal_org_to_503(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -4620,15 +4774,12 @@ def test_get_session_reports_background_state_from_the_durable_record(
         new_callable=AsyncMock,
         return_value=(None, None),
     )
-    until = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
     mocker.patch.object(
         chat_routes,
         "background_task_db",
         return_value=MagicMock(
             get_session_background_state=AsyncMock(
-                return_value=BackgroundSessionState(
-                    outcome="completed", pending_until=until
-                )
+                return_value=BackgroundSessionState(outcome="completed", pending=True)
             )
         ),
     )
@@ -4638,7 +4789,7 @@ def test_get_session_reports_background_state_from_the_durable_record(
     assert response.status_code == 200
     data = response.json()
     assert data["background_outcome"] == "completed"
-    assert data["background_pending_until"] == until.isoformat()
+    assert data["background_pending"] is True
 
 
 def test_get_session_serves_history_for_an_archived_expert_session(
@@ -5659,3 +5810,80 @@ def test_a_builder_session_keeps_the_picked_mode(
 
     assert response.status_code == 200
     assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+# ─── A user message is stored as the engines will read it ─────────────
+
+
+@pytest.mark.parametrize("is_user_message", [True, False])
+def test_a_user_message_is_stored_without_server_only_blocks(
+    mocker: pytest_mock.MockerFixture, is_user_message: bool
+) -> None:
+    """The stored row is what later turns replay as history, after the
+    engines' own entry sanitising, so it gets the same normalisation first."""
+    mocks = _mock_stream_internals(mocker)
+    with_block = "<user_context>\nA note.\n</user_context>\n\nhello"
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": with_block, "is_user_message": is_user_message},
+    )
+
+    assert response.status_code == 200
+    sent = mocks.enqueue.await_args.kwargs["message"]
+    assert sent == ("hello" if is_user_message else with_block)
+
+
+def test_a_message_with_nothing_of_the_users_own_is_refused(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A message that is all server-only blocks would otherwise start a turn
+    with no message of the user's at all."""
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "<user_context>\nA note.\n</user_context>\n\n"},
+    )
+
+    assert response.status_code == 422
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_attachments_do_not_carry_a_message_of_only_server_only_blocks(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "<user_context>\nA note.\n</user_context>",
+            "file_ids": ["00000000-0000-0000-0000-000000000001"],
+        },
+    )
+
+    assert response.status_code == 422
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_a_refused_message_writes_nothing_first(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The refusal comes before the mode change and every other write."""
+    mocks = _mock_stream_internals(mocker)
+    apply_mode = mocker.patch.object(
+        chat_routes, "_apply_autopilot_mode", new=AsyncMock()
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "<user_context>\nA note.\n</user_context>",
+            "autopilot_mode": "unsupervised",
+        },
+    )
+
+    assert response.status_code == 422
+    apply_mode.assert_not_awaited()
+    mocks.enqueue.assert_not_awaited()

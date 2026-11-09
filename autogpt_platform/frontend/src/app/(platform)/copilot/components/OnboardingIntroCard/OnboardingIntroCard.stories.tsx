@@ -5,28 +5,50 @@ import { OnboardingIntroCard } from "./OnboardingIntroCard";
 
 type Suggestions = ComponentProps<typeof OnboardingIntroCard>["suggestions"];
 
+const TASKS: Suggestions["tasks"] = [
+  {
+    id: "task-1",
+    title: "Summarise my inbox every morning",
+    prompt: "Summarise my inbox every morning at 8am.",
+    icon: "calendar",
+    why: "Because mornings go on email.",
+    expert_template_id: "tpl-maria",
+    expert_id: "expert-maria",
+    state: "open",
+  },
+  {
+    id: "task-2",
+    title: "Draft a weekly update for the team",
+    prompt: "Draft a weekly update for the team from this week's notes.",
+    icon: "file",
+    state: "open",
+  },
+];
+
 const SUGGESTIONS: Suggestions = {
   isStored: true,
-  tasks: [
+  allTasks: TASKS,
+  tasks: TASKS,
+  experts: [
     {
-      id: "task-1",
-      title: "Summarise my inbox every morning",
-      prompt: "Summarise my inbox every morning at 8am.",
-      icon: "calendar",
-      state: "open",
-    },
-    {
-      id: "task-2",
-      title: "Draft a weekly update for the team",
-      prompt: "Draft a weekly update for the team from this week's notes.",
-      icon: "file",
-      state: "open",
+      id: "expert-maria",
+      name: "Maria",
+      avatarUrl: null,
+      role: "Marketing",
+      isArchived: false,
+      readOnlyReason: null,
     },
   ],
+  expertsById: new Map(),
+  isRosterLoaded: true,
   sendingId: null,
-  sendTask: async () => undefined,
-  hideTask: () => undefined,
-  hideAll: () => undefined,
+  sendTask: () => undefined,
+  removeTask: () => undefined,
+};
+
+const COLLAPSE: ComponentProps<typeof OnboardingIntroCard>["collapse"] = {
+  isCollapsed: false,
+  toggle: () => undefined,
 };
 
 const meta: Meta<typeof OnboardingIntroCard> = {
@@ -46,6 +68,7 @@ const meta: Meta<typeof OnboardingIntroCard> = {
     greeting:
       "Thanks for telling me about your week. I can take the inbox and the weekly update off your plate. Pick one below to start.",
     suggestions: SUGGESTIONS,
+    collapse: COLLAPSE,
   },
   decorators: [
     (Story) => (

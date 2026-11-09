@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, model_validator
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
-from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.features.library.model import LibraryAgentPreset, split_trigger_inputs
 from backend.api.middleware.body_limit import MiB, request_body_limit
 from backend.copilot.rate_limit import enforce_payment_paywall, is_user_paywalled
 from backend.copilot.scheduled_chats.reconnect import (
@@ -94,6 +94,7 @@ from backend.integrations.oauth.microsoft_identity import (
 )
 from backend.integrations.oauth.microsoft_recovery import MicrosoftAuthError
 from backend.integrations.oauth.microsoft_tokens import browser_sign_in_available
+from backend.integrations.oauth.refresh_failure import without_reconnect_required
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.service_identity import (
     service_for_catalog_entry,
@@ -1607,10 +1608,20 @@ async def _execute_webhook_preset_trigger(
         )
         await set_preset_webhook(preset.user_id, preset.id, None)
         return
-    if not trigger_node.block.is_triggered_by_event_type(preset.inputs, event_type):
+    graph_inputs, mask = split_trigger_inputs(preset.inputs, trigger_node.id)
+    # dict(): `mask` may be the dict `preset.inputs` holds, and `payload` is
+    # written into it below.
+    trigger_inputs = dict(mask)
+
+    # The event filter lives in the trigger config, so check it against the
+    # unwrapped mask rather than the full preset inputs.
+    if not trigger_node.block.is_triggered_by_event_type(trigger_inputs, event_type):
         logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
         return
     logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
+
+    # Add webhook payload to trigger inputs
+    trigger_inputs["payload"] = payload
 
     try:
         # Expert resources survive personal-org conversion: active ownership
@@ -1631,9 +1642,10 @@ async def _execute_webhook_preset_trigger(
             user_id=webhook.user_id,
             graph_id=preset.graph_id,
             preset_id=preset.id,
+            inputs=graph_inputs,
             graph_version=preset.graph_version,
             graph_credentials_inputs=preset.credentials,
-            nodes_input_masks={trigger_node.id: {**preset.inputs, "payload": payload}},
+            nodes_input_masks={trigger_node.id: trigger_inputs},
             organization_id=org_id,
             team_id=ws_id,
             expert_id=preset.expert_id,
@@ -1874,10 +1886,10 @@ async def _upgrade_existing_credential(
     merged.id = existing.id
     merged.title = existing.title
     merged.scopes = list(set(existing.scopes) | set(new_credentials.scopes))
-    merged.metadata = {
-        **(existing.metadata or {}),
-        **(new_credentials.metadata or {}),
-    }
+    # A fresh grant supersedes a refresh the provider refused for good.
+    merged.metadata = without_reconnect_required(
+        {**(existing.metadata or {}), **(new_credentials.metadata or {})}
+    )
     # Preserve the existing refresh_token and username if the incremental
     # response doesn't carry them.  Providers like Google only return a
     # refresh_token on first authorization — dropping it here would orphan
