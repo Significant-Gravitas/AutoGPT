@@ -78,7 +78,7 @@ function Section({
           {description}
         </Text>
       </div>
-      <div className="divide-y divide-zinc-200 rounded-lg border border-zinc-200">
+      <div className="divide-y divide-border-base rounded-lg border border-border-base">
         {tokens.map(([className, value, replaces]) => (
           <div
             key={className}
@@ -115,19 +115,19 @@ export function AllTokens() {
         title="Size roles"
         description="font-size / bundled line-height"
         tokens={fontSizes}
-        sampleClassName="font-sans text-zinc-900"
+        sampleClassName="font-sans text-foreground-strong"
       />
       <Section
         title="Line height"
         description="Overrides, shown on a two-line sample at 14px"
         tokens={lineHeights}
-        sampleClassName="max-w-[8rem] bg-zinc-50 font-sans text-body text-zinc-900"
+        sampleClassName="max-w-[8rem] bg-surface-muted font-sans text-body text-foreground-strong"
       />
       <Section
         title="Letter spacing"
         description="Shown at 16px; em values scale with the font size"
         tokens={letterSpacings}
-        sampleClassName="font-sans text-body-lg uppercase text-zinc-900"
+        sampleClassName="font-sans text-body-lg uppercase text-foreground-strong"
       />
     </div>
   );

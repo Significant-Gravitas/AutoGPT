@@ -1,5 +1,5 @@
-"""Claude Code only resumes a sandbox that was created for the same user,
-runs only on the user's own Anthropic key, and on the platform's E2B key
+"""Claude Code only resumes a Claude Code sandbox that was created for the same
+user, runs only on the user's own Anthropic key, and on the platform's E2B key
 pauses a sandbox it keeps."""
 
 from unittest.mock import AsyncMock, call, patch
@@ -81,6 +81,51 @@ async def test_resuming_another_users_sandbox_is_refused(
     theirs.kill.assert_not_awaited()
     hold.assert_not_awaited()
     by_id.pause.assert_not_awaited()
+
+
+async def test_resuming_the_users_own_box_of_another_kind_is_refused():
+    """A resume continues a Claude Code sandbox, not another box of the user's."""
+    block = ClaudeCodeBlock()
+    code_box = AsyncMock()
+    code_box.get_info = AsyncMock(
+        return_value=AsyncMock(
+            metadata={
+                "service": "autogpt-platform",
+                "autogpt_owner": "user:user-a",
+                "autogpt_kind": "code",
+                "autogpt_source": "block",
+                "autogpt_env": "dev",
+                "autogpt_user": "user-a",
+            }
+        )
+    )
+    with (
+        patch("backend.blocks.claude_code.BaseAsyncSandbox") as cls,
+        patch("backend.blocks.claude_code.hold_sandbox", AsyncMock()) as hold,
+        patch("backend.blocks.claude_code.release_sandbox", AsyncMock()) as release,
+    ):
+        cls.get_info = AsyncMock(return_value=code_box.get_info.return_value)
+        cls.connect = AsyncMock(return_value=code_box)
+        with pytest.raises(ClaudeCodeExecutionError, match="not a Claude Code sandbox"):
+            await block.execute_claude_code(
+                e2b_api_key="k",
+                anthropic_api_key="a",
+                prompt="hi",
+                timeout=60,
+                setup_commands=[],
+                working_directory="/home/user",
+                session_id="s1",
+                existing_sandbox_id="sb-code",
+                conversation_history="",
+                dispose_sandbox=False,
+                execution_context=ExecutionContext(user_id="user-a"),
+                pause_when_kept=True,
+            )
+    # Refused before the box is counted as held, so nothing pauses it.
+    hold.assert_not_awaited()
+    release.assert_not_awaited()
+    cls.connect.assert_not_awaited()
+    code_box.commands.run.assert_not_awaited()
 
 
 async def _run_with(

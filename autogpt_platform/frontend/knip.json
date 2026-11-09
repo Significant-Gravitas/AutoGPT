@@ -10,6 +10,8 @@
     "scripts/codemod-tokens.ts",
     "scripts/ds/text-size-scale.ts",
     "scripts/check-token-equivalence.ts",
+    "scripts/ds/alias-to-role.ts",
+    "scripts/ds/palette-to-role.ts",
     "scripts/screenshot-pages.ts"
   ],
   "ignoreDependencies": [

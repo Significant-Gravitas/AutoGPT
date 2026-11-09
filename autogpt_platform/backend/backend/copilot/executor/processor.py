@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Callable, cast
 
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 
+from backend.api.features.experts.models import CheckedExpert
 from backend.copilot import stream_registry
 from backend.copilot.ai_spans import set_turn_span, trace_id_for
 from backend.copilot.background_execution import (
@@ -37,10 +38,17 @@ from backend.copilot.credit_billing import (
     credit_billing,
 )
 from backend.copilot.engine import resolve_use_sdk
+from backend.copilot.expert_check import (
+    checked_expert,
+    forget_expert_checks,
+    remember_expert_check,
+    sharing_expert_checks,
+)
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
+    read_private_expert,
 )
 from backend.copilot.llm_attribution import (
     set_turn_impersonated,
@@ -88,6 +96,7 @@ from backend.util.exceptions import (
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import set_service_name
 from backend.util.retry import func_retry
+from backend.util.service import RETRYABLE_SERVICE_ERRORS
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .scheduled_turn_alert import ScheduledTurnWatch
@@ -246,16 +255,10 @@ async def _normalize_private_expert_session_tenancy(
         return session
 
     from backend.copilot.model import upsert_chat_session
-    from backend.data.db_accessors import experts_db
 
-    try:
-        organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
-            session.user_id, session.expert_id
-        )
-    except ExpertNotFoundError as e:
-        raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE) from e
-    except ExpertPrivateTenancyNotFoundError as e:
-        raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from e
+    check = await _read_private_expert_check(session.user_id, session.expert_id)
+    remember_expert_check(session.user_id, session.expert_id, check)
+    organization_id, team_id = check.organization_id, check.team_id
     if (session.organization_id, session.team_id) == (organization_id, team_id):
         return session
 
@@ -271,6 +274,10 @@ async def _wait_for_expert_setup(session: "ChatSession") -> bool:
 
     Returns whether the turn waited."""
     if session.expert_id is None:
+        return False
+    # The turn's expert check read the setup status a moment ago.
+    check = checked_expert(session.user_id, session.expert_id)
+    if check is not None and check.expert.setup_status != "installing":
         return False
     from backend.data.db_accessors import experts_db
 
@@ -289,6 +296,42 @@ async def _wait_for_expert_setup(session: "ChatSession") -> bool:
         await asyncio.sleep(EXPERT_SETUP_POLL_SECONDS)
         waited = True
     return waited
+
+
+async def _reauthorize_private_expert_after_setup_wait(
+    session: "ChatSession",
+) -> None:
+    expert_id = session.expert_id
+    if expert_id is None:
+        return
+    intended_scope = session.organization_id, session.team_id
+    forget_expert_checks()
+    check = await _read_private_expert_check(session.user_id, expert_id)
+    if (check.organization_id, check.team_id) != intended_scope:
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE)
+    remember_expert_check(session.user_id, expert_id, check)
+
+
+async def _read_private_expert_check(user_id: str, expert_id: str) -> CheckedExpert:
+    from backend.data.db_accessors import expert_check_db
+
+    try:
+        return await expert_check_db().check_private_expert(user_id, expert_id)
+    except ExpertNotFoundError as error:
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE) from error
+    except ExpertPrivateTenancyNotFoundError as error:
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from error
+    except RETRYABLE_SERVICE_ERRORS as error:
+        # A database manager still on the release before check_private_expert
+        # has no such route, or the first read failed with a retryable service
+        # error: use the separate reads that every manager serves.
+        logger.warning(
+            f"Expert #{expert_id} check read separately: {type(error).__name__}"
+        )
+    expert, (organization_id, team_id) = await read_private_expert(user_id, expert_id)
+    return CheckedExpert(
+        expert=expert, organization_id=organization_id, team_id=team_id
+    )
 
 
 async def _closing_at_model_output(
@@ -382,6 +425,28 @@ def cleanup_worker():
 
 
 # ============ Processor Class ============ #
+
+
+async def _tag_load_test_account(
+    entry: CoPilotExecutionEntry, turn: TurnTrace
+) -> tuple[LoadTestEngine | None, bool]:
+    """Tag *turn* as a load-test account's before admission can end it, so a
+    turn refused there is counted apart from people's. Returns the account's
+    load-test engine and whether it is known. A lookup that fails here is
+    left unknown rather than raised: before the turn is claimed, raising
+    would fail-close a turn another worker owns. The turn looks it up again
+    when it runs, and fails if it still can't."""
+    config = ChatConfig()
+    if config.test_mode:
+        return None, True
+    try:
+        engine = await load_test_engine(entry.user_id, config)
+    except Exception:
+        logger.debug("Load-test lookup before admission failed", exc_info=True)
+        return None, False
+    if engine is not None:
+        turn.load_test_account(engine)
+    return engine, True
 
 
 class CoPilotProcessor:
@@ -608,11 +673,23 @@ class CoPilotProcessor:
             cluster_lock: Distributed lock for refresh
             log: Structured logger
         """
-        with turn_transaction(entry) as turn:
-            if not await claim_background_execution(entry):
+        with turn_transaction(entry) as turn, sharing_expert_checks():
+            load_test, load_test_known = await _tag_load_test_account(entry, turn)
+            if not await claim_background_execution(
+                entry, on_claimed_elsewhere=turn.claimed_elsewhere
+            ):
                 return False
             async with asyncio.timeout(background_timeout(entry)) as deadline:
-                await self._run_turn(entry, cancel, cluster_lock, log, turn, deadline)
+                await self._run_turn(
+                    entry,
+                    cancel,
+                    cluster_lock,
+                    log,
+                    turn,
+                    deadline,
+                    load_test=load_test,
+                    load_test_known=load_test_known,
+                )
             return True
 
     async def _run_turn(
@@ -623,6 +700,8 @@ class CoPilotProcessor:
         log: CoPilotLogMetadata,
         turn: TurnTrace,
         deadline: asyncio.Timeout | None = None,
+        load_test: LoadTestEngine | None = None,
+        load_test_known: bool = False,
     ):
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
@@ -639,9 +718,10 @@ class CoPilotProcessor:
 
             # Known before anything can end the turn, so a load-test
             # account's turn is told apart from people's however it ends.
+            # Usually known since admission; looked up here when that lookup
+            # failed, and a lookup that fails again fails the turn.
             config = ChatConfig()
-            load_test: LoadTestEngine | None = None
-            if not config.test_mode:
+            if not load_test_known and not config.test_mode:
                 load_test = await load_test_engine(entry.user_id, config)
                 if load_test is not None:
                     turn.load_test_account(load_test)
@@ -723,19 +803,21 @@ class CoPilotProcessor:
                             "Background work could not start within its usage limits."
                         )
                     return
-                if credit_turn is not None:
-                    log.info(
-                        f"The {credit_turn.refusal.reason} limit is used up: "
-                        f"billing this block turn to credits, up to "
-                        f"{credit_turn.cap_credits} credits"
-                    )
-                    await cost_context_stack.enter_async_context(
-                        credit_billing(credit_turn)
-                    )
             if await _wait_for_expert_setup(session):
                 # Up to a minute: long enough for the user to convert or end
                 # their trial, so the rest of the setup reads both again.
                 trial_reads.forget()
+                await _reauthorize_private_expert_after_setup_wait(session)
+
+            if credit_turn is not None:
+                log.info(
+                    f"The {credit_turn.refusal.reason} limit is used up: "
+                    f"billing this block turn to credits, up to "
+                    f"{credit_turn.cap_credits} credits"
+                )
+                await cost_context_stack.enter_async_context(
+                    credit_billing(credit_turn)
+                )
 
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access
@@ -1024,6 +1106,10 @@ class CoPilotProcessor:
                         entry.session_id,
                         error_message=error_msg,
                         error_code=error_code,
+                        skip_error_publish=(
+                            cancel.is_set()
+                            and error_msg == stream_registry.CANCELLED_MESSAGE
+                        ),
                         turn_id=entry.turn_id,
                     )
                 except Exception as mark_err:
