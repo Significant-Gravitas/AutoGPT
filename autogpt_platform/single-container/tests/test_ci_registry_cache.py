@@ -74,21 +74,26 @@ class RegistryCacheTests(unittest.TestCase):
         bake = (
             SCRIPT.parents[2] / "autogpt_platform/single-container/docker-bake.hcl"
         ).read_text(encoding="utf-8")
-        targets = re.findall(r'^target "([^"]+)"', bake, re.MULTILINE)
-        helpers = [target for target in targets if target != "single-container"]
-        self.assertIn("backend-server-base", helpers)
-        for helper in helpers:
-            self.assertIn(f'"target:{helper}"', bake)
+        final = bake.split('target "single-container" {', 1)[1].split("\n}", 1)[0]
+        contexts = dict(
+            re.findall(r'^\s*([\w-]+)\s*=\s*"target:([^"]+)"', final, re.MULTILINE)
+        )
+        self.assertEqual(
+            contexts,
+            {
+                "autogpt-backend-base": "backend-server-base",
+                "autogpt-backend": "backend-server",
+            },
+        )
         for event in ("push", "pull_request", "workflow_dispatch"):
             settings = self.settings(event)
             self.assertIn(
                 f"single-container.cache-from=type=registry,ref={IMAGE}:v4-amd64",
                 settings,
             )
-            for helper in helpers:
-                self.assertFalse(
-                    any(s.startswith(f"{helper}.") for s in settings), settings
-                )
+            self.assertTrue(
+                all(s.startswith("single-container.") for s in settings), settings
+            )
 
     def test_validation_cache_reads_are_architecture_scoped(self):
         settings = self.settings("release", "refs/tags/v1")
