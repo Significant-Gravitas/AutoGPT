@@ -2,7 +2,7 @@ import asyncio
 import json
 import socket
 import tempfile
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 
 import numpy as np
@@ -10,11 +10,7 @@ import pytest
 import uvicorn
 from fakeredis import FakeServer
 from fakeredis.aioredis import FakeRedis
-from fastapi import BackgroundTasks
-from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 
-from backend.api.features.onboarding_dump.interview import InterviewClosure
-from backend.api.features.onboarding_dump.models import FinalizeResponse
 from backend.api.utils.cors import build_cors_params
 from backend.util.settings import AppEnvironment
 from backend.voice_relay import tokens
@@ -28,8 +24,6 @@ from backend.voice_relay.config import (
     Timing,
 )
 from backend.voice_relay.fake_vendor import FakeVendor
-from backend.voice_relay.handoff import record_hand_off
-from backend.voice_relay.locks import CallRecord
 from backend.voice_relay.metering import Row
 from backend.voice_relay.postcall import PostCall, Transcription
 from backend.voice_relay.serve import DrainingServer
@@ -59,6 +53,16 @@ def speech(seconds: float) -> list[bytes]:
     samples = np.arange(frame)
     tone = (np.sin(samples * 2 * np.pi * 300 / IN_RATE) * 8000).astype(np.int16)
     return [tone.tobytes() for _ in range(max(1, round(seconds / 0.04)))]
+
+
+async def until(condition: Callable[[], bool], timeout: float = 5.0) -> None:
+    """Wait until *condition* holds."""
+
+    async def poll() -> None:
+        while not condition():
+            await asyncio.sleep(0.02)
+
+    await asyncio.wait_for(poll(), timeout=timeout)
 
 
 def silence(seconds: float) -> list[bytes]:
@@ -111,27 +115,6 @@ class ScriptedTranscriber:
         return Transcription(text=text, tokens_in=100, tokens_out=10)
 
 
-class HandOffs:
-    """Hands every call off as an accepted take and remembers each."""
-
-    def __init__(self) -> None:
-        self.calls: list[CallRecord] = []
-
-    async def __call__(
-        self, redis, record: CallRecord, background: BackgroundTasks
-    ) -> InterviewClosure:
-        self.calls.append(record)
-        closure = InterviewClosure(
-            ending=None,
-            hand_off=FinalizeResponse(
-                status=BrainDumpStatus.transcribed,
-                input_mode=BrainDumpInputMode.typed,
-            ),
-        )
-        await record_hand_off(redis, record.call_id, closure)
-        return closure
-
-
 class FakeSocket:
     """The browser's end of a call socket."""
 
@@ -139,6 +122,8 @@ class FakeSocket:
         self.inbox: asyncio.Queue[dict] = asyncio.Queue()
         self.sent: list[dict] = []
         self.audio: list[bytes] = []
+        # Everything sent, in order: ("text", its type) or ("bytes", its size).
+        self.log: list[tuple[str, object]] = []
         self.closed_with: int | None = None
         self.broken = False
         self._changed = asyncio.Event()
@@ -150,12 +135,15 @@ class FakeSocket:
 
     async def send_text(self, data: str) -> None:
         self._check()
-        self.sent.append(json.loads(data))
+        message = json.loads(data)
+        self.sent.append(message)
+        self.log.append(("text", message["type"]))
         self._notify()
 
     async def send_bytes(self, data: bytes) -> None:
         self._check()
         self.audio.append(data)
+        self.log.append(("bytes", len(data)))
         self._notify()
 
     async def close(self, code: int = 1000, reason: str | None = None) -> None:
@@ -220,7 +208,6 @@ class RunningRelay:
         recorded: dict[str, str],
         postcall: PostCall,
         recordings: MemoryRecordings,
-        hand_offs: HandOffs,
     ) -> None:
         self.relay = relay
         self.server = server
@@ -231,7 +218,6 @@ class RunningRelay:
         self.recorded = recorded
         self.postcall = postcall
         self.recordings = recordings
-        self.hand_offs = hand_offs
 
     async def postcalls_done(self, timeout: float = 10.0) -> None:
         """Wait for the post-call jobs running on the relay."""
@@ -263,16 +249,20 @@ async def running_relay(
     settle_s: float = 5.0,
     caps: Caps = CAPS,
     timing: Timing = TIMING,
-    record_fails: bool = False,
+    record_failures: int = 0,
+    record_delay_s: float = 0.0,
+    max_concurrent: int = 25,
     transcriber: ScriptedTranscriber | None = None,
+    redis_delay_s: float = 0.0,
 ) -> AsyncIterator[RunningRelay]:
     """The relay app under a real uvicorn server on a free local port."""
     rows: list[Row] = []
     recorded: dict[str, str] = {}
     recordings = MemoryRecordings()
-    hand_offs = HandOffs()
 
     async def get_redis():
+        if redis_delay_s:
+            await asyncio.sleep(redis_delay_s)
         return redis
 
     async def account_name(user_id: str) -> str | None:
@@ -284,8 +274,13 @@ async def running_relay(
     async def sink(row: Row) -> None:
         rows.append(row)
 
+    failures = [record_failures]
+
     async def record_call(user_id: str, call_id: str) -> None:
-        if record_fails:
+        if record_delay_s:
+            await asyncio.sleep(record_delay_s)
+        if failures[0] > 0:
+            failures[0] -= 1
             raise ConnectionError("database is down")
         recorded[user_id] = call_id
 
@@ -298,7 +293,6 @@ async def running_relay(
         live_model="gemini-3.8-live",
         pod="relay-test",
         cost_sink=sink,
-        hand_off=hand_offs,
     )
     relay = Relay(
         max_calls=max_calls,
@@ -310,6 +304,7 @@ async def running_relay(
             account_name=account_name,
             record_call=record_call,
             live_model="gemini-3.8-live",
+            max_concurrent=max_concurrent,
             postcall=postcall,
             spool_dir=spool.name,
             cost_sink=sink,
@@ -345,7 +340,6 @@ async def running_relay(
         recorded=recorded,
         postcall=postcall,
         recordings=recordings,
-        hand_offs=hand_offs,
     )
     try:
         yield running

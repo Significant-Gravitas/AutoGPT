@@ -22,6 +22,11 @@ _ALLOWANCE_CHECKS = frozenset({"platform_spend_refusal", "tool_spend_refusal"})
 _CHECKS_ALLOWANCE = "checks the allowance before calling"
 _DREAM_BUDGET = "a dream or skill-learning pass, gated by check_dream_budget"
 _OUTSIDE_TURNS = "a platform feature's call outside any AutoPilot turn"
+_VOICE_INTERVIEW_BOUNDS = (
+    "the voice interview's Gemini client, for its live session, scope labels "
+    "and post-call transcript; bounded by the per-call spend and length caps, "
+    "the person's call allowance and the platform's daily voice budget"
+)
 
 _PLATFORM_KEY_MODEL_CALLS = {
     "api/features/onboarding_dump/intro.py generate_intro": _OUTSIDE_TURNS,
@@ -43,6 +48,7 @@ _PLATFORM_KEY_MODEL_CALLS = {
     "generate_activity_status_for_execution": _OUTSIDE_TURNS,
     "executor/simulator.py _call_llm_for_simulation": _CHECKS_ALLOWANCE,
     "util/clients.py _get_local_openai_client": "the client factory itself",
+    "voice_relay/serve.py production_deps": _VOICE_INTERVIEW_BOUNDS,
 }
 
 _RAW_TURN_PUBLISHES = {
@@ -52,6 +58,8 @@ _RAW_TURN_PUBLISHES = {
 }
 
 _CHAT_CONFIG_KEY = re.compile(r"(?:_chat_config|chat_config|chat_cfg)\.api_key")
+# A google-genai client built on the platform's Gemini key.
+_GEMINI_KEY = re.compile(r"(?:\w+\.)*secrets\.gemini_api_key")
 
 
 def test_platform_key_model_calls_are_listed():
@@ -145,6 +153,8 @@ def _is_platform_key_model_call(call: ast.Call) -> bool:
         return isinstance(prefer, ast.Constant) and prefer.value is True
     if name == "AsyncOpenAI" and "api_key" in keywords:
         return bool(_CHAT_CONFIG_KEY.fullmatch(ast.unparse(keywords["api_key"])))
+    if name == "Client" and "api_key" in keywords:
+        return bool(_GEMINI_KEY.fullmatch(ast.unparse(keywords["api_key"])))
     return False
 
 

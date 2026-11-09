@@ -6,14 +6,17 @@
   the URL, so it stays out of load balancer logs. The browser's origin must
   be one the platform allows (``BACKEND_CORS_ALLOW_ORIGINS``).
 - ``GET /healthz`` is liveness. ``GET /readyz`` is readiness, which fails
-  while the process drains so the load balancer sends it no new calls.
+  while the process drains, so the load balancer sends it no new calls, and
+  while it could not record a call: its spool directory takes no writes.
 
 The relay trusts the user a start token names, because only the REST API
 and the relay hold the key that signs it; it reads no platform session.
 
-Once a call ends, its post-call job runs here too (``postcall``), and the
-process sweeps for jobs no pod is running when it starts and every
-``POSTCALL_SWEEP_S``.
+Once a call ends, its transcript job runs here too (``postcall``), and the
+process sweeps for calls no pod is transcribing when it starts and every
+``POSTCALL_SWEEP_S``. The REST API hands each transcript off. As it starts it deletes the spools a call of an earlier
+process left; as it stops, its post-call jobs settle before its services
+close, so each gives up its claim while Redis still answers.
 """
 
 import asyncio
@@ -35,6 +38,7 @@ from backend.data.redis_client import AsyncRedisClient
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.config import (
     CAPS,
+    DEFAULT_DRAIN_S,
     MAX_TEXT_BYTES,
     START_TIMEOUT_S,
     TIMING,
@@ -43,7 +47,11 @@ from backend.voice_relay.config import (
 )
 from backend.voice_relay.metering import LIVE_CALLS, CallMeter, CostSink
 from backend.voice_relay.postcall import PostCall
-from backend.voice_relay.record import CallRecording
+from backend.voice_relay.record import (
+    CallRecording,
+    remove_stale_spools,
+    spool_writable,
+)
 from backend.voice_relay.scope import ScopeClassifier
 from backend.voice_relay.session import Session
 from backend.voice_relay.vendor import VendorConnector
@@ -58,6 +66,11 @@ CLOSE_NO_CALL = 4404
 
 FIRST_NAME_TIMEOUT_S = 2.0
 RECORD_CALL_TIMEOUT_S = 5.0
+REFUSE_TIMEOUT_S = 5.0
+SPOOL_PROBE_TIMEOUT_S = 2.0
+# How long the post-call jobs still running at shutdown get to finish before
+# they are cancelled, giving up their claims for another pod's sweep.
+SHUTDOWN_JOBS_S = 5.0
 MAX_FIRST_NAME_CHARS = 40
 _NAME_MARKS = "'-’"
 
@@ -75,14 +88,51 @@ class RelayDeps(BaseModel):
     # Records a started call on the user's onboarding row: (user id, call id).
     record_call: Callable[[str, str], Awaitable[None]]
     live_model: str
-    # Each call's transcript of record and hand-off, and the sweep.
+    # Live calls the whole platform takes at once.
+    max_concurrent: int
+    # Each call's transcript of record, and the sweep.
     postcall: PostCall
     # Where a call's recording is spooled before it is uploaded.
     spool_dir: str
+    # A spool older than this is no live call's: the call cap and the drain.
+    spool_stale_s: float = CAPS.max_call_s + DEFAULT_DRAIN_S
     # Where priced rows go; None logs them to PlatformCostLog.
     cost_sink: CostSink | None = None
     caps: Caps = CAPS
     timing: Timing = TIMING
+
+
+class CallSlot:
+    """One of this process's call slots, held from a start to the end of its
+    call, or to its refusal."""
+
+    def __init__(self, relay: "Relay") -> None:
+        self._relay = relay
+        self._call_id: str | None = None
+        self._released = False
+
+    def hold(self, session: Session) -> bool:
+        """The slot's call has started: resumable, and counted as live.
+
+        False, holding nothing, when a session for the same call already runs
+        on this process: a call has one session.
+        """
+        if session.call_id in self._relay.sessions:
+            return False
+        self._call_id = session.call_id
+        self._relay.sessions[session.call_id] = session
+        LIVE_CALLS.inc()
+        return True
+
+    def release(self) -> None:
+        """Give the slot back. Idempotent."""
+        if self._released:
+            return
+        self._released = True
+        self._relay.held_slots -= 1
+        if self._call_id is not None:
+            self._relay.sessions.pop(self._call_id, None)
+            LIVE_CALLS.dec()
 
 
 class Relay:
@@ -99,6 +149,8 @@ class Relay:
         self.origins = origins
         self.deps = deps
         self.sessions: dict[str, Session] = {}
+        # Slots held by calls starting or live; at most max_calls.
+        self.held_slots = 0
         self.draining = False
         self.drain_started: float | None = None
         self.pod = socket.gethostname()
@@ -113,10 +165,22 @@ class Relay:
 
     @property
     def busy(self) -> bool:
-        """Whether a call or a post-call job is still running here."""
-        return bool(self.sessions) or bool(
+        """Whether a call, starting or live, or a post-call job is still
+        running here."""
+        return self.held_slots > 0 or bool(
             self.deps is not None and self.deps.postcall.jobs
         )
+
+    def reserve_slot(self) -> CallSlot | None:
+        """Hold one of this process's call slots, or None when all are held.
+
+        Checked and taken in one step, with nothing awaited between, so
+        starts that arrive together can never hold more than max_calls.
+        """
+        if self.held_slots >= self.max_calls:
+            return None
+        self.held_slots += 1
+        return CallSlot(self)
 
     def origin_allowed(self, origin: str | None) -> bool:
         if not origin:
@@ -156,7 +220,11 @@ def create_app(
 
     @app.get("/readyz")
     async def readyz() -> JSONResponse:
-        ready = not relay.draining and relay.deps is not None
+        ready = (
+            not relay.draining
+            and relay.deps is not None
+            and await _spool_ready(relay.deps.spool_dir)
+        )
         return JSONResponse(
             {"ready": ready, "live_calls": len(relay.sessions)},
             status_code=200 if ready else 503,
@@ -171,18 +239,32 @@ def create_app(
 
 @asynccontextmanager
 async def _sweeping(relay: Relay) -> AsyncIterator[None]:
-    """Sweep for post-call jobs no pod is running while the app serves."""
-    if relay.deps is None:
+    """Sweep for post-call jobs no pod is running while the app serves, and
+    settle this process's jobs before its services close."""
+    deps = relay.deps
+    if deps is None:
         yield
         return
+    await asyncio.to_thread(remove_stale_spools, deps.spool_dir, deps.spool_stale_s)
     sweep = asyncio.create_task(
-        relay.deps.postcall.sweep_forever(), name="voice-postcall-sweep"
+        deps.postcall.sweep_forever(), name="voice-postcall-sweep"
     )
     try:
         yield
     finally:
         sweep.cancel()
         await asyncio.gather(sweep, return_exceptions=True)
+        await deps.postcall.settle(SHUTDOWN_JOBS_S)
+
+
+async def _spool_ready(spool_dir: str) -> bool:
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(spool_writable, spool_dir), timeout=SPOOL_PROBE_TIMEOUT_S
+        )
+    except Exception:
+        logger.warning("Voice spool directory unreadable", exc_info=True)
+        return False
 
 
 class _Refused(Exception):
@@ -233,9 +315,24 @@ async def _start(relay: Relay, ws: WebSocket, first: Mapping[str, Any]) -> None:
     if relay.draining or deps is None:
         await _refuse(ws, "draining", CLOSE_TRY_AGAIN)
         return
-    if len(relay.sessions) >= relay.max_calls:
+    slot = relay.reserve_slot()
+    if slot is None:
         await _refuse(ws, "busy", CLOSE_TRY_AGAIN)
         return
+    try:
+        await _start_call(relay, deps, slot, ws, first, started)
+    finally:
+        slot.release()
+
+
+async def _start_call(
+    relay: Relay,
+    deps: RelayDeps,
+    slot: CallSlot,
+    ws: WebSocket,
+    first: Mapping[str, Any],
+    started: float,
+) -> None:
     try:
         claims = tokens.verify_start(first.get("token"))
     except tokens.TokenError as error:
@@ -245,51 +342,53 @@ async def _start(relay: Relay, ws: WebSocket, first: Mapping[str, Any]) -> None:
         await _refuse(ws, "protocol", CLOSE_POLICY)
         return
     try:
-        redis = await deps.redis()
-        await tokens.spend(redis, claims)
-        holder = await locks.take_user_lock(redis, claims.user_id, claims.call_id)
+        redis = await asyncio.wait_for(deps.redis(), timeout=locks.REDIS_TIMEOUT_S)
+        await asyncio.wait_for(
+            tokens.spend(redis, claims), timeout=locks.REDIS_TIMEOUT_S
+        )
     except tokens.TokenError as error:
         await _refuse(ws, str(error), CLOSE_POLICY)
         return
     except Exception:
+        # Whether this attempt spent the token is unknown, so it gives back
+        # nothing: the token and the lock may be a live call's.
         logger.warning(f"Voice call {claims.call_id}: state unavailable", exc_info=True)
         await _refuse(ws, "unavailable", CLOSE_TRY_AGAIN)
         return
-    if holder is not None:
-        await _refuse(ws, "call_in_progress", CLOSE_POLICY, call_id=holder or None)
-        return
+
     store = locks.CallStore(
         redis,
         call_id=claims.call_id,
         user_id=claims.user_id,
         holder=deps.postcall.pod,
     )
-    # Recorded once the call holds the lock, so the row names a call that ran.
     try:
-        await asyncio.wait_for(
-            deps.record_call(claims.user_id, claims.call_id),
-            timeout=RECORD_CALL_TIMEOUT_S,
+        holder = await asyncio.wait_for(
+            locks.take_user_lock(redis, claims.user_id, claims.call_id),
+            timeout=locks.REDIS_TIMEOUT_S,
         )
     except Exception:
-        logger.warning(
-            f"Voice call {claims.call_id}: not recorded on the onboarding row",
-            exc_info=True,
-        )
-        await store.release()
-        await _refuse(ws, "unavailable", CLOSE_TRY_AGAIN)
+        logger.warning(f"Voice call {claims.call_id}: lock unavailable", exc_info=True)
+        # The token is this attempt's, and the lock may be.
+        await _refuse_try_again(ws, store, claims, "unavailable")
+        return
+    if holder == "":
+        # The lock changed hands while it was read, which passes: the start
+        # gives back what it took so the same token can try again.
+        await _refuse_try_again(ws, store, claims, "unavailable")
+        return
+    if holder is not None:
+        await _refuse(ws, "call_in_progress", CLOSE_POLICY, call_id=holder)
+        return
+    refusal = await _admit(deps, redis, claims)
+    if refusal is not None:
+        await _refuse_try_again(ws, store, claims, refusal)
         return
 
     # This relay carries a call's audio on the control socket.
     leg: tokens.Leg = "websocket"
+    owns_state = True
     try:
-        await store.record(
-            status="connecting",
-            uid=claims.user_id,
-            pod=relay.pod,
-            leg=leg,
-            started=round(time.time(), 3),
-        )
-        await store.refresh_live(time.time())
         session = Session(
             call_id=claims.call_id,
             user_id=claims.user_id,
@@ -310,31 +409,86 @@ async def _start(relay: Relay, ws: WebSocket, first: Mapping[str, Any]) -> None:
             caps=deps.caps,
             timing=deps.timing,
             started=started,
-            recording=CallRecording(
-                call_id=claims.call_id,
-                user_id=claims.user_id,
-                spool_dir=deps.spool_dir,
-                store=deps.postcall.recordings,
-                call_store=store,
-            ),
+            on_end=lambda: _hand_over(deps, slot, session),
         )
-        relay.sessions[claims.call_id] = session
-        LIVE_CALLS.inc()
-        try:
-            await session.run()
-        finally:
-            # Handed over before the call leaves the live calls, so a drain
-            # never finds this process idle between the two.
-            deps.postcall.after_call(
-                call_id=claims.call_id,
-                recording=session.recording,
-                claimed=session.postcall_claimed,
-                first_name=session.first_name,
-            )
-            relay.sessions.pop(claims.call_id, None)
-            LIVE_CALLS.dec()
+        if not slot.hold(session):
+            # The call already runs here, so the lock and the place this
+            # attempt took are that call's.
+            owns_state = False
+            await _refuse(ws, "call_in_progress", CLOSE_POLICY, call_id=claims.call_id)
+            return
+        # Made once the slot holds the call: the recording opens the call's
+        # spool, which a refused start must never touch.
+        session.recording = CallRecording(
+            call_id=claims.call_id,
+            user_id=claims.user_id,
+            spool_dir=deps.spool_dir,
+            store=deps.postcall.recordings,
+            call_store=store,
+        )
+        await store.record(
+            status="connecting",
+            pod=relay.pod,
+            leg=leg,
+            started=round(time.time(), 3),
+            ending=claims.ending,
+        )
+        await session.run()
     finally:
-        await store.release()
+        if owns_state:
+            await store.release()
+
+
+async def _admit(
+    deps: RelayDeps, redis: AsyncRedisClient, claims: tokens.StartClaims
+) -> str | None:
+    """Take the call's place under the platform's live-call ceiling, then
+    record the call on the person's onboarding row.
+
+    Returns the refusal to send when either fails, or None.
+    """
+    try:
+        admitted = await asyncio.wait_for(
+            locks.acquire_live_call(
+                redis, claims.call_id, time.time(), deps.max_concurrent
+            ),
+            timeout=locks.REDIS_TIMEOUT_S,
+        )
+    except Exception:
+        logger.warning(
+            f"Voice call {claims.call_id}: live calls unreadable", exc_info=True
+        )
+        return "unavailable"
+    if not admitted:
+        return "busy"
+    # Recorded once the call holds its lock and its place, so the row names a
+    # call that ran.
+    try:
+        await asyncio.wait_for(
+            deps.record_call(claims.user_id, claims.call_id),
+            timeout=RECORD_CALL_TIMEOUT_S,
+        )
+    except Exception:
+        logger.warning(
+            f"Voice call {claims.call_id}: not recorded on the onboarding row",
+            exc_info=True,
+        )
+        return "unavailable"
+    return None
+
+
+def _hand_over(deps: RelayDeps, slot: CallSlot, session: Session) -> None:
+    """A call's end: its post-call work starts, then its slot is given back,
+    so a drain never finds this process idle between the two."""
+    try:
+        deps.postcall.after_call(
+            call_id=session.call_id,
+            recording=session.recording,
+            claimed=session.postcall_claimed,
+            first_name=session.first_name,
+        )
+    finally:
+        slot.release()
 
 
 async def _resume(relay: Relay, ws: WebSocket, ticket: object) -> None:
@@ -353,10 +507,37 @@ async def _resume(relay: Relay, ws: WebSocket, ticket: object) -> None:
     await done.wait()
 
 
-async def _refuse(ws: WebSocket, error: str, code: int, **extra: object) -> None:
+async def _refuse_try_again(
+    ws: WebSocket, store: locks.CallStore, claims: tokens.StartClaims, error: str
+) -> None:
+    """Refuse a start with "try again" (1013) once this attempt has given back
+    its lock, its place in the live-call count and then its token, so a retry
+    with the same token finds all three free and nothing of this attempt's
+    runs after it."""
+    await store.release()
+    await _free_token(store.redis, claims)
+    await _refuse(ws, error, CLOSE_TRY_AGAIN)
+
+
+async def _free_token(redis: AsyncRedisClient, claims: tokens.StartClaims) -> None:
+    """Make the start token good again, so the browser can retry with it."""
     try:
-        await ws.send_text(json.dumps({"type": "error", "error": error, **extra}))
-        await ws.close(code=code)
+        await asyncio.wait_for(
+            tokens.unspend(redis, claims), timeout=locks.REDIS_TIMEOUT_S
+        )
+    except Exception:
+        logger.info(f"Voice call {claims.call_id}: start token not freed")
+
+
+async def _refuse(ws: WebSocket, error: str, code: int, **extra: object) -> None:
+    """Tell the browser why, then close. Bounded: a browser that stops
+    reading holds nothing here."""
+    try:
+        await asyncio.wait_for(
+            ws.send_text(json.dumps({"type": "error", "error": error, **extra})),
+            timeout=REFUSE_TIMEOUT_S,
+        )
+        await asyncio.wait_for(ws.close(code=code), timeout=REFUSE_TIMEOUT_S)
     except Exception:
         logger.debug("A refused socket was already gone")
 

@@ -73,6 +73,7 @@ class FakeVendor:
         end_of_speech_s: float = 0.3,
         pace_s: float = 0.0,
         connect_delay_s: float = 0.0,
+        stall_notes: bool = False,
     ) -> None:
         self.replies = list(replies)
         # Sessions (counted from 1) that drop halfway through their first reply.
@@ -82,6 +83,9 @@ class FakeVendor:
         # Seconds between audio chunks; 0 streams a reply as fast as it can.
         self.pace_s = pace_s
         self.connect_delay_s = connect_delay_s
+        # Sending a server note never finishes, the way a send to a vendor
+        # socket that has stopped reading never does.
+        self.stall_notes = stall_notes
         self.sessions: list[FakeVendorSession] = []
         self._next = 0
 
@@ -153,6 +157,8 @@ class FakeVendorSession:
     async def send_note(self, text: str, *, turn_complete: bool) -> None:
         self._check_open()
         self.notes.append((text, turn_complete))
+        if self.vendor.stall_notes:
+            await asyncio.Event().wait()
         if turn_complete:
             self._spawn(self._answer())
 

@@ -96,6 +96,30 @@ def _schedule_cost_log(entry: PlatformCostEntry) -> None:
     task.add_done_callback(_remove)
 
 
+async def drain_pending_cost_logs(timeout: float = 5.0) -> None:
+    """Await the cost log tasks in flight on the running loop, up to *timeout*.
+
+    Call it during graceful shutdown, so pending INSERTs land before the
+    process exits. Tasks still running at the timeout are abandoned; their
+    failures are logged by ``_safe_log``.
+    """
+    # asyncio.wait() requires all tasks to belong to the running event loop,
+    # and the set is shared by every loop in the process.
+    current_loop = asyncio.get_running_loop()
+    with _pending_log_tasks_lock:
+        pending = [t for t in _pending_log_tasks if t.get_loop() is current_loop]
+    if not pending:
+        return
+    logger.info("Draining %d copilot cost log task(s)", len(pending))
+    _, still_pending = await asyncio.wait(pending, timeout=timeout)
+    if still_pending:
+        logger.warning(
+            "%d copilot cost log task(s) did not complete within %.1fs",
+            len(still_pending),
+            timeout,
+        )
+
+
 # Identifiers used by PlatformCostLog for copilot turns (not tied to a real
 # block/credential in the block_cost_config or credentials_store tables).
 COPILOT_BLOCK_ID = "copilot"

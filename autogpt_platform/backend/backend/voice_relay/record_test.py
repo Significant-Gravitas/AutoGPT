@@ -1,6 +1,8 @@
 """A call's recording: the spool, its uploads, and deleting them."""
 
 import asyncio
+import os
+import time
 from unittest.mock import AsyncMock
 
 import pytest
@@ -11,7 +13,14 @@ from backend.voice_relay.conftest import FakeSocket, MemoryRecordings, speech
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
 from backend.voice_relay.locks import CallStore
 from backend.voice_relay.metering import CallMeter, Row
-from backend.voice_relay.record import CallRecording, pcm_of, recording_filename, wav_of
+from backend.voice_relay.record import (
+    CallRecording,
+    pcm_of,
+    recording_filename,
+    remove_stale_spools,
+    spool_writable,
+    wav_of,
+)
 from backend.voice_relay.session import Session
 from backend.voice_relay.session_test import CAPS, FAST
 
@@ -224,3 +233,29 @@ async def test_a_call_checkpoints_its_recording_while_it_runs(redis, tmp_path):
     assert list(store.objects) == store.stored[-1:]
     assert pcm_of(store.objects[store.stored[-1]]) == pcm
     assert await _named(redis, session.recording) == store.stored[-1]
+
+
+def test_spools_no_call_still_writes_are_deleted_and_the_rest_kept(tmp_path):
+    left = tmp_path / f"{'a' * 32}.pcm"
+    left.write_bytes(bytes(640))
+    an_hour_ago = time.time() - 3600
+    os.utime(left, (an_hour_ago, an_hour_ago))
+    writing = tmp_path / f"{'b' * 32}.pcm"
+    writing.write_bytes(bytes(640))
+    other = tmp_path / "notes.txt"
+    other.write_text("not a spool")
+    os.utime(other, (an_hour_ago, an_hour_ago))
+
+    assert remove_stale_spools(tmp_path, older_than_s=600) == 1
+
+    assert not left.exists()
+    assert writing.exists() and other.exists()
+
+
+def test_a_spool_directory_that_takes_no_writes_is_reported(tmp_path):
+    assert spool_writable(tmp_path / "calls")
+    not_a_directory = tmp_path / "file"
+    not_a_directory.write_text("")
+    assert not spool_writable(not_a_directory / "calls")
+    # The probe leaves nothing behind.
+    assert list((tmp_path / "calls").iterdir()) == []

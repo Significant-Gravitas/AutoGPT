@@ -5,6 +5,8 @@ relay enforces them and the browser only displays them; nothing a caller sends
 can change them, and a test that needs shorter ones builds its own.
 """
 
+from datetime import UTC, date, datetime
+
 from pydantic import BaseModel, ConfigDict
 
 # The browser's microphone and Gemini Live's speech, both mono PCM16.
@@ -51,22 +53,41 @@ CLASSIFIER_MODEL = "gemini-3.8-flash"
 
 # The transcript of record's model, and how many of a call's turns it
 # transcribes at once. A turn is tried this many times on an error that may
-# pass, each attempt within the timeout.
+# pass, each attempt given a few times the turn's length, and never less than
+# the floor.
 TRANSCRIBE_MODEL = "gemini-3.5-transcribe"
 TRANSCRIBE_CONCURRENCY = 4
 TRANSCRIBE_ATTEMPTS = 3
-TRANSCRIBE_TIMEOUT_S = 60.0
+TRANSCRIBE_TIMEOUT_FLOOR_S = 10.0
+TRANSCRIBE_TIMEOUT_PER_AUDIO_S = 2.0
 
 # The recording is uploaded this often while a call runs, so a pod that dies
 # loses at most this much of it.
 CHECKPOINT_S = 30.0
-# Every relay process looks for calls whose post-call job never finished when
-# it starts and this often after. A job's claim lasts this long, so a pod that
-# dies mid-job leaves it to another pod's next look.
+# Every relay process looks for calls with no transcript that no process is
+# transcribing when it starts and this often after, and runs at most this many
+# jobs at once.
 POSTCALL_SWEEP_S = 300.0
-POSTCALL_CLAIM_TTL_S = 600
-# A call whose post-call job fails this many times records the failure.
+POSTCALL_MAX_JOBS = 4
+# A transcript job, from its claim to the stored transcript, ends within this.
+POSTCALL_JOB_TIMEOUT_S = 300.0
+# A job's claim. The pod running a call claims its job as the call starts and
+# gives the claim this long again with each refresh and as the job starts, so
+# the claim outlives the call and its job, and a pod that dies leaves the job
+# to another pod's look once it lapses.
+POSTCALL_CLAIM_TTL_S = 900
+# A call whose transcript job fails this many times records the failure.
 POSTCALL_ATTEMPTS = 3
+# How long a drain lets calls run on at most: ``VOICE_RELAY_DRAIN_MAX_S``'s
+# default.
+DEFAULT_DRAIN_S = 330.0
+
+
+def transcribe_timeout_s(audio_s: float) -> float:
+    """How long one attempt at transcribing *audio_s* seconds of a turn may
+    take."""
+    return TRANSCRIBE_TIMEOUT_FLOOR_S + TRANSCRIBE_TIMEOUT_PER_AUDIO_S * audio_s
+
 
 # Audio tokens a second, for the share of a call the vendor bills but never
 # reports in a usage message (the listening tail, a dropped session).
@@ -117,6 +138,9 @@ class Timing(BaseModel):
     scope_timeout_s: float = 8.0
     vendor_connect_timeout_s: float = 15.0
     max_vendor_reconnects: int = 2
+    # One send or close on the browser's socket; past it the browser counts
+    # as gone and the call holds for a re-attach.
+    socket_timeout_s: float = 5.0
     # How often the person's recording is uploaded while the call runs.
     checkpoint_s: float = CHECKPOINT_S
 
@@ -125,11 +149,14 @@ TIMING = Timing()
 
 
 class Price(BaseModel):
-    """A model's list price in USD per million tokens, and where it was read."""
+    """A model's list price in USD per million tokens from a date on, and
+    where it was read."""
 
     model_config = ConfigDict(frozen=True)
 
     source: str
+    # The first day this rate applies (UTC).
+    effective_from: date = date.min
     text_in: float = 0.0
     text_out: float = 0.0
     audio_in: float = 0.0
@@ -139,36 +166,58 @@ class Price(BaseModel):
         return getattr(self, meter) / 1_000_000
 
 
-GEMINI_PRICING_SOURCE = (
-    "aistudio.google.com/docs/pricing, read 2026-11-03 (rates through 2026-12-31)"
-)
+GEMINI_PRICING_SOURCE = "aistudio.google.com/docs/pricing, read 2026-11-03"
 
-# Every model the relay pays for. A usage message is priced from here, so a
-# model with no entry cannot run (``price_of`` raises at startup).
-PRICES: dict[str, Price] = {
-    "gemini-3.8-live": Price(
-        source=GEMINI_PRICING_SOURCE,
-        text_in=0.75,
-        audio_in=3.00,
-        # Thinking tokens bill as text out.
-        text_out=4.50,
-        audio_out=12.00,
+# Every model the relay pays for, each with its rates oldest first. A usage
+# message is priced from here, so a model with no entry cannot run
+# (``price_of`` raises at startup).
+PRICES: dict[str, tuple[Price, ...]] = {
+    "gemini-3.8-live": (
+        Price(
+            source=GEMINI_PRICING_SOURCE,
+            text_in=0.75,
+            audio_in=3.00,
+            # Thinking tokens bill as text out.
+            text_out=4.50,
+            audio_out=12.00,
+        ),
     ),
-    CLASSIFIER_MODEL: Price(
-        source=GEMINI_PRICING_SOURCE + "; doubles on 2027-01-01",
-        text_in=0.75,
-        text_out=3.75,
+    CLASSIFIER_MODEL: (
+        Price(source=GEMINI_PRICING_SOURCE, text_in=0.75, text_out=3.75),
+        Price(
+            source=GEMINI_PRICING_SOURCE + ", announced rate from 2027-01-01",
+            effective_from=date(2027, 1, 1),
+            text_in=1.50,
+            text_out=7.50,
+        ),
     ),
     # Its prompt is a clip of audio and one short line of text, all priced as
     # audio.
-    TRANSCRIBE_MODEL: Price(
-        source=GEMINI_PRICING_SOURCE,
-        audio_in=2.00,
-        text_out=12.00,
+    TRANSCRIBE_MODEL: (
+        Price(source=GEMINI_PRICING_SOURCE, audio_in=2.00, text_out=12.00),
     ),
 }
 
+# The last day the table is known to be right: its source lists rates through
+# this date. Past it the relay goes on pricing calls at the latest rates it
+# has and logs that the table needs reading again.
+PRICES_VALID_UNTIL = date(2026, 12, 31)
 
-def price_of(model: str) -> Price:
-    """The price of *model*. Raises ``KeyError`` for a model with no price."""
-    return PRICES[model]
+
+def price_of(model: str, on: date | None = None) -> Price:
+    """*model*'s rate on *on*, today (UTC) by default.
+
+    Raises ``KeyError`` for a model with no price.
+    """
+    day = on or datetime.now(UTC).date()
+    rates = PRICES[model]
+    current = rates[0]
+    for rate in rates:
+        if rate.effective_from <= day:
+            current = rate
+    return current
+
+
+def prices_out_of_date(on: date | None = None) -> bool:
+    """Whether *on*, today (UTC) by default, is past the table's horizon."""
+    return (on or datetime.now(UTC).date()) > PRICES_VALID_UNTIL

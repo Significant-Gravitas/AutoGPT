@@ -2,7 +2,7 @@
 
 Each vendor usage report becomes priced rows (Live audio in, text in, audio
 out, and text out with thinking in it), each scope label two more, and each
-turn the post-call job transcribes two more. Every row is one
+turn the transcript job transcribes two more. Every row is one
 ``PlatformCostLog`` row through ``persist_and_record_usage`` on the
 platform's account: the user's plan windows are left alone, since the
 interview comes before any plan. Every row also adds to the platform's daily
@@ -16,12 +16,11 @@ too, as a labelled estimate from the audio the relay counted itself.
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from prometheus_client import Counter, Gauge, Histogram
 from pydantic import BaseModel, ConfigDict
 
-from backend.copilot import token_tracking
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.data.redis_client import AsyncRedisClient
 from backend.voice_relay.config import (
@@ -29,9 +28,11 @@ from backend.voice_relay.config import (
     CLASSIFIER_MODEL,
     IN_RATE,
     OUT_RATE,
+    PRICES_VALID_UNTIL,
     SPEND_CAP_USD,
     TRANSCRIBE_MODEL,
     price_of,
+    prices_out_of_date,
 )
 from backend.voice_relay.locks import add_daily_spend
 from backend.voice_relay.vendor import Usage
@@ -67,14 +68,16 @@ COST_USD = Counter(
 )
 POSTCALL_SECONDS = Histogram(
     "voice_interview_postcall_seconds",
-    "From a post-call job's start to the hand-off's answer",
+    "From a transcript job's start to its end",
     buckets=(1, 2, 3, 5, 8, 13, 20, 30, 60, 120),
 )
 POSTCALLS = Counter(
     "voice_interview_postcalls_total",
-    "Post-call jobs, by how they ended: handed_off, failed, transcribed (waiting "
-    "for the person's confirm), retry (left for another attempt), gave_up, or "
-    "expired (the call's record was gone)",
+    "Transcript jobs, by how they ended: transcribed, recording_unavailable "
+    "(the person's audio was taken and no recording of it was left), retry "
+    "(left for another attempt), gave_up, expired (the call's record was gone), "
+    "unowned (the record named no owner), answered (its hand-off had answered), "
+    "or lost_claim (another process holds the job)",
     ["outcome"],
 )
 
@@ -105,7 +108,13 @@ class Row(BaseModel):
 
 
 def priced_rows(model: str, usage: Usage) -> list[Row]:
-    """A usage report as priced rows; tokens it does not attribute are audio."""
+    """A usage report as priced rows; tokens it does not attribute are audio.
+
+    Gemini Live counts thinking apart from the response: the response count
+    is the audio Otto speaks (about 25 tokens a second) and the report's total
+    is prompt plus response. So thoughts are priced once, as text out, and are
+    never part of the response's unattributed remainder.
+    """
     price = price_of(model)
     audio_in = usage.prompt_by_modality.get("audio", 0)
     text_in = usage.prompt_by_modality.get("text", 0)
@@ -321,14 +330,27 @@ class CallMeter:
         )
 
 
-async def drain_cost_logs(timeout_s: float = 5.0) -> None:
-    """Wait for this process's cost log writes still in flight, at shutdown."""
-    loop = asyncio.get_running_loop()
-    with token_tracking._pending_log_tasks_lock:
-        pending = [
-            task
-            for task in token_tracking._pending_log_tasks
-            if task.get_loop() is loop
-        ]
-    if pending:
-        await asyncio.wait(pending, timeout=timeout_s)
+DAY_S = 24 * 3600
+
+
+def warn_if_prices_out_of_date(on: date | None = None) -> bool:
+    """Log loudly when the price table is past its horizon. Never raises: the
+    relay goes on pricing calls at the latest rates it has."""
+    if not prices_out_of_date(on):
+        return False
+    logger.error(
+        f"The voice relay's price table is past its horizon "
+        f"({PRICES_VALID_UNTIL.isoformat()}): calls are priced at the latest "
+        f"rates it has. Read the pricing page again and update PRICES in "
+        f"backend/voice_relay/config.py."
+    )
+    return True
+
+
+async def watch_prices(
+    interval_s: float = DAY_S, today: Callable[[], date] | None = None
+) -> None:
+    """Repeat the price table check every *interval_s*, until cancelled."""
+    while True:
+        await asyncio.sleep(interval_s)
+        warn_if_prices_out_of_date(today() if today else None)

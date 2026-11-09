@@ -1,8 +1,8 @@
-"""After a call: the transcript of record, and its hand-off to the interview.
+"""After a call: the transcript of record, which the REST API hands off.
 
 The live model's captions are what it heard as it went; the transcript of
 record is made after the call from the person's own recording, and it is
-what the onboarding pipeline reads. A call's post-call job:
+what the onboarding pipeline reads. A call's transcript job:
 
 1. cuts the recording into speech (``vad.segments``) and groups it into the
    person's turns by where it falls between Otto's turns, which the call
@@ -12,21 +12,34 @@ what the onboarding pipeline reads. A call's post-call job:
    an empty turn, never an error: a near-silent clip comes back that way;
 3. joins the turns one per line without the server's tags
    (:func:`transcript_of_record`) and stores the transcript on the call's
-   record in the same write that forgets the recording, which is then
-   deleted;
-4. hands the transcript to the person's interview and records the answer on
-   the call (``handoff``): ``handed_off`` once it closes the interview,
-   ``failed`` with the pipeline's answer while the interview stays open, or
-   ``transcribed`` while a confirm arm waits for the person.
+   record, ``transcribed``, in the same write that forgets the recording,
+   which is then deleted.
 
-Every call is pending from the moment it starts (``voice:postcall:pending``)
-until its job records an answer, and each job runs under a claim
-(``voice:postcall:claim:<call id>``), so it runs once across pods. The pod a
-call ran on claims its job before the call stops counting as live. Every pod
-sweeps the pending calls when it starts and every ``POSTCALL_SWEEP_S``, and
-takes any no pod is running: a call whose pod died during the call or its
-job, or a job that failed and waits for another attempt. A call whose pod
-died is finished from its last uploaded recording, as ``crashed``.
+Then the relay is done with the call. It stays in ``voice:postcall:pending``,
+and the REST API hands its transcript to the person's interview
+(``onboarding_dump.voice_handoff``): the relay runs none of the onboarding
+pipeline and imports none of it.
+
+Each job runs under the call's claim (``voice:postcall:claim:<call id>``), so
+it runs once across pods. The pod a call runs on claims it as the call starts
+and holds it with the call's refresh; the claim outlives the call and its
+job, and the job gives it up once the transcript is stored. Every pod sweeps
+the pending calls when it starts and every ``POSTCALL_SWEEP_S`` and takes any
+with no transcript that no process holds, as many as fit beside its own jobs:
+a call whose pod died during the call or its job, or a job that failed and
+waits for another attempt. A call whose pod died is transcribed from its last
+upload, as ``crashed``. A job ends within ``POSTCALL_JOB_TIMEOUT_S`` and
+checks it still holds its claim before each write, so it runs once in effect
+even when a claim lapses under it. The pod that ran a call, holding its whole
+recording, makes the transcript again over one made from a short upload,
+until the call's hand-off answers.
+
+Whatever a job settles, what is left of the call's recording goes with it;
+only a job left for another attempt keeps the last upload, for that attempt
+to read. A job that gives up records ``transcription_unavailable``, and a
+call whose recording is lost after the relay took the person's audio records
+``recording_unavailable``: no verdict on their words, which the person can
+say again on another call or type.
 """
 
 import asyncio
@@ -38,32 +51,29 @@ from collections.abc import Awaitable, Callable, Coroutine, Iterable, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
-from fastapi import BackgroundTasks, HTTPException
 from google import genai
 from google.genai import types
+from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from pydantic import BaseModel, ConfigDict
 
-from backend.api.features.onboarding_dump.interview import InterviewClosure
+from backend.api.features.onboarding_dump.models import FinalizeResponse
 from backend.copilot.service import strip_server_injected_tags
 from backend.data.redis_client import AsyncRedisClient
 from backend.util.gcs_utils import is_not_found_error
 from backend.voice_relay import locks, vad
 from backend.voice_relay.config import (
+    CAPS,
+    DEFAULT_DRAIN_S,
     IN_RATE,
+    LIVE_CALL_STALE_S,
     POSTCALL_ATTEMPTS,
+    POSTCALL_JOB_TIMEOUT_S,
+    POSTCALL_MAX_JOBS,
     POSTCALL_SWEEP_S,
     TRANSCRIBE_ATTEMPTS,
     TRANSCRIBE_CONCURRENCY,
     TRANSCRIBE_MODEL,
-    TRANSCRIBE_TIMEOUT_S,
-)
-from backend.voice_relay.handoff import (
-    PERSONALIZATION_UNAVAILABLE,
-    call_status_after,
-    failed_hand_off,
-    hand_off_call,
-    record_hand_off,
-    refused_hand_off,
+    transcribe_timeout_s,
 )
 from backend.voice_relay.locks import CallRecord
 from backend.voice_relay.metering import (
@@ -85,10 +95,11 @@ logger = logging.getLogger(__name__)
 # The end reason of a call whose pod died before it could end it.
 CRASHED = "crashed"
 
-# What a call records when its post-call job gives up before a transcript was
-# made. One that gives up after records ``PERSONALIZATION_UNAVAILABLE``, which
-# the call's finish route can hand off again.
+# What a call records when its transcript job gives up.
 TRANSCRIPTION_UNAVAILABLE = "transcription_unavailable"
+# What a call records when the relay took the person's audio and no recording
+# of it is left: no ruling on their words.
+RECORDING_UNAVAILABLE = "recording_unavailable"
 
 # Audio kept on each side of a segment of speech, and the silence between
 # the segments of one turn's clip.
@@ -224,7 +235,11 @@ async def transcribe_turns(
             return ""
         async with semaphore:
             transcription = await _transcribe(
-                transcriber, wav_of(clip), first_name, call_id
+                transcriber,
+                wav_of(clip),
+                first_name,
+                call_id,
+                timeout_s=transcribe_timeout_s(len(clip) / 2 / IN_RATE),
             )
         await meter.transcription_usage(
             tokens_in=transcription.tokens_in, tokens_out=transcription.tokens_out
@@ -237,12 +252,17 @@ async def transcribe_turns(
 
 
 async def _transcribe(
-    transcriber: Transcriber, wav: bytes, first_name: str | None, call_id: str
+    transcriber: Transcriber,
+    wav: bytes,
+    first_name: str | None,
+    call_id: str,
+    *,
+    timeout_s: float,
 ) -> Transcription:
     for attempt in range(1, TRANSCRIBE_ATTEMPTS + 1):
         try:
             return await asyncio.wait_for(
-                transcriber(wav, first_name=first_name), timeout=TRANSCRIBE_TIMEOUT_S
+                transcriber(wav, first_name=first_name), timeout=timeout_s
             )
         except Exception as error:
             if attempt == TRANSCRIBE_ATTEMPTS:
@@ -257,19 +277,40 @@ async def _transcribe(
 
 # --- the job and the sweep -------------------------------------------------
 
+# The job's outcomes besides the statuses it can leave: left for another
+# attempt, given up after its attempts, the call's record gone or naming no
+# owner, the claim lost to another holder, or the call answered already.
+RETRY = "retry"
+GAVE_UP = "gave_up"
+EXPIRED = "expired"
+UNOWNED = "unowned"
+LOST_CLAIM = "lost_claim"
+ANSWERED = "answered"
 
-HandOff = Callable[
-    [AsyncRedisClient, CallRecord, BackgroundTasks], Awaitable[InterviewClosure]
-]
+
+class LostClaim(Exception):
+    """This process no longer holds the job's claim: it lapsed, or another
+    holder took it. The job stops without writing."""
+
+
+def _failed(code: str) -> FinalizeResponse:
+    """The answer a call records when no transcript of it could be made."""
+    return FinalizeResponse(
+        status=BrainDumpStatus.failed,
+        input_mode=BrainDumpInputMode.typed,
+        error_code=code,
+    )
 
 
 class PostCall:
-    """The post-call jobs of one relay process, and its sweep for jobs no
-    process is running.
+    """The transcript jobs of one relay process, and its sweep for the calls
+    no process is transcribing.
 
     *pod* names this process in the claims; a call that ran here claims its
-    job with the same name (``locks.CallStore``). *hand_off* hands a call's
-    transcript to the interview and records the answer (:func:`hand_off_call`).
+    job with the same name (``locks.CallStore``). The sweep takes no more jobs
+    than *max_jobs* beside those running, and leaves a call whose record says
+    it runs to its pod for *running_window_s* from its start: the cap, a
+    drain, and the time a dead pod's call takes to stop counting as live.
     """
 
     def __init__(
@@ -282,9 +323,12 @@ class PostCall:
         live_model: str,
         pod: str,
         cost_sink: CostSink | None = None,
-        hand_off: HandOff = hand_off_call,
         sweep_s: float = POSTCALL_SWEEP_S,
         attempts: int = POSTCALL_ATTEMPTS,
+        max_jobs: int = POSTCALL_MAX_JOBS,
+        running_window_s: float = (
+            CAPS.max_call_s + DEFAULT_DRAIN_S + LIVE_CALL_STALE_S
+        ),
     ) -> None:
         self._redis = redis
         self.recordings = recordings
@@ -293,9 +337,10 @@ class PostCall:
         self.live_model = live_model
         self.pod = pod
         self.cost_sink = cost_sink
-        self.hand_off = hand_off
         self.sweep_s = sweep_s
         self.attempts = attempts
+        self.max_jobs = max_jobs
+        self.running_window_s = running_window_s
         # The jobs running in this process, by call.
         self.jobs: dict[str, asyncio.Task] = {}
         # Set while the process drains: it takes no more jobs.
@@ -328,22 +373,43 @@ class PostCall:
             await recording.discard_spool()
 
     async def sweep(self) -> list[str]:
-        """Start the job of every pending call no process is running and
-        whose call is no longer live. Returns the calls it started."""
+        """Start the job of every pending call with no transcript that no
+        process is running and whose call no longer runs, as many as fit
+        beside this process's own jobs. Returns the calls it started. A call
+        whose transcript is made is the REST API's to hand off."""
         if self.stopped:
             return []
         redis = await self._redis()
         now = time.time()
         started: list[str] = []
         for call_id in await locks.postcall_pending(redis):
+            if len(self.jobs) >= self.max_jobs:
+                break
             if call_id in self.jobs or await locks.is_live(redis, call_id, now):
+                continue
+            record = await locks.read_call(redis, call_id)
+            if record is not None and (
+                record.transcript_of_record is not None
+                or record.hand_off is not None
+                or self._may_still_run(record, now)
+            ):
                 continue
             if not await locks.claim_postcall(redis, call_id, self.pod):
                 continue
-            logger.info(f"Voice call {call_id}: post-call job taken up by the sweep")
+            logger.info(f"Voice call {call_id}: transcript job taken up by the sweep")
             self._start(call_id, self.run(call_id))
             started.append(call_id)
         return started
+
+    def _may_still_run(self, record: CallRecord, now: float) -> bool:
+        """Whether *record* says its call runs and it started recently enough
+        that its pod may still be running it, out of the live count only for
+        a moment's Redis trouble."""
+        return (
+            record.status in locks.RUNNING
+            and record.started is not None
+            and now - record.started < self.running_window_s
+        )
 
     async def sweep_forever(self) -> None:
         """Sweep now, then every *sweep_s*, until the process drains."""
@@ -351,8 +417,21 @@ class PostCall:
             try:
                 await self.sweep()
             except Exception:
-                logger.warning("Voice post-call sweep failed", exc_info=True)
+                logger.warning("Voice transcript sweep failed", exc_info=True)
             await asyncio.sleep(self.sweep_s)
+
+    async def settle(self, wait_s: float) -> None:
+        """Take no more jobs, give the running ones *wait_s* to finish, and
+        cancel the rest. Each gives up its claim as it stops, for another
+        pod's sweep."""
+        self.stopped = True
+        jobs = list(self.jobs.values())
+        if not jobs:
+            return
+        _, running = await asyncio.wait(jobs, timeout=wait_s)
+        for job in running:
+            job.cancel()
+        await asyncio.gather(*running, return_exceptions=True)
 
     async def run(
         self,
@@ -366,27 +445,32 @@ class PostCall:
         claim up.
 
         *pcm* is the call's recording when this process ran the call; the
-        sweep's jobs read the last upload instead. A job that fails is left
+        sweep's jobs read the last upload instead. The job ends within
+        ``POSTCALL_JOB_TIMEOUT_S``, well inside its claim, and stops without
+        writing once it no longer holds the claim. A job that fails is left
         pending for another attempt, until *attempts* have failed and the
-        call records the failure. The pipeline's own jobs run once the answer
-        is recorded.
+        call records the failure. The call's spool is deleted however the job
+        ends.
         """
         started = time.monotonic()
-        background = BackgroundTasks()
         redis: AsyncRedisClient | None = None
-        outcome = "retry"
+        outcome = RETRY
         try:
             redis = await self._redis()
-            outcome = await self._run(
-                redis, call_id, recording, pcm, first_name, background
-            )
+            async with asyncio.timeout(POSTCALL_JOB_TIMEOUT_S):
+                outcome = await self._run(redis, call_id, recording, pcm, first_name)
+        except LostClaim:
+            logger.warning(f"Voice call {call_id}: post-call claim lost; job stopped")
+            outcome = LOST_CLAIM
         except Exception as error:
             logger.error(
-                f"Voice call {call_id}: post-call job failed: {failure_of(error)}"
+                f"Voice call {call_id}: transcript job failed: {failure_of(error)}"
             )
             if redis is not None:
-                outcome = await self._after_failure(redis, call_id, recording)
+                outcome = await self._after_failure(redis, call_id)
         finally:
+            if recording is not None:
+                await recording.discard_spool()
             if redis is not None:
                 await self._bounded(
                     "post-call release",
@@ -394,13 +478,6 @@ class PostCall:
                 )
         POSTCALLS.labels(outcome=outcome).inc()
         POSTCALL_SECONDS.observe(time.monotonic() - started)
-        if background.tasks:
-            try:
-                await background()
-            except Exception as error:
-                logger.error(
-                    f"Voice call {call_id}: pipeline jobs failed: {failure_of(error)}"
-                )
 
     async def _run(
         self,
@@ -409,66 +486,109 @@ class PostCall:
         recording: CallRecording | None,
         pcm: bytes | None,
         first_name: str | None,
-        background: BackgroundTasks,
     ) -> str:
+        await self._hold(redis, call_id)
         record = await locks.read_call(redis, call_id)
         if record is None:
-            # Expired with the call's record: nothing is left to hand off.
+            # Expired with the call's record: nothing is left to transcribe.
             await locks.remove_postcall_pending(redis, call_id)
-            if recording is not None:
-                await recording.discard_spool()
-            return "expired"
-        if record.status in (locks.TRANSCRIBED, locks.HANDED_OFF, locks.FAILED):
-            # An earlier attempt recorded its answer and stopped short of
-            # clearing the call.
+            await self._discard_recording(recording, None)
+            return EXPIRED
+        if not record.uid:
+            logger.warning(f"Voice call {call_id}: its record names no owner")
             await locks.remove_postcall_pending(redis, call_id)
-            return record.status
+            await self._discard_recording(recording, record)
+            return UNOWNED
+        if record.hand_off is not None:
+            # Its hand-off answered: nothing of the relay's is left.
+            await locks.remove_postcall_pending(redis, call_id)
+            await self._discard_recording(recording, record)
+            return ANSWERED
+        # The pod that ran the call holds all of it, and a transcript made
+        # from an upload can stop short of it: made again.
+        if record.transcript_of_record is not None and not (
+            pcm and record.transcribed_from_upload
+        ):
+            await self._discard_recording(recording, record)
+            return locks.TRANSCRIBED
         fields: dict[str, object] = {
+            "uid": record.uid,
             "status": locks.TRANSCRIBING,
             "postcall_attempts": record.postcall_attempts + 1,
         }
         if pcm is None:
             fields["recovered"] = True
-        if record.status in (locks.CONNECTING, locks.LIVE):
+        if record.status in locks.RUNNING:
             fields["end_reason"] = record.end_reason or CRASHED
         await locks.write_call_record(redis, call_id, fields)
         record = record.model_copy(
             update={"end_reason": fields.get("end_reason", record.end_reason)}
         )
-        if record.transcript_of_record is None:
-            transcript = await self._transcribe(
-                redis, record, pcm=pcm, first_name=first_name
+        made = await self._make_transcript(redis, record, recording, pcm, first_name)
+        if made is None:
+            return RECORDING_UNAVAILABLE
+        await self._discard_recording(recording, made)
+        logger.info(f"Voice call {call_id}: transcribed after ending {made.end_reason}")
+        return locks.TRANSCRIBED
+
+    async def _make_transcript(
+        self,
+        redis: AsyncRedisClient,
+        record: CallRecord,
+        recording: CallRecording | None,
+        pcm: bytes | None,
+        first_name: str | None,
+    ) -> CallRecord | None:
+        """Make the call's transcript of record and store it, in the write
+        that forgets the recording. Returns the record as it then stands, or
+        None once the call records that its recording was lost."""
+        from_upload = not pcm
+        if from_upload:
+            pcm = await self._last_upload(record)
+        if not pcm and record.heard:
+            logger.warning(f"Voice call {record.call_id}: recording lost")
+            await self._hold(redis, record.call_id)
+            await locks.record_answer(
+                redis,
+                record.call_id,
+                uid=record.uid,
+                status=locks.FAILED,
+                answer=_failed(RECORDING_UNAVAILABLE),
             )
-            # Stored in the same write that forgets the recording, which is
-            # then deleted: the recording outlives its transcript nowhere.
-            await locks.forget_call_fields(
-                redis, call_id, {"transcript_of_record": transcript}, "audio_path"
-            )
-            if recording is not None:
-                await recording.discard()
-            elif record.audio_path:
-                await delete_quietly(self.recordings, record.audio_path, call_id)
-            record = record.model_copy(update={"transcript_of_record": transcript})
-        try:
-            status = call_status_after(await self.hand_off(redis, record, background))
-        except HTTPException as refusal:
-            if refused_hand_off(refusal) is None:
-                raise
-            status = locks.FAILED
-        await locks.remove_postcall_pending(redis, call_id)
-        logger.info(f"Voice call {call_id}: {status} after ending {record.end_reason}")
-        return status
+            await locks.remove_postcall_pending(redis, record.call_id)
+            await self._discard_recording(recording, record)
+            return None
+        transcript = await self._transcribe(
+            redis, record, pcm=pcm or b"", first_name=first_name
+        )
+        await self._hold(redis, record.call_id)
+        stored = await locks.store_transcript(
+            redis,
+            record.call_id,
+            transcript,
+            uid=record.uid,
+            from_upload=from_upload,
+        )
+        return record.model_copy(
+            update={
+                "status": locks.TRANSCRIBED,
+                "transcript_of_record": stored,
+                "transcribed_from_upload": (
+                    from_upload
+                    if stored == transcript
+                    else record.transcribed_from_upload
+                ),
+            }
+        )
 
     async def _transcribe(
         self,
         redis: AsyncRedisClient,
         record: CallRecord,
         *,
-        pcm: bytes | None,
+        pcm: bytes,
         first_name: str | None,
     ) -> str:
-        if pcm is None:
-            pcm = await self._last_upload(record)
         clips = user_turn_clips(pcm, [mark.at for mark in record.turns])
         if not any(clips):
             return ""
@@ -510,31 +630,54 @@ class PostCall:
             logger.warning(f"Voice call {record.call_id}: recording unreadable")
             return b""
 
-    async def _after_failure(
-        self,
-        redis: AsyncRedisClient,
-        call_id: str,
-        recording: CallRecording | None,
-    ) -> str:
-        """Leave a failed job for another attempt, or record the failure on
-        the call once it has had its attempts. Its recording stays for the
-        retention sweep."""
+    async def _hold(self, redis: AsyncRedisClient, call_id: str) -> None:
+        """Give this job's claim its full TTL again; :class:`LostClaim` once
+        another holds it, or it lapsed."""
+        if not await locks.hold_postcall(redis, call_id, self.pod):
+            raise LostClaim
+
+    async def _discard_recording(
+        self, recording: CallRecording | None, record: CallRecord | None
+    ) -> None:
+        """Delete what is left of the call's recording: its transcript is
+        stored, or nothing will read it again."""
+        left = (
+            {record.audio_path} if record is not None and record.audio_path else set()
+        )
         if recording is not None:
-            await recording.discard_spool()
+            left -= set(recording.uploads)
+            await recording.discard()
+        for path in left:
+            await delete_quietly(
+                self.recordings, path, record.call_id if record else ""
+            )
+
+    async def _after_failure(self, redis: AsyncRedisClient, call_id: str) -> str:
+        """Leave a failed job for another attempt, keeping the call's last
+        upload for it, or record the failure on the call once it has had its
+        attempts, and delete what is left of its recording."""
         record = await self._bounded("record read", locks.read_call(redis, call_id))
         if record is None or record.postcall_attempts < self.attempts:
-            return "retry"
-        code = (
-            PERSONALIZATION_UNAVAILABLE
-            if record.transcript_of_record is not None
-            else TRANSCRIPTION_UNAVAILABLE
+            return RETRY
+        if not await self._bounded(
+            "post-call hold", locks.hold_postcall(redis, call_id, self.pod)
+        ):
+            return LOST_CLAIM
+        await self._bounded(
+            "failure record",
+            locks.record_answer(
+                redis,
+                call_id,
+                uid=record.uid,
+                status=locks.FAILED,
+                answer=_failed(TRANSCRIPTION_UNAVAILABLE),
+            ),
         )
-        given_up = InterviewClosure(ending=None, hand_off=failed_hand_off(code))
-        await self._bounded("failure record", record_hand_off(redis, call_id, given_up))
         await self._bounded(
             "pending removal", locks.remove_postcall_pending(redis, call_id)
         )
-        return "gave_up"
+        await self._discard_recording(None, record)
+        return GAVE_UP
 
     def _start(self, call_id: str, job: Coroutine[Any, Any, None]) -> None:
         task = asyncio.create_task(job, name=f"voice-postcall-{call_id[:12]}")

@@ -59,7 +59,14 @@ from backend.voice_relay.config import (
     Caps,
     Timing,
 )
-from backend.voice_relay.locks import CallStore, TurnMark
+from backend.voice_relay.locks import (
+    CONNECTING,
+    ENDED,
+    LIVE,
+    RUNNING,
+    CallStore,
+    TurnMark,
+)
 from backend.voice_relay.metering import (
     CALL_SECONDS,
     CALLS,
@@ -120,6 +127,10 @@ GOODBYES: dict[EndReason, str] = {
     "setting up by typing. Ask nothing.",
 }
 
+# One send to the vendor: past it the send is given up, and a session that
+# has died is replaced by the reconnect.
+VENDOR_SEND_TIMEOUT_S = 2.0
+
 # Close codes: a normal end, and a server going away for a restart.
 CLOSE_NORMAL = 1000
 CLOSE_SERVICE_RESTART = 1012
@@ -172,6 +183,7 @@ class Session:
         caps: Caps = CAPS,
         timing: Timing = TIMING,
         started: float | None = None,
+        on_end: Callable[[], None] | None = None,
         recording: CallRecording | None = None,
     ) -> None:
         self.call_id = call_id
@@ -193,6 +205,9 @@ class Session:
         # When the start message arrived (monotonic): the first audio is
         # measured from here.
         self.started = time.monotonic() if started is None else started
+        # Called once the call's shared state is released, before the relay
+        # waits on the browser's socket again.
+        self.on_end = on_end
         self.ended = asyncio.Event()
         self.closed = asyncio.Event()
         self.end_reason: EndReason | None = None
@@ -202,6 +217,9 @@ class Session:
         self.first_audio_s: float | None = None
         # The browser side.
         self._send_lock = asyncio.Lock()
+        # Held through a re-attach, and by the call's end while it tells the
+        # browser, so the end reaches the socket a re-attach brings.
+        self._attach_lock = asyncio.Lock()
         self._socket_done = asyncio.Event()
         self.upstream_task: asyncio.Task | None = None
         self.client_gone = False
@@ -272,6 +290,9 @@ class Session:
     async def run(self) -> None:
         """Run the call to its end, then report how it ended."""
         await self.store.pend_postcall()
+        # Held from here, so no other process's sweep takes the job of a call
+        # still running; the call's refresh holds it on.
+        self.postcall_claimed = await self.store.claim_postcall()
         try:
             live = await asyncio.wait_for(
                 self.vendor.connect(opening=voice_interview_kickoff(self.first_name)),
@@ -280,8 +301,10 @@ class Session:
             self.t0 = time.monotonic()
             self.bucket_at = self.t0
             self.live = live
-            await self.store.record(
-                status="live", connect_s=round(self.t0 - self.started, 3)
+            await self.store.advance(
+                LIVE,
+                moves_from=(None, CONNECTING),
+                connect_s=round(self.t0 - self.started, 3),
             )
             ticket = tokens.mint_resume(
                 self.user_id, self.call_id, self.caps.max_call_s + RESUME_GRACE_S
@@ -318,46 +341,58 @@ class Session:
     async def finish(self) -> None:
         reason: EndReason = self.end_reason or "vendor_error"
         elapsed = self.elapsed()
-        await self.meter.unreported(
-            sent_samples=self.forwarded,
-            received_samples=self.agent_out,
-            cut_off_reply=self.generating,
-            why="listening after the last usage report",
-        )
-        await self.meter.flush()
-        # Before the call stops counting as live, so no other process's sweep
-        # takes the job from under this one.
-        self.postcall_claimed = await self.store.claim_postcall()
-        await self.store.record(
-            status="ended",
-            end_reason=reason,
-            ended_at=round(time.time(), 3),
-            elapsed_s=round(elapsed, 1),
-            agent_turns=len(self.turns),
-            usd=round(self.meter.usd, 6),
-            first_task=self.first_task,
-            error=self.error,
-            reattaches=self.reattaches,
-            vendor_reconnects=self.vendor_reconnects,
-            transcript=self.transcript(),
-        )
-        # Before the browser hears the call ended, so it can start another.
-        await self.store.release()
+        try:
+            await self.meter.unreported(
+                sent_samples=self.forwarded,
+                received_samples=self.agent_out,
+                cut_off_reply=self.generating,
+                why="listening after the last usage report",
+            )
+            await self.meter.flush()
+            # Before the call stops counting as live, so no other process's
+            # sweep takes the job from under this one, when the claim at the
+            # start did not go through.
+            self.postcall_claimed = await self.store.claim_postcall()
+            # A post-call job that took the call meanwhile keeps the status it
+            # wrote, and the end reason it ran on.
+            await self.store.advance(
+                ENDED,
+                moves_from=(None, *RUNNING),
+                guarded={"end_reason": reason},
+                ended_at=round(time.time(), 3),
+                elapsed_s=round(elapsed, 1),
+                agent_turns=len(self.turns),
+                usd=round(self.meter.usd, 6),
+                first_task=self.first_task,
+                error=self.error,
+                reattaches=self.reattaches,
+                vendor_reconnects=self.vendor_reconnects,
+                transcript=self.transcript(),
+            )
+            # Before the browser hears the call ended, so it can start another.
+            await self.store.release()
+        finally:
+            if self.on_end is not None:
+                self.on_end()
         CALLS.labels(reason=reason, leg=self.leg).inc()
         CALL_SECONDS.observe(elapsed)
-        if self.detached_at is not None:
-            self.client_gone = True
-        await self.send_json(
-            {"type": "ended", "reason": reason, "elapsed_s": round(elapsed, 1)}
-        )
-        if not self.client_gone:
-            code = CLOSE_SERVICE_RESTART if reason == "server_restart" else CLOSE_NORMAL
-            try:
-                await self.ws.close(code=code)
-            except Exception:
-                logger.debug(f"Voice call {self.call_id}: socket already closed")
-        self.closed.set()
-        self._socket_done.set()
+        try:
+            async with self._attach_lock:
+                if self.detached_at is not None:
+                    self.client_gone = True
+                await self.send_json(
+                    {"type": "ended", "reason": reason, "elapsed_s": round(elapsed, 1)}
+                )
+                if not self.client_gone:
+                    code = (
+                        CLOSE_SERVICE_RESTART
+                        if reason == "server_restart"
+                        else CLOSE_NORMAL
+                    )
+                    await self._close(self.ws, code)
+        finally:
+            self.closed.set()
+            self._socket_done.set()
 
     async def close_vendor(self) -> None:
         live, self.live = self.live, None
@@ -374,6 +409,14 @@ class Session:
     ) -> None:
         if self.client_gone:
             return
+        async with self._send_lock:
+            await self._send_locked(text, data)
+
+    async def _send_locked(self, text: str | None, data: bytes | None) -> None:
+        """Send on the call's socket, or keep it for a re-attach while the
+        browser is away. The send lock is held."""
+        if self.client_gone:
+            return
         if self.detached_at is not None:
             size = len(data) if data is not None else len(text or "")
             if self.outbox_bytes + size <= self._outbox_max:
@@ -382,13 +425,25 @@ class Session:
             return
         ws = self.ws
         try:
-            async with self._send_lock:
-                if data is not None:
-                    await ws.send_bytes(data)
-                else:
-                    await ws.send_text(text or "")
+            if data is not None:
+                await asyncio.wait_for(
+                    ws.send_bytes(data), timeout=self.timing.socket_timeout_s
+                )
+            else:
+                await asyncio.wait_for(
+                    ws.send_text(text or ""), timeout=self.timing.socket_timeout_s
+                )
         except Exception:
+            # Failed or stalled: the browser is no longer reading.
             self.detach("send failed", ws)
+
+    async def _close(self, ws: ClientSocket, code: int) -> None:
+        try:
+            await asyncio.wait_for(
+                ws.close(code=code), timeout=self.timing.socket_timeout_s
+            )
+        except Exception:
+            logger.debug(f"Voice call {self.call_id}: socket did not close cleanly")
 
     def detach(self, why: str, ws: ClientSocket | None = None) -> None:
         """The browser's socket is gone: hold the call for a re-attach."""
@@ -411,31 +466,42 @@ class Session:
 
         Returns an event set once the call is done with *ws*.
         """
-        old, self.ws = self.ws, ws
-        gap = (
-            time.monotonic() - self.detached_at if self.detached_at is not None else 0.0
-        )
-        if self.upstream_task is not None and not self.upstream_task.done():
-            self.upstream_task.cancel()
-        self._socket_done.set()
-        self._socket_done = asyncio.Event()
-        if old is not ws:
-            try:
-                await old.close(code=CLOSE_REPLACED)
-            except Exception:
-                logger.debug(f"Voice call {self.call_id}: old socket already closed")
-        outbox, self.outbox, self.outbox_bytes = self.outbox, [], 0
-        self.detached_at = None
-        self.reattaches += 1
-        logger.info(
-            f"Voice call {self.call_id}: browser re-attached after {gap:.1f}s, "
-            f"{len(outbox)} messages replayed"
-        )
-        await self.send_json({"type": "resumed", "gap_s": round(gap, 3)})
-        for text, data in outbox:
-            await self._send(text=text, data=data)
-        self.upstream_task = self.spawn(self.upstream(ws), "upstream")
-        return self._socket_done
+        async with self._attach_lock:
+            old = self.ws
+            # From here on the old socket hears nothing: what Otto says is
+            # kept for *ws*.
+            if self.detached_at is None:
+                self.detached_at = time.monotonic()
+            away_since = self.detached_at
+            if self.upstream_task is not None and not self.upstream_task.done():
+                self.upstream_task.cancel()
+            if old is not ws:
+                await self._close(old, CLOSE_REPLACED)
+            # Switched once the old socket is closed, under the send lock, so
+            # nothing Otto says lands ahead of ``resumed`` and what was kept.
+            async with self._send_lock:
+                self._socket_done.set()
+                self._socket_done = asyncio.Event()
+                self.ws = ws
+                now = time.monotonic()
+                gap = now - away_since
+                outbox, self.outbox, self.outbox_bytes = self.outbox, [], 0
+                self.detached_at = None
+                self.reattaches += 1
+                # The browser plays what was kept from now on, so the idle
+                # clock waits for it.
+                replayed_s = sum(len(data) for _, data in outbox if data) / 2 / OUT_RATE
+                self.playout_end = max(self.playout_end, now + replayed_s)
+                logger.info(
+                    f"Voice call {self.call_id}: browser re-attached after "
+                    f"{gap:.1f}s, {len(outbox)} messages replayed"
+                )
+                resumed = {"type": "resumed", "gap_s": round(gap, 3)}
+                await self._send_locked(json.dumps(resumed), None)
+                for text, data in outbox:
+                    await self._send_locked(text, data)
+            self.upstream_task = self.spawn(self.upstream(ws), "upstream")
+            return self._socket_done
 
     async def upstream(self, ws: ClientSocket) -> None:
         while not self.ended.is_set():
@@ -480,7 +546,7 @@ class Session:
         if self.wrapping or self.reconnecting or live is None:
             return
         try:
-            await live.send_audio(pcm)
+            await asyncio.wait_for(live.send_audio(pcm), timeout=VENDOR_SEND_TIMEOUT_S)
         except Exception:
             # The vendor socket is going down; downstream reconnects it.
             return
@@ -514,7 +580,7 @@ class Session:
         if live is None or self.reconnecting:
             return False
         try:
-            await call(live)
+            await asyncio.wait_for(call(live), timeout=VENDOR_SEND_TIMEOUT_S)
             return True
         except Exception as error:
             logger.info(
@@ -756,9 +822,15 @@ class Session:
             if elapsed >= self.caps.max_call_s:
                 self.end("wall_clock")
                 return
-            if elapsed >= self.caps.max_call_s - self.caps.soft_wrap_s:
-                await self.nudge("time")
-            if now >= self.playout_end:
+            # The nudge is sent off the watchdog, which enforces every limit.
+            if (
+                elapsed >= self.caps.max_call_s - self.caps.soft_wrap_s
+                and self._claim_nudge("time")
+            ):
+                self.spawn(self._send_nudge("time"), "time_nudge")
+            # Quiet counts only while the browser is attached and Otto's
+            # speech has played out there.
+            if now >= self.playout_end and self.detached_at is None:
                 self.quiet_s += gap
             if self.quiet_s >= self.caps.idle_s:
                 self.end("idle")
@@ -787,14 +859,22 @@ class Session:
                 next_checkpoint = now + self.timing.checkpoint_s
                 self.recording.checkpoint_soon()
 
-    async def nudge(self, kind: str) -> None:
+    def _claim_nudge(self, kind: str) -> bool:
+        """Whether *kind*'s nudge is still to send; it is sent once a call."""
         if kind in self.nudged or self.wrapping:
-            return
+            return False
         self.nudged.add(kind)
+        return True
+
+    async def _send_nudge(self, kind: str) -> None:
         await self._vendor_call(
             f"{kind} nudge",
             lambda live: live.send_note(NUDGES[kind], turn_complete=False),
         )
+
+    async def nudge(self, kind: str) -> None:
+        if self._claim_nudge(kind):
+            await self._send_nudge(kind)
 
     async def classify_soon(self, answering: int, before: str) -> None:
         """Label the person's turn as soon as Otto starts answering it.

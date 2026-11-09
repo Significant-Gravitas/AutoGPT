@@ -10,8 +10,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from . import token_tracking
 from .model import ChatSession, Usage
-from .token_tracking import persist_and_record_usage
+from .token_tracking import drain_pending_cost_logs, persist_and_record_usage
 
 
 def _make_session() -> ChatSession:
@@ -798,3 +799,42 @@ async def test_usage_charges_the_tree_ledger(monkeypatch):
         set_execution_context(None, None, envelope=None)
 
     assert charged == [("tree-9", 250_000)]
+
+
+# ---------------------------------------------------------------------------
+# Draining cost logs in flight at shutdown
+# ---------------------------------------------------------------------------
+
+
+class TestDrainPendingCostLogs:
+    @pytest.mark.asyncio
+    async def test_waits_for_cost_logs_in_flight(self):
+        finished: list[int] = []
+
+        async def _slow() -> None:
+            await asyncio.sleep(0.01)
+            finished.append(1)
+
+        task = asyncio.ensure_future(_slow())
+        with token_tracking._pending_log_tasks_lock:
+            token_tracking._pending_log_tasks.add(task)
+        task.add_done_callback(token_tracking._pending_log_tasks.discard)
+
+        await drain_pending_cost_logs(timeout=2.0)
+        assert finished == [1]
+
+    @pytest.mark.asyncio
+    async def test_gives_up_on_a_cost_log_at_the_timeout(self):
+        async def _stuck() -> None:
+            await asyncio.Event().wait()
+
+        task = asyncio.ensure_future(_stuck())
+        with token_tracking._pending_log_tasks_lock:
+            token_tracking._pending_log_tasks.add(task)
+        try:
+            await asyncio.wait_for(drain_pending_cost_logs(timeout=0.05), timeout=2.0)
+            assert not task.done()
+        finally:
+            task.cancel()
+            with token_tracking._pending_log_tasks_lock:
+                token_tracking._pending_log_tasks.discard(task)

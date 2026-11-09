@@ -12,7 +12,9 @@ from backend.data.onboarding import (
     claim_onboarding_interview_session_id,
     get_onboarding_interview_session_id,
     get_onboarding_voice_call_id,
+    get_onboarding_voice_interview_call_id,
     record_onboarding_voice_call,
+    record_onboarding_voice_interview_call,
 )
 from backend.util.test import SpinTestServer
 
@@ -47,3 +49,19 @@ async def test_a_call_leaves_the_typed_interview_on_the_row_alone(new_user: str)
     interview = await claim_onboarding_interview_session_id(new_user, "interview-a")
     await record_onboarding_voice_call(new_user, uuid.uuid4().hex)
     assert await get_onboarding_interview_session_id(new_user) == interview
+
+
+async def test_no_call_has_taken_the_interview_until_one_does(new_user: str):
+    await record_onboarding_voice_call(new_user, uuid.uuid4().hex)
+    assert await get_onboarding_voice_interview_call_id(new_user) is None
+
+
+async def test_the_call_that_took_the_interview_stays_when_another_starts(
+    new_user: str,
+):
+    took, later = uuid.uuid4().hex, uuid.uuid4().hex
+    await record_onboarding_voice_call(new_user, took)
+    await record_onboarding_voice_interview_call(new_user, took)
+    await record_onboarding_voice_call(new_user, later)
+    assert await get_onboarding_voice_interview_call_id(new_user) == took
+    assert await get_onboarding_voice_call_id(new_user) == later
