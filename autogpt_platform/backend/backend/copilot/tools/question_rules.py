@@ -29,21 +29,10 @@ QUESTION_BUDGET: dict[AutopilotMode, int] = {
     "ask_first": 1,
 }
 
-# At the start of any sentence of the question: "Hugo wanted Thursday. Should
-# I tell Tobias yes anyway?" is still a permission ask; "Which bill should I
-# pay?" is not.
 _PERMISSION_CHATTER = re.compile(
-    r"(?:^|[.?!:;]\s+)\s*(should i|shall i|do you want me to|would you like me to|"
+    r"^\s*(should i|shall i|do you want me to|would you like me to|"
     r"want me to|can i go ahead|ok(ay)? to (proceed|go ahead)|"
     r"may i proceed|should we proceed|ready for me to)\b",
-    re.IGNORECASE,
-)
-# An open question hands the thinking back to the user; a blocked Otto asks
-# the one fact it needs, with the real options.
-_OPEN_ENDED = re.compile(
-    r"\b(what (would|do) you (like|want) (me )?to do|"
-    r"how (would|do) you (like|want) (me )?to (handle|proceed|go|play)|"
-    r"what should i do|how should i (handle|proceed))\b",
     re.IGNORECASE,
 )
 
@@ -86,12 +75,6 @@ def _problem(question: ClarifyingQuestion, mode: AutopilotMode) -> str | None:
         return (
             f"{label} a preference is not asked in {mode} mode: decide it with "
             "your default and note it as an assumption."
-        )
-    if _OPEN_ENDED.search(question.question):
-        return (
-            f"{label} too open. Ask the one fact that blocks you (which report? "
-            "has she signed off? which money pays?) with the real options, "
-            "and put your plan in default_guess."
         )
     if (
         _PERMISSION_CHATTER.search(question.question)

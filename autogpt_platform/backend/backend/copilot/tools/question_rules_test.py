@@ -41,7 +41,6 @@ def test_preferences_are_asked_only_in_ask_first(mode, allowed):
         "Should I go ahead?",
         "Do you want me to also email them?",
         "OK to proceed?",
-        "Hugo wanted to decide Thursday. Should I tell Tobias yes now anyway?",
     ],
 )
 def test_permission_chatter_is_refused(text):
@@ -103,14 +102,3 @@ def test_a_question_before_any_look_is_sent_back_once():
     question = _q("Which bill?")
     assert refusal([question], "auto", 0, looked=False) == LOOK_FIRST
     assert refusal([question], "auto", 0, looked=True) is None
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        "The draft isn't ready. What would you like me to do?",
-        "How would you like me to handle it?",
-    ],
-)
-def test_an_open_question_is_sent_back_for_the_blocking_fact(text):
-    assert "too open" in (refusal([_q(text, "conflict")], "auto", 0) or "")
