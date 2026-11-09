@@ -115,6 +115,8 @@ pillow = ">=13.0.0,<14"
 pypdfium2 = "^5.8.0"
 tavily-python = ">=0.7.26,<0.9.0"
 publicsuffixlist = "1.1.0.20261010"
+google-genai = "2.31.0"
+numpy = "^2.4.2"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"

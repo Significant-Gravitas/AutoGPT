@@ -79,6 +79,15 @@ class Flag(str, Enum):
     # off so a stale frontend cannot spend TTS budget. Fail-closed.
     COPILOT_VOICE_MODE = "copilot-voice-mode"
 
+    # The onboarding voice interview: the step offers a call with Otto, and
+    # the call start route mints calls. The route 404s when off, so a stale
+    # frontend cannot start a call. Fail-closed.
+    ONBOARDING_INTERVIEW_VOICE = "onboarding-interview-voice"
+    # Which leg carries a voice interview's audio, "livekit" or "websocket",
+    # as a string. Read by the call start route, which names the leg in the
+    # call's start token; "websocket" takes LiveKit out without a deploy.
+    ONBOARDING_INTERVIEW_VOICE_EDGE = "onboarding-interview-voice-edge"
+
     # --- Dream-system gates (P0) ---
     #
     # No "enabled-users list" flag — per-flag targeting natively
@@ -459,6 +468,7 @@ _NON_BOOLEAN_FLAG_VALUES: frozenset[str] = frozenset(
         Flag.COPILOT_TIER_WORKSPACE_STORAGE_LIMITS.value,
         Flag.COPILOT_TIER_STRIPE_PRICES.value,
         Flag.CARD_REQUIRED_TRIAL_OFFER.value,
+        Flag.ONBOARDING_INTERVIEW_VOICE_EDGE.value,
     }
 )
 
