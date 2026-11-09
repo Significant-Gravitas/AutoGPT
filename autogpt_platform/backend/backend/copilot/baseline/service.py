@@ -27,7 +27,7 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 
 from backend.blocks.desktop._common import workspace_volume_mounts
-from backend.copilot import engine_switch
+from backend.copilot import engine_switch, turn_end
 from backend.copilot.ai_spans import stamp_turn_trace_id
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
@@ -39,7 +39,7 @@ from backend.copilot.baseline.reasoning import (
     anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
-from backend.copilot.baseline.tool_order import writes_files
+from backend.copilot.baseline.tool_order import runs_alone
 from backend.copilot.baseline.tool_persistence import BaselineToolPersistence
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.builder_context import (
@@ -1186,6 +1186,30 @@ async def _baseline_llm_caller(
     return response
 
 
+def _refuse_after_question(
+    state: _BaselineStreamState, tool_call_id: str, tool_name: str
+) -> ToolCallResult:
+    """Refuse a call that starts after the turn asked the user a question."""
+    logger.info("[Baseline] Refusing %s: the turn asked a question", tool_name)
+    _emit(
+        state,
+        StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=tool_name,
+            output=turn_end.ENDED_REFUSAL,
+            success=False,
+        ),
+    )
+    return state.tool_persistence.record_result(
+        ToolCallResult(
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            content=turn_end.ENDED_REFUSAL,
+            is_error=True,
+        )
+    )
+
+
 async def _baseline_tool_executor(
     tool_call: LLMToolCall,
     tools: Sequence[Any],
@@ -1207,6 +1231,9 @@ async def _baseline_tool_executor(
     tool_call_id = tool_call.id
     tool_name = tool_call.name
     raw_args = tool_call.arguments or "{}"
+
+    if turn_end.is_ending(session.session_id):
+        return _refuse_after_question(state, tool_call_id, tool_name)
 
     try:
         tool_args = orjson.loads(raw_args)
@@ -1861,6 +1888,7 @@ async def stream_chat_completion_baseline(
 
     Flow: stream response -> if tool_calls, execute them -> feed results back -> repeat.
     """
+    turn_end.clear(session_id)
     if session is None:
         session = await get_chat_session(session_id, user_id)
 
@@ -2697,7 +2725,7 @@ async def stream_chat_completion_baseline(
                 update_conversation=_bound_conversation_updater,
                 max_iterations=max_tool_rounds,
                 last_iteration_message=_LAST_ITERATION_HINT,
-                runs_alone=writes_files,
+                runs_alone=runs_alone,
             ):
                 loop_result_holder[0] = loop_result
                 # Engine switch requested (enter_agent_building_mode): end
@@ -2710,6 +2738,14 @@ async def stream_chat_completion_baseline(
                     logger.info(
                         f"[Baseline] Engine switch pending for "
                         f"{session_id[:12]} — ending tool loop"
+                    )
+                    break
+                # A question for the user ends the turn (turn_end): no model
+                # call after it, so no text or tool call follows the card.
+                if turn_end.is_ending(session_id):
+                    logger.info(
+                        f"[Baseline] Question asked in {session_id[:12]}; "
+                        f"ending tool loop"
                     )
                     break
                 # Inject any messages the user queued while the turn was

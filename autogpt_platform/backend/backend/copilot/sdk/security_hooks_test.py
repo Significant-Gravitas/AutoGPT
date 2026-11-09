@@ -1072,3 +1072,53 @@ async def test_builtin_tool_spans_turned_off_send_none(_spans):
     )
 
     _spans.assert_not_called()
+
+
+# -- A question for the user ends the turn ----------------------------------
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_after_a_question_no_tool_runs_and_no_model_call_follows(
+    monkeypatch,
+):
+    from unittest.mock import MagicMock
+
+    from backend.copilot import context as ctx_mod
+    from backend.copilot import turn_end
+
+    session = MagicMock()
+    session.session_id = "sess-question-ends"
+    ctx_mod.set_execution_context(
+        user_id="u1", session=session, sandbox=None, sdk_cwd=SDK_CWD
+    )
+    drain = AsyncMock(return_value=[])
+    monkeypatch.setattr(
+        "backend.copilot.pending_messages.drain_pending_messages", drain
+    )
+    hooks = create_security_hooks(
+        user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2, allowed_tools=ALLOWED
+    )
+    pre = hooks["PreToolUse"][0].hooks[0]
+    post = hooks["PostToolUse"][0].hooks[0]
+
+    turn_end.request_end("sess-question-ends")
+    try:
+        stopped = await post(
+            {"tool_name": "mcp__copilot__ask_question", "tool_response": "ok"},
+            tool_use_id="tu-q",
+            context={},
+        )
+        refused = await pre(
+            {"tool_name": "WebSearch", "tool_input": {"query": "x"}},
+            tool_use_id="tu-after",
+            context={},
+        )
+    finally:
+        turn_end.clear("sess-question-ends")
+
+    assert stopped == {"continue_": False}
+    drain.assert_not_awaited()
+    decision = refused["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    assert decision["permissionDecisionReason"] == turn_end.ENDED_REFUSAL

@@ -4,6 +4,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from backend.copilot import turn_end
 from backend.copilot.model import ChatSession, PendingQuestion
 from backend.data.db_accessors import chat_db
 
@@ -46,7 +47,8 @@ class AskQuestionTool(BaseTool):
             "Ask the user one or more clarifying questions. Use when the "
             "request is ambiguous and you need to confirm intent, choose "
             "between options, or gather missing details before proceeding. "
-            "Give each question why it blocks you and your default answer."
+            "Give each question why it blocks you and your default answer. "
+            "Asking ends your turn: call it last, and nothing runs after it."
         )
 
     @property
@@ -132,6 +134,7 @@ class AskQuestionTool(BaseTool):
         text = "; ".join(q.question for q in questions)
         if session:
             await _mark_pending(session, text)
+            turn_end.request_end(session.session_id)
         return ClarificationNeededResponse(
             message=text,
             session_id=session.session_id if session else None,

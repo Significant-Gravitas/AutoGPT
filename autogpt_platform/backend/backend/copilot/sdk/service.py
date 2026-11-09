@@ -44,6 +44,7 @@ from claude_agent_sdk.types import SystemPromptPreset
 from pydantic import BaseModel
 
 from backend.blocks.desktop._common import workspace_volume_mounts
+from backend.copilot import turn_end
 from backend.copilot.graphiti import context_refresh
 from backend.copilot.model_router import (
     ResolvedModel,
@@ -5012,6 +5013,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             model the CLI talks to instead of the deployment's provider
             (``backend/copilot/load_test.py``).
     """
+    turn_end.clear(session_id)
     if session is None:
         session = await get_chat_session(session_id, user_id)
 

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import turn_end
 from backend.copilot.model import ChatSession, clear_pending_question
 from backend.copilot.tools.ask_question import (
     MAX_DEFAULT_GUESS_LENGTH,
@@ -599,3 +600,25 @@ def test_schema_requires_a_reason_and_a_default_guess(tool: AskQuestionTool):
 
     assert item["required"] == ["question", "reason", "default_guess"]
     assert set(item["properties"]["reason"]["enum"]) == set(QUESTION_REASONS)
+
+
+@pytest.mark.asyncio
+async def test_a_valid_question_ends_the_turn(
+    tool: AskQuestionTool, session: ChatSession, quiet_db
+):
+    try:
+        await tool._execute(
+            user_id=None, session=session, questions=[{"question": "Which team?"}]
+        )
+        assert turn_end.is_ending(session.session_id)
+    finally:
+        turn_end.clear(session.session_id)
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_question_does_not_end_the_turn(
+    tool: AskQuestionTool, session: ChatSession, quiet_db
+):
+    with pytest.raises(ValueError):
+        await tool._execute(user_id=None, session=session, questions=[])
+    assert not turn_end.is_ending(session.session_id)
