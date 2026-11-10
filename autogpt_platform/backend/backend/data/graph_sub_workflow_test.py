@@ -100,6 +100,27 @@ def test_versions_that_run_each_other_only_across_versions_are_not_a_cycle():
     assert graph.validate_graph_get_errors(for_run=True) == {}
 
 
+@pytest.mark.parametrize("version", [[1], {"version": 1}], ids=["list", "object"])
+def test_a_version_that_is_not_a_number_is_checked_without_failing(version: object):
+    # Such a version names no loaded graph, so the chain stops there, but a
+    # node that runs its own workflow is still refused whatever version it names
+    runs_inner = _runs("inner", "outer-runs-inner")
+    runs_itself = _runs("outer", "outer-runs-itself")
+    runs_inner.input_default["graph_version"] = version
+    runs_itself.input_default["graph_version"] = version
+    graph = _workflow(
+        "outer",
+        runs_inner,
+        runs_itself,
+        sub_graphs=[_sub_graph("inner", _runs("outer", "inner-runs-outer"))],
+    )
+
+    errors = graph.validate_graph_get_errors(for_run=True)
+
+    assert errors["outer-runs-itself"]["graph_id"] == SUB_WORKFLOW_RUNS_ITSELF
+    assert "graph_id" not in errors.get("outer-runs-inner", {})
+
+
 def _runs(graph_id: str, node_id: str, version: int = 1) -> Node:
     """A sub-workflow node that runs that version of the workflow `graph_id`."""
     return Node(

@@ -1485,12 +1485,13 @@ def _workflows_above(
     """For each (graph id, version) a run of `top` reaches, the ids of the
     graphs some chain from `top` runs on the way to it, its own included.
     `calls` holds each graph's (node id, graph id, version) sub-workflow
-    calls; a call to a version not in it reaches nothing further."""
+    calls; a call to a version not in it, or to a version that is not a
+    number, reaches nothing further."""
     callees = {
         caller: {
             (graph_id, version)
             for _, graph_id, version in node_calls
-            if (graph_id, version) in calls
+            if isinstance(version, int) and (graph_id, version) in calls
         }
         for caller, node_calls in calls.items()
     }
