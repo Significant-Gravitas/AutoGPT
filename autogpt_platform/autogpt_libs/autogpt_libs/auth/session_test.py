@@ -6,6 +6,11 @@ from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
 from autogpt_libs.auth import session
+from autogpt_libs.auth.closed_accounts import (
+    ACCOUNT_CLOSED_DETAIL,
+    forget_account_state,
+    remember_account_closed,
+)
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from autogpt_libs.auth.session import requires_live_session
 
@@ -106,3 +111,50 @@ def test_a_route_behind_it_answers_401_once_the_session_ends(session_lookup):
     assert client.post("/mint").status_code == 200
     session_lookup.return_value = False
     assert client.post("/mint").status_code == 401
+
+
+@pytest.fixture
+def closed_account():
+    remember_account_closed("user-1")
+    yield
+    forget_account_state("user-1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("live", [True, False])
+@pytest.mark.parametrize(
+    "payload", [{"sub": "user-1", "sid": "session-1"}, {"sub": "user-1"}]
+)
+async def test_a_closed_account_is_refused_as_closed(
+    session_lookup, closed_account, live, payload
+):
+    """Closing ends every session; its tokens answer closed, not session ended."""
+    session_lookup.return_value = live
+
+    with pytest.raises(HTTPException) as error:
+        await requires_live_session(payload)
+
+    assert error.value.status_code == 401
+    assert error.value.detail == ACCOUNT_CLOSED_DETAIL
+    session_lookup.assert_not_awaited()
+
+
+def test_a_route_behind_it_answers_a_closed_account_as_closed(
+    session_lookup, closed_account
+):
+    app = FastAPI()
+
+    @app.post("/mint", dependencies=[Security(requires_live_session)])
+    def mint():
+        return {"ok": True}
+
+    app.dependency_overrides[get_jwt_payload] = lambda: {
+        "sub": "user-1",
+        "sid": "session-1",
+    }
+    session_lookup.return_value = False
+
+    response = TestClient(app).post("/mint")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": ACCOUNT_CLOSED_DETAIL}

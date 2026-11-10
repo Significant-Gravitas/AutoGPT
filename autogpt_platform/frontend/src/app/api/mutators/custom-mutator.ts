@@ -5,7 +5,7 @@ import {
 } from "@/lib/autogpt-server-api/helpers";
 import * as Sentry from "@sentry/nextjs";
 
-import { signOutIfRefused } from "@/lib/auth/account-banned";
+import { handleRefusedAccount } from "@/lib/auth/account-banned";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
@@ -180,7 +180,7 @@ export const customMutator = async <
       logServerRequestFailure(failure);
     } else {
       logClientRequestFailure(failure);
-      signOutIfRefused(response.status, responseData);
+      handleRefusedAccount(response.status, responseData);
     }
 
     throw new ApiError(errorMessage, response.status, responseData);
