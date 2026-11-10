@@ -177,17 +177,6 @@ FRIENDLY_TRANSIENT_MSG = (
 )
 
 
-# A request the provider refuses for its size is refused the same way every
-# time, so the user is told what to change rather than offered a retry, and
-# never shown the provider's text, which names the platform's account.
-REQUEST_TOO_LARGE_CODE = "request_too_large"
-REQUEST_TOO_LARGE_MSG = (
-    "This message is larger than the AI model accepts in one request, so "
-    "trying again won't help. Send less at once (shorter text, or fewer or "
-    "smaller files), or start a new chat."
-)
-
-
 def is_transient_api_error(error_text: str) -> bool:
     """Return True if *error_text* matches a known transient Anthropic API error."""
     # OpenAI's "Request too large" carries rate_limit_exceeded, but the same

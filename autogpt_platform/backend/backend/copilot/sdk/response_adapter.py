@@ -25,12 +25,7 @@ from claude_agent_sdk import (
 )
 
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
-from backend.copilot.constants import (
-    FRIENDLY_TRANSIENT_MSG,
-    REQUEST_TOO_LARGE_CODE,
-    REQUEST_TOO_LARGE_MSG,
-    is_transient_api_error,
-)
+from backend.copilot.constants import FRIENDLY_TRANSIENT_MSG, is_transient_api_error
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -52,7 +47,6 @@ from backend.copilot.response_model import (
     StreamTurnPaused,
 )
 from backend.copilot.turn_pause import TurnPause
-from backend.util.llm.request_too_large import is_request_too_large_text
 
 from .governor import TurnGovernor
 from .tool_adapter import MCP_TOOL_PREFIX, pop_pending_tool_output
@@ -604,9 +598,7 @@ class SDKResponseAdapter:
                 "error_during_execution",
             ):
                 raw_error = str(sdk_message.result or "Unknown error")
-                if is_request_too_large_text(raw_error):
-                    error_text, code = REQUEST_TOO_LARGE_MSG, REQUEST_TOO_LARGE_CODE
-                elif is_transient_api_error(raw_error):
+                if is_transient_api_error(raw_error):
                     error_text, code = FRIENDLY_TRANSIENT_MSG, "transient_api_error"
                 else:
                     error_text, code = raw_error, "sdk_error"

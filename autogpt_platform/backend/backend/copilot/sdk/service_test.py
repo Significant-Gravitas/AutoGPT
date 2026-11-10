@@ -1822,61 +1822,6 @@ class TestConsumeSdkUntilDone:
         assert loop_state.stream_error_msg == GATEWAY_REFUSED_MESSAGE
 
     @pytest.mark.asyncio
-    async def test_a_request_too_large_fails_the_turn_with_advice(self):
-        """The CLI reports OpenAI's oversized-request 429 under its rate_limit
-        category. Retrying sends the same request, and forwarding it would
-        show the provider's JSON, which names the account, as the reply."""
-        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
-
-        from backend.copilot.constants import (
-            REQUEST_TOO_LARGE_CODE,
-            REQUEST_TOO_LARGE_MSG,
-        )
-        from backend.copilot.response_model import StreamTextDelta
-        from backend.copilot.sdk.service import _consume_sdk_until_done
-
-        reported = (
-            "API Error: 429 {'error': {'message': 'Request too large for "
-            "gpt-4.1-mini in organization org-private-canary on tokens per min "
-            "(TPM): Limit 400000, Requested 520131.', 'code': "
-            "'rate_limit_exceeded'}}"
-        )
-        ctx = self._ctx()
-        state = self._state()
-        acc = self._acc()
-        loop_state = self._loop_state()
-
-        async def fake_iter(client, wake=None, tool_display_wake=None):
-            yield AssistantMessage(
-                content=[TextBlock(text=reported)], model="test", error="rate_limit"
-            )
-            yield ResultMessage(
-                subtype="success",
-                duration_ms=1,
-                duration_api_ms=1,
-                is_error=False,
-                num_turns=1,
-                session_id="s1",
-                result=reported,
-            )
-
-        with patch(
-            "backend.copilot.sdk.service._iter_sdk_messages",
-            new=fake_iter,
-        ):
-            events = []
-            async for ev in _consume_sdk_until_done(
-                MagicMock(), ctx, state, acc, loop_state
-            ):
-                events.append(ev)
-
-        assert [e for e in events if isinstance(e, StreamTextDelta)] == []
-        assert all("org-private-canary" not in str(event) for event in events)
-        assert loop_state.ended_with_stream_error is True
-        assert loop_state.stream_error_code == REQUEST_TOO_LARGE_CODE
-        assert loop_state.stream_error_msg == REQUEST_TOO_LARGE_MSG
-
-    @pytest.mark.asyncio
     async def test_heartbeat_sentinel_yields_heartbeat_event(self):
         """``None`` from ``_iter_sdk_messages`` is the heartbeat sentinel —
         the helper must refresh the lock and yield ``StreamHeartbeat``
