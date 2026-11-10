@@ -1660,6 +1660,7 @@ def test_reset_expert_returns_what_it_did(
         soul_reset=True,
         routines_reset=2,
         chats_archived=3,
+        approvals_cleared=1,
     )
     reset = mocker.patch(
         "backend.api.features.experts.routes.expert_reset.reset_expert",

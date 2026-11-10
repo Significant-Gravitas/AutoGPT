@@ -67,8 +67,26 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+function busy() {
+  return http.post(RESET_URL, () =>
+    HttpResponse.json(
+      { detail: "Maria is still working. Reset once they finish." },
+      { status: 409 },
+    ),
+  );
+}
+
+const DONE = {
+  memory_nodes_erased: 3,
+  computer_erased: true,
+  soul_reset: true,
+  routines_reset: 1,
+  chats_archived: 2,
+  approvals_cleared: 1,
+};
+
 describe("Reset expert", () => {
-  test("asks first, saying what is erased, archived and kept", async () => {
+  test("asks first, saying what is erased, removed and kept", async () => {
     const reset = vi.fn();
     server.use(
       http.post(RESET_URL, () => {
@@ -82,13 +100,19 @@ describe("Reset expert", () => {
     await user.click(screen.getByTestId("expert-reset-button"));
 
     const dialog = await screen.findByRole("dialog", { name: "Reset Maria?" });
-    expect(dialog.textContent).toContain("can't be undone");
-    expect(dialog.textContent).toContain("Everything Maria remembers");
-    expect(dialog.textContent).toContain(
-      "Maria's computer and the notes on it",
-    );
-    expect(dialog.textContent).toContain("leave your chat list");
-    expect(dialog.textContent).toContain("what the rest of your team knows");
+    const text = dialog.textContent;
+    expect(text).toContain("the day you hired them");
+    expect(text).toContain("can't be undone");
+    expect(text).toContain("Everything Maria remembers");
+    expect(text).toContain("Maria's computer and the notes on it");
+    expect(text).toContain("Routines you switched on are switched off");
+    expect(text).toContain("Removed");
+    expect(text).toContain("can't be opened again");
+    expect(text).toContain("Approvals from those chats waiting in Needs you");
+    expect(text).toContain("The skills Maria has learned");
+    expect(text).toContain("Their workflows, and the schedules on them");
+    expect(text).toContain("what the rest of your team knows");
+    expect(text).not.toMatch(/archived/i);
     expect(reset).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -98,31 +122,96 @@ describe("Reset expert", () => {
     expect(reset).not.toHaveBeenCalled();
   });
 
-  test("does not promise to reset what a created expert has no template for", async () => {
+  test("tells a created expert's owner what a reset of it keeps", async () => {
     const user = userEvent.setup();
     render(
       <ExpertResetSection expert={{ ...maria, source_template_id: null }} />,
     );
 
+    expect(screen.getByText(/the day you created them/)).toBeDefined();
     await user.click(screen.getByTestId("expert-reset-button"));
 
     const dialog = await screen.findByRole("dialog", { name: "Reset Maria?" });
-    expect(dialog.textContent).not.toContain(
-      "Your edits to their soul and routines",
-    );
-    expect(dialog.textContent).toContain(
-      "Their soul and routines, since you created Maria",
+    const text = dialog.textContent;
+    expect(text).toContain("the day you created them");
+    expect(text).not.toContain("the day you hired them");
+    expect(text).not.toContain("Your edits to their soul and routines");
+    expect(text).not.toContain("Routines you switched on are switched off");
+    expect(text).toContain(
+      "Their soul and routines, each routine still on or off as it is now",
     );
   });
 
-  test("resets on confirm and lets Maria introduce themselves again", async () => {
+  test("shows that Maria is reset, with a way to chat with her", async () => {
+    server.use(getResetExpertMockHandler(DONE));
+    const user = userEvent.setup();
+    render(<ExpertResetSection expert={maria} />);
+
+    await user.click(screen.getByTestId("expert-reset-button"));
+    await user.click(await screen.findByTestId("reset-expert-confirm"));
+
+    const done = await screen.findByRole("dialog", { name: "Maria is reset" });
+    expect(done.textContent).toContain("your old chats with them are removed");
+    expect(done.textContent).toContain(
+      "Chat with Maria and they'll introduce themselves again.",
+    );
+    // A new chat that opens with Maria introducing herself, as after a hire.
+    expect(
+      screen.getByRole("link", { name: "Chat with Maria" }).getAttribute("href"),
+    ).toBe("/copilot?expertId=expert-maria&kickoff=1");
+    expect(
+      window.localStorage.getItem(kickoffStorageKey("user-1", "expert-maria")),
+    ).toBeNull();
+    expect(toastMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Maria is reset" }),
+      ).toBeNull(),
+    );
+
+    // Opening it again starts over at the question.
+    await user.click(screen.getByTestId("expert-reset-button"));
+    expect(
+      await screen.findByRole("dialog", { name: "Reset Maria?" }),
+    ).toBeDefined();
+  });
+
+  test("says Maria is still working, and resets on a retry once she is not", async () => {
+    server.use(busy());
+    const user = userEvent.setup();
+    render(<ExpertResetSection expert={maria} />);
+
+    await user.click(screen.getByTestId("expert-reset-button"));
+    await user.click(await screen.findByTestId("reset-expert-confirm"));
+
+    const waiting = await screen.findByRole("dialog", {
+      name: "Maria is still working",
+    });
+    expect(waiting.textContent).toContain("nothing was reset");
+    expect(toastMock).not.toHaveBeenCalled();
+    expect(
+      window.localStorage.getItem(kickoffStorageKey("user-1", "expert-maria")),
+    ).toBe("done:1:a");
+
+    server.use(getResetExpertMockHandler(DONE));
+    await user.click(screen.getByTestId("reset-expert-retry"));
+
+    expect(
+      await screen.findByRole("dialog", { name: "Maria is reset" }),
+    ).toBeDefined();
+  });
+
+  test("closes from the busy state without resetting", async () => {
+    const reset = vi.fn();
     server.use(
-      getResetExpertMockHandler({
-        memory_nodes_erased: 3,
-        computer_erased: true,
-        soul_reset: true,
-        routines_reset: 1,
-        chats_archived: 2,
+      http.post(RESET_URL, () => {
+        reset();
+        return HttpResponse.json(
+          { detail: "Maria is still working. Reset once they finish." },
+          { status: 409 },
+        );
       }),
     );
     const user = userEvent.setup();
@@ -130,47 +219,16 @@ describe("Reset expert", () => {
 
     await user.click(screen.getByTestId("expert-reset-button"));
     await user.click(await screen.findByTestId("reset-expert-confirm"));
+    await screen.findByRole("dialog", { name: "Maria is still working" });
+
+    await user.click(screen.getByRole("button", { name: "Close" }));
 
     await waitFor(() =>
-      expect(toastMock).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Maria is reset" }),
-      ),
+      expect(
+        screen.queryByRole("dialog", { name: "Maria is still working" }),
+      ).toBeNull(),
     );
-    expect(
-      window.localStorage.getItem(kickoffStorageKey("user-1", "expert-maria")),
-    ).toBeNull();
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Reset Maria?" })).toBeNull(),
-    );
-  });
-
-  test("asks to wait when Maria is still working", async () => {
-    server.use(
-      http.post(RESET_URL, () =>
-        HttpResponse.json(
-          { detail: "Maria is still working. Reset once they finish." },
-          { status: 409 },
-        ),
-      ),
-    );
-    const user = userEvent.setup();
-    render(<ExpertResetSection expert={maria} />);
-
-    await user.click(screen.getByTestId("expert-reset-button"));
-    expect(
-      (await screen.findByRole("dialog", { name: "Reset Maria?" })).textContent,
-    ).toContain("wait for them to finish first");
-    await user.click(screen.getByTestId("reset-expert-confirm"));
-
-    await waitFor(() =>
-      expect(toastMock).toHaveBeenCalledWith({
-        title: "Maria is still working",
-        description: "Reset Maria once they finish.",
-      }),
-    );
-    expect(
-      window.localStorage.getItem(kickoffStorageKey("user-1", "expert-maria")),
-    ).toBe("done:1:a");
+    expect(reset).toHaveBeenCalledTimes(1);
   });
 
   test("says so when the reset did not finish", async () => {

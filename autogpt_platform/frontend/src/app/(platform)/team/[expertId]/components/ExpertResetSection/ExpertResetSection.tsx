@@ -34,8 +34,8 @@ export function ExpertResetSection({ expert }: Props) {
           </Text>
           <Text variant="body-md" tone="secondary" className="mt-0.5">
             {hasTemplate
-              ? `Start over with ${expert.name} as they were the day you hired them: their memory, computer and your edits are erased, and your chats with them are archived.`
-              : `Start over with ${expert.name}: their memory and computer are erased, and your chats with them are archived.`}{" "}
+              ? `Start over with ${expert.name} as they were the day you hired them: their memory, computer and your edits are erased, and your chats with them are removed.`
+              : `Start over with ${expert.name} as they were the day you created them: their memory and computer are erased, and your chats with them are removed.`}{" "}
             Unlike firing, this can&apos;t be undone.
           </Text>
         </div>

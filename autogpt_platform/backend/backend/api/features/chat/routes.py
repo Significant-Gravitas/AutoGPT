@@ -20,6 +20,10 @@ from fastapi import (
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
+from backend.api.features.chat.removed_chat import (
+    CHAT_REMOVED_RESPONSE,
+    chat_removed_error,
+)
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
 from backend.blocks.desktop._api import DesktopStream
@@ -1414,6 +1418,7 @@ async def update_session_pinned_route(
 
 @router.get(
     "/sessions/{session_id}",
+    responses=CHAT_REMOVED_RESPONSE,
 )
 async def get_session(
     session_id: str,
@@ -1435,10 +1440,12 @@ async def get_session(
         user_id=user_id,
         organization_id=ctx.org_id,
     )
-    # A reset expert's chats are archived: kept, but no longer opened, even
-    # from an old link.
-    if page is None or page.session.archived_at is not None:
+    if page is None:
         raise NotFoundError(f"Session {session_id} not found.")
+    # A reset expert's chats are archived: kept, but no longer opened. Old
+    # links still reach them, so the page says why rather than "not found".
+    if page.session.archived_at is not None:
+        raise await chat_removed_error(page.session)
 
     messages = [
         _strip_injected_context(message.model_dump()) for message in page.messages

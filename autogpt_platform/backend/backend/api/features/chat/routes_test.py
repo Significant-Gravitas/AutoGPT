@@ -4794,17 +4794,43 @@ def test_get_session_reports_background_state_from_the_durable_record(
     assert data["background_pending"] is True
 
 
-def test_get_session_of_a_reset_experts_chat_is_404(
-    mocker: pytest_mock.MockerFixture,
+@pytest.mark.parametrize(
+    "expert_name, message",
+    [
+        ("Remy", "This chat was removed when Remy was reset."),
+        (None, "This chat was removed when its expert was reset."),
+    ],
+)
+def test_get_session_of_a_reset_experts_chat_says_it_was_removed(
+    mocker: pytest_mock.MockerFixture, expert_name: str | None, message: str
 ) -> None:
     """Resetting an expert archives its chats: an old link no longer opens
-    one, though the row is kept."""
+    one, though the row is kept, and the page is told why."""
     page, _ = _make_paginated_messages(mocker)
     page.session.archived_at = datetime.now(UTC)
+    page.session.expert_id = "expert-1"
+    find = mocker.patch(
+        "backend.api.features.chat.removed_chat.prisma.models.Expert.prisma"
+    )
+    find.return_value.find_first = AsyncMock(
+        return_value=MagicMock(name="expert") if expert_name else None
+    )
+    if expert_name:
+        find.return_value.find_first.return_value.name = expert_name
 
     response = client.get("/sessions/sess-1")
 
-    assert response.status_code == 404
+    assert response.status_code == 410
+    assert response.json() == {
+        "detail": {
+            "type": "chat_removed",
+            "expert_name": expert_name,
+            "message": message,
+        }
+    }
+    find.return_value.find_first.assert_awaited_once_with(
+        where={"id": "expert-1", "ownerUserId": TEST_USER_ID}
+    )
 
 
 @pytest.mark.asyncio

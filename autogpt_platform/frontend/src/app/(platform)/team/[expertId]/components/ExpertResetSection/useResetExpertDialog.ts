@@ -11,22 +11,32 @@ import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
-import { resetErrorToast } from "./helpers";
+import { useState } from "react";
+import { isBusyError, resetFailedToast, type ResetPhase } from "./helpers";
 
 interface Args {
   expertId: string;
   expertName: string;
-  onClose: () => void;
+  open: boolean;
 }
 
-export function useResetExpertDialog({ expertId, expertName, onClose }: Args) {
+export function useResetExpertDialog({ expertId, expertName, open }: Args) {
   const queryClient = useQueryClient();
   const userId = useAuthStore((state) => state.user?.id) ?? null;
+  const [phase, setPhase] = useState<ResetPhase>("confirm");
+  const [wasOpen, setWasOpen] = useState(open);
+
+  // Each opening starts at the confirm step, whatever the last one ended on.
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setPhase("confirm");
+  }
 
   const { mutate, isPending: isResetting } = useResetExpert({
     mutation: {
       onSuccess: async () => {
         if (userId) forgetKickoff(userId, expertId);
+        setPhase("done");
         await Promise.all([
           invalidateExpertRosterQueries(queryClient),
           queryClient.invalidateQueries({
@@ -41,14 +51,13 @@ export function useResetExpertDialog({ expertId, expertName, onClose }: Args) {
           queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY }),
           invalidateAllScheduleQueries(queryClient),
         ]);
-        toast({
-          title: `${expertName} is reset`,
-          description: `${expertName} will introduce themselves again the next time you chat.`,
-        });
-        onClose();
       },
       onError: (error) => {
-        toast(resetErrorToast(error, expertName));
+        if (isBusyError(error)) {
+          setPhase("busy");
+          return;
+        }
+        toast(resetFailedToast(expertName));
       },
     },
   });
@@ -57,5 +66,5 @@ export function useResetExpertDialog({ expertId, expertName, onClose }: Args) {
     mutate({ expertId });
   }
 
-  return { isResetting, handleReset };
+  return { phase, isResetting, handleReset };
 }

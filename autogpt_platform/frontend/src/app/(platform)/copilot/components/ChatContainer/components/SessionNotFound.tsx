@@ -4,8 +4,16 @@ import { Text } from "@/components/atoms/Text/Text";
 import { AppSidebarTrigger } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
 import { BubbleChatBlockedIcon } from "@hugeicons/core-free-icons";
 import { parseAsString, useQueryState } from "nuqs";
+import {
+  getRemovedChatTitle,
+  type RemovedChat,
+} from "../../../helpers/removedChat";
 
-export function SessionNotFound() {
+interface Props {
+  removedChat?: RemovedChat | null;
+}
+
+export function SessionNotFound({ removedChat = null }: Props) {
   const [, setSessionId] = useQueryState("sessionId", parseAsString);
   const [, setExpertId] = useQueryState("expertId", parseAsString);
 
@@ -27,10 +35,14 @@ export function SessionNotFound() {
       >
         <Icon icon={BubbleChatBlockedIcon} size={28} tone="muted" />
         <Text variant="large-medium" as="h2">
-          This chat isn&apos;t available on this account
+          {removedChat
+            ? getRemovedChatTitle(removedChat)
+            : "This chat isn't available on this account"}
         </Text>
         <Text variant="body" tone="muted">
-          It may belong to another account you use, or it no longer exists.
+          {removedChat
+            ? "Resetting an expert removes your chats with them, and they can't be opened again."
+            : "It may belong to another account you use, or it no longer exists."}
         </Text>
         <Button
           type="button"

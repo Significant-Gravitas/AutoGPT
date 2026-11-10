@@ -4,7 +4,9 @@ Firing stays undoable: a rehire brings the same expert back with everything
 it learned. A reset is the other thing people asked for, a factory reset
 that cannot be undone. It erases the expert's memory graph and its
 computer's volume, puts its soul and routines back to the template, and
-archives its chats.
+archives its chats (the product calls them removed: they never open again).
+Approvals still waiting in those chats are declined, so Needs you does not
+offer to run something in a chat that is gone.
 
 It leaves alone what is not the expert's own: the account's memory and
 business understanding (every expert reads those), files in the user's
@@ -26,6 +28,7 @@ from backend.api.features.experts.presentation import template_presentation
 from backend.api.features.experts.routines import install_routines
 from backend.blocks.desktop._common import expert_volume_name
 from backend.copilot.config import ChatConfig
+from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.copilot.graphiti.erase import erase_scope
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import invalidate_session_cache
@@ -38,6 +41,8 @@ from backend.copilot.tools.e2b_sandbox import (
 )
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import ExpertNotFoundError, NotFoundError
+from backend.util.funnel_analytics import emit_funnel_event
+from backend.util.posthog_events import PostHogEvent
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +67,7 @@ class ExpertResetResult(BaseModel):
     soul_reset: bool
     routines_reset: int
     chats_archived: int
+    approvals_cleared: int
 
 
 async def reset_expert(user_id: str, expert_id: str) -> ExpertResetResult:
@@ -102,6 +108,7 @@ async def reset_expert(user_id: str, expert_id: str) -> ExpertResetResult:
         await _reset_soul(expert_id, template)
         routines = await _reset_routines(user_id, expert_id, template.id)
     chats = await _archive_chats(user_id, expert_id)
+    approvals = await _decline_waiting_approvals(user_id, expert_id)
     # Again, now nothing can reach the archived chats: catches an episode
     # whose ingestion landed while the steps above ran. One queued before the
     # reset can still land later; closing that needs a reset generation the
@@ -110,15 +117,28 @@ async def reset_expert(user_id: str, expert_id: str) -> ExpertResetResult:
     logger.info(
         f"Reset expert #{expert_id}: {memory_nodes} memory nodes, computer "
         f"{'erased' if computer_erased else 'untouched'}, {routines} routines, "
-        f"{chats} chats archived"
+        f"{chats} chats archived, {approvals} approvals declined"
     )
-    return ExpertResetResult(
+    result = ExpertResetResult(
         memory_nodes_erased=memory_nodes,
         computer_erased=computer_erased,
         soul_reset=template is not None,
         routines_reset=routines,
         chats_archived=chats,
+        approvals_cleared=approvals,
     )
+    # A reset is the clearest sign an expert got something wrong. Ids and
+    # counts only: never its name or anything from the chats.
+    emit_funnel_event(
+        user_id,
+        PostHogEvent.EXPERT_RESET,
+        {
+            "expert_id": expert_id,
+            "template_id": expert.sourceTemplateId or "created",
+            **result.model_dump(),
+        },
+    )
+    return result
 
 
 async def _has_turn_in_flight(user_id: str, expert_id: str) -> bool:
@@ -248,3 +268,36 @@ async def _archive_chats(user_id: str, expert_id: str) -> int:
     ):
         await invalidate_session_cache(chat.id)
     return archived
+
+
+async def _decline_waiting_approvals(user_id: str, expert_id: str) -> int:
+    """Decline every approval still waiting in the expert's archived chats.
+
+    Approving one would wake a turn in a chat that no longer opens, running
+    the held call against the expert the reset just cleared. Declined, the
+    card leaves Needs you. A workflow step's own review is kept: the run
+    belongs to run history, which the reset leaves alone.
+    """
+    archived = await prisma.models.ChatSession.prisma().find_many(
+        where={"userId": user_id, "expertId": expert_id, "archivedAt": {"not": None}}
+    )
+    if not archived:
+        return 0
+    ids = [chat.id for chat in archived]
+    return await prisma.models.PendingHumanReview.prisma().update_many(
+        where={
+            "userId": user_id,
+            "status": prisma.enums.ReviewStatus.WAITING,
+            "OR": [
+                {"chatSessionId": {"in": ids}},
+                # Rows an older deploy wrote in the synthetic-graph shape.
+                {"graphExecId": {"in": [f"{COPILOT_SESSION_PREFIX}{i}" for i in ids]}},
+            ],
+        },
+        data={
+            "status": prisma.enums.ReviewStatus.REJECTED,
+            "reviewMessage": "The expert was reset",
+            "processed": True,
+            "reviewedAt": datetime.now(UTC),
+        },
+    )

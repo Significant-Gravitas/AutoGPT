@@ -74,6 +74,30 @@ describe("a chat link the user cannot open", () => {
     await waitFor(() => expect(screen.queryByText(UNAVAILABLE)).toBeNull());
   });
 
+  it("says a chat its expert's reset removed was removed, naming the expert", async () => {
+    const handler = http.get(`*/api/chat/sessions/${TEST_SESSION_ID}`, () =>
+      HttpResponse.json(
+        {
+          detail: {
+            type: "chat_removed",
+            expert_name: "Remy",
+            message: "This chat was removed when Remy was reset.",
+          },
+        },
+        { status: 410 },
+      ),
+    );
+    renderHost({ sessionResponse: handler });
+
+    expect(
+      await screen.findByText("This chat was removed when Remy was reset"),
+    ).toBeDefined();
+    expect(screen.queryByText(UNAVAILABLE)).toBeNull();
+    expect(
+      screen.queryByPlaceholderText("What else can I help with?"),
+    ).toBeNull();
+  });
+
   it("keeps a server error on the existing path rather than calling the chat unavailable", async () => {
     const { handler, calls } = sessionError(500);
     renderHost({ sessionResponse: handler });

@@ -20,6 +20,7 @@ import prisma.models
 import pydantic
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import experts_db, raise_attachments
@@ -40,6 +41,8 @@ from backend.api.features.experts.roster import RosterError, load_roster
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.store.categories import StoreCategory
+from backend.api.features.graph_executions.review.model import ReviewItem
+from backend.api.features.graph_executions.review.service import process_reviews
 from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.api.features.store.skill_catalog_release import CatalogError, load_catalog
 from backend.api.model import CreateGraph
@@ -54,6 +57,7 @@ from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
+from backend.data.human_review import get_pending_reviews_for_user
 from backend.data.onboarding import get_user_onboarding
 from backend.data.onboarding_steps import OnboardingStep
 from backend.data.user import get_or_create_user
@@ -7588,7 +7592,8 @@ async def _hire_with_history(user_id: str) -> tuple[str, prisma.models.Expert, s
 
 @pytest.fixture
 def reset_externals():
-    """The memory graph and the E2B volume live outside the test database."""
+    """The memory graph and the E2B volume live outside the test database;
+    PostHog too."""
     with (
         patch.object(
             expert_reset, "erase_scope", new=AsyncMock(return_value=12)
@@ -7596,8 +7601,9 @@ def reset_externals():
         patch.object(
             expert_reset, "_erase_computer", new=AsyncMock(return_value=True)
         ) as computer,
+        patch.object(expert_reset, "emit_funnel_event") as track,
     ):
-        yield SimpleNamespace(erase=erase, computer=computer)
+        yield SimpleNamespace(erase=erase, computer=computer, track=track)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -7615,8 +7621,15 @@ async def test_reset_puts_a_hire_back_to_how_it_arrived(
         "soul_reset": True,
         "routines_reset": 1,
         "chats_archived": 1,
+        "approvals_cleared": 0,
     }
     assert reset_externals.erase.await_count == 2
+    # One event per reset, with ids and counts only: no name, no chat text.
+    reset_externals.track.assert_called_once_with(
+        test_user.id,
+        PostHogEvent.EXPERT_RESET,
+        {"expert_id": expert_id, "template_id": template.id, **result.model_dump()},
+    )
     scope = reset_externals.erase.await_args.args[0]
     assert (scope.owner_user_id, scope.expert_id) == (test_user.id, expert_id)
     reset_externals.computer.assert_awaited_once_with(expert_id)
@@ -7774,3 +7787,63 @@ async def test_a_retried_reset_unshares_a_chat_an_earlier_one_archived(
     assert row is not None
     assert row.isShared is False
     assert row.shareToken is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_declines_an_approval_waiting_in_needs_you(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """A held call waiting in the expert's chat shows in Needs you. Approving
+    it after the reset would wake a turn in a chat that is gone, so the reset
+    declines it, and answering it anyway says the chat was removed."""
+    expert_id, _, thread = await _hire_with_history(test_user.id)
+    card = f"copilot-node-gate-create_routine:{uuid.uuid4()}"
+    await prisma.models.PendingHumanReview.prisma().create(
+        data={
+            "nodeExecId": card,
+            "userId": test_user.id,
+            "chatSessionId": thread,
+            "payload": SafeJson({"tool": "create_routine"}),
+        }
+    )
+    elsewhere = await create_chat_session(test_user.id, dry_run=False)
+    other_card = f"copilot-node-gate-create_routine:{uuid.uuid4()}"
+    await prisma.models.PendingHumanReview.prisma().create(
+        data={
+            "nodeExecId": other_card,
+            "userId": test_user.id,
+            "chatSessionId": elsewhere.session_id,
+            "payload": SafeJson({"tool": "create_routine"}),
+        }
+    )
+
+    result = await expert_reset.reset_expert(test_user.id, expert_id)
+
+    assert result.approvals_cleared == 1
+    declined = await prisma.models.PendingHumanReview.prisma().find_unique(
+        where={"nodeExecId": card}
+    )
+    assert declined is not None
+    assert (declined.status, declined.processed) == (
+        prisma.enums.ReviewStatus.REJECTED,
+        True,
+    )
+    # Needs you lists waiting reviews: the card is gone from it.
+    waiting = await get_pending_reviews_for_user(test_user.id, page_size=100)
+    assert card not in {review.node_exec_id for review in waiting}
+    untouched = await prisma.models.PendingHumanReview.prisma().find_unique(
+        where={"nodeExecId": other_card}
+    )
+    assert untouched is not None
+    assert untouched.status == prisma.enums.ReviewStatus.WAITING
+
+    with pytest.raises(HTTPException) as answered:
+        await process_reviews(
+            test_user.id, [ReviewItem(node_exec_id=card, approved=True)]
+        )
+    assert answered.value.status_code == 410
+    assert answered.value.detail == {
+        "type": "chat_removed",
+        "expert_name": "My Maria",
+        "message": "This chat was removed when My Maria was reset.",
+    }
