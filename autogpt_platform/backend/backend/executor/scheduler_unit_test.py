@@ -954,7 +954,9 @@ async def test_execute_copilot_turn_rejects_changed_explicit_session_scope():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("refusal", [ConcurrentTurnLimitError, SessionNotIdle])
-async def test_execute_copilot_turn_slot_refusal_reschedules_one_shot(refusal):
+async def test_execute_copilot_turn_slot_refusal_reschedules_one_shot(
+    refusal, chat_blocked_events
+):
     args = _args()  # run_at set → one-shot
     mock_schedule_turn = AsyncMock(side_effect=refusal("busy"))
     mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
@@ -968,6 +970,15 @@ async def test_execute_copilot_turn_slot_refusal_reschedules_one_shot(refusal):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
     mock_reschedule.assert_awaited_once()
+    # The turn cap is a limit; a chat already busy with a turn is not.
+    expected = (
+        [("concurrency", "refused", "schedule")]
+        if refusal is ConcurrentTurnLimitError
+        else []
+    )
+    assert [
+        (e["limit"], e["outcome"], e["surface"]) for e in chat_blocked_events
+    ] == expected
 
 
 @pytest.mark.asyncio
@@ -2845,7 +2856,7 @@ def _over_the_daily_limit(gate: _OwnerGate, resets_at: datetime) -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("window", ["daily", "weekly"])
 async def test_a_one_shot_refused_by_a_used_up_limit_waits_for_the_reset(
-    owner_gate, post_notice, window
+    owner_gate, post_notice, chat_blocked_events, window
 ):
     """Nick (2026-10-10): once usage comes back, the run should happen. A
     one-shot is moved to the reset, spread over a few minutes, and its chat is
@@ -2867,11 +2878,15 @@ async def test_a_one_shot_refused_by_a_used_up_limit_waits_for_the_reset(
     assert kwargs["usage_wait_count"] == 1
     notice = post_notice.call_args.args[0]
     assert notice.body.startswith("“check CI” will run when the limit resets")
+    # Held back to the reset, not refused.
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == [
+        (window, "queued")
+    ]
 
 
 @pytest.mark.asyncio
 async def test_a_one_shot_still_over_its_limit_after_waiting_is_dropped(
-    owner_gate, post_notice
+    owner_gate, post_notice, chat_blocked_events
 ):
     _over_the_daily_limit(
         owner_gate, datetime.now(tz=timezone.utc) + timedelta(hours=3)
@@ -2888,6 +2903,9 @@ async def test_a_one_shot_still_over_its_limit_after_waiting_is_dropped(
     scheduler_client.add_copilot_turn_schedule.assert_not_awaited()
     store.mark_routine_unscheduled.assert_awaited_once_with("routine-1", "sched-1")
     assert post_notice.call_args.args[0].body == "“check CI” didn't run."
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == [
+        ("daily", "refused")
+    ]
 
 
 async def _fire(args: CopilotTurnJobArgs) -> dict[str, AsyncMock]:
@@ -2934,6 +2952,27 @@ async def test_a_skipped_run_tells_its_chat_why(
     # A fresh-chat schedule has no chat yet; the note goes to its fallback.
     assert kwargs["session_id"] == session_id
     assert kwargs["expert_id"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("refuse", "expected"),
+    [
+        (_over_a_cap, [("daily", "refused", "schedule")]),
+        (_paywalled, []),
+        (_limits_unreadable, []),
+    ],
+    ids=["over-a-cap", "paywalled", "brown-out"],
+)
+async def test_only_a_run_skipped_on_a_usage_limit_is_sent_to_posthog(
+    owner_gate, post_notice, chat_blocked_events, refuse, expected
+):
+    refuse(owner_gate)
+    await _fire_hourly("session-1", "platform")
+
+    assert [
+        (e["limit"], e["outcome"], e["surface"]) for e in chat_blocked_events
+    ] == expected
 
 
 @pytest.mark.asyncio

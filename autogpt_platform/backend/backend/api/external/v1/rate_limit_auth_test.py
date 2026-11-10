@@ -139,3 +139,34 @@ async def test_verification_and_permissions_are_not_cached_across_requests(
     assert (await v1_client.get("/v1/me", headers=headers)).status_code == 403
     v1_tokens["agpt_xt_test-0"].revokedAt = datetime.now(UTC)
     assert (await v1_client.get("/v1/me", headers=headers)).status_code == 401
+
+
+@pytest.mark.parametrize("path", ["/me", "/blocks"])
+@pytest.mark.parametrize("credential", ["api-key", "bearer-key", "token"])
+async def test_a_request_verifies_its_credential_and_is_recorded_once(
+    mocker,
+    v1_client,
+    v1_counter,
+    v1_auth_storage,
+    v1_generated_keys,
+    v1_key_rows,
+    path,
+    credential,
+):
+    mocker.patch("backend.blocks.get_blocks", return_value={})
+    verify = mocker.spy(api_key.keysmith, "verify_key")
+    recorded = mocker.patch.object(middleware, "record_api_request")
+    key = v1_generated_keys[0].key
+    headers = {
+        "api-key": {"X-API-Key": key},
+        "bearer-key": {"Authorization": f"Bearer {key}"},
+        "token": {"Authorization": "Bearer agpt_xt_test-0"},
+    }[credential]
+
+    response = await v1_client.get(f"/v1{path}", headers=headers)
+
+    assert response.status_code == 200
+    key_lookup, token_lookup = v1_auth_storage
+    assert key_lookup.await_count + token_lookup.await_count == 1
+    assert verify.call_count == (0 if credential == "token" else 1)
+    recorded.assert_called_once_with(v1_key_rows[0].user_id, "external")

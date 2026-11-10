@@ -24,6 +24,7 @@ from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.service import EmptyUserMessage
 from backend.copilot.tree import TreeRefusal, TurnEnvelope
 from backend.copilot.trial_cost_context import TrialCostContext
+from backend.util import posthog_client
 
 _COST_CONTEXT = TrialCostContext(user_id="u1", trial_id=None)
 
@@ -1679,15 +1680,20 @@ async def test_codex_dispatch_leaves_queued_when_user_lacks_access() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dispatch_leaves_queued_on_rate_limit_exceeded() -> None:
+async def test_dispatch_leaves_queued_on_rate_limit_exceeded(
+    chat_blocked_events,
+) -> None:
     """Mid-queue rate-limit lapse: leave the head queued, the next tick
-    re-validates."""
+    re-validates. PostHog hears of it once for the pass, not once per row."""
     from backend.copilot.rate_limit import RateLimitExceeded
 
     db = MagicMock()
     db.update_chat_session_status = AsyncMock()
+    rows = [_queued_row("s1"), _queued_row("s2")]
+    for row in rows:
+        row.metadata.origin = "interactive"
     with (
-        _patch_queued_list([_queued_row()]),
+        _patch_queued_list(rows),
         patch.object(turn_queue, "chat_db", return_value=db),
         patch(
             "backend.copilot.turn_queue.is_user_paywalled",
@@ -1709,6 +1715,111 @@ async def test_dispatch_leaves_queued_on_rate_limit_exceeded() -> None:
         promoted = await turn_queue.dispatch_next_for_user("u1")
     assert promoted is False
     db.update_chat_session_status.assert_not_awaited()
+    assert [
+        (e["distinct_id"], e["limit"], e["outcome"], e["surface"])
+        for e in chat_blocked_events
+    ] == [("u1", "daily", "queued", "chat")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "queued_by_admin, ending_turn_by_admin",
+    [(True, False), (False, True), (False, False), (True, True)],
+)
+async def test_a_held_queued_turn_is_marked_as_it_was_queued(
+    monkeypatch, queued_by_admin: bool, ending_turn_by_admin: bool
+) -> None:
+    """The pass runs in the context of the turn that just ended; the event
+    for the turn it holds back says who queued that turn, and the ending
+    turn's own mark is back in place afterwards."""
+    from backend.copilot.rate_limit import RateLimitExceeded
+
+    marked: list[bool] = []
+
+    def capture(distinct_id, event, properties=None, **_kwargs) -> bool:
+        if event == "chat_blocked":
+            marked.append(posthog_client.is_impersonated())
+        return True
+
+    monkeypatch.setattr(posthog_client, "capture", capture)
+    stored: dict = {"impersonated": True} if queued_by_admin else {}
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock()
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata=stored)
+    )
+    token = posthog_client.set_impersonated(ending_turn_by_admin)
+    try:
+        with (
+            _patch_queued_list([_queued_row("s1")]),
+            patch.object(turn_queue, "chat_db", return_value=db),
+            patch(
+                "backend.copilot.turn_queue.is_user_paywalled",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "backend.copilot.turn_queue.get_global_rate_limits",
+                new=AsyncMock(return_value=(100, 1000, None)),
+            ),
+            patch(
+                "backend.copilot.turn_queue.check_rate_limit",
+                new=AsyncMock(
+                    side_effect=RateLimitExceeded(
+                        "daily", resets_at=datetime.now(timezone.utc)
+                    )
+                ),
+            ),
+        ):
+            promoted = await turn_queue.dispatch_next_for_user("u1")
+        assert posthog_client.is_impersonated() is ending_turn_by_admin
+    finally:
+        posthog_client.reset_impersonated(token)
+
+    assert promoted is False
+    assert marked == [queued_by_admin]
+    db.get_latest_user_message_in_session.assert_awaited_once_with("s1")
+
+
+@pytest.mark.asyncio
+async def test_a_held_queued_turn_whose_row_cant_be_read_still_waits(
+    chat_blocked_events,
+) -> None:
+    """Reading who queued the turn is for analytics only: when it fails, the
+    turn stays queued exactly as before, and the event goes out as the user's."""
+    from backend.copilot.rate_limit import RateLimitExceeded
+
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock()
+    db.get_latest_user_message_in_session = AsyncMock(
+        side_effect=RuntimeError("db down")
+    )
+    with (
+        _patch_queued_list([_queued_row("s1")]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch(
+            "backend.copilot.turn_queue.is_user_paywalled",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.turn_queue.get_global_rate_limits",
+            new=AsyncMock(return_value=(100, 1000, None)),
+        ),
+        patch(
+            "backend.copilot.turn_queue.check_rate_limit",
+            new=AsyncMock(
+                side_effect=RateLimitExceeded(
+                    "daily", resets_at=datetime.now(timezone.utc)
+                )
+            ),
+        ),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is False
+    db.update_chat_session_status.assert_not_awaited()
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == [
+        ("daily", "queued")
+    ]
 
 
 @pytest.mark.asyncio

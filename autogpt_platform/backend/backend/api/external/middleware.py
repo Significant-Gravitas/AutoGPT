@@ -134,20 +134,17 @@ async def require_auth(
         HTTPAuthorizationCredentials | None, Security(bearer_auth)
     ] = None,
 ) -> APIAuthorizationInfo:
-    """
-    Unified authentication dependency that requires valid credentials.
+    """The request's verified caller; 401 when it sent no credentials.
 
-    Depends on `resolve_auth_info` (which accepts API key or Bearer token)
-    and rejects requests with no credentials.
+    Resolved once per request: v1's rate limiter and its routes ask for it under
+    different scopes, which FastAPI caches apart.
     """
-    auth = await resolve_auth_info(api_key=api_key, bearer=bearer)
+    auth = await resolve_request_auth(request.scope, api_key=api_key, bearer=bearer)
     if auth is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing authentication. Provide API key or access token.",
         )
-    # v1's only count: keep it through any rewrite of this body.
-    _count_request(request.scope, auth)
     return auth
 
 
@@ -166,7 +163,7 @@ async def owner_is_banned(auth: APIAuthorizationInfo) -> bool:
 
 def _count_request(scope: Scope, auth: APIAuthorizationInfo) -> None:
     """Counts toward the daily report of what accounts without a plan did, once
-    per request: v1's rate limiter and route resolve the caller apart."""
+    per request: the rate limiter and the route each ask for the caller."""
     state = scope.setdefault("state", {})
     if not state.get(_REQUEST_COUNTED):
         state[_REQUEST_COUNTED] = True
