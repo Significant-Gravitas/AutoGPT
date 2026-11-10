@@ -8,8 +8,9 @@ export function isGateReview(nodeId: string | null | undefined) {
   return !!nodeId?.startsWith(COPILOT_GATE_NODE_PREFIX);
 }
 
-// A chat's reviews wait on the expert whose chat raised them, or on Otto; only
-// a workflow run is paused by its review.
+// A chat's reviews wait on the expert whose chat raised them, on Otto, or on
+// the team when they came from more than one; only a workflow run is paused by
+// its review.
 export function waitingOnLine(groups: [string, PendingHumanReviewModel[]][]) {
   const inChat = groups.every(
     ([nodeId, nodeReviews]) =>
@@ -18,9 +19,11 @@ export function waitingOnLine(groups: [string, PendingHumanReviewModel[]][]) {
   if (!inChat)
     return "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed.";
   const experts = new Set(
-    groups.flatMap(([, nodeReviews]) => nodeReviews.map((r) => r.expert_name)),
+    groups.flatMap(([, nodeReviews]) =>
+      nodeReviews.map((r) => r.expert_name ?? null),
+    ),
   );
   const [expert] = experts;
-  const name = experts.size === 1 && expert ? expert : AUTOPILOT_NAME;
+  const name = experts.size > 1 ? "Your team" : (expert ?? AUTOPILOT_NAME);
   return `${name} is waiting for your approval before the action below.`;
 }

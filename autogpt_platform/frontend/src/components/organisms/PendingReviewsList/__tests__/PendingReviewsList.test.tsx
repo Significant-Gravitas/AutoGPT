@@ -236,6 +236,31 @@ test.each([
   },
 );
 
+test.each([
+  ["two experts", "Maria"],
+  ["an expert and Otto", null],
+])("reviews raised by %s wait on the team, not on Otto", (_, otherExpert) => {
+  render(
+    <PendingReviewsList
+      reviews={[
+        chatBlockReview({ expert_name: "Issa" }),
+        chatBlockReview({
+          node_exec_id: "copilot-node-slack:cd34",
+          node_id: "copilot-node-slack",
+          action: "Slack Post",
+          expert_name: otherExpert,
+        }),
+      ]}
+    />,
+  );
+
+  expect(
+    screen.getByText(
+      "Your team is waiting for your approval before the action below.",
+    ),
+  ).toBeDefined();
+});
+
 test("a workflow run's review still says the workflow is paused", () => {
   render(
     <PendingReviewsList

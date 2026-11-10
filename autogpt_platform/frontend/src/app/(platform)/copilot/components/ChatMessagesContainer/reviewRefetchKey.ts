@@ -2,9 +2,9 @@ import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { countHeldCalls } from "./heldCallRows";
 
-// The tools whose call can stop on a block review. The chat cannot always tell
-// a review from the output (a large one used to arrive digested), so every one
-// that returns fetches the chat's cards again.
+// The tools whose call can stop on a block review. Their output can be cut or
+// digested past the point where the chat can read a review from it, so every
+// one that returns fetches the chat's cards again.
 const BLOCK_RUN_TOOLS = new Set([
   "run_block",
   "run_capability",

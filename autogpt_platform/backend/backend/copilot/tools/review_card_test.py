@@ -8,7 +8,7 @@ import pytest
 from backend.copilot.model import ChatSessionMetadata
 from backend.copilot.tools.base import _DIGEST_THRESHOLD
 from backend.copilot.tools.models import ReviewRequiredResponse
-from backend.copilot.tools.review_card import review_card_location
+from backend.copilot.tools.review_card import _INPUT_PREVIEW_CHARS, review_card_location
 
 
 def _review(input_data: dict) -> ReviewRequiredResponse:
@@ -69,6 +69,14 @@ class TestInputPreview:
             if key not in kept
         )
         assert len(review.model_dump_json()) < _DIGEST_THRESHOLD
+
+    def test_the_fields_kept_fit_the_budget_keys_and_all(self):
+        input_data = {f"a_rather_long_field_name_{i:03}": "v" * 100 for i in range(200)}
+        preview = _review(input_data).input_data
+
+        kept = {key: value for key, value in preview.items() if value == "v" * 100}
+        assert kept
+        assert len(json.dumps(kept)) <= _INPUT_PREVIEW_CHARS
 
 
 class TestCardLocation:

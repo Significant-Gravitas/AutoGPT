@@ -48,15 +48,19 @@ def review_card_location(metadata: ChatSessionMetadata | None) -> str:
 
 def preview_input(input_data: dict[str, Any]) -> dict[str, Any]:
     """*input_data* with each long string shown as its size, and, when that is
-    still too long, each field that does not fit shown as its size."""
+    still too long, each field that does not fit shown as its size: a field
+    whose value (of any type) takes over ``_INPUT_STRING_CHARS``, or that would
+    take the fields kept so far, keys included, past ``_INPUT_PREVIEW_CHARS``."""
     capped = {key: _sized_strings(value) for key, value in input_data.items()}
     if _chars(capped) <= _INPUT_PREVIEW_CHARS:
         return capped
     preview: dict[str, Any] = {}
-    room = _INPUT_PREVIEW_CHARS
+    room = _INPUT_PREVIEW_CHARS - len("{}")
     for key, value in input_data.items():
-        cost = _chars(capped[key])
-        fits = cost <= min(room, _INPUT_STRING_CHARS)
+        size = _chars(capped[key])
+        # `"key": value, ` as json.dumps writes it.
+        cost = _chars(key) + len(": ") + size + len(", ")
+        fits = size <= _INPUT_STRING_CHARS and cost <= room
         preview[key] = capped[key] if fits else _size_of(value)
         room -= cost if fits else 0
     return preview
