@@ -53,6 +53,8 @@ async def test_a_long_encode_leaves_the_loop_free_and_the_time_limit_ends_it(
         # Ended at the limit, not when the encode would have finished
         assert time.monotonic() - limit_set < 10
         assert ticks[0] - ticks_while_encoding >= 5
+        # The edit kills its child, and reaps it, before it raises
+        assert not _edit_children()
     finally:
         await _cancel(another_node, watcher, encode)
     await _until_ended(started.values())
@@ -69,6 +71,7 @@ async def test_the_blocks_own_time_limit_ends_an_encode_nothing_else_limits(
     try:
         with pytest.raises(TimeoutError, match="did not finish within 2 seconds"):
             await _loop_to_an_hour(block, one_second_clip)
+        assert not _edit_children()
     finally:
         await _cancel(watcher)
     assert time.monotonic() - began < 20
@@ -181,14 +184,22 @@ async def _note_edit_processes(started: dict[int, psutil.Process]) -> None:
     """Note the edit's child process and every process it starts, however
     indirectly. Only those: this process has others that outlive the test,
     such as the services an earlier test in the session started."""
-    me = psutil.Process()
     while True:
-        for child in me.children():
+        for child in _edit_children():
             with contextlib.suppress(psutil.Error):  # It ended mid-walk
-                if _EDIT_SCRIPT in child.cmdline():
-                    for process in [child, *child.children(recursive=True)]:
-                        started.setdefault(process.pid, process)
+                for process in [child, *child.children(recursive=True)]:
+                    started.setdefault(process.pid, process)
         await asyncio.sleep(0.02)
+
+
+def _edit_children() -> list[psutil.Process]:
+    """This process's children that run the edit script and haven't ended."""
+    children = []
+    for child in psutil.Process().children():
+        with contextlib.suppress(psutil.Error):  # Ended, or a zombie
+            if _EDIT_SCRIPT in child.cmdline():
+                children.append(child)
+    return children
 
 
 def _is_ffmpeg(process: psutil.Process) -> bool:

@@ -1,5 +1,7 @@
 import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import imageio_ffmpeg
@@ -12,10 +14,13 @@ def ffmpeg_on_path(tmp_path_factory, monkeypatch) -> None:
     """`ffmpeg` on PATH, as the backend's image installs it. The edits strip
     chapters with the `ffmpeg` they find there; moviepy's own copy, which they
     open videos with, isn't on PATH."""
-    ffmpeg = Path(imageio_ffmpeg.get_ffmpeg_exe())
-    bin_dir = tmp_path_factory.mktemp("bin")
-    (bin_dir / f"ffmpeg{ffmpeg.suffix}").symlink_to(ffmpeg)
-    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    ffmpeg = tmp_path_factory.mktemp("bin") / (
+        "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
+    )
+    ffmpeg.symlink_to(imageio_ffmpeg.get_ffmpeg_exe())
+    monkeypatch.setenv("PATH", f"{ffmpeg.parent}{os.pathsep}{os.environ['PATH']}")
+    found = shutil.which("ffmpeg")
+    assert found and Path(found).parent == ffmpeg.parent, found
 
 
 @pytest.fixture
