@@ -105,7 +105,7 @@ So `inputs` for this agent is `{"topic": "...", "document": "..."}`, with `max_w
 
 Turning on **Advanced** now makes a workflow input optional even without a default. This also applies to existing workflows. To require a value, turn off Advanced and clear the input's default.
 
-When a run omits an optional input with no default, connected blocks use their own pin defaults. A block that needs the value and has no pin default skips execution. Keep a Google Drive picker required when a connected block needs its file and credentials.
+When a run omits an optional input with no default, connected blocks use their own pin defaults. A block with a required input and no default may skip execution. A block that runs a child workflow can still start that workflow, allowing its other starting blocks to run. Keep a Google Drive picker required when a connected block needs its file and credentials.
 
 ## Supply credentials it needs
 
