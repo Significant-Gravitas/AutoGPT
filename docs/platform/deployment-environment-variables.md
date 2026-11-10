@@ -162,31 +162,23 @@ firewall or a cloud security group. The other ports the stack publishes
 (Postgres, Redis, RabbitMQ, FalkorDB and ClamAV) are bound to `127.0.0.1`
 only.
 
-`TRUSTED_PROXY_COUNT` in `backend/.env` is the number of proxies that add an
-`X-Forwarded-For` entry in front of the backend. The default, `3`, is for the
-hosted platform: set `1` for a single reverse proxy, or `0` with none. Only
-the External API (`/api/v2`) uses it, for its per-IP rate limits.
+Set `TRUSTED_PROXIES` in both `backend/.env` and `frontend/.env` to your
+proxies' addresses, as a comma-separated list of IP addresses or CIDR ranges,
+for example `10.0.0.0/8,172.16.0.0/12`. Each takes the visitor to be the first
+`X-Forwarded-For` address from the right that the list does not include, and
+the backend reads the header only from a listed peer, so the proxies may
+append to the header or replace it. The backend uses it for the client address
+of every request, including the External API's (`/api/v2`) per-IP rate
+limits. The frontend uses it for its per-IP limits on sign-in and
+password-reset attempts, the per-visitor limit on store search, and the
+sign-in history and IP blocks. Without it, sign-in and password-reset attempts
+are limited only per email address, all visitors share one store-search limit,
+and sign-ins record no IP address. An entry that is not an IP address or CIDR
+range stops the service from starting.
 
-The frontend finds the visitor's address separately: for its per-IP limits on
-sign-in and password-reset attempts, the per-visitor limit on store search,
-and the sign-in history and IP blocks. Set `TRUST_X_FORWARDED_FOR=true` in
-`frontend/.env` when the proxy sets `X-Forwarded-For` to the visitor's
-address, replacing any value the request arrived with. Caddy does that by
-default. In nginx, use `proxy_set_header X-Forwarded-For $remote_addr;`, not
-`$proxy_add_x_forwarded_for`, which keeps what the visitor sent. Without the
-setting, sign-in and password-reset attempts are limited only per email
-address, all visitors share one store-search limit, and sign-ins record no IP
-address.
-
-If the header can carry more than one address, because there is a chain of
-proxies or one that adds to the header instead of replacing it, set
-`TRUSTED_PROXIES` in `frontend/.env` instead: your proxies' addresses, as a
-comma-separated list of IP addresses or CIDR ranges, for example
-`10.0.0.0/8,172.16.0.0/12`. The visitor is then the first address from the
-right of the header that the list does not cover. A non-empty list trusts the
-header on its own, so it does not need `TRUST_X_FORWARDED_FOR`. An entry that
-is not an IP address or CIDR range stops the frontend from starting. Making
-the proxy replace the header is still the better choice where you can.
+`TRUSTED_PROXY_COUNT` and `FORWARDED_ALLOW_IPS` still work in `backend/.env`
+while `TRUSTED_PROXIES` is unset, but are deprecated. The frontend no longer
+reads `TRUST_X_FORWARDED_FOR`.
 
 ## 4. Decide who can sign up
 
@@ -243,7 +235,7 @@ files do not set them, so setting those two in `backend/.env` is enough.
 - [ ] `FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` added to `autogpt_platform/.env`
 - [ ] `BETTER_AUTH_URL`, `BETTER_AUTH_INTERNAL_URL`, `NEXT_PUBLIC_AGPT_SERVER_URL` and `NEXT_PUBLIC_AGPT_WS_SERVER_URL` in `frontend/.env`
 - [ ] `PLATFORM_BASE_URL` and `BACKEND_CORS_ALLOW_ORIGINS` (added) in `backend/.env`
-- [ ] A TLS reverse proxy in front of `3000`, `8001` and `8006`, those ports firewalled, `TRUSTED_PROXY_COUNT` set, and in `frontend/.env` either `TRUST_X_FORWARDED_FOR=true` if the proxy replaces `X-Forwarded-For`, or `TRUSTED_PROXIES` if it does not
+- [ ] A TLS reverse proxy in front of `3000`, `8001` and `8006`, those ports firewalled, and `TRUSTED_PROXIES` set in `backend/.env` and `frontend/.env`
 - [ ] Sign-ups limited, if the server is public
 - [ ] `docker compose up -d --build`
 - [ ] From another machine: sign up, log in, and check the browser console shows no `localhost` connection errors
