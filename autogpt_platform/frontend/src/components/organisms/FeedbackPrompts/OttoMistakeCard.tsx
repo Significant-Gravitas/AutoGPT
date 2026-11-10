@@ -5,7 +5,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { useState } from "react";
 import { ReasonFlow } from "./components/ReasonFlow";
-import { MISTAKE_REASONS } from "./helpers";
+import { WORK_REASONS } from "./helpers";
 
 interface Props {
   initialSent?: boolean;
@@ -51,7 +51,7 @@ export function OttoMistakeCard({
         </Button>
       </div>
       <ReasonFlow
-        reasons={MISTAKE_REASONS}
+        reasons={WORK_REASONS}
         label="Which of these went wrong?"
         size="compact"
         thanks="Thanks. The team reads every one of these."

@@ -321,8 +321,9 @@ from ._test_data import make_session
 # 2285c61736 plus this PR (91 tools):
 #     merged tree                                 78,567
 #     + headroom                       +300       78,867
+#     + flag_mistake's reason argument +150       79,017
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 78_867
+_CHAR_BUDGET = 79_017
 
 
 @pytest.fixture(scope="module")
@@ -546,8 +547,9 @@ def test_total_schema_char_budget() -> None:
 # this PR:
 #     merged tree                                 70,773
 #     + headroom                       +300       71,073
+#     + flag_mistake's reason argument +150       71,223
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 71_073
+_SESSION_WIRE_BUDGET = 71_223
 
 
 def test_largest_declared_session_wire_budget() -> None:

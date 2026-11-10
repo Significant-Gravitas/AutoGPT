@@ -19,10 +19,13 @@ interface Props {
   onDismiss?: () => void;
 }
 
+const QUESTION =
+  "How likely are you to recommend AutoGPT to a friend or colleague?";
+
 function followUpFor(score: number) {
   if (score >= 9) return "What do you like most?";
   if (score >= 7) return "What would make it a 10?";
-  return "What's the biggest thing holding it back?";
+  return "What's the main thing we should fix?";
 }
 
 export function NpsCard({
@@ -55,18 +58,15 @@ export function NpsCard({
   if (!isOpen) return null;
 
   return (
-    <PromptCard
-      title="How likely are you to recommend AutoGPT?"
-      onClose={close}
-    >
+    <PromptCard title={QUESTION} onClose={close}>
       {sent ? (
         <ThanksLine />
       ) : (
         <div className="flex flex-col gap-3">
           <div
             role="group"
-            aria-label="How likely are you to recommend AutoGPT, from 0 (not likely) to 10 (very likely)"
-            className="flex gap-1"
+            aria-label={`${QUESTION} From 0 (not at all likely) to 10 (extremely likely)`}
+            className="grid grid-cols-6 gap-1 sm:flex"
           >
             {SCORES.map((value) => (
               <button
@@ -85,10 +85,10 @@ export function NpsCard({
           </div>
           <div className="flex justify-between">
             <Text variant="small" tone="muted">
-              Not likely
+              Not at all likely
             </Text>
             <Text variant="small" tone="muted">
-              Very likely
+              Extremely likely
             </Text>
           </div>
           {score !== null ? (

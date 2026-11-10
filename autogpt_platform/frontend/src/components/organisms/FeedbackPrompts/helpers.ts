@@ -3,21 +3,18 @@ import {
   Alert02Icon,
   Clock01Icon,
   Coins01Icon,
-  CreditCardIcon,
   CreditCardNotAcceptIcon,
   HelpCircleIcon,
-  KeyboardIcon,
-  MicOff01Icon,
-  PencilEdit02Icon,
-  PackageIcon,
-  PuzzleIcon,
-  Search01Icon,
-  SquareLock02Icon,
-  Target02Icon,
-  TestTube01Icon,
-  UserQuestion01Icon,
   HourglassIcon,
   MessageQuestionIcon,
+  PackageIcon,
+  PencilEdit02Icon,
+  PuzzleIcon,
+  Search01Icon,
+  Target02Icon,
+  TestTube01Icon,
+  ThumbsDownIcon,
+  UserQuestion01Icon,
 } from "@hugeicons/core-free-icons";
 import type { Reason } from "./components/ReasonTiles";
 
@@ -59,33 +56,7 @@ export const TRIAL_CANCEL_REASONS: Reason[] = [
   OTHER,
 ];
 
-export const TRIAL_CHECKOUT_REASONS: Reason[] = [
-  {
-    value: "unclear_value",
-    label: "Not sure what I get",
-    icon: HelpCircleIcon,
-    tone: "info",
-  },
-  {
-    value: "no_card_yet",
-    label: "Didn't want to add a card yet",
-    icon: CreditCardIcon,
-    tone: "warning",
-  },
-  {
-    value: "looking_around",
-    label: "Want to look around first",
-    icon: Search01Icon,
-    tone: "success",
-  },
-  {
-    value: "card_failed",
-    label: "My card didn't go through",
-    icon: CreditCardNotAcceptIcon,
-    tone: "error",
-  },
-  OTHER,
-];
+export const CARD_FAILED_VALUE = "card_failed";
 
 export const UPGRADE_CHECKOUT_REASONS: Reason[] = [
   { value: "price", label: "The price", icon: Coins01Icon, tone: "warning" },
@@ -96,7 +67,13 @@ export const UPGRADE_CHECKOUT_REASONS: Reason[] = [
     tone: "info",
   },
   {
-    value: "card_failed",
+    value: "just_looking",
+    label: "Just looking for now",
+    icon: Search01Icon,
+    tone: "success",
+  },
+  {
+    value: CARD_FAILED_VALUE,
     label: "My card didn't go through",
     icon: CreditCardNotAcceptIcon,
     tone: "error",
@@ -104,6 +81,8 @@ export const UPGRADE_CHECKOUT_REASONS: Reason[] = [
   OTHER,
 ];
 
+// A work check and a mistake flag offer the same list, so their answers can
+// be read together.
 export const WORK_REASONS: Reason[] = [
   {
     value: "wrong_facts",
@@ -117,29 +96,6 @@ export const WORK_REASONS: Reason[] = [
     icon: Target02Icon,
     tone: "warning",
   },
-  { value: "too_slow", label: "Too slow", icon: Clock01Icon, tone: "info" },
-  {
-    value: "too_much_help",
-    label: "Needed too much help",
-    icon: UserQuestion01Icon,
-    tone: "accent",
-  },
-  OTHER,
-];
-
-export const MISTAKE_REASONS: Reason[] = [
-  {
-    value: "wrong_facts",
-    label: "Got facts wrong",
-    icon: Alert02Icon,
-    tone: "error",
-  },
-  {
-    value: "ignored_instructions",
-    label: "Ignored my instructions",
-    icon: Target02Icon,
-    tone: "warning",
-  },
   {
     value: "made_up",
     label: "Made things up",
@@ -147,6 +103,18 @@ export const MISTAKE_REASONS: Reason[] = [
     tone: "accent",
   },
   { value: "too_slow", label: "Too slow", icon: Clock01Icon, tone: "info" },
+  {
+    value: "too_much_help",
+    label: "I had to step in too much",
+    icon: UserQuestion01Icon,
+    tone: "accent",
+  },
+  {
+    value: "not_usable",
+    label: "Not good enough to use",
+    icon: ThumbsDownIcon,
+    tone: "warning",
+  },
   OTHER,
 ];
 
@@ -177,40 +145,3 @@ export const TOP_UP_REASONS: Reason[] = [
   },
   OTHER,
 ];
-
-export const BRAIN_DUMP_SKIP_REASONS: Reason[] = [
-  { value: "no_mic", label: "No microphone", icon: MicOff01Icon, tone: "info" },
-  {
-    value: "privacy",
-    label: "Privacy",
-    icon: SquareLock02Icon,
-    tone: "accent",
-  },
-  {
-    value: "unsure_what_to_say",
-    label: "Not sure what to say",
-    icon: HelpCircleIcon,
-    tone: "warning",
-  },
-  {
-    value: "prefer_typing",
-    label: "I'd rather type",
-    icon: KeyboardIcon,
-    tone: "success",
-  },
-];
-
-// What GET /api/onboarding/brain-dump/suggested-tasks returns for two different
-// onboarding answers, for the stories.
-export const SAMPLE_STARTERS = {
-  developer: [
-    "Triage this week's open GitHub issues",
-    "Write release notes from the merged PRs",
-    "Find the flaky tests in our last CI runs",
-  ],
-  sales: [
-    "Find 10 leads that match my best customer",
-    "Draft follow-ups for last week's demos",
-    "Update the CRM from my call notes",
-  ],
-};

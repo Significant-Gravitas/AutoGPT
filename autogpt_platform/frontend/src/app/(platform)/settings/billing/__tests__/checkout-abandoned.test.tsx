@@ -1,5 +1,13 @@
 import { http, HttpResponse, type JsonBodyType } from "msw";
-import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 
 import {
   getPatchV2UpdateFeedbackPromptMockHandler200,
@@ -47,7 +55,6 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => ({
   toast,
 }));
 
-const TRIAL_TITLE = "Your free trial is ready when you are";
 const UPGRADE_TITLE = "Your plan hasn't changed. What held you back?";
 
 function jsonHandler(path: string, body: JsonBodyType) {
@@ -84,7 +91,7 @@ function setup(params: Record<string, string>) {
       patches.push(await request.clone().json());
       return {
         id: "prompt-1",
-        kind: "trial_checkout",
+        kind: "upgrade_checkout",
         answered: true,
         dismissed: false,
         reason: null,
@@ -104,33 +111,99 @@ afterEach(() => {
   toast.mockClear();
 });
 
+const UPGRADE_RETURN = {
+  subscription: "cancelled",
+  plan: "PRO",
+  cycle: "monthly",
+};
+
+async function sendReason(name: string) {
+  await screen.findByText(UPGRADE_TITLE);
+  fireEvent.click(screen.getByRole("button", { name }));
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+}
+
 describe("returning from an abandoned checkout", () => {
-  it("asks about a trial checkout and strips the param", async () => {
+  it("asks nothing after leaving a trial checkout", async () => {
     const { claims } = setup({ trial: "cancelled" });
     render(<SettingsBillingPage />);
-    expect(await screen.findByText(TRIAL_TITLE)).toBeDefined();
-    expect(claims).toEqual([{ kind: "trial_checkout" }]);
-    expect(mockRouterReplace).toHaveBeenCalledWith("/settings/billing");
+    await screen.findByText("Billing & usage");
+    expect(claims).toEqual([]);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("asks about an upgrade checkout without a toast", async () => {
-    const { claims } = setup({ subscription: "cancelled" });
+    const { claims } = setup(UPGRADE_RETURN);
     render(<SettingsBillingPage />);
     expect(await screen.findByText(UPGRADE_TITLE)).toBeDefined();
     expect(claims).toEqual([{ kind: "upgrade_checkout" }]);
+    expect(mockRouterReplace).toHaveBeenCalledWith("/settings/billing");
     expect(toast).not.toHaveBeenCalledWith(
       expect.objectContaining({ title: "Checkout cancelled" }),
     );
   });
 
-  it("saves a picked reason", async () => {
-    const { patches } = setup({ trial: "cancelled" });
+  it("offers just looking as an answer", async () => {
+    const { patches } = setup(UPGRADE_RETURN);
     render(<SettingsBillingPage />);
-    await screen.findByText(TRIAL_TITLE);
+    await screen.findByText(UPGRADE_TITLE);
     fireEvent.click(
-      screen.getByRole("button", { name: "My card didn't go through" }),
+      screen.getByRole("button", { name: "Just looking for now" }),
     );
-    await waitFor(() => expect(patches).toEqual([{ reason: "card_failed" }]));
+    await waitFor(() => expect(patches).toEqual([{ reason: "just_looking" }]));
+  });
+
+  it("opens the same checkout again after a failed card", async () => {
+    const originalLocation = window.location;
+    const location = {
+      origin: "http://localhost",
+      pathname: "/settings/billing",
+      href: "http://localhost/settings/billing",
+    };
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: location,
+    });
+    onTestFinished(() => {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        writable: true,
+        value: originalLocation,
+      });
+    });
+    const tierRequests: unknown[] = [];
+    setup(UPGRADE_RETURN);
+    server.use(
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        tierRequests.push(await request.clone().json());
+        return HttpResponse.json({ url: "https://checkout.stripe.com/retry" });
+      }),
+    );
+    render(<SettingsBillingPage />);
+    await sendReason("My card didn't go through");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Try another card" }),
+    );
+    await waitFor(() => expect(tierRequests).toHaveLength(1));
+    expect(tierRequests[0]).toMatchObject({
+      tier: "PRO",
+      billing_cycle: "monthly",
+      surface: "billing",
+    });
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/retry"),
+    );
+  });
+
+  it("offers another card only to a card answer", async () => {
+    setup(UPGRADE_RETURN);
+    render(<SettingsBillingPage />);
+    await sendReason("The price");
+    expect(await screen.findByText(/we read every one/)).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Try another card" }),
+    ).toBeNull();
   });
 
   it("shows nothing on a successful return", async () => {
@@ -141,32 +214,31 @@ describe("returning from an abandoned checkout", () => {
     );
     expect(claims).toEqual([]);
     expect(screen.queryByText(UPGRADE_TITLE)).toBeNull();
-    expect(screen.queryByText(TRIAL_TITLE)).toBeNull();
   });
 
   it("records closing an unanswered checkout prompt", async () => {
-    const { patches } = setup({ trial: "cancelled" });
+    const { patches } = setup(UPGRADE_RETURN);
     render(<SettingsBillingPage />);
-    await screen.findByText(TRIAL_TITLE);
+    await screen.findByText(UPGRADE_TITLE);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(patches).toEqual([{ dismissed: true }]));
   });
 
   it("hides an open checkout prompt when the account changes", async () => {
-    const { claims } = setup({ trial: "cancelled" });
+    const { claims } = setup(UPGRADE_RETURN);
     render(<SettingsBillingPage />);
-    await screen.findByText(TRIAL_TITLE);
+    await screen.findByText(UPGRADE_TITLE);
     setTrialUser("another-user");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(claims).toHaveLength(1);
   });
 
   it("claims once across re-renders", async () => {
-    const { claims } = setup({ trial: "cancelled" });
+    const { claims } = setup(UPGRADE_RETURN);
     const { rerender } = render(<SettingsBillingPage />);
-    await screen.findByText(TRIAL_TITLE);
+    await screen.findByText(UPGRADE_TITLE);
     rerender(<SettingsBillingPage />);
-    await screen.findByText(TRIAL_TITLE);
+    await screen.findByText(UPGRADE_TITLE);
     expect(claims).toHaveLength(1);
   });
 });

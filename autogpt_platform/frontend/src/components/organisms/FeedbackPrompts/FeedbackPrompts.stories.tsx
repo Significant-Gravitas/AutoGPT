@@ -1,16 +1,15 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { AUTOPILOT_AVATAR_URL } from "@/components/molecules/AutopilotAvatar/helpers";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { CancelTrialFeedbackDialog } from "./CancelTrialFeedbackDialog";
 import { CheckoutAbandonedDialog } from "./CheckoutAbandonedDialog";
 import { NpsCard } from "./NpsCard";
-import { OnboardingSkipPrompt } from "./OnboardingSkipPrompt";
 import { OttoMistakeCard } from "./OttoMistakeCard";
-import { TopUpDismissedCard } from "./TopUpDismissedCard";
+import { TOP_UP_QUESTION, TopUpQuestion } from "./TopUpQuestion";
 import { WorkCheckCard } from "./WorkCheckCard";
 import { MockPage, SkeletonBlocks } from "./components/MockPage";
-import { BRAIN_DUMP_SKIP_REASONS, SAMPLE_STARTERS } from "./helpers";
 
 const meta: Meta = {
   title: "Organisms/Feedback prompts",
@@ -22,8 +21,8 @@ type Story = StoryObj;
 
 const MARIA_AVATAR = "/autogpt-characters/v1.1/expert-maria/neutral/128.webp";
 
-export const TrialCancelReason: Story = {
-  name: "1a. Trial cancel: reason",
+export const TrialCancel: Story = {
+  name: "1a. Trial cancel",
   render: () => (
     <MockPage title="Billing">
       <SkeletonBlocks />
@@ -32,50 +31,22 @@ export const TrialCancelReason: Story = {
   ),
 };
 
-function TrialOffer({ starters }: { starters: string[] }) {
-  return (
-    <MockPage title="Billing">
-      <SkeletonBlocks />
-      <CancelTrialFeedbackDialog
-        starters={starters}
-        initialStep="offer"
-        initialReason="no_results_yet"
-      />
-    </MockPage>
-  );
-}
-
-export const TrialCancelOfferDeveloper: Story = {
-  name: "1b. Trial offer: user said they're a developer",
-  render: () => <TrialOffer starters={SAMPLE_STARTERS.developer} />,
-};
-
-export const TrialCancelOfferSales: Story = {
-  name: "1c. Trial offer: user said they're in sales",
-  render: () => <TrialOffer starters={SAMPLE_STARTERS.sales} />,
-};
-
-export const TrialCancelOfferNoAnswers: Story = {
-  name: "1d. Trial offer: no onboarding answers stored",
-  render: () => <TrialOffer starters={[]} />,
-};
-
-export const CheckoutTrial: Story = {
-  name: "2a. Left trial checkout without starting",
+export const TrialCancelWithNote: Story = {
+  name: "1b. Trial cancel: “It's missing something” picked",
   render: () => (
     <MockPage title="Billing">
       <SkeletonBlocks />
-      <CheckoutAbandonedDialog kind="trial" initialReason="no_card_yet" />
+      <CancelTrialFeedbackDialog initialReason="missing_something" />
     </MockPage>
   ),
 };
 
 export const CheckoutUpgrade: Story = {
-  name: "2b. Left upgrade checkout without paying",
+  name: "2. Left upgrade checkout without paying",
   render: () => (
     <MockPage title="Billing">
       <SkeletonBlocks />
-      <CheckoutAbandonedDialog kind="upgrade" />
+      <CheckoutAbandonedDialog onTryAnotherCard={() => {}} />
     </MockPage>
   ),
 };
@@ -143,7 +114,7 @@ function OttoLeadsChat() {
   );
 }
 
-function MariaPricingChat({ rating }: { rating: "bad" | null }) {
+function MariaPricingChat({ rating }: { rating: "bad" | "okay" | null }) {
   return (
     <MockPage title="Maria">
       <div className="flex flex-col gap-6">
@@ -183,6 +154,11 @@ export const WorkCheckNotGood: Story = {
   render: () => <MariaPricingChat rating="bad" />,
 };
 
+export const WorkCheckOkay: Story = {
+  name: "3d. Work check: after “Okay”",
+  render: () => <MariaPricingChat rating="okay" />,
+};
+
 export const OttoMistake: Story = {
   name: "4. Otto senses it got something wrong",
   render: () => (
@@ -215,57 +191,30 @@ export const OttoMistake: Story = {
   ),
 };
 
-export const TopUpDismissed: Story = {
-  name: "5. Closed the top-up prompt without buying",
-  render: () => <MockPage title="Home" corner={<TopUpDismissedCard />} />,
-};
-
-function OnboardingStep({
-  heading,
-  body,
-  question,
-  reasons,
-}: {
-  heading: string;
-  body: string;
-  question: string;
-  reasons: typeof BRAIN_DUMP_SKIP_REASONS;
-}) {
-  return (
-    <MockPage title="" centered>
-      <Text variant="h3" className="text-center">
-        {heading}
-      </Text>
-      <Text variant="body" className="max-w-md text-center">
-        {body}
-      </Text>
-      <div className="size-40 rounded-full bg-surface-active" />
-      <Text variant="small" tone="muted">
-        Step skipped
-      </Text>
-      <OnboardingSkipPrompt question={question} reasons={reasons} />
-    </MockPage>
-  );
-}
-
-export const BrainDumpSkipped: Story = {
-  name: "6. Onboarding: skipped the brain dump",
+export const TopUpNotNow: Story = {
+  name: "5. Out of credits: after “Not now”",
   render: () => (
-    <OnboardingStep
-      heading="Tell Otto about your work"
-      body="Talk for a minute about what fills your week. Otto uses it to suggest where to start."
-      question="No problem. Mind telling us why?"
-      reasons={BRAIN_DUMP_SKIP_REASONS}
-    />
+    <MockPage title="Home">
+      <SkeletonBlocks />
+      <Dialog
+        title={TOP_UP_QUESTION}
+        styling={{ maxWidth: "28rem" }}
+        controlled={{ isOpen: true, set: () => {} }}
+      >
+        <Dialog.Content>
+          <TopUpQuestion />
+        </Dialog.Content>
+      </Dialog>
+    </MockPage>
   ),
 };
 
 export const NpsAsk: Story = {
-  name: "7a. Day 14: NPS",
+  name: "6a. Day 14: NPS",
   render: () => <MockPage title="Home" corner={<NpsCard />} />,
 };
 
 export const NpsScored: Story = {
-  name: "7b. Day 14: NPS after a score",
+  name: "6b. Day 14: NPS after a score",
   render: () => <MockPage title="Home" corner={<NpsCard initialScore={6} />} />,
 };

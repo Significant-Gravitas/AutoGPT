@@ -1,17 +1,18 @@
+import type { CancelTrialRequest } from "@/app/api/__generated__/models/cancelTrialRequest";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { CancelTrialFeedbackDialog } from "@/components/organisms/FeedbackPrompts/CancelTrialFeedbackDialog";
 import { formatTrialEnd } from "./helpers";
-import { useCancelTrialOffer } from "./useCancelTrialOffer";
+import { useCancelTrialPrompt } from "./useCancelTrialPrompt";
 
 interface Props {
   trial: TrialStatusResponse;
   isCanceling: boolean;
-  onCancel: () => void;
+  onCancel: (request: CancelTrialRequest) => void;
 }
 
 export function CancelTrialDialog({ trial, isCanceling, onCancel }: Props) {
-  const offer = useCancelTrialOffer();
+  const prompt = useCancelTrialPrompt();
 
   return (
     <CancelTrialFeedbackDialog
@@ -27,13 +28,9 @@ export function CancelTrialDialog({ trial, isCanceling, onCancel }: Props) {
       }
       endDate={formatTrialEnd(trial.ends_at)}
       isCanceling={isCanceling}
-      starters={offer.starters}
-      onOpen={offer.handleOpen}
-      onReason={(reason) => offer.save({ reason })}
-      onNote={(note) => offer.save({ note })}
-      onConfirm={onCancel}
-      onPickStarter={offer.startTask}
-      onTryOtto={offer.tryOtto}
+      onOpen={prompt.handleOpen}
+      onReason={prompt.handleReason}
+      onConfirm={(answer) => onCancel(prompt.toCancelRequest(answer))}
     />
   );
 }

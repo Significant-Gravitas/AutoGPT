@@ -13,7 +13,7 @@ from backend.copilot.context import is_unattended_turn
 from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import feedback_prompts_db
-from backend.data.feedback_prompts import FeedbackPromptKind
+from backend.data.feedback_prompts import REASONS_BY_KIND, FeedbackPromptKind
 from backend.util.posthog_client import capture
 from backend.util.posthog_events import PostHogEvent
 
@@ -28,10 +28,11 @@ _CARD_SHOWN = (
     "normally would."
 )
 _NO_CARD = "No card will appear. Do not mention this to the user."
+_MISTAKE_REASONS = sorted(REASONS_BY_KIND["otto_mistake"])
 
 
 class RequestWorkCheckTool(BaseTool):
-    """Ask how a finished piece of work went, at most once a week per user."""
+    """Ask how a finished piece of work went; the shared weekly wait applies."""
 
     @property
     def name(self) -> str:
@@ -94,6 +95,11 @@ class FlagMistakeTool(BaseTool):
                     "type": "string",
                     "description": "One or two sentences on what you got wrong.",
                 },
+                "reason": {
+                    "type": "string",
+                    "enum": _MISTAKE_REASONS,
+                    "description": "Only if the user said what went wrong.",
+                },
             },
             "required": ["what_went_wrong"],
         }
@@ -107,6 +113,7 @@ class FlagMistakeTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         what_went_wrong: str = "",
+        reason: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         described = what_went_wrong.strip()[:_MAX_WHAT_WENT_WRONG_CHARS]
@@ -121,8 +128,10 @@ class FlagMistakeTool(BaseTool):
         prompt_id = await _claim(user_id, "otto_mistake", session)
         if prompt_id is None:
             return _no_card("otto_mistake", session)
-        _capture_mistake_flagged(user_id, prompt_id, session)
-        if not _can_show_card(session):
+        said = reason if reason in REASONS_BY_KIND["otto_mistake"] else None
+        _capture_mistake_flagged(user_id, prompt_id, session, said)
+        # Asking what went wrong after they just said it reads as not listening.
+        if said is not None or not _can_show_card(session):
             return _no_card("otto_mistake", session)
         capture_prompt_shown(user_id, prompt_id, "otto_mistake")
         return FeedbackPromptToolResponse(
@@ -181,13 +190,15 @@ async def _is_first_work_check(user_id: str) -> bool:
 
 
 def _capture_mistake_flagged(
-    user_id: str, prompt_id: str, session: ChatSession
+    user_id: str, prompt_id: str, session: ChatSession, reason: str | None
 ) -> None:
     properties: dict[str, Any] = {
         "$ai_session_id": session.session_id,
         "chat_session_id": session.session_id,
         "prompt_id": prompt_id,
     }
+    if reason is not None:
+        properties["reason"] = reason
     trace_id = turn_trace_id()
     if trace_id:
         properties["$ai_trace_id"] = trace_id

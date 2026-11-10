@@ -188,6 +188,20 @@ async def test_flag_mistake_without_a_card_still_takes_the_slot_and_sends(
     shown.assert_not_called()
 
 
+async def test_flag_mistake_the_user_already_explained_asks_nothing(
+    db: MagicMock, shown: MagicMock, flagged: MagicMock, web_chat: ChatSession
+) -> None:
+    result = await FlagMistakeTool()._execute(
+        USER_ID, web_chat, what_went_wrong=WHAT, reason="wrong_facts"
+    )
+
+    assert isinstance(result, FeedbackPromptToolResponse)
+    assert result.prompt_id is None
+    db.claim_feedback_prompt.assert_awaited_once()
+    assert flagged.call_args.args[2]["reason"] == "wrong_facts"
+    shown.assert_not_called()
+
+
 async def test_second_flag_in_a_chat_sends_nothing(
     db: MagicMock, shown: MagicMock, flagged: MagicMock, web_chat: ChatSession
 ) -> None:

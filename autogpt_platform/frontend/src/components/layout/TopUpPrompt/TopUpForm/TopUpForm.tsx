@@ -6,20 +6,10 @@ import { useTopUpForm } from "./useTopUpForm";
 interface Props {
   submitLabel?: string;
   size?: "small" | "normal";
-  onRequestingChange?: (isRequesting: boolean) => void;
-  onRequestFailed?: () => void;
 }
 
-export function TopUpForm({
-  submitLabel = "Top up",
-  size = "normal",
-  onRequestingChange,
-  onRequestFailed,
-}: Props) {
-  const { form, isLoading, isRedirecting, submitTopUp } = useTopUpForm({
-    onRequestingChange,
-    onRequestFailed,
-  });
+export function TopUpForm({ submitLabel = "Top up", size = "normal" }: Props) {
+  const { form, isLoading, isRedirecting, submitTopUp } = useTopUpForm();
   const inputSize = size === "small" ? "small" : "medium";
   const buttonSize = size === "small" ? "small" : "large";
 

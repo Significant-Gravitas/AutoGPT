@@ -91,7 +91,6 @@ async def update_prompt(
         note=body.note,
         score=body.score,
         dismissed=body.dismissed,
-        offer_taken=body.offer_taken,
     )
     if updated is None:
         raise _not_found(id)

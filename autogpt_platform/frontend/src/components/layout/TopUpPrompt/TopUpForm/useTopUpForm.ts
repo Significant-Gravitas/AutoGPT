@@ -13,15 +13,7 @@ const topUpSchema = z.object({
     .min(5, "Top-ups start at $5. Please enter a higher amount."),
 });
 
-interface Args {
-  onRequestingChange?: (isRequesting: boolean) => void;
-  onRequestFailed?: () => void;
-}
-
-export function useTopUpForm({
-  onRequestingChange,
-  onRequestFailed,
-}: Args = {}) {
+export function useTopUpForm() {
   const toastOnFail = useToastOnFail();
   const { requestTopUp } = useCredits();
 
@@ -36,17 +28,10 @@ export function useTopUpForm({
   async function submitTopUp(data: z.infer<typeof topUpSchema>) {
     if (isLoading || checkoutRedirect.isRedirecting) return;
     setIsRequesting(true);
-    onRequestingChange?.(true);
     await requestTopUp(Math.round(data.amount * 100))
       .then(() => checkoutRedirect.markRedirecting())
-      .catch((error: unknown) => {
-        onRequestFailed?.();
-        toastOnFail("request top-up")(error);
-      })
-      .finally(() => {
-        setIsRequesting(false);
-        onRequestingChange?.(false);
-      });
+      .catch(toastOnFail("request top-up"))
+      .finally(() => setIsRequesting(false));
   }
 
   return {

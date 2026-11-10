@@ -19,7 +19,6 @@ CREATE TABLE "FeedbackPrompt" (
     "reason" TEXT,
     "note" TEXT,
     "score" INTEGER,
-    "offerTaken" BOOLEAN,
 
     CONSTRAINT "FeedbackPrompt_pkey" PRIMARY KEY ("id")
 );

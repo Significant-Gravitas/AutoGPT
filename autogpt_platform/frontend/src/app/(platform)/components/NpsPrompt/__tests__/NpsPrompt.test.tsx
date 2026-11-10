@@ -2,7 +2,6 @@ import {
   getPatchV2UpdateFeedbackPromptMockHandler200,
   getPostV2ClaimFeedbackPromptMockHandler200,
 } from "@/app/api/__generated__/endpoints/feedback-prompts/feedback-prompts.msw";
-import { TopUpPromptContext } from "@/components/layout/TopUpPrompt/useTopUpPrompt";
 import { server } from "@/mocks/mock-server";
 import { Key, storage } from "@/services/storage/local-storage";
 import {
@@ -24,25 +23,15 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 }));
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const QUESTION = "How likely are you to recommend AutoGPT?";
+const QUESTION =
+  "How likely are you to recommend AutoGPT to a friend or colleague?";
 
 function daysAgo(days: number) {
   return new Date(Date.now() - days * DAY_MS).toISOString();
 }
 
-function tree(isTopUpCardOpen = false) {
-  return (
-    <TopUpPromptContext.Provider
-      value={{
-        isOutOfCredits: false,
-        openTopUp: () => {},
-        closeTopUp: () => {},
-        isTopUpCardOpen,
-      }}
-    >
-      <NpsPrompt />
-    </TopUpPromptContext.Provider>
-  );
+function tree() {
+  return <NpsPrompt />;
 }
 
 function setup(claimedId: string | null = "prompt-1") {
@@ -89,11 +78,26 @@ test("an account at 14 days or more claims and sees the question", async () => {
   expect(claims).toEqual([{ kind: "nps" }]);
 });
 
-test("a refused claim leaves the marker and shows nothing", async () => {
-  setup(null);
-  render(tree());
-  await waitFor(() => expect(storage.get(Key.NPS_DONE)).toBe("user-a"));
+test("a refused claim waits a day before asking the backend again", async () => {
+  const { claims } = setup(null);
+  const { unmount } = render(tree());
+  await waitFor(() =>
+    expect(storage.get(Key.NPS_CHECK)).toMatch(/^user-a\|\d+$/),
+  );
   expect(screen.queryByText(QUESTION)).toBeNull();
+  unmount();
+  render(tree());
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(claims).toHaveLength(1);
+});
+
+test("a refusal from a day ago is checked again", async () => {
+  storage.set(Key.NPS_CHECK, `user-a|${Date.now() - 1}`);
+  const { claims } = setup();
+  render(tree());
+  expect(await screen.findByText(QUESTION)).toBeDefined();
+  expect(claims).toEqual([{ kind: "nps" }]);
+  expect(storage.get(Key.NPS_CHECK)).toBe("user-a");
 });
 
 test("a failed claim leaves no marker, so the next load asks again", async () => {
@@ -107,15 +111,15 @@ test("a failed claim leaves no marker, so the next load asks again", async () =>
   const { unmount } = render(tree());
   await waitFor(() => expect(attempts).toBe(1));
   await new Promise((resolve) => setTimeout(resolve, 50));
-  expect(storage.get(Key.NPS_DONE)).not.toBe("user-a");
+  expect(storage.get(Key.NPS_CHECK)).toBeFalsy();
   expect(screen.queryByText(QUESTION)).toBeNull();
   unmount();
   render(tree());
   await waitFor(() => expect(attempts).toBe(2));
 });
 
-test("with the marker set no claim happens", async () => {
-  storage.set(Key.NPS_DONE, "user-a");
+test("once asked on this browser no claim happens", async () => {
+  storage.set(Key.NPS_CHECK, "user-a");
   const { claims } = setup();
   render(tree());
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -138,14 +142,16 @@ test("closing saves a dismissal", async () => {
   await waitFor(() => expect(patches).toEqual([{ dismissed: true }]));
 });
 
-test("waits for the top-up card to close before claiming", async () => {
-  const { claims } = setup();
-  const { rerender } = render(tree(true));
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  expect(claims).toEqual([]);
-  rerender(tree(false));
-  expect(await screen.findByText(QUESTION)).toBeDefined();
-  expect(claims).toEqual([{ kind: "nps" }]);
+test("the score buttons and labels use the agreed copy", async () => {
+  setup();
+  render(tree());
+  await screen.findByText(QUESTION);
+  expect(screen.getByText("Not at all likely")).toBeDefined();
+  expect(screen.getByText("Extremely likely")).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "3" }));
+  expect(
+    await screen.findByText("What's the main thing we should fix?"),
+  ).toBeDefined();
 });
 
 test("NPS becomes due at exactly fourteen days", () => {

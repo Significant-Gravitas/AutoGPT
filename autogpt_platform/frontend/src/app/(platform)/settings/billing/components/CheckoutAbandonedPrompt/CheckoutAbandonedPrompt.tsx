@@ -5,26 +5,25 @@ import { useFeedbackPrompt } from "@/components/organisms/FeedbackPrompts/useFee
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useState } from "react";
-
-export type AbandonedCheckout = "trial" | "upgrade";
+import type { AbandonedPlan } from "./helpers";
+import { useCheckoutRetry } from "./useCheckoutRetry";
 
 interface Props {
-  kind: AbandonedCheckout;
+  plan: AbandonedPlan | null;
 }
 
-export function CheckoutAbandonedPrompt({ kind }: Props) {
+export function CheckoutAbandonedPrompt({ plan }: Props) {
   const { user } = useAuth();
   const [ownerID, setOwnerID] = useState(user?.id);
   if (!user) return null;
   if (ownerID === undefined) setOwnerID(user.id);
   if (ownerID !== undefined && ownerID !== user.id) return null;
-  return <CheckoutClaim kind={kind} />;
+  return <CheckoutClaim plan={plan} />;
 }
 
-function CheckoutClaim({ kind }: Props) {
-  const prompt = useFeedbackPrompt(
-    kind === "trial" ? "trial_checkout" : "upgrade_checkout",
-  );
+function CheckoutClaim({ plan }: Props) {
+  const prompt = useFeedbackPrompt("upgrade_checkout");
+  const checkout = useCheckoutRetry(plan);
   const [isClaimed, setIsClaimed] = useState(false);
 
   useMountEffect(() => {
@@ -37,12 +36,13 @@ function CheckoutClaim({ kind }: Props) {
 
   return (
     <CheckoutAbandonedDialog
-      kind={kind}
+      isRetrying={checkout.isRetrying}
       onDismiss={() => prompt.save({ dismissed: true })}
       onReason={(reason) => prompt.save({ reason })}
       onSubmit={({ reason, note }) =>
         prompt.save({ reason, note: note || undefined })
       }
+      onTryAnotherCard={checkout.retry}
     />
   );
 }

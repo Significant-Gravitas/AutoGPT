@@ -1,7 +1,4 @@
-import {
-  getGetBrainDumpPlanMockHandler200,
-  getGetBrainDumpSuggestedTasksMockHandler200,
-} from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import { getGetBrainDumpPlanMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import { getPostV2ClaimFeedbackPromptMockHandler200 } from "@/app/api/__generated__/endpoints/feedback-prompts/feedback-prompts.msw";
 import {
   getGetTrialsGetTrialStatusMockHandler200,
@@ -462,7 +459,6 @@ test("preserves active-trial status and confirmed cancellation", async () => {
   server.use(
     getPostTrialsCancelTrialMockHandler200(cancel),
     getPostV2ClaimFeedbackPromptMockHandler200({ id: null }),
-    getGetBrainDumpSuggestedTasksMockHandler200({ tasks: [], stored: false }),
   );
   render(<PlanTrialStep hasPaywall />);
   fireEvent.click(await screen.findByRole("button", { name: "Cancel trial" }));

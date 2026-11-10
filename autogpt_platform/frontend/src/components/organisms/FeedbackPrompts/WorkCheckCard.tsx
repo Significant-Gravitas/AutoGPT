@@ -18,6 +18,11 @@ import { WORK_REASONS } from "./helpers";
 
 export type WorkCheckRating = "bad" | "okay" | "great";
 
+const FOLLOW_UPS: Record<"bad" | "okay", string> = {
+  bad: "What went wrong?",
+  okay: "What would have made it great?",
+};
+
 const RATINGS = [
   {
     value: "bad" as const,
@@ -53,7 +58,7 @@ interface Props {
 
 // Sits at the end of a chat, under the reply that finished the work. Otto
 // asks for it when a turn delivers what was asked; the backend decides
-// whether it shows (the first time, then at most once a week).
+// whether it shows (at most one of the ambient prompts a week).
 export function WorkCheckCard({
   name,
   avatarUrl,
@@ -92,7 +97,7 @@ export function WorkCheckCard({
         <div className="flex flex-1 flex-col gap-0.5">
           <Text variant="body-medium" tone="primary">
             {rating && rating !== "great"
-              ? `What should ${name} do better?`
+              ? FOLLOW_UPS[rating]
               : `How did ${name} do?`}
           </Text>
           <Text variant="small" tone="muted">
@@ -138,9 +143,9 @@ export function WorkCheckCard({
       {rating === "bad" || rating === "okay" ? (
         <ReasonFlow
           reasons={WORK_REASONS}
-          label={`What should ${name} do better?`}
+          label={FOLLOW_UPS[rating]}
           size="compact"
-          thanks={`Thanks. ${name} learns from this.`}
+          thanks="Thanks. The team reads every one of these."
           initialSent={initialSent}
           onReason={onReason}
           onSubmit={onSubmit}

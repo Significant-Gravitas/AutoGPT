@@ -118,14 +118,11 @@ def test_patch_sends_the_answer_as_saved(
             reason="too_expensive",
             note="Too dear",
             score=None,
-            offerTaken=True,
             answeredAt=NOW,
         ),
     )
 
-    response = client.patch(
-        f"/{PROMPT_ID}", json={"note": "Too dear", "offer_taken": True}
-    )
+    response = client.patch(f"/{PROMPT_ID}", json={"note": "Too dear"})
 
     assert response.status_code == 200
     assert response.json() == {
@@ -143,7 +140,6 @@ def test_patch_sends_the_answer_as_saved(
         note="Too dear",
         score=None,
         dismissed=False,
-        offer_taken=True,
     )
     posthog_capture.assert_called_once_with(
         test_user_id,
@@ -154,7 +150,6 @@ def test_patch_sends_the_answer_as_saved(
             "reason": "too_expensive",
             "note": "Too dear",
             "score": None,
-            "offer_taken": True,
         },
     )
 

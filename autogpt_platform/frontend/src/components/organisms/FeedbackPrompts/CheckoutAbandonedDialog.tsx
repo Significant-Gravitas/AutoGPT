@@ -1,50 +1,45 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useState } from "react";
 import { NoInitialFocus } from "./components/NoInitialFocus";
 import { ReasonFlow } from "./components/ReasonFlow";
-import { TRIAL_CHECKOUT_REASONS, UPGRADE_CHECKOUT_REASONS } from "./helpers";
+import { CARD_FAILED_VALUE, UPGRADE_CHECKOUT_REASONS } from "./helpers";
 
-type Kind = "trial" | "upgrade";
-
-const COPY: Record<Kind, { title: string; body: string; thanks: string }> = {
-  trial: {
-    title: "Your free trial is ready when you are",
-    body: "Anything holding you back?",
-    thanks:
-      "Thanks. You can start your trial from Billing whenever you're ready.",
-  },
-  upgrade: {
-    title: "Your plan hasn't changed. What held you back?",
-    body: "One tap helps us fix the right thing.",
-    thanks:
-      "Thanks. If your card was the problem, try another one or reply to any of our emails and we'll sort it out.",
-  },
-};
+const TITLE = "Your plan hasn't changed. What held you back?";
 
 interface Props {
-  kind: Kind;
   initialReason?: string | null;
+  isRetrying?: boolean;
   onDismiss?: () => void;
   onReason?: (value: string) => void;
   onSubmit?: (answer: { reason: string; note: string }) => void;
+  /** Absent when there is no checkout to start again. */
+  onTryAnotherCard?: () => void;
 }
 
 export function CheckoutAbandonedDialog({
-  kind,
   initialReason = null,
+  isRetrying = false,
   onDismiss,
   onReason,
   onSubmit,
+  onTryAnotherCard,
 }: Props) {
   const [isOpen, setIsOpen] = useState(true);
-  const copy = COPY[kind];
+  const [sentReason, setSentReason] = useState<string | null>(null);
+  const offersRetry = sentReason === CARD_FAILED_VALUE && onTryAnotherCard;
+
+  function send(answer: { reason: string; note: string }) {
+    setSentReason(answer.reason);
+    onSubmit?.(answer);
+  }
 
   return (
     <Dialog
-      title={copy.title}
+      title={TITLE}
       styling={{ maxWidth: "38rem", minWidth: "auto" }}
       controlled={{
         isOpen,
@@ -58,21 +53,28 @@ export function CheckoutAbandonedDialog({
         <NoInitialFocus />
         <div className="flex flex-col gap-4">
           <Text variant="body" tone="muted">
-            {copy.body}
+            One tap helps us fix the right thing.
           </Text>
           <ReasonFlow
-            label={copy.title}
-            reasons={
-              kind === "trial"
-                ? TRIAL_CHECKOUT_REASONS
-                : UPGRADE_CHECKOUT_REASONS
-            }
+            label={TITLE}
+            reasons={UPGRADE_CHECKOUT_REASONS}
             initialReason={initialReason}
-            thanks={copy.thanks}
             onReason={onReason}
-            onSubmit={onSubmit}
+            onSubmit={send}
           />
         </div>
+        {offersRetry ? (
+          <Dialog.Footer>
+            <Button
+              size="small"
+              loading={isRetrying}
+              disabled={isRetrying}
+              onClick={onTryAnotherCard}
+            >
+              Try another card
+            </Button>
+          </Dialog.Footer>
+        ) : null}
       </Dialog.Content>
     </Dialog>
   );

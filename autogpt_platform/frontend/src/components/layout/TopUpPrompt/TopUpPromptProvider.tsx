@@ -9,7 +9,6 @@ import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 import { DailyTopUpAutoOpener } from "./DailyTopUpAutoOpener";
 import { TopUpDialog } from "./TopUpDialog/TopUpDialog";
-import { TopUpDismissedPrompt } from "./TopUpDismissedPrompt";
 import { TopUpPromptContext } from "./useTopUpPrompt";
 
 interface Props {
@@ -46,11 +45,9 @@ export function TopUpPromptProvider({ children }: Props) {
     !autoRefillEnabled;
 
   const [isOpen, setIsOpen] = useState(false);
-  const [isTopUpCardOpen, setIsTopUpCardOpen] = useState(false);
 
   useEffect(() => {
     setIsOpen(false);
-    setIsTopUpCardOpen(false);
   }, [identityKey]);
 
   function openTopUp() {
@@ -63,18 +60,14 @@ export function TopUpPromptProvider({ children }: Props) {
 
   return (
     <TopUpPromptContext.Provider
-      value={{ isOutOfCredits, openTopUp, closeTopUp, isTopUpCardOpen }}
+      value={{ isOutOfCredits, openTopUp, closeTopUp }}
     >
       {children}
       <TopUpDialog
         key={identityKey ?? "anonymous"}
         isOpen={isOpen}
         onClose={closeTopUp}
-        onDismissed={() => setIsTopUpCardOpen(true)}
       />
-      {isTopUpCardOpen && (
-        <TopUpDismissedPrompt onClosed={() => setIsTopUpCardOpen(false)} />
-      )}
       {isOutOfCredits && <DailyTopUpAutoOpener />}
     </TopUpPromptContext.Provider>
   );

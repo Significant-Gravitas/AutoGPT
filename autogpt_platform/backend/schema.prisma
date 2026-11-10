@@ -1339,10 +1339,9 @@ model FeedbackPrompt {
   answeredAt  DateTime?
   dismissedAt DateTime?
 
-  reason     String?
-  note       String?
-  score      Int?
-  offerTaken Boolean?
+  reason String?
+  note   String?
+  score  Int?
 
   @@index([userId, kind, shownAt])
 }

@@ -2,7 +2,6 @@ import {
   discardBrainDump,
   finalizeBrainDump,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
-import { useMountEffect } from "@/hooks/useMountEffect";
 import { setIntroPath } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
@@ -26,7 +25,6 @@ import {
   saveMeta,
 } from "./recordingStore";
 import { promptSetNameForRole } from "./prompts";
-import { useFeedbackPrompt } from "@/components/organisms/FeedbackPrompts/useFeedbackPrompt";
 import { useBrainDumpRecorder } from "./useBrainDumpRecorder";
 import { useMicrophoneRetry } from "./useMicrophoneRetry";
 import { usePromptRotation } from "./usePromptRotation";
@@ -49,11 +47,9 @@ export type ScreenState =
   | "typing"
   | "recovery"
   | "failed"
-  | "insufficient"
-  | "skip-reason";
+  | "insufficient";
 
 export function useBrainDumpStep() {
-  const skipPrompt = useFeedbackPrompt("brain_dump_skip");
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const setStepBusy = useOnboardingWizardStore((s) => s.setStepBusy);
   // Picked on the step before; "Other" is matched as an id, not its free text.
@@ -67,10 +63,6 @@ export function useBrainDumpStep() {
   // For answers that arrive after the render that asked, like a permission
   // prompt answered once the typed text is already on its way.
   const screenRef = useRef(screen);
-  const startVersionRef = useRef(0);
-  useMountEffect(() => () => {
-    startVersionRef.current += 1;
-  });
   useEffect(() => {
     screenRef.current = screen;
   });
@@ -140,12 +132,7 @@ export function useBrainDumpStep() {
   // alone: reopening the composer would let it be sent a second time.
   useEffect(() => {
     if (!recorder.permissionDenied) return;
-    if (
-      isSubmittingRef.current ||
-      screenRef.current === "processing" ||
-      screenRef.current === "skip-reason"
-    )
-      return;
+    if (isSubmittingRef.current || screenRef.current === "processing") return;
     setScreen("typing");
     if (typedFallbackTrackedRef.current) return;
     typedFallbackTrackedRef.current = true;
@@ -177,12 +164,8 @@ export function useBrainDumpStep() {
   }, [screen, recorder.hitTimeLimit]);
 
   async function handleStart() {
-    const version = ++startVersionRef.current;
-    const started = await recorder.start({
-      shouldRecord: () =>
-        version === startVersionRef.current && screenRef.current === "rest",
-    });
-    if (started && version === startVersionRef.current) setScreen("recording");
+    const started = await recorder.start();
+    if (started) setScreen("recording");
   }
 
   async function handleDone() {
@@ -314,7 +297,6 @@ export function useBrainDumpStep() {
   // local parts and the server's half-uploaded buffer both — before the
   // orb starts listening again under a new recording id.
   async function handleRestart() {
-    const version = ++startVersionRef.current;
     const previousId = recorder.recordingId;
     const actionToken = previousId
       ? claimTakeAction(previousId, "discard")
@@ -332,12 +314,9 @@ export function useBrainDumpStep() {
       }
       recorder.resetQueue();
       if (previousId) await discardTake(previousId);
-      started = await recorder.start({
-        shouldRecord: () => version === startVersionRef.current,
-      });
+      started = await recorder.start();
     } finally {
-      if (version === startVersionRef.current)
-        setScreen(started ? "recording" : "rest");
+      setScreen(started ? "recording" : "rest");
       if (actionToken) releaseTakeAction(actionToken);
     }
   }
@@ -442,30 +421,6 @@ export function useBrainDumpStep() {
       ...promptProperties(),
     });
     await completeAndAdvance(recordingId, "A");
-  }
-
-  // Every skip passes through the reason tiles; the answer is optional and
-  // can't hold the step up, so the skip itself runs the moment one is given.
-  function openSkipReason() {
-    if (isSubmittingRef.current) return;
-    const version = ++startVersionRef.current;
-    screenRef.current = "skip-reason";
-    void recorder.stop().catch(() => undefined);
-    void skipPrompt.claim().then(({ id, failed }) => {
-      if (
-        version === startVersionRef.current &&
-        !id &&
-        !failed &&
-        screenRef.current === "skip-reason"
-      )
-        void handleSkip();
-    });
-    setScreen("skip-reason");
-  }
-
-  function skipWithReason(reason: string) {
-    skipPrompt.save({ reason });
-    void handleSkip();
   }
 
   async function handleSkip() {
@@ -658,8 +613,6 @@ export function useBrainDumpStep() {
     handleRestart,
     handleRetry,
     handleSkip,
-    openSkipReason,
-    skipWithReason,
     handleSubmitTyped,
     isTypedTooLong,
     handleResumeRecovered,

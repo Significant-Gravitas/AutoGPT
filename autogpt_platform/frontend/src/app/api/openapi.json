@@ -6960,6 +6960,19 @@
         "tags": ["trials"],
         "summary": "Cancel Trial",
         "operationId": "postTrialsCancelTrial",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/CancelTrialRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6973,6 +6986,14 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "409": { "description": "No cancelable trial subscription" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
           "502": {
             "description": "Stripe cancellation temporarily unavailable"
           }
@@ -22107,6 +22128,36 @@
         "title": "CancelSessionResponse",
         "description": "Response model for the cancel session endpoint."
       },
+      "CancelTrialRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "too_expensive",
+                  "no_results_yet",
+                  "missing_something",
+                  "only_trying",
+                  "other"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Reason",
+            "description": "The reason picked in the cancel dialog, if any."
+          },
+          "comment": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "title": "CancelTrialRequest"
+      },
       "ChangeSessionConnectionRequest": {
         "properties": {
           "llm_auth_provider": {
@@ -22327,12 +22378,10 @@
             "type": "string",
             "enum": [
               "trial_cancel",
-              "trial_checkout",
               "upgrade_checkout",
               "work_check",
               "otto_mistake",
               "top_up",
-              "brain_dump_skip",
               "nps"
             ],
             "title": "Kind"
@@ -26836,12 +26885,10 @@
             "type": "string",
             "enum": [
               "trial_cancel",
-              "trial_checkout",
               "upgrade_checkout",
               "work_check",
               "otto_mistake",
               "top_up",
-              "brain_dump_skip",
               "nps"
             ],
             "title": "Kind"
@@ -26876,12 +26923,10 @@
             "type": "string",
             "enum": [
               "trial_cancel",
-              "trial_checkout",
               "upgrade_checkout",
               "work_check",
               "otto_mistake",
               "top_up",
-              "brain_dump_skip",
               "nps"
             ],
             "title": "Kind"
@@ -38287,10 +38332,6 @@
             "type": "boolean",
             "title": "Dismissed",
             "default": false
-          },
-          "offer_taken": {
-            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
-            "title": "Offer Taken"
           }
         },
         "type": "object",

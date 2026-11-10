@@ -24,7 +24,6 @@ class UpdateFeedbackPromptRequest(pydantic.BaseModel):
     note: str | None = pydantic.Field(default=None, max_length=MAX_NOTE_CHARS)
     score: int | None = pydantic.Field(default=None, ge=0, le=10)
     dismissed: bool = False
-    offer_taken: bool | None = None
 
     @pydantic.field_validator("note")
     @classmethod
@@ -37,10 +36,7 @@ class UpdateFeedbackPromptRequest(pydantic.BaseModel):
     def has_answer(self) -> bool:
         """Whether this carries anything but a dismissal."""
         return (
-            self.reason is not None
-            or self.note is not None
-            or self.score is not None
-            or self.offer_taken is not None
+            self.reason is not None or self.note is not None or self.score is not None
         )
 
 

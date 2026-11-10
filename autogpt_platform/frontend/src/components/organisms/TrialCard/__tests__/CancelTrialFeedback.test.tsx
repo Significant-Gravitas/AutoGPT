@@ -1,13 +1,8 @@
-import { getGetBrainDumpSuggestedTasksMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
-import type { SuggestedTask } from "@/app/api/__generated__/models/suggestedTask";
 import {
   getPatchV2UpdateFeedbackPromptMockHandler200,
   getPostV2ClaimFeedbackPromptMockHandler200,
 } from "@/app/api/__generated__/endpoints/feedback-prompts/feedback-prompts.msw";
-import {
-  getGetTrialsGetTrialStatusMockHandler200,
-  getPostTrialsCancelTrialMockHandler200,
-} from "@/app/api/__generated__/endpoints/trials/trials.msw";
+import { getGetTrialsGetTrialStatusMockHandler200 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
 import { formatTrialEnd } from "@/components/organisms/TrialCard/helpers";
 import { TrialCard } from "@/components/organisms/TrialCard/TrialCard";
 import { server } from "@/mocks/mock-server";
@@ -33,13 +28,12 @@ import {
   vi,
 } from "vitest";
 
-const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
   usePathname: () => "/settings/billing",
   useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({
-    push,
+    push: vi.fn(),
     replace: vi.fn(),
     prefetch: vi.fn(),
     back: vi.fn(),
@@ -56,23 +50,18 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => ({
   toast,
 }));
 
-const REASON_TITLE = "Before you go, what's the main reason?";
-const TASK: SuggestedTask = {
-  id: "task-1",
-  title: "Triage this week's open GitHub issues",
-  prompt: "Triage our open issues",
-  expert_id: "maria",
-  state: "open",
-};
+const TITLE = "Cancel your trial?";
 
-function setup({ stored = true, tasks = [TASK] } = {}) {
-  const cancel = vi.fn(() => trialResponse());
+function setup() {
+  const cancels: unknown[] = [];
   const patches: unknown[] = [];
   server.use(
     getGetTrialsGetTrialStatusMockHandler200(trialResponse()),
-    getPostTrialsCancelTrialMockHandler200(cancel),
+    http.post("*/api/credits/trial/cancel", async ({ request }) => {
+      cancels.push(await request.clone().json());
+      return HttpResponse.json(trialResponse());
+    }),
     getPostV2ClaimFeedbackPromptMockHandler200({ id: "prompt-1" }),
-    getGetBrainDumpSuggestedTasksMockHandler200({ tasks, stored }),
     getPatchV2UpdateFeedbackPromptMockHandler200(async ({ request }) => {
       patches.push(await request.clone().json());
       return {
@@ -86,12 +75,12 @@ function setup({ stored = true, tasks = [TASK] } = {}) {
     }),
   );
   render(<TrialCard />);
-  return { cancel, patches };
+  return { cancels, patches };
 }
 
 async function openDialog() {
   fireEvent.click(await screen.findByRole("button", { name: "Cancel trial" }));
-  return screen.findByRole("dialog", { name: REASON_TITLE });
+  return screen.findByRole("dialog", { name: TITLE });
 }
 
 function clickIn(dialog: HTMLElement, name: string) {
@@ -100,30 +89,72 @@ function clickIn(dialog: HTMLElement, name: string) {
 
 beforeEach(() => {
   setTrialUser();
-  push.mockClear();
   toast.mockClear();
 });
 afterEach(() => setTrialUser(null));
 
-test("picking a reason saves it", async () => {
-  const { patches } = setup();
-  clickIn(await openDialog(), "It costs too much");
-  await waitFor(() => expect(patches).toEqual([{ reason: "too_expensive" }]));
+test("one dialog confirms, shows the real end date and keeps both buttons", async () => {
+  setup();
+  const dialog = await openDialog();
+  expect(
+    within(dialog).getByText(formatTrialEnd(trialResponse().ends_at)).tagName,
+  ).toBe("STRONG");
+  clickIn(dialog, "It costs too much");
+  expect(
+    within(dialog).getByRole("button", { name: "Keep trial" }),
+  ).toBeDefined();
+  expect(
+    within(dialog).getByRole("button", { name: "Cancel trial" }),
+  ).toBeDefined();
+  expect(within(dialog).queryByRole("button", { name: "Skip" })).toBeNull();
+  expect(within(dialog).queryByRole("button", { name: "Continue" })).toBeNull();
 });
 
-test("Skip reaches the confirmation with no reason saved", async () => {
-  const { patches, cancel } = setup();
-  clickIn(await openDialog(), "Skip");
-  const confirm = await screen.findByRole("dialog", {
-    name: "Cancel your trial?",
-  });
+test("cancelling without a reason sends none", async () => {
+  const { cancels, patches } = setup();
+  clickIn(await openDialog(), "Cancel trial");
+  await waitFor(() =>
+    expect(cancels).toEqual([{ reason: null, comment: null }]),
+  );
   expect(patches).toEqual([]);
-  clickIn(confirm, "Cancel trial");
-  await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+});
+
+test("the picked reason and note reach our feedback and the cancellation", async () => {
+  const { cancels, patches } = setup();
+  const dialog = await openDialog();
+  clickIn(dialog, "It's missing something");
+  fireEvent.change(
+    within(dialog).getByRole("textbox", {
+      name: "Tell us a bit more (optional)",
+    }),
+    { target: { value: "  A Slack integration " } },
+  );
+  clickIn(dialog, "Cancel trial");
+  await waitFor(() =>
+    expect(cancels).toEqual([
+      { reason: "missing_something", comment: "A Slack integration" },
+    ]),
+  );
+  await waitFor(() =>
+    expect(patches).toEqual([
+      { reason: "missing_something" },
+      { note: "A Slack integration" },
+    ]),
+  );
+});
+
+test("keeping the trial cancels nothing", async () => {
+  const { cancels, patches } = setup();
+  const dialog = await openDialog();
+  clickIn(dialog, "I haven't seen results yet");
+  clickIn(dialog, "Keep trial");
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await waitFor(() => expect(patches).toEqual([{ reason: "no_results_yet" }]));
+  expect(cancels).toEqual([]);
 });
 
 test("a failed save still cancels the trial and shows no toast", async () => {
-  const { cancel } = setup();
+  const { cancels } = setup();
   let finishResponse = () => {};
   const failedResponse = new Promise<void>((resolve) => {
     finishResponse = resolve;
@@ -148,12 +179,10 @@ test("a failed save still cancels the trial and shows no toast", async () => {
   );
   const dialog = await openDialog();
   clickIn(dialog, "It costs too much");
-  clickIn(dialog, "Continue");
-  clickIn(
-    await screen.findByRole("dialog", { name: "Cancel your trial?" }),
-    "Cancel trial",
+  clickIn(dialog, "Cancel trial");
+  await waitFor(() =>
+    expect(cancels).toEqual([{ reason: "too_expensive", comment: null }]),
   );
-  await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
   await act(async () => {
     await failedResponse;
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -161,58 +190,7 @@ test("a failed save still cancels the trial and shows no toast", async () => {
   expect(toast).not.toHaveBeenCalled();
 });
 
-test("the offer lists open tasks for someone who saw no results", async () => {
-  setup({
-    tasks: [
-      TASK,
-      { ...TASK, id: "task-2", title: "Already done", state: "sent" },
-    ],
-  });
-  const dialog = await openDialog();
-  clickIn(dialog, "I haven't seen results yet");
-  clickIn(dialog, "Continue");
-  expect(await screen.findByRole("button", { name: TASK.title })).toBeDefined();
-  expect(screen.queryByRole("button", { name: "Already done" })).toBeNull();
-});
-
-test("the offer asks for one task when none are stored", async () => {
-  setup({ stored: false, tasks: [] });
-  const dialog = await openDialog();
-  clickIn(dialog, "I haven't seen results yet");
-  clickIn(dialog, "Continue");
-  expect(
-    await screen.findByText(
-      "Tell me one weekly task and I'll do it with you now.",
-    ),
-  ).toBeDefined();
-});
-
-test("taking a task starts its chat and keeps the trial", async () => {
-  const { cancel, patches } = setup();
-  const dialog = await openDialog();
-  clickIn(dialog, "I haven't seen results yet");
-  clickIn(dialog, "Continue");
-  fireEvent.click(await screen.findByRole("button", { name: TASK.title }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(push).toHaveBeenCalledWith(
-    `/home?autosubmit=true&expertId=maria&suggestedTaskId=task-1#prompt=${encodeURIComponent(TASK.prompt)}`,
-  );
-  await waitFor(() => expect(patches).toContainEqual({ offer_taken: true }));
-  expect(cancel).not.toHaveBeenCalled();
-});
-
-test("the confirmation shows the real end date", async () => {
-  setup();
-  clickIn(await openDialog(), "Skip");
-  const confirm = await screen.findByRole("dialog", {
-    name: "Cancel your trial?",
-  });
-  expect(
-    within(confirm).getByText(formatTrialEnd(trialResponse().ends_at)).tagName,
-  ).toBe("STRONG");
-});
-
-test("reopening cancellation claims a new showing without the old note", async () => {
+test("reopening cancellation claims a new showing without the old answer", async () => {
   setup();
   let claims = 0;
   const saves: { id: string; body: unknown }[] = [];
@@ -239,21 +217,12 @@ test("reopening cancellation claims a new showing without the old note", async (
   );
   let dialog = await openDialog();
   clickIn(dialog, "Something else");
-  fireEvent.change(screen.getByRole("textbox"), {
-    target: { value: "First attempt" },
-  });
-  clickIn(dialog, "Continue");
-  clickIn(
-    await screen.findByRole("dialog", { name: "Cancel your trial?" }),
-    "Keep trial",
-  );
+  clickIn(dialog, "Keep trial");
   await waitFor(() =>
-    expect(saves).toContainEqual({
-      id: "prompt-1",
-      body: { note: "First attempt" },
-    }),
+    expect(saves).toContainEqual({ id: "prompt-1", body: { reason: "other" } }),
   );
   dialog = await openDialog();
+  expect(within(dialog).queryByRole("textbox")).toBeNull();
   clickIn(dialog, "It costs too much");
   await waitFor(() =>
     expect(saves).toContainEqual({

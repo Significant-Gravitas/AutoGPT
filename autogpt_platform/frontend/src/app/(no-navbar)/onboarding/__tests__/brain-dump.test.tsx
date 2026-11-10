@@ -1,8 +1,3 @@
-import * as feedbackPromptAPI from "@/app/api/__generated__/endpoints/feedback-prompts/feedback-prompts";
-import {
-  getPatchV2UpdateFeedbackPromptMockHandler200,
-  getPostV2ClaimFeedbackPromptMockHandler200,
-} from "@/app/api/__generated__/endpoints/feedback-prompts/feedback-prompts.msw";
 import {
   getDiscardBrainDumpMockHandler200,
   getFinalizeBrainDumpMockHandler200,
@@ -425,9 +420,6 @@ function landOnPainPointsStep() {
 }
 
 beforeEach(() => {
-  server.use(
-    getPostV2ClaimFeedbackPromptMockHandler200({ id: "prompt-default" }),
-  );
   installBrowserRecordingAPIs();
   getUserMedia.mockReset();
   getUserMedia.mockResolvedValue({ getTracks: () => [] });
@@ -496,9 +488,6 @@ describe("onboarding brain dump", () => {
     render(<OnboardingPage />);
     await screen.findByText(DUMP_HEADLINE);
     await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Continue" }),
-    );
 
     await waitFor(() =>
       expect(calls.map((c) => c.endpoint)).toEqual(["finalize"]),
@@ -687,9 +676,6 @@ describe("onboarding brain dump — skip", () => {
     await screen.findByText(DUMP_HEADLINE);
 
     await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Continue" }),
-    );
 
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({
@@ -711,9 +697,8 @@ describe("onboarding brain dump — skip", () => {
     render(<OnboardingPage />);
     await screen.findByText(DUMP_HEADLINE);
 
-    await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
     await userEvent.dblClick(
-      await screen.findByRole("button", { name: "Continue" }),
+      screen.getByRole("button", { name: "Skip for now" }),
     );
 
     expect(await screen.findByTestId("step-plan")).toBeDefined();
@@ -722,179 +707,6 @@ describe("onboarding brain dump — skip", () => {
     // Room for a second skip's advance to land, had one been sent.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(skip.skipBodies).toHaveLength(1);
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(
-      NO_PAYWALL_STEPS.subscription,
-    );
-  });
-});
-
-describe("onboarding brain dump — why it was skipped", () => {
-  const SKIP_QUESTION = "No problem. Mind telling us why?";
-
-  function mockPrompt() {
-    const patches: unknown[] = [];
-    server.use(
-      getPostV2ClaimFeedbackPromptMockHandler200({ id: "prompt-1" }),
-      getPatchV2UpdateFeedbackPromptMockHandler200(async ({ request }) => {
-        patches.push(await request.clone().json());
-        return {
-          id: "prompt-1",
-          kind: "brain_dump_skip",
-          answered: true,
-          dismissed: false,
-          reason: "privacy",
-          score: null,
-        };
-      }),
-    );
-    return patches;
-  }
-
-  async function skipToTiles() {
-    landOnPainPointsStep();
-    render(<OnboardingPage />);
-    await screen.findByText(DUMP_HEADLINE);
-    await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
-    expect(await screen.findByText(SKIP_QUESTION)).toBeDefined();
-  }
-
-  it("keeps skip reasons open and releases a microphone granted after Skip", async () => {
-    mockPrompt();
-    let allowMicrophone = (_stream: {
-      getTracks: () => { stop: () => void }[];
-    }) => {};
-    const microphone = new Promise<{ getTracks: () => { stop: () => void }[] }>(
-      (resolve) => {
-        allowMicrophone = resolve;
-      },
-    );
-    const stop = vi.fn();
-    getUserMedia.mockReturnValueOnce(microphone);
-    landOnPainPointsStep();
-    render(<OnboardingPage />);
-    await userEvent.click(await screen.findByRole("button", { name: "Talk" }));
-    await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
-    expect(await screen.findByText(SKIP_QUESTION)).toBeDefined();
-    await act(async () => allowMicrophone({ getTracks: () => [{ stop }] }));
-    await waitFor(() => expect(stop).toHaveBeenCalledOnce());
-    expect(screen.getByText(SKIP_QUESTION)).toBeDefined();
-  });
-
-  it("continues without asking when the feedback claim is refused", async () => {
-    finalizeReturns({ status: "completed" });
-    server.use(getPostV2ClaimFeedbackPromptMockHandler200({ id: null }));
-    landOnPainPointsStep();
-    render(<OnboardingPage />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Skip for now" }),
-    );
-    expect(await screen.findByTestId("step-plan")).toBeDefined();
-    expect(screen.queryByText(SKIP_QUESTION)).toBeNull();
-  });
-
-  it("keeps skip reasons open after late microphone denial", async () => {
-    mockPrompt();
-    let deny = (_error: Error) => {};
-    getUserMedia.mockReturnValueOnce(
-      new Promise((_resolve, reject) => {
-        deny = reject;
-      }),
-    );
-    landOnPainPointsStep();
-    render(<OnboardingPage />);
-    await userEvent.click(await screen.findByRole("button", { name: "Talk" }));
-    await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
-    await screen.findByText(SKIP_QUESTION);
-    await act(async () => deny(new DOMException("Denied", "NotAllowedError")));
-    expect(screen.getByText(SKIP_QUESTION)).toBeDefined();
-    expect(
-      screen.queryByRole("textbox", { name: "Your brain dump" }),
-    ).toBeNull();
-  });
-
-  it("ignores a refused claim after leaving the step", async () => {
-    let finish = (
-      _response: Awaited<
-        ReturnType<typeof feedbackPromptAPI.postV2ClaimFeedbackPrompt>
-      >,
-    ) => {};
-    const claim = new Promise<
-      Awaited<ReturnType<typeof feedbackPromptAPI.postV2ClaimFeedbackPrompt>>
-    >((resolve) => {
-      finish = resolve;
-    });
-    const request = vi
-      .spyOn(feedbackPromptAPI, "postV2ClaimFeedbackPrompt")
-      .mockReturnValueOnce(claim);
-    onTestFinished(() => request.mockRestore());
-    landOnPainPointsStep();
-    render(<OnboardingPage />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Skip for now" }),
-    );
-    await screen.findByText(SKIP_QUESTION);
-    await userEvent.click(screen.getByRole("button", { name: "Back" }));
-    const step = useOnboardingWizardStore.getState().currentStep;
-    vi.mocked(posthog.capture).mockClear();
-    await act(async () =>
-      finish({ status: 200, data: { id: null }, headers: new Headers() }),
-    );
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(step);
-    expect(posthog.capture).not.toHaveBeenCalledWith(
-      "brain_dump_skipped",
-      expect.anything(),
-    );
-  });
-
-  it("shows the tiles and stays on the step", async () => {
-    finalizeReturns({ status: "completed" });
-    mockPrompt();
-    await skipToTiles();
-    expect(screen.getByRole("button", { name: "Privacy" })).toBeDefined();
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(
-      NO_PAYWALL_STEPS.painPoints,
-    );
-  });
-
-  it("saves a tapped reason and moves on once", async () => {
-    const bodies = finalizeReturns({ status: "completed" });
-    const patches = mockPrompt();
-    await skipToTiles();
-    await userEvent.click(screen.getByRole("button", { name: "Privacy" }));
-    await waitFor(() => expect(patches).toEqual([{ reason: "privacy" }]));
-    expect(await screen.findByTestId("step-plan")).toBeDefined();
-    await waitFor(() => expect(bodies).toHaveLength(1));
-  });
-
-  it("passes without an answer on Continue", async () => {
-    const bodies = finalizeReturns({ status: "completed" });
-    const patches = mockPrompt();
-    await skipToTiles();
-    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-    expect(await screen.findByTestId("step-plan")).toBeDefined();
-    await waitFor(() => expect(bodies).toHaveLength(1));
-    expect(patches).toEqual([]);
-  });
-
-  it("still moves on when the claim fails", async () => {
-    finalizeReturns({ status: "completed" });
-    server.use(
-      http.post("*/api/feedback-prompts/claim", () =>
-        HttpResponse.json({ detail: "boom" }, { status: 500 }),
-      ),
-    );
-    await skipToTiles();
-    await userEvent.click(screen.getByRole("button", { name: "Privacy" }));
-    expect(await screen.findByTestId("step-plan")).toBeDefined();
-  });
-
-  it("moves on once when a tile is double tapped", async () => {
-    const bodies = finalizeReturns({ status: "completed" });
-    mockPrompt();
-    await skipToTiles();
-    await userEvent.dblClick(screen.getByRole("button", { name: "Privacy" }));
-    expect(await screen.findByTestId("step-plan")).toBeDefined();
-    await waitFor(() => expect(bodies).toHaveLength(1));
     expect(useOnboardingWizardStore.getState().currentStep).toBe(
       NO_PAYWALL_STEPS.subscription,
     );
@@ -913,7 +725,6 @@ describe("onboarding brain dump — the role reaches the server first", () => {
     await screen.findByText(DUMP_HEADLINE);
     act(() => useOnboardingWizardStore.getState().setRole("Marketing"));
     fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Continue" }));
 
     expect(await screen.findByTestId("step-plan")).toBeDefined();
     await waitFor(() =>
@@ -1386,15 +1197,11 @@ describe("onboarding brain dump — insufficient content", () => {
 
   it("moves on from 'Continue without it' before the skip is recorded", async () => {
     const skip = holdSkipRecord();
-    onTestFinished(skip.release);
 
     await recordAndSend();
     await screen.findByText("We didn't catch enough of that.");
     await userEvent.click(
       screen.getByRole("button", { name: "Continue without it" }),
-    );
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Continue" }),
     );
 
     expect(await screen.findByTestId("step-plan")).toBeDefined();
@@ -1434,9 +1241,6 @@ describe("onboarding brain dump — insufficient content", () => {
     const recordingID = recordingStoreState.parts[0].recordingId;
     await userEvent.click(
       screen.getByRole("button", { name: "Continue without it" }),
-    );
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Continue" }),
     );
     await screen.findByTestId("step-plan");
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
@@ -1621,9 +1425,6 @@ describe("onboarding brain dump — Otto might ask", () => {
     await userEvent.click(screen.getByRole("button", { name: "Write" }));
     await screen.findByText(ENGINEERING.questions[4].text);
     await userEvent.click(screen.getByRole("button", { name: "Skip for now" }));
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Continue" }),
-    );
 
     expect(posthog.capture).toHaveBeenCalledWith("brain_dump_skipped", {
       prompt_set: "Engineering",

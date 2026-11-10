@@ -50,7 +50,6 @@ import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useSettleGate } from "./useSettleGate";
-import { markTaskSent } from "./components/SuggestedTasks/markTaskSent";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 
 function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
@@ -452,7 +451,6 @@ function useCopilotPageChat(
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
     metadata?: ExpertKickoffMetadata,
-    waitForDeferredSend = false,
   ) {
     const trimmed = message.trim();
     const hasAttachments =
@@ -495,7 +493,7 @@ function useCopilotPageChat(
         await queueFollowUpMessage(sessionId, trimmed);
         if (heldForLocalSettle) releaseFollowUp(sessionId, trimmed);
         queueMessage(trimmed);
-        return sessionId;
+        return;
       } catch (err) {
         // Any other failure propagates to the composer, which restores the
         // draft and shows the one toast for it.
@@ -530,17 +528,10 @@ function useCopilotPageChat(
       // Resolve once dispatched, not when the whole answer has streamed:
       // the composer's enqueue path is waiting on this, and holding it for
       // the entire turn would lock Enter and the queue button again.
-      const deferredSend = sendNewMessage(
-        message,
-        files,
-        workspaceFiles,
-        metadata,
+      void sendNewMessage(message, files, workspaceFiles, metadata).catch(
+        (err: unknown) => recoverFailedDeferredSend(trimmed, [], err),
       );
-      if (waitForDeferredSend) return await deferredSend;
-      void deferredSend.catch((err: unknown) =>
-        recoverFailedDeferredSend(trimmed, [], err),
-      );
-      return sessionId;
+      return;
     }
     return await sendNewMessage(message, files, workspaceFiles, metadata);
   }
@@ -553,14 +544,13 @@ function useCopilotPageChat(
   );
   // A suggested task records which chat its message started.
   const onStartTask = useStableCallback((message: string) =>
-    sendOrQueue(message, undefined, undefined, undefined, true),
+    sendOrQueue(message),
   );
 
   useWorkflowImportAutoSubmit({
-    onSend: onStartTask,
+    onSend: sendOrQueue,
     setPendingFileParts,
     isSendLocked: isExpertSendLocked,
-    onTaskStarted: markTaskSent,
   });
 
   const { isKickoffStarting } = useExpertKickoff({

@@ -2,10 +2,6 @@ import type { FileUIPart } from "ai";
 import { useEffect, useRef } from "react";
 import { useCopilotUIStore } from "./store";
 
-/** Names the suggested task a prompt came from, so its row can be marked sent
- *  once the chat exists. */
-export const SUGGESTED_TASK_PARAM = "suggestedTaskId";
-
 /**
  * Extract a prompt from the URL hash fragment.
  * Supports: /copilot#prompt=URL-encoded-text
@@ -16,7 +12,6 @@ function extractPromptFromUrl(): {
   prompt: string;
   autosubmit: boolean;
   filePart?: FileUIPart;
-  taskID?: string | null;
 } | null {
   if (typeof window === "undefined") return null;
 
@@ -26,13 +21,7 @@ function extractPromptFromUrl(): {
   // Check sessionStorage first (used by workflow import for large prompts
   // and by the marketing-site CTA handoff via useCaptureMarketingPrompt).
   const storedPrompt = sessionStorage.getItem("importWorkflowPrompt");
-  const hashPrompt = new URLSearchParams(window.location.hash.slice(1)).get(
-    "prompt",
-  );
-  const hasTaskPrompt = Boolean(
-    searchParams.get(SUGGESTED_TASK_PARAM) && hashPrompt?.trim(),
-  );
-  if (storedPrompt && !hasTaskPrompt) {
+  if (storedPrompt) {
     sessionStorage.removeItem("importWorkflowPrompt");
 
     // Onboarding wipes URL params before we reach /copilot, so the
@@ -69,7 +58,6 @@ function extractPromptFromUrl(): {
     const cleanURL = new URL(window.location.href);
     cleanURL.searchParams.delete("autosubmit");
     cleanURL.searchParams.delete("source");
-    cleanURL.searchParams.delete(SUGGESTED_TASK_PARAM);
     window.history.replaceState(
       null,
       "",
@@ -91,18 +79,13 @@ function extractPromptFromUrl(): {
   const cleanURL = new URL(window.location.href);
   cleanURL.hash = "";
   cleanURL.searchParams.delete("autosubmit");
-  cleanURL.searchParams.delete(SUGGESTED_TASK_PARAM);
   window.history.replaceState(
     null,
     "",
     `${cleanURL.pathname}${cleanURL.search}`,
   );
 
-  return {
-    prompt: prompt.trim(),
-    autosubmit: autosubmitFromUrl,
-    taskID: searchParams.get(SUGGESTED_TASK_PARAM),
-  };
+  return { prompt: prompt.trim(), autosubmit: autosubmitFromUrl };
 }
 
 /**
@@ -115,12 +98,10 @@ export function useWorkflowImportAutoSubmit({
   onSend,
   setPendingFileParts,
   isSendLocked = false,
-  onTaskStarted,
 }: {
   onSend: (message: string) => Promise<unknown>;
   setPendingFileParts: (parts: FileUIPart[]) => void;
   isSendLocked?: boolean;
-  onTaskStarted?: (started: { taskID: string; sessionID: string }) => void;
 }) {
   const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
   const hasProcessedUrlPrompt = useRef(false);
@@ -139,16 +120,9 @@ export function useWorkflowImportAutoSubmit({
       if (urlPrompt.filePart) {
         setPendingFileParts([urlPrompt.filePart]);
       }
-      void onSend(urlPrompt.prompt).then(
-        (sessionID) => {
-          if (urlPrompt.taskID && typeof sessionID === "string") {
-            onTaskStarted?.({ taskID: urlPrompt.taskID, sessionID });
-          }
-        },
-        () => {
-          setInitialPrompt(urlPrompt.prompt);
-        },
-      );
+      void onSend(urlPrompt.prompt).catch(() => {
+        setInitialPrompt(urlPrompt.prompt);
+      });
     } else {
       setInitialPrompt(urlPrompt.prompt);
     }

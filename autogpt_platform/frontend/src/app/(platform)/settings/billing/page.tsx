@@ -28,10 +28,11 @@ import {
 } from "@/services/analytics/monetization-analytics";
 
 import { AutomationCreditsTab } from "./components/AutomationCreditsTab/AutomationCreditsTab";
+import { CheckoutAbandonedPrompt } from "./components/CheckoutAbandonedPrompt/CheckoutAbandonedPrompt";
 import {
-  CheckoutAbandonedPrompt,
-  type AbandonedCheckout,
-} from "./components/CheckoutAbandonedPrompt/CheckoutAbandonedPrompt";
+  readAbandonedPlan,
+  type AbandonedPlan,
+} from "./components/CheckoutAbandonedPrompt/helpers";
 import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
 
 type BillingTab = "subscription" | "automation-credits";
@@ -67,9 +68,11 @@ function SettingsBillingPage() {
   const { mutateAsync: fulfillCheckout } = usePatchV1FulfillCheckoutSession();
   const handledTopupRef = useRef<string | null>(null);
   const handledSubscriptionRef = useRef<string | null>(null);
-  const handledTrialRef = useRef<string | null>(null);
-  const [abandonedCheckout, setAbandonedCheckout] =
-    useState<AbandonedCheckout | null>(null);
+  // Set on return from an upgrade checkout left unpaid; the plan is null when
+  // the cancel URL did not name one.
+  const [abandonedCheckout, setAbandonedCheckout] = useState<{
+    plan: AbandonedPlan | null;
+  } | null>(null);
   const [isExplainerOpen, setIsExplainerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<BillingTab>(() =>
     resolveInitialTab(searchParams),
@@ -142,25 +145,19 @@ function SettingsBillingPage() {
           checkout_kind: "subscription",
           surface: "billing",
         });
-        setAbandonedCheckout("upgrade");
+        setAbandonedCheckout({ plan: readAbandonedPlan(searchParams) });
       }
 
       router.replace("/settings/billing");
     },
-    [subscriptionStatus, queryClient, router],
+    [subscriptionStatus, queryClient, router, searchParams],
   );
 
   useEffect(
-    function handleTrialRedirect() {
-      if (trialStatus !== "cancelled") return;
-      if (handledTrialRef.current === trialStatus) return;
-      handledTrialRef.current = trialStatus;
-
-      trackTrialCheckoutAbandoned("billing");
-      setAbandonedCheckout("trial");
-      router.replace("/settings/billing");
+    function reportTrialCheckoutCancelled() {
+      if (trialStatus === "cancelled") trackTrialCheckoutAbandoned("billing");
     },
-    [trialStatus, router],
+    [trialStatus],
   );
 
   return (
@@ -208,10 +205,7 @@ function SettingsBillingPage() {
         showBillingLink={false}
       />
       {abandonedCheckout ? (
-        <CheckoutAbandonedPrompt
-          key={abandonedCheckout}
-          kind={abandonedCheckout}
-        />
+        <CheckoutAbandonedPrompt plan={abandonedCheckout.plan} />
       ) : null}
     </div>
   );

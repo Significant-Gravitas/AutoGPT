@@ -1,13 +1,16 @@
 "use client";
 
-import { useTopUpPrompt } from "@/components/layout/TopUpPrompt/useTopUpPrompt";
 import { NpsCard } from "@/components/organisms/FeedbackPrompts/NpsCard";
 import { useFeedbackPrompt } from "@/components/organisms/FeedbackPrompts/useFeedbackPrompt";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { cn } from "@/lib/utils";
 import { useState } from "react";
-import { hasNpsMarker, isNpsDue, setNpsMarker } from "./helpers";
+import {
+  isNpsDue,
+  markNpsAsked,
+  markNpsNotYet,
+  shouldCheckNps,
+} from "./helpers";
 
 export function NpsPrompt() {
   const { user } = useAuth();
@@ -20,41 +23,40 @@ interface GateProps {
   createdAt?: string;
 }
 
-// Decides once per account and page load; the top-up card only holds the
-// question back, it never takes it away once asked.
+// Decides once per account and page load.
 function NpsGate({ userID, createdAt }: GateProps) {
-  const { isTopUpCardOpen } = useTopUpPrompt();
-  const [isDue] = useState(
-    () => isNpsDue(createdAt, Date.now()) && !hasNpsMarker(userID),
-  );
-  const [isStarted, setIsStarted] = useState(false);
-
-  if (isDue && !isTopUpCardOpen && !isStarted) setIsStarted(true);
-  if (!isStarted) return null;
-
-  return <NpsClaim userID={userID} isHidden={isTopUpCardOpen} />;
+  const [isDue] = useState(() => {
+    const now = Date.now();
+    return isNpsDue(createdAt, now) && shouldCheckNps(userID, now);
+  });
+  if (!isDue) return null;
+  return <NpsClaim userID={userID} />;
 }
 
 interface ClaimProps {
   userID: string;
-  isHidden: boolean;
 }
 
-function NpsClaim({ userID, isHidden }: ClaimProps) {
+function NpsClaim({ userID }: ClaimProps) {
   const prompt = useFeedbackPrompt("nps");
   const [isClaimed, setIsClaimed] = useState(false);
 
   useMountEffect(() => {
     void prompt.claim().then(({ id, failed }) => {
-      if (!failed) setNpsMarker(userID);
-      if (id) setIsClaimed(true);
+      if (failed) return;
+      if (!id) {
+        markNpsNotYet(userID, Date.now());
+        return;
+      }
+      markNpsAsked(userID);
+      setIsClaimed(true);
     });
   });
 
   if (!isClaimed) return null;
 
   return (
-    <div className={cn("fixed right-6 bottom-6 z-40", isHidden && "hidden")}>
+    <div className="fixed right-6 bottom-6 z-40">
       <NpsCard
         onScore={(score) => prompt.save({ score })}
         onSubmit={({ score, note }) =>

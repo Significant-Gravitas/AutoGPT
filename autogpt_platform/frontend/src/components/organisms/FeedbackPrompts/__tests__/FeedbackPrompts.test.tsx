@@ -6,14 +6,12 @@ import { expectTypingKept } from "@/tests/integrations/typing";
 import { CancelTrialFeedbackDialog } from "../CancelTrialFeedbackDialog";
 import { CheckoutAbandonedDialog } from "../CheckoutAbandonedDialog";
 import { NpsCard } from "../NpsCard";
-import { OnboardingSkipPrompt } from "../OnboardingSkipPrompt";
 import { OttoMistakeCard } from "../OttoMistakeCard";
-import { TopUpDismissedCard } from "../TopUpDismissedCard";
+import { TopUpQuestion } from "../TopUpQuestion";
 import { WorkCheckCard } from "../WorkCheckCard";
 import { ThanksLine } from "../components/ThanksLine";
 import { CHANGELOG_BASE_URL } from "@/components/molecules/ChangelogPopup/changelog-constants";
 import { NoInitialFocus } from "../components/NoInitialFocus";
-import { BRAIN_DUMP_SKIP_REASONS, SAMPLE_STARTERS } from "../helpers";
 
 function FocusForm() {
   const [note, setNote] = useState("");
@@ -41,80 +39,78 @@ test("typing keeps focus after the prompt has opened", async () => {
   await expectTypingKept(note, "useful ", 3);
 });
 
-test("trial cancellation collects a note and confirms the choice", async () => {
-  render(<CancelTrialFeedbackDialog />);
+test("trial cancellation asks for an optional reason on the confirm itself", async () => {
+  const onConfirm = vi.fn();
+  render(<CancelTrialFeedbackDialog onConfirm={onConfirm} />);
+  expect(screen.getByText("Cancel your trial?")).toBeDefined();
   expect(
-    screen.getByRole("group", {
-      name: "Before you go, what's the main reason?",
-    }),
+    screen.getByRole("group", { name: "What's the main reason? (optional)" }),
   ).toBeDefined();
-  await userEvent.click(screen.getByRole("button", { name: "Something else" }));
-  const note = screen.getByRole("textbox", {
-    name: "What would have made you stay?",
-  }) as HTMLTextAreaElement;
-  await expectTypingKept(note, "More integrations");
-  await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-  expect(await screen.findByText("Cancel your trial?")).toBeDefined();
+  expect(screen.getByRole("button", { name: "Keep trial" })).toBeDefined();
   await userEvent.click(screen.getByRole("button", { name: "Cancel trial" }));
+  expect(onConfirm).toHaveBeenCalledWith({ reason: null, note: "" });
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
 
-test.each([{ starters: SAMPLE_STARTERS.developer }, { starters: [] }])(
-  "trial cancellation offers help with stored tasks or no tasks",
-  async ({ starters }) => {
-    render(<CancelTrialFeedbackDialog starters={starters} />);
-    await userEvent.click(
-      screen.getByRole("button", { name: "I haven't seen results yet" }),
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-    expect(await screen.findByText("Let Otto show you first")).toBeDefined();
-    if (starters.length) {
-      for (const starter of starters)
-        expect(screen.getByRole("button", { name: starter })).toBeDefined();
-    } else {
-      expect(
-        screen.getByText(
-          "Tell me one weekly task and I'll do it with you now.",
-        ),
-      ).toBeDefined();
-    }
-    await userEvent.click(
-      screen.getByRole("button", { name: "No thanks, cancel" }),
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Keep trial" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  },
-);
-
-test("a trial cancellation can skip the feedback step", async () => {
-  render(<CancelTrialFeedbackDialog />);
-  expect(
-    (screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement)
-      .disabled,
-  ).toBe(true);
-  await userEvent.click(screen.getByRole("button", { name: "Skip" }));
-  expect(await screen.findByText("Cancel your trial?")).toBeDefined();
+test("trial cancellation sends the picked reason and its note", async () => {
+  const onReason = vi.fn();
+  const onConfirm = vi.fn();
+  render(
+    <CancelTrialFeedbackDialog onReason={onReason} onConfirm={onConfirm} />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Something else" }));
+  expect(onReason).toHaveBeenCalledWith("other");
+  const note = screen.getByRole("textbox", {
+    name: "Tell us a bit more (optional)",
+  }) as HTMLTextAreaElement;
+  await expectTypingKept(note, "More integrations");
+  expect(screen.getByRole("button", { name: "Keep trial" })).toBeDefined();
+  await userEvent.click(screen.getByRole("button", { name: "Cancel trial" }));
+  expect(onConfirm).toHaveBeenCalledWith({
+    reason: "other",
+    note: "More integrations",
+  });
 });
 
-test.each(["trial", "upgrade"] as const)(
-  "abandoned %s checkout accepts a reason and thanks the user",
-  async (kind) => {
-    render(<CheckoutAbandonedDialog kind={kind} />);
-    await userEvent.click(
-      screen.getByRole("button", { name: "Something else" }),
-    );
-    const note = screen.getByRole("textbox", {
-      name: "Tell us a bit more (optional)",
-    }) as HTMLTextAreaElement;
-    await expectTypingKept(note, "Need more time");
-    await userEvent.click(screen.getByRole("button", { name: "Send" }));
-    expect(await screen.findByText(/Thanks\./)).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
-  },
-);
+test("keeping the trial sends nothing to cancel", async () => {
+  const onConfirm = vi.fn();
+  render(<CancelTrialFeedbackDialog onConfirm={onConfirm} />);
+  await userEvent.click(
+    screen.getByRole("button", { name: "I haven't seen results yet" }),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Keep trial" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(onConfirm).not.toHaveBeenCalled();
+});
+
+test("abandoned upgrade checkout accepts a reason and thanks the user", async () => {
+  render(<CheckoutAbandonedDialog onTryAnotherCard={() => {}} />);
+  await userEvent.click(screen.getByRole("button", { name: "Something else" }));
+  const note = screen.getByRole("textbox", {
+    name: "Tell us a bit more (optional)",
+  }) as HTMLTextAreaElement;
+  await expectTypingKept(note, "Need more time");
+  await userEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(await screen.findByText(/Thanks, we read every one/)).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Try another card" })).toBeNull();
+});
+
+test("only a card answer offers another card", async () => {
+  const onTryAnotherCard = vi.fn();
+  render(<CheckoutAbandonedDialog onTryAnotherCard={onTryAnotherCard} />);
+  await userEvent.click(
+    screen.getByRole("button", { name: "My card didn't go through" }),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Send" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Try another card" }),
+  );
+  expect(onTryAnotherCard).toHaveBeenCalledOnce();
+});
 
 test.each([
-  [3, "What's the biggest thing holding it back?"],
+  [3, "What's the main thing we should fix?"],
   [8, "What would make it a 10?"],
   [10, "What do you like most?"],
 ] as const)(
@@ -123,7 +119,7 @@ test.each([
     render(<NpsCard />);
     expect(
       screen.getByRole("group", {
-        name: /How likely are you to recommend AutoGPT.*0.*10/,
+        name: /recommend AutoGPT to a friend or colleague.*0.*10/,
       }),
     ).toBeDefined();
     await userEvent.click(screen.getByRole("button", { name: String(score) }));
@@ -147,24 +143,10 @@ test("NPS can be dismissed", async () => {
   expect(screen.queryByRole("region")).toBeNull();
 });
 
-test("skipping onboarding accepts one reason", async () => {
-  render(
-    <OnboardingSkipPrompt
-      question="Mind telling us why?"
-      reasons={BRAIN_DUMP_SKIP_REASONS}
-    />,
-  );
-  expect(
-    screen.getByRole("group", { name: "Mind telling us why?" }),
-  ).toBeDefined();
-  await userEvent.click(
-    screen.getByRole("button", { name: "I'd rather type" }),
-  );
-  expect(await screen.findByText("Got it, thanks.")).toBeDefined();
-});
-
-test("a mistake prompt accepts a reason and a note", async () => {
+test("a mistake prompt shares the work check's reasons", async () => {
   render(<OttoMistakeCard />);
+  for (const name of ["I had to step in too much", "Not good enough to use"])
+    expect(screen.getByRole("button", { name })).toBeDefined();
   await userEvent.click(screen.getByRole("button", { name: "Something else" }));
   const note = screen.getByRole("textbox", {
     name: "Tell us a bit more (optional)",
@@ -176,8 +158,8 @@ test("a mistake prompt accepts a reason and a note", async () => {
   ).toBeDefined();
 });
 
-test("a top-up prompt accepts a reason", async () => {
-  render(<TopUpDismissedCard />);
+test("a top-up question accepts a reason", async () => {
+  render(<TopUpQuestion />);
   await userEvent.click(screen.getByRole("button", { name: "A lower price" }));
   expect(
     screen
@@ -188,35 +170,39 @@ test("a top-up prompt accepts a reason", async () => {
   expect(await screen.findByText(/Thanks, we read every one/)).toBeDefined();
 });
 
-test.each(["Not good", "Okay", "Great"])(
-  "work check handles %s feedback",
-  async (rating) => {
-    render(
-      <WorkCheckCard
-        name="Maria"
-        avatarUrl={null}
-        note="Quick check-in on this task"
-      />,
+test.each([
+  ["Not good", "What went wrong?"],
+  ["Okay", "What would have made it great?"],
+  ["Great", null],
+] as const)("work check handles %s feedback", async (rating, followUp) => {
+  render(
+    <WorkCheckCard
+      name="Maria"
+      avatarUrl={null}
+      note="Quick check-in on this task"
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: rating }));
+  if (followUp === null) {
+    expect(
+      await screen.findByText(/We'll pass that on to Maria/),
+    ).toBeDefined();
+  } else {
+    expect(screen.getByRole("group", { name: followUp })).toBeDefined();
+    await userEvent.click(
+      screen.getByRole("button", { name: "I had to step in too much" }),
     );
-    await userEvent.click(screen.getByRole("button", { name: rating }));
-    if (rating === "Great") {
-      expect(
-        await screen.findByText(/We'll pass that on to Maria/),
-      ).toBeDefined();
-    } else {
-      await userEvent.click(
-        screen.getByRole("button", { name: "Got facts wrong" }),
-      );
-      await userEvent.click(screen.getByRole("button", { name: "Send" }));
-      expect(await screen.findByText(/Maria learns from this/)).toBeDefined();
-    }
-  },
-);
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(
+      await screen.findByText("Thanks. The team reads every one of these."),
+    ).toBeDefined();
+  }
+});
 
 test("reason callbacks carry stable values and the note", async () => {
   const onReason = vi.fn();
   const onSubmit = vi.fn();
-  render(<TopUpDismissedCard onReason={onReason} onSubmit={onSubmit} />);
+  render(<TopUpQuestion onReason={onReason} onSubmit={onSubmit} />);
   await userEvent.click(screen.getByRole("button", { name: "A lower price" }));
   expect(onReason).toHaveBeenCalledWith("lower_price");
   await userEvent.click(screen.getByRole("button", { name: "Something else" }));
@@ -230,18 +216,6 @@ test("reason callbacks carry stable values and the note", async () => {
     reason: "other",
     note: "Less per month",
   });
-});
-
-test("the trial offer only appears for the no-results reason, by value", async () => {
-  render(<CancelTrialFeedbackDialog />);
-  await userEvent.click(
-    screen.getByRole("button", { name: "It's missing something" }),
-  );
-  expect(
-    screen.getByRole("textbox", { name: "What would have made you stay?" }),
-  ).toBeDefined();
-  await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-  expect(await screen.findByText("Cancel your trial?")).toBeDefined();
 });
 
 test("closing a card without answering reports a dismissal", async () => {

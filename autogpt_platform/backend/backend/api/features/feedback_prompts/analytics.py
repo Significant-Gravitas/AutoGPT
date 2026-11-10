@@ -27,6 +27,5 @@ def capture_prompt_answered(user_id: str, prompt: FeedbackPrompt) -> None:
             "reason": prompt.reason,
             "note": prompt.note,
             "score": prompt.score,
-            "offer_taken": prompt.offerTaken,
         },
     )
