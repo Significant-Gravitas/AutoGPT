@@ -217,37 +217,46 @@ describe("feedback cards in a chat", () => {
   it("stays hidden while the reply streams", async () => {
     setup();
     render(
-      <ChatMessagesContainer
-        {...baseProps}
-        status="streaming"
-        messages={[USER, reply([workCheck()])]}
-      />,
+      <>
+        <FeedbackLoaded />
+        <ChatMessagesContainer
+          {...baseProps}
+          status="streaming"
+          messages={[USER, reply([workCheck()])]}
+        />
+      </>,
     );
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await screen.findByText("Feedback state loaded");
     expect(screen.queryByText("How did Otto do?")).toBeNull();
   });
 
   it("goes away once the user follows up", async () => {
     setup();
     render(
-      <ChatMessagesContainer
-        {...baseProps}
-        messages={[USER, reply([workCheck()]), FOLLOW_UP]}
-      />,
+      <>
+        <FeedbackLoaded />
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[USER, reply([workCheck()]), FOLLOW_UP]}
+        />
+      </>,
     );
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await screen.findByText("Feedback state loaded");
     expect(screen.queryByText("How did Otto do?")).toBeNull();
   });
 
   it("renders nothing when the backend said not to ask", async () => {
     setup();
     render(
-      <ChatMessagesContainer
-        {...baseProps}
-        messages={[USER, reply([workCheck(null), mistake(null)])]}
-      />,
+      <>
+        <FeedbackLoaded />
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[USER, reply([workCheck(null), mistake(null)])]}
+        />
+      </>,
     );
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await screen.findByText("Feedback state loaded");
     expect(screen.queryByText("How did Otto do?")).toBeNull();
     expect(screen.queryByText("Help the team fix this")).toBeNull();
   });
