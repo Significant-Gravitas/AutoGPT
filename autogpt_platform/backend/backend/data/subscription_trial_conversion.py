@@ -1,4 +1,5 @@
-"""Start a paid plan on a cancel-pending trial's own subscription, today.
+"""Start a paid plan on a cancel-pending trial's own subscription, today, or
+end a trial without a card so Checkout can sell the plan.
 
 Stripe limits a customer to one subscription, so the plan can't be bought
 beside the trial: the trial's subscription is the one that changes.
@@ -66,6 +67,59 @@ async def get_cancel_pending_trial(user_id: str) -> TrialState | None:
     if trial is None or not _is_cancel_pending(trial):
         return None
     return trial
+
+
+async def end_trial_without_card(user_id: str) -> bool:
+    """End now a live trial that gives no access because Stripe can't charge
+    its card, so the plan the person chose can be bought.
+
+    Such a trial (NO_TIER) refuses every plan until trial_end: converting it
+    needs a card to charge, and no plan is sold beside it. Ending it lets
+    Checkout collect a card. Returns False, changing nothing, when the trial
+    isn't live or its card can be charged.
+    """
+    trial = await get_subscription_trial(user_id)
+    if (
+        trial is None
+        or trial.subscription_id is None
+        or trial.consumed_at is None
+        or trial.converted_at is not None
+        or trial.status != "trialing"
+    ):
+        return False
+    try:
+        async with subscription_checkout_lock(trial.user_id):
+            return await _end_without_card_locked(trial, trial.subscription_id)
+    except SubscriptionCheckoutUnavailable as exc:
+        raise TrialConversionRefused(TRIAL_BUSY) from exc
+
+
+async def _end_without_card_locked(trial: TrialState, subscription_id: str) -> bool:
+    subscription = await stripe_call(
+        stripe.Subscription.retrieve_async, subscription_id
+    )
+    metadata = subscription.get("metadata") or {}
+    if (
+        subscription.get("customer") != trial.customer_id
+        or metadata.get("trial_enrollment_id") != trial.id
+        or metadata.get("user_id") != trial.user_id
+        or subscription.get("status") != "trialing"
+    ):
+        return False
+    if await subscription_card_can_be_charged(subscription.id, datetime.now(UTC)):
+        return False
+    try:
+        ended = await stripe_call(
+            stripe.Subscription.cancel_async,
+            subscription.id,
+            invoice_now=False,
+            prorate=False,
+        )
+        await sync_subscription_from_stripe(dict(ended))
+    finally:
+        await invalidate_billing_lookups(trial.customer_id)
+    logger.info(f"Ended trial {trial.id} without a card so a plan can be bought")
+    return True
 
 
 def is_trial_plan(
