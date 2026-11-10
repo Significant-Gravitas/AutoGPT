@@ -15,8 +15,8 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
 
 from backend.api.utils.cors import build_cors_params
-from backend.util.settings import AppEnvironment, Settings
-from backend.voice_relay import locks, tokens
+from backend.util.settings import AppEnvironment, Config, Settings
+from backend.voice_relay import locks, serve, tokens
 from backend.voice_relay.app import Relay, create_app
 from backend.voice_relay.conftest import (
     ORIGIN,
@@ -506,3 +506,26 @@ def test_a_relay_with_a_livekit_project_joins_closes_and_sweeps_call_rooms(
 
 def test_a_relay_with_no_livekit_project_takes_every_call_on_the_socket(monkeypatch):
     assert _livekit(_settings(monkeypatch, url="")) == (None, None)
+
+
+@pytest.mark.parametrize("exclusive", [True, False])
+def test_the_relays_reaper_adopts_rooms_with_no_entry_only_on_a_project_of_its_own(
+    monkeypatch, exclusive
+):
+    made: list[dict] = []
+
+    class Recorded:
+        def __init__(self, project, **options) -> None:
+            made.append(options)
+
+    monkeypatch.setattr(serve, "RoomReaper", Recorded)
+    settings = _settings(monkeypatch, url="wss://agpt.livekit.cloud")
+    monkeypatch.setattr(settings.config, "voice_livekit_project_exclusive", exclusive)
+
+    _livekit(settings)
+
+    assert made[0]["exclusive"] is exclusive
+
+
+def test_a_livekit_project_counts_as_shared_unless_a_deployment_says_otherwise():
+    assert Config.model_fields["voice_livekit_project_exclusive"].default is False

@@ -10,6 +10,20 @@ from livekit import api
 from prometheus_client import REGISTRY
 
 from backend.voice_relay import locks, room_reaper, rooms
+from backend.voice_relay.config import (
+    CAPS,
+    ROOM_END_GRACE_S,
+    ROOM_FORGET_AFTER_REVOKED_S,
+    ROOM_PLAYOUT_S,
+    ROOM_REVOCATION_S,
+    ROOM_REVOKE_AGAIN_AFTER_S,
+    ROOM_REVOKE_AHEAD_S,
+    ROOM_START_GRACE_S,
+    ROOM_SWEEP_S,
+    ROOM_TOKEN_LEEWAY_S,
+    ROOM_TOKEN_TTL_S,
+    ROOM_UNREGISTERED_GRACE_S,
+)
 from backend.voice_relay.conftest import (
     LIVEKIT,
     FakeMedia,
@@ -26,6 +40,9 @@ CALL = "a" * 32
 OTHER_CALL = "b" * 32
 PERSON = f"user:{USER}"
 NOW = 1_800_000_000.0
+# A close's cutoff: every token of the person's issued until a moment past
+# the close.
+CUTOFF = int(NOW) + ROOM_REVOKE_AHEAD_S
 
 
 class Clock:
@@ -66,7 +83,7 @@ async def _entry(redis, call_id: str = CALL) -> locks.RoomEntry | None:
 # --- closing a room ----------------------------------------------------------
 
 
-async def test_a_close_removes_the_person_with_their_tokens_revoked_until_now_then_deletes_the_room(
+async def test_a_close_removes_the_person_with_their_tokens_revoked_past_now_then_deletes_the_room(
     redis,
 ):
     service = FakeRoomService()
@@ -80,7 +97,8 @@ async def test_a_close_removes_the_person_with_their_tokens_revoked_until_now_th
     [(_, remove), (_, delete)] = service.requests
     assert isinstance(remove, api.RoomParticipantIdentity)
     assert (remove.room, remove.identity) == (rooms.room_name(CALL), PERSON)
-    assert remove.revoke_token_ts == int(NOW)
+    # A little ahead of now, so a token issued this same second is caught.
+    assert remove.revoke_token_ts == CUTOFF > NOW
     assert isinstance(delete, api.DeleteRoomRequest)
     assert delete.room == rooms.room_name(CALL)
     assert service.rooms == {}
@@ -100,17 +118,24 @@ async def test_a_room_or_a_person_already_gone_counts_as_closed(redis):
     assert entry is not None and entry.closed_at == NOW
 
 
-@pytest.mark.parametrize("fails", ["raises", "hangs"])
+@pytest.mark.parametrize(
+    "fails",
+    ["the deletion raises", "the deletion hangs", "the removal raises"],
+)
 async def test_a_close_that_fails_is_counted_and_leaves_the_entry_to_the_sweep(
     redis, monkeypatch, fails
 ):
     monkeypatch.setattr(room_reaper, "ROOM_LEAVE_TIMEOUT_S", 0.1)
     service = FakeRoomService()
     service.open(rooms.room_name(CALL), PERSON)
-    if fails == "raises":
+    if fails == "the deletion raises":
         service.fail["delete"] = api.TwirpError("unavailable", "busy", status=503)
-    else:
+    elif fails == "the deletion hangs":
         service.hang.add("delete")
+    else:
+        service.fail["remove"] = api.TwirpError(
+            "invalid_argument", "revoke_token_ts out of range", status=400
+        )
     await locks.register_room(redis, CALL, USER, NOW - 100)
     reaper = reaper_on(redis, service, clock=Clock())
     before = _closed("call_end", "failed")
@@ -121,6 +146,8 @@ async def test_a_close_that_fails_is_counted_and_leaves_the_entry_to_the_sweep(
     assert entry is not None and entry.closed_at is None
     assert _closed("call_end", "failed") - before == 1
     assert reaper.closing == 0
+    # The room is deleted whatever became of the removal.
+    assert service.kinds() == ["remove", "delete"]
 
 
 async def test_the_room_service_is_made_from_the_project_once_and_closed_with_the_reaper(
@@ -248,7 +275,7 @@ async def test_a_closed_room_listed_again_is_closed_again(redis):
     service = FakeRoomService()
     service.open(rooms.room_name(CALL), PERSON)
     await locks.register_room(redis, CALL, USER, NOW - 100)
-    await locks.mark_room_closed(redis, CALL, NOW - 50)
+    await locks.mark_room_closed(redis, CALL, USER, NOW - 50)
     before = _closed("reopened")
 
     assert await reaper_on(redis, service, clock=Clock()).sweep()
@@ -258,31 +285,143 @@ async def test_a_closed_room_listed_again_is_closed_again(redis):
     assert _closed("reopened") - before == 1
 
 
-async def test_an_entry_is_forgotten_only_once_closed_longer_than_a_token_lives_and_unlisted(
+async def test_a_closed_rooms_person_is_revoked_again_before_the_first_revocation_lapses(
     redis,
 ):
     service = FakeRoomService()
     await locks.register_room(redis, CALL, USER, NOW - 700)
-    await locks.mark_room_closed(redis, CALL, NOW - 590)
+    await locks.mark_room_closed(
+        redis, CALL, USER, NOW - ROOM_REVOKE_AGAIN_AFTER_S + 10
+    )
+    clock = Clock()
+    reaper = reaper_on(redis, service, clock=clock)
+    before = _closed("revoke_again")
+
+    assert await reaper.sweep()
+    assert service.kinds() == ["list"]
+
+    clock.now += 20
+    assert await reaper.sweep()
+
+    # The person again, with a fresh cutoff; the room is not listed, so it
+    # is not deleted again.
+    assert service.kinds() == ["list", "list", "remove"]
+    _, remove = service.requests[-1]
+    assert isinstance(remove, api.RoomParticipantIdentity)
+    assert remove.identity == PERSON
+    assert remove.revoke_token_ts == int(clock.now) + ROOM_REVOKE_AHEAD_S
+    entry = await _entry(redis)
+    assert entry is not None and entry.revoked_again_at == clock.now
+    assert _closed("revoke_again") - before == 1
+    assert clock.now - entry.closed_at < ROOM_REVOCATION_S - 2 * ROOM_SWEEP_S
+
+    # Revoked again once only.
+    clock.now += ROOM_SWEEP_S
+    assert await reaper.sweep()
+    assert service.kinds().count("remove") == 1
+
+
+async def test_a_second_revocation_that_fails_is_tried_again_and_holds_the_heartbeat_back(
+    redis,
+):
+    service = FakeRoomService()
+    await locks.register_room(redis, CALL, USER, NOW - 900)
+    await locks.mark_room_closed(redis, CALL, USER, NOW - ROOM_REVOKE_AGAIN_AFTER_S)
+    service.fail["remove"] = api.TwirpError("unavailable", "busy", status=503)
+    clock = Clock()
+    reaper = reaper_on(redis, service, clock=clock)
+    before = _closed("revoke_again", "failed")
+
+    assert not await reaper.sweep()
+
+    entry = await _entry(redis)
+    assert entry is not None and entry.revoked_again_at is None
+    assert _closed("revoke_again", "failed") - before == 1
+    assert not await locks.rooms_swept(redis)
+
+    del service.fail["remove"]
+    clock.now += ROOM_SWEEP_S
+    assert await reaper.sweep()
+    entry = await _entry(redis)
+    assert entry is not None and entry.revoked_again_at == clock.now
+
+
+async def test_a_heartbeat_that_cannot_be_written_fails_the_sweep(redis, monkeypatch):
+    async def unwritable(redis, now):
+        raise ConnectionError("redis went away")
+
+    monkeypatch.setattr(locks, "mark_rooms_swept", unwritable)
+    before = _sweeps("failed")
+
+    assert not await reaper_on(redis, FakeRoomService(), clock=Clock()).sweep()
+
+    assert _sweeps("failed") - before == 1
+
+
+async def test_an_entry_is_forgotten_only_once_its_second_revocation_and_the_leeway_ran_out(
+    redis,
+):
+    service = FakeRoomService()
+    await locks.register_room(redis, CALL, USER, NOW - 2_000)
+    await locks.mark_room_closed(redis, CALL, USER, NOW - 1_000)
+    await locks.mark_room_revoked_again(
+        redis, CALL, USER, closed_at=NOW - 1_000, revoked_at=NOW - 600
+    )
     clock = Clock()
     reaper = reaper_on(redis, service, clock=clock)
 
-    await reaper.sweep()
+    # Past the second revocation, but not the leeway after it.
+    assert await reaper.sweep()
     assert await _entry(redis) is not None
 
-    # Past every token's life, but open again: closed again, not forgotten.
-    clock.now += 20
+    # Past both, but open again: closed again, not forgotten.
+    clock.now += ROOM_TOKEN_LEEWAY_S + 1
     service.open(rooms.room_name(CALL), PERSON)
-    await reaper.sweep()
+    assert await reaper.sweep()
     assert service.rooms == {}
-    assert await _entry(redis) is not None
+    entry = await _entry(redis)
+    assert entry is not None and entry.closed_at == clock.now
+    # The new close has its own second revocation to come.
+    assert entry.revoked_again_at is None
 
-    clock.now += 700
-    await reaper.sweep()
+    clock.now += ROOM_REVOKE_AGAIN_AFTER_S
+    assert await reaper.sweep()
+    clock.now += ROOM_FORGET_AFTER_REVOKED_S
+    assert await reaper.sweep()
+    assert await _entry(redis) is not None
+    clock.now += 1
+    assert await reaper.sweep()
     assert await _entry(redis) is None
 
 
-async def test_a_listed_room_with_no_entry_is_counted_as_another_and_never_touched(
+def test_no_token_for_a_closed_room_outlives_its_entry():
+    # The second revocation comes some sweeps before the first lapses, and
+    # the entry outlasts it by the leeway LiveKit gives an expired token.
+    assert ROOM_REVOKE_AGAIN_AFTER_S + 2 * ROOM_SWEEP_S < ROOM_REVOCATION_S
+    assert ROOM_TOKEN_TTL_S <= ROOM_REVOCATION_S
+    assert ROOM_FORGET_AFTER_REVOKED_S >= ROOM_REVOCATION_S + ROOM_TOKEN_LEEWAY_S
+    assert 0 < ROOM_REVOKE_AHEAD_S < ROOM_TOKEN_LEEWAY_S
+
+
+async def test_a_close_stamp_that_outlived_its_entry_still_revokes_the_person_it_names(
+    redis,
+):
+    service = FakeRoomService()
+    service.open(rooms.room_name(CALL), PERSON)
+    # Another relay forgot the entry while this one's close was stamping it.
+    await locks.register_room(redis, CALL, USER, NOW - 900)
+    await locks.forget_room(redis, CALL)
+    await locks.mark_room_closed(redis, CALL, USER, NOW - 30)
+
+    assert await reaper_on(redis, service, clock=Clock()).sweep()
+
+    assert service.kinds() == ["list", "remove", "delete"]
+    _, remove = service.requests[1]
+    assert isinstance(remove, api.RoomParticipantIdentity)
+    assert remove.identity == PERSON and remove.revoke_token_ts == CUTOFF
+
+
+async def test_on_a_shared_project_a_listed_room_with_no_entry_is_counted_as_another_and_never_touched(
     redis,
 ):
     service = FakeRoomService()
@@ -297,6 +436,137 @@ async def test_a_listed_room_with_no_entry_is_counted_as_another_and_never_touch
     assert _gauge("voice_interview_livekit_rooms", {"owner": "other"}) == 1
     assert _gauge("voice_interview_livekit_rooms", {"owner": "ours"}) == 0
     assert _gauge("voice_interview_livekit_oldest_room_seconds") == 0
+
+
+# --- rooms with no entry, where the project is this deployment's alone ---
+
+
+STRAY_CALL = "c" * 32
+OLD = int(NOW) - int(ROOM_UNREGISTERED_GRACE_S) - 5
+
+
+def test_a_room_with_no_entry_is_given_longer_than_any_calls_room_can_live():
+    longest_room = (
+        ROOM_START_GRACE_S
+        + CAPS.max_call_s
+        + ROOM_PLAYOUT_S
+        + ROOM_END_GRACE_S
+        + 2 * ROOM_SWEEP_S
+    )
+    assert ROOM_UNREGISTERED_GRACE_S > longest_room
+
+
+async def test_on_an_exclusive_project_a_room_with_no_entry_is_left_alone_while_young(
+    redis,
+):
+    service = FakeRoomService()
+    young = int(NOW) - int(ROOM_UNREGISTERED_GRACE_S) + 5
+    service.open(rooms.room_name(STRAY_CALL), "user:someone", created=young)
+
+    assert await reaper_on(redis, service, clock=Clock(), exclusive=True).sweep()
+
+    assert service.kinds() == ["list"]
+    assert await locks.registered_rooms(redis) == {}
+
+
+async def test_on_an_exclusive_project_an_old_room_with_no_entry_is_adopted_and_closed_revoking_its_person(
+    redis,
+):
+    service = FakeRoomService()
+    service.open(rooms.room_name(STRAY_CALL), "otto", "user:someone", created=OLD)
+    clock = Clock()
+    reaper = reaper_on(redis, service, clock=clock, exclusive=True)
+    before = _closed("unregistered")
+
+    assert await reaper.sweep()
+
+    assert service.kinds() == ["list", "participants", "remove", "delete"]
+    _, remove = service.requests[2]
+    assert isinstance(remove, api.RoomParticipantIdentity)
+    assert remove.identity == "user:someone" and remove.revoke_token_ts == CUTOFF
+    assert service.rooms == {}
+    entry = await _entry(redis, STRAY_CALL)
+    assert entry is not None
+    assert (entry.uid, entry.minted_at, entry.closed_at) == ("someone", OLD, NOW)
+    assert _closed("unregistered") - before == 1
+
+    # From then on it is a closed room like any other: revoked again in time.
+    clock.now += ROOM_REVOKE_AGAIN_AFTER_S
+    assert await reaper.sweep()
+    _, again = service.requests[-1]
+    assert isinstance(again, api.RoomParticipantIdentity)
+    assert again.identity == "user:someone"
+
+
+@pytest.mark.parametrize("inside", [(), ("otto",)], ids=["nobody", "only-otto"])
+async def test_on_an_exclusive_project_a_room_with_no_entry_and_no_person_is_deleted(
+    redis, inside
+):
+    service = FakeRoomService()
+    service.open(rooms.room_name(STRAY_CALL), *inside, created=OLD)
+
+    assert await reaper_on(redis, service, clock=Clock(), exclusive=True).sweep()
+
+    assert service.kinds() == ["list", "participants", "delete"]
+    entry = await _entry(redis, STRAY_CALL)
+    assert entry is not None and (entry.uid, entry.closed_at) == ("", NOW)
+
+
+async def test_on_an_exclusive_project_a_room_whose_people_cannot_be_listed_waits_for_the_next_sweep(
+    redis,
+):
+    service = FakeRoomService()
+    service.open(rooms.room_name(STRAY_CALL), "user:someone", created=OLD)
+    service.fail["participants"] = api.TwirpError("unavailable", "busy", status=503)
+    clock = Clock()
+    reaper = reaper_on(redis, service, clock=clock, exclusive=True)
+
+    assert not await reaper.sweep()
+
+    assert service.kinds() == ["list", "participants"]
+    assert await locks.registered_rooms(redis) == {}
+    assert not await locks.rooms_swept(redis)
+
+    del service.fail["participants"]
+    clock.now += ROOM_SWEEP_S
+    assert await reaper.sweep()
+    assert service.rooms == {}
+
+
+async def test_on_an_exclusive_project_a_room_gone_before_its_people_were_listed_needs_nothing(
+    redis,
+):
+    service = FakeRoomService()
+    service.open(rooms.room_name(STRAY_CALL), "user:someone", created=OLD)
+    service.fail["participants"] = api.TwirpError("not_found", "no room", status=404)
+
+    assert await reaper_on(redis, service, clock=Clock(), exclusive=True).sweep()
+
+    assert service.kinds() == ["list", "participants"]
+    assert await locks.registered_rooms(redis) == {}
+
+
+async def test_on_an_exclusive_project_an_adopted_room_whose_close_failed_is_closed_by_the_next_sweep(
+    redis,
+):
+    service = FakeRoomService()
+    service.open(rooms.room_name(STRAY_CALL), "user:someone", created=OLD)
+    service.fail["delete"] = api.TwirpError("unavailable", "busy", status=503)
+    clock = Clock()
+    reaper = reaper_on(redis, service, clock=clock, exclusive=True)
+
+    assert not await reaper.sweep()
+    entry = await _entry(redis, STRAY_CALL)
+    assert entry is not None and entry.uid == "someone" and entry.closed_at is None
+
+    del service.fail["delete"]
+    clock.now += ROOM_SWEEP_S
+    assert await reaper.sweep()
+
+    assert service.rooms == {}
+    assert service.kinds()[-2:] == ["remove", "delete"]
+    entry = await _entry(redis, STRAY_CALL)
+    assert entry is not None and entry.closed_at == clock.now
 
 
 async def test_the_gauges_follow_the_projects_rooms(redis):
@@ -371,7 +641,7 @@ async def test_a_sweep_that_cannot_reach_redis_closes_nothing_and_writes_no_hear
     assert service.requests == []
 
 
-async def test_a_room_the_sweep_cannot_settle_leaves_the_rest_of_the_sweep_running(
+async def test_a_room_the_sweep_cannot_settle_leaves_the_rest_of_the_sweep_running_with_no_heartbeat(
     redis, monkeypatch
 ):
     service = FakeRoomService()
@@ -386,11 +656,42 @@ async def test_a_room_the_sweep_cannot_settle_leaves_the_rest_of_the_sweep_runni
 
     monkeypatch.setattr(room_reaper, "_unused", unused)
 
-    assert await reaper_on(redis, service, clock=Clock()).sweep()
+    assert not await reaper_on(redis, service, clock=Clock()).sweep()
 
     [_, (_, remove), _] = service.requests
     assert isinstance(remove, api.RoomParticipantIdentity)
     assert remove.room == rooms.room_name(OTHER_CALL)
+    assert not await locks.rooms_swept(redis)
+
+
+async def test_while_closes_keep_failing_no_heartbeat_is_written_and_starts_take_the_socket(
+    redis,
+):
+    service = FakeRoomService()
+    service.open(rooms.room_name(CALL), PERSON)
+    service.fail["remove"] = api.TwirpError(
+        "invalid_argument", "revoke_token_ts out of range", status=400
+    )
+    await locks.register_room(redis, CALL, USER, NOW - 200)
+    clock = Clock()
+    reaper = reaper_on(redis, service, clock=clock)
+
+    assert not await reaper.sweep()
+
+    # The room went even so; the close is not stamped, and no heartbeat says
+    # rooms are being closed.
+    assert service.kinds() == ["list", "remove", "delete"]
+    assert service.rooms == {}
+    entry = await _entry(redis)
+    assert entry is not None and entry.closed_at is None
+    assert not await locks.rooms_swept(redis)
+
+    del service.fail["remove"]
+    clock.now += ROOM_SWEEP_S
+    assert await reaper.sweep()
+    entry = await _entry(redis)
+    assert entry is not None and entry.closed_at == clock.now
+    assert await locks.rooms_swept(redis)
 
 
 async def test_the_relay_sweeps_again_and_again(redis):
@@ -407,18 +708,33 @@ async def test_the_relay_sweeps_again_and_again(redis):
 # --- the registry ------------------------------------------------------------
 
 
-async def test_the_registry_skips_an_unreadable_entry_and_keeps_a_stray_close_to_forget(
+async def test_the_registry_skips_what_it_cannot_read_and_keeps_a_stray_close_with_its_person(
     redis,
 ):
     await redis.hset(locks.ROOMS_KEY, CALL, "{not json")
-    await locks.mark_room_closed(redis, OTHER_CALL, NOW - 10)
+    await locks.mark_room_closed(redis, CALL, USER, NOW - 20)
+    await locks.mark_room_closed(redis, OTHER_CALL, USER, NOW - 10)
     await redis.hset(locks.ROOMS_KEY, "c" * 32 + ":closed", "never")
+    await redis.hset(locks.ROOMS_KEY, "d" * 32 + ":revoked", "{}")
 
     entries = await locks.registered_rooms(redis)
 
     assert list(entries) == [OTHER_CALL]
     stray = entries[OTHER_CALL]
-    assert (stray.uid, stray.closed_at) == ("", NOW - 10)
+    assert (stray.uid, stray.minted_at, stray.closed_at) == (USER, NOW - 10, NOW - 10)
+
+
+async def test_a_second_revocation_stamped_for_an_earlier_close_reads_as_none(redis):
+    await locks.register_room(redis, CALL, USER, NOW - 900)
+    await locks.mark_room_closed(redis, CALL, USER, NOW - 100)
+    await locks.mark_room_revoked_again(
+        redis, CALL, USER, closed_at=NOW - 800, revoked_at=NOW - 300
+    )
+
+    entry = await _entry(redis)
+
+    assert entry is not None
+    assert (entry.closed_at, entry.revoked_again_at) == (NOW - 100, None)
 
 
 # --- a call's room, closed by the call ----------------------------------------
@@ -468,7 +784,7 @@ async def test_a_calls_end_closes_its_room_after_otto_played_out_and_the_relay_l
     assert seen == [("remove", True), ("delete", True)]
     [(_, remove), _] = service.requests
     assert isinstance(remove, api.RoomParticipantIdentity)
-    assert remove.identity == PERSON and remove.revoke_token_ts == int(NOW)
+    assert remove.identity == PERSON and remove.revoke_token_ts == CUTOFF
     entry = await _entry(redis, call.session.call_id)
     assert entry is not None and entry.closed_at == NOW
 

@@ -453,6 +453,20 @@ class FakeRoomService:
             raise api.TwirpError("not_found", "room not found", status=404)
         return api.DeleteRoomResponse()
 
+    async def list_participants(
+        self, request: api.ListParticipantsRequest
+    ) -> api.ListParticipantsResponse:
+        await self._take("participants", request)
+        room = self.rooms.get(request.room)
+        if room is None:
+            raise api.TwirpError("not_found", "room not found", status=404)
+        return api.ListParticipantsResponse(
+            participants=[
+                api.ParticipantInfo(identity=identity)
+                for identity in sorted(room.participants)
+            ]
+        )
+
     async def list_rooms(self, request: api.ListRoomsRequest) -> api.ListRoomsResponse:
         await self._take("list", request)
         return api.ListRoomsResponse(

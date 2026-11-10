@@ -199,7 +199,15 @@ def _livekit(settings: Settings) -> tuple[LiveKitEdge | None, RoomReaper | None]
     if project is None:
         logger.warning("No LiveKit project: every voice call's audio takes the socket")
         return None, None
-    return LiveKitEdge(project), RoomReaper(project, redis=redis_client.get_redis_async)
+    exclusive = settings.config.voice_livekit_project_exclusive
+    if exclusive:
+        logger.info(
+            "The LiveKit project is this deployment's alone: call rooms with no "
+            "registry entry are adopted and closed"
+        )
+    return LiveKitEdge(project), RoomReaper(
+        project, redis=redis_client.get_redis_async, exclusive=exclusive
+    )
 
 
 async def _account_name(user_id: str) -> str | None:

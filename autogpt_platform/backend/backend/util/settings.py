@@ -546,6 +546,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "onboarding voice interview's audio when the edge flag picks LiveKit",
     )
 
+    voice_livekit_project_exclusive: bool = Field(
+        default=False,
+        description="Whether this deployment is the only one on its LiveKit "
+        "project. When true, the voice relay's sweep adopts and closes call "
+        "rooms its registry has no entry for once they are older than any "
+        "call's room can live; leave it false on a project other deployments "
+        "share, such as the previews'.",
+    )
+
     execution_manager_port: int = Field(
         default=8002,
         description="The port for execution manager daemon to run on",

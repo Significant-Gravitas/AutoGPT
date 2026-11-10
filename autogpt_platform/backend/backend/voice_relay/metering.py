@@ -81,7 +81,8 @@ LIVEKIT_DROPPED_BYTES = Counter(
 LIVEKIT_ROOMS = Gauge(
     "voice_interview_livekit_rooms",
     "Call rooms open in the LiveKit project, by owner: ours (in this "
-    "deployment's registry) or other (a voice- room it has no entry for)",
+    "deployment's registry) or other (a voice- room it has no entry for: "
+    "another deployment's, or one not yet adopted)",
     ["owner"],
 )
 LIVEKIT_PARTICIPANTS = Gauge(
@@ -96,13 +97,15 @@ LIVEKIT_OLDEST_ROOM_SECONDS = Gauge(
 LIVEKIT_ROOMS_CLOSED = Counter(
     "voice_interview_livekit_rooms_closed_total",
     "Call rooms the relay closed, by why (call_end, downgrade, never_started, "
-    "orphaned or reopened) and outcome (closed or failed)",
+    "orphaned, reopened, or unregistered: a room with no entry adopted where "
+    "the project is this deployment's alone; and revoke_again, the person's "
+    "tokens revoked once more after a close) and outcome (closed or failed)",
     ["why", "outcome"],
 )
 LIVEKIT_SWEEPS = Counter(
     "voice_interview_livekit_sweeps_total",
     "Sweeps of the call rooms, by outcome: ok, or failed when the registry or "
-    "the project's rooms could not be read",
+    "the project's rooms could not be read, or a close or a revocation failed",
     ["outcome"],
 )
 FALLBACKS = Counter(

@@ -62,6 +62,12 @@ ROOM_DEPARTURE_TIMEOUT_S = 20
 # by then every token they could hold has expired.
 ROOM_TOKEN_TTL_S = 600
 ROOM_REVOCATION_S = 600
+# LiveKit still takes a token this long past its expiry, and takes a
+# revocation's cutoff up to this far ahead of its own clock.
+ROOM_TOKEN_LEEWAY_S = 60
+# A close revokes the person's tokens issued until this far past it, which
+# also catches a token issued in the same second.
+ROOM_REVOKE_AHEAD_S = 5
 # The relay's own room token outlives the call cap by this much.
 RELAY_ROOM_GRACE_S = 60
 # The relay's join, and its leave, are given up past these. Each of the
@@ -88,13 +94,27 @@ ROOM_START_GRACE_S = 75.0
 ROOM_END_GRACE_S = 30.0
 ROOM_SWEEP_S = 30.0
 ROOM_SWEEP_HEARTBEAT_S = 120
+# A closed room's person has their tokens revoked again this long after the
+# close, some sweeps before the first revocation lapses: a token LiveKit
+# issued just before the close is taken for ROOM_TOKEN_LEEWAY_S past its
+# expiry, past the first revocation. The room's entry is forgotten only once
+# the second revocation and that leeway have both run out.
+ROOM_REVOKE_AGAIN_AFTER_S = ROOM_REVOCATION_S - 4 * ROOM_SWEEP_S
+ROOM_FORGET_AFTER_REVOKED_S = ROOM_REVOCATION_S + ROOM_TOKEN_LEEWAY_S
+# Where the LiveKit project is this deployment's alone, a ``voice-`` room the
+# registry has no entry for is adopted and closed once it is this old: longer
+# than any call's room can live, so no live call ever loses its room to it.
+ROOM_UNREGISTERED_GRACE_S = 600.0
 # A sweep's listing of the project's rooms is given up past this.
 ROOM_LIST_TIMEOUT_S = 10.0
 
 # Why a call's room was closed: the call ended, its audio moved to the
 # socket, or the sweep found it no longer in use (its call never started, or
-# it outlived its call) or open again after it was closed.
-RoomCloseWhy = Literal["call_end", "downgrade", "never_started", "orphaned", "reopened"]
+# it outlived its call), open again after it was closed, or open with no
+# entry in a project that is this deployment's alone.
+RoomCloseWhy = Literal[
+    "call_end", "downgrade", "never_started", "orphaned", "reopened", "unregistered"
+]
 # The person's audio reaches the call in frames this long, on either leg: the
 # browser sends them so on the socket, and the relay cuts the room's into
 # them, so the voice-activity check reads the same frames on both.
