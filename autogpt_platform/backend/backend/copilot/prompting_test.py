@@ -169,9 +169,10 @@ class TestReviewCardLocation:
     def test_supplement_says_where_a_review_card_is(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
         step = result[result.index("4. `review_required`") :].split("\n", 1)[0]
-        assert "bottom of this chat" in step
-        assert "Needs you on Home" in step
-        assert "never point them to another chat" in step
+        # The result says where the card is, which depends on the surface.
+        assert "where its approval card is, as the result says" in step
+        assert "never send them to look for it in another chat" in step
+        assert "don't repeat the call to raise it again" in step
 
 
 class TestToolDiscoveryPriorityAntiPattern:

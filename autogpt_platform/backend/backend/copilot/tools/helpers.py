@@ -25,7 +25,7 @@ from backend.copilot.credential_selection import (
     host_selection_key,
     turn_credential_pins,
 )
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, ChatSessionMetadata
 from backend.copilot.permissions import denied_block_providers
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.sdk.env import config as chat_config
@@ -81,7 +81,6 @@ from .expert_scope import (
     ungranted_credential_hint,
 )
 from .models import (
-    REVIEW_CARD_LOCATION,
     BlockOutputResponse,
     CredentialRejection,
     ErrorResponse,
@@ -92,6 +91,7 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
+from .review_card import review_card_location
 from .utils import (
     build_missing_credentials_from_field_info,
     credential_rejection_status,
@@ -1548,12 +1548,14 @@ async def check_hitl_review(
     session_id: str,
     organization_id: str | None = None,
     team_id: str | None = None,
+    metadata: ChatSessionMetadata | None = None,
 ) -> "tuple[str, dict[str, Any]] | ToolResponseBase":
     """Check for an existing or new HITL review requirement.
 
     If a review is needed, stores the review record and returns a
     ReviewRequiredResponse.  Otherwise returns
     ``(synthetic_node_exec_id, input_data)`` ready for execute_block.
+    *metadata* is the session's, which decides where the reply says the card is.
     """
     block = prep.block
     block_id = prep.block_id
@@ -1580,7 +1582,7 @@ async def check_hitl_review(
                 f"Block '{block.name}' requires human review. "
                 f"After the user approves, call resume_capability with "
                 f"review_id='{existing_review.node_exec_id}' to execute. "
-                f"{REVIEW_CARD_LOCATION}"
+                f"{review_card_location(metadata)}"
             ),
             session_id=session_id,
             block_id=block_id,
@@ -1619,7 +1621,7 @@ async def check_hitl_review(
                 f"Block '{block.name}' requires human review. "
                 f"After the user approves, call resume_capability with "
                 f"review_id='{synthetic_node_exec_id}' to execute. "
-                f"{REVIEW_CARD_LOCATION}"
+                f"{review_card_location(metadata)}"
             ),
             session_id=session_id,
             block_id=block_id,
@@ -1661,7 +1663,8 @@ async def check_spend_approval(
     return ReviewRequiredResponse(
         message=(
             f"{needed.headline}. Tell the user, and after they approve "
-            f"call run_capability again with the same input. {REVIEW_CARD_LOCATION}"
+            "call run_capability again with the same input. "
+            f"{review_card_location(session.metadata)}"
         ),
         session_id=session.session_id,
         block_id=prep.block_id,

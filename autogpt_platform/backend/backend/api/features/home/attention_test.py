@@ -713,3 +713,14 @@ def test_chat_follow_ups_do_not_count_as_work_that_needs_credits() -> None:
 
     assert only_chat == []
     assert [item.description for item in mixed] == ["1 upcoming task may not run."]
+
+
+def test_an_experts_held_call_names_the_expert() -> None:
+    review = _gate_review().model_copy(
+        update={"expert_id": "issa", "expert_name": "Issa"}
+    )
+
+    item = _one(review)
+
+    assert item.description == "Issa is waiting for your approval."
+    assert item.expert is not None and item.expert.name == "Issa"

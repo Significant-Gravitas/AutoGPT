@@ -565,6 +565,28 @@ def _gmail_review() -> ReviewRequiredResponse:
     )
 
 
+def _card(kind: ResponseType, size: int) -> ToolResponseBase:
+    """A card output *size* chars long. The review skips its own preview, which
+    would otherwise keep it short enough that nothing here gets tested."""
+    if kind == ResponseType.REVIEW_REQUIRED:
+        return ReviewRequiredResponse.model_construct(
+            type=kind,
+            message="Needs review.",
+            block_id="gmail-send",
+            block_name="Gmail Send",
+            review_id="copilot-node-gmail-send:ab12cd34",
+            input_data={"body": "b" * size},
+        )
+    if kind == ResponseType.APPROVAL_REQUIRED:
+        return ApprovalRequiredResponse(
+            message="Held for the user.",
+            tool_name="send_email",
+            reason="r" * size,
+            review_id="copilot-node-gate-send_email:1",
+        )
+    return NeedLoginResponse(message="m" * size)
+
+
 class TestCardOutputsReachTheClient:
     """The client mounts an approval or sign-in card from the output's own
     JSON, so a digest or preview of it is a card that never appears."""
@@ -606,27 +628,24 @@ class TestCardOutputsReachTheClient:
         ids=["digest", "preview"],
     )
     @pytest.mark.parametrize(
-        "kind", [ResponseType.APPROVAL_REQUIRED, ResponseType.NEED_LOGIN]
+        "kind",
+        [
+            ResponseType.REVIEW_REQUIRED,
+            ResponseType.APPROVAL_REQUIRED,
+            ResponseType.NEED_LOGIN,
+        ],
     )
     @pytest.mark.asyncio
-    async def test_other_cards_are_never_cut_either(
+    async def test_a_card_is_never_cut_however_long(
         self, kind: ResponseType, digest: bool, size: int
     ):
-        response = (
-            ApprovalRequiredResponse(
-                message="Held for the user.",
-                tool_name="send_email",
-                reason="r" * size,
-                review_id="copilot-node-gate-send_email:1",
-            )
-            if kind == ResponseType.APPROVAL_REQUIRED
-            else NeedLoginResponse(message="m" * size)
-        )
+        manager = AsyncMock()
         result = await _execute_with_flag(
-            _CardTool(response, digest=digest), flag_on=True
+            _CardTool(_card(kind, size), digest=digest), flag_on=True, manager=manager
         )
 
         assert json.loads(str(result.output))["type"] == kind.value
+        manager.write_file.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_a_large_block_output_is_still_digested(self):
@@ -639,50 +658,6 @@ class TestCardOutputsReachTheClient:
         result = await _execute_with_flag(_CardTool(response), flag_on=True)
 
         assert 'format="outline"' in str(result.output)
-
-
-class TestReviewInputPreview:
-    """The card reads the review's input from the review itself, so the stream
-    carries only enough of it for the model to recognise its own call."""
-
-    def _review(self, input_data: dict) -> ReviewRequiredResponse:
-        return ReviewRequiredResponse(
-            message="Needs review.",
-            block_id="b-1",
-            block_name="Gmail Send",
-            review_id="r-1",
-            input_data=input_data,
-        )
-
-    def test_a_short_input_is_carried_as_is(self):
-        input_data = {"to": "ada@example.com", "options": {"cc": ["b@x.com"]}}
-        dumped = json.loads(self._review(input_data).model_dump_json(exclude_none=True))
-
-        assert dumped["input_data"] == input_data
-        assert "input_preview" not in dumped
-
-    def test_a_long_string_is_replaced_by_its_size_at_any_depth(self):
-        long = "x" * 600
-        review = self._review(
-            {"body": long, "attachments": [{"name": "a.txt", "text": long}], "n": 3}
-        )
-
-        assert review.input_data == {
-            "body": "<600 chars>",
-            "attachments": [{"name": "a.txt", "text": "<600 chars>"}],
-            "n": 3,
-        }
-        assert review.input_preview is True
-
-    def test_an_input_too_wide_to_preview_is_sized_field_by_field(self):
-        review = self._review({f"field_{i}": ["v" * 400] * 20 for i in range(5)})
-
-        assert all(
-            re.fullmatch(r"<[\d,]+ chars>", value)
-            for value in review.input_data.values()
-        )
-        assert review.input_preview is True
-        assert len(review.model_dump_json()) < _DIGEST_THRESHOLD
 
 
 def _outline_of(data, budget: int) -> tuple[str, str]:

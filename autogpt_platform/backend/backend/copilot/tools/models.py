@@ -1,6 +1,5 @@
 """Pydantic models for tool responses."""
 
-import json
 from datetime import datetime
 from enum import Enum
 from typing import Any, Literal, Self
@@ -10,6 +9,7 @@ from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from backend.copilot.graphiti.memory_model import MemoryForgetFailure
 from backend.copilot.tool_image import ImageCarrier
 from backend.copilot.tools.execution_utils import NodeFailureSummary
+from backend.copilot.tools.review_card import preview_input
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.providers import ProviderName
@@ -1102,16 +1102,6 @@ class BlockOutputResponse(ToolResponseBase):
         return self.provider == ProviderName.GOOGLE.value or self._google_data
 
 
-# Where the user finds a review's card, for the reply that follows it: a
-# model that cannot see the card itself has sent people to look in another
-# chat, or called again to raise it, which only returns the same review.
-REVIEW_CARD_LOCATION = (
-    "Its approval card is at the bottom of this chat and under Needs you on "
-    "Home; if the user can't see it, a reload of this chat shows it. Never say "
-    "it is in another chat, and don't repeat this call to raise it again."
-)
-
-
 class ReviewRequiredResponse(ToolResponseBase):
     """Response when a block requires human review before execution.
 
@@ -1134,49 +1124,12 @@ class ReviewRequiredResponse(ToolResponseBase):
     )
 
     @model_validator(mode="after")
-    def preview_input(self) -> "ReviewRequiredResponse":
-        preview = _preview_input(self.input_data)
+    def stream_a_preview(self) -> "ReviewRequiredResponse":
+        preview = preview_input(self.input_data)
         if preview != self.input_data:
             self.input_data = preview
             self.input_preview = True
         return self
-
-
-# Longest input string a review output carries as is, and the most the whole
-# input may take before each long field is shown as its size instead.
-_INPUT_STRING_CHARS = 500
-_INPUT_PREVIEW_CHARS = 4_000
-
-
-def _preview_input(input_data: dict[str, Any]) -> dict[str, Any]:
-    capped = {key: _sized_strings(value) for key, value in input_data.items()}
-    if len(json.dumps(capped, default=str)) <= _INPUT_PREVIEW_CHARS:
-        return capped
-    return {
-        key: (
-            capped[key]
-            if len(json.dumps(capped[key], default=str)) <= _INPUT_STRING_CHARS
-            else _size_of(value)
-        )
-        for key, value in input_data.items()
-    }
-
-
-def _sized_strings(value: Any) -> Any:
-    match value:
-        case str() if len(value) > _INPUT_STRING_CHARS:
-            return _size_of(value)
-        case dict():
-            return {key: _sized_strings(item) for key, item in value.items()}
-        case list():
-            return [_sized_strings(item) for item in value]
-        case _:
-            return value
-
-
-def _size_of(value: Any) -> str:
-    text = value if isinstance(value, str) else json.dumps(value, default=str)
-    return f"<{len(text):,} chars>"
 
 
 class ApprovalRequiredResponse(ToolResponseBase):
