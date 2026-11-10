@@ -2102,12 +2102,14 @@ model MemoryScopeSchedule {
 
   // Null while that cron is not registered: its flag is off, registration
   // failed, or the scope is paused or wiped. Skill learning runs per account,
-  // so an expert's scope never records a learning job.
+  // so an expert's scope never records a learning job. communityJobId is no
+  // longer read or written: the hourly community sweep replaced that cron.
   communityJobId String?
   nightlyJobId   String?
   learningJobId  String?
 
-  // When each job body last ran its pass without an error.
+  // When the nightly job body last ran its pass without an error, and when
+  // the community sweep last took the scope; it takes it again a week later.
   lastNightlyRunAt   DateTime?
   lastCommunityRunAt DateTime?
 
