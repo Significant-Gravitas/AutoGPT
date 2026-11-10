@@ -369,7 +369,7 @@ async def test_followups_keep_their_own_path(fire_env):
     )
     with patch(
         f"{_SCHEDULER}.get_chat_session",
-        AsyncMock(return_value=MagicMock(expert_id=None)),
+        AsyncMock(return_value=MagicMock(archived_at=None, expert_id=None)),
     ):
         await _fire(followup)
     fire_env.load.assert_not_awaited()
