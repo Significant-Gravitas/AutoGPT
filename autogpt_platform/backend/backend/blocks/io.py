@@ -50,13 +50,16 @@ class AgentInputBlock(Block):
             advanced=True,
         )
         advanced: bool = SchemaField(
-            description="Whether to show the input in the advanced section, if the field is not required.",
+            description="Whether the input is optional, so a run can leave it blank.",
             default=False,
             advanced=True,
         )
 
         def generate_schema(self):
             return copy.deepcopy(self.get_field_schema("value"))
+
+        def is_optional(self) -> bool:
+            return self.value is not None or self.advanced
 
     class Output(BlockSchema):
         # Use BlockSchema to avoid automatic error field for interface definition
@@ -93,7 +96,9 @@ class AgentInputBlock(Block):
         )
 
     async def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
-        if input_data.value is not None:
+        # A blank optional input still sends None, so the blocks it feeds run
+        # with their own defaults instead of waiting for it.
+        if input_data.value is not None or input_data.advanced:
             yield "result", input_data.value
 
 
@@ -142,6 +147,9 @@ class AgentOutputBlock(Block):
 
         def generate_schema(self):
             return self.get_field_schema("value")
+
+        def is_optional(self) -> bool:
+            return self.value is not None
 
     class Output(BlockSchema):
         # Use BlockSchema to avoid automatic error field for interface definition
@@ -446,6 +454,8 @@ class AgentFileInputBlock(AgentInputBlock):
         **kwargs,
     ) -> BlockOutput:
         if not input_data.value:
+            if input_data.advanced:
+                yield "result", None
             return
 
         # Determine return format based on user preference
@@ -764,13 +774,6 @@ class AgentGoogleDriveFileInputBlock(AgentInputBlock):
             ],
             test_output=[("result", test_file)],
         )
-
-    async def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
-        """
-        Yields the selected Google Drive file.
-        """
-        if input_data.value is not None:
-            yield "result", input_data.value
 
 
 IO_BLOCK_IDs = [

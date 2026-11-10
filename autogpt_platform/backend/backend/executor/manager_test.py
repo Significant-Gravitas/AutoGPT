@@ -242,6 +242,63 @@ async def test_input_pin_always_waited(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_run_can_leave_an_optional_input_blank(server: SpinTestServer):
+    """
+    An input with Advanced on and no default is optional (#10614): a run that
+    leaves it blank still runs the block it feeds, with that pin's default.
+
+    AgentInputBlock "topic" (given) ===> input \\
+                                                StoreValueBlock
+    AgentInputBlock "data" (blank)  ===> data  //
+    """
+    nodes = [
+        graph.Node(block_id=AgentInputBlock().id, input_default={"name": "topic"}),
+        graph.Node(
+            block_id=AgentInputBlock().id,
+            input_default={"name": "data", "advanced": True},
+        ),
+        graph.Node(block_id=StoreValueBlock().id),
+    ]
+    links = [
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[2].id,
+            source_name="result",
+            sink_name="input",
+        ),
+        graph.Link(
+            source_id=nodes[1].id,
+            sink_id=nodes[2].id,
+            source_name="result",
+            sink_name="data",
+        ),
+    ]
+    test_user = await create_test_user()
+    test_graph = await create_graph(
+        server,
+        graph.Graph(
+            name="TestGraph", description="Test graph", nodes=nodes, links=links
+        ),
+        test_user,
+    )
+    assert test_graph.input_schema["required"] == ["topic"]
+
+    graph_exec_id = await execute_graph(
+        server.agent_server, test_graph, test_user, {"topic": "otters"}, 3
+    )
+
+    graph_exec = await execution.get_graph_execution(
+        test_user.id, graph_exec_id, include_node_executions=True
+    )
+    assert isinstance(graph_exec, execution.GraphExecutionWithNodes)
+    store_exec = next(
+        e for e in graph_exec.node_executions if e.block_id == StoreValueBlock().id
+    )
+    assert store_exec.status == execution.ExecutionStatus.COMPLETED
+    assert store_exec.output_data == {"output": ["otters"]}
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_static_input_link_on_graph(server: SpinTestServer):
     """
     This test is asserting the behaviour of static input link, e.g: reusable input link.
