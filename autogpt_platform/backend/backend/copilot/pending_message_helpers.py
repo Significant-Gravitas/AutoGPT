@@ -37,13 +37,14 @@ from backend.copilot.pending_messages import (
     push_pending_message,
     push_pending_message_if_session_running,
     release_client_message,
+    take_pending_and_hold,
 )
 from backend.copilot.response_model import (
     StreamPendingDrained,
     StreamPendingDrainedMessage,
 )
 from backend.copilot.service import EmptyUserMessage, normalise_user_message
-from backend.copilot.stream_registry import STOP_REQUESTED_FIELD
+from backend.copilot.stream_registry import STOP_HOLD_FIELD
 from backend.copilot.stream_registry import get_session as get_active_session_meta
 from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.db_accessors import chat_db
@@ -134,28 +135,42 @@ async def is_turn_in_flight(session_id: str) -> bool:
     return chat_status in (CHAT_STATUS_QUEUED, CHAT_STATUS_RUNNING)
 
 
-# The cancel route confirms a stop within 5 s or completes the turn itself.
-_STOPPED_TURN_WAIT_SECONDS = 10.0
+# Outlasts the cancel route's 5 s confirmation window, after which it completes
+# the stopped turn itself; the hold of a cancel that failed lapses with it.
+STOP_HOLD_SECONDS = 10.0
 _STOPPED_TURN_POLL_SECONDS = 0.1
 
 
-async def wait_for_stopped_turn(session_id: str) -> None:
-    """Wait until a turn the user stopped has given the session up.
+async def stop_follow_ups(session_id: str) -> list[PendingMessage]:
+    """Discard the session's follow-ups and close its running turn to new ones
+    for ``STOP_HOLD_SECONDS``, in one step. Returns what was discarded."""
+    return await take_pending_and_hold(
+        session_id,
+        session_meta_key=get_session_meta_key(session_id),
+        hold_field=STOP_HOLD_FIELD,
+        hold_until=time.time() + STOP_HOLD_SECONDS,
+    )
 
-    A message sent while a stopped turn winds down starts the next turn, which
-    can only be admitted once the stopped one has left both the stream registry
-    and the session's ``chatStatus``. Returns at once when no stopped turn holds
-    the session, and gives up after ``_STOPPED_TURN_WAIT_SECONDS``.
+
+async def wait_for_stopped_turn(session_id: str) -> bool:
+    """Wait while a turn the user stopped still holds the session.
+
+    A message sent meanwhile starts the next turn, which the turn slot admits
+    only once the stopped one has left both the stream registry and the
+    session's ``chatStatus``. The wait ends there, or when the Stop's hold
+    lapses because its cancel failed and the turn runs on. Returns whether a
+    stopped turn held the session.
     """
-    deadline = time.monotonic() + _STOPPED_TURN_WAIT_SECONDS
-    while time.monotonic() < deadline:
+    held = False
+    while True:
         active = await get_active_session_meta(session_id)
-        if active is None or not active.stop_requested:
-            return
+        if active is None or active.stop_held_until <= time.time():
+            return held
         if active.status != "running":
             status = await chat_db().get_chat_session_status(session_id)
             if status != CHAT_STATUS_RUNNING:
-                return
+                return True
+        held = True
         await asyncio.sleep(_STOPPED_TURN_POLL_SECONDS)
 
 
@@ -212,7 +227,7 @@ async def queue_user_message(
             session_id,
             pending,
             session_meta_key=get_session_meta_key(session_id),
-            stop_field=STOP_REQUESTED_FIELD,
+            hold_field=STOP_HOLD_FIELD,
         )
         return QueuePendingMessageResponse(
             buffer_length=new_len or 0,

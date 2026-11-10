@@ -4,7 +4,7 @@ import {
   createStreamHold,
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UIMessageChunk } from "ai";
 import { delay, http, HttpResponse } from "msw";
@@ -151,6 +151,25 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     );
   }, 20_000);
 
+  it("a Stop that can't tell what it discarded leaves the queued follow-up shown", async () => {
+    const { buffer } = await queueAFollowUpWhileOttoAnswers(0);
+    buffer.discardsKnown = false;
+
+    await clickStop();
+
+    await waitFor(() => expect(buffer.cancelsAnswered).toBe(1), {
+      timeout: 5000,
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(screen.getByText("Queued")).toBeDefined();
+    expect(composer().value).toBe("");
+    expect(toast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Queued message not sent" }),
+    );
+  }, 20_000);
+
   it("a follow-up given back after a switch to another chat stays with the stopped chat", async () => {
     const { buffer, host } = await queueAFollowUpWhileOttoAnswers(0, 1000);
 
@@ -209,6 +228,8 @@ function serverPendingBuffer(peekDelayMs: number, cancelDelayMs: number) {
     messages: [] as string[],
     peeksAnswered: 0,
     cancelsAnswered: 0,
+    // False when the cancel's own step failed and it can't say what it took.
+    discardsKnown: true,
   };
   server.use(
     http.post(`${SESSION_URL}/messages/pending`, async ({ request }) => {
@@ -234,7 +255,7 @@ function serverPendingBuffer(peekDelayMs: number, cancelDelayMs: number) {
       return HttpResponse.json({
         cancelled: true,
         reason: null,
-        discarded_messages: discarded,
+        discarded_messages: buffer.discardsKnown ? discarded : null,
       });
     }),
   );

@@ -35,7 +35,7 @@ interface UseCopilotStopArgs {
  *      confirmed (the task should stop shortly) or failed outright.
  *
  * Resolves with the follow-ups the backend discarded unread once it took the
- * cancel, or `null` when it did not.
+ * cancel, or `null` when it did not or can't tell which it discarded.
  */
 export function useCopilotStop({
   sessionId,
@@ -62,7 +62,7 @@ export function useCopilotStop({
             "The cancel was sent but not yet confirmed. The task should stop shortly.",
         });
       }
-      return res.status === 200 ? (res.data.discarded_messages ?? []) : null;
+      return res.status === 200 ? (res.data.discarded_messages ?? null) : null;
     } catch {
       toast({
         title: "Could not stop the task",

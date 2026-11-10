@@ -17,9 +17,11 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from httpx import ASGITransport, AsyncClient
 
 from backend.api.features.chat import routes as chat_routes
-from backend.copilot import pending_message_helpers, stream_registry
+from backend.copilot import pending_message_helpers
+from backend.copilot import pending_messages as pending_messages_module
+from backend.copilot import stream_registry
 from backend.copilot.active_turns import SessionNotIdle
-from backend.copilot.pending_message_helpers import queue_user_message
+from backend.copilot.pending_message_helpers import queue_user_message, stop_follow_ups
 from backend.copilot.pending_messages import (
     PendingMessage,
     clear_pending_messages_unsafe,
@@ -103,13 +105,24 @@ async def test_a_message_sent_while_a_stop_settles_runs_as_the_next_turn(
     assert await peek_pending_messages(session_id) == []
 
 
+async def test_the_stop_step_and_the_gate_share_one_cluster_slot(
+    session_id: str,
+) -> None:
+    redis = await redis_client.get_redis_async()
+    meta_key = stream_registry.get_session_meta_key(session_id)
+    buffer_key = pending_messages_module._buffer_key(session_id)
+
+    meta_slot = await redis.execute_command("CLUSTER KEYSLOT", meta_key)
+    assert meta_slot == await redis.execute_command("CLUSTER KEYSLOT", buffer_key)
+
+
 async def test_the_turn_after_a_stopped_one_takes_follow_ups(
     session_id: str, test_user_id: str
 ) -> None:
     await stream_registry.create_session(
         session_id, test_user_id, "", "", turn_id=f"stopped-{uuid.uuid4().hex}"
     )
-    assert await stream_registry.mark_stop_requested(session_id)
+    await stop_follow_ups(session_id)
     refused = await queue_user_message(
         session_id=session_id, message="too late", require_turn_in_flight=True
     )
@@ -127,12 +140,45 @@ async def test_the_turn_after_a_stopped_one_takes_follow_ups(
     ]
 
 
-async def test_a_stop_that_never_reaches_the_executor_leaves_the_turn_taking_follow_ups(
+async def test_a_send_after_a_stop_that_never_reached_the_executor_queues_once_the_hold_lapses(
     mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
 ) -> None:
     await stream_registry.create_session(
-        session_id, test_user_id, "", "", turn_id=f"running-{uuid.uuid4().hex}"
+        session_id,
+        test_user_id,
+        "chat_stream",
+        "chat",
+        turn_id=f"running-{uuid.uuid4().hex}",
     )
+    world = _stub_boundaries(mocker)
+    mocker.patch.object(pending_message_helpers, "STOP_HOLD_SECONDS", 0.5)
+    mocker.patch.object(
+        chat_routes,
+        "enqueue_cancel_task",
+        new=AsyncMock(side_effect=RuntimeError("broker down")),
+    )
+
+    async with _client() as client:
+        cancelled = await client.post(f"/sessions/{session_id}/cancel")
+        send = await client.post(
+            f"/sessions/{session_id}/stream", json={"message": "still for this turn"}
+        )
+
+    assert cancelled.status_code == 500
+    assert "data-follow-up-queued" in send.text
+    world.schedule.assert_not_awaited()
+    assert [m.content for m in await peek_pending_messages(session_id)] == [
+        "still for this turn"
+    ]
+
+
+async def test_a_cancel_that_fails_keeps_the_hold_an_earlier_stop_set(
+    mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
+) -> None:
+    await stream_registry.create_session(
+        session_id, test_user_id, "", "", turn_id=f"stopped-{uuid.uuid4().hex}"
+    )
+    await stop_follow_ups(session_id)
     _stub_boundaries(mocker)
     mocker.patch.object(
         chat_routes,
@@ -140,42 +186,93 @@ async def test_a_stop_that_never_reaches_the_executor_leaves_the_turn_taking_fol
         new=AsyncMock(side_effect=RuntimeError("broker down")),
     )
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app, raise_app_exceptions=False),
-        base_url="http://test",
-    ) as client:
+    async with _client() as client:
+        assert (await client.post(f"/sessions/{session_id}/cancel")).status_code == 500
+    refused = await queue_user_message(
+        session_id=session_id, message="too late", require_turn_in_flight=True
+    )
+
+    assert refused.turn_in_flight is False
+
+
+async def test_a_cancel_that_fails_after_reaching_the_executor_keeps_the_queue_closed(
+    mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
+) -> None:
+    await stream_registry.create_session(
+        session_id, test_user_id, "", "", turn_id=f"stopped-{uuid.uuid4().hex}"
+    )
+    _stub_boundaries(mocker)
+    mocker.patch.object(
+        stream_registry,
+        "get_session",
+        new=AsyncMock(side_effect=RuntimeError("redis blip")),
+    )
+
+    async with _client() as client:
+        assert (await client.post(f"/sessions/{session_id}/cancel")).status_code == 500
+    refused = await queue_user_message(
+        session_id=session_id,
+        message="into the dying turn",
+        require_turn_in_flight=True,
+    )
+
+    assert refused.turn_in_flight is False
+
+
+async def test_a_stop_step_that_failed_reports_its_discards_as_unknown(
+    mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
+) -> None:
+    await stream_registry.create_session(
+        session_id, test_user_id, "", "", turn_id=f"stopped-{uuid.uuid4().hex}"
+    )
+    await _break_the_buffer(session_id)
+    _stub_boundaries(mocker)
+    mocker.patch.object(chat_routes, "_CANCEL_CONFIRM_TIMEOUT_SECONDS", 0.05)
+
+    async with _client() as client:
         cancelled = await client.post(f"/sessions/{session_id}/cancel")
+
+    assert cancelled.status_code == 200
+    assert cancelled.json()["discarded_messages"] is None
+
+
+async def test_a_stop_step_that_failed_leaves_no_hold_on_a_turn_whose_cancel_failed(
+    mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
+) -> None:
+    await stream_registry.create_session(
+        session_id, test_user_id, "", "", turn_id=f"running-{uuid.uuid4().hex}"
+    )
+    await _break_the_buffer(session_id)
+    _stub_boundaries(mocker)
+    mocker.patch.object(
+        chat_routes,
+        "enqueue_cancel_task",
+        new=AsyncMock(side_effect=RuntimeError("broker down")),
+    )
+
+    async with _client() as client:
+        assert (await client.post(f"/sessions/{session_id}/cancel")).status_code == 500
+    await clear_pending_messages_unsafe(session_id)
     queued = await queue_user_message(
         session_id=session_id,
         message="still for this turn",
         require_turn_in_flight=True,
     )
 
-    assert cancelled.status_code == 500
     assert queued.turn_in_flight is True
-    assert [m.content for m in await peek_pending_messages(session_id)] == [
-        "still for this turn"
-    ]
 
 
-async def test_a_failed_cancel_never_lifts_a_later_stops_flag(
-    session_id: str, test_user_id: str
-) -> None:
-    await stream_registry.create_session(
-        session_id, test_user_id, "", "", turn_id=f"first-{uuid.uuid4().hex}"
+def _client() -> AsyncClient:
+    return AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
     )
-    first_stop = await stream_registry.mark_stop_requested(session_id)
-    await stream_registry.create_session(
-        session_id, test_user_id, "", "", turn_id=f"second-{uuid.uuid4().hex}"
-    )
-    assert await stream_registry.mark_stop_requested(session_id)
 
-    assert first_stop
-    assert await stream_registry.clear_stop_requested(session_id, first_stop) is False
-    refused = await queue_user_message(
-        session_id=session_id, message="too late", require_turn_in_flight=True
-    )
-    assert refused.turn_in_flight is False
+
+# A string where the list belongs: every read of the buffer fails.
+async def _break_the_buffer(session_id: str) -> None:
+    redis = await redis_client.get_redis_async()
+    await redis.set(pending_messages_module._buffer_key(session_id), "not a list")
 
 
 class _World:

@@ -84,7 +84,8 @@ return redis.call('DEL', KEYS[1])
 #   ARGV[3]  list value
 #   ARGV[4]  max list length
 #   ARGV[5]  list TTL seconds
-#   ARGV[6]  hash field that must be unset or empty, or "" for none
+#   ARGV[6]  hash field holding a hold deadline (unix seconds), or "" for none
+#   ARGV[7]  the caller's current unix time; the push is refused before the deadline
 # Compare-and-set on a string key.  Returns 1 if swapped, 0 otherwise.
 #
 #   KEYS[1]  key
@@ -115,14 +116,24 @@ redis.call('LTRIM', KEYS[1], #ARGV, -1)
 return current
 """
 
+_TAKE_LIST_AND_HOLD_LUA = """
+local guarded = redis.call('HGET', KEYS[1], ARGV[1]) == ARGV[2]
+local items = redis.call('LRANGE', KEYS[2], 0, -1)
+redis.call('DEL', KEYS[2])
+if guarded then
+    redis.call('HSET', KEYS[1], ARGV[3], ARGV[4])
+end
+return items
+"""
+
 _GATED_CAPPED_RPUSH_LUA = """
 local current = redis.call('HGET', KEYS[1], ARGV[1])
 if current ~= ARGV[2] then
     return -1
 end
 if ARGV[6] ~= '' then
-    local blocker = redis.call('HGET', KEYS[1], ARGV[6])
-    if blocker and blocker ~= '' then
+    local until_ts = tonumber(redis.call('HGET', KEYS[1], ARGV[6]))
+    if until_ts and until_ts > tonumber(ARGV[7]) then
         return -1
     end
 end
@@ -320,10 +331,11 @@ async def capped_rpush_if_hash_field(
     value: str,
     max_len: int,
     ttl_seconds: int,
-    unless_field: str = "",
+    hold_field: str = "",
+    now: float = 0.0,
 ) -> int | None:
     """Atomically RPUSH to a bounded list iff a hash field matches and,
-    when ``unless_field`` is given, that field is unset or empty.
+    when ``hold_field`` is given, no hold deadline in it is later than ``now``.
 
     Returns the new list length when the push happens, or ``None`` when the
     guard fails.
@@ -340,11 +352,44 @@ async def capped_rpush_if_hash_field(
             value,
             str(max_len),
             str(ttl_seconds),
-            unless_field,
+            hold_field,
+            repr(now),
         ),
     )
     length = int(result)
     return None if length < 0 else length
+
+
+async def take_list_and_hold(
+    redis: AsyncRedisClient,
+    *,
+    hash_key: str,
+    list_key: str,
+    guard_field: str,
+    expected: str,
+    hold_field: str,
+    hold_until: float,
+) -> list[Any]:
+    """Atomically empty a list and return it, setting ``hold_field`` to
+    ``hold_until`` when ``guard_field`` matches ``expected``.
+
+    Both keys must share a Redis Cluster slot. The script reads before it
+    writes, so a failure leaves both as they were.
+    """
+    items = await cast(
+        "Any",
+        redis.eval(
+            _TAKE_LIST_AND_HOLD_LUA,
+            2,
+            hash_key,
+            list_key,
+            guard_field,
+            expected,
+            hold_field,
+            repr(hold_until),
+        ),
+    )
+    return list(items)
 
 
 async def claim_batch_dispatch_atomic(

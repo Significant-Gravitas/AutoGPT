@@ -37,6 +37,7 @@ from backend.data.redis_helpers import (
     capped_rpush_if_hash_field,
     pop_matching_list_prefix,
     string_compare_and_set,
+    take_list_and_hold,
 )
 
 logger = logging.getLogger(__name__)
@@ -332,10 +333,10 @@ async def push_pending_message_if_session_running(
     message: PendingMessage,
     *,
     session_meta_key: str,
-    stop_field: str,
+    hold_field: str,
 ) -> int | None:
     """Append a pending message only while the stream meta is still running
-    and no Stop was requested for that turn (``stop_field`` unset)."""
+    and no Stop holds that turn's follow-ups (see :func:`take_pending_and_hold`)."""
     redis = await get_redis_async()
     key = _buffer_key(session_id)
     payload = message.model_dump_json()
@@ -349,7 +350,8 @@ async def push_pending_message_if_session_running(
         value=payload,
         max_len=MAX_PENDING_MESSAGES,
         ttl_seconds=_PENDING_TTL_SECONDS,
-        unless_field=stop_field,
+        hold_field=hold_field,
+        now=time.time(),
     )
     if new_length is None:
         logger.info(
@@ -373,6 +375,28 @@ async def push_pending_message_if_session_running(
         new_length,
     )
     return new_length
+
+
+async def take_pending_and_hold(
+    session_id: str,
+    *,
+    session_meta_key: str,
+    hold_field: str,
+    hold_until: float,
+) -> list[PendingMessage]:
+    """Empty the buffer and, if a turn is running, refuse its follow-ups
+    until ``hold_until``, in one step. Returns what the buffer held."""
+    redis = await get_redis_async()
+    taken = await take_list_and_hold(
+        redis,
+        hash_key=session_meta_key,
+        list_key=_buffer_key(session_id),
+        guard_field="status",
+        expected="running",
+        hold_field=hold_field,
+        hold_until=hold_until,
+    )
+    return _parse_buffer_items(session_id, taken)
 
 
 async def drain_pending_messages(
@@ -405,28 +429,26 @@ async def drain_pending_messages(
         lpop_result = await cast("Any", redis.lpop(key, MAX_PENDING_MESSAGES))
     if not lpop_result:
         return []
-    raw_popped: list[Any] = list(lpop_result)
+    messages = _parse_buffer_items(session_id, list(lpop_result))
 
-    # redis-py may return bytes or str depending on decode_responses.
-    decoded: list[str] = [_decode_redis_item(item) for item in raw_popped]
+    if messages:
+        logger.info(
+            f"pending_messages: drained {len(messages)} messages for "
+            f"session={session_id}"
+        )
+    return messages
 
+
+def _parse_buffer_items(session_id: str, items: list[Any]) -> list[PendingMessage]:
     messages: list[PendingMessage] = []
-    for payload in decoded:
+    # redis-py may return bytes or str depending on decode_responses.
+    for payload in (_decode_redis_item(item) for item in items):
         try:
             messages.append(_from_buffer(json.loads(payload)))
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
             logger.warning(
-                "pending_messages: dropping malformed entry for %s: %s",
-                session_id,
-                e,
+                f"pending_messages: dropping malformed entry for {session_id}: {e}"
             )
-
-    if messages:
-        logger.info(
-            "pending_messages: drained %d messages for session=%s",
-            len(messages),
-            session_id,
-        )
     return messages
 
 

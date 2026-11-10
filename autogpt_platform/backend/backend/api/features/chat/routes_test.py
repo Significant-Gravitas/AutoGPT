@@ -79,6 +79,8 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     from autogpt_libs.auth.dependencies import get_request_context
 
     mocker.patch.object(chat_routes, "cancel_background_subtasks", new=AsyncMock())
+    # The cancel route's stop step is a Redis script; its tests run it for real.
+    mocker.patch.object(chat_routes, "stop_follow_ups", new=AsyncMock(return_value=[]))
     mocker.patch.object(
         chat_routes,
         "background_task_db",
@@ -3969,7 +3971,6 @@ def test_cancel_session_no_active_task(mocker: pytest_mock.MockerFixture) -> Non
     )
     mock_registry = MagicMock()
     mock_registry.get_active_session = AsyncMock(return_value=(None, None))
-    mock_registry.mark_stop_requested = AsyncMock(return_value="stop-token")
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     # No orphan release: metadata returns idle, so the age gate yields False.
     from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
@@ -4011,7 +4012,6 @@ def test_cancel_session_releases_orphan_running(
     )
     mock_registry = MagicMock()
     mock_registry.get_active_session = AsyncMock(return_value=(None, None))
-    mock_registry.mark_stop_requested = AsyncMock(return_value="stop-token")
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
 
@@ -4060,7 +4060,6 @@ def test_cancel_session_skips_orphan_release_within_race_window(
     )
     mock_registry = MagicMock()
     mock_registry.get_active_session = AsyncMock(return_value=(None, None))
-    mock_registry.mark_stop_requested = AsyncMock(return_value="stop-token")
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
 
@@ -4144,7 +4143,6 @@ def test_cancel_session_enqueues_cancel_and_confirms(
     mock_registry = MagicMock()
     mock_registry.get_active_session = AsyncMock(return_value=(active_session, "1-0"))
     mock_registry.get_session = AsyncMock(return_value=stopped_session)
-    mock_registry.mark_stop_requested = AsyncMock(return_value="stop-token")
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     mock_enqueue = mocker.patch(
         "backend.api.features.chat.routes.enqueue_cancel_task",
@@ -4191,7 +4189,6 @@ def test_cancel_session_timeout_completes_as_cancelled_not_as_an_error(
     # Never leaves "running": the executor did not confirm inside the window.
     mock_registry.get_session = AsyncMock(return_value=running)
     mock_registry.mark_session_completed = AsyncMock(return_value=True)
-    mock_registry.mark_stop_requested = AsyncMock(return_value="stop-token")
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     mocker.patch(
         "backend.api.features.chat.routes.enqueue_cancel_task",
@@ -4240,7 +4237,6 @@ def test_cancel_confirms_once_the_next_turn_holds_the_session(
     mock_registry.get_active_session = AsyncMock(return_value=(turn("turn-1"), "1-0"))
     mock_registry.get_session = AsyncMock(return_value=turn("turn-2"))
     mock_registry.mark_session_completed = AsyncMock(return_value=True)
-    mock_registry.mark_stop_requested = AsyncMock(return_value="stop-token")
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     mocker.patch(
         "backend.api.features.chat.routes.enqueue_cancel_task",
@@ -4265,22 +4261,15 @@ def test_cancel_session_clears_pending_buffer(
 ) -> None:
     """Cancelling a turn must drop any queued follow-ups so they don't
     leak into the next unrelated turn (the pending buffer only exists to
-    feed the running turn).  Regression test for the orphan-pending bug:
-    before the fix, cancel published the executor event but left the
-    Redis buffer intact until its 1h TTL."""
+    feed the running turn), and report them for the client to give back."""
     _mock_validate_session(mocker)
     mocker.patch(
         "backend.copilot.turn_queue.cancel_queued_turn",
         new=AsyncMock(return_value=True),
     )
-    mocker.patch.object(
-        chat_routes.stream_registry,
-        "mark_stop_requested",
-        new=AsyncMock(return_value="stop-token"),
-    )
-    mock_drain = mocker.patch.object(
+    mock_stop = mocker.patch.object(
         chat_routes,
-        "drain_pending_messages",
+        "stop_follow_ups",
         new=AsyncMock(
             return_value=[
                 pending_messages_module.PendingMessage(content="typed before")
@@ -4293,27 +4282,22 @@ def test_cancel_session_clears_pending_buffer(
     assert response.status_code == 200
     assert response.json()["cancelled"] is True
     assert response.json()["discarded_messages"] == ["typed before"]
-    mock_drain.assert_awaited_once_with("sess-1")
+    mock_stop.assert_awaited_once_with("sess-1")
 
 
-def test_cancel_session_survives_pending_drain_failure(
+def test_cancel_session_survives_a_failed_stop_step(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """A Redis hiccup while draining the pending buffer must not block the
-    cancel itself — the drain is best-effort cleanup, the cancel is not."""
+    """A Redis hiccup in the stop step must not block the cancel itself, and
+    the client is told it can't know what was discarded."""
     _mock_validate_session(mocker)
     mocker.patch(
         "backend.copilot.turn_queue.cancel_queued_turn",
         new=AsyncMock(return_value=True),
     )
-    mocker.patch.object(
-        chat_routes.stream_registry,
-        "mark_stop_requested",
-        new=AsyncMock(return_value="stop-token"),
-    )
-    mock_drain = mocker.patch.object(
+    mock_stop = mocker.patch.object(
         chat_routes,
-        "drain_pending_messages",
+        "stop_follow_ups",
         new=AsyncMock(side_effect=RuntimeError("redis down")),
     )
 
@@ -4321,8 +4305,8 @@ def test_cancel_session_survives_pending_drain_failure(
 
     assert response.status_code == 200
     assert response.json()["cancelled"] is True
-    assert response.json()["discarded_messages"] == []
-    mock_drain.assert_awaited_once_with("sess-1")
+    assert response.json()["discarded_messages"] is None
+    mock_stop.assert_awaited_once_with("sess-1")
 
 
 def test_cancel_session_reclears_pending_buffer_after_running_settles(
@@ -4359,14 +4343,13 @@ def test_cancel_session_reclears_pending_buffer_after_running_settles(
     mock_registry = MagicMock()
     mock_registry.get_active_session = AsyncMock(return_value=(active_session, "1-0"))
     mock_registry.get_session = AsyncMock(return_value=stopped_session)
-    mock_registry.mark_stop_requested = AsyncMock(return_value="stop-token")
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     mocker.patch(
         "backend.api.features.chat.routes.enqueue_cancel_task",
         new_callable=AsyncMock,
     )
-    mock_drain = mocker.patch.object(
-        chat_routes, "drain_pending_messages", new=AsyncMock(return_value=[])
+    mock_stop = mocker.patch.object(
+        chat_routes, "stop_follow_ups", new=AsyncMock(return_value=[])
     )
     mock_clear = mocker.patch(
         "backend.api.features.chat.routes.clear_pending_messages_unsafe",
@@ -4377,8 +4360,8 @@ def test_cancel_session_reclears_pending_buffer_after_running_settles(
 
     assert response.status_code == 200
     assert response.json()["cancelled"] is True
-    # Drained up front, cleared again after the turn settles.
-    mock_drain.assert_awaited_once_with("sess-1")
+    # Taken up front, cleared again after the turn settles.
+    mock_stop.assert_awaited_once_with("sess-1")
     mock_clear.assert_awaited_once_with("sess-1")
 
 

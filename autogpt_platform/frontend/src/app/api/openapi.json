@@ -22300,10 +22300,12 @@
             "title": "Reason"
           },
           "discarded_messages": {
-            "items": { "type": "string" },
-            "type": "array",
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
             "title": "Discarded Messages",
-            "description": "The user's follow-ups the Stop discarded unread, oldest first."
+            "description": "The user's follow-ups the Stop discarded unread, oldest first; null when the server could not tell."
           }
         },
         "type": "object",

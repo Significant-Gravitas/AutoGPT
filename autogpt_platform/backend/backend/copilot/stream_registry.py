@@ -17,7 +17,6 @@ Subscribers:
 import asyncio
 import logging
 import time
-import uuid
 from collections.abc import AsyncGenerator, Coroutine, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -88,9 +87,10 @@ logger = logging.getLogger(__name__)
 
 # The error a turn ends with when the user stopped it.
 CANCELLED_MESSAGE = "Operation cancelled"
-# Set on a running turn's meta by the user's Stop; the pending-message gate
-# refuses that turn's follow-ups, so a message sent after Stop starts the next.
-STOP_REQUESTED_FIELD = "stop_requested"
+# Set on a running turn's meta by the user's Stop to a unix time: until then the
+# pending-message gate refuses its follow-ups, so a message sent after Stop
+# starts the next turn.
+STOP_HOLD_FIELD = "stop_held_until"
 config = ChatConfig()
 _notification_bus = AsyncRedisNotificationEventBus()
 
@@ -174,7 +174,7 @@ class ActiveSession:
     turn_id: str = ""
     blocking: bool = False  # If True, HTTP request is waiting for completion
     status: Literal["running", "completed", "failed"] = "running"
-    stop_requested: bool = False
+    stop_held_until: float = 0.0
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     asyncio_task: asyncio.Task | None = None
     checkpoint: TurnCheckpoint | None = None
@@ -237,7 +237,7 @@ def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSes
         turn_id=meta.get("turn_id", "") or session_id,
         blocking=meta.get("blocking") == "1",
         status=meta.get("status", "running"),  # type: ignore[arg-type]
-        stop_requested=bool(meta.get(STOP_REQUESTED_FIELD)),
+        stop_held_until=float(meta.get(STOP_HOLD_FIELD) or 0),
         created_at=created_at,
     )
 
@@ -311,7 +311,7 @@ async def create_session(
             "turn_id": turn_id,
             "blocking": "1" if blocking else "0",
             "status": session.status,
-            STOP_REQUESTED_FIELD: "",
+            STOP_HOLD_FIELD: "",
             "error_message": "",
             "error_code": "",
             "created_at": session.created_at.isoformat(),
@@ -1127,41 +1127,6 @@ async def _stream_listener(
             },
         )
         _listener_sessions.pop(queue_id, None)
-
-
-async def mark_stop_requested(session_id: str) -> str | None:
-    """Flag the session's running turn as stopped by the user.
-
-    Its follow-up buffer refuses new messages from then on, so a message sent
-    while the turn winds down starts the next turn instead of feeding this
-    one. Returns the flag's token for :func:`clear_stop_requested`, or
-    ``None`` when no turn is running.
-    """
-    token = uuid.uuid4().hex
-    redis = await get_redis_async()
-    flagged = await hash_compare_and_set(
-        redis,
-        _get_session_meta_key(session_id),
-        "status",
-        expected="running",
-        new="running",
-        updates={STOP_REQUESTED_FIELD: token},
-    )
-    return token if flagged else None
-
-
-async def clear_stop_requested(session_id: str, token: str) -> bool:
-    """Undo :func:`mark_stop_requested` for a turn whose cancel failed, so it
-    takes follow-ups again while it runs on. Clears only the flag that
-    ``token`` set, never a later Stop's."""
-    redis = await get_redis_async()
-    return await hash_compare_and_set(
-        redis,
-        _get_session_meta_key(session_id),
-        STOP_REQUESTED_FIELD,
-        expected=token,
-        new="",
-    )
 
 
 async def mark_session_completed(

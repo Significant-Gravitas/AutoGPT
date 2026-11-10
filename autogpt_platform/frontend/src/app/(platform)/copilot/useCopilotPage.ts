@@ -434,7 +434,8 @@ function useCopilotPageChat(
 
   // Every follow-up queued before a Stop was either read by the stopped turn
   // or discarded. The discarded ones go to this chat's own draft, which is
-  // still right if the user switched chats while the cancel ran.
+  // still right if the user switched chats while the cancel ran. When the
+  // server can't tell which it discarded, the chips stay as they are.
   const stoppedChatDraft = useChatDraftAccess(
     sessionId ? sessionDraftKey(sessionId) : undefined,
   );
