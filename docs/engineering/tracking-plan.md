@@ -2,7 +2,7 @@
 
 The single list of PostHog events: for every user action, one event name, one
 sender and one set of properties. [Activation Metrics & Experiments](activation-metrics.md)
-explains how PostHog fits next to the SQL views, Looker, LaunchDarkly and
+explains how PostHog fits next to the SQL views, Looker and
 DataFast; this page is the event contract.
 
 PostHog is the only place for what people do in the app. DataFast gets no
@@ -70,8 +70,8 @@ Every event must carry:
 | `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser), `website` (the marketing site, see [Marketing site](#marketing-site)). |
 | `revision` | The deployed build's git sha, which Sentry reports as its release: `SENTRY_RELEASE` on the backend, the build's commit in the browser (`SENTRY_RELEASE`, else Vercel's `VERCEL_GIT_COMMIT_SHA`). Left out of a build that has none, such as a local one, and from `$ai_generation` (below). |
 
-Every backend event goes through `capture()` in
-`backend/util/posthog_client.py`, which applies `environment` and `source`
+Every backend event goes through `capture()` or `capture_anonymous()` in
+`backend/util/posthog_client.py`, which apply `environment` and `source`
 last, so a caller cannot overwrite them. `revision` is a super property of
 every backend PostHog client instead (`revision_properties()`), so the flag
 client's `$feature_flag_called` carries it too. AutoPilot's `$ai_generation`
@@ -87,14 +87,16 @@ preview, reports `environment: dev`.
 
 `source` is reserved for the emitter. The events that used it for
 something else now use `hire_started.surface`,
-`expert_recommended.team_source`, `workflow_installed_on_expert.workflow_source`
-and, for the four `first_run_tour_*` events, `opened_from`.
+`workflow_installed_on_expert.workflow_source` and, for the four
+`first_run_tour_*` events, `opened_from`; `plan_viewed` and
+`expert_thread_created` use `plan_source` and `thread_source`.
 
 ### Identity
 
 - **`distinct_id` is the platform user id** for every backend event, the same
   id the browser passes to `posthog.identify(user.id)`, so both halves land
-  on one person.
+  on one person. The anonymous [Account deletion](#account-deletion) events
+  are the only exception (see **No synthetic ids** below).
 - **Before login the browser uses the first-party anonymous id**
   (`src/services/analytics/anonymous-id.ts`), passed to `posthog.init` as the
   bootstrap `distinctID`. `identify` merges it into the user at login, and
@@ -106,7 +108,10 @@ and, for the four `first_run_tour_*` events, `opened_from`.
   depend on it.
 - **No synthetic ids.** A backend event with no user is dropped
   (`posthog_client.capture` does it for every emitter), since a made-up id
-  creates a person nobody can merge.
+  creates a person nobody can merge. The one exception is an event that must
+  not be linked to anyone ([Account deletion](#account-deletion)):
+  `posthog_client.capture_anonymous` sends it with a fresh random id and
+  `$process_person_profile: false`, so PostHog creates no person for it.
 - **No email or name in event properties.** Identify ids only. The email and
   display name are person properties set by `identify` and nowhere else.
   (`expert_hired.name` is the expert's display name, not a person's.)
@@ -331,20 +336,21 @@ merges the website pageviews into the new user:
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab). The paywall step reports `paywall_viewed` instead. |
+| `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `subscription`, `connect`, `preparing`) | A wizard step is shown (once per tab). `subscription` is the plan step (Otto's plan beside the trial), with or without a paywall; with one it also sends `paywall_viewed`. |
 | `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
 | `brain_dump_started` | browser | live | `prompt_set` (the role's "Otto might ask" set) | Recording starts. |
-| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed), `prompt_set`, `prompts_seen` (distinct live prompts shown) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
+| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed), `prompt_set`, `prompts_seen` (distinct live prompts shown), `follow_up` (only `true`, after the not-enough screen) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
 | `brain_dump_canceled` | browser | live | — | Recording is cancelled. |
-| `brain_dump_skipped` | browser | live | `prompt_set`, `prompts_seen` | The step is skipped. |
+| `brain_dump_skipped` | browser | live | `prompt_set`, `prompts_seen`, `from` (only `insufficient`) | The step is skipped. `from: "insufficient"` when it was skipped on the not-enough screen. |
 | `brain_dump_recovery_shown` | browser | live | `parts` | A saved partial recording is offered back. |
 | `brain_dump_recovery_used` | browser | live | — | The saved recording is used. |
 | `brain_dump_retry` | browser | live | `attempt` | A failed finalize is retried. |
-| `brain_dump_restarted` | browser | live | — | Recording starts over. |
+| `brain_dump_restarted` | browser | live | `from` (only `insufficient`) | Recording starts over. `from: "insufficient"` for Talk on the not-enough screen; no properties otherwise. |
 | `brain_dump_download` | browser | live | — | The recording is downloaded after a failure. |
 | `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused, on the first ask and again on each refused retry. |
 | `brain_dump_mic_failed` | browser | live | `error_name` | The microphone fails to open, for any reason, a refused permission included. Sent again on each failed retry, so count people, not events. |
-| `brain_dump_typed_fallback` | browser | live | `reason` (`chose_to_type`, `permission_denied`), `prompt_set` | The user types instead of speaking. `permission_denied` is sent once per visit, however many retries are refused. |
+| `brain_dump_typed_fallback` | browser | live | `reason` (`chose_to_type`, `permission_denied`), `prompt_set`, `from` (only `insufficient`) | The user types instead of speaking. `permission_denied` is sent once per visit, however many retries are refused. `from: "insufficient"` for Write on the not-enough screen. |
+| `brain_dump_insufficient_shown` | browser | live | `mode` (`voice`, `typed`), `error_code` (`insufficient_content`, `no_usable_speech`), `heard` (whether "You" showed any text), `reply_kind` (the kind of take Jev picked for what was said, such as `mic_check` or `wants_to_skip`, which shows that kind's line; `other` when none fit and `null` when there was no pick (no words, no key, a timeout, an error or an unsure pick), both of which show the default line), `prompt_set` | The not-enough screen ("Otto replies") shows after the quality gate rejects a take, voice or typed. Voice rejects also send `transcription_failed` as before. |
 | `brain_dump_prompt_advanced` | browser | live | `via` (`auto`, `click`), `screen` (`rest`, `typing`, `recording`), `prompt_index`, `prompt_set` | The "Otto might ask" question moves on, by its timer (12 s at rest on narrow screens, 20 s typing, 15 s recording; not while the ideas are paused) or "Another question". Not sent for the first question. |
 | `brain_dump_permission_retried` | browser | live | `result` (`granted`, `denied`, `unavailable`), `via` (`retry_link`, `record_instead`, `permission_change`), `permission_state` (`prompt`, `granted`, `denied`, `unknown`) | After a refused microphone, the user asks for it again, or allows the site in its settings (`permission_change`). Sent before `brain_dump_started`. `result` is the browser's answer, not the take: `granted` with no `brain_dump_started` after it means the user had already sent their text, or left the step, while the prompt was open. |
 | `transcription_failed` | browser | live | `error_code`, `finalize_latency_ms` | Finalize returns a failure. |
@@ -358,10 +364,8 @@ merges the website pageviews into the new user:
 | `intro_path` | browser | live | `path` | The intro path (A/B) is chosen. |
 | `intro_followup_sent` | browser | live | `chars` | First message after the intro card. |
 | `later_dump_completed` | browser | live | — | A brain dump sent later from the composer. |
-| `expert_recommended` | browser | live | `template_id`, `position`, `team_source` | A recommended expert card is shown. |
-| `expert_recommendation_clicked` | browser | live | `template_id`, `position` | A recommended expert card is clicked. |
-| `hire_all_clicked` | browser | live | `count` (experts this click hires), `already_hired`, `recommended`, `retry` | The hire step's primary button is clicked to hire every expert still unhired, or with `retry` the ones a batch failed to hire. |
-| `hire_step_continued` | browser | live | `hired`, `recommended`, `via` (`auto` after a full batch, `continue`, `later` for "I'll add members later") | The hire step is left. |
+| `plan_viewed` | browser | live | `plan_source` (`llm`, `fallback`), `skipped_dump`, `tasks` (shown, at most 3), `experts` (the plan's team), `wait_ms` (from the step's mount), `gave_up` (the 30 s wait ran out before a plan was shown, so the step settled the plan; `plan_source` is then `llm` when the greeting had written its tasks by that point, ranked if the plan job had finished and otherwise in the greeting's order with owners matched by role, and `fallback` for the role plan) | The plan step first shows a plan, once per mount. A plan restored on a Stripe cancel return is not reported again. |
+| `plan_experts_hired` | backend | live | `hired` (joined in this call), `already_on_team` (on the team before it), `failed` (could not join: a failed hire or the active expert limit) | The plan's team is hired (`plan_hire.hire_plan`, which the preparing screen calls once the trial, or the plan with no paywall, is confirmed) and at least one teammate joined, or it is the first call to fail anyone. A repeat call that finds the whole team already on it, or the same people still unable to join, sends nothing, so a reload of the preparing screen is not counted again; the claim behind that lives in Redis for a day, so a Redis failure or a repeat a day later can send a duplicate. A repeat that hires someone sends a new event, with `failed` counting whoever still could not join. A call that fails as a whole (a 409 for a plan that could not be settled, or a 5xx) sends nothing, even when the user ends up told nobody could join. The hires themselves are `expert_hired` with `via: plan`. |
 | `tab_intro_shown` | browser | live | `tab` | A tab intro card is shown. |
 | `tab_intro_cta_clicked` | browser | live | `tab`, `cta` | Its primary CTA is used. |
 | `tab_intro_dismissed` | browser | live | `tab` | It is dismissed any other way. |
@@ -398,18 +402,20 @@ merges the website pageviews into the new user:
 | `voice_mode_error` | browser | live | `stage` | The VAD, synthesis or send failed. |
 | `experts_section_viewed` | browser | live | — | The marketplace experts shelf renders with results. |
 | `expert_profile_opened` | browser | live | `template_id` | An expert profile page opens. |
-| `hire_started` | browser | live | `template_id`, `surface` (`onboarding`, `expert_page`) | A hire button is clicked, or once per expert of the hire step's batch. |
+| `hire_started` | browser | live | `template_id`, `surface` (`expert_page`; `onboarding` was the hire step's, gone with SECRT-3201) | A hire button is clicked. The onboarding plan's hires have no click: they are `plan_experts_hired` and `expert_hired` with `via: plan`. |
 | `hire_flow_abandoned` | browser | live | `template_id`, `stage` | The hire dialog is closed before hiring. |
-| `expert_hired` | backend | live | `expert_id`, `template_id`, `name`, `failed_preloads_count`, `surface` (`onboarding`, `expert_page`, `copilot`; unset for other API callers) | An expert is hired or an archived one revived, from any surface (`experts_db.hire_expert`). Sent once the hire's background setup settles (`_run_hire_setup`), so `failed_preloads_count` is known; a revival with nothing to set up sends it at once. An idempotent re-hire of an active expert does not fire. |
+| `expert_hired` | backend | live | `expert_id`, `template_id`, `name`, `failed_preloads_count`, `surface` (`onboarding`, `expert_page`, `copilot`; unset for other API callers), `via` (`plan` for the onboarding plan's team; unset otherwise) | An expert is hired or an archived one revived, from any surface (`experts_db.hire_expert`). Sent once the hire's background setup settles (`_run_hire_setup`), so `failed_preloads_count` is known; a revival with nothing to set up sends it at once. An idempotent re-hire of an active expert does not fire. |
 | `hire_failed` | backend | live | `template_id`, `failed_preloads_count` | Hiring raised. |
-| `expert_thread_created` | browser | live | `expert_id` | A new expert chat is created. |
+| `expert_thread_created` | browser | live | `expert_id`, `thread_source` (`suggested_task` when a suggested task started it; unset otherwise) | A new expert chat is created. |
 | `writing_style_added` | backend | live | `expert_id` | A writing style is saved on an expert. |
 | `workflow_installed_on_expert` | backend | live | `expert_id`, `workflow_source` (`library`, `marketplace`), `library_agent_id` or `store_listing_version_id` | A workflow is attached to an expert. |
 | `home_viewed` | browser | live | — | The home dashboard renders with data. |
 | `home_attention_actioned` | browser | live | `kind`, `action` | A "needs you" item is approved or declined. |
 | `home_team_member_clicked` | browser | live | `expert_id` | A team member row is clicked. |
-| `home_suggestion_clicked` | browser | live | `position` (0-based among the rows shown), `surface` (`intro`, `home`), `remaining` (open rows after this one) | A suggested first task is clicked, on the greeting or under the Home composer. |
-| `home_suggestion_dismissed` | browser | live | `position` (null for `all`), `surface`, `remaining`, `scope` (`one`, `all`) | A suggested first task is hidden, or "Hide all" is used. An Undo sends nothing. |
+| `home_suggestion_clicked` | browser | live | `position` (0-based among the rows shown), `surface` (`intro`, `home`), `remaining` (open rows after this one), `owner` (`expert`, `otto`: who it was sent to), `expert_template_id` (the planned owner, or null), `rank` (0-based in the stored, ranked order) | A suggested first task is clicked, on the greeting or under the Home composer. |
+| `home_suggestion_dismissed` | browser | live | `position`, `surface`, `remaining`, `scope` (`one`; `all` was "Hide all", gone with SECRT-3201) | A suggested first task is removed with its x. An Undo sends nothing. |
+| `home_suggestions_collapsed` | browser | live | `open` (open rows) | Hide folds the suggested tasks away. Nothing is written to the tasks. |
+| `home_suggestions_expanded` | browser | live | `open` | Show brings them back. |
 | `listing_added_to_library` | backend | live | `store_listing_version_id`, `graph_id`, `library_agent_id` | A marketplace agent is added to the library for the first time. Only a user adding a listing counts (the library route and the add-to-library block). Restoring an entry the user already had does not, and neither does a system install: an add inside another write's transaction, an expert's hire preloads, or attaching a marketplace workflow to an expert (that is `workflow_installed_on_expert`). |
 | `listing_downloaded` | backend | live | `store_listing_version_id`, `graph_id` | A signed-in user downloads a marketplace agent file. Signed-out downloads have no user and are not sent. |
 
@@ -428,6 +434,8 @@ merges the website pageviews into the new user:
 | `trial_subscribe_now_clicked` | browser | live | `days_left` | Subscribe now is clicked in the cancellation popup. It opens Billing. There, the trial's own plan converts the trial at once on the saved card (`trial_converted`, no `checkout_started`); any other plan, or a card that asks for authentication, goes through Stripe Checkout (`checkout_started`), which ends the trial without a `trial_ended`. |
 | `trial_started` | backend | live | `trial_id`, `trial_offer_version`, `subscription_tier`, `billing_cycle`, `trial_duration_days` | The trial starts. Like every trial lifecycle event, it is sent only when its notification email is queued. |
 | `trial_ending` | backend | live | as above | The reminder window opens. |
+| `trial_expiring` | backend | live | as above | The reminder window opens on a trial set to cancel at its end: the "ends in 3 days, not set to renew" email is queued. Not sent when the cancellation was made in the last day. |
+| `trial_last_call` | backend | live | as above | About a day before a trial set to cancel at its end runs out, the "access ends tomorrow" email is queued. Not sent when the cancellation was made in the last day. |
 | `trial_canceled` | backend | live | as above | The trial is set to cancel at its end: the cancellation is scheduled, trial access continues until the end date, and the card is not charged. |
 | `trial_resumed` | backend | live | as above | A trial set to cancel is resumed before its end date, so it converts to paid at its end as first agreed. |
 | `payment_failed` | backend | live | as above | The conversion charge fails. |
@@ -515,6 +523,56 @@ changelog) is not covered.
   never tracked, since its links carry sign-in tokens. Postmark only calls the
   webhook for the record types ticked on the stream's webhook.
 
+## Account deletion
+
+Self-serve account deletion (SECRT-2877), behind the
+`self-serve-account-deletion` flag; nothing is sent while it is off. These
+events are anonymous: the backend sends each one with `capture_anonymous()`,
+under a fresh random `distinct_id` and with `$process_person_profile: false`,
+so PostHog creates no person and nothing links the event to an account. The
+backend never adds the user id, email or name to them, so they cannot be
+joined to the person's other events.
+
+They are the exception to [Who sends it](#who-sends-it): the clicks are sent
+by the backend too (`POST /api/account/deletion/feedback`), because posthog-js
+attaches the signed-in user's id to every event and browser events wait for
+analytics consent. The dialog carries `ph-no-capture`, so posthog-js
+autocapture and session replay record nothing inside it: the chosen reason and
+the panel buttons never reach PostHog under the person's id.
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `account_deletion_started` | backend | live | `plan_state`, `tenure_bucket` (as below), `surface` (`settings`, `paywall`: where the flow was opened) | The Delete account dialog opens: once per open, and reopening counts again. Sent when the button is clicked, so a dialog closed with the X still counts. |
+| `account_deletion_feedback` | backend | live | `plan_state` (`max`, `pro`, `trial`, `none`, `managed` for BASIC, BUSINESS and ENTERPRISE), `tenure_bucket` (account age: `<7d`, `7-30d`, `30-90d`, `90d+`). Optional: `reason` (`privacy`, `cost`, `not_using`, `missing_capability`, `limits`, `other`, `skipped`; absent when only text was typed), `text` (what was typed in the optional field, trimmed, at most 1000 characters; absent when nothing was typed) | Skip or Continue is clicked on the "Why are you leaving?" step, once per pass through it. Skip sends `reason: skipped`, so the skip rate is the share of `skipped`. |
+| `account_deletion_alternative_clicked` | backend | live | `alternative` (`manage_apps`, `disconnect_all`, `billing`, `keep_account`), `plan_state`, `tenure_bucket`. Optional: `reason` (the one the alternative was shown for) | The button of the alternative shown for a reason is clicked: "Manage connected apps", "Disconnect all apps", "Go to Billing" or "Keep my account". |
+| `account_deletion_completed` | backend | live | `plan_state` (as above: the plan the account had), `surface` (`settings`, `paywall`: where the flow was opened) | The account is closed: `POST /api/account/deletion` closes it, and its data is erased 14 days later unless its owner keeps it. A repeat call on an account already closed sends nothing; an account kept and deleted again counts again. |
+| `account_deletion_kept` | backend | live | `tenure_bucket` (as above), `days_left` (whole days that were left before the erasure, 0 to 13) | The owner of a closed account signs in and chooses "Keep my account" (`POST /api/account/deletion/restore` reopens it). Once per kept closure. |
+
+`plan_state` and `tenure_bucket` are read from the account on the server; the
+browser cannot set them. An optional property the person left empty is left
+out, never sent as null. The feedback route accepts 20 calls per account per
+hour and answers 429 after that, so a script cannot flood these counts.
+
+`text` is free text sent as typed, so it can hold anything the person wrote;
+that is one more reason the events are anonymous, and the backend never logs
+it. The deletion source is `surface`, not `source`, which is the
+[base property](#base-properties) (`platform`).
+
+Reading the funnel (someone who reopens the flow counts again, and with no id
+the repeats cannot be removed):
+
+- starts: `account_deletion_started`; read the numbers after the first 30.
+- skip rate: `account_deletion_feedback` with `reason: skipped` over all
+  `account_deletion_feedback`, which counts the passes that reached the
+  confirmation card.
+- save rate: `account_deletion_alternative_clicked` with `alternative` of
+  `keep_account`, `billing` or `manage_apps`, over `account_deletion_started`.
+- completion: `account_deletion_completed` (the accounts that were closed)
+  over `account_deletion_started`.
+- kept: `account_deletion_kept` over `account_deletion_completed`, the closed
+  accounts whose owners changed their mind within the 14 days. Closed minus
+  kept is the accounts erased (give the last 14 days time to run out).
+
 ## LLM analytics
 
 AutoPilot's LLM calls, tool calls and the ratings of its replies, in
@@ -530,7 +588,7 @@ they can hold Gmail or Drive content (Google Limited Use).
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
 | `$ai_generation` | OpenRouter Broadcast | live | set by OpenRouter from the request (`backend/copilot/llm_attribution.py`): `distinct_id` = the request's `user` (the platform user id), `$ai_session_id` = its `session_id` (the chat session id), `$ai_span_name` = `trace.generation_name` (`copilot-title`, `copilot-sdk`, `copilot-baseline`), `$ai_trace_id` = `trace.trace_id` (the reply's trace: the id of the executor turn that made the call, or for a subtask the trace of the turn that spawned it, so all calls behind one reply share it; absent for a call made outside a turn), `metadata_environment` (`local`, `dev`, `prod`), `metadata_impersonated`, `metadata_turn_origin` (what started the turn that made the call: `chat`, `scheduled`, `spawned`, `automation` (a workflow's AutoPilot block) or `system`; a reply's own calls match its `$ai_trace` `turn_origin`, a subtask's calls carry the subtask's, as on its `$ai_span`; absent for a call made outside a turn); `metadata_revision` (the deployed build's git sha, `config.sentry_release`) when it is set; model, tokens, cost and latency from OpenRouter | An AutoPilot LLM call goes through OpenRouter: a session title, an SDK turn (main agent, sub-agents and the CLI's compaction, via `CLAUDE_CODE_EXTRA_BODY`) or a baseline turn. |
-| `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating, shared with its Langfuse score), `impersonated`; `$ai_trace_id` when the reply row records its trace (`ChatMessage.traceId`, replies written since SECRT-2979); `$ai_feedback_text` when a thumbs-down has a comment | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
+| `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating), `impersonated`; `$ai_trace_id` when the reply row records its trace (`ChatMessage.traceId`, replies written since SECRT-2979); `$ai_feedback_text` when a thumbs-down has a comment | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
 | `$ai_trace` | backend | live | `$ai_trace_id` (the turn id), `$ai_span_name` = `copilot-turn`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `$ai_error` (the error code, when failed), `turn_id`, `outcome` (`completed`, `cancelled`, `failed`), `engine` (`sdk`, `baseline`, ...), `turn_origin` (`chat`, `scheduled`, `automation` for a turn a workflow's AutoPilot block started, `system`; `spawned` on a subtask's span), `tool_call_count`, `impersonated` | A reply's turn ends, if it reached its engine (`copilot/turn_tracing.py`, `copilot/ai_spans.py`). A redelivered turn sends it again under the same event uuid (dedup key = the turn id), so PostHog keeps one; likewise a subtask's span. |
 | `$ai_span` | backend | live | `$ai_trace_id`, `$ai_span_id`, `$ai_parent_id`, `$ai_span_name`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `impersonated`. A **tool call**: `$ai_span_name` = the tool's name, `tool_call_id`, `cancelled` (platform tools) or `builtin` (the SDK CLI's own tools, sub-agents' calls included; the high-volume lookups `TodoWrite`, `Read`, `Glob`, `Grep`, `LS` and `NotebookRead` get no span, and no built-in gets one with `CHAT_POSTHOG_BUILTIN_TOOL_SPANS=false`), `$ai_is_error` true when it raised, a gate refused it or it answered with an error, but not when it stopped for an approval card or a sign-in, `$ai_error` = the exception's type name when a platform tool raised (never its message); its parent is the turn (the trace root, or the subtask's span) or the tool that called it. A built-in tool's span is parented to the turn, not to the `Task` span of the sub-agent that called it. A **subtask**: `$ai_span_name` = `copilot-subtask`, `$ai_span_id` = its turn id, parent = the spawning tool's span, which its envelope keeps, so a child that waited in the turn queue or a subtask woken by an approval stays in the trace and under the span its spawner gave it (the trace root for one queued or held before this was recorded), `depth`, plus the `$ai_trace` turn properties, with `turn_origin` = `spawned` (or `scheduled` when the subtask's own turn runs unattended) | A platform tool call ends (`BaseTool.execute`, both engines), an SDK built-in tool call ends (Pre/PostToolUse hooks), or a spawned turn ends. |
 
@@ -573,7 +631,7 @@ user or chat when their client goes through OpenRouter.
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
 | `$feature_flag_called` | browser (posthog-js) | live | set by PostHog | A PostHog flag is read (`useExperiment`). |
-| `feature_flag_mismatched` | browser | live | `flag`, `launchdarkly` (`value`, `resolved`), `posthog` (`value`, `resolved`) | Ops signal: with both flag vendors configured, LaunchDarkly and PostHog resolved a flag to different values (`useDualFlag`). Not a user action; keep out of funnels. |
+| `chunk_reload_triggered` | browser | live | `surface` (`unhandled_rejection`, `error_boundary`), `path` | Ops signal: a tab on an older build could not load a code chunk after a deploy (`ChunkLoadError`), and the page reloaded once to pick up the current build (`lib/chunk-load-reload.ts`). At most one reload a minute per tab. Not a user action; keep out of funnels. |
 
 Arms are also stored in the database (`analytics.experiment_assignment`),
 so an experiment can be read in PostHog and Looker alike.
@@ -712,13 +770,18 @@ history PostHog already holds.
 | `subscription_trial_checkout_started` | browser | `checkout_started` with `checkout_kind: trial`, sent by the backend once the trial's Checkout session exists; `surface` is the same `onboarding` / `billing`. `trial_offer_version` is dropped; `trial_started` carries it. |
 | `hire_completed` | backend | `expert_hired` (same hire; it now also skips idempotent re-hires). |
 | `hire_flow_completed` | browser | `expert_hired` with `surface: expert_page`. `elapsed_ms` is PostHog's time to convert from `hire_started`; `voice_picked` is dropped. |
-| `onboarding_expert_hired` | browser | `expert_hired` with `surface: onboarding`. The card `position` is on `expert_recommendation_clicked`. |
+| `onboarding_expert_hired` | browser | `expert_hired` with `surface: onboarding`. |
+| `expert_recommended` | browser | Gone with the onboarding hire step (SECRT-3201): the plan's team is on `plan_viewed` (`experts`). |
+| `expert_recommendation_clicked` | browser | Gone with the hire step: nobody picks experts one by one any more. |
+| `hire_all_clicked` | browser | `plan_experts_hired`, sent by the backend when the plan's team is hired. |
+| `hire_step_continued` | browser | `onboarding_step_viewed` with `step: subscription` (the plan step) and `plan_experts_hired`. |
 | `copilot_message_sent` | backend | `chat_message_sent`, which carries `message_length`. |
 | `expert_run_completed` | backend | `agent_run_finished` with `expert_id` set and `is_subgraph_run: false`. |
 | `finalize_latency_ms` | browser | The `finalize_latency_ms` property on `brain_dump_completed` and `transcription_failed`. |
 | `voice_transcribe_latency_ms` | browser | The `transcribe_latency_ms` property on `voice_turn_sent` (and `voice_turn_dropped` with `reason: filler_or_empty`). |
 | `voice_first_sound_latency_ms` | browser | The `first_sound_latency_ms` property on `voice_turn_completed`, or on `voice_turn_dropped` with `reason: interrupted` for a reply that was cut off. |
 | `experiment_exposed` | browser | Nothing: `useLaunchDarklyExperiment` had no caller and was deleted. PostHog-bucketed experiments use `$feature_flag_called`. |
+| `feature_flag_mismatched` | browser | Nothing: only the dual LaunchDarkly/PostHog flag backend sent it, and LaunchDarkly was removed (SECRT-2708). |
 | `copilot_trigger_setup` | backend | Nothing: never sent (no caller). |
 | `intro_card_dismissed`, `raise_door_clicked`, `intro_start_with_autopilot` | browser | Nothing: declared, never sent. |
 | `capability_card_viewed`, `capability_cards_completed`, `capability_cards_skipped` | browser | `first_run_tour_step_viewed`, `first_run_tour_completed` and `first_run_tour_skipped` (SECRT-3149): the four concept cards were replaced by the walkthrough over the real UI. |
@@ -777,8 +840,8 @@ line:
 
 - **Events the plan folds into others keep their names until that change.**
   The brain-dump events (`brain_dump_*`, `transcription_failed`,
-  `later_dump_completed`) and the wizard's `intro_path` and
-  `hire_step_continued` become properties of `onboarding_step_viewed` /
+  `later_dump_completed`) and the wizard's `intro_path` become properties
+  of `onboarding_step_viewed` /
   `_completed` / `_skipped` / `_back`. Spoken turns (`voice_turn_sent`)
   become `chat_message_sent` with `input_mode: voice`.
 - **`subscription_changed` covers upgrades only.** The plan also counts

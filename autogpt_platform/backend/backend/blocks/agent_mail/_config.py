@@ -13,7 +13,9 @@ from backend.sdk import APIKeyCredentials, BlockCostType, ProviderBuilder, Secre
 agent_mail = (
     ProviderBuilder("agent_mail")
     .with_description("Managed email accounts for agents")
-    .with_api_key("AGENTMAIL_API_KEY", "AgentMail API Key")
+    # AGENTMAIL_API_KEY is the organisation key AgentMailManagedProvider uses
+    # to provision each user's own key. Blocks run on that per-user key.
+    .with_managed_api_key()
     .with_base_cost(1, BlockCostType.RUN)
     .build()
 )

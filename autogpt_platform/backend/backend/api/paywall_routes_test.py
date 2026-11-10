@@ -34,6 +34,12 @@ CHECKED_IN_HANDLER = {
 
 OPEN_WHILE_PAYWALLED = {
     # Signing in and managing the account, its organisations and its links.
+    # The paywall offers Delete account, so its routes stay open, and so do
+    # the screen and the button that keep a closed account.
+    "GET /api/account/deletion",
+    "POST /api/account/deletion",
+    "POST /api/account/deletion/feedback",
+    "POST /api/account/deletion/restore",
     "POST /api/analytics/attribution",
     "GET /api/api-keys",
     "POST /api/api-keys",
@@ -135,7 +141,10 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/credits/trial/confirm",
     "POST /api/credits/trial/resume",
     "POST /api/credits/{transaction_key}/refund",
-    # Onboarding, which reaches the plan picker only after hiring the team.
+    # Onboarding: the wizard, the brain dump and the plan shown beside the
+    # trial (settled when the step stops waiting), all before anything is
+    # paid for. The plan's hire checks the paywall. POST /api/experts is here from when onboarding hired the
+    # team before the plan picker.
     "POST /api/experts",
     "GET /api/onboarding",
     "PATCH /api/onboarding",
@@ -145,6 +154,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/onboarding/brain-dump/intro",
     "POST /api/onboarding/brain-dump/intro/complete",
     "POST /api/onboarding/brain-dump/parts",
+    "GET /api/onboarding/brain-dump/plan",
+    "POST /api/onboarding/brain-dump/plan/settle",
     "GET /api/onboarding/brain-dump/recommended-experts",
     "GET /api/onboarding/brain-dump/recommended-providers",
     "GET /api/onboarding/brain-dump/recording",
@@ -316,6 +327,7 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/oauth/introspect",
     "POST /api/oauth/revoke",
     "POST /api/oauth/token",
+    "GET /api/platform-config",
     "GET /api/public/shared/chats/{share_token}",
     "GET /api/public/shared/chats/{share_token}/files/{file_id}/download",
     "GET /api/public/shared/chats/{share_token}/messages",

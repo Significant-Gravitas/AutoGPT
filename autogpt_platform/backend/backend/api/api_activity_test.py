@@ -9,13 +9,14 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from autogpt_libs.auth import forget_account_state
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from prisma.enums import APIKeyPermission
-from prisma.models import APIKey, User
+from prisma.enums import AccountDeletionSource, APIKeyPermission
+from prisma.models import AccountDeletionRequest, APIKey, User
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from backend.api.rest_api import app as rest_app
-from backend.data import api_activity
+from backend.data import account_deletion, api_activity
 from backend.data.auth import api_key as api_key_db
 from backend.data.redis_client import HOST, PORT
 from backend.util.test import SpinTestServer
@@ -26,6 +27,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 SESSION_PATH = "/api/experiments/assignments"
+# Resolves its caller through `get_optional_user_id`, and answers a signed-out one.
+OPTIONAL_SESSION_PATH = "/api/feature-flags"
 
 
 @pytest.fixture
@@ -67,6 +70,8 @@ async def user_id(server: SpinTestServer, mocker):
         clear=True,
     )
     yield user_id
+    await AccountDeletionRequest.prisma().delete_many(where={"userId": user_id})
+    forget_account_state(user_id)
     await APIKey.prisma().delete_many(where={"userId": user_id})
     await User.prisma().delete_many(where={"id": user_id})
 
@@ -94,6 +99,42 @@ async def test_an_api_key_request_counts_once_as_external(user_id, day, path):
 
     counts = await api_activity.get_request_counts(day, [user_id])
     assert counts[user_id].model_dump() == {"internal": 0, "external": 1}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "path, credential, closed_status",
+    [
+        (SESSION_PATH, "session", 401),
+        (OPTIONAL_SESSION_PATH, "session", 200),
+        ("/external-api/v1/me", "api_key", 401),
+        ("/api/v2/me", "api_key", 401),
+    ],
+)
+async def test_a_closed_accounts_requests_are_refused_and_not_counted(
+    mocker, user_id, day, path, credential, closed_status
+):
+    if credential == "session":
+        mocker.patch(
+            "autogpt_libs.auth.dependencies.parse_jwt_token_async",
+            return_value={"sub": user_id, "role": "user"},
+        )
+        headers = {"Authorization": "Bearer token"}
+    else:
+        headers = await _api_key_headers(user_id)
+    closed_check = mocker.spy(account_deletion, "is_account_closed")
+
+    async with _client() as client:
+        open_status = (await client.get(path, headers=headers)).status_code
+        await _close_account(user_id)
+        statuses = (open_status, (await client.get(path, headers=headers)).status_code)
+    await api_activity.flush()
+
+    assert statuses == (200, closed_status)
+    counts = await api_activity.get_request_counts(day, [user_id])
+    assert counts[user_id].total == 1
+    # Counting reads nothing of its own: one closed-account lookup per request.
+    assert closed_check.call_count == 2
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -152,6 +193,18 @@ async def _api_key_headers(user_id: str) -> dict[str, str]:
         "counted", user_id, [APIKeyPermission.IDENTITY]
     )
     return {"X-API-Key": key}
+
+
+async def _close_account(user_id: str) -> None:
+    await AccountDeletionRequest.prisma().create(
+        data={
+            "userId": user_id,
+            "eraseAfter": datetime.now(UTC) + account_deletion.GRACE_PERIOD,
+            "source": AccountDeletionSource.SETTINGS,
+        }
+    )
+    # This process cached the account as open; the next request reads the row.
+    forget_account_state(user_id)
 
 
 async def _counted(day: date, user_id: str) -> api_activity.APIRequestCounts:

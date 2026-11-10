@@ -43,37 +43,34 @@ export function ProviderBox({
           )}
         />
         {isBusy && (
-          <Icon
-            icon={Loading03Icon}
-            size={20}
-            className="absolute -bottom-1 -right-1 rounded-full bg-surface text-foreground-tertiary motion-safe:animate-spin"
-          />
+          <span className="absolute -right-1 -bottom-1 rounded-full bg-surface">
+            <Icon
+              icon={Loading03Icon}
+              size={20}
+              tone="muted"
+              spin
+              className="block"
+            />
+          </span>
         )}
       </span>
       <span className="flex w-full flex-col items-center gap-1">
         <Text
           variant="body-medium"
           as="span"
-          className={cn(
-            "flex min-h-11 items-center justify-center",
-            state === "coming-soon"
-              ? "text-foreground-tertiary"
-              : "text-foreground-base",
-          )}
+          tone={state === "coming-soon" ? "muted" : "base"}
+          className="flex min-h-11 items-center justify-center"
         >
           {name}
         </Text>
         {state === "connected" && (
-          <span
-            // TODO(tokens): no exact role for bg-emerald-50 #ecfdf5, text-emerald-700 #047857
-            className="inline-flex items-center gap-1 rounded-[10px] bg-emerald-50 px-2 py-[2px] text-body-sm font-medium leading-5 text-emerald-700"
-          >
+          <span className="inline-flex items-center gap-1 rounded-lg bg-success-surface px-2 py-0.5 text-body-sm leading-5 font-medium text-success-foreground">
             <Icon icon={CheckmarkCircle02Icon} size={13} />
             Connected
           </span>
         )}
         {state === "coming-soon" && (
-          <span className="inline-flex items-center rounded-[10px] bg-surface-hover px-2 py-[2px] text-body-sm font-medium leading-5 text-foreground-tertiary">
+          <span className="inline-flex items-center rounded-lg bg-surface-hover px-2 py-0.5 text-body-sm leading-5 font-medium text-foreground-tertiary">
             Coming soon
           </span>
         )}
@@ -105,8 +102,7 @@ export function ProviderBox({
       className={cn(
         FRAME,
         "border-border-base transition-colors hover:border-border-strong hover:bg-surface-muted",
-        // TODO(tokens): no exact role for focus-visible:ring-purple-400 #925cf7
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+        "focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none",
         isBusy && "cursor-progress",
       )}
     >

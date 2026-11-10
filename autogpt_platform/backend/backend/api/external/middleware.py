@@ -1,7 +1,8 @@
 from typing import Optional
 
+from autogpt_libs.auth import reject_closed_account
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
-from fastapi import FastAPI, HTTPException, Security, status
+from fastapi import FastAPI, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, ConfigDict
@@ -34,6 +35,9 @@ class VerifiedCredential(BaseModel):
     rejection: Optional[HTTPException] = None
 
 
+# Every path rejects a closed account's key or token with a 401: deletion
+# revokes every key and grant, but one issued while the account was closing
+# would otherwise keep working until the account's data is erased.
 async def resolve_auth_info(
     api_key: str | None = Security(api_key_header),
     bearer: HTTPAuthorizationCredentials | None = Security(bearer_auth),
@@ -47,6 +51,7 @@ async def resolve_auth_info(
     if api_key is not None:
         api_key_info = await validate_api_key(api_key)
         if api_key_info:
+            await reject_closed_account(api_key_info.user_id)
             await _admit(api_key_info)
             return api_key_info
         raise HTTPException(
@@ -60,6 +65,7 @@ async def resolve_auth_info(
         if not is_access_token(bearer.credentials) and (
             api_key_info := await validate_api_key(bearer.credentials)
         ):
+            await reject_closed_account(api_key_info.user_id)
             await _admit(api_key_info)
             return api_key_info
 
@@ -67,6 +73,7 @@ async def resolve_auth_info(
             token_info, _ = await validate_access_token(bearer.credentials)
         except (InvalidClientError, InvalidTokenError) as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        await reject_closed_account(token_info.user_id)
         await _admit(token_info)
         return token_info
 
@@ -80,10 +87,10 @@ async def resolve_request_auth(
 ) -> APIAuthorizationInfo | None:
     """`resolve_auth_info`, verified at most once per request.
 
-    v2's rate limiter and route dependency both need the caller, and an API key
-    costs a Scrypt hash per check. A rejection is remembered too, so an invalid
-    key costs one hash, not two; an error that isn't a rejection (the database
-    unreachable) is not, so the route's own check tries again. The result is
+    Each API's rate limiter and route dependency both need the caller, and an
+    API key costs a Scrypt hash per check. A rejection is remembered too, so an
+    invalid key costs one hash, not two; an error that isn't a rejection (the
+    database unreachable) is not, so the route's own check tries again. The result is
     kept with the credential it was for, and only reused for that credential.
     """
     credential = (
@@ -118,14 +125,18 @@ def verified_credential(scope: Scope) -> Optional[VerifiedCredential]:
 
 
 async def require_auth(
-    auth: APIAuthorizationInfo | None = Security(resolve_auth_info),
+    request: Request,
+    api_key: str | None = Security(api_key_header),
+    bearer: HTTPAuthorizationCredentials | None = Security(bearer_auth),
 ) -> APIAuthorizationInfo:
     """
     Unified authentication dependency that requires valid credentials.
 
-    Depends on `resolve_auth_info` (which accepts API key or Bearer token)
-    and rejects requests with no credentials.
+    Resolves them through `resolve_request_auth`, once per request: v1's rate
+    limiter and its routes ask with different scopes, which FastAPI caches apart.
+    Rejects requests with no credentials.
     """
+    auth = await resolve_request_auth(request.scope, api_key, bearer)
     if auth is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -494,6 +494,79 @@ describe("auth callback GET — redirect target resolution", () => {
   });
 });
 
+// SECRT-3384: Google sign-up and the email verification link both carry the
+// `next` the user signed up with. When that only names the default landing
+// page, a new account goes to onboarding instead of Home.
+describe("auth callback GET — default landing next", () => {
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "development");
+    getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    postV1GetOrCreateUserMock.mockResolvedValue(provisioningResponse(true));
+  });
+
+  it.each([
+    ["Google", "/auth/callback?next=%2Fhome"],
+    ["Google", "/auth/callback?next=%2F"],
+    ["Google", "/auth/callback?next=%2Fcopilot"],
+    ["email", "/auth/callback?method=email&next=%2Fhome"],
+  ])("sends a new %s account from %s to onboarding", async (_method, path) => {
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+    const response = await GET(makeCallbackRequest(path));
+
+    expect(response.headers.get("location")).toBe(`${origin}/onboarding`);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/onboarding", "layout");
+  });
+
+  it("still sends an onboarded user with next=/home to the app", async () => {
+    getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
+
+    const response = await GET(
+      makeCallbackRequest("/auth/callback?next=/home"),
+    );
+
+    expect(response.headers.get("location")).toBe(`${origin}/copilot`);
+  });
+
+  it.each([
+    [true, "/home?utm_source=newsletter", "/onboarding?utm_source=newsletter"],
+    [
+      true,
+      "/copilot?utm_campaign=launch&gclid=abc",
+      "/onboarding?utm_campaign=launch&gclid=abc",
+    ],
+    [false, "/home?_gl=1*abc", "/copilot?_gl=1*abc"],
+  ])(
+    "keeps a campaign link's tracking params (onboarding pending: %s, next=%s)",
+    async (shouldShowOnboarding, next, expected) => {
+      getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding });
+
+      const response = await GET(
+        makeCallbackRequest(`/auth/callback?next=${encodeURIComponent(next)}`),
+      );
+
+      expect(response.headers.get("location")).toBe(`${origin}${expected}`);
+      expect(revalidatePathMock).toHaveBeenCalledWith(
+        expected.split("?")[0],
+        "layout",
+      );
+    },
+  );
+
+  it.each(["/marketplace", "/home?sessionId=abc"])(
+    "still honours a real deep link (%s) before onboarding",
+    async (next) => {
+      getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
+
+      const response = await GET(
+        makeCallbackRequest(`/auth/callback?next=${encodeURIComponent(next)}`),
+      );
+
+      expect(response.headers.get("location")).toBe(`${origin}${next}`);
+    },
+  );
+});
+
 describe("auth callback GET — user creation failures", () => {
   beforeEach(() => {
     getServerSessionMock.mockResolvedValue({ user: { id: "user-1" } });
@@ -510,6 +583,24 @@ describe("auth callback GET — user creation failures", () => {
     expect(response.headers.get("location")).toBe(
       "https://autogpt.example.com/error?message=auth-token-invalid",
     );
+  });
+
+  it("keeps a closed account signed in and sends it to the keep-account screen", async () => {
+    // Every backend route answers a deleted account this way for the 14 days
+    // its owner can still keep it; signing in is how they keep it.
+    vi.stubEnv("BETTER_AUTH_URL", "https://autogpt.example.com");
+    postV1GetOrCreateUserMock.mockRejectedValue(
+      new ApiError("This account is closed.", 401, {
+        detail: "This account is closed.",
+      }),
+    );
+
+    const response = await GET(makeCallbackRequest("/auth/callback?next=/x"));
+
+    expect(response.headers.get("location")).toBe(
+      "https://autogpt.example.com/account-closed",
+    );
+    expect(rollbackSessionMock).not.toHaveBeenCalled();
   });
 
   it("redirects to server-error when the backend rejects with a 5xx status", async () => {

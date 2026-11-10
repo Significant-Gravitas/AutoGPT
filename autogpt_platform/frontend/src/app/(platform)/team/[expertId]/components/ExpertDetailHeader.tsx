@@ -30,7 +30,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
           <CategoryTag
             category={topic}
             size="medium"
-            className="absolute left-4 top-4 h-7 px-2.5 text-body-sm leading-inherit"
+            className="absolute top-4 left-4 h-7 px-2.5 text-body-sm leading-inherit"
           />
         ) : null}
       </div>
@@ -77,8 +77,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
       <ExpertBudgetSection
         expert={expert}
         color={cover.color}
-        // TODO(tokens): no fitting role for ring-black/5 #141414; #141414 is foreground-base (a text colour)
-        className="order-last mt-4 gap-2 rounded-xl bg-surface/75 px-3.5 py-2.5 shadow-sm ring-1 ring-black/5 backdrop-blur-md sm:absolute sm:right-4 sm:top-4 sm:order-none sm:mt-0 sm:w-64"
+        className="order-last mt-4 gap-2 rounded-xl bg-surface/75 px-3.5 py-2.5 shadow-sm ring-1 ring-foreground-base/5 backdrop-blur-md sm:absolute sm:top-4 sm:right-4 sm:order-none sm:mt-0 sm:w-64"
       />
     </header>
   );

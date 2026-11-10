@@ -382,7 +382,7 @@ async def unlink_webhook_from_graph(
     webhook_manager = get_webhook_manager(webhook.provider)
     creds_manager = IntegrationCredentialsManager()
     credentials = (
-        await creds_manager.get(user_id, webhook.credentials_id)
+        await creds_manager.get(user_id, webhook.credentials_id, allow_sdk_default=True)
         if webhook.credentials_id
         else None
     )

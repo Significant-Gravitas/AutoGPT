@@ -11,6 +11,7 @@ from backend.api.features.library.exceptions import (
 )
 from backend.copilot.context import is_unattended_turn
 from backend.copilot.credential_selection import (
+    host_selection_key,
     selected_credentials,
     turn_credential_pins,
 )
@@ -22,9 +23,11 @@ from backend.data.model import (
     CredentialsMetaInput,
     HostScopedCredentials,
     OAuth2Credentials,
+    is_refused_sdk_default,
 )
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.oauth.refresh_failure import reconnect_required
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 from backend.util.request import CREDENTIAL_REJECTED_STATUS_CODES
@@ -68,6 +71,7 @@ async def fetch_graph_from_store_slug(
         or (None, None) if not found.
 
     Raises:
+        NotFoundError: If the listing's version is unavailable or deleted.
         DatabaseError: If there's a database error during lookup.
     """
     sdb = store_db()
@@ -414,10 +418,13 @@ def keep_to_pins(available: list[Credentials]) -> list[Credentials]:
 
 
 def _pinned_for(field_info: CredentialsFieldInfo) -> bool:
-    """Whether the running turn's schedule pinned an account for this field;
-    as in ``keep_to_pins``, a pin never covers a per-target credential."""
+    """Whether the schedule chose an account for this field."""
     pins = turn_credential_pins()
-    return field_info.supported_types != {"host_scoped"} and any(
+    if field_info.supported_types == {"host_scoped"}:
+        return any(
+            _selection_key(p.lower(), field_info) in pins for p in field_info.provider
+        )
+    return any(
         str(getattr(p, "value", p)) in pins
         for p in field_info.provider
         if p != ProviderName.MCP
@@ -450,7 +457,7 @@ def find_matching_credential(
     """Find a credential that matches the required provider, type, scopes, host,
     and — for MCP OAuth credentials — the server URL.
 
-    ``selected`` maps a provider to the credential the user picked for it; a
+    ``selected`` maps a provider or provider:host to the credential picked; a
     pick that fits always wins. ``ask_when_ambiguous`` is for a caller that can
     ask: when several of the user's own credentials fit and none was picked, it
     gets ``None``, which surfaces as a setup card where the user chooses. Taking
@@ -458,9 +465,25 @@ def find_matching_credential(
     """
     fits = [c for c in available_creds if _credential_fits(c, field_info)]
     if selected:
+        # A pick wins even after the provider refused its refresh: the run
+        # then asks for that account to be reconnected instead of quietly
+        # switching to another one.
         for cred in fits:
-            if selected.get(_provider_slug(cred)) == cred.id:
+            provider = _provider_slug(cred)
+            key = (
+                _selection_key(provider, field_info)
+                if cred.type == "host_scoped"
+                else provider
+            )
+            if selected.get(key, selected.get(provider)) == cred.id:
                 return cred
+    # A credential whose refresh the provider refused for good only yields a
+    # reconnect card; while any other fits, it must not be picked or counted
+    # as a choice. With nothing else, keep it so the card can say why.
+    healthy = [c for c in fits if reconnect_required(c) is None]
+    fits = healthy or fits
+    if field_info.supported_types == {"host_scoped"} and _pinned_for(field_info):
+        return None
     own = [c for c in fits if not is_system_credential(c.id)]
     if not ask_when_ambiguous:
         if len(own) > 1 and is_unattended_turn():
@@ -483,8 +506,23 @@ def _provider_slug(cred: Credentials) -> str:
     return str(getattr(cred.provider, "value", cred.provider))
 
 
+def _selection_key(provider: str, field_info: CredentialsFieldInfo) -> str:
+    keys = {
+        host_selection_key(provider, url)
+        for url in field_info.discriminator_values
+        if isinstance(url, str)
+    }
+    return next(iter(keys)) if len(keys) == 1 else provider
+
+
 def _credential_fits(cred: Credentials, field_info: CredentialsFieldInfo) -> bool:
     if cred.provider not in field_info.provider:
+        return False
+    if is_refused_sdk_default(cred.id):
+        # The operator's own key for a provider whose SDK default can't run:
+        # ``creds_manager.get`` refuses it, so it fits no field. Counting it
+        # would pick it over the "Use Credits" system credential in a watched
+        # chat, or make it a second "own" account to choose between.
         return False
     if cred.type not in field_info.supported_types:
         return False
@@ -516,6 +554,7 @@ async def match_user_credentials_to_graph(
     graph: GraphModel,
     expert_id: str | None = None,
     session_id: str | None = None,
+    available_credentials: list[Credentials] | None = None,
 ) -> tuple[dict[str, CredentialsMetaInput], list[str]]:
     """
     Match user's available credentials against graph's required credentials.
@@ -526,6 +565,9 @@ async def match_user_credentials_to_graph(
     Args:
         user_id: The user's ID
         graph: The Graph with credential requirements
+        expert_id: Optional expert whose credential grants constrain matching.
+        session_id: Optional session whose credential selections apply.
+        available_credentials: Pre-resolved credentials to reuse for this match.
 
     Returns:
         tuple[matched_credentials dict, missing_credential_descriptions list]
@@ -542,13 +584,16 @@ async def match_user_credentials_to_graph(
     if not aggregated_creds:
         return graph_credentials_inputs, missing_creds
 
-    # Get the credentials available for the user, narrowed to the expert's grants
-    creds_manager = IntegrationCredentialsManager()
-    available_creds = keep_to_pins(
-        await scope_credentials_to_expert(
+    # Get the credentials available for the user, narrowed to the expert's grants.
+    # Card-building callers can pass a pre-resolved snapshot so matching and the
+    # subsequent grant UI use the same data without repeated store reads.
+    available_creds = available_credentials
+    if available_creds is None:
+        creds_manager = IntegrationCredentialsManager()
+        available_creds = await scope_credentials_to_expert(
             user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
         )
-    )
+    available_creds = keep_to_pins(available_creds)
     selected = await selected_credentials(session_id)
 
     # For each required credential field, find a matching user credential

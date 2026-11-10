@@ -16,10 +16,7 @@ export default function DescriptionField(props: DescriptionFieldProps) {
   }
 
   return (
-    <div
-      id={getFieldDomId(id, registry.formContext)}
-      className="0 inline w-fit"
-    >
+    <div id={getFieldDomId(id, registry.formContext)} className="inline w-fit">
       <Tooltip>
         <TooltipTrigger asChild>
           <Icon

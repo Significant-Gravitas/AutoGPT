@@ -7,7 +7,7 @@ import logging
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, Literal, Optional, cast
 from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
@@ -20,6 +20,7 @@ from prisma.models import User as PrismaUser
 from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput, UserWhereInput
 from pydantic import BaseModel, ConfigDict
 
+from backend.data.account_deletion import is_account_closed
 from backend.data.db import prisma, query_raw_with_schema, transaction
 from backend.data.db_accessors import user_db
 from backend.data.model import (
@@ -237,9 +238,9 @@ async def get_user_email_by_id(user_id: str) -> Optional[str]:
 
 
 class AuthUserFlagFields(BaseModel):
-    """Minimal AuthUser attributes used to build a LaunchDarkly context.
+    """Minimal AuthUser attributes used to build a feature flag context.
 
-    A plain serializable shape (not an ``ldclient.Context``) so it can cross
+    A plain serializable shape (not the flag module's context) so it can cross
     the DatabaseManager RPC boundary — feature-flag evaluation runs in
     Prisma-less workers (scheduler, copilot-executor) that reach the auth
     table via the RPC client rather than a locally-connected Prisma engine.
@@ -251,7 +252,7 @@ class AuthUserFlagFields(BaseModel):
 
 
 async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields]:
-    """Fetch the AuthUser fields used for LaunchDarkly targeting.
+    """Fetch the AuthUser fields used for feature flag targeting.
 
     Returns ``None`` when no auth row exists (e.g. mid auth-migration bridge
     window) so the caller can avoid caching a not-found as an anonymous
@@ -275,6 +276,50 @@ async def is_user_banned(user_id: str) -> bool:
     Lookup errors propagate, and ``@cached`` stores no call that raised.
     """
     return await user_db().is_auth_user_banned(user_id)
+
+
+@cached(maxsize=1000, ttl_seconds=30, shared_cache=True)
+async def is_user_account_closed(user_id: str) -> bool:
+    """Whether the owner asked to delete the account (an AccountDeletionRequest
+    exists), from any process. Lookup errors propagate, as for the ban."""
+    return await user_db().is_account_closed(user_id)
+
+
+AccountRefusal = Literal["banned", "closed"]
+
+
+async def account_refusal(user_id: str) -> AccountRefusal | None:
+    """Why no work may run for this account, if so: ``banned`` (the ban wins)
+    or ``closed``. For a caller that tells the two apart, as
+    ``is_user_refused`` does not. Lookup errors propagate."""
+    if await is_user_banned(user_id):
+        return "banned"
+    if await is_user_account_closed(user_id):
+        return "closed"
+    return None
+
+
+async def is_user_refused(user_id: str) -> bool:
+    """No work of any kind may run for this account: an admin banned it, or
+    its owner closed it (account deletion, for the 14 days they can still keep
+    it and after). The gate for background work (schedules, webhooks, runs,
+    AutoPilot turns, memory and skill-learning crons, the Briefing). Closing
+    an account does not ban it, so the ban alone no longer covers it.
+
+    Each answer is cached for 30 s across processes; closing and keeping an
+    account drop it (``forget_refusal``). Lookup errors propagate.
+    """
+    return await account_refusal(user_id) is not None
+
+
+def forget_refusal(user_id: str) -> None:
+    """Drop the cached closed answer for *user_id*, best effort, so work
+    stops (or resumes) at the next check: within 30 s at worst, when the drop
+    fails and the cached answer has to run out."""
+    try:
+        is_user_account_closed.cache_delete(user_id)
+    except Exception:
+        logger.warning(f"Could not drop the cached closed state of user {user_id}")
 
 
 async def is_auth_user_banned(user_id: str) -> bool:
@@ -724,8 +769,12 @@ async def update_user_notification_preference(
             "alertsEnabled": data.alerts_enabled,
             "notifyOnStoreVerdict": data.store_verdicts_enabled,
         }
-        if data.email:
-            update_data["email"] = data.email
+        # `data.email` is deliberately not written: nothing here proves the
+        # caller owns that address. Writing it let any signed-in user point
+        # their account at someone else's address, learn from the unique
+        # index whether it was registered, and accept that person's
+        # organization invitations, which bind to User.email. The verified
+        # change-email flow is the only path that moves an account's address.
         # `is not None`, not truthiness: 0 is the documented "send nothing"
         # value that one-click unsubscribe writes, and a falsy check silently
         # kept the previous limit instead.
@@ -1079,7 +1128,7 @@ async def record_signup_consent(
             # would let a checkout opened right after signup through.
             await _invalidate_user_caches(user_id, current.email)
         if opted_out and current.email:
-            await _unsubscribe_from_marketing(user_id, current.email)
+            await unsubscribe_from_marketing(user_id, current.email)
 
         user = await PrismaUser.prisma().find_unique(where={"id": user_id})
         if user is None:
@@ -1130,7 +1179,7 @@ async def _write_signup_consent(
     return terms_stamped, opted_out
 
 
-async def _unsubscribe_from_marketing(user_id: str, email: str) -> None:
+async def unsubscribe_from_marketing(user_id: str, email: str) -> None:
     """Queue the change that marks an existing MailerLite subscriber
     unsubscribed (it never creates one). The refusal is already stored, so a
     failure here is logged rather than raised: the consumer re-reads it before
@@ -1380,12 +1429,14 @@ async def get_billing_email_recipient(
     stripe_customer_id: str,
 ) -> BillingEmailRecipient | None:
     """The account behind a Stripe customer, or None for a deleted or unknown
-    one — better to skip than to email into the void."""
+    one — better to skip than to email into the void. A closed account counts
+    as deleted: its row stays until the erasure, but only the deletion
+    confirmation may reach it."""
     try:
         row = await prisma.user.find_first(
             where={"stripeCustomerId": stripe_customer_id}
         )
-        if row is None:
+        if row is None or await is_account_closed(row.id):
             return None
         return BillingEmailRecipient(
             id=row.id,

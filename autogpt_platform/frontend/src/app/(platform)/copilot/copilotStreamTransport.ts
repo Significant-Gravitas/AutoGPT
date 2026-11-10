@@ -37,6 +37,11 @@ interface CreateTransportArgs {
  * typing already-produced history would be worse than a single jump.
  */
 class SmoothedCopilotChatTransport extends DefaultChatTransport<UIMessage> {
+  // A resume replays the turn from its first chunk (see
+  // `prepareReconnectToStreamRequest`), so the SDK must rebuild the reply
+  // from that chunk rather than append the replay onto a partial it kept.
+  readonly resumeStreamIsReplay = true;
+
   async sendMessages(
     options: Parameters<ChatTransport<UIMessage>["sendMessages"]>[0],
   ) {

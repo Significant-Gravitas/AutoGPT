@@ -42,7 +42,7 @@ export function DetailsSection({ user }: Props) {
         <Row label="User ID">
           <span className="flex items-start gap-1">
             <span
-              className="min-w-0 break-all font-mono text-body-sm leading-inherit"
+              className="min-w-0 font-mono text-body-sm leading-inherit break-all"
               translate="no"
             >
               {user.id}
@@ -101,11 +101,7 @@ export function DetailsSection({ user }: Props) {
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex gap-3">
-      <Text
-        variant="small"
-        as="dt"
-        className="w-[88px] shrink-0 text-foreground-tertiary"
-      >
+      <Text variant="small" as="dt" className="w-[88px] shrink-0" tone="muted">
         {label}
       </Text>
       <Text variant="body" as="dd" className="min-w-0 flex-1">

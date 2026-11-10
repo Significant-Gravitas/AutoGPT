@@ -18,6 +18,7 @@ from contextvars import ContextVar
 from typing import Any, AsyncIterator, Optional, Sequence
 
 import pydantic
+from autogpt_libs.auth.closed_accounts import AccountState, get_account_state
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
@@ -28,6 +29,7 @@ from mcp.server.fastmcp.tools.base import Tool as MCPTool
 from mcp.server.fastmcp.utilities.func_metadata import ArgModelBase, FuncMetadata
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.shared.auth import ProtectedResourceMetadata
+from mcp.types import CallToolResult, TextContent
 from prisma.enums import APIKeyPermission
 from pydantic import AnyHttpUrl
 from starlette import status
@@ -50,7 +52,7 @@ from backend.api.external.v2.mcp_calls import (
 )
 from backend.api.external.v2.mcp_tenancy import check_ids_in_tenant
 from backend.api.external.v2.tenancy import resolve_credential_tenancy
-from backend.copilot.context import set_turn_unattended
+from backend.copilot.context import set_execution_context, set_turn_unattended
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.tool_adapter import _execute_tool_sync
 from backend.copilot.tools import TOOL_REGISTRY
@@ -380,6 +382,9 @@ class ExternalAPITokenVerifier(TokenVerifier):
     async def _tenanted(
         self, token: str, auth: APIAuthorizationInfo
     ) -> TenantedAccessToken | None:
+        if await get_account_state(auth.user_id) is AccountState.CLOSED:
+            logger.warning(f"Rejecting MCP token for closed account {auth.user_id}")
+            return None
         if await owner_is_banned(auth):
             logger.warning(f"Rejecting MCP token for banned user {auth.user_id}")
             return None
@@ -415,7 +420,7 @@ def _create_tool_handler(
     money to the caller's allowance.
     """
 
-    async def handler(ctx: Context, **kwargs: Any) -> str:
+    async def handler(ctx: Context, **kwargs: Any) -> str | CallToolResult:
         # Raised, not returned: a rejection returned as content is reported to
         # the client as a successful call whose text happens to say "denied".
         access_token = get_access_token()
@@ -453,6 +458,9 @@ def _create_tool_handler(
         # Tools read the turn, not the origin: without this a missing credential
         # comes back as a setup card, and an ambiguous one as a question.
         set_turn_unattended(session, scheduled=False)
+        # Workspace tools take their file scope from the executing session; with
+        # none they confine the call to this new session's empty folder.
+        set_execution_context(user_id, session)
 
         try:
             result = await _execute_tool_sync(tool, user_id, session, kwargs)
@@ -467,8 +475,12 @@ def _create_tool_handler(
                 parts.append(block["text"])
         text = "\n".join(parts)
         # A refusal or failure must reach the client as one, not as a result.
+        # Returned, not raised: FastMCP prefixes a raised error's text, and the
+        # docs promise the tool's own JSON object.
         if result.get("isError"):
-            raise ToolError(text)
+            return CallToolResult(
+                content=[TextContent(type="text", text=text)], isError=True
+            )
         return text
 
     return handler

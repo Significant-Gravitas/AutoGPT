@@ -41,6 +41,8 @@ class PostHogEvent(StrEnum):
     EXPERT_MODE_SET_UNSUPERVISED = "expert_mode_set_unsupervised"
     BRIEFING_GENERATED = "briefing_generated"
     BRIEFING_DELIVERED = "briefing_delivered"
+    # backend/api/features/onboarding_dump/plan_hire.py
+    PLAN_EXPERTS_HIRED = "plan_experts_hired"
 
     # Chat (Autopilot): backend/copilot/tracking.py
     CHAT_TOOL_CALLED = "chat_tool_called"
@@ -59,6 +61,8 @@ class PostHogEvent(StrEnum):
     # Trial lifecycle: backend/notifications/trial.py
     TRIAL_STARTED = "trial_started"
     TRIAL_ENDING = "trial_ending"
+    TRIAL_EXPIRING = "trial_expiring"
+    TRIAL_LAST_CALL = "trial_last_call"
     TRIAL_CANCELED = "trial_canceled"
     TRIAL_RESUMED = "trial_resumed"
     TRIAL_ENDED = "trial_ended"
@@ -88,6 +92,13 @@ class PostHogEvent(StrEnum):
     LISTING_ADDED_TO_LIBRARY = "listing_added_to_library"
     LISTING_DOWNLOADED = "listing_downloaded"
 
+    # Account deletion (SECRT-2877): backend/api/features/account_deletion/.
+    # Anonymous: sent with capture_anonymous, never with the user's id.
+    ACCOUNT_DELETION_STARTED = "account_deletion_started"
+    ACCOUNT_DELETION_FEEDBACK = "account_deletion_feedback"
+    ACCOUNT_DELETION_ALTERNATIVE_CLICKED = "account_deletion_alternative_clicked"
+    ACCOUNT_DELETION_COMPLETED = "account_deletion_completed"
+    ACCOUNT_DELETION_KEPT = "account_deletion_kept"
     # Email (SECRT-2735): backend/api/features/postmark/, from Postmark's
     # webhooks for the mail the platform sends itself.
     EMAIL_DELIVERED = "email_delivered"

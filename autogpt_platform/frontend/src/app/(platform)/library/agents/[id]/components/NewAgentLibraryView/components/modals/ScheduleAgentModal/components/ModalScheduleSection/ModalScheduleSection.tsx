@@ -57,12 +57,8 @@ export function ModalScheduleSection({
       />
 
       {recommendedScheduleCron && (
-        <div className="mb-4 rounded-md bg-info-surface p-3">
-          <Text
-            // TODO(tokens): no exact role for text-blue-800 (#1E40AF)
-            variant="body"
-            className="text-blue-800"
-          >
+        <div className="mb-4 rounded-md bg-info-surface p-3 text-info-foreground">
+          <Text variant="body" tone="inherit">
             💡 This workflow has a recommended schedule that has been pre-filled
             below. You can modify it as needed.
           </Text>
