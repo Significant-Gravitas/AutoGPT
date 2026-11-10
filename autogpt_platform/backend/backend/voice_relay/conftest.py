@@ -12,7 +12,7 @@ import pytest
 import uvicorn
 from fakeredis import FakeServer
 from fakeredis.aioredis import FakeRedis
-from livekit import rtc
+from livekit import api, rtc
 
 from backend.api.utils.cors import build_cors_params
 from backend.util.settings import AppEnvironment
@@ -30,6 +30,7 @@ from backend.voice_relay.edge import LiveKitEdge
 from backend.voice_relay.fake_vendor import FakeVendor
 from backend.voice_relay.metering import Row
 from backend.voice_relay.postcall import PostCall, Transcription
+from backend.voice_relay.room_reaper import RoomReaper
 from backend.voice_relay.rooms import LiveKitProject
 from backend.voice_relay.serve import DrainingServer
 
@@ -398,6 +399,83 @@ def livekit_edge(media: FakeMedia, **options) -> LiveKitEdge:
     return LiveKitEdge(LIVEKIT, media=media, **options)  # type: ignore[arg-type]
 
 
+class ServiceRoom:
+    def __init__(self, participants: set[str], creation_time: int) -> None:
+        self.participants = participants
+        self.creation_time = creation_time
+
+
+class FakeRoomService:
+    """LiveKit's room service for one project, in memory: its rooms, who is
+    in each, and every request it took, in order."""
+
+    def __init__(self) -> None:
+        self.rooms: dict[str, ServiceRoom] = {}
+        self.requests: list[tuple[str, object]] = []
+        # A request of this kind fails with the exception, or never answers.
+        self.fail: dict[str, BaseException] = {}
+        self.hang: set[str] = set()
+        # Told the kind of each request as it arrives.
+        self.watch: Callable[[str], None] | None = None
+
+    def open(self, name: str, *participants: str, created: int = 0) -> None:
+        """A room open in the project, with *participants* in it."""
+        self.rooms[name] = ServiceRoom(set(participants), created)
+
+    def kinds(self) -> list[str]:
+        return [kind for kind, _ in self.requests]
+
+    async def _take(self, kind: str, request: object) -> None:
+        self.requests.append((kind, request))
+        if self.watch is not None:
+            self.watch(kind)
+        if kind in self.hang:
+            await asyncio.Event().wait()
+        failure = self.fail.get(kind)
+        if failure is not None:
+            raise failure
+
+    async def remove_participant(
+        self, remove: api.RoomParticipantIdentity
+    ) -> api.RemoveParticipantResponse:
+        await self._take("remove", remove)
+        room = self.rooms.get(remove.room)
+        if room is None or remove.identity not in room.participants:
+            raise api.TwirpError("not_found", "participant does not exist", status=404)
+        room.participants.discard(remove.identity)
+        return api.RemoveParticipantResponse()
+
+    async def delete_room(
+        self, delete: api.DeleteRoomRequest
+    ) -> api.DeleteRoomResponse:
+        await self._take("delete", delete)
+        if self.rooms.pop(delete.room, None) is None:
+            raise api.TwirpError("not_found", "room not found", status=404)
+        return api.DeleteRoomResponse()
+
+    async def list_rooms(self, request: api.ListRoomsRequest) -> api.ListRoomsResponse:
+        await self._take("list", request)
+        return api.ListRoomsResponse(
+            rooms=[
+                api.Room(
+                    name=name,
+                    num_participants=len(room.participants),
+                    creation_time=room.creation_time,
+                )
+                for name, room in self.rooms.items()
+            ]
+        )
+
+
+def room_reaper(redis, service: FakeRoomService, **options) -> RoomReaper:
+    """The relay's room reaper, on a fake room service."""
+
+    async def get_redis():
+        return redis
+
+    return RoomReaper(LIVEKIT, redis=get_redis, service=service, **options)
+
+
 class MemoryRecordings:
     """Cloud storage for recordings, in memory."""
 
@@ -583,9 +661,11 @@ async def running_relay(
     transcriber: ScriptedTranscriber | None = None,
     redis_delay_s: float = 0.0,
     edge: LiveKitEdge | None = None,
+    reaper: RoomReaper | None = None,
 ) -> AsyncIterator[RunningRelay]:
     """The relay app under a real uvicorn server on a free local port; with
-    *edge*, it joins the rooms of calls on the LiveKit leg."""
+    *edge*, it joins the rooms of calls on the LiveKit leg, and with *reaper*
+    closes and sweeps them."""
     rows: list[Row] = []
     recorded: dict[str, str] = {}
     recordings = MemoryRecordings()
@@ -643,6 +723,7 @@ async def running_relay(
             caps=caps,
             timing=timing,
             edge=edge,
+            reaper=reaper,
         ),
     )
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

@@ -65,6 +65,7 @@ from backend.voice_relay.config import (
     RESUME_GRACE_S,
     TIMING,
     Caps,
+    RoomCloseWhy,
     Timing,
 )
 from backend.voice_relay.locks import (
@@ -210,6 +211,16 @@ class RoomEdge(Protocol):
     ) -> AudioLeg: ...
 
 
+@runtime_checkable
+class RoomCloser(Protocol):
+    """Closes a call's LiveKit room for good (``room_reaper.RoomReaper``)."""
+
+    async def close(self, call_id: str, user_id: str, why: RoomCloseWhy) -> bool:
+        """True once the room is closed; a close that fails is left to the
+        sweep."""
+        ...
+
+
 # Ends after which nobody is left to hear Otto's last words, or the server
 # must stop now: the call's room is left at once.
 _LEAVE_AT_ONCE: frozenset[str] = frozenset(
@@ -274,12 +285,22 @@ class Session:
         on_end: Callable[[], None] | None = None,
         recording: CallRecording | None = None,
         edge: RoomEdge | None = None,
+        token_leg: Leg | None = None,
+        reaper: RoomCloser | None = None,
     ) -> None:
         self.call_id = call_id
         self.user_id = user_id
         # The leg the call asked for, then the one its audio takes.
         self.leg: Leg = leg
         self.edge = edge
+        # The leg the call's start token named: a room was registered and its
+        # token minted for a call on the LiveKit leg, whatever leg its audio
+        # took, and the call closes that room (``reaper``) once it is done
+        # with it.
+        self.token_leg: Leg = token_leg or leg
+        self.reaper = reaper
+        self._room_closed = False
+        self._room_closing: asyncio.Task[None] | None = None
         self.audio: AudioLeg = SocketLeg(self)
         self.ws = ws
         self.vendor = vendor
@@ -392,6 +413,9 @@ class Session:
         # Held from here, so no other process's sweep takes the job of a call
         # still running; the call's refresh holds it on.
         self.postcall_claimed = await self.store.claim_postcall()
+        if self.leg != self.token_leg:
+            # The browser could not join the room, so the call never needs it.
+            self.close_room_soon()
         try:
             # Joined while the vendor connects, so the audio has its way by
             # Otto's first words.
@@ -510,13 +534,41 @@ class Session:
     async def leave_room(self, reason: EndReason) -> None:
         """Stop carrying the call's audio: on the LiveKit leg, Otto's last
         words play out in the room first, unless nobody is left to hear them
-        or the server must stop."""
+        or the server must stop. Then the call's room is closed, whatever leg
+        the call ended on."""
         try:
             await self.audio.close(play_out=reason not in _LEAVE_AT_ONCE)
         except Exception:
             logger.warning(
                 f"Voice call {self.call_id}: its audio did not close cleanly",
                 exc_info=True,
+            )
+        closing = self._room_closing
+        if closing is not None:
+            await asyncio.gather(closing, return_exceptions=True)
+        await self._close_room("call_end")
+
+    def close_room_soon(self) -> None:
+        """The call's audio left its room for the socket: close the room now,
+        without holding the call up."""
+        if self._room_closing is None and self._closes_room:
+            self._room_closing = asyncio.create_task(
+                self._close_room("downgrade"), name="room-close"
+            )
+
+    @property
+    def _closes_room(self) -> bool:
+        return self.reaper is not None and self.token_leg == "livekit"
+
+    async def _close_room(self, why: RoomCloseWhy) -> None:
+        reaper = self.reaper
+        if reaper is None or not self._closes_room or self._room_closed:
+            return
+        try:
+            self._room_closed = await reaper.close(self.call_id, self.user_id, why)
+        except Exception:
+            logger.warning(
+                f"Voice call {self.call_id}: its room was not closed", exc_info=True
             )
 
     async def close_vendor(self) -> None:
@@ -561,6 +613,7 @@ class Session:
             f"Voice call {self.call_id}: audio falls back to the socket ({why})"
         )
         await self.send_json({"type": "leg", "leg": "websocket"})
+        self.close_room_soon()
 
     async def hear_room(self, pcm: bytes) -> None:
         """The person's audio from the room, taken once the call is live."""

@@ -1,13 +1,16 @@
 """A call's LiveKit room: its name, who may join it, and their tokens.
 
 Every call on the LiveKit leg has a room of its own, ``voice-{call_id}``,
-which LiveKit Cloud makes when the first participant joins and closes soon
-after the last leaves. Two participants join it and no one else can:
+which LiveKit Cloud makes when the first participant joins. LiveKit keeps a
+room open while anyone is in it, so the relay closes it (``room_reaper``).
+Two participants join it and no one else can:
 
 - the person's browser, as ``user:{user_id}``, on a token the REST API mints
-  with the call's start (:func:`person_token`). It may join that one room,
-  publish its microphone and nothing else, and subscribe; no data channel,
-  no room admin. The token only has to let the browser in, so it is short.
+  with the call's start, once the room is registered (:func:`person_token`).
+  It may join that one room, publish only sources declared as a microphone,
+  and subscribe; no data channel, no room admin. The token only has to let
+  the browser in, so it is short, and never outlives the revocation that
+  closing the room puts on the person's tokens.
 - the relay, as Otto, on a token it mints for itself (:func:`relay_token`).
   It may publish Otto's speech and subscribe to the person's, for as long as
   the call can run.
@@ -76,20 +79,15 @@ def person_identity(user_id: str) -> str:
     return f"{PERSON_IDENTITY_PREFIX}{user_id}"
 
 
-def person_token(
-    *,
-    user_id: str,
-    call_id: str,
-    project: LiveKitProject,
-    ttl_s: float = ROOM_TOKEN_TTL_S,
-) -> str:
-    """The browser's token for call *call_id*'s room."""
+def person_token(*, user_id: str, call_id: str, project: LiveKitProject) -> str:
+    """The browser's token for call *call_id*'s room, for
+    ``ROOM_TOKEN_TTL_S`` and never longer."""
     return _token(
         identity=person_identity(user_id),
         name="You",
         call_id=call_id,
         project=project,
-        ttl_s=ttl_s,
+        ttl_s=ROOM_TOKEN_TTL_S,
     )
 
 

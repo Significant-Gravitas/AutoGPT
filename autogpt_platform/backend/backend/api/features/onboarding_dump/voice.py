@@ -18,15 +18,17 @@ the relay trusts without a platform session. In order, it checks:
 - the person's own call allowance, on every tier: 429 with ``Retry-After``.
 
 Then it picks the leg the call's audio takes from the edge flag: the call's
-LiveKit room where the flag says so, the browser says it can take it, and
-this deployment has a LiveKit project; the control socket otherwise. On the
-LiveKit leg it mints the browser's token for the call's room
-(``rooms.person_token``). It reads the person's arm of the voice ending
-experiment, which stores it on first read (``experiments.assign``), and the
-start token carries the leg and the arm to the relay, which reads no flags.
-The relay records the call on the person's onboarding row once the call
-starts, and its record in Redis for a day, with the arm on it for the
-hand-off, and makes its transcript of record once it ends. Then the person's
+LiveKit room where the flag says so, the browser says it can take it, this
+deployment has a LiveKit project and a relay sweeps its rooms; the control
+socket otherwise. On the LiveKit leg it registers the call's room
+(``locks.register_room``), then mints the browser's token for it
+(``rooms.person_token``); the relay closes the room (``room_reaper``). It
+reads the person's arm of the voice ending experiment, which stores it on
+first read (``experiments.assign``), and the start token carries the leg and
+the arm to the relay, which reads no flags. The relay records the call on the
+person's onboarding row once the call starts, and its record in Redis for a
+day, with the arm on it for the hand-off, and makes its transcript of record
+once it ends. Then the person's
 own routes read the call's state (:func:`call_status`, :func:`latest_call`,
 which name where a live call is rejoined), which also starts the call's
 hand-off here once it is owed one (``voice_handoff``), confirm its hand-off
@@ -144,7 +146,7 @@ async def start_voice_call(
     await _refuse_past_platform_limits(redis)
     await enforce_voice_call_budget(user_id)
     call_id = tokens.new_call_id()
-    leg = await _choose_leg(user_id, call_id) if supports_livekit else SOCKET_LEG
+    leg = await _choose_leg(redis, user_id, call_id) if supports_livekit else SOCKET_LEG
     ending = _voice_arm(await assigned_ending(user_id, "voice"))
     return VoiceCallStartResponse(
         call_id=call_id,
@@ -224,9 +226,16 @@ async def _refuse_past_platform_limits(redis: AsyncRedisClient) -> None:
         )
 
 
-async def _choose_leg(user_id: str, call_id: str) -> VoiceCallLeg:
+async def _choose_leg(
+    redis: AsyncRedisClient, user_id: str, call_id: str
+) -> VoiceCallLeg:
     """The leg *user_id*'s call *call_id* takes, as the edge flag picks it,
-    with the browser's room token on the LiveKit leg."""
+    with the browser's room token on the LiveKit leg.
+
+    The call's room is registered before its token is minted, and only while
+    a relay sweeps the registry, so every room a token can open is closed in
+    the end: a call whose room cannot be registered takes the socket.
+    """
     try:
         wanted = await get_feature_flag_value(
             Flag.ONBOARDING_INTERVIEW_VOICE_EDGE.value, user_id, default=LIVEKIT
@@ -238,6 +247,26 @@ async def _choose_leg(user_id: str, call_id: str) -> VoiceCallLeg:
         return SOCKET_LEG
     project = rooms.livekit_project(settings)
     if project is None:
+        return SOCKET_LEG
+    try:
+        swept = await asyncio.wait_for(
+            locks.rooms_swept(redis), timeout=REDIS_TIMEOUT_S
+        )
+        if swept:
+            await asyncio.wait_for(
+                locks.register_room(redis, call_id, user_id, time.time()),
+                timeout=REDIS_TIMEOUT_S,
+            )
+    except Exception as exc:
+        logger.warning(
+            f"Voice call room not registered, so the call takes the socket: "
+            f"{type(exc).__name__}"
+        )
+        return SOCKET_LEG
+    if not swept:
+        logger.warning(
+            "No relay sweeps the voice call rooms: the call takes the socket"
+        )
         return SOCKET_LEG
     return VoiceCallLeg(
         kind="livekit",

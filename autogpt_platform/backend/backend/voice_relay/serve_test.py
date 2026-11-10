@@ -27,9 +27,10 @@ from backend.voice_relay.conftest import (
 )
 from backend.voice_relay.edge import LiveKitEdge
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
+from backend.voice_relay.room_reaper import RoomReaper
 from backend.voice_relay.serve import (
     DrainingServer,
-    _livekit_edge,
+    _livekit,
     keep_frame_locals_out_of_sentry,
     strip_frame_locals,
 )
@@ -492,12 +493,16 @@ def _settings(monkeypatch, *, url: str) -> Settings:
     return settings
 
 
-def test_a_relay_with_a_livekit_project_joins_call_rooms(monkeypatch):
-    edge = _livekit_edge(_settings(monkeypatch, url="wss://agpt.livekit.cloud"))
+def test_a_relay_with_a_livekit_project_joins_closes_and_sweeps_call_rooms(
+    monkeypatch,
+):
+    edge, reaper = _livekit(_settings(monkeypatch, url="wss://agpt.livekit.cloud"))
 
     assert isinstance(edge, LiveKitEdge)
     assert edge.rooms == 0
+    assert isinstance(reaper, RoomReaper)
+    assert reaper.closing == 0
 
 
 def test_a_relay_with_no_livekit_project_takes_every_call_on_the_socket(monkeypatch):
-    assert _livekit_edge(_settings(monkeypatch, url="")) is None
+    assert _livekit(_settings(monkeypatch, url="")) == (None, None)

@@ -74,7 +74,36 @@ LIVEKIT_PARTICIPANT_SECONDS = Counter(
 )
 LIVEKIT_DROPPED_BYTES = Counter(
     "voice_interview_livekit_dropped_bytes_total",
-    "Otto's speech the relay dropped past a room's queue, in bytes of 24 kHz " "PCM16",
+    "Otto's speech the relay dropped past a room's queue, in bytes of 24 kHz PCM16",
+)
+# From each sweep's listing of the LiveKit project (``room_reaper``): the same
+# figures on every relay, so alerts take the max across them.
+LIVEKIT_ROOMS = Gauge(
+    "voice_interview_livekit_rooms",
+    "Call rooms open in the LiveKit project, by owner: ours (in this "
+    "deployment's registry) or other (a voice- room it has no entry for)",
+    ["owner"],
+)
+LIVEKIT_PARTICIPANTS = Gauge(
+    "voice_interview_livekit_participants",
+    "Everyone connected to the LiveKit project, in any of its rooms: what "
+    "LiveKit bills as participant-minutes",
+)
+LIVEKIT_OLDEST_ROOM_SECONDS = Gauge(
+    "voice_interview_livekit_oldest_room_seconds",
+    "How long the oldest of this deployment's call rooms has been open",
+)
+LIVEKIT_ROOMS_CLOSED = Counter(
+    "voice_interview_livekit_rooms_closed_total",
+    "Call rooms the relay closed, by why (call_end, downgrade, never_started, "
+    "orphaned or reopened) and outcome (closed or failed)",
+    ["why", "outcome"],
+)
+LIVEKIT_SWEEPS = Counter(
+    "voice_interview_livekit_sweeps_total",
+    "Sweeps of the call rooms, by outcome: ok, or failed when the registry or "
+    "the project's rooms could not be read",
+    ["outcome"],
 )
 FALLBACKS = Counter(
     "voice_interview_fallbacks_total",

@@ -51,6 +51,7 @@ from backend.voice_relay.edge import LiveKitEdge
 from backend.voice_relay.metering import warn_if_prices_out_of_date, watch_prices
 from backend.voice_relay.postcall import GeminiTranscriber, PostCall
 from backend.voice_relay.record import CloudRecordings
+from backend.voice_relay.room_reaper import RoomReaper
 from backend.voice_relay.scope import GeminiScopeClassifier
 from backend.voice_relay.vendor import GeminiLive
 
@@ -135,6 +136,7 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
     # for its own.
     holder = f"{socket.gethostname()}:{uuid.uuid4().hex[:8]}"
     client = Client(api_key=settings.secrets.gemini_api_key)
+    edge, reaper = _livekit(settings)
     deps = RelayDeps(
         vendor=GeminiLive(
             client,
@@ -162,7 +164,8 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
         ),
         spool_dir=settings.config.voice_interview_spool_dir,
         spool_stale_s=CAPS.max_call_s + drain_s,
-        edge=_livekit_edge(settings),
+        edge=edge,
+        reaper=reaper,
     )
     # Startup's objects stay out of full collections, which would otherwise
     # pause every live call's event loop.
@@ -173,6 +176,11 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
     finally:
         price_watch.cancel()
         await drain_pending_cost_logs()
+        if reaper is not None:
+            try:
+                await reaper.aclose()
+            except Exception:
+                logger.warning("The LiveKit room service did not close", exc_info=True)
         try:
             await redis_client.disconnect_async()
         except Exception:
@@ -183,14 +191,15 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
             logger.warning("The database did not disconnect cleanly", exc_info=True)
 
 
-def _livekit_edge(settings: Settings) -> LiveKitEdge | None:
-    """The relay's way into call rooms, or None without a LiveKit project:
-    a call the REST API puts on the LiveKit leg then takes the socket."""
+def _livekit(settings: Settings) -> tuple[LiveKitEdge | None, RoomReaper | None]:
+    """The relay's way into call rooms, and what closes and sweeps them; or
+    neither without a LiveKit project, where the REST API puts every call on
+    the socket for want of the sweep's heartbeat."""
     project = rooms.livekit_project(settings)
     if project is None:
         logger.warning("No LiveKit project: every voice call's audio takes the socket")
-        return None
-    return LiveKitEdge(project)
+        return None, None
+    return LiveKitEdge(project), RoomReaper(project, redis=redis_client.get_redis_async)
 
 
 async def _account_name(user_id: str) -> str | None:

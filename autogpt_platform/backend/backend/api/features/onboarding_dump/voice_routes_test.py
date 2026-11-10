@@ -192,10 +192,12 @@ async def test_calls_whose_pods_died_do_not_hold_the_ceiling(redis, monkeypatch)
 
 
 @pytest.fixture
-def livekit_on(monkeypatch) -> None:
+async def livekit_on(monkeypatch, redis) -> None:
+    """A LiveKit project, and a relay sweeping its call rooms."""
     monkeypatch.setattr(voice.settings.config, "livekit_url", LIVEKIT_URL)
     monkeypatch.setattr(voice.settings.secrets, "livekit_api_key", LIVEKIT_KEY)
     monkeypatch.setattr(voice.settings.secrets, "livekit_api_secret", LIVEKIT_SECRET)
+    await locks.mark_rooms_swept(redis, time.time())
 
 
 @pytest.mark.parametrize(
@@ -248,6 +250,76 @@ async def test_the_livekit_leg_names_the_project_and_the_browsers_token_for_the_
         leg["token"], LIVEKIT_SECRET, algorithms=["HS256"], issuer=LIVEKIT_KEY
     )
     assert lifetime["exp"] - lifetime["nbf"] == 600
+
+
+async def test_the_livekit_legs_start_registers_the_calls_room_before_minting_its_token(
+    voice_on, livekit_on, redis, test_user_id, mocker: MockerFixture
+):
+    voice_on.edge.return_value = "livekit"
+    order: list[str] = []
+    register = locks.register_room
+    mint = voice.rooms.person_token
+
+    async def registering(*args, **kwargs):
+        order.append("register")
+        await register(*args, **kwargs)
+
+    def minting(**kwargs):
+        order.append("token")
+        return mint(**kwargs)
+
+    mocker.patch.object(voice.locks, "register_room", side_effect=registering)
+    mocker.patch.object(voice.rooms, "person_token", side_effect=minting)
+    started = time.time()
+
+    body = (await start(LIVEKIT_BROWSER)).json()
+
+    assert body["leg"]["kind"] == "livekit"
+    assert order == ["register", "token"]
+    entry = (await locks.registered_rooms(redis))[body["call_id"]]
+    assert entry.uid == test_user_id
+    assert started <= entry.minted_at <= time.time()
+    assert entry.closed_at is None
+
+
+async def test_with_no_relay_sweeping_the_rooms_a_call_takes_the_socket_with_no_room(
+    voice_on, livekit_on, redis
+):
+    voice_on.edge.return_value = "livekit"
+    await redis.delete(locks.ROOMS_SWEPT_KEY)
+
+    body = (await start(LIVEKIT_BROWSER)).json()
+
+    assert body["leg"] == SOCKET
+    assert tokens.verify_start(body["token"]).leg == "websocket"
+    assert await locks.registered_rooms(redis) == {}
+
+
+async def test_a_room_that_cannot_be_registered_puts_the_call_on_the_socket_with_no_token(
+    voice_on, livekit_on, redis, mocker: MockerFixture
+):
+    voice_on.edge.return_value = "livekit"
+    mocker.patch.object(
+        voice.locks,
+        "register_room",
+        AsyncMock(side_effect=ConnectionError("redis is down")),
+    )
+    mint = mocker.spy(voice.rooms, "person_token")
+
+    body = (await start(LIVEKIT_BROWSER)).json()
+
+    assert body["leg"] == SOCKET
+    assert tokens.verify_start(body["token"]).leg == "websocket"
+    mint.assert_not_called()
+
+
+async def test_a_call_on_the_socket_registers_no_room(voice_on, livekit_on, redis):
+    voice_on.edge.return_value = "websocket"
+
+    await start(LIVEKIT_BROWSER)
+    await start()
+
+    assert await locks.registered_rooms(redis) == {}
 
 
 async def test_the_livekit_leg_falls_back_to_the_socket_where_there_is_no_project(

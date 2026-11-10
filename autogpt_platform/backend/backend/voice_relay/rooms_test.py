@@ -13,7 +13,12 @@ from livekit.api.access_token import Claims
 
 from backend.util.settings import AppEnvironment, Settings
 from backend.voice_relay import rooms
-from backend.voice_relay.config import CAPS, RELAY_ROOM_GRACE_S
+from backend.voice_relay.config import (
+    CAPS,
+    RELAY_ROOM_GRACE_S,
+    ROOM_REVOCATION_S,
+    ROOM_TOKEN_TTL_S,
+)
 
 CALL_ID = "c" * 32
 KEY = "APIkey"
@@ -53,6 +58,15 @@ def test_the_browser_may_join_only_its_calls_room_publish_its_microphone_and_lis
     assert not video.room_record
     assert not video.hidden
     assert _lifetime_s(token) == 600
+
+
+def test_the_persons_token_never_outlives_the_revocation_closing_the_room_puts_on_it():
+    # Closing a room revokes the person's tokens for ten minutes; a token that
+    # lived longer could open the room again after that.
+    assert ROOM_REVOCATION_S == 600
+    assert ROOM_TOKEN_TTL_S <= ROOM_REVOCATION_S
+    token = rooms.person_token(user_id="user-1", call_id=CALL_ID, project=PROJECT)
+    assert _lifetime_s(token) <= ROOM_REVOCATION_S
 
 
 def test_the_relay_joins_the_same_room_as_otto_for_as_long_as_the_call_can_run():
@@ -146,6 +160,7 @@ from backend.voice_relay import rooms
 def livekit():
     return sorted(m for m in sys.modules if m == "livekit" or m.startswith("livekit."))
 print("AT_LOAD=" + json.dumps(livekit()))
+print("REAPER=" + json.dumps("backend.voice_relay.room_reaper" in sys.modules))
 rooms.relay_token(
     call_id="c" * 32,
     project=rooms.LiveKitProject(url="wss://x.livekit.cloud", api_key="k", api_secret="s" * 48),
@@ -155,7 +170,7 @@ print("AFTER_MINT=" + json.dumps("livekit.api" in livekit()))
 """
 
 
-def test_the_rest_api_loads_the_livekit_sdk_only_once_it_mints_a_room_token():
+def test_the_rest_api_loads_no_room_reaper_and_the_livekit_sdk_only_once_it_mints():
     run = subprocess.run(
         [sys.executable, "-c", LOAD_PROBE],
         capture_output=True,
@@ -168,7 +183,9 @@ def test_the_rest_api_loads_the_livekit_sdk_only_once_it_mints_a_room_token():
     reported = dict(
         line.split("=", 1)
         for line in run.stdout.splitlines()
-        if line.startswith(("AT_LOAD=", "AFTER_MINT="))
+        if line.startswith(("AT_LOAD=", "REAPER=", "AFTER_MINT="))
     )
     assert json.loads(reported["AT_LOAD"]) == []
+    # The REST API only registers rooms: the relay alone closes them.
+    assert json.loads(reported["REAPER"]) is False
     assert json.loads(reported["AFTER_MINT"]) is True

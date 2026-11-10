@@ -28,6 +28,11 @@ production Redis cluster unchanged:
   both: the pod running a call claims it as the call starts and holds it with
   the call's refresh until the transcript is stored, and the REST API claims
   it for each hand-off.
+- ``voice:rooms``, a hash, registers every LiveKit room the REST API mints a
+  token for, before it mints it: whose the room is and when, and once it is
+  closed, when (:class:`RoomEntry`). ``voice:rooms:swept`` is the relay's
+  heartbeat, written by each sweep of the registry, and the REST API puts a
+  call on the LiveKit leg only while it is there (``room_reaper``).
 """
 
 import asyncio
@@ -59,6 +64,7 @@ from backend.voice_relay.config import (
     END_REQUEST_TTL_S,
     LIVE_CALL_STALE_S,
     POSTCALL_CLAIM_TTL_S,
+    ROOM_SWEEP_HEARTBEAT_S,
     USER_LOCK_TTL_S,
 )
 
@@ -68,6 +74,11 @@ T = TypeVar("T")
 
 LIVE_CALLS_KEY = "voice:concurrent"
 POSTCALL_PENDING_KEY = "voice:postcall:pending"
+ROOMS_KEY = "voice:rooms"
+ROOMS_SWEPT_KEY = "voice:rooms:swept"
+# A room's close is stamped in a field of its own beside its entry, so marking
+# it closed never rewrites, or brings back, the entry.
+_CLOSED_FIELD_SUFFIX = ":closed"
 # How long one Redis operation of a live call may take before it is skipped.
 REDIS_TIMEOUT_S = 0.5
 DAILY_SPEND_TTL_S = 2 * 24 * 3600
@@ -686,6 +697,88 @@ def seconds_until_tomorrow(now: datetime) -> int:
         utc.date() + timedelta(days=1), datetime.min.time(), UTC
     )
     return max(1, int((tomorrow - utc).total_seconds()))
+
+
+class RoomEntry(BaseModel):
+    """A call's LiveKit room in the registry."""
+
+    model_config = ConfigDict(frozen=True)
+
+    call_id: str
+    # The person the room's token was minted for: blank for a close stamp
+    # whose entry was already forgotten.
+    uid: str
+    # When the token was minted, and when the room was closed, in seconds
+    # since the epoch.
+    minted_at: float
+    closed_at: float | None = None
+
+
+async def register_room(
+    redis: AsyncRedisClient, call_id: str, user_id: str, minted_at: float
+) -> None:
+    """Register *call_id*'s room for *user_id*, before its token is minted."""
+    await redis.hset(
+        ROOMS_KEY, call_id, json.dumps({"uid": user_id, "minted_at": minted_at})
+    )
+
+
+async def mark_room_closed(
+    redis: AsyncRedisClient, call_id: str, closed_at: float
+) -> None:
+    await redis.hset(ROOMS_KEY, call_id + _CLOSED_FIELD_SUFFIX, str(closed_at))
+
+
+async def forget_room(redis: AsyncRedisClient, call_id: str) -> None:
+    await redis.hdel(ROOMS_KEY, call_id, call_id + _CLOSED_FIELD_SUFFIX)
+
+
+async def registered_rooms(redis: AsyncRedisClient) -> dict[str, RoomEntry]:
+    """Every registered room, by call id. An entry that cannot be read is
+    skipped; a close stamp whose entry is gone reads as a closed room of
+    nobody's, so the sweep still forgets it."""
+    raw = {
+        as_str(field) or "": as_str(value) or ""
+        for field, value in (await redis.hgetall(ROOMS_KEY) or {}).items()
+    }
+    closed: dict[str, float] = {}
+    for field, value in raw.items():
+        if field.endswith(_CLOSED_FIELD_SUFFIX):
+            try:
+                closed[field.removesuffix(_CLOSED_FIELD_SUFFIX)] = float(value)
+            except ValueError:
+                logger.warning(f"Voice room {field}: close stamp unreadable")
+    entries: dict[str, RoomEntry] = {}
+    for call_id, value in raw.items():
+        if call_id.endswith(_CLOSED_FIELD_SUFFIX):
+            continue
+        try:
+            fields = json.loads(value)
+            entries[call_id] = RoomEntry(
+                call_id=call_id,
+                uid=fields["uid"],
+                minted_at=fields["minted_at"],
+                closed_at=closed.get(call_id),
+            )
+        except (ValueError, KeyError, TypeError, ValidationError):
+            logger.warning(f"Voice room {call_id}: registry entry unreadable")
+    for call_id, closed_at in closed.items():
+        if call_id not in entries and call_id not in raw:
+            entries[call_id] = RoomEntry(
+                call_id=call_id, uid="", minted_at=closed_at, closed_at=closed_at
+            )
+    return entries
+
+
+async def mark_rooms_swept(redis: AsyncRedisClient, now: float) -> None:
+    """The relay's heartbeat: a sweep of the registry ran."""
+    await redis.set(ROOMS_SWEPT_KEY, str(now), ex=ROOM_SWEEP_HEARTBEAT_S)
+
+
+async def rooms_swept(redis: AsyncRedisClient) -> bool:
+    """Whether a relay swept the registry lately, so a room registered now
+    will be closed even if its call never starts."""
+    return bool(await redis.exists(ROOMS_SWEPT_KEY))
 
 
 class CallStore:

@@ -16,9 +16,12 @@ and the relay hold the key that signs it; it reads no platform session.
 
 Once a call ends, its transcript job runs here too (``postcall``), and the
 process sweeps for calls no pod is transcribing when it starts and every
-``POSTCALL_SWEEP_S``. The REST API hands each transcript off. As it starts it deletes the spools a call of an earlier
-process left; as it stops, its post-call jobs settle before its services
-close, so each gives up its claim while Redis still answers.
+``POSTCALL_SWEEP_S``. The REST API hands each transcript off. With a LiveKit
+project, the process also sweeps the call rooms every ``ROOM_SWEEP_S`` and
+closes the ones no call needs (``room_reaper``). As it starts it deletes the
+spools a call of an earlier process left; as it stops, its post-call jobs
+settle before its services close, so each gives up its claim while Redis
+still answers.
 """
 
 import asyncio
@@ -54,6 +57,7 @@ from backend.voice_relay.record import (
     remove_stale_spools,
     spool_writable,
 )
+from backend.voice_relay.room_reaper import RoomReaper
 from backend.voice_relay.scope import ScopeClassifier
 from backend.voice_relay.session import RoomEdge, Session
 from backend.voice_relay.vendor import VendorConnector
@@ -101,9 +105,11 @@ class RelayDeps(BaseModel):
     spool_stale_s: float = CAPS.max_call_s + DEFAULT_DRAIN_S
     # Where priced rows go; None logs them to PlatformCostLog.
     cost_sink: CostSink | None = None
-    # Joins the rooms of calls on the LiveKit leg; None where this relay has
-    # no LiveKit project, so such calls take the socket.
+    # Joins the rooms of calls on the LiveKit leg, and closes and sweeps
+    # them; None where this relay has no LiveKit project, so such calls take
+    # the socket.
     edge: RoomEdge | None = None
+    reaper: RoomReaper | None = None
     caps: Caps = CAPS
     timing: Timing = TIMING
 
@@ -171,15 +177,17 @@ class Relay:
 
     @property
     def busy(self) -> bool:
-        """Whether a call, starting or live, a post-call job, or Otto's last
-        words in a call's room are still running here."""
+        """Whether a call, starting or live, a post-call job, Otto's last
+        words in a call's room, or a room's close are still running here."""
         deps = self.deps
         if self.held_slots > 0:
             return True
         if deps is None:
             return False
-        return bool(deps.postcall.jobs) or (
-            deps.edge is not None and deps.edge.rooms > 0
+        return (
+            bool(deps.postcall.jobs)
+            or (deps.edge is not None and deps.edge.rooms > 0)
+            or (deps.reaper is not None and deps.reaper.closing > 0)
         )
 
     def reserve_slot(self) -> CallSlot | None:
@@ -250,21 +258,27 @@ def create_app(
 
 @asynccontextmanager
 async def _sweeping(relay: Relay) -> AsyncIterator[None]:
-    """Sweep for post-call jobs no pod is running while the app serves, and
-    settle this process's jobs before its services close."""
+    """Sweep for post-call jobs no pod is running, and for call rooms no
+    call needs, while the app serves; settle this process's jobs before its
+    services close."""
     deps = relay.deps
     if deps is None:
         yield
         return
     await asyncio.to_thread(remove_stale_spools, deps.spool_dir, deps.spool_stale_s)
-    sweep = asyncio.create_task(
-        deps.postcall.sweep_forever(), name="voice-postcall-sweep"
-    )
+    sweeps = [
+        asyncio.create_task(deps.postcall.sweep_forever(), name="voice-postcall-sweep")
+    ]
+    if deps.reaper is not None:
+        sweeps.append(
+            asyncio.create_task(deps.reaper.sweep_forever(), name="voice-room-sweep")
+        )
     try:
         yield
     finally:
-        sweep.cancel()
-        await asyncio.gather(sweep, return_exceptions=True)
+        for sweep in sweeps:
+            sweep.cancel()
+        await asyncio.gather(*sweeps, return_exceptions=True)
         await deps.postcall.settle(SHUTDOWN_JOBS_S)
 
 
@@ -424,6 +438,8 @@ async def _start_call(
             started=started,
             on_end=lambda: _hand_over(deps, slot, session),
             edge=deps.edge,
+            token_leg=claims.leg,
+            reaper=deps.reaper,
         )
         if not slot.hold(session):
             # The call already runs here, so the lock and the place this

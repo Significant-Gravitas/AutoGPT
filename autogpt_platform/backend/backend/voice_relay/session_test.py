@@ -67,6 +67,8 @@ def _session(
     on_end=None,
     leg: tokens.Leg = "websocket",
     edge=None,
+    token_leg: tokens.Leg | None = None,
+    reaper=None,
 ) -> Session:
     call_id = tokens.new_call_id()
 
@@ -94,6 +96,8 @@ def _session(
         timing=timing,
         on_end=on_end,
         edge=edge,
+        token_leg=token_leg,
+        reaper=reaper,
     )
 
 

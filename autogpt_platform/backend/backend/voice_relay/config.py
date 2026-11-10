@@ -6,6 +6,7 @@ can change them, and a test that needs shorter ones builds its own.
 """
 
 from datetime import UTC, date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -55,8 +56,12 @@ ROOM_MAX_PARTICIPANTS = 2
 ROOM_EMPTY_TIMEOUT_S = 60
 ROOM_DEPARTURE_TIMEOUT_S = 20
 # The browser's room token. It only lets the browser into the room, and once
-# in, LiveKit keeps it there for the whole call.
+# in, LiveKit keeps it there for the whole call, handing it fresh tokens that
+# live ten minutes. Removing the person revokes their tokens for ten minutes
+# (ROOM_REVOCATION_S), so the minted one must never live longer than that:
+# by then every token they could hold has expired.
 ROOM_TOKEN_TTL_S = 600
+ROOM_REVOCATION_S = 600
 # The relay's own room token outlives the call cap by this much.
 RELAY_ROOM_GRACE_S = 60
 # The relay's join, and its leave, are given up past these. Each of the
@@ -73,6 +78,23 @@ ROOM_PLAYOUT_S = 15.0
 # WebRTC, with about 100-250 ms of it still on its way to the browser, which
 # stops Otto's track when the relay leaves: the relay stays this much longer.
 ROOM_PLAYOUT_TAIL_S = 0.5
+# A registered room is in use while its call may still start (no call record
+# yet, within this long of the mint: the start token's minute and the admit),
+# while its call runs, and for this long after the call ended, which covers
+# Otto's play-out. Every relay with a LiveKit project sweeps the registry this
+# often and closes what is no longer in use; each sweep's heartbeat lasts
+# this long, and without one the REST API puts calls on the socket.
+ROOM_START_GRACE_S = 75.0
+ROOM_END_GRACE_S = 30.0
+ROOM_SWEEP_S = 30.0
+ROOM_SWEEP_HEARTBEAT_S = 120
+# A sweep's listing of the project's rooms is given up past this.
+ROOM_LIST_TIMEOUT_S = 10.0
+
+# Why a call's room was closed: the call ended, its audio moved to the
+# socket, or the sweep found it no longer in use (its call never started, or
+# it outlived its call) or open again after it was closed.
+RoomCloseWhy = Literal["call_end", "downgrade", "never_started", "orphaned", "reopened"]
 # The person's audio reaches the call in frames this long, on either leg: the
 # browser sends them so on the socket, and the relay cuts the room's into
 # them, so the voice-activity check reads the same frames on both.
