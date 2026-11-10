@@ -16,8 +16,8 @@ export function ResetDone({ expertId, expertName, onDone }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <Text variant="body" tone="secondary">
-        {expertName} starts over. Their memory and computer are erased, and
-        your old chats with them are removed.
+        {expertName} starts over. Their memory and computer are erased, and your
+        old chats with them are removed.
       </Text>
       <Text variant="body" tone="secondary">
         Chat with {expertName} and they&apos;ll introduce themselves again.

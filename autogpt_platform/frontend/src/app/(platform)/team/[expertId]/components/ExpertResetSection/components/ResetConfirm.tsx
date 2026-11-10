@@ -24,8 +24,8 @@ export function ResetConfirm({
         {hasTemplate
           ? `${expertName} goes back to how they were the day you hired them.`
           : `${expertName} goes back to how they were the day you created them, keeping their soul and routines.`}{" "}
-        This can&apos;t be undone. If {expertName} is working on something,
-        wait for them to finish first.
+        This can&apos;t be undone. If {expertName} is working on something, wait
+        for them to finish first.
       </Text>
       <ResetGroup label="Erased">
         <ResetLine>Everything {expertName} remembers</ResetLine>

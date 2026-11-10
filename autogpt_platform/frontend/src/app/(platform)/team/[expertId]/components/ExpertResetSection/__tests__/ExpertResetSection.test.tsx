@@ -157,7 +157,9 @@ describe("Reset expert", () => {
     );
     // A new chat that opens with Maria introducing herself, as after a hire.
     expect(
-      screen.getByRole("link", { name: "Chat with Maria" }).getAttribute("href"),
+      screen
+        .getByRole("link", { name: "Chat with Maria" })
+        .getAttribute("href"),
     ).toBe("/copilot?expertId=expert-maria&kickoff=1");
     expect(
       window.localStorage.getItem(kickoffStorageKey("user-1", "expert-maria")),
