@@ -510,9 +510,7 @@ class TestIsTransientAssistantError:
         assert is_transient_assistant_error(category, "upstream status code 503")
 
     def test_request_too_large_is_not_retried_under_a_rate_limit_category(self):
-        assert not is_transient_assistant_error(
-            "rate_limit", _OPENAI_REQUEST_TOO_LARGE
-        )
+        assert not is_transient_assistant_error("rate_limit", _OPENAI_REQUEST_TOO_LARGE)
         assert is_transient_assistant_error("rate_limit", _OPENAI_RATE_LIMITED)
 
 
