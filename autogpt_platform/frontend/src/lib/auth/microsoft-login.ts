@@ -208,7 +208,9 @@ export function getMicrosoftLoginProvider() {
     // person pick which one they mean.
     prompt: "select_account" as const,
     disableDefaultScope: true,
-    scope: ["openid", "profile", "email", "User.Read"],
+    // The ID token's claims only. Nothing here calls Graph, and some
+    // organizations limit consent to it.
+    scope: ["openid", "profile", "email"],
     // Only the redirect flow, which microsoft-sign-up-policy.ts guards, signs
     // in. An ID token handed straight to /sign-in/social would skip it.
     disableIdTokenSignIn: true,

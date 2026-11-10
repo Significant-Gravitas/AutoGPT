@@ -90,6 +90,42 @@ describe("POST /api/auth/login/with-provider", () => {
     });
   });
 
+  it("keeps the deep link when it sends a refused Microsoft sign-in to /login", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://login.example/x" });
+
+    await POST(
+      makeProviderRequest({
+        provider: "microsoft",
+        redirectTo:
+          "http://localhost:3000/auth/callback?provider=microsoft&next=%2Flink%2Fabc",
+      }),
+    );
+
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        errorCallbackURL: "/login?next=%2Flink%2Fabc",
+      }),
+      headers: expect.any(Headers),
+    });
+  });
+
+  it("leaves out a next that would go off the site", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://login.example/x" });
+
+    await POST(
+      makeProviderRequest({
+        provider: "microsoft",
+        redirectTo:
+          "http://localhost:3000/auth/callback?provider=microsoft&next=https%3A%2F%2Fevil.example",
+      }),
+    );
+
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: expect.objectContaining({ errorCallbackURL: "/login" }),
+      headers: expect.any(Headers),
+    });
+  });
+
   it("returns 400 when no provider is supplied", async () => {
     const response = await POST(makeProviderRequest({ redirectTo: "/x" }));
 

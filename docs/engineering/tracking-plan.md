@@ -332,7 +332,7 @@ merges the website pageviews into the new user:
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `subscription`, `connect`, `preparing`) | A wizard step is shown (once per tab). `subscription` is the plan step (Otto's plan beside the trial), with or without a paywall; with one it also sends `paywall_viewed`. |
+| `onboarding_step_viewed` | browser | live | `step` (`access`, `team`, `autopilot`, `role`, `pain_points`, `subscription`, `connect`, `preparing`) | A wizard step is shown (once per tab). `access` offers an account that signed up with Microsoft its Microsoft 365 connection; other accounts never see it. `subscription` is the plan step (Otto's plan beside the trial), with or without a paywall; with one it also sends `paywall_viewed`. The order varies: `access` comes first by default, straight after `subscription` when payments are on, and wherever the `onboarding-step-order` flag puts it. The flag can move the other steps too, and only `preparing` is always last, so a funnel over `step` must not assume one order. |
 | `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
 | `brain_dump_started` | browser | live | `prompt_set` (the role's "Otto might ask" set) | Recording starts. |
 | `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed), `prompt_set`, `prompts_seen` (distinct live prompts shown) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |

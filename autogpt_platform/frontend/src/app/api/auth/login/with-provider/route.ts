@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth/auth";
+import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import { LoginProvider } from "@/types/auth";
 import { APIError } from "better-auth/api";
 import { NextResponse } from "next/server";
@@ -23,15 +24,18 @@ export async function POST(request: Request) {
     }
 
     try {
+      const callbackURL =
+        redirectTo || process.env.AUTH_CALLBACK_URL || "/auth/callback";
       const { url } = await auth.api.signInSocial({
         body: {
           provider,
-          callbackURL:
-            redirectTo || process.env.AUTH_CALLBACK_URL || "/auth/callback",
+          callbackURL,
           // A refused Microsoft sign-in (an email Microsoft did not confirm,
           // an address that belongs to another login) is explained on the
           // login page rather than Better Auth's bare error page.
-          ...(provider === "microsoft" ? { errorCallbackURL: "/login" } : {}),
+          ...(provider === "microsoft"
+            ? { errorCallbackURL: loginPageFor(callbackURL) }
+            : {}),
         },
         headers: request.headers,
       });
@@ -61,5 +65,22 @@ export async function POST(request: Request) {
       { error: "Failed to initiate OAuth" },
       { status: 500 },
     );
+  }
+}
+
+// The login page, with the callback's `next`, so a deep link survives
+// logging in another way.
+function loginPageFor(callbackURL: string) {
+  const next = nextOf(callbackURL);
+  return next ? `/login?${new URLSearchParams({ next })}` : "/login";
+}
+
+function nextOf(callbackURL: string) {
+  try {
+    return sanitizeAuthNext(
+      new URL(callbackURL, "http://localhost").searchParams.get("next"),
+    );
+  } catch {
+    return null;
   }
 }

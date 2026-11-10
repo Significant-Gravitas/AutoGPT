@@ -2,11 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { ACCESS_PROVIDERS } from "./accessProviders";
 
 /** The provider this account signs in with whose data it can also connect. */
-export function useSignInProvider(enabled: boolean) {
+export function useSignInProvider(userID: string | null) {
   const providers = useQuery({
-    queryKey: ["auth", "sign-in-providers"],
+    // Per account: a tab that switches account keeps its query cache.
+    queryKey: ["auth", "sign-in-providers", userID],
     queryFn: listSignInProviders,
-    enabled,
+    enabled: userID !== null,
     staleTime: Infinity,
     // listSignInProviders retries within its own deadline.
     retry: false,
@@ -14,7 +15,7 @@ export function useSignInProvider(enabled: boolean) {
   return {
     provider: providers.data?.find((id) => id in ACCESS_PROVIDERS) ?? null,
     // A failed lookup only drops the optional step; it never blocks onboarding.
-    isReady: !enabled || !providers.isPending,
+    isReady: userID === null || !providers.isPending,
   };
 }
 

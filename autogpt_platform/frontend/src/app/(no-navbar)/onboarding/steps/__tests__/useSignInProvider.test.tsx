@@ -6,14 +6,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { useSignInProvider } from "../AccessStep/useSignInProvider";
 
-function renderLookup() {
+function renderLookup(userID: string | null = "user-1") {
   const client = new QueryClient();
   function wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
   }
-  return renderHook(() => useSignInProvider(true), { wrapper });
+  return renderHook(
+    (props: { userID: string | null }) => useSignInProvider(props.userID),
+    { wrapper, initialProps: { userID } },
+  );
 }
 
 let releaseLookups = () => {};
@@ -37,6 +40,42 @@ describe("useSignInProvider", () => {
 
     await waitFor(() => expect(result.current.isReady).toBe(true));
     expect(result.current.provider).toBe("microsoft");
+  });
+
+  it("looks again for an account that takes over the tab", async () => {
+    let lookups = 0;
+    server.use(
+      http.get("*/api/auth/sign-in-providers", () => {
+        lookups += 1;
+        return HttpResponse.json({
+          providers: lookups === 1 ? ["microsoft"] : ["credential"],
+        });
+      }),
+    );
+    const { result, rerender } = renderLookup("microsoft-user");
+    await waitFor(() => expect(result.current.provider).toBe("microsoft"));
+
+    // The same tab, now signed in to an email account.
+    rerender({ userID: "email-user" });
+
+    await waitFor(() => expect(lookups).toBe(2));
+    await waitFor(() => expect(result.current.isReady).toBe(true));
+    expect(result.current.provider).toBeNull();
+  });
+
+  it("skips the lookup while signed out", () => {
+    let lookups = 0;
+    server.use(
+      http.get("*/api/auth/sign-in-providers", () => {
+        lookups += 1;
+        return HttpResponse.json({ providers: ["microsoft"] });
+      }),
+    );
+    const { result } = renderLookup(null);
+
+    expect(result.current.isReady).toBe(true);
+    expect(result.current.provider).toBeNull();
+    expect(lookups).toBe(0);
   });
 
   it("lets onboarding go on 5 seconds into a lookup that hangs", async () => {

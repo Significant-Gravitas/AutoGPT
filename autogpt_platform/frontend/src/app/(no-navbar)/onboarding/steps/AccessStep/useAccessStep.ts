@@ -4,8 +4,8 @@ import { ACCESS_PROVIDERS } from "./accessProviders";
 import { useSignInProvider } from "./useSignInProvider";
 
 export function useAccessStep() {
-  const { isLoggedIn } = useAuth();
-  const { provider } = useSignInProvider(isLoggedIn);
+  const { user } = useAuth();
+  const { provider } = useSignInProvider(user?.id ?? null);
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
 
   return {

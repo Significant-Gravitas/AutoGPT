@@ -128,11 +128,27 @@ function cookiesFrom(response: Response) {
     .join("; ");
 }
 
+// The sign-in's first leg, as /api/auth/login/with-provider starts it.
+function startMicrosoftSignIn(handler: Handler, errorCallbackURL: string) {
+  return handler(
+    new Request(`${baseURL}/api/auth/sign-in/social`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: baseURL },
+      body: JSON.stringify({
+        provider: "microsoft",
+        callbackURL,
+        errorCallbackURL,
+      }),
+    }),
+  );
+}
+
 // The browser's whole round trip: start the sign-in, let Microsoft answer for
 // `claims`, and come back to the callback with the code and state.
 async function continueWithMicrosoft(
   handler: Handler,
   claims: Record<string, unknown>,
+  errorCallbackURL = "/login",
 ) {
   server.use(
     http.post(
@@ -141,9 +157,8 @@ async function continueWithMicrosoft(
         HttpResponse.json({
           token_type: "Bearer",
           access_token: "microsoft-access-token",
-          refresh_token: "microsoft-refresh-token",
           expires_in: 3600,
-          scope: "openid profile email User.Read",
+          scope: "openid profile email",
           id_token: idToken(claims),
         }),
     ),
@@ -152,17 +167,7 @@ async function continueWithMicrosoft(
       return new HttpResponse(null, { status: 404 });
     }),
   );
-  const start = await handler(
-    new Request(`${baseURL}/api/auth/sign-in/social`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Origin: baseURL },
-      body: JSON.stringify({
-        provider: "microsoft",
-        callbackURL,
-        errorCallbackURL: "/login",
-      }),
-    }),
-  );
+  const start = await startMicrosoftSignIn(handler, errorCallbackURL);
   const { url } = await start.json();
   const state = new URL(url).searchParams.get("state") ?? "";
   const callback = await handler(
@@ -213,6 +218,15 @@ describe("Continue with Microsoft", () => {
     expect(db.UserAuthSession).toHaveLength(1);
     // Name and email only: Microsoft's profile photo is never fetched.
     expect(photoRequests).toEqual([]);
+  });
+
+  it("asks Microsoft for the ID token's claims and nothing from Graph", async () => {
+    const { handler } = await createAuthHandler();
+
+    const start = await startMicrosoftSignIn(handler, "/login");
+    const { url } = await start.json();
+
+    expect(new URL(url).searchParams.get("scope")).toBe("openid profile email");
   });
 
   it("signs a work address its organization verified in to the account that uses it", async () => {
@@ -271,6 +285,26 @@ describe("Continue with Microsoft", () => {
 
     expect(landing).toBe("/login?error=account_not_linked");
     expect(db.UserAuthAccount).toEqual([]);
+    expect(db.UserAuthSession).toEqual([]);
+  });
+
+  it("keeps the login page's deep link when it refuses a sign-in", async () => {
+    const { handler, db } = await createAuthHandler();
+    existingAccount(db, "pat@company.example");
+
+    const landing = await continueWithMicrosoft(
+      handler,
+      {
+        sub: "pairwise",
+        oid: "someone-else",
+        tid: PERSONAL_TENANT,
+        email: "pat@company.example",
+      },
+      "/login?next=%2Flink%2Fabc",
+    );
+
+    // Logging in the usual way from there still opens the link.
+    expect(landing).toBe("/login?next=%2Flink%2Fabc&error=account_not_linked");
     expect(db.UserAuthSession).toEqual([]);
   });
 

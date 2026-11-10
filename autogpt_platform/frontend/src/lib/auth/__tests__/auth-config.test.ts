@@ -246,7 +246,7 @@ describe("auth config", () => {
       tenantId: "common",
       prompt: "select_account",
       disableDefaultScope: true,
-      scope: ["openid", "profile", "email", "User.Read"],
+      scope: ["openid", "profile", "email"],
       // Only the redirect flow, which the sign-up policy guards, signs in.
       disableIdTokenSignIn: true,
     });

@@ -91,7 +91,8 @@ calendar, files, Teams and Work IQ tools follow it.
   way and doesn't reveal whether an account uses the address), whether
   or not email verification is on. "Outlook.com" here means the domains in
   `MICROSOFT_MAIL_DOMAINS`, each checked to route mail to Outlook.com's
-  consumer servers. Sign-in reads only name and email: Better Auth's
+  consumer servers. Sign-in reads only name and email: it asks for
+  `openid profile email` and no Graph permission, and Better Auth's
   profile-photo fetch is switched off. Only the redirect flow signs in: Better Auth's
   ID-token sign-in is switched off for Microsoft. Emailing a confirmation link instead would not be
   safe: the mailbox's owner could confirm it, and the other person's
@@ -100,7 +101,9 @@ calendar, files, Teams and Work IQ tools follow it.
   however Microsoft vouches for it (`team_email_requires_google`); a team
   member's existing account still signs in with Microsoft. The hook runs
   these Microsoft checks before the rules every provider shares, so a
-  Microsoft sign-up gets these codes, which /login explains.
+  Microsoft sign-up gets these codes, which /login explains. The refusal
+  keeps the page's `next`, so a deep link still opens after logging in
+  another way.
 
 ## Moving the access step
 

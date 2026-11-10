@@ -19,7 +19,7 @@ export function useOnboardingLayout({
 }) {
   const payment = usePlatformPayment();
   const stepOrder = useFlagStatus(Flag.ONBOARDING_STEP_ORDER);
-  const signIn = useSignInProvider(isLoggedIn);
+  const signIn = useSignInProvider(userID);
 
   const flagsReady = payment.isResolved;
   // Resolved once per account: a setting or flag change must not reorder an
