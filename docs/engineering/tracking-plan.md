@@ -70,8 +70,8 @@ Every event must carry:
 | `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser), `website` (the marketing site, see [Marketing site](#marketing-site)). |
 | `revision` | The deployed build's git sha, which Sentry reports as its release: `SENTRY_RELEASE` on the backend, the build's commit in the browser (`SENTRY_RELEASE`, else Vercel's `VERCEL_GIT_COMMIT_SHA`). Left out of a build that has none, such as a local one, and from `$ai_generation` (below). |
 
-Every backend event goes through `capture()` in
-`backend/util/posthog_client.py`, which applies `environment` and `source`
+Every backend event goes through `capture()` or `capture_anonymous()` in
+`backend/util/posthog_client.py`, which apply `environment` and `source`
 last, so a caller cannot overwrite them. `revision` is a super property of
 every backend PostHog client instead (`revision_properties()`), so the flag
 client's `$feature_flag_called` carries it too. AutoPilot's `$ai_generation`
@@ -95,7 +95,8 @@ something else now use `hire_started.surface`,
 
 - **`distinct_id` is the platform user id** for every backend event, the same
   id the browser passes to `posthog.identify(user.id)`, so both halves land
-  on one person.
+  on one person. The anonymous [Account deletion](#account-deletion) events
+  are the only exception (see **No synthetic ids** below).
 - **Before login the browser uses the first-party anonymous id**
   (`src/services/analytics/anonymous-id.ts`), passed to `posthog.init` as the
   bootstrap `distinctID`. `identify` merges it into the user at login, and
@@ -107,7 +108,10 @@ something else now use `hire_started.surface`,
   depend on it.
 - **No synthetic ids.** A backend event with no user is dropped
   (`posthog_client.capture` does it for every emitter), since a made-up id
-  creates a person nobody can merge.
+  creates a person nobody can merge. The one exception is an event that must
+  not be linked to anyone ([Account deletion](#account-deletion)):
+  `posthog_client.capture_anonymous` sends it with a fresh random id and
+  `$process_person_profile: false`, so PostHog creates no person for it.
 - **No email or name in event properties.** Identify ids only. The email and
   display name are person properties set by `identify` and nowhere else.
   (`expert_hired.name` is the expert's display name, not a person's.)
@@ -332,20 +336,21 @@ merges the website pageviews into the new user:
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `subscription`, `connect`, `preparing`) | A wizard step is shown (once per tab). `subscription` is the plan step (Otto's plan beside the trial), with or without a paywall; with one it also sends `paywall_viewed`. |
+| `onboarding_step_viewed` | browser | live | `step` (`access`, `team`, `autopilot`, `role`, `pain_points`, `subscription`, `connect`, `preparing`) | A wizard step is shown (once per tab). `access` offers an account that signed up with Microsoft its Microsoft 365 connection; other accounts never see it. `subscription` is the plan step (Otto's plan beside the trial), with or without a paywall; with one it also sends `paywall_viewed`. The order varies: `access` comes first by default, straight after `subscription` when payments are on, and wherever the `onboarding-step-order` flag puts it. The flag can move the other steps too, and only `preparing` is always last, so a funnel over `step` must not assume one order. |
 | `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
 | `brain_dump_started` | browser | live | `prompt_set` (the role's "Otto might ask" set) | Recording starts. |
-| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed), `prompt_set`, `prompts_seen` (distinct live prompts shown) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
+| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed), `prompt_set`, `prompts_seen` (distinct live prompts shown), `follow_up` (only `true`, after the not-enough screen) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
 | `brain_dump_canceled` | browser | live | — | Recording is cancelled. |
-| `brain_dump_skipped` | browser | live | `prompt_set`, `prompts_seen` | The step is skipped. |
+| `brain_dump_skipped` | browser | live | `prompt_set`, `prompts_seen`, `from` (only `insufficient`) | The step is skipped. `from: "insufficient"` when it was skipped on the not-enough screen. |
 | `brain_dump_recovery_shown` | browser | live | `parts` | A saved partial recording is offered back. |
 | `brain_dump_recovery_used` | browser | live | — | The saved recording is used. |
 | `brain_dump_retry` | browser | live | `attempt` | A failed finalize is retried. |
-| `brain_dump_restarted` | browser | live | — | Recording starts over. |
+| `brain_dump_restarted` | browser | live | `from` (only `insufficient`) | Recording starts over. `from: "insufficient"` for Talk on the not-enough screen; no properties otherwise. |
 | `brain_dump_download` | browser | live | — | The recording is downloaded after a failure. |
 | `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused, on the first ask and again on each refused retry. |
 | `brain_dump_mic_failed` | browser | live | `error_name` | The microphone fails to open, for any reason, a refused permission included. Sent again on each failed retry, so count people, not events. |
-| `brain_dump_typed_fallback` | browser | live | `reason` (`chose_to_type`, `permission_denied`), `prompt_set` | The user types instead of speaking. `permission_denied` is sent once per visit, however many retries are refused. |
+| `brain_dump_typed_fallback` | browser | live | `reason` (`chose_to_type`, `permission_denied`), `prompt_set`, `from` (only `insufficient`) | The user types instead of speaking. `permission_denied` is sent once per visit, however many retries are refused. `from: "insufficient"` for Write on the not-enough screen. |
+| `brain_dump_insufficient_shown` | browser | live | `mode` (`voice`, `typed`), `error_code` (`insufficient_content`, `no_usable_speech`), `heard` (whether "You" showed any text), `reply_kind` (the kind of take Jev picked for what was said, such as `mic_check` or `wants_to_skip`, which shows that kind's line; `other` when none fit and `null` when there was no pick (no words, no key, a timeout, an error or an unsure pick), both of which show the default line), `prompt_set` | The not-enough screen ("Otto replies") shows after the quality gate rejects a take, voice or typed. Voice rejects also send `transcription_failed` as before. |
 | `brain_dump_prompt_advanced` | browser | live | `via` (`auto`, `click`), `screen` (`rest`, `typing`, `recording`), `prompt_index`, `prompt_set` | The "Otto might ask" question moves on, by its timer (12 s at rest on narrow screens, 20 s typing, 15 s recording; not while the ideas are paused) or "Another question". Not sent for the first question. |
 | `brain_dump_permission_retried` | browser | live | `result` (`granted`, `denied`, `unavailable`), `via` (`retry_link`, `record_instead`, `permission_change`), `permission_state` (`prompt`, `granted`, `denied`, `unknown`) | After a refused microphone, the user asks for it again, or allows the site in its settings (`permission_change`). Sent before `brain_dump_started`. `result` is the browser's answer, not the take: `granted` with no `brain_dump_started` after it means the user had already sent their text, or left the step, while the prompt was open. |
 | `transcription_failed` | browser | live | `error_code`, `finalize_latency_ms` | Finalize returns a failure. |
@@ -385,6 +390,7 @@ merges the website pageviews into the new user:
 | `chat_outcome` | backend | live | `outcome_type` (`agent_run_success`, `schedule_created`), `chat_session_id`; `agent_run_success`: `graph_id`, `execution_id`, `library_agent_id`; `schedule_created`: `target` (`agent`: `graph_id`, `schedule_id`, `cron`, `library_agent_id`; `followup`: `schedule_id`, `target_chat_session_id`, `is_recurring`) | A moment of value in a chat: the copilot started a (non-dry) run or created a schedule for the user. `agent_run_started` / `schedule_created` still count the run or schedule itself. |
 | `chat_library_check_outcome` | backend | live | `chat_session_id`, `outcome`, `matches_count`, `top_score` | The create-agent library check ends. |
 | `chat_read_screen_shadow_decision` | backend | live | `tool_name`, `tool_call_id`, `source_kind` (`web`, `file`, `shell`, `mcp`, `block`, `workflow`, `chat`, `skill`, …), `chat_session_id`, `trace_id` (the reply's trace, the `$ai_trace_id` of its generations and spans, shared by the subtasks it spawns; the tool call's `$ai_span` with the same `tool_call_id` names the turn), `expert_id`, `verdict` (`allow`, `hold`, `judge_error`), `reason_code`, `judge` (`jev`, `content`; null when the shadow itself failed), `llm_model`, `jev_model`, `rubric_version`, `latency_ms`, `impersonated`, `judgement_id`, `sample_rate` | With `copilot-read-screen` serving `shadow`, the prompt-injection check judges an outside read in a sampled interactive chat (`backend/copilot/gate/shadow.py`). Nothing is held. No content, URL or judge wording is sent. |
+| `chat_blocked` | backend | live | `reason` (`usage_limit` for `daily`, `weekly`, `trial`, `task`; `rate_limit` for `rate`, `concurrency`), `limit` (`daily`, `weekly`, `trial`, `task` (a single task's budget), `rate` (the per-minute cap on queued messages; the message is still kept), `concurrency` (the running or in-flight turn cap)), `outcome` (`refused`: never started; `paused`: stopped mid-turn; `queued`: held back, waiting for a free slot or, at queue promotion and for a "Send/Resume at reset", for the window to refill), `surface` (`chat`, `schedule`, `chat_bot`, `block` (a workflow's AutoPilot block or a block run on the platform's key), `voice`, `api` (external API/MCP), `background` (subtasks, approval wakes, unattended work, the nightly memory pass)), `tier` (the plan tier, when the check read it; null for the turn caps), `used` and `cap` (dollars for the cost limits, counts for `rate` and `concurrency`; null when the check did not read them, as for a turn that pauses mid-turn; a plan with no allowance, or an ended trial, is `cap` 0 under `weekly` or `trial`), `resets_at` (when the window refills; null for a trial, a window that allows nothing, and the turn caps) | A usage limit refuses, pauses or queues work, from any surface (`backend/copilot/limit_tracking.py`, sent where each refusal is answered: the chat and continuation routes, the queued-message endpoint, chat bots, voice, the external API, the scheduler and its "Send/Resume at reset" turns, queue promotion, the executor's pre-turn gate and streamed pauses, sub-sessions and the AutoPilot block, approval wakes, per-call platform spend, the nightly memory pass). A step check-in is not a limit and sends nothing; nor does an outage that leaves the limits unreadable. Each refusal check sends its own event, but each backend process sends at most one per user, `limit`, `outcome` and `surface` a minute, so a client retrying a refused request in a loop sends one event a minute, not one per retry; one turn whose tool calls are refused again and again, or a nightly pass that checks several times, can still send several: count users, not events, for "how many hit a limit". A queued turn a usage window holds back at promotion is checked on every pass over the queue (passes run when a turn ends), and sends within the same one-a-minute limit. No message content. |
 | `voice_mode_started` | browser | live | `entry` | Voice mode is switched on. |
 | `voice_mode_stopped` | browser | live | `turns`, `state` | Switched off by the user. |
 | `voice_mode_timed_out` | browser | live | `turns`, `state` | Closed by the silence timeout. |
@@ -517,6 +523,56 @@ changelog) is not covered.
   `POSTMARK_TRACK_OPENS_AND_CLICKS` is true (off by default). Auth email is
   never tracked, since its links carry sign-in tokens. Postmark only calls the
   webhook for the record types ticked on the stream's webhook.
+
+## Account deletion
+
+Self-serve account deletion (SECRT-2877), behind the
+`self-serve-account-deletion` flag; nothing is sent while it is off. These
+events are anonymous: the backend sends each one with `capture_anonymous()`,
+under a fresh random `distinct_id` and with `$process_person_profile: false`,
+so PostHog creates no person and nothing links the event to an account. The
+backend never adds the user id, email or name to them, so they cannot be
+joined to the person's other events.
+
+They are the exception to [Who sends it](#who-sends-it): the clicks are sent
+by the backend too (`POST /api/account/deletion/feedback`), because posthog-js
+attaches the signed-in user's id to every event and browser events wait for
+analytics consent. The dialog carries `ph-no-capture`, so posthog-js
+autocapture and session replay record nothing inside it: the chosen reason and
+the panel buttons never reach PostHog under the person's id.
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `account_deletion_started` | backend | live | `plan_state`, `tenure_bucket` (as below), `surface` (`settings`, `paywall`: where the flow was opened) | The Delete account dialog opens: once per open, and reopening counts again. Sent when the button is clicked, so a dialog closed with the X still counts. |
+| `account_deletion_feedback` | backend | live | `plan_state` (`max`, `pro`, `trial`, `none`, `managed` for BASIC, BUSINESS and ENTERPRISE), `tenure_bucket` (account age: `<7d`, `7-30d`, `30-90d`, `90d+`). Optional: `reason` (`privacy`, `cost`, `not_using`, `missing_capability`, `limits`, `other`, `skipped`; absent when only text was typed), `text` (what was typed in the optional field, trimmed, at most 1000 characters; absent when nothing was typed) | Skip or Continue is clicked on the "Why are you leaving?" step, once per pass through it. Skip sends `reason: skipped`, so the skip rate is the share of `skipped`. |
+| `account_deletion_alternative_clicked` | backend | live | `alternative` (`manage_apps`, `disconnect_all`, `billing`, `keep_account`), `plan_state`, `tenure_bucket`. Optional: `reason` (the one the alternative was shown for) | The button of the alternative shown for a reason is clicked: "Manage connected apps", "Disconnect all apps", "Go to Billing" or "Keep my account". |
+| `account_deletion_completed` | backend | live | `plan_state` (as above: the plan the account had), `surface` (`settings`, `paywall`: where the flow was opened) | The account is closed: `POST /api/account/deletion` closes it, and its data is erased 14 days later unless its owner keeps it. A repeat call on an account already closed sends nothing; an account kept and deleted again counts again. |
+| `account_deletion_kept` | backend | live | `tenure_bucket` (as above), `days_left` (whole days that were left before the erasure, 0 to 13) | The owner of a closed account signs in and chooses "Keep my account" (`POST /api/account/deletion/restore` reopens it). Once per kept closure. |
+
+`plan_state` and `tenure_bucket` are read from the account on the server; the
+browser cannot set them. An optional property the person left empty is left
+out, never sent as null. The feedback route accepts 20 calls per account per
+hour and answers 429 after that, so a script cannot flood these counts.
+
+`text` is free text sent as typed, so it can hold anything the person wrote;
+that is one more reason the events are anonymous, and the backend never logs
+it. The deletion source is `surface`, not `source`, which is the
+[base property](#base-properties) (`platform`).
+
+Reading the funnel (someone who reopens the flow counts again, and with no id
+the repeats cannot be removed):
+
+- starts: `account_deletion_started`; read the numbers after the first 30.
+- skip rate: `account_deletion_feedback` with `reason: skipped` over all
+  `account_deletion_feedback`, which counts the passes that reached the
+  confirmation card.
+- save rate: `account_deletion_alternative_clicked` with `alternative` of
+  `keep_account`, `billing` or `manage_apps`, over `account_deletion_started`.
+- completion: `account_deletion_completed` (the accounts that were closed)
+  over `account_deletion_started`.
+- kept: `account_deletion_kept` over `account_deletion_completed`, the closed
+  accounts whose owners changed their mind within the 14 days. Closed minus
+  kept is the accounts erased (give the last 14 days time to run out).
 
 ## LLM analytics
 
@@ -803,11 +859,15 @@ line:
 - **`subscription_changed` covers upgrades only.** The plan also counts
   cancellations and downgrades there; `subscription_cancellation_scheduled`
   and `subscription_ended` stay separate events.
+- **`chat_blocked` covers every surface, not only the chat.** The plan's
+  `reason` (`usage_limit`, `rate_limit`) is kept, and `limit`, `outcome` and
+  `surface` say which limit stopped what, and where: a schedule, a chat bot
+  or a block refused by the same limit is the same event.
 - **`chat_outcome` has two outcome types.** Only `agent_run_success` and
   `schedule_created` have an emitter. `agent_created`, `trigger_setup`,
   `artifact_created`, `file_produced` and `answer_only` do not.
 - **Plan events we do not send yet** (`signup_started`, `chat_session_started`,
-  `chat_response_completed`, `chat_blocked`, `screen_viewed`,
+  `chat_response_completed`, `screen_viewed`,
   `screen_engaged`, `milestone_reached`, the builder and library families,
   `email_sent`, ...) come with the plan's phases, not with this list.
 - **`email_delivered` instead of the plan's `email_sent`.** Postmark's

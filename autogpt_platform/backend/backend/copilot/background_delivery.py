@@ -14,6 +14,7 @@ from backend.copilot.tree import TurnEnvelope, keep_tree_alive
 from backend.copilot.turn_queue import cancel_queued_turn, dispatch_next_for_user
 from backend.data.db_accessors import background_task_db, chat_db
 from backend.data.redis_client import get_redis_async
+from backend.data.user import is_user_refused
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,13 @@ async def cancel_orphaned_background_subtasks(
 
 
 async def _reconcile(task: BackgroundTask) -> None:
+    if await is_user_refused(task.user_id):
+        # Closed (or banned): nothing it started carries on, now or after the
+        # owner keeps the account, as closing promises. The child is stopped
+        # and its follow-up suppressed for good instead of left queued.
+        await _stop_child(task)
+        await background_task_db().suppress_background_followup(task.id, task.user_id)
+        return
     status = await chat_db().get_chat_session_status(task.child_session_id)
     if task.wake_suppressed:
         await _stop_child(task)
