@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+import stripe
 
 from backend.data import subscription_activation_return as destination
 from backend.data.subscription_activation_stripe import BillingSubscription
@@ -80,6 +81,21 @@ async def test_owned_checkout_restores_destination_stripe_returned_to(
         ),
     )
     assert await destination.activation_return_to(subscription(metadata)) == return_to
+
+
+@pytest.mark.asyncio
+async def test_a_failed_checkout_lookup_falls_back_instead_of_raising(monkeypatch):
+    monkeypatch.setattr(
+        destination,
+        "stripe_call",
+        AsyncMock(side_effect=stripe.APIConnectionError("Stripe unreachable")),
+    )
+    assert (
+        await destination.activation_return_to(
+            subscription({"pro_activation_return_to": TEMPLATE})
+        )
+        == "/settings/billing"
+    )
 
 
 @pytest.mark.parametrize(
