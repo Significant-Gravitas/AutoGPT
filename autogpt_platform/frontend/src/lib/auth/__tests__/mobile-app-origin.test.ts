@@ -2,58 +2,95 @@
 import { describe, expect, it } from "vitest";
 import {
   MOBILE_APP_ORIGIN_HEADER,
-  getMobileAppOrigins,
+  getMobileAppConfig,
   mobileAppOrigin,
 } from "../mobile-app-origin";
 
-const SIGN_OUT_URL = "http://localhost:3000/api/auth/sign-out";
+const BASE_URL = "https://platform.example.com/some/path";
+const SITE_ORIGIN = "https://platform.example.com";
+const SIGN_OUT_URL = "https://platform.example.com/api/auth/sign-out";
 
-async function originAfterPlugin(headers: Record<string, string>) {
-  const request = new Request(SIGN_OUT_URL, { method: "POST", headers });
-  const result = await mobileAppOrigin().onRequest?.(request, {} as never);
-  const seen = result && "request" in result ? result.request : request;
-  return seen.headers.get("origin");
+const PRODUCTION = { scheme: "autogpt-app", allowExpoGo: false };
+const DEVELOPMENT = { scheme: "autogpt-app", allowExpoGo: true };
+
+async function runPlugin(
+  request: Request,
+  config: { scheme: string; allowExpoGo: boolean } = PRODUCTION,
+) {
+  const result = await mobileAppOrigin(config, BASE_URL).onRequest?.(
+    request,
+    {} as never,
+  );
+  return result && "request" in result ? result.request : request;
 }
 
-describe("getMobileAppOrigins", () => {
-  it("trusts no app origin until a scheme is set", () => {
-    expect(getMobileAppOrigins({})).toEqual([]);
-    expect(getMobileAppOrigins({ AUTH_MOBILE_APP_SCHEME: "  " })).toEqual([]);
+async function originAfterPlugin(
+  headers: Record<string, string>,
+  config?: { scheme: string; allowExpoGo: boolean },
+) {
+  const request = new Request(SIGN_OUT_URL, { method: "POST", headers });
+  return (await runPlugin(request, config)).headers.get("origin");
+}
+
+describe("getMobileAppConfig", () => {
+  it("is off until a scheme is set", () => {
+    expect(getMobileAppConfig({})).toBeNull();
+    expect(getMobileAppConfig({ AUTH_MOBILE_APP_SCHEME: "  " })).toBeNull();
   });
 
-  it("trusts only the app's own scheme outside development", () => {
+  it("accepts only the app's own scheme outside development", () => {
     expect(
-      getMobileAppOrigins({
+      getMobileAppConfig({
         AUTH_MOBILE_APP_SCHEME: "autogpt-app",
         NODE_ENV: "production",
       }),
-    ).toEqual(["autogpt-app://"]);
+    ).toEqual(PRODUCTION);
   });
 
-  it("also trusts Expo Go in development", () => {
+  it("also accepts Expo Go in development", () => {
     expect(
-      getMobileAppOrigins({
+      getMobileAppConfig({
         AUTH_MOBILE_APP_SCHEME: "autogpt-app",
         NODE_ENV: "development",
       }),
-    ).toEqual(["autogpt-app://", "exp://"]);
+    ).toEqual(DEVELOPMENT);
   });
 
   it.each(["https", "http", "autogpt-app://", "*", "evil.example.com/x"])(
     "refuses %s as a scheme",
     (scheme) => {
       expect(() =>
-        getMobileAppOrigins({ AUTH_MOBILE_APP_SCHEME: scheme }),
+        getMobileAppConfig({ AUTH_MOBILE_APP_SCHEME: scheme }),
       ).toThrow(/AUTH_MOBILE_APP_SCHEME/);
     },
   );
 });
 
 describe("mobileAppOrigin", () => {
-  it("reads the app's origin from its own header when none was sent", async () => {
+  it("gives the app's request this site's own origin", async () => {
     expect(
       await originAfterPlugin({ [MOBILE_APP_ORIGIN_HEADER]: "autogpt-app://" }),
-    ).toBe("autogpt-app://");
+    ).toBe(SITE_ORIGIN);
+  });
+
+  it.each([
+    "evil://",
+    "autogpt-app://x",
+    "autogpt-app:",
+    "exp://10.0.0.2:8081",
+  ])("leaves a request naming %s alone", async (appOrigin) => {
+    expect(
+      await originAfterPlugin({ [MOBILE_APP_ORIGIN_HEADER]: appOrigin }),
+    ).toBeNull();
+  });
+
+  it("accepts Expo Go only in development", async () => {
+    expect(
+      await originAfterPlugin(
+        { [MOBILE_APP_ORIGIN_HEADER]: "exp://10.0.0.2:8081" },
+        DEVELOPMENT,
+      ),
+    ).toBe(SITE_ORIGIN);
   });
 
   it("never replaces an origin the client sent", async () => {
@@ -75,8 +112,8 @@ describe("mobileAppOrigin", () => {
       headers: { [MOBILE_APP_ORIGIN_HEADER]: "autogpt-app://" },
       body: JSON.stringify({ email: "a@example.com" }),
     });
-    const result = await mobileAppOrigin().onRequest?.(request, {} as never);
-    const seen = result && "request" in result ? result.request : request;
+    const seen = await runPlugin(request);
+    expect(seen.headers.get("origin")).toBe(SITE_ORIGIN);
     expect(await seen.json()).toEqual({ email: "a@example.com" });
   });
 });
