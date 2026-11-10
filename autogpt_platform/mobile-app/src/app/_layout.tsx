@@ -2,6 +2,7 @@ import "@/polyfills";
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { DarkTheme, Stack, ThemeProvider, type Theme } from "expo-router";
+import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
@@ -36,8 +37,12 @@ export default function RootLayout() {
 
 function RootStack() {
   const { data: session, isPending } = authClient.useSession();
+  const [hasSettled, setHasSettled] = useState(false);
 
-  if (isPending) return <View style={styles.root} />;
+  // Every refetch (e.g. on app focus) reports isPending again while signed
+  // out; only the first one may blank the screen, or typed login text is lost.
+  if (!isPending && !hasSettled) setHasSettled(true);
+  if (!hasSettled) return <View style={styles.root} />;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

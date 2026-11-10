@@ -12,7 +12,7 @@ import {
 import { useLoginScreen } from "@/features/auth/useLoginScreen";
 import { colors, radius, spacing, type } from "@/lib/theme";
 
-const appIcon = require("@/assets/images/icon.png");
+const appIcon = require("../../assets/images/icon.png");
 
 export default function LoginScreen() {
   const {

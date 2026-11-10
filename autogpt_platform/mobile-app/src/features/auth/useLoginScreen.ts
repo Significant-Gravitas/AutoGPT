@@ -54,5 +54,8 @@ function errorCopy(error: SignInError | null) {
     return "Can't reach AutoGPT. Check your connection and try again.";
   }
   if (error.status === 401) return "Wrong email or password.";
+  if (error.code?.endsWith("_ORIGIN")) {
+    return "You can't sign in right now. Try again later.";
+  }
   return error.message || "You can't sign in right now. Try again later.";
 }

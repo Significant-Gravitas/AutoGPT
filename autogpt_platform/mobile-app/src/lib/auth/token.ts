@@ -36,11 +36,16 @@ export function clearAccessToken() {
 }
 
 async function mintAccessToken() {
+  cached = null;
   const { data, error } = await authClient.$fetch<{ token: string }>("/token");
-  if (error || !data?.token) {
-    cached = null;
-    throw new SignedOutError();
+  if (error && error.status !== 401 && error.status !== 403) {
+    // Not a dead session (a 5xx, say), so stay signed in. A plain Error,
+    // since ApiError's module imports this one.
+    throw new Error(
+      "Can't reach AutoGPT. Check your connection and try again.",
+    );
   }
+  if (error || !data?.token) throw new SignedOutError();
   cached = { token: data.token, expiresAt: readExpiry(data.token) };
   return data.token;
 }
