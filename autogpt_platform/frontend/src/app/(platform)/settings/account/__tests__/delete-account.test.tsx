@@ -261,6 +261,34 @@ describe("Settings > Account delete card", () => {
     expect(mocks.replace).not.toHaveBeenCalled();
   });
 
+  test("an unexpected error shows our own message, not the server's text", async () => {
+    rejectDeletion(500, "Server disconnected without sending a response.");
+    const user = userEvent.setup();
+    render(
+      <>
+        <SettingsPreferencesPage />
+        <Toaster />
+      </>,
+    );
+
+    await openFlow(user);
+    await user.click(await screen.findByRole("button", { name: "Skip" }));
+    await user.type(getEmailInput(), "user@example.com");
+    await user.click(getConfirmDeleteButton());
+
+    expect(
+      await screen.findByText("We couldn't delete your account. Try again."),
+    ).toBeDefined();
+    expect(
+      screen.queryByText("Server disconnected without sending a response."),
+    ).toBeNull();
+    expect(
+      screen.getByRole("dialog", { name: "Delete your account?" }),
+    ).toBeDefined();
+    await waitFor(() => expect(getConfirmDeleteButton().disabled).toBe(false));
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
   test("reopening starts over at the reason step with nothing picked or typed", async () => {
     const user = userEvent.setup();
     render(<SettingsPreferencesPage />);

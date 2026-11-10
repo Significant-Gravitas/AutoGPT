@@ -164,7 +164,7 @@ export function recordDeletion(): AccountDeletionRequestBody[] {
 
 /** The generated 400 and 502 handlers send no body, but the real route sends
  *  its message as `detail`, which is what the flow shows. */
-export function rejectDeletion(status: 400 | 502, detail: string) {
+export function rejectDeletion(status: 400 | 500 | 502, detail: string) {
   const bodies: AccountDeletionRequestBody[] = [];
   server.use(
     http.post(DELETION_PATH, async ({ request }) => {

@@ -39,11 +39,15 @@ export default function AccountClosedPage() {
   }
 
   return (
-    <PageCard title="Your account is closed">
+    <PageCard
+      title={
+        view === "error"
+          ? "We couldn't load your account"
+          : "Your account is closed"
+      }
+    >
       {view === "error" && (
-        <Text variant="body">
-          We couldn&apos;t load your account. Reload the page to try again.
-        </Text>
+        <Text variant="body">Reload the page to try again.</Text>
       )}
       {view === "too_late" && (
         <>

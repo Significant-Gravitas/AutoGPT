@@ -27,6 +27,10 @@ const DATA_LINE =
 const TRIAL_LABEL = "trial";
 const TRIAL_LINE = "Your trial ends now.";
 const FALLBACK_ERROR = "We couldn't delete your account. Try again.";
+// The deletion route's own messages: a wrong email (400), impersonation (403)
+// and a plan Stripe wouldn't cancel (502). Any other error's text comes from
+// the server's catch-all, which is the exception itself.
+const PHRASED_ERROR_STATUSES = new Set([400, 403, 502]);
 
 export function getConsequences({
   appNames,
@@ -95,7 +99,9 @@ export function getClosedToastTitle(
 }
 
 export function getDeletionErrorMessage(error: unknown): string {
-  return error instanceof ApiError && error.message
+  return error instanceof ApiError &&
+    PHRASED_ERROR_STATUSES.has(error.status) &&
+    error.message
     ? error.message
     : FALLBACK_ERROR;
 }
