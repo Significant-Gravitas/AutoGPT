@@ -467,7 +467,9 @@ describe("managing an expert's integrations", () => {
     ).toBeNull();
   });
 
-  it("shows an untitled account by its email when it is the only one for that provider", async () => {
+  it(
+    "shows an untitled account by its email when it is the only one for that provider",
+    async () => {
     server.use(
       getListExpertCredentialsMockHandler([linkedin]),
       http.get("*/api/integrations/credentials", () =>
