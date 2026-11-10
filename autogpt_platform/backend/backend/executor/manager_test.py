@@ -243,8 +243,9 @@ async def test_input_pin_always_waited(server: SpinTestServer):
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("input_block", [AgentInputBlock, AgentTableInputBlock])
+@pytest.mark.parametrize("source_name", ["result", "result_#_key", "result_$_0"])
 async def test_a_run_can_leave_an_optional_input_blank(
-    server: SpinTestServer, input_block: type[AgentInputBlock]
+    server: SpinTestServer, input_block: type[AgentInputBlock], source_name: str
 ):
     """
     An input with Advanced on and no default is optional (#10614): a run that
@@ -272,7 +273,7 @@ async def test_a_run_can_leave_an_optional_input_blank(
         graph.Link(
             source_id=nodes[1].id,
             sink_id=nodes[2].id,
-            source_name="result",
+            source_name=source_name,
             sink_name="data",
         ),
     ]
