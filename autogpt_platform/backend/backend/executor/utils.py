@@ -2343,6 +2343,13 @@ class NodeExecutionProgress:
 
         return None
 
+    def has_ended(self) -> bool:
+        """Whether every task of this node's executions has ended, its block
+        and its bookkeeping alike. Unlike is_done, a stop doesn't make it so:
+        a block that ignores the cancel runs on until it returns."""
+        with self._lock:
+            return not self._unwinding and not self._settling
+
     def is_done(self, wait_time: float = 0.0) -> bool:
         exec_id = self._next_exec()
         if not exec_id:

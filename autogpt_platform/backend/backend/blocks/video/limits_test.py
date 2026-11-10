@@ -1,20 +1,23 @@
 """Frame-size and input-count limits on the video blocks.
 
-Each test runs a block on a tiny synthetic video and spies on `VideoFileClip`
-to check that a file over `MAX_VIDEO_FRAME_PIXELS` is refused before it is
-opened.
+Each test runs a block on a tiny synthetic video and checks that a file over
+`MAX_VIDEO_FRAME_PIXELS` is refused. The edits open their videos in a child
+process, so whether they refuse one before opening it is checked on the edits
+themselves, with `VideoFileClip` spied on.
 """
 
 import ast
 import subprocess
 from contextlib import ExitStack
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import imageio_ffmpeg
 import pytest
 
 from backend.blocks.elevenlabs._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.video import _render
+from backend.blocks.video._render import EditRefused
 from backend.blocks.video._utils import VideoMediaStorage, check_video_frame_size
 from backend.blocks.video.add_audio import AddAudioToVideoBlock
 from backend.blocks.video.clip import VideoClipBlock
@@ -129,7 +132,7 @@ async def _assert_refused_before_open(
     with ExitStack() as stack:
         _patch_local_storage(stack, module, video_dir)
         video_file_clip = stack.enter_context(
-            patch("backend.blocks.video._utils.VideoFileClip")
+            patch("backend.blocks.video._render.VideoFileClip")
         )
         with pytest.raises(BlockExecutionError, match="over the limit"):
             await _run(block, input_data, exec_ctx, **kwargs)
@@ -207,6 +210,42 @@ async def test_narration_refuses_oversized_frame_before_tts(video_dir, exec_ctx,
     elevenlabs.assert_not_called()
 
 
+@pytest.mark.parametrize("video", OVERSIZED_VIDEOS)
+@pytest.mark.parametrize(
+    "edit, make_args",
+    [
+        (_render.clip_video, lambda small, video, out: (video, out, 0.0, 0.04)),
+        (_render.loop_video, lambda small, video, out: (video, out, None, 2)),
+        (
+            _render.add_audio_to_video,
+            lambda small, video, out: (video, small, out, 1.0),
+        ),
+        (
+            _render.concat_videos,
+            lambda small, video, out: ([small, small, video], out, "none", 1),
+        ),
+        (
+            _render.add_narration_to_video,
+            lambda small, video, out: (video, small, out, "ducking", 1.0, 0.3),
+        ),
+        (_render.check_input_video, lambda small, video, out: (video,)),
+    ],
+    ids=["clip", "loop", "add_audio", "concat", "narration", "check"],
+)
+def test_edit_refuses_oversized_frame_before_opening_it(
+    video_dir, tmp_path, edit, make_args, video
+):
+    args = make_args(
+        str(video_dir / SMALL), str(video_dir / video), str(tmp_path / "out.mp4")
+    )
+    with (
+        patch("backend.blocks.video._render.VideoFileClip") as video_file_clip,
+        pytest.raises(EditRefused, match="over the limit"),
+    ):
+        edit(*args)
+    video_file_clip.assert_not_called()
+
+
 @pytest.mark.parametrize("video", [SMALL, PORTRAIT_AT_LIMIT])
 async def test_media_duration_reads_in_bounds_video(video_dir, exec_ctx, video):
     block = MediaDurationBlock()
@@ -246,7 +285,7 @@ def _video_file_clip_calls(tree: ast.AST) -> list[int]:
 
 
 def test_video_blocks_open_videos_only_through_the_checked_helper():
-    allowed = VIDEO_BLOCKS_DIR / "_utils.py"
+    allowed = VIDEO_BLOCKS_DIR / "_render.py"
     direct_opens = []
     for path in sorted(BACKEND_PACKAGE_DIR.rglob("*.py")):
         if path == allowed:
@@ -254,8 +293,9 @@ def test_video_blocks_open_videos_only_through_the_checked_helper():
         for lineno in _video_file_clip_calls(ast.parse(path.read_text())):
             direct_opens.append(f"{path.relative_to(BACKEND_PACKAGE_DIR)}:{lineno}")
     assert not direct_opens, (
-        "Open videos with backend.blocks.video._utils.open_video_clip, which "
-        f"checks the frame size first, not VideoFileClip directly: {direct_opens}"
+        "Open videos with backend.blocks.video._render.open_video (or "
+        "_utils.open_video_clip in a block), which checks the frame size "
+        f"first, not VideoFileClip directly: {direct_opens}"
     )
 
 
@@ -264,7 +304,7 @@ async def test_concat_refuses_more_than_max_inputs(video_dir, exec_ctx):
     store_input = AsyncMock(side_effect=lambda _ctx, file: file)
     with (
         patch.object(VideoConcatBlock, "_store_input_video", new=store_input),
-        patch("backend.blocks.video._utils.VideoFileClip") as video_file_clip,
+        patch("backend.blocks.video._render.VideoFileClip") as video_file_clip,
         pytest.raises(BlockExecutionError, match=f"At most {MAX_CONCAT_INPUTS}"),
     ):
         await _run(
@@ -278,7 +318,7 @@ async def test_concat_refuses_more_than_max_inputs(video_dir, exec_ctx):
 
 async def test_concat_accepts_max_inputs(video_dir, exec_ctx):
     block = VideoConcatBlock()
-    concat = MagicMock(return_value=1.0)
+    concat = AsyncMock(return_value=1.0)
     with (
         patch(
             "backend.blocks.video.concat.get_exec_file_path",

@@ -20,6 +20,7 @@ from backend.blocks._base import BlockType
 from backend.data.execution import ExecutionContext, ExecutionStatus, NodeExecutionEntry
 from backend.data.graph import Node
 from backend.data.model import GraphExecutionStats
+from backend.executor import manager as manager_module
 from backend.executor.manager import ExecutionProcessor, _finish_despite_cancel
 from backend.executor.utils import NodeExecutionProgress
 from backend.util.decorator import TimingInfo
@@ -308,6 +309,63 @@ def test_a_block_that_ignores_the_stop_holds_the_cleanup_only_briefly():
         deadline = time.monotonic() + 5
         while not run.update_graph.await_count and time.monotonic() < deadline:
             time.sleep(0.01)
+        run.update_graph.assert_awaited_once()
+
+
+def test_a_stopped_run_keeps_its_worker_until_its_blocked_node_ends():
+    """A block in a synchronous call holds its loop's thread, so it can't take
+    a stop's cancel. The stop still ends the run after the unwind grace, and
+    answers promptly, but the worker isn't handed back, to another run or to
+    its owner's share, until the block has returned."""
+    block_started = threading.Event()
+    release = threading.Event()
+    run_ended = threading.Event()
+
+    async def block_in_a_synchronous_call(**kwargs):
+        block_started.set()
+        release.wait(timeout=30)
+        return TimingInfo(cpu_time=0.1, wall_time=1.0), ExecutionStatus.COMPLETED
+
+    run = _Run(threading.Event())
+    processor = ExecutionProcessor()
+    progress = NodeExecutionProgress()
+
+    def stopped_run(*_args):
+        # What a stop does: cancel the node, wait out the grace, end the run
+        processor.running_node_execution = {"node-1": progress}
+        _start_node(loop, run, processor, progress)
+        assert block_started.wait(timeout=5)
+        progress.stop(stop_requested=True)
+        progress.wait_for_done(timeout=5)
+        run_ended.set()
+
+    def worker():
+        manager_module._tls.processor = processor
+        manager_module.execute_graph(MagicMock(), threading.Event(), MagicMock())
+
+    with _node_loop() as loop, ExitStack() as stack:
+        run.patches(stack)
+        stack.enter_context(
+            patch.object(
+                processor, "_on_node_execution", new=block_in_a_synchronous_call
+            )
+        )
+        stack.enter_context(
+            patch.object(processor, "on_graph_execution", new=stopped_run)
+        )
+        stack.enter_context(
+            patch("backend.executor.utils.NODE_UNWIND_GRACE_SECONDS", 0.1)
+        )
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        try:
+            assert run_ended.wait(timeout=10)
+            thread.join(timeout=1)
+            assert thread.is_alive()
+        finally:
+            release.set()
+        thread.join(timeout=10)
+        assert not thread.is_alive()
         run.update_graph.assert_awaited_once()
 
 

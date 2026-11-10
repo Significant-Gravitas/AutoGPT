@@ -323,7 +323,13 @@ def execute_graph(
 ):
     """Execute graph using thread-local ExecutionProcessor instance"""
     processor: ExecutionProcessor = _tls.processor
-    return processor.on_graph_execution(graph_exec_entry, cancel_event, cluster_lock)
+    try:
+        return processor.on_graph_execution(
+            graph_exec_entry, cancel_event, cluster_lock
+        )
+    finally:
+        # Until this returns, the run holds this worker and its owner's share
+        processor.wait_for_nodes_to_end(cluster_lock)
 
 
 T = TypeVar("T")
@@ -1013,6 +1019,41 @@ class ExecutionProcessor:
     # Per-graph-execution state, populated by on_graph_execution.
     nodes_input_masks: Optional[NodesInputMasks] = None
 
+    def __init__(self):
+        # The nodes of the run this processor ran last, by node id
+        self.running_node_execution: dict[str, NodeExecutionProgress] = {}
+
+    def wait_for_nodes_to_end(self, cluster_lock: ClusterLock) -> None:
+        """Wait until every node of the last run has ended, block included.
+
+        A stop waits only NODE_UNWIND_GRACE_SECONDS for a block that ignores
+        the cancel, such as one in a synchronous call, so the stop answers
+        promptly. That block still runs on this worker's loop: a run handed
+        this worker now would wait behind it, and the stopped run's owner
+        could start another in its place, so the worker stays taken until
+        the block returns.
+        """
+        running = [
+            node_id
+            for node_id, progress in self.running_node_execution.items()
+            if not progress.has_ended()
+        ]
+        if not running:
+            return
+        logger.warning(
+            f"[GraphExecutor] Holding this worker until stopped nodes {running} end"
+        )
+        started = time.monotonic()
+        while not all(
+            progress.has_ended() for progress in self.running_node_execution.values()
+        ):
+            cluster_lock.refresh()
+            time.sleep(1)
+        logger.info(
+            f"[GraphExecutor] Stopped nodes {running} ended after "
+            f"{time.monotonic() - started:.0f}s; the worker is free"
+        )
+
     @async_error_logged(swallow=True)
     async def on_node_execution(
         self,
@@ -1505,9 +1546,7 @@ class ExecutionProcessor:
         execution_stats_lock = threading.Lock()
 
         # State holders ----------------------------------------------------
-        self.running_node_execution: dict[str, NodeExecutionProgress] = defaultdict(
-            NodeExecutionProgress
-        )
+        self.running_node_execution = defaultdict(NodeExecutionProgress)
         self.running_node_evaluation: dict[str, Future] = {}
         self.execution_stats = execution_stats
         self.execution_stats_lock = execution_stats_lock

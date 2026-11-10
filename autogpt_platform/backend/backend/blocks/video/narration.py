@@ -4,8 +4,6 @@ import os
 from typing import Literal
 
 from elevenlabs import ElevenLabs
-from moviepy import CompositeAudioClip
-from moviepy.audio.io.AudioFileClip import AudioFileClip
 
 from backend.blocks._base import (
     Block,
@@ -21,14 +19,8 @@ from backend.blocks.elevenlabs._auth import (
     ElevenLabsCredentials,
     ElevenLabsCredentialsInput,
 )
-from backend.blocks.video._utils import (
-    VideoMediaStorage,
-    check_video_frame_size,
-    extract_source_name,
-    get_video_codecs,
-    open_video_clip,
-    strip_chapters_inplace,
-)
+from backend.blocks.video._render import add_narration_to_video, check_input_video
+from backend.blocks.video._utils import VideoMediaStorage, extract_source_name, run_edit
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 from backend.util.exceptions import BlockExecutionError
@@ -130,12 +122,9 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
             )
         )
 
-    def _check_input_video(self, video_abspath: str) -> None:
+    async def _check_input_video(self, video_abspath: str) -> None:
         """Strip chapters and check the frame size, before any narration is paid for."""
-        strip_chapters_inplace(video_abspath)
-        check_video_frame_size(
-            video_abspath, block_name=self.name, block_id=str(self.id)
-        )
+        await run_edit(self, check_input_video, video_abspath)
 
     def _generate_narration_audio(
         self, api_key: str, script: str, voice_id: str, model_id: str
@@ -150,7 +139,7 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
         # The SDK returns a generator, collect all chunks
         return b"".join(audio_generator)
 
-    def _add_narration_to_video(
+    async def _add_narration_to_video(
         self,
         video_abspath: str,
         audio_abspath: str,
@@ -160,54 +149,16 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
         original_volume: float,
     ) -> None:
         """Add narration audio to video. Extracted for testability."""
-        video = None
-        final = None
-        narration_original = None
-        narration_scaled = None
-        original = None
-
-        try:
-            video = open_video_clip(
-                video_abspath, block_name=self.name, block_id=str(self.id)
-            )
-            narration_original = AudioFileClip(audio_abspath)
-            narration_scaled = narration_original.with_volume_scaled(narration_volume)
-            narration = narration_scaled
-
-            if mix_mode == "replace":
-                final_audio = narration
-            elif mix_mode == "mix":
-                if video.audio:
-                    original = video.audio.with_volume_scaled(original_volume)
-                    final_audio = CompositeAudioClip([original, narration])
-                else:
-                    final_audio = narration
-            else:  # ducking - apply stronger attenuation
-                if video.audio:
-                    # Ducking uses a much lower volume for original audio
-                    ducking_volume = original_volume * 0.3
-                    original = video.audio.with_volume_scaled(ducking_volume)
-                    final_audio = CompositeAudioClip([original, narration])
-                else:
-                    final_audio = narration
-
-            final = video.with_audio(final_audio)
-            video_codec, audio_codec = get_video_codecs(output_abspath)
-            final.write_videofile(
-                output_abspath, codec=video_codec, audio_codec=audio_codec
-            )
-
-        finally:
-            if original:
-                original.close()
-            if narration_scaled:
-                narration_scaled.close()
-            if narration_original:
-                narration_original.close()
-            if final:
-                final.close()
-            if video:
-                video.close()
+        await run_edit(
+            self,
+            add_narration_to_video,
+            video_abspath,
+            audio_abspath,
+            output_abspath,
+            mix_mode,
+            narration_volume,
+            original_volume,
+        )
 
     async def run(
         self,
@@ -229,7 +180,7 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
                 execution_context.graph_exec_id, local_video_path
             )
 
-            self._check_input_video(video_abspath)
+            await self._check_input_video(video_abspath)
 
             # Generate narration audio via ElevenLabs
             audio_content = self._generate_narration_audio(
@@ -257,7 +208,7 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
                 execution_context.graph_exec_id, output_filename
             )
 
-            self._add_narration_to_video(
+            await self._add_narration_to_video(
                 video_abspath,
                 audio_abspath,
                 output_abspath,
