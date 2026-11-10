@@ -3,6 +3,7 @@ other nodes stays free while it encodes, and the block's time limit, or a
 stop, ends the encode itself rather than leaving it to run on."""
 
 import asyncio
+import threading
 import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -90,6 +91,30 @@ async def test_an_edit_gets_its_arguments_and_returns_its_result(
 
     assert duration == pytest.approx(0.5)
     assert output.stat().st_size > 0
+
+
+def test_an_edit_runs_from_an_event_loop_on_another_thread(one_second_clip: Path):
+    # As the executor runs nodes: on a loop each graph worker runs in a thread
+    # of its own, not the main thread
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    try:
+        edit = run_edit(
+            VideoClipBlock(),
+            clip_video,
+            str(one_second_clip),
+            str(one_second_clip.with_name("first_half.mp4")),
+            0.0,
+            0.5,
+        )
+        duration = asyncio.run_coroutine_threadsafe(edit, loop).result(timeout=120)
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=5)
+        loop.close()
+
+    assert duration == pytest.approx(0.5)
 
 
 async def _loop_to_an_hour(block: LoopVideoBlock, clip: Path) -> None:
