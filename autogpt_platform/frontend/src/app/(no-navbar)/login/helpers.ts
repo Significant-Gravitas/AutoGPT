@@ -1,3 +1,4 @@
+import { withAuthTracking } from "@/lib/auth-redirect";
 import { ACCOUNT_CLOSED_PATH } from "@/lib/auth/closed-account";
 import type { EmailVerificationNotice } from "@/lib/auth/email-verification";
 
@@ -23,13 +24,22 @@ export function getSignInErrorNotice(error: string | null) {
   return error === BANNED_USER_ERROR_CODE ? ACCOUNT_BANNED_NOTICE_COPY : null;
 }
 
+interface PostLoginPathArgs {
+  nextUrl: string | null;
+  resultNext: string | undefined;
+  rawNext: string | null;
+}
+
 // Where a successful sign-in goes. A closed account always goes to the page
 // where it can keep the account: a ?next= page would only send it back there
-// (an optional-auth page, such as the Marketplace, never would).
-export function getPostLoginPath(
-  nextUrl: string | null,
-  resultNext: string | undefined,
-) {
+// (an optional-auth page, such as the Marketplace, never would). Otherwise a
+// ?next= deep link wins, then the server's choice, which keeps the tracking
+// params of a default-landing ?next=.
+export function getPostLoginPath({
+  nextUrl,
+  resultNext,
+  rawNext,
+}: PostLoginPathArgs) {
   if (resultNext === ACCOUNT_CLOSED_PATH) return ACCOUNT_CLOSED_PATH;
-  return nextUrl || resultNext || "/";
+  return nextUrl || withAuthTracking(resultNext || "/", rawNext);
 }

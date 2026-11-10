@@ -18,6 +18,13 @@ import pydantic
 from backend.copilot.tools.skills import ParsedSkill, SkillFile, render_skill_markdown
 from backend.data.skill_package import SKILL_MD, file_sha256, package_tree_sha256
 from backend.util.models import Pagination
+from backend.util.text_limits import (
+    MAX_DESCRIPTION_LENGTH,
+    MAX_LIST_ENTRIES,
+    MAX_NAME_LENGTH,
+    MAX_SUMMARY_LENGTH,
+    NameText,
+)
 
 from .categories import validate_canonical_categories
 
@@ -255,22 +262,28 @@ class SkillReviewRequest(pydantic.BaseModel):
     """An admin's verdict on one submission; the version comes from the path."""
 
     is_approved: bool
-    comments: str
-    internal_comments: str | None = None
+    comments: str = pydantic.Field(..., max_length=MAX_DESCRIPTION_LENGTH)
+    internal_comments: str | None = pydantic.Field(
+        None, max_length=MAX_DESCRIPTION_LENGTH
+    )
 
 
 class SkillSubmissionRequest(pydantic.BaseModel):
     """Publish one of the caller's own library skills as a marketplace listing."""
 
     skill_name: str = pydantic.Field(
-        description="Slug of the caller's library skill to publish."
+        max_length=MAX_NAME_LENGTH,
+        description="Slug of the caller's library skill to publish.",
     )
-    categories: list[str]
-    required_providers: list[str] = pydantic.Field(
+    categories: list[NameText] = pydantic.Field(..., max_length=MAX_LIST_ENTRIES)
+    required_providers: list[NameText] = pydantic.Field(
         default_factory=list,
+        max_length=MAX_LIST_ENTRIES,
         description="Integrations the skill's instructions assume are connected.",
     )
-    changes_summary: str | None = None
+    changes_summary: str | None = pydantic.Field(
+        default=None, max_length=MAX_SUMMARY_LENGTH
+    )
 
     @pydantic.field_validator("categories")
     @classmethod
