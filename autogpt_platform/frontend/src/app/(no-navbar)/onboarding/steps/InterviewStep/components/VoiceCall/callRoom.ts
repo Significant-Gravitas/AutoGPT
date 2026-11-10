@@ -7,6 +7,8 @@ import { RoomJoinTimeout } from "./helpers";
 // publishes the microphone the call opened, and plays Otto, whom the relay
 // joins as, through the player the call's click started. LiveKit reconnects
 // on its own when the network changes; the control socket carries the rest.
+// The relay closes the room once the call is done with it, removing the
+// browser: the socket says what became of the call.
 
 // The relay's identity in every call's room.
 const OTTO = "otto";
@@ -20,6 +22,9 @@ export interface CallRoomEvents {
   // The room is gone for good: LiveKit could not get it back, or the call
   // was rejoined from another tab, which takes the room over.
   onLost: (why: "lost" | "replaced") => void;
+  // The relay closed the room: nothing is lost, and the socket says what
+  // the call became.
+  onClosed: () => void;
 }
 
 export interface CallRoom {
@@ -114,6 +119,14 @@ export async function joinCallRoom({
       // The call is over, and the room closed while Otto's last words played.
       if (leaveTimer !== null) {
         leave();
+        return;
+      }
+      if (
+        reason === DisconnectReason.PARTICIPANT_REMOVED ||
+        reason === DisconnectReason.ROOM_DELETED
+      ) {
+        leave();
+        events.onClosed();
         return;
       }
       isLeaving = true;

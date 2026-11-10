@@ -95,6 +95,11 @@ export function useCallRoom(args: Args) {
         }
         argsRef.current.onLost();
       },
+      onClosed() {
+        if (conn.call !== call) return;
+        conn.room = null;
+        setIsAudioReconnecting(false);
+      },
     };
   }
 

@@ -33,6 +33,7 @@ function listener() {
     onReconnected: () => told.push("reconnected"),
     onOttoTrack: () => told.push("otto"),
     onLost: (why) => told.push(`lost:${why}`),
+    onClosed: () => told.push("closed"),
   };
   return { told, events };
 }
@@ -128,6 +129,25 @@ describe("the call's LiveKit room", () => {
     expect(told).toEqual(["lost:lost"]);
     expect(player.srcObject).toBeNull();
   });
+
+  it.each([
+    ["removing the browser from it", DISCONNECT_REASON.PARTICIPANT_REMOVED],
+    ["deleting it", DISCONNECT_REASON.ROOM_DELETED],
+  ])(
+    "leaves quietly when the relay closes the room by %s",
+    async (_case, reason) => {
+      const { room, fake, told, player } = await joined();
+      const pause = vi.spyOn(player, "pause");
+
+      fake.lose(reason);
+
+      expect(told).toEqual(["closed"]);
+      expect(fake.isLeft).toBe(true);
+      expect(pause).toHaveBeenCalled();
+      room.mute();
+      expect(fake.unpublished).toEqual([]);
+    },
+  );
 
   it("tells the call another tab took its room over", async () => {
     const { fake, told } = await joined();

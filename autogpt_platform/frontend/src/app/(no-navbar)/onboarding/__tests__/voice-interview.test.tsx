@@ -2499,6 +2499,64 @@ describe("onboarding interview by voice: the LiveKit leg", () => {
     expect(statusReads).toEqual([]);
   });
 
+  it.each([
+    ["removed the browser", DISCONNECT_REASON.PARTICIPANT_REMOVED],
+    ["deleted the room", DISCONNECT_REASON.ROOM_DELETED],
+  ])(
+    "shows the call's ending when the relay %s after the call ended",
+    async (_case, reason) => {
+      callStates[CALL_ID] = [callRecord({ interview: "taken" })];
+      render(<OnboardingPage />);
+      const { socket, room } = await liveRoomCall();
+      act(() => {
+        room.ottoJoins();
+      });
+      endCall(socket, "finished");
+
+      act(() => room.lose(reason));
+
+      expect(
+        await screen.findByRole("button", { name: "Meet your team" }),
+      ).toBeDefined();
+      expect(room.isLeft).toBe(true);
+      expect(
+        screen.queryByText("We lost the call. Saving what you said…"),
+      ).toBeNull();
+      expect(tracked("voice_interview_leg_fallback")).toEqual([]);
+    },
+  );
+
+  it.each([
+    ["removes the browser", DISCONNECT_REASON.PARTICIPANT_REMOVED],
+    ["deletes the room", DISCONNECT_REASON.ROOM_DELETED],
+  ])(
+    "waits for the socket's word when the relay %s before the call ends",
+    async (_case, reason) => {
+      callStates[CALL_ID] = [callRecord({ interview: "taken" })];
+      render(<OnboardingPage />);
+      const { socket, room } = await liveRoomCall();
+
+      act(() => room.lose(reason));
+
+      expect(room.isLeft).toBe(true);
+      expect(screen.getByText("You're on the call with Otto")).toBeDefined();
+      expect(socket.readyState).toBe(FakeWebSocket.OPEN);
+      expect(screen.queryByRole("button", { name: "Rejoin" })).toBeNull();
+      expect(
+        screen.queryByText("We lost the call. Saving what you said…"),
+      ).toBeNull();
+      expect(statusReads).toEqual([]);
+
+      endCall(socket, "finished");
+
+      expect(
+        await screen.findByRole("button", { name: "Meet your team" }),
+      ).toBeDefined();
+      expect(tracked("voice_interview_leg_fallback")).toEqual([]);
+      expect(tracked("voice_interview_reconnected")).toEqual([]);
+    },
+  );
+
   it("keeps only its token for the call's room with the ticket, so a reload can join it again", async () => {
     render(<OnboardingPage />);
     await liveRoomCall();
