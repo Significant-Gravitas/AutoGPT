@@ -7,6 +7,7 @@ import {
   isSessionID,
   listSessions,
 } from "@/lib/api/chat";
+import { expertKeys, listExperts } from "@/lib/api/experts";
 
 /** `routeSessionID` comes from the URL, which a deep link controls. */
 export function useChatScreen(routeSessionID: unknown) {
@@ -23,8 +24,16 @@ export function useChatScreen(routeSessionID: unknown) {
     queryFn: () => listSessions(),
   });
 
+  const expertID = detail.data?.expert_id ?? null;
+  const { data: experts } = useQuery({
+    queryKey: expertKeys.list,
+    queryFn: listExperts,
+    enabled: expertID !== null,
+  });
+
   const summary = sessions?.find((session) => session.id === sessionID);
-  const title = summary?.title || "Otto";
+  const expert = experts?.find((item) => item.id === expertID);
+  const title = expert?.name || summary?.title || "Otto";
 
   function newChat() {
     router.navigate("/");
