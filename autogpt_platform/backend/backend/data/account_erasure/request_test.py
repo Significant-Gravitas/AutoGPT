@@ -234,3 +234,18 @@ async def test_an_email_request_is_closed_the_way_settings_closes_one(monkeypatc
 
     close.assert_awaited_once_with(USER_ID, EMAIL, AccountDeletionSource.EMAIL)
     assert erase_after == NOW + timedelta(days=14)
+
+
+@pytest.mark.asyncio
+async def test_an_email_request_to_be_erased_at_once_has_no_14_days(monkeypatch):
+    monkeypatch.setattr(
+        request, "get_user_by_id", AsyncMock(return_value=SimpleNamespace(email=EMAIL))
+    )
+    close = AsyncMock(return_value=NOW)
+    monkeypatch.setattr(request, "delete_account", close)
+
+    await request.close_for_email_request(USER_ID, erase_now=True)
+
+    close.assert_awaited_once_with(
+        USER_ID, EMAIL, AccountDeletionSource.EMAIL, grace=timedelta(0)
+    )

@@ -23,7 +23,7 @@ start then, as for any other request.
 """
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from prisma.enums import AccountDeletionSource
 from prisma.models import AccountDeletionRequest
@@ -72,16 +72,37 @@ async def claim_request(user_id: str) -> str | None:
     return rows[0]["id"] if rows else None
 
 
-async def close_for_email_request(user_id: str) -> datetime:
+async def close_for_email_request(user_id: str, *, erase_now: bool = False) -> datetime:
     """Close the account for a request made by email, exactly as the Settings
     button does (`delete_account`): Stripe cancelled, apps disconnected, work
     stopped, email switched off, sessions ended, listings taken down, the
     request row written and the confirmation sent. Returns when the 14 days
-    to keep the account end; the erasure follows after that. A no-op for an
-    account already closed. Raises `PlanCancellationError`, with the account
-    still open, when Stripe refuses the cancel."""
+    to keep the account end; the erasure follows after that. With
+    `erase_now`, for an owner who asked to be erased at once, there are no
+    14 days, and the confirmation says the account is being erased. A no-op
+    for an account already closed. Raises `PlanCancellationError`, with the
+    account still open, when Stripe refuses the cancel."""
     user = await get_user_by_id(user_id)
-    return await delete_account(user_id, user.email, AccountDeletionSource.EMAIL)
+    if not erase_now:
+        return await delete_account(user_id, user.email, AccountDeletionSource.EMAIL)
+    return await delete_account(
+        user_id, user.email, AccountDeletionSource.EMAIL, grace=timedelta(0)
+    )
+
+
+async def end_grace_now(user_id: str) -> bool:
+    """End the 14 days to keep a closed account now, for an owner who asked to
+    be erased at once, so the erasure can claim it straight away. By the
+    database's clock, the one the claim reads. False when there is nothing to
+    shorten: no request, or an erasure already started or finished."""
+    rows = await query_raw_with_schema(
+        'UPDATE {schema_prefix}"AccountDeletionRequest" '
+        'SET "eraseAfter" = LEAST("eraseAfter", now() AT TIME ZONE \'UTC\') '
+        'WHERE "userId" = $1 AND "startedAt" IS NULL AND "completedAt" IS NULL '
+        'RETURNING "id"',
+        user_id,
+    )
+    return bool(rows)
 
 
 async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:

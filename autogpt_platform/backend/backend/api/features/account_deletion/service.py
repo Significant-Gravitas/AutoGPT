@@ -83,7 +83,7 @@ Neither the typed email nor the account's email is ever logged.
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import stripe
 from autogpt_libs.auth import remember_account_closed
@@ -134,7 +134,11 @@ class PlanCancellationError(Exception):
 
 
 async def delete_account(
-    user_id: str, confirm_email: str, source: AccountDeletionSource
+    user_id: str,
+    confirm_email: str,
+    source: AccountDeletionSource,
+    *,
+    grace: timedelta = GRACE_PERIOD,
 ) -> datetime:
     """Close the account, in the order the module docstring gives, and return
     when its data may be erased: until then its owner can keep it.
@@ -153,7 +157,7 @@ async def delete_account(
     await _cancel_plan(user_id)
     await set_auto_top_up(user_id, AutoTopUpConfig(threshold=0, amount=0))
     await _revoke_and_stop(user_id)
-    request = await _close(user_id, source)
+    request = await _close(user_id, source, grace)
     if request is None:
         return await _winners_erase_after(user_id)
     await _send_confirmation(user_id, user.email, source, request.eraseAfter)
@@ -197,10 +201,10 @@ async def _revoke_and_stop(user_id: str) -> None:
 
 
 async def _close(
-    user_id: str, source: AccountDeletionSource
+    user_id: str, source: AccountDeletionSource, grace: timedelta
 ) -> AccountDeletionRequest | None:
     """Close the account; None when a concurrent call closed it first."""
-    request = await close_account(user_id, source)
+    request = await close_account(user_id, source, grace=grace)
     # Closed either way, so this worker rejects the user from now on, no
     # background work starts for it, and its listings and creator page leave
     # the store at once (the transaction has committed).

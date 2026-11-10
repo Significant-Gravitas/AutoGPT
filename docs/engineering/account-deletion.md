@@ -60,6 +60,14 @@ Every command is a dry run unless it has `--apply`, and prints counts only, neve
    `--close` only closes the account, the way Settings does, with source `EMAIL`, and prints the date the 14 days end. The confirmation email is the one Settings sends, with its own reason line: "You asked us by email to delete your account." The owner can sign in and keep the account until that date, as from Settings. Closing also sends the anonymous `account_deletion_completed` count, with `surface: email`, which the tracking plan does not list yet. If Stripe refuses the plan cancel, nothing is closed: run it again. On an account already closed (from Settings, say) `--close` changes nothing and prints its date.
 
    A banned account may be closed too: deleting it is the owner's right, and the ban stays as it is. The erasure keeps a ban record for it (below).
+   **When the owner asked to be erased at once**, skip the 14 days: `--close --now` closes the account if it is open (the confirmation email then says it is being erased, with no date to keep it) or, for one closed already, ends its 14 days now, and erases it in the same run, dry run first:
+
+   ```sh
+   poetry run cli erase-account sam@example.com --close --now
+   poetry run cli erase-account sam@example.com --close --now --apply
+   ```
+
+   The owner can no longer keep the account after that. Then go on to step 5.
 4. **Erase**, after the 14 days. The job does it within the hour. To run it by hand:
 
    ```sh

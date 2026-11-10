@@ -21,10 +21,17 @@ if TYPE_CHECKING:
     help="For a request made by email: close the account the way Settings "
     "does. It is erased once its 14 days to keep it are over.",
 )
+@click.option(
+    "--now",
+    is_flag=True,
+    help="With --close, for an owner who asked to be erased at once: no 14 "
+    "days to keep it. Closes the account if it is open, then erases it in the "
+    "same run.",
+)
 @click.option("--apply", is_flag=True, help="Make the change. Without it, dry run.")
 @click.option("--yes", is_flag=True, help="With --apply, skip the confirmation.")
 def erase_account_command(
-    account: str | None, pending: bool, close: bool, apply: bool, yes: bool
+    account: str | None, pending: bool, close: bool, now: bool, apply: bool, yes: bool
 ):
     """Erase a closed account and everything it holds (SECRT-2854).
 
@@ -56,10 +63,14 @@ def erase_account_command(
         raise click.UsageError("Pass an ACCOUNT or --pending, not both.")
     if close and pending:
         raise click.UsageError("--close applies to one account.")
+    if now and not close:
+        raise click.UsageError("--now goes with --close.")
     # Keep Prisma and client chatter out of the report.
     logging.disable(logging.INFO)
     if pending:
         asyncio.run(_with_db(_run_pending(apply=apply, yes=yes)))
+    elif close and now:
+        asyncio.run(_with_db(_run_close_now(account or "", apply=apply, yes=yes)))
     elif close:
         asyncio.run(_with_db(_run_close(account or "", apply=apply, yes=yes)))
     else:
@@ -136,6 +147,48 @@ async def _run_close(account: str, *, apply: bool, yes: bool):
         f"\nClosed the account. Its owner can keep it until "
         f"{erase_after:%Y-%m-%d %H:%M} UTC; the job erases it after that."
     )
+
+
+async def _run_close_now(account: str, *, apply: bool, yes: bool):
+    """For an owner who asked to be erased at once: close the account if it
+    is open, with no 14 days to keep it, then erase it in the same run."""
+    from backend.api.features.account_deletion.service import PlanCancellationError
+    from backend.data.account_deletion import get_deletion_request
+    from backend.data.account_erasure.request import (
+        close_for_email_request,
+        end_grace_now,
+    )
+
+    user_id, _ = await _resolve(account)
+    request = await get_deletion_request(user_id)
+    if request is None:
+        click.echo(
+            f"Account {user_id} is open. --close --now --apply closes it as a "
+            "request made by email, with no 14 days to keep it (the email says "
+            "it is being erased), then erases it."
+        )
+    else:
+        click.echo(
+            f"Account {user_id} is closed; its 14 days end "
+            f"{request.eraseAfter:%Y-%m-%d %H:%M} UTC. --close --now --apply "
+            "ends them now and erases it."
+        )
+    if not apply:
+        click.echo("\nDry run: nothing was changed. Re-run with --apply.")
+        return
+    if not yes:
+        click.confirm(f"\nClose and erase account {user_id} now, for good?", abort=True)
+    if request is None:
+        try:
+            await close_for_email_request(user_id, erase_now=True)
+        except PlanCancellationError:
+            raise click.ClickException(
+                "Stripe refused or timed out on the plan cancel, so the account "
+                "is still open. Run it again."
+            )
+        click.echo("\nClosed the account, with no 14 days to keep it.")
+    await end_grace_now(user_id)
+    await _run_one(account, apply=True, yes=True)
 
 
 _CLOSE_DOES = (

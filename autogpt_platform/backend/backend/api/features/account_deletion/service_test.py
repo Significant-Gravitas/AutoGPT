@@ -6,7 +6,7 @@ flow against the real database.
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -104,7 +104,7 @@ async def test_every_step_runs_once_in_order(steps: MagicMock):
         if name != "set_auto_top_up":
             getattr(steps, name).assert_awaited_once_with(USER_ID)
     steps.close_account.assert_awaited_once_with(
-        USER_ID, AccountDeletionSource.SETTINGS
+        USER_ID, AccountDeletionSource.SETTINGS, grace=timedelta(days=14)
     )
     steps.remember_account_closed.assert_called_once_with(USER_ID)
     steps.forget_refusal.assert_called_once_with(USER_ID)

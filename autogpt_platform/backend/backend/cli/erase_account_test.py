@@ -70,12 +70,14 @@ def run(monkeypatch):
     monkeypatch.setattr(routine, "erase_account", erasing)
     closing = AsyncMock(return_value=ERASE_AFTER)
     monkeypatch.setattr(request, "close_for_email_request", closing)
+    ending = AsyncMock(return_value=True)
+    monkeypatch.setattr(request, "end_grace_now", ending)
 
     def invoke(*args: str, input: str | None = None):
         return CliRunner().invoke(cli.erase_account_command, [*args], input=input)
 
     return SimpleNamespace(
-        invoke=invoke, erasing=erasing, closed=closed, closing=closing
+        invoke=invoke, erasing=erasing, closed=closed, closing=closing, ending=ending
     )
 
 
@@ -181,6 +183,39 @@ def test_close_on_a_closed_account_changes_nothing(run):
     assert "2026-11-16 09:30 UTC" in result.output
 
 
+def test_close_now_closes_with_no_14_days_and_erases_in_the_same_run(run):
+    run.closed.return_value = None
+
+    result = run.invoke(EMAIL, "--close", "--now", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    run.closing.assert_awaited_once_with(USER_ID, erase_now=True)
+    run.ending.assert_awaited_once_with(USER_ID)
+    assert [c.kwargs["dry_run"] for c in run.erasing.await_args_list] == [True, False]
+    assert EMAIL not in result.output
+
+
+def test_close_now_on_a_closed_account_ends_its_14_days_and_erases(run):
+    result = run.invoke(EMAIL, "--close", "--now", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    run.closing.assert_not_awaited()
+    run.ending.assert_awaited_once_with(USER_ID)
+    assert [c.kwargs["dry_run"] for c in run.erasing.await_args_list] == [True, False]
+
+
+def test_close_now_without_apply_changes_nothing(run):
+    run.closed.return_value = None
+
+    result = run.invoke(EMAIL, "--close", "--now")
+
+    assert result.exit_code == 0, result.output
+    run.closing.assert_not_awaited()
+    run.ending.assert_not_awaited()
+    run.erasing.assert_not_awaited()
+    assert "Dry run" in result.output
+
+
 def test_a_stripe_refusal_on_close_leaves_the_account_open(run):
     run.closed.return_value = None
     run.closing.side_effect = PlanCancellationError()
@@ -241,7 +276,9 @@ def test_an_erasure_the_owner_kept_meanwhile_fails_the_command(run):
     assert "nothing ran: kept" in result.output
 
 
-@pytest.mark.parametrize("args", [(), (EMAIL, "--pending"), ("--pending", "--close")])
+@pytest.mark.parametrize(
+    "args", [(), (EMAIL, "--pending"), ("--pending", "--close"), (EMAIL, "--now")]
+)
 def test_conflicting_arguments_are_refused(run, args):
     result = run.invoke(*args)
 
