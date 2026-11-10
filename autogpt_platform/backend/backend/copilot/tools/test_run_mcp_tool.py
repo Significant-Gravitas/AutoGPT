@@ -873,6 +873,61 @@ async def test_surface_connect_card_probe_5xx_reports_optimistically_connected()
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_surface_connect_card_probe_403_keeps_connected_and_names_refusal():
+    """surface_connect_card + kept creds + probe 403 → connected, refusal named.
+
+    A 403 is not a refused credential (only 401 is), so the user is still
+    signed in. A "sign in to X" card here told the model and the user the
+    account was not connected, and re-pasting the same token stores fine
+    (``/token`` does not block on a 403) and 403s again.
+    """
+    from backend.util.request import HTTPClientError
+
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    mock_creds = MagicMock()
+    mock_creds.access_token = SecretStr("valid-token")
+    mock_creds.id = "valid-cred-id"
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=mock_creds,
+        ):
+            mock_client = AsyncMock()
+            mock_client.initialize = AsyncMock(
+                side_effect=HTTPClientError("Forbidden", status_code=403)
+            )
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                with patch(
+                    "backend.copilot.tools.run_mcp_tool.invalidate_mcp_credential",
+                    new_callable=AsyncMock,
+                ) as mock_invalidate:
+                    response = await tool._execute(
+                        user_id=_USER_ID,
+                        session=session,
+                        server_url=_SERVER_URL,
+                        surface_connect_card=True,
+                    )
+                    mock_invalidate.assert_not_awaited()
+
+    assert isinstance(response, SetupRequirementsResponse)
+    assert response.setup_info.user_readiness.has_all_credentials is True
+    assert response.setup_info.user_readiness.missing_credentials == {}
+    assert response.rejection is None
+    assert "HTTP 403" in response.message
+    assert "not a missing sign-in" in response.message
+    assert "sign in to" not in response.message.lower()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_surface_connect_card_probe_timeout_reports_optimistically_connected():
     """surface_connect_card + valid creds + probe TimeoutError → connected, cred kept.
 

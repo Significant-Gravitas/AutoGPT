@@ -275,28 +275,37 @@ class RunMCPToolTool(BaseTool):
         # into showing the Reconnect pill, then 401 on the next real
         # tool call (see the John bug this PR also fixes).  Cheapest
         # verification is ``MCPClient.initialize`` (one round-trip, no
-        # tool listing); on 401/403 we treat the cred as stale, drop the
+        # tool listing); on 401 we treat the cred as stale, drop the
         # dead row, and surface the not-connected card so the user
-        # re-auths in one step.  Other HTTP errors (timeouts, 5xx) are
+        # re-auths in one step.  A 403 leaves the sign-in valid (see the
+        # tool-call path below), so the card stays connected and says
+        # the server refused access.  Other HTTP errors (timeouts, 5xx) are
         # treated as "unknown, optimistically connected" — the next
         # real tool call will self-correct via the same invalidate path.
         if surface_connect_card:
             connected = creds is not None
             rejection: CredentialRejection | None = None
+            refused_message: str | None = None
             if client is not None and creds is not None:
                 probe_client = client
                 try:
                     try:
                         await probe_client.initialize()
                     except HTTPClientError as probe_err:
-                        if probe_err.status_code in AUTH_STATUS_CODES:
+                        if probe_err.status_code in CREDENTIAL_REJECTED_STATUS_CODES:
                             connected = False
-                            if (
-                                probe_err.status_code
-                                in CREDENTIAL_REJECTED_STATUS_CODES
-                            ):
-                                rejection = _rejection(creds, probe_err)
-                                await invalidate_mcp_credential(user_id, creds.id)
+                            rejection = _rejection(creds, probe_err)
+                            await invalidate_mcp_credential(user_id, creds.id)
+                        elif probe_err.status_code in AUTH_STATUS_CODES:
+                            service = _service_name(server_host(server_url))
+                            refused_message = (
+                                f"You're signed in to {service}, but it refused "
+                                f"access (HTTP {probe_err.status_code}). That is a "
+                                "permission limit on the account, not a missing "
+                                "sign-in, so signing in again with the same "
+                                "account won't fix it. Use Reconnect only to "
+                                "switch accounts."
+                            )
                         # Other HTTP statuses (5xx, redirects, etc.) →
                         # leave the cred in place and report
                         # "optimistically connected" — the user can
@@ -333,6 +342,7 @@ class RunMCPToolTool(BaseTool):
                 rejection=rejection,
                 user_id=user_id,
                 expert_id=session.expert_id,
+                message=refused_message,
             )
 
         if client is None:
