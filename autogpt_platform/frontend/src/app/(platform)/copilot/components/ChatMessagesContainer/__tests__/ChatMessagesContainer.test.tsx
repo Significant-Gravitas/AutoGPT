@@ -151,8 +151,7 @@ vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
 }));
 // Tests below override this default by re-mocking ../helpers as needed.
 vi.mock("../helpers", async (importOriginal) => ({
-  extractReviewTargets: (await importOriginal<typeof import("../helpers")>())
-    .extractReviewTargets,
+  ...(await importOriginal<typeof import("../helpers")>()),
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
