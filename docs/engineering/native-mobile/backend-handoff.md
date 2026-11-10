@@ -32,6 +32,8 @@ The foundation targets `dev` directly. Landing requires current-base checks and 
 
 JWKS connection failures follow the retryable authentication-outage contract above. WebSocket codes 4001, 4002 and 4003 reject missing or invalid credentials; 4004 rejects a banned account. Stop automatic reconnects for these codes. Ban-lookup failures retain dev's retryable 1011 close code.
 
+An account its owner closed (self-serve deletion) gets HTTP 401 with detail `This account is closed.` from signed-in routes other than the account-deletion status and restore routes, and WebSocket 4003 with that reason. A failed closed-account lookup closes with retryable 1011, as a failed ban lookup does.
+
 **Keep automatic outbox replay disabled.** Redis receipts expire, cancellation is not durably fenced after receipt expiry or Redis loss, and a Redis outage can still interrupt rollback recovery. Do not promise durable offline delivery or replay an old send automatically on relaunch/account switching. A later backend slice must prove cancellation remains effective when a delayed request crosses cancellation and a subsequent turn, including database failures and Redis loss.
 
 ## Remaining backend slices
