@@ -174,6 +174,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Sheets Protect Range](block-integrations/google/sheets.md#google-sheets-protect-range) | Protect a cell range or entire sheet from editing |
 | [Google Sheets Read](block-integrations/google/sheets.md#google-sheets-read) | A block that reads data from a Google Sheets spreadsheet using A1 notation range selection |
 | [Google Sheets Remove Duplicates](block-integrations/google/sheets.md#google-sheets-remove-duplicates) | Remove duplicate rows based on specified columns |
+| [Google Sheets Set Layout](block-integrations/google/sheets.md#google-sheets-set-layout) | Lay out a Google Sheet: freeze header rows or columns, set column widths, wrap text, add filter buttons and alternating row colours |
 | [Google Sheets Set Public Access](block-integrations/google/sheets.md#google-sheets-set-public-access) | Make a Google Spreadsheet public or private |
 | [Google Sheets Share Spreadsheet](block-integrations/google/sheets.md#google-sheets-share-spreadsheet) | Share a Google Spreadsheet with users or get shareable link |
 | [Google Sheets Sort](block-integrations/google/sheets.md#google-sheets-sort) | Sort a Google Sheet by one or two columns |
