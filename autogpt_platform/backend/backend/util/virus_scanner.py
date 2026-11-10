@@ -45,7 +45,7 @@ class VirusScannerSettings(BaseSettings):
     clamav_service_host: str = "localhost"
     clamav_service_port: int = 3310
     # Seconds to wait for ClamAV; None scales each scan's deadline with the file.
-    clamav_service_timeout: Optional[int] = None
+    clamav_service_timeout: int | None = None
     clamav_service_enabled: bool = True
     # If the service is disabled, all files are considered clean.
     mark_failed_scans_as_clean: bool = False
@@ -169,7 +169,7 @@ class _DrainingClamdClient(aioclamd.ClamdAsyncClient):
     """aioclamd 1.0.0 ignores ``timeout``, and its ``instream`` queues the whole buffer
     unyielding, quadratic on Python 3.12+: it held a copilot turn's loop for minutes."""
 
-    async def instream(self, buffer: BinaryIO, timeout: Optional[float] = None) -> dict:
+    async def instream(self, buffer: BinaryIO, timeout: float | None = None) -> dict:
         return await self._answered(self._stream(buffer), timeout or self.timeout)
 
     async def ping(self):
