@@ -159,9 +159,11 @@ async def enable_chat_session_share(
 
         # Session update goes LAST inside the transaction so the chat
         # only becomes publicly readable after the allowlist + linkage
-        # are committed.
-        await PrismaChatSession.prisma(tx).update(
-            where={"id": session_id},
+        # are committed.  Conditional on the chat still being open: an
+        # expert reset can archive it after the check above, and the
+        # raise rolls back every write this share made.
+        shared = await PrismaChatSession.prisma(tx).update_many(
+            where={"id": session_id, "archivedAt": None},
             data={
                 "isShared": True,
                 "shareToken": share_token,
@@ -169,6 +171,8 @@ async def enable_chat_session_share(
                 "autoShareExecutions": auto_share_executions,
             },
         )
+        if not shared:
+            raise ValueError(f"Chat session {session_id} not found for user")
 
     return share_token
 
