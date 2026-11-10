@@ -3239,10 +3239,12 @@ async def test_add_graph_execution_subgraph_untenanted_parent_triggers_fallback(
     mock_edb, mock_get_default_team = _mock_add_graph_execution_create_path(
         mocker, org_id="org-sub", team_id="team-sub"
     )
+    # The parent's own context, as AgentExecutorBlock passes it on: the
+    # parent's workflow, not the sub-graph's, which would be running itself
     parent_ctx = ExecutionContext(
         user_id="user-1",
-        graph_id="g",
-        graph_exec_id="child",
+        graph_id="parent-graph",
+        graph_exec_id="parent-123",
         graph_version=1,
         parent_execution_id="parent-123",
         organization_id=None,
