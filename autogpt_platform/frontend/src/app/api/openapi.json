@@ -7,6 +7,146 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/account/deletion": {
+      "get": {
+        "tags": ["account"],
+        "summary": "Get account deletion status",
+        "operationId": "getAccountGet account deletion status",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["account"],
+        "summary": "Delete account",
+        "operationId": "postAccountDelete account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountDeletionRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionResponse"
+                }
+              }
+            }
+          },
+          "400": { "description": "That email doesn't match your account." },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "404": {
+            "description": "The self-serve-account-deletion flag is off"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": {
+            "description": "We couldn't cancel your plan. Nothing was deleted. Try again."
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/account/deletion/feedback": {
+      "post": {
+        "tags": ["account"],
+        "summary": "Send exit feedback",
+        "operationId": "postAccountSend exit feedback",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeletionFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "404": {
+            "description": "The self-serve-account-deletion flag is off"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Too many answers from this account" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/account/deletion/restore": {
+      "post": {
+        "tags": ["account"],
+        "summary": "Keep my account",
+        "operationId": "postAccountKeep my account",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "409": {
+            "description": "It's too late to keep this account: its data is being erased. Contact contact@agpt.co if you need help."
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/admin/access-blocks": {
       "get": {
         "tags": ["admin"],
@@ -4358,7 +4498,10 @@
                     {
                       "$ref": "#/components/schemas/ExpertSoulUpdatedResponse"
                     },
-                    { "$ref": "#/components/schemas/ExpertOnboardingResponse" }
+                    { "$ref": "#/components/schemas/ExpertOnboardingResponse" },
+                    {
+                      "$ref": "#/components/schemas/FeedbackPromptToolResponse"
+                    }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -6957,6 +7100,19 @@
         "tags": ["trials"],
         "summary": "Cancel Trial",
         "operationId": "postTrialsCancelTrial",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/CancelTrialRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6970,6 +7126,14 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "409": { "description": "No cancelable trial subscription" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
           "502": {
             "description": "Stripe cancellation temporarily unavailable"
           }
@@ -8806,6 +8970,134 @@
               }
             }
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/feedback-prompts/claim": {
+      "post": {
+        "tags": ["v2", "feedback-prompts"],
+        "summary": "Claim feedback prompt",
+        "description": "Record a showing if the prompt's limit allows one.",
+        "operationId": "postV2Claim feedback prompt",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimFeedbackPromptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimFeedbackPromptResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/feedback-prompts/{id}": {
+      "get": {
+        "tags": ["v2", "feedback-prompts"],
+        "summary": "Get feedback prompt",
+        "description": "What a chat card needs to tell asked, answered and closed apart.",
+        "operationId": "getV2Get feedback prompt",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FeedbackPromptState" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No such prompt, or not the caller's" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "feedback-prompts"],
+        "summary": "Update feedback prompt",
+        "description": "Save the fields given and keep the rest.",
+        "operationId": "patchV2Update feedback prompt",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFeedbackPromptRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FeedbackPromptState" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No such prompt, or not the caller's" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -13089,6 +13381,72 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump/plan": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Plan",
+        "description": "The onboarding plan step: what Otto heard, the team, the ranked tasks.\n\n``ready=false`` means the background jobs are still running; keep\npolling. Every other state resolves, a skipped or failed dump to the\nrole plan, which is stored on this first read.",
+        "operationId": "get_brain_dump_plan",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlanResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/plan/hire": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Hire Brain Dump Plan",
+        "description": "Hire the plan's team, after the trial is confirmed.\n\nBehind the paywall, so a user who left Stripe without paying hires\nnobody, whatever the client does; with no paywall it is open.\n\nIdempotent: anyone already on the team is reported, not hired again.\nA hire that fails is reported in ``failed`` rather than failing the\nrequest, and the active expert limit stops the hiring where it is hit.",
+        "operationId": "hire_brain_dump_plan",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlanHireResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/brain-dump/plan/settle": {
+      "post": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Settle Brain Dump Plan",
+        "description": "The plan step stops waiting: the plan it shows becomes the plan.\n\nWhile the background jobs are still running, the plan is stored as it\nstands: the greeting's own tasks once it has written them, with the team\nthe team job chose (or the role team while it is still choosing), and\nthe role plan before that. The trial then hires, and Home lists, what\nthe step showed; the jobs leave both alone. Once a plan is ready this\nchanges nothing and returns it.",
+        "operationId": "settle_brain_dump_plan",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlanResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/brain-dump/recommended-experts": {
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
@@ -13181,7 +13539,7 @@
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Get Brain Dump Suggested Tasks",
-        "description": "The greeting's suggested first tasks, each with its own state.\n\nUnlike ``/intro``, this keeps answering after the first message: the\nlist stays on Home, a sent row marked in progress, until every row is\ndismissed.",
+        "description": "The greeting's suggested first tasks, each with its own state.\n\nUnlike ``/intro``, this keeps answering after the first message: the\nlist stays on Home, a sent row marked in progress, until every row is\ndismissed. Each task names its owner's hired expert, if any.",
         "operationId": "get_brain_dump_suggested_tasks",
         "responses": {
           "200": {
@@ -13203,7 +13561,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Update Brain Dump Suggested Tasks",
-        "description": "Mark suggested tasks sent, dismissed, or open again (Undo).\n\nTakes several ids so \"Hide all\" and its Undo are one write each.",
+        "description": "Mark suggested tasks sent, dismissed, or open again (Undo).\n\nTakes several ids so a change and its Undo are one write each.",
         "operationId": "update_brain_dump_suggested_tasks",
         "requestBody": {
           "content": {
@@ -19744,6 +20102,43 @@
         "required": ["blocks", "total"],
         "title": "AccessBlockPage"
       },
+      "AccountDeletionRequestBody": {
+        "properties": {
+          "confirm_email": {
+            "type": "string",
+            "maxLength": 320,
+            "title": "Confirm Email"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["settings", "paywall"],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": ["confirm_email", "source"],
+        "title": "AccountDeletionRequestBody"
+      },
+      "AccountDeletionResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["open", "scheduled", "too_late"],
+            "title": "Status"
+          },
+          "erase_after": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Erase After"
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "AccountDeletionResponse",
+        "description": "Whether the account is closed and waiting to be erased. While it is,\n``erase_after`` says when the erasure may start: until then (``scheduled``)\nits owner can keep the account; from then on, or once the erasure has\nclaimed the request, it is ``too_late``."
+      },
       "AccountIP": {
         "properties": {
           "ip_address": { "type": "string", "title": "Ip Address" },
@@ -21910,6 +22305,36 @@
         "title": "CancelSessionResponse",
         "description": "Response model for the cancel session endpoint."
       },
+      "CancelTrialRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "too_expensive",
+                  "no_results_yet",
+                  "missing_something",
+                  "only_trying",
+                  "other"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Reason",
+            "description": "The reason picked in the cancel dialog, if any."
+          },
+          "comment": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "title": "CancelTrialRequest"
+      },
       "ChangeSessionConnectionRequest": {
         "properties": {
           "llm_auth_provider": {
@@ -22123,6 +22548,37 @@
         "type": "object",
         "required": ["transports"],
         "title": "ChatTransportsResponse"
+      },
+      "ClaimFeedbackPromptRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "trial_cancel",
+              "upgrade_checkout",
+              "work_check",
+              "otto_mistake",
+              "top_up",
+              "nps"
+            ],
+            "title": "Kind"
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "ClaimFeedbackPromptRequest"
+      },
+      "ClaimFeedbackPromptResponse": {
+        "properties": {
+          "id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Id",
+            "description": "The showing's id, or null when the prompt must not appear."
+          }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "ClaimFeedbackPromptResponse"
       },
       "ClarificationNeededResponse": {
         "properties": {
@@ -23918,6 +24374,66 @@
         "type": "object",
         "required": ["success"],
         "title": "DeleteLinkResponse"
+      },
+      "DeletionFeedbackRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["opened", "answer", "alternative_clicked"],
+            "title": "Kind"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "privacy",
+                  "cost",
+                  "not_using",
+                  "missing_capability",
+                  "limits",
+                  "other",
+                  "skipped"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Reason"
+          },
+          "text": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Text"
+          },
+          "alternative": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "manage_apps",
+                  "disconnect_all",
+                  "billing",
+                  "keep_account"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Alternative"
+          },
+          "surface": {
+            "anyOf": [
+              { "type": "string", "enum": ["settings", "paywall"] },
+              { "type": "null" }
+            ],
+            "title": "Surface"
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "DeletionFeedbackRequest",
+        "description": "One open of the Delete account dialog (with the surface it was opened\nfrom), one answer to \"Why are you leaving?\", or one click on the\nalternative it offered. Nothing here identifies the person; the route adds\nno identity either."
       },
       "DemotionSummary": {
         "properties": {
@@ -26599,6 +27115,74 @@
         "title": "FailedExecutionsListResponse",
         "description": "Response model for list of failed executions"
       },
+      "FeedbackPromptState": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "trial_cancel",
+              "upgrade_checkout",
+              "work_check",
+              "otto_mistake",
+              "top_up",
+              "nps"
+            ],
+            "title": "Kind"
+          },
+          "answered": { "type": "boolean", "title": "Answered" },
+          "dismissed": { "type": "boolean", "title": "Dismissed" },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason"
+          },
+          "score": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": ["id", "kind", "answered", "dismissed", "reason", "score"],
+        "title": "FeedbackPromptState"
+      },
+      "FeedbackPromptToolResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "feedback_prompt"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "trial_cancel",
+              "upgrade_checkout",
+              "work_check",
+              "otto_mistake",
+              "top_up",
+              "nps"
+            ],
+            "title": "Kind"
+          },
+          "prompt_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Prompt Id"
+          },
+          "is_first": {
+            "type": "boolean",
+            "title": "Is First",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["message", "kind"],
+        "title": "FeedbackPromptToolResponse",
+        "description": "A work check or mistake card, or the news that none will appear."
+      },
       "FinalizeRequest": {
         "properties": {
           "recording_id": {
@@ -26641,6 +27225,30 @@
           "transcript_preview": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Transcript Preview"
+          },
+          "otto_reply_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "mic_check",
+                  "greeting",
+                  "unsure",
+                  "reluctant",
+                  "what_to_say",
+                  "wants_to_skip",
+                  "about_otto",
+                  "busy",
+                  "annoyed",
+                  "some_work",
+                  "garbled",
+                  "test",
+                  "other"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Otto Reply Kind"
           },
           "error_code": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -26814,7 +27422,9 @@
           "copilot-voice-mode",
           "copilot-auto-mode",
           "copilot-stream-shadow",
-          "copilot-stream-runtime"
+          "copilot-stream-runtime",
+          "onboarding-step-order",
+          "self-serve-account-deletion"
         ],
         "title": "FrontendFlag",
         "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
@@ -26833,7 +27443,9 @@
           "COPILOT_VOICE_MODE",
           "COPILOT_AUTO_MODE",
           "COPILOT_STREAM_SHADOW",
-          "COPILOT_STREAM_RUNTIME"
+          "COPILOT_STREAM_RUNTIME",
+          "ONBOARDING_STEP_ORDER",
+          "SELF_SERVE_ACCOUNT_DELETION"
         ]
       },
       "FrontendFlagValues": {
@@ -30362,15 +30974,15 @@
           },
           "score_name": {
             "type": "string",
-            "enum": ["user-feedback", "copy"],
+            "enum": ["user-feedback", "copy", "work_check", "otto_mistake"],
             "title": "Score Name",
-            "description": "\"user-feedback\" for thumbs up/down, \"copy\" when the user copied the reply."
+            "description": "\"user-feedback\" for thumbs up/down, \"copy\" when the user copied the reply, \"work_check\" and \"otto_mistake\" for those cards."
           },
           "score_value": {
             "type": "integer",
-            "enum": [0, 1],
+            "enum": [0, 1, 2],
             "title": "Score Value",
-            "description": "1 for thumbs up or a copy, 0 for thumbs down."
+            "description": "1 for thumbs up or a copy, 0 for thumbs down; a work check is 0 bad, 1 okay, 2 great; a mistake is always 0."
           },
           "comment": {
             "anyOf": [
@@ -30379,6 +30991,14 @@
             ],
             "title": "Comment",
             "description": "What the user said was wrong, from the thumbs-down form."
+          },
+          "reason": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Reason",
+            "description": "The option picked on a work check or mistake card."
           }
         },
         "type": "object",
@@ -31153,6 +31773,7 @@
           "currentStep": {
             "type": "string",
             "enum": [
+              "access",
               "team",
               "autopilot",
               "role",
@@ -31168,6 +31789,7 @@
             "items": {
               "type": "string",
               "enum": [
+                "access",
                 "team",
                 "autopilot",
                 "role",
@@ -31736,6 +32358,98 @@
         "required": ["access_token"],
         "title": "PickerTokenResponse",
         "description": "Short-lived OAuth access token shipped to the browser for rendering a\nprovider-hosted picker UI (e.g. Google Drive Picker). Deliberately narrow:\nonly the fields the client needs to initialize the picker widget. Issued\nfrom the user's own stored credential so ownership and scope gating are\nenforced by the credential lookup."
+      },
+      "PlanHireFailure": {
+        "properties": {
+          "template_id": { "type": "string", "title": "Template Id" },
+          "name": { "type": "string", "title": "Name" }
+        },
+        "type": "object",
+        "required": ["template_id", "name"],
+        "title": "PlanHireFailure"
+      },
+      "PlanHireResponse": {
+        "properties": {
+          "hired": {
+            "items": { "$ref": "#/components/schemas/PlanHiredExpert" },
+            "type": "array",
+            "title": "Hired",
+            "default": []
+          },
+          "failed": {
+            "items": { "$ref": "#/components/schemas/PlanHireFailure" },
+            "type": "array",
+            "title": "Failed",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "PlanHireResponse",
+        "description": "The plan's team after a hire: everyone now on the user's team, and\nwhoever could not join (a failed hire, or the active expert limit)."
+      },
+      "PlanHiredExpert": {
+        "properties": {
+          "template_id": { "type": "string", "title": "Template Id" },
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "name": { "type": "string", "title": "Name" }
+        },
+        "type": "object",
+        "required": ["template_id", "expert_id", "name"],
+        "title": "PlanHiredExpert"
+      },
+      "PlanProgress": {
+        "properties": {
+          "tasks_written": {
+            "type": "boolean",
+            "title": "Tasks Written",
+            "default": false
+          },
+          "team_chosen": {
+            "type": "boolean",
+            "title": "Team Chosen",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "PlanProgress",
+        "description": "How far the background jobs have got, for the plan step's checklist.\n\nThe greeting job writes the tasks and the team job picks the experts,\nside by side; the plan job, which orders the tasks and gives each its\nowner, runs once both are done and is what ``ready`` waits on."
+      },
+      "PlanResponse": {
+        "properties": {
+          "ready": { "type": "boolean", "title": "Ready" },
+          "source": {
+            "type": "string",
+            "enum": ["llm", "fallback"],
+            "title": "Source"
+          },
+          "skipped_dump": { "type": "boolean", "title": "Skipped Dump" },
+          "heard": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Heard"
+          },
+          "team": {
+            "items": { "$ref": "#/components/schemas/RecommendedExpert" },
+            "type": "array",
+            "title": "Team",
+            "default": []
+          },
+          "tasks": {
+            "items": { "$ref": "#/components/schemas/SuggestedTask" },
+            "type": "array",
+            "title": "Tasks",
+            "default": []
+          },
+          "progress": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PlanProgress" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["ready", "source", "skipped_dump"],
+        "title": "PlanResponse",
+        "description": "The plan step's content: what Otto heard, the team, and the tasks.\n\n``ready`` is false only while the background jobs are still running;\nthe tasks and team it carries then are the role plan, so a client that\nstops waiting has something true to show, and ``progress`` says how far\nthe jobs have got. ``source`` is \"llm\" for a plan built from the tasks\nthe greeting wrote (ranked by Jev or by the deterministic fallback) and\n\"fallback\" for a default set: the role sets, or the generic starters."
       },
       "Platform": {
         "type": "string",
@@ -33594,6 +34308,7 @@
           "expert_chat_list",
           "expert_chat_transcript",
           "expert_onboarding",
+          "feedback_prompt",
           "team_consult",
           "session_list",
           "session_message"
@@ -36396,7 +37111,19 @@
         "properties": {
           "title": { "type": "string", "title": "Title" },
           "prompt": { "type": "string", "title": "Prompt" },
-          "icon": { "type": "string", "title": "Icon", "default": "sparkle" }
+          "icon": { "type": "string", "title": "Icon", "default": "sparkle" },
+          "expert_template_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Template Id"
+          },
+          "why": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Why"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          }
         },
         "type": "object",
         "required": ["title", "prompt"],
@@ -36421,6 +37148,18 @@
           "title": { "type": "string", "title": "Title" },
           "prompt": { "type": "string", "title": "Prompt" },
           "icon": { "type": "string", "title": "Icon", "default": "sparkle" },
+          "expert_template_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Template Id"
+          },
+          "why": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Why"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
           "id": { "type": "string", "title": "Id" },
           "state": {
             "type": "string",
@@ -36438,12 +37177,16 @@
               { "type": "null" }
             ],
             "title": "Updated At"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           }
         },
         "type": "object",
         "required": ["title", "prompt", "id"],
         "title": "SuggestedTask",
-        "description": "One row of the Home checklist: a suggested prompt and what became of it.\n\nStored inside ``OnboardingBrainDump.suggestedPrompts``; a row written\nbefore states existed reads as ``open``, with its list index as ``id``."
+        "description": "One row of the Home checklist: a suggested prompt and what became of it.\n\nStored inside ``OnboardingBrainDump.suggestedPrompts``; a row written\nbefore states existed reads as ``open``, with its list index as ``id``,\nand one written before owners existed reads as Otto's."
       },
       "SuggestedTasksResponse": {
         "properties": {
@@ -37828,6 +38571,38 @@
         "type": "object",
         "required": ["logo_url"],
         "title": "UpdateAppLogoRequest"
+      },
+      "UpdateFeedbackPromptRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Reason"
+          },
+          "note": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Note"
+          },
+          "score": {
+            "anyOf": [
+              { "type": "integer", "maximum": 10.0, "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Score"
+          },
+          "dismissed": {
+            "type": "boolean",
+            "title": "Dismissed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "UpdateFeedbackPromptRequest"
       },
       "UpdateGraphResponse": {
         "properties": {

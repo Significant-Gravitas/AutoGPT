@@ -281,6 +281,30 @@ describe("OnboardingProvider routing — logged-in user", () => {
     },
   );
 
+  test.each([
+    [false, "/signup", "/onboarding?utm_source=newsletter"],
+    [true, "/login", "/home?utm_source=newsletter"],
+  ])(
+    "leaving an auth page keeps a campaign link's tracking params (completed: %s, %s)",
+    async (isCompleted, path, expected) => {
+      mockPathname = path;
+      window.history.replaceState(
+        null,
+        "",
+        `${path}?next=${encodeURIComponent("/home?utm_source=newsletter")}`,
+      );
+      mockIsCompleted = isCompleted;
+
+      render(
+        <OnboardingProvider>
+          <div data-testid="child" />
+        </OnboardingProvider>,
+      );
+
+      await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(expected));
+    },
+  );
+
   test("completed user on /login?next=/copilot is redirected to /home", async () => {
     mockPathname = "/login";
     window.history.replaceState(null, "", "/login?next=%2Fcopilot");

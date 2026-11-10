@@ -542,6 +542,38 @@ def test_stream_chat_queues_an_impersonated_turn_as_impersonated(
     assert queue.await_args.kwargs["impersonated"] is True
 
 
+def test_stream_chat_a_turn_queued_behind_the_running_cap_is_sent_as_queued(
+    mocker: pytest_mock.MockerFixture,
+    chat_blocked_events: list[dict],
+    test_user_id: str,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    _mock_rate_limits_for_an_unseeded_user(mocker)
+    mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy", cap=5)
+    mocker.patch.object(
+        chat_routes.turn_queue, "try_enqueue_turn", new_callable=AsyncMock
+    )
+
+    assert (
+        client.post("/sessions/sess-1/stream", json={"message": "hello"}).status_code
+        == 200
+    )
+
+    assert chat_blocked_events == [
+        {
+            "distinct_id": test_user_id,
+            "reason": "rate_limit",
+            "limit": "concurrency",
+            "outcome": "queued",
+            "surface": "chat",
+            "tier": None,
+            "used": None,
+            "cap": 5,
+            "resets_at": None,
+        }
+    ]
+
+
 def test_stream_chat_allows_an_active_expert_session(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
@@ -794,6 +826,7 @@ def test_stream_chat_redispatches_orphaned_expert_kickoff(
 
 def test_stream_chat_returns_retryable_limit_for_orphaned_expert_kickoff(
     mocker: pytest_mock.MockerFixture,
+    chat_blocked_events: list[dict],
 ) -> None:
     mocks = _mock_stream_internals(mocker)
     mocks.session.expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
@@ -811,6 +844,9 @@ def test_stream_chat_returns_retryable_limit_for_orphaned_expert_kickoff(
 
     assert response.status_code == 429
     assert response.json() == {"detail": "try again"}
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == [
+        ("concurrency", "refused")
+    ]
 
 
 def test_stream_chat_does_not_redispatch_running_persisted_kickoff(
@@ -1108,6 +1144,7 @@ def test_stream_chat_distinct_message_ids_are_each_queued(
 
 def test_stream_chat_refused_send_can_be_retried_with_the_same_id(
     mocker: pytest_mock.MockerFixture,
+    chat_blocked_events: list[dict],
 ) -> None:
     """A send the server turned away was never accepted, so its id must not
     stay claimed: the retry would be dropped as a duplicate of nothing."""
@@ -1117,12 +1154,19 @@ def test_stream_chat_refused_send_can_be_retried_with_the_same_id(
         chat_routes.turn_queue,
         "try_enqueue_turn",
         new_callable=AsyncMock,
-        side_effect=chat_routes.turn_queue.InflightCapExceeded(),
+        side_effect=chat_routes.turn_queue.InflightCapExceeded(used=15, cap=15),
     )
     body = {"message": "hello", "message_id": "client-click-id"}
 
     assert client.post("/sessions/sess-1/stream", json=body).status_code == 429
     assert mocks.claims.keys == set()
+    (event,) = chat_blocked_events
+    assert (event["limit"], event["outcome"], event["surface"]) == (
+        "concurrency",
+        "refused",
+        "chat",
+    )
+    assert (event["used"], event["cap"]) == (15, 15)
 
     mocks.enqueue.side_effect = None
     assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
@@ -1480,8 +1524,11 @@ def test_stream_chat_platform_still_enforces_paywall(
 
 def test_stream_chat_returns_429_on_weekly_rate_limit(
     mocker: pytest_mock.MockerFixture,
+    chat_blocked_events: list[dict],
+    test_user_id: str,
 ):
     """When check_rate_limit raises RateLimitExceeded for weekly limit the endpoint returns 429."""
+    from backend.copilot.limit_tracking import LimitReading
     from backend.copilot.rate_limit import RateLimitExceeded
 
     _mock_stream_internals(mocker)
@@ -1490,7 +1537,9 @@ def test_stream_chat_returns_429_on_weekly_rate_limit(
     resets_at = datetime.now(UTC) + timedelta(days=3)
     mocker.patch(
         "backend.api.features.chat.routes.check_rate_limit",
-        side_effect=RateLimitExceeded("weekly", resets_at),
+        side_effect=RateLimitExceeded(
+            "weekly", resets_at, reading=LimitReading(tier="PRO", used=0.06, cap=0.05)
+        ),
     )
 
     response = client.post(
@@ -1502,6 +1551,19 @@ def test_stream_chat_returns_429_on_weekly_rate_limit(
     message = detail["message"].lower()
     assert "weekly" in message
     assert "resets in" in message
+    assert chat_blocked_events == [
+        {
+            "distinct_id": test_user_id,
+            "reason": "usage_limit",
+            "limit": "weekly",
+            "outcome": "refused",
+            "surface": "chat",
+            "tier": "PRO",
+            "used": 0.06,
+            "cap": 0.05,
+            "resets_at": resets_at.isoformat(),
+        }
+    ]
 
 
 def test_stream_chat_429_includes_reset_time(mocker: pytest_mock.MockerFixture):
@@ -2790,6 +2852,160 @@ def test_create_session_maps_raced_expert_validation_to_404(
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Expert not found"}
+
+
+def test_create_session_looks_the_expert_up_alongside_the_connection(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Neither lookup waits for the other: read one after another, the first
+    would never finish."""
+    mock_create = _mock_create_chat_session(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+    barrier: dict = {"started": 0, "event": None}
+
+    async def both_started() -> None:
+        if barrier["event"] is None:
+            barrier["event"] = asyncio.Event()
+        barrier["started"] += 1
+        if barrier["started"] == 2:
+            barrier["event"].set()
+        await asyncio.wait_for(barrier["event"].wait(), timeout=5)
+
+    async def expert(*_args):
+        await both_started()
+        return _make_expert("expert-1")
+
+    async def route(*_args):
+        await both_started()
+        return ("platform", None)
+
+    mocker.patch(
+        "backend.api.features.chat.routes.experts_db.get_expert", side_effect=expert
+    )
+    mocker.patch.object(
+        chat_routes, "_resolve_new_session_llm_route", side_effect=route
+    )
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.parametrize(
+    "expert", [None, _make_expert(is_archived=True)], ids=["missing", "archived"]
+)
+def test_create_session_reports_a_missing_or_archived_expert_before_a_bad_connection(
+    mocker: pytest_mock.MockerFixture,
+    expert,
+) -> None:
+    """Both lookups fail: the expert's 404 wins, as when it was looked up
+    first."""
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, expert)
+    mocker.patch.object(
+        chat_routes,
+        "_resolve_new_session_llm_route",
+        side_effect=fastapi.HTTPException(
+            status_code=422, detail="codex_credential_required"
+        ),
+    )
+
+    response = client.post(
+        "/sessions", json={"expert_id": "expert-1", "llm_auth_provider": "codex"}
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Expert not found"}
+    mock_create.assert_not_called()
+
+
+def test_create_session_reports_a_failed_expert_lookup_before_a_bad_connection(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The expert lookup errors and the connection is bad: the lookup's error
+    surfaces, as when it ran first, rather than reading as a missing expert."""
+    mock_create = _mock_create_chat_session(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("expert lookup failed"),
+    )
+    mocker.patch.object(
+        chat_routes,
+        "_resolve_new_session_llm_route",
+        side_effect=fastapi.HTTPException(
+            status_code=422, detail="codex_credential_required"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="expert lookup failed"):
+        client.post(
+            "/sessions", json={"expert_id": "expert-1", "llm_auth_provider": "codex"}
+        )
+    mock_create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_session_abandoned_mid_lookup_leaves_no_lookup_running(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The client goes away while the expert and the connection are being
+    looked up: every lookup stops with the request, the connection's three
+    reads included, and nothing is created."""
+    mock_create = _mock_create_chat_session(mocker)
+    started: list[str] = []
+    stopped: list[str] = []
+    all_started = asyncio.Event()
+
+    async def lookup(name: str) -> None:
+        started.append(name)
+        if len(started) == 4:
+            all_started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            stopped.append(name)
+            raise
+
+    async def expert(*_args) -> None:
+        await lookup("expert")
+
+    async def connections(_user_id: str, provider: str) -> None:
+        await lookup("chatgpt" if provider == "codex" else "microsoft")
+
+    async def saved_default(_user_id: str) -> None:
+        await lookup("saved default")
+
+    mocker.patch(
+        "backend.api.features.chat.routes.experts_db.get_expert", side_effect=expert
+    )
+    chat_transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        connections
+    )
+    chat_transports.user_db().get_user_default_chat_route.side_effect = saved_default
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as async_client:
+        request = asyncio.create_task(
+            async_client.post("/sessions", json={"expert_id": "expert-1"})
+        )
+        try:
+            await asyncio.wait_for(all_started.wait(), timeout=5)
+            request.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await request
+        finally:
+            request.cancel()
+            await asyncio.gather(request, return_exceptions=True)
+
+    assert sorted(started) == ["chatgpt", "expert", "microsoft", "saved default"]
+    assert sorted(stopped) == sorted(started)
+    mock_create.assert_not_called()
 
 
 def test_create_session_maps_missing_personal_org_to_503(

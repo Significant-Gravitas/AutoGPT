@@ -56,6 +56,7 @@ from backend.copilot.budget_gate import gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.sandbox_status import build_sandbox_replaced_notice
 from backend.copilot.continuation import as_model_prompt
+from backend.copilot.expert_check import forget_expert_checks
 from backend.copilot.cli_session_entry import rewrite_user_entry
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.graphiti.context import fetch_warm_context
@@ -1920,6 +1921,10 @@ async def _apply_building_mode_restart(
             log_prefix,
             session.session_id,
         )
+    # The relaunch reads its expert again instead of reusing the turn's check:
+    # it comes after the turn's own work, by when the user may have archived
+    # the expert.
+    forget_expert_checks()
     expert_session_suffix = await build_expert_identity_suffix(
         session.user_id,
         session.expert_id,
@@ -4522,7 +4527,7 @@ async def _run_stream_attempt(
             state.governor.hangup_pause() if state.governor is not None else None
         )
         if hangup_pause is not None:
-            yield StreamTurnPaused(pause=hangup_pause.as_part())
+            yield StreamTurnPaused.of(hangup_pause)
         else:
             notice_block_id = str(uuid.uuid4())
             yield StreamTextStart(id=notice_block_id)
@@ -7125,7 +7130,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session, user_id, platform_billed=not is_codex_transport
         )
         if auto_continue.pause is not None:
-            yield StreamTurnPaused(pause=auto_continue.pause.as_part())
+            yield StreamTurnPaused.of(auto_continue.pause)
         _auto_pending_messages = (
             await drain_pending_safe(session_id, log_prefix)
             if auto_continue.proceed
@@ -7153,6 +7158,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # r3105523410 — text-only requeue silently stripped it).
             _auto_requeued = False
             _first_auto_event = True
+            # The continuation reads its expert again instead of reusing the
+            # turn's check: the user may have archived the expert since.
+            forget_expert_checks()
 
             async def _requeue_drained(reason: str) -> None:
                 logger.warning(

@@ -3,49 +3,111 @@ import type { OnboardingWizardProgress } from "@/app/api/__generated__/models/on
 import { cleanWizardText, stepKey, type WizardStepKey } from "./progress";
 
 export const MAX_PAIN_POINT_SELECTIONS = 3;
-export type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
-export const MAX_STEP: Step = 7;
+export type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+// The longest layout is self-hosted with the plan and connect steps, plus the
+// sign-in access step for an account that signed up with Microsoft.
+export const MAX_STEP: Step = 8;
 
 // Every step the wizard can show, numbered for one deployment. Optional
 // steps are absent rather than zero so `currentStep === steps.team` can
 // never match by accident.
 export interface StepLayout {
+  access?: number;
   team?: number;
   autopilot?: number;
   role: number;
   painPoints: number;
+  /** Retired with the plan step. Never laid out; saved progress from before
+   *  may still name it, and resuming skips over it. */
   hire?: number;
+  /** The plan + trial step, or the plan alone without a paywall. The key
+   *  stays `subscription`: Stripe's return URLs and the step's analytics
+   *  name it. */
   subscription?: number;
   connect?: number;
   preparing: number;
 }
 
+/**
+ * Every step, in the order the wizard shows it unless an experiment reorders
+ * it (the `onboarding-step-order` flag). The sign-in access step leads: right
+ * after signing up, the provider's session is fresh, so connecting takes one
+ * click.
+ */
+export const DEFAULT_STEP_ORDER: readonly WizardStepKey[] = [
+  "access",
+  "team",
+  "autopilot",
+  "role",
+  "painPoints",
+  "subscription",
+  "connect",
+  "preparing",
+];
+
+/**
+ * The order an experiment asks for: the steps it names lead, in its order,
+ * and the rest follow in the default order. It only moves steps, since
+ * `buildStepLayout` decides which ones show. Preparing always comes last, and
+ * anything that is not a step name is ignored. With the paywall on, the
+ * access step always follows the subscription step: connecting a service
+ * needs a plan, which a new account only has once it has subscribed.
+ */
+export function resolveStepOrder(
+  requested: unknown,
+  { paywall = false }: { paywall?: boolean } = {},
+): WizardStepKey[] {
+  const leading: WizardStepKey[] = [];
+  for (const key of Array.isArray(requested) ? requested : []) {
+    if (isMovableStep(key) && !leading.includes(key)) leading.push(key);
+  }
+  const order = [
+    ...leading,
+    ...DEFAULT_STEP_ORDER.filter((key) => !leading.includes(key)),
+  ];
+  if (!paywall || order.indexOf("access") > order.indexOf("subscription")) {
+    return order;
+  }
+  const rest = order.filter((key) => key !== "access");
+  const after = rest.indexOf("subscription") + 1;
+  return [...rest.slice(0, after), "access", ...rest.slice(after)];
+}
+
+function isMovableStep(key: unknown): key is WizardStepKey {
+  return key !== "preparing" && DEFAULT_STEP_ORDER.some((step) => step === key);
+}
+
 export function buildStepLayout({
   hasPaywall = false,
+  hasPlan = false,
   hasConnect = false,
+  hasAccess = false,
+  order = DEFAULT_STEP_ORDER,
 }: {
   hasPaywall?: boolean;
+  /** The plan alone, for a deployment with no paywall configured. */
+  hasPlan?: boolean;
   hasConnect?: boolean;
+  /** The account signed up with a provider whose data it can also connect. */
+  hasAccess?: boolean;
+  order?: readonly WizardStepKey[];
 }): StepLayout {
-  const order: (keyof StepLayout)[] = [
-    "team",
-    "autopilot",
-    "role",
-    "painPoints",
-    "hire",
-    ...(hasPaywall ? (["subscription"] as const) : []),
-    ...(!hasPaywall && hasConnect ? (["connect"] as const) : []),
-    "preparing",
-  ];
+  const shown = order.filter((key) => {
+    if (key === "access") return hasAccess;
+    if (key === "hire") return false;
+    if (key === "subscription") return hasPaywall || hasPlan;
+    if (key === "connect") return !hasPaywall && hasConnect;
+    return true;
+  });
   const layout: Partial<Record<keyof StepLayout, number>> = {};
-  order.forEach((key, index) => {
+  shown.forEach((key, index) => {
     layout[key] = index + 1;
   });
   return layout as StepLayout;
 }
 
 export const PAYWALL_LAST_STEPS = buildStepLayout({ hasPaywall: true });
-export const NO_PAYWALL_STEPS = buildStepLayout({});
+export const NO_PAYWALL_STEPS = buildStepLayout({ hasPlan: true });
 
 interface OnboardingWizardState {
   currentStep: Step;
@@ -64,8 +126,8 @@ interface OnboardingWizardState {
   selectedBilling: "monthly" | "yearly";
   hasUserSelectedBilling: boolean;
   selectedCountryCode: string;
-  /** Templates hired from the recommendation step, so a Back/forward trip
-   * through the wizard keeps showing them as hired. */
+  /** Written by the retired hire step; kept so saved progress keeps its
+   * shape. The plan's team is hired on the preparing screen instead. */
   hiredTemplateIds: string[];
   /** True while the current step is mid-flight (e.g. the brain dump is
    * being processed) — navigation away must be blocked. Transient, never
@@ -81,7 +143,6 @@ interface OnboardingWizardState {
   setSelectedBilling(billing: "monthly" | "yearly"): void;
   applyPricingExperimentBilling(billing: "monthly" | "yearly"): void;
   setSelectedCountryCode(code: string): void;
-  markHired(templateId: string): void;
   nextStep(): void;
   prevStep(): void;
   goToStep(step: Step): void;
@@ -145,13 +206,6 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
     },
     setSelectedCountryCode(code) {
       set({ selectedCountryCode: code });
-    },
-    markHired(templateId) {
-      set((state) =>
-        state.hiredTemplateIds.includes(templateId)
-          ? state
-          : { hiredTemplateIds: [...state.hiredTemplateIds, templateId] },
-      );
     },
     nextStep() {
       set((state) => ({

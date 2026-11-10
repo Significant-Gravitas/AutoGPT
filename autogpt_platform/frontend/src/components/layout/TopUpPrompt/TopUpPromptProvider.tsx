@@ -35,9 +35,7 @@ export function TopUpPromptProvider({ children }: Props) {
   // spuriously. It is also fail-closed by design: if GET /credits/auto-top-up
   // errors, autoTopUpConfig stays null and the prompt stays hidden, rather than
   // risk nudging a user who actually has auto-refill enabled.
-  // A new account has 0 credits until onboarding sets up its plan, so neither
-  // the dialog nor the banner may show before onboarding is known to be done
-  // (SECRT-3384).
+  // A new account has 0 credits until onboarding sets up its plan.
   const isOutOfCredits =
     !!isBillingEnabled &&
     isOnboardingComplete === true &&
@@ -65,7 +63,11 @@ export function TopUpPromptProvider({ children }: Props) {
       value={{ isOutOfCredits, openTopUp, closeTopUp }}
     >
       {children}
-      <TopUpDialog isOpen={isOpen} onClose={closeTopUp} />
+      <TopUpDialog
+        key={identityKey ?? "anonymous"}
+        isOpen={isOpen}
+        onClose={closeTopUp}
+      />
       {isOutOfCredits && <DailyTopUpAutoOpener />}
     </TopUpPromptContext.Provider>
   );
