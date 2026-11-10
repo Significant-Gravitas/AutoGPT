@@ -10,11 +10,9 @@ import pytest
 from prisma.enums import AuthIPEventKind, SubscriptionTier
 from prisma.models import AuthIPEvent, AuthUser, User
 
-from backend.copilot import rate_limit
 from backend.data import api_activity
 from backend.data.redis_client import HOST, PORT
 from backend.monitoring import no_plan_activity_monitor as monitor
-from backend.util.feature_flag import Flag
 from backend.util.test import SpinTestServer
 from backend.util.testing import is_tcp_port_reachable
 
@@ -64,11 +62,8 @@ def alerts(mocker):
 
 
 @pytest.fixture(autouse=True)
-def payments_on(mocker):
-    async def flag(flag: Flag, *args, **kwargs) -> bool:
-        return flag == Flag.ENABLE_PLATFORM_PAYMENT
-
-    mocker.patch.object(rate_limit, "is_feature_enabled", new=flag)
+def payments_on(set_platform_payment):
+    set_platform_payment(True)
 
 
 @pytest.fixture

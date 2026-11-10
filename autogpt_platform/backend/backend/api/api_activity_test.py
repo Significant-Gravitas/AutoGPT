@@ -49,6 +49,10 @@ def day(mocker) -> date:
 @pytest.fixture(autouse=True)
 def tally(mocker):
     """A tally of the test's own, so no other test's flusher writes its counts."""
+    # Earlier files' requests leave counts in the real tally, which its flushers
+    # (one per test client's loop) would write through this file's patched Redis.
+    with api_activity._tally._lock:
+        api_activity._tally._counts.clear()
     tally = api_activity._Tally()
     mocker.patch.object(api_activity, "_tally", tally)
     yield tally

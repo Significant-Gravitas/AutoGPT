@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Annotated, Optional
 
 from autogpt_libs.auth import reject_closed_account
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
@@ -23,6 +23,7 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
 
 _REQUEST_AUTH = "external_api_auth"
+_REQUEST_COUNTED = "external_api_request_counted"
 
 
 class VerifiedCredential(BaseModel):
@@ -52,7 +53,7 @@ async def resolve_auth_info(
         api_key_info = await validate_api_key(api_key)
         if api_key_info:
             await reject_closed_account(api_key_info.user_id)
-            await _admit(api_key_info)
+            await _refuse_banned_owner(api_key_info)
             return api_key_info
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
@@ -66,7 +67,7 @@ async def resolve_auth_info(
             api_key_info := await validate_api_key(bearer.credentials)
         ):
             await reject_closed_account(api_key_info.user_id)
-            await _admit(api_key_info)
+            await _refuse_banned_owner(api_key_info)
             return api_key_info
 
         try:
@@ -74,7 +75,7 @@ async def resolve_auth_info(
         except (InvalidClientError, InvalidTokenError) as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
         await reject_closed_account(token_info.user_id)
-        await _admit(token_info)
+        await _refuse_banned_owner(token_info)
         return token_info
 
     return None
@@ -87,10 +88,10 @@ async def resolve_request_auth(
 ) -> APIAuthorizationInfo | None:
     """`resolve_auth_info`, verified at most once per request.
 
-    Each API's rate limiter and route dependency both need the caller, and an
-    API key costs a Scrypt hash per check. A rejection is remembered too, so an
-    invalid key costs one hash, not two; an error that isn't a rejection (the
-    database unreachable) is not, so the route's own check tries again. The result is
+    v2's rate limiter and route dependency both need the caller, and an API key
+    costs a Scrypt hash per check. A rejection is remembered too, so an invalid
+    key costs one hash, not two; an error that isn't a rejection (the database
+    unreachable) is not, so the route's own check tries again. The result is
     kept with the credential it was for, and only reused for that credential.
     """
     credential = (
@@ -115,6 +116,8 @@ async def resolve_request_auth(
             detail=verified.rejection.detail,
             headers=verified.rejection.headers,
         )
+    if verified.auth is not None:
+        _count_request(scope, verified.auth)
     return verified.auth
 
 
@@ -126,38 +129,48 @@ def verified_credential(scope: Scope) -> Optional[VerifiedCredential]:
 
 async def require_auth(
     request: Request,
-    api_key: str | None = Security(api_key_header),
-    bearer: HTTPAuthorizationCredentials | None = Security(bearer_auth),
+    api_key: Annotated[str | None, Security(api_key_header)] = None,
+    bearer: Annotated[
+        HTTPAuthorizationCredentials | None, Security(bearer_auth)
+    ] = None,
 ) -> APIAuthorizationInfo:
     """
     Unified authentication dependency that requires valid credentials.
 
-    Resolves them through `resolve_request_auth`, once per request: v1's rate
-    limiter and its routes ask with different scopes, which FastAPI caches apart.
-    Rejects requests with no credentials.
+    Depends on `resolve_auth_info` (which accepts API key or Bearer token)
+    and rejects requests with no credentials.
     """
-    auth = await resolve_request_auth(request.scope, api_key, bearer)
+    auth = await resolve_auth_info(api_key=api_key, bearer=bearer)
     if auth is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing authentication. Provide API key or access token.",
         )
+    # v1's only count: keep it through any rewrite of this body.
+    _count_request(request.scope, auth)
     return auth
 
 
-async def _admit(auth: APIAuthorizationInfo) -> None:
-    """Refuse a banned owner's credential, else count the request against it."""
+async def _refuse_banned_owner(auth: APIAuthorizationInfo) -> None:
     if await owner_is_banned(auth):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail=ACCOUNT_BANNED_DETAIL
         )
-    record_api_request(auth.user_id, "external")
 
 
 async def owner_is_banned(auth: APIAuthorizationInfo) -> bool:
     """Whether the account a credential belongs to is banned; for verifiers that
     resolve credentials outside `resolve_auth_info`, such as v2's MCP server."""
     return await is_user_banned(auth.user_id)
+
+
+def _count_request(scope: Scope, auth: APIAuthorizationInfo) -> None:
+    """Counts toward the daily report of what accounts without a plan did, once
+    per request: v1's rate limiter and route resolve the caller apart."""
+    state = scope.setdefault("state", {})
+    if not state.get(_REQUEST_COUNTED):
+        state[_REQUEST_COUNTED] = True
+        record_api_request(auth.user_id, "external")
 
 
 def require_permission(*permissions: APIKeyPermission):
