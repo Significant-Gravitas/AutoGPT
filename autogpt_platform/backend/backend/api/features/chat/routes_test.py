@@ -3907,6 +3907,7 @@ def test_cancel_session_no_active_task(mocker: pytest_mock.MockerFixture) -> Non
     )
     mock_registry = MagicMock()
     mock_registry.get_active_session = AsyncMock(return_value=(None, None))
+    mock_registry.mark_stop_requested = AsyncMock(return_value=True)
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     # No orphan release: metadata returns idle, so the age gate yields False.
     from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
@@ -3948,6 +3949,7 @@ def test_cancel_session_releases_orphan_running(
     )
     mock_registry = MagicMock()
     mock_registry.get_active_session = AsyncMock(return_value=(None, None))
+    mock_registry.mark_stop_requested = AsyncMock(return_value=True)
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
 
@@ -3996,6 +3998,7 @@ def test_cancel_session_skips_orphan_release_within_race_window(
     )
     mock_registry = MagicMock()
     mock_registry.get_active_session = AsyncMock(return_value=(None, None))
+    mock_registry.mark_stop_requested = AsyncMock(return_value=True)
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
 
@@ -4079,6 +4082,7 @@ def test_cancel_session_enqueues_cancel_and_confirms(
     mock_registry = MagicMock()
     mock_registry.get_active_session = AsyncMock(return_value=(active_session, "1-0"))
     mock_registry.get_session = AsyncMock(return_value=stopped_session)
+    mock_registry.mark_stop_requested = AsyncMock(return_value=True)
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     mock_enqueue = mocker.patch(
         "backend.api.features.chat.routes.enqueue_cancel_task",
@@ -4125,6 +4129,7 @@ def test_cancel_session_timeout_completes_as_cancelled_not_as_an_error(
     # Never leaves "running": the executor did not confirm inside the window.
     mock_registry.get_session = AsyncMock(return_value=running)
     mock_registry.mark_session_completed = AsyncMock(return_value=True)
+    mock_registry.mark_stop_requested = AsyncMock(return_value=True)
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     mocker.patch(
         "backend.api.features.chat.routes.enqueue_cancel_task",
@@ -4173,6 +4178,7 @@ def test_cancel_confirms_once_the_next_turn_holds_the_session(
     mock_registry.get_active_session = AsyncMock(return_value=(turn("turn-1"), "1-0"))
     mock_registry.get_session = AsyncMock(return_value=turn("turn-2"))
     mock_registry.mark_session_completed = AsyncMock(return_value=True)
+    mock_registry.mark_stop_requested = AsyncMock(return_value=True)
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
     mocker.patch(
         "backend.api.features.chat.routes.enqueue_cancel_task",
@@ -4226,17 +4232,22 @@ def test_cancel_session_clears_pending_buffer(
     mock_drain.assert_awaited_once_with("sess-1")
 
 
-def test_cancel_session_survives_pending_clear_failure(
+def test_cancel_session_survives_pending_drain_failure(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """A Redis hiccup while clearing the pending buffer must not block the
-    cancel itself — the clear is best-effort cleanup, the cancel is not."""
+    """A Redis hiccup while draining the pending buffer must not block the
+    cancel itself — the drain is best-effort cleanup, the cancel is not."""
     _mock_validate_session(mocker)
     mocker.patch(
         "backend.copilot.turn_queue.cancel_queued_turn",
         new=AsyncMock(return_value=True),
     )
     mocker.patch.object(
+        chat_routes.stream_registry,
+        "mark_stop_requested",
+        new=AsyncMock(return_value=True),
+    )
+    mock_drain = mocker.patch.object(
         chat_routes,
         "drain_pending_messages",
         new=AsyncMock(side_effect=RuntimeError("redis down")),
@@ -4247,6 +4258,7 @@ def test_cancel_session_survives_pending_clear_failure(
     assert response.status_code == 200
     assert response.json()["cancelled"] is True
     assert response.json()["discarded_messages"] == []
+    mock_drain.assert_awaited_once_with("sess-1")
 
 
 def test_cancel_session_reclears_pending_buffer_after_running_settles(

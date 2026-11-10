@@ -1,3 +1,4 @@
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { server } from "@/mocks/mock-server";
 import {
   createStreamHold,
@@ -79,6 +80,17 @@ const PROXIED_SESSION_URL = `*/api/chat/sessions/${TEST_SESSION_ID}`;
 beforeEach(() => {
   resetChatRuntimes();
   toast.mockClear();
+  sessionStorage.clear();
+  // Composer drafts are kept per signed-in user and chat.
+  useAuthStore.setState({
+    user: {
+      id: "test-user",
+      email: "test-user@example.com",
+      user_metadata: {},
+    },
+    isUserLoading: false,
+    hasLoadedUser: true,
+  });
 });
 
 afterEach(() => {
@@ -99,7 +111,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
   ])(
     "Stop puts a follow-up queued before it back in the composer (re-read answered %s the cancel)",
     async (_order, peekDelayMs) => {
-      const buffer = await queueAFollowUpWhileOttoAnswers(peekDelayMs);
+      const { buffer } = await queueAFollowUpWhileOttoAnswers(peekDelayMs);
 
       const peeksBeforeStop = buffer.peeksAnswered;
       await clickStop();
@@ -121,7 +133,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
   );
 
   it("Stop gives nothing back when the stopped turn already read the follow-up", async () => {
-    const buffer = await queueAFollowUpWhileOttoAnswers(0);
+    const { buffer } = await queueAFollowUpWhileOttoAnswers(0);
     buffer.messages = [];
     const cancels = buffer.cancelsAnswered;
 
@@ -138,9 +150,35 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       expect.objectContaining({ title: "Queued message not sent" }),
     );
   }, 20_000);
+
+  it("a follow-up given back after a switch to another chat stays with the stopped chat", async () => {
+    const { buffer, host } = await queueAFollowUpWhileOttoAnswers(0, 1000);
+
+    await clickStop();
+    host.unmount();
+    const other = renderHost({ searchParams: "?sessionId=another-chat" });
+    await waitFor(() => expect(buffer.cancelsAnswered).toBe(1), {
+      timeout: 5000,
+    });
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Queued message not sent" }),
+      ),
+    );
+    expect(composer().value).toBe("");
+
+    other.unmount();
+    renderHost();
+    await waitFor(() => expect(composer().value).toBe(QUEUED), {
+      timeout: 5000,
+    });
+  }, 20_000);
 });
 
-async function queueAFollowUpWhileOttoAnswers(peekDelayMs: number) {
+async function queueAFollowUpWhileOttoAnswers(
+  peekDelayMs: number,
+  cancelDelayMs = 300,
+) {
   const { hold } = createStreamHold(4);
   server.use(
     http.post(`${SESSION_URL}/stream`, ({ request }) =>
@@ -150,8 +188,8 @@ async function queueAFollowUpWhileOttoAnswers(peekDelayMs: number) {
       }),
     ),
   );
-  renderHost();
-  const buffer = serverPendingBuffer(peekDelayMs);
+  const host = renderHost();
+  const buffer = serverPendingBuffer(peekDelayMs, cancelDelayMs);
 
   await typeAndSend(FIRST);
   await screen.findByText(LIVE_PARTIAL, undefined, { timeout: 5000 });
@@ -160,13 +198,13 @@ async function queueAFollowUpWhileOttoAnswers(peekDelayMs: number) {
   await user.click(screen.getByRole("button", { name: "Queue message" }));
   await screen.findByText("Queued");
   expect(buffer.messages).toEqual([QUEUED]);
-  return buffer;
+  return { buffer, host };
 }
 
 // The pending buffer as the server holds it. The cancel answers a moment late,
 // as it does while the executor tears the turn down, so a re-read made at the
 // Stop still sees the follow-up there; it reports what it discarded.
-function serverPendingBuffer(peekDelayMs: number) {
+function serverPendingBuffer(peekDelayMs: number, cancelDelayMs: number) {
   const buffer = {
     messages: [] as string[],
     peeksAnswered: 0,
@@ -189,7 +227,7 @@ function serverPendingBuffer(peekDelayMs: number) {
       return HttpResponse.json({ count: messages.length, messages });
     }),
     http.post(`${PROXIED_SESSION_URL}/cancel`, async () => {
-      await delay(300);
+      await delay(cancelDelayMs);
       const discarded = buffer.messages;
       buffer.messages = [];
       buffer.cancelsAnswered += 1;
