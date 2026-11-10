@@ -125,6 +125,7 @@ async def _start(
         # it is first opened, as a browser hire does.
         await _drop_if_untouched(user_id, session_id)
         return False
+    return turn_id is not None
 
 
 async def _drop_if_untouched(user_id: str, session_id: str) -> None:
@@ -141,4 +142,3 @@ async def _drop_if_untouched(user_id: str, session_id: str) -> None:
     )
     if dropped:
         await invalidate_session_cache(session_id)
-    return turn_id is not None
