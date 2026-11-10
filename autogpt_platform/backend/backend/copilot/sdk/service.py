@@ -1048,8 +1048,10 @@ def _intermediate_flush_blocked(
 
 
 def _has_open_block(adapter: SDKResponseAdapter) -> bool:
-    return (adapter.has_started_text and not adapter.has_ended_text) or (
-        adapter.has_started_reasoning and not adapter.has_ended_reasoning
+    return (
+        (adapter.has_started_text and not adapter.has_ended_text)
+        or (adapter.has_started_reasoning and not adapter.has_ended_reasoning)
+        or adapter.has_open_tool_input
     )
 
 
@@ -1548,7 +1550,11 @@ class _RetryState:
 
 def _fresh_adapter(state: _RetryState, message_id: str, session_id: str) -> None:
     """Replace the adapter for a new attempt, keeping the turn's governor."""
-    state.adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
+    state.adapter = SDKResponseAdapter(
+        message_id=message_id,
+        session_id=session_id,
+        stream_tool_inputs=state.adapter.stream_tool_inputs,
+    )
     state.adapter.governor = state.governor
 
 
@@ -5757,6 +5763,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         adapter = SDKResponseAdapter(
             message_id=message_id,
             session_id=session_id,
+            # The Codex gateway hands the CLI each call's arguments whole.
+            stream_tool_inputs=not is_codex_transport,
         )
         adapter.governor = governor
 

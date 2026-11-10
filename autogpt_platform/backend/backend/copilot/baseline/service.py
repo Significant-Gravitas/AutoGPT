@@ -128,8 +128,6 @@ from backend.copilot.response_model import (
     StreamTextEnd,
     StreamTextStart,
     StreamToolDisplayAvailable,
-    StreamToolInputAvailable,
-    StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
     ToolDisplayData,
@@ -155,6 +153,7 @@ from backend.copilot.token_tracking import (
     persist_and_record_usage,
 )
 from backend.copilot.tool_display import tool_calls_for_provider, tool_display_context
+from backend.copilot.tool_input_stream import ToolInputStreams
 from backend.copilot.tools import (
     ToolGroup,
     execute_tool,
@@ -562,6 +561,8 @@ class _BaselineStreamState:
     tool_persistence: BaselineToolPersistence = field(
         default_factory=BaselineToolPersistence
     )
+    # Tool parts opened while the model streams a call's arguments.
+    tool_inputs: ToolInputStreams = field(default_factory=ToolInputStreams)
     # Tracks how much of ``assistant_text`` has already been flushed to
     # ``session.messages`` via mid-loop pending drains, so the ``finally``
     # block only appends the *new* assistant text (avoiding duplication of
@@ -925,6 +926,7 @@ async def _baseline_llm_caller(
     state.thinking_stripper = _ThinkingStripper()
 
     round_text = ""
+    stream_finished = False
     try:
         prune_image_context(messages)
         client = _get_main_client()
@@ -1127,8 +1129,10 @@ async def _baseline_llm_caller(
                             entry["id"] = tc.id
                         if tc.function and tc.function.name:
                             entry["name"] = tc.function.name
-                        if tc.function and tc.function.arguments:
-                            entry["arguments"] += tc.function.arguments
+                        piece = (tc.function and tc.function.arguments) or ""
+                        entry["arguments"] += piece
+                        _stream_tool_call_delta(state, entry, piece)
+            stream_finished = True
         finally:
             # Release the streaming httpx connection back to the pool on every
             # exit path (normal completion, break, exception). openai.AsyncStream
@@ -1157,6 +1161,16 @@ async def _baseline_llm_caller(
             _emit(state, StreamTextEnd(id=state.text_block_id))
             state.text_started = False
             state.text_block_id = str(uuid.uuid4())
+        # A call the round finished keeps its part open for the executor's
+        # input; one an aborted round cut off never runs, so its part ends.
+        _emit_all(
+            state,
+            (
+                state.tool_inputs.flush()
+                if stream_finished
+                else state.tool_inputs.abandon()
+            ),
+        )
         # Always persist partial text so the session history stays consistent,
         # even when the stream is interrupted by an exception.
         state.assistant_text += round_text
@@ -1186,11 +1200,27 @@ async def _baseline_llm_caller(
     return response
 
 
+def _stream_tool_call_delta(
+    state: _BaselineStreamState, entry: dict[str, str], piece: str
+) -> None:
+    """Open the call's part once its id and name are in, then relay *piece*.
+
+    The part opens with the arguments so far, in case they came first.
+    """
+    if not entry["id"]:
+        return
+    started = state.tool_inputs.start(entry["id"], entry["name"])
+    _emit_all(state, started)
+    text = entry["arguments"] if started else piece
+    _emit_all(state, state.tool_inputs.append(entry["id"], text))
+
+
 def _refuse_after_question(
     state: _BaselineStreamState, tool_call_id: str, tool_name: str, reason: str
 ) -> ToolCallResult:
     """Refuse a call that starts once the turn is closing (``turn_end``)."""
     logger.info("[Baseline] Refusing %s: the turn is closing", tool_name)
+    _emit_all(state, state.tool_inputs.settle(tool_call_id, tool_name))
     _emit(
         state,
         StreamToolOutputAvailable(
@@ -1240,6 +1270,7 @@ async def _baseline_tool_executor(
     except orjson.JSONDecodeError as parse_err:
         parse_error = f"Invalid JSON arguments for tool '{tool_name}': {parse_err}"
         logger.warning("[Baseline] %s", parse_error)
+        _emit_all(state, state.tool_inputs.settle(tool_call_id, tool_name))
         _emit(
             state,
             StreamToolOutputAvailable(
@@ -1266,18 +1297,7 @@ async def _baseline_tool_executor(
     if dispatch := resolve_tool_dispatch(tool_name, tool_args):
         called_name, called_args = dispatch.name, dispatch.args
 
-    _emit(
-        state,
-        StreamToolInputStart(toolCallId=tool_call_id, toolName=called_name),
-    )
-    _emit(
-        state,
-        StreamToolInputAvailable(
-            toolCallId=tool_call_id,
-            toolName=called_name,
-            input=called_args,
-        ),
-    )
+    _emit_all(state, state.tool_inputs.complete(tool_call_id, called_name, called_args))
 
     def on_display_name(name: str) -> None:
         state.tool_persistence.set_display_name(tool_call_id, name)
@@ -3241,6 +3261,9 @@ async def stream_chat_completion_baseline(
     # aclose() — doing so raises RuntimeError on client disconnect.
     # On GeneratorExit the client is already gone, so unreachable yields
     # are harmless; on normal completion they reach the SSE stream.
+    # A call whose part opened but never reached the executor did not run.
+    for event in state.tool_inputs.abandon():
+        yield event
     if final_checkpoint is not None:
         yield final_checkpoint
     if state.turn_prompt_tokens > 0 or state.turn_completion_tokens > 0:

@@ -46,7 +46,9 @@ class ResponseType(str, Enum):
 
     # Tool interaction
     TOOL_INPUT_START = "tool-input-start"
+    TOOL_INPUT_DELTA = "tool-input-delta"
     TOOL_INPUT_AVAILABLE = "tool-input-available"
+    TOOL_INPUT_ERROR = "tool-input-error"
     TOOL_OUTPUT_AVAILABLE = "tool-output-available"
     TOOL_DISPLAY_AVAILABLE = "data-tool-display"
 
@@ -198,6 +200,14 @@ class StreamToolInputStart(StreamBaseResponse):
     toolName: str = Field(..., description="Name of the tool being called")
 
 
+class StreamToolInputDelta(StreamBaseResponse):
+    """A piece of a tool call's argument JSON, as the model writes it."""
+
+    type: ResponseType = ResponseType.TOOL_INPUT_DELTA
+    toolCallId: str = Field(..., description="Unique tool call ID")
+    inputTextDelta: str = Field(..., description="Argument JSON text to append")
+
+
 class StreamToolInputAvailable(StreamBaseResponse):
     """Tool input is ready for execution."""
 
@@ -207,6 +217,18 @@ class StreamToolInputAvailable(StreamBaseResponse):
     input: dict[str, Any] = Field(
         default_factory=dict, description="Tool input arguments"
     )
+
+
+class StreamToolInputError(StreamBaseResponse):
+    """A started tool call whose arguments never completed, so it never ran."""
+
+    type: ResponseType = ResponseType.TOOL_INPUT_ERROR
+    toolCallId: str = Field(..., description="Unique tool call ID")
+    toolName: str = Field(..., description="Name the call's tool part opened with")
+    input: dict[str, Any] = Field(
+        default_factory=dict, description="Tool input arguments, if any"
+    )
+    errorText: str = Field(..., description="Why the call did not run")
 
 
 class ToolDisplayData(BaseModel):
