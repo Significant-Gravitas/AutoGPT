@@ -928,6 +928,8 @@ async def test_surface_connect_card_probe_403_keeps_connected_and_names_refusal(
     assert "Forbidden" in response.message
     assert "doesn't say why" in response.message
     assert "permission limit" not in response.message
+    # The server's words reach the model, so the read screen must judge them.
+    assert response.outside is not None and "Forbidden" in response.outside
     assert "sign in to" not in response.message.lower()
 
 
