@@ -11,12 +11,13 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from connectrpc.code import Code
 from connectrpc.errors import ConnectError
-from e2b import CommandExitException, CommandResult
+from e2b import AsyncSandbox, CommandExitException, CommandResult
 from e2b.envd.rpc import handle_rpc_exception
 from e2b.exceptions import NotFoundException, TimeoutException
 from pydantic import SecretStr
@@ -1533,7 +1534,7 @@ class TestBashExecTimeoutOnARealShell:
         length = f"30.{time.time_ns() % 10**9:09d}"
         try:
             result = await _make_tool()._execute_on_e2b(
-                sandbox=SimpleNamespace(commands=_LocalCommands()),  # type: ignore[arg-type]
+                sandbox=_local_box(),
                 command=command.format(length=length),
                 timeout=1,
                 session_id=None,
@@ -1553,7 +1554,7 @@ class TestBashExecTimeoutOnARealShell:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_command_that_ends_keeps_its_output_and_exit_code(self):
         result = await _make_tool()._execute_on_e2b(
-            sandbox=SimpleNamespace(commands=_LocalCommands()),  # type: ignore[arg-type]
+            sandbox=_local_box(),
             command="echo out; echo err >&2; exit 3",
             timeout=10,
             session_id=None,
@@ -1563,6 +1564,10 @@ class TestBashExecTimeoutOnARealShell:
         assert isinstance(result, BashExecResponse)
         assert (result.stdout, result.stderr) == ("out\n", "err\n")
         assert (result.exit_code, result.timed_out) == (3, False)
+
+
+def _local_box() -> AsyncSandbox:
+    return cast(AsyncSandbox, SimpleNamespace(commands=_LocalCommands()))
 
 
 class _LocalCommands:
