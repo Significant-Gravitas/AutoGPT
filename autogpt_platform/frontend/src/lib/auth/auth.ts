@@ -48,6 +48,7 @@ import {
   readSignupGateConfig,
   SIGN_UP_NOT_ALLOWED_CODE,
 } from "./signup-gate";
+import { getMobileAppOrigins, mobileAppOrigin } from "./mobile-app-origin";
 import { supabaseBridge } from "./supabase-bridge";
 import { getMicrosoftLoginProvider } from "./microsoft-login";
 import { assertMicrosoftSignUpAllowed } from "./microsoft-sign-up-policy";
@@ -133,9 +134,12 @@ function getRequestIP(ctx: HookContext) {
   return getTrustedClientIP(getIP(headers, ctx.context.options));
 }
 
+const mobileAppOrigins = getMobileAppOrigins();
+
 export const auth = betterAuth({
   baseURL,
   secret: authSecret,
+  trustedOrigins: mobileAppOrigins,
   // Without database transactions, as before Better Auth 1.7, which turns
   // them on for a bare pg Pool. A sign-up would then hold one of the pool's
   // connections throughout while the session hook (access blocks, IP log)
@@ -504,6 +508,7 @@ export const auth = betterAuth({
       },
     }),
     supabaseBridge(),
+    ...(mobileAppOrigins.length > 0 ? [mobileAppOrigin()] : []),
     // Must be last so cookies set inside server actions stick.
     nextCookies(),
   ],

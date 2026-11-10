@@ -84,6 +84,7 @@ interface CapturedAuthOptions {
   database: { type: string; transaction?: boolean };
   socialProviders: Record<string, { clientId: string; clientSecret: string }>;
   plugins: Array<{ id: string; opts?: JwtPluginOptions }>;
+  trustedOrigins: string[];
 }
 
 async function loadAuthOptions(): Promise<CapturedAuthOptions> {
@@ -114,6 +115,7 @@ beforeEach(() => {
   for (const key of PROVIDER_ENV_KEYS) {
     vi.stubEnv(key, "");
   }
+  vi.stubEnv("AUTH_MOBILE_APP_SCHEME", "");
 });
 
 afterEach(() => {
@@ -290,6 +292,22 @@ describe("auth config", () => {
       "admin",
       "jwt",
       "supabase-bridge",
+      "next-cookies",
+    ]);
+    expect(options.trustedOrigins).toEqual([]);
+  });
+
+  it("trusts the mobile app's scheme only when one is configured", async () => {
+    vi.stubEnv("AUTH_MOBILE_APP_SCHEME", "autogpt-app");
+    vi.stubEnv("NODE_ENV", "production");
+    const options = await loadAuthOptions();
+
+    expect(options.trustedOrigins).toEqual(["autogpt-app://"]);
+    expect(options.plugins.map((plugin) => plugin.id)).toEqual([
+      "admin",
+      "jwt",
+      "supabase-bridge",
+      "mobile-app-origin",
       "next-cookies",
     ]);
   });
