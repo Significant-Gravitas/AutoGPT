@@ -101,9 +101,11 @@ calendar, files, Teams and Work IQ tools follow it.
   however Microsoft vouches for it (`team_email_requires_google`); a team
   member's existing account still signs in with Microsoft. The hook runs
   these Microsoft checks before the rules every provider shares, so a
-  Microsoft sign-up gets these codes, which /login explains. The refusal
-  keeps the page's `next`, so a deep link still opens after logging in
-  another way.
+  Microsoft sign-up gets these codes, which /login explains. Every
+  provider's refused sign-in returns to /login with the page's `next`, so
+  a deep link still opens after logging in another way. Microsoft's also
+  carries `provider=microsoft`, and /login uses its Microsoft wording only
+  then.
 
 ## Moving the access step
 

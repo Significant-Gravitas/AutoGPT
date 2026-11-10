@@ -1002,6 +1002,27 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="meta/muse-ember",
+                display_name="Muse Ember",
+                provider="open_router",
+                creator="meta",
+                context_window=1048576,
+                max_output_tokens=943718,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Meta list price $0.10/$0.50 per Mtok, cache read
+                # $0.004/1M -- live OpenRouter listing 2026-11-10
+                # (meta/muse-ember).
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=15.0,
+                    output_credits_per_1m=75.0,
+                    cache_read_credits_per_1m=0.6,
+                ),
+            ),
+            CatalogModel(
                 slug="microsoft/phi-4",
                 display_name="Phi-4",
                 provider="open_router",
