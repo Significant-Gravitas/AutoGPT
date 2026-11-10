@@ -879,7 +879,9 @@ async def test_surface_connect_card_probe_403_keeps_connected_and_names_refusal(
     A 403 is not a refused credential (only 401 is), so the user is still
     signed in. A "sign in to X" card here told the model and the user the
     account was not connected, and re-pasting the same token stores fine
-    (``/token`` does not block on a 403) and 403s again.
+    (``/token`` does not block on a 403) and 403s again. The status alone
+    does not give a cause (a WAF answers 403 too), so the message passes on
+    the server's words and names none itself.
     """
     from backend.util.request import HTTPClientError
 
@@ -923,7 +925,9 @@ async def test_surface_connect_card_probe_403_keeps_connected_and_names_refusal(
     assert response.setup_info.user_readiness.missing_credentials == {}
     assert response.rejection is None
     assert "HTTP 403" in response.message
-    assert "not a missing sign-in" in response.message
+    assert "Forbidden" in response.message
+    assert "doesn't say why" in response.message
+    assert "permission limit" not in response.message
     assert "sign in to" not in response.message.lower()
 
 

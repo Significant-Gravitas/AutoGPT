@@ -297,14 +297,8 @@ class RunMCPToolTool(BaseTool):
                             rejection = _rejection(creds, probe_err)
                             await invalidate_mcp_credential(user_id, creds.id)
                         elif probe_err.status_code in AUTH_STATUS_CODES:
-                            service = _service_name(server_host(server_url))
-                            refused_message = (
-                                f"You're signed in to {service}, but it refused "
-                                f"access (HTTP {probe_err.status_code}). That is a "
-                                "permission limit on the account, not a missing "
-                                "sign-in, so signing in again with the same "
-                                "account won't fix it. Use Reconnect only to "
-                                "switch accounts."
+                            refused_message = _refused_access_message(
+                                server_url, probe_err
                             )
                         # Other HTTP statuses (5xx, redirects, etc.) →
                         # leave the cred in place and report
@@ -734,6 +728,24 @@ def _rejection(creds: OAuth2Credentials, error: HTTPClientError) -> CredentialRe
         status_code=error.status_code,
         credential_id=creds.id,
         credential_title=creds.title,
+    )
+
+
+def _refused_access_message(server_url: str, error: HTTPClientError) -> str:
+    """Connect-card message for a 403 over a credential that was kept.
+
+    The status alone does not say why: an account permission and a server or
+    WAF blocking the request look the same, so only the server's own words
+    name a cause.
+    """
+    detail = sanitize_provider_message(str(error), max_chars=400)
+    return (
+        f"You're signed in to {_service_name(server_host(server_url))}, but it "
+        f'refused access (HTTP {error.status_code}). It said: "{detail}". '
+        "The status alone doesn't say why (the account's permissions or the "
+        "server blocking the request), so don't name a cause the response "
+        "doesn't state. Signing in again with the same credential gets the "
+        "same answer."
     )
 
 
