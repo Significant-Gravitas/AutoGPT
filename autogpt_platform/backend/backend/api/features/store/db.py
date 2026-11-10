@@ -1170,11 +1170,14 @@ async def edit_store_submission(
                 "Only pending submissions can be edited."
             )
 
-        # For PENDING submissions, we can update the existing version
-        # Update the existing version
-        updated_version = await prisma.models.StoreListingVersion.prisma().update(
-            where={"id": store_listing_version_id},
-            data=prisma.types.StoreListingVersionUpdateInput(
+        # PENDING in the WHERE: a verdict that lands after the check above keeps
+        # the listing it was given on.
+        updated = await prisma.models.StoreListingVersion.prisma().update_many(
+            where={
+                "id": store_listing_version_id,
+                "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
+            },
+            data=prisma.types.StoreListingVersionUpdateManyMutationInput(
                 name=name,
                 videoUrl=video_url,
                 agentOutputDemoUrl=agent_output_demo_url,
@@ -1186,7 +1189,13 @@ async def edit_store_submission(
                 recommendedScheduleCron=recommended_schedule_cron,
                 instructions=instructions,
             ),
-            include={"StoreListing": True},
+        )
+        if updated == 0:
+            raise store_exceptions.InvalidOperationError(
+                "Only pending submissions can be edited."
+            )
+        updated_version = await prisma.models.StoreListingVersion.prisma().find_unique(
+            where={"id": store_listing_version_id}, include={"StoreListing": True}
         )
         if not updated_version:
             raise DatabaseError("Failed to update store listing version")

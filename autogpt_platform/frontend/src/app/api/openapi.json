@@ -18398,7 +18398,7 @@
             }
           },
           "428": {
-            "description": "Marketplace profile required, or slug taken"
+            "description": "Marketplace profile required, slug taken, or too many submissions waiting for review"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
