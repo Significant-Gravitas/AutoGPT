@@ -496,6 +496,7 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
     async def _set_tier(
         _user_id: str,
         tier: SubscriptionTier,
+        **_kwargs: object,
     ) -> None:
         mock_user.subscriptionTier = tier
 
