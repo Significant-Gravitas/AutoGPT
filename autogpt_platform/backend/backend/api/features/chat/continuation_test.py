@@ -166,10 +166,17 @@ def test_a_microsoft_365_chat_is_refused_and_nothing_is_sent(chat):
     chat.publish.assert_not_awaited()
 
 
-def test_a_full_concurrency_cap_is_a_429(chat):
-    chat.schedule.side_effect = ConcurrentTurnLimitError("5 turns running")
+def test_a_full_concurrency_cap_is_a_429(chat, chat_blocked_events, test_user_id):
+    chat.schedule.side_effect = ConcurrentTurnLimitError("5 turns running", cap=5)
 
     assert client.post(URL).status_code == 429
+    (event,) = chat_blocked_events
+    assert (event["distinct_id"], event["limit"], event["surface"]) == (
+        test_user_id,
+        "concurrency",
+        "chat",
+    )
+    assert event["cap"] == 5
 
 
 def test_a_chat_taken_after_the_busy_check_is_a_409(chat):
