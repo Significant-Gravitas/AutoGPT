@@ -547,6 +547,9 @@ class TestConfirm:
             )
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.kind == "raise"
+        # A created expert introduces itself from the card's "Chat with"
+        # kickoff link (#16689), so the server sends no second greeting.
+        db.start_expert_kickoff.assert_not_awaited()
         assert resp.expert.name == "Otto"
         assert resp.expert.tagline == _created().tagline
         assert resp.expert.about == _created().identity
