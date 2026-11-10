@@ -1,21 +1,69 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
-import { colors, type } from "@/lib/theme";
+import { ScreenHeader } from "@/components/ScreenHeader";
+import { Composer } from "@/features/chat/components/Composer";
+import { PromptChips } from "@/features/chat/components/PromptChips";
+import { useHomeScreen } from "@/features/home/useHomeScreen";
+import { colors, spacing, type } from "@/lib/theme";
+
+const appIcon = require("../../../assets/images/icon.png");
 
 export default function HomeScreen() {
+  const { prompts, isStarting, error, submit } = useHomeScreen();
+
+  function handleSend(text: string) {
+    void submit(text);
+  }
+
   return (
     <View style={styles.screen}>
-      <Text style={styles.text}>Signed in.</Text>
+      <ScreenHeader />
+      <View style={styles.middle}>
+        <Image
+          source={appIcon}
+          style={styles.icon}
+          accessibilityIgnoresInvertColors
+        />
+        <Text style={styles.heading}>What should we work on?</Text>
+      </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.bottom}
+      >
+        {error ? (
+          <Text accessibilityLiveRegion="polite" style={styles.error}>
+            {error}
+          </Text>
+        ) : null}
+        <PromptChips prompts={prompts} onPick={handleSend} />
+        <Composer onSend={handleSend} isDisabled={isStarting} />
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  screen: { flex: 1, backgroundColor: colors.background },
+  middle: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.background,
+    gap: spacing.lg,
+    paddingHorizontal: spacing.xl,
   },
-  text: { ...type.body, color: colors.textSecondary },
+  icon: { width: 56, height: 56, borderRadius: 14 },
+  heading: { ...type.title, color: colors.text, textAlign: "center" },
+  bottom: { gap: spacing.sm },
+  error: {
+    ...type.small,
+    color: colors.error,
+    paddingHorizontal: spacing.lg,
+  },
 });
