@@ -1802,7 +1802,8 @@ async def set_subscription_tier(
 ) -> None:
     """Set the user's subscription tier, then sync the PostHog person in the
     background, since it carries the tier. ``track_lifecycle=False`` is for
-    ``sync_subscription_from_stripe``, which decides that itself.
+    ``sync_subscription_from_stripe``, which decides that itself, and for the
+    periodic tier sweep, whose users the daily lifecycle sweep covers.
 
     A drop from a plan or trial to NO_TIER stamps ``subscriptionEndedAt``, which
     keeps product mail going for the win-back window; any other tier clears it."""
@@ -3204,10 +3205,10 @@ async def sync_subscription_from_stripe(
     up here, so this is also where the PostHog lifecycle properties are
     refreshed (in the background, from the customer's current state).
     ``track_lifecycle=False`` is for the periodic tier sweep, which would
-    otherwise fan out one Stripe call per trial: it refreshes them only when
-    the stored tier changed, and the daily lifecycle sweep covers the rest.
-    Nor are they refreshed for a cancel made by an account deletion: that
-    would only update the PostHog person the erasure deletes.
+    otherwise fan out one Stripe call per trial; the daily lifecycle sweep
+    covers those users, the tier included. Nor is it refreshed for a cancel
+    made by an account deletion: that would only update the PostHog person
+    the erasure deletes.
 
     The payload is Stripe's latest word on the subscription, so afterwards
     the cached lookups the billing page reads (the active subscription and
@@ -3217,34 +3218,15 @@ async def sync_subscription_from_stripe(
     is canceled), and a read in between would cache the state before that.
     """
     customer_id = stripe_subscription.get("customer")
-    deletion = is_account_deletion_cancellation(stripe_subscription)
-    tier_before = (
-        None if track_lifecycle or deletion else await _customer_tier(customer_id)
-    )
     try:
         await _sync_subscription_tier_from_stripe(stripe_subscription)
     finally:
         if isinstance(customer_id, str) and customer_id:
             await invalidate_billing_lookups(customer_id)
-        # Also after a failure: the tier can be saved before a later step
-        # raises, and the next sweep would find nothing left to change.
-        if tier_before is not None and tier_before != await _customer_tier(customer_id):
-            schedule_posthog_lifecycle_sync(tier_before[0])
-    if track_lifecycle and not deletion:
-        schedule_posthog_lifecycle_sync(stripe_customer_id=customer_id)
-
-
-async def _customer_tier(customer_id: object) -> tuple[str, str] | None:
-    """The user id and stored tier of a Stripe customer, or None when there is
-    none or it can't be read: only analytics depends on it."""
-    if not isinstance(customer_id, str) or not customer_id:
-        return None
-    try:
-        user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
-    except Exception:
-        logger.warning(f"Could not read the tier of customer {customer_id}")
-        return None
-    return (user.id, str(user.subscriptionTier)) if user else None
+    if track_lifecycle and not is_account_deletion_cancellation(stripe_subscription):
+        schedule_posthog_lifecycle_sync(
+            stripe_customer_id=stripe_subscription.get("customer")
+        )
 
 
 async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None:

@@ -139,7 +139,7 @@ them out (SECRT-2728):
   to them (`src/services/analytics/posthog-request-context.ts`).
 - **An admin acting as a user never changes the user's person.** The backend
   drops `$set_person_properties` while impersonated (the onboarding role, the
-  checkout properties, the tier a sign-in fills in). The lifecycle sync still
+  checkout properties, the tier a sign-in sets). The lifecycle sync still
   runs, since it mirrors the stored trial, tier and Stripe state rather than
   the admin's action.
 - **Session.** With analytics consent, and not while impersonating, the
@@ -642,10 +642,13 @@ so an experiment can be read in PostHog and Looker alike.
 
 The backend keeps these on the person (distinct id = platform user id) with
 a `$set` event (`PostHogEvent.SET_PERSON_PROPERTIES`), sent from
-`backend/data/posthog_lifecycle_sync.py` after signup, every tier write
-(`credit.set_subscription_tier`, the admin's `rate_limit.set_user_tier`, and a
-tier sweep re-sync that moved the tier) and every Stripe subscription sync,
-and by a daily sweep at 04:15 UTC. The lifecycle events above mark the moment
+`backend/data/posthog_lifecycle_sync.py` after signup, every Stripe
+subscription sync (except a cancel made by an account deletion, whose person
+the erasure deletes) and every tier write outside one
+(`credit.set_subscription_tier`, the admin's `rate_limit.set_user_tier`), and
+by a daily sweep at 04:15 UTC. The 6-hourly tier sweep sends nothing itself:
+its users all have a Stripe customer, so the daily sweep brings their persons
+up to date. The lifecycle events above mark the moment
 something happens; these properties hold the person's current state, so a
 cohort or breakdown can filter on them without replaying events.
 
@@ -657,17 +660,18 @@ cohort or breakdown can filter on them without replaying events.
 | `subscription_started_at` | When the person first became a paying subscriber: the earliest start of any paid subscription, kept across a resubscribe after a gap. For a converted trial, the conversion (its first successful charge), not the trial start. |
 | `subscription_canceled_at` | When the current or last paid subscription was canceled, while `subscription_canceled` or `subscription_ended`. |
 | `subscription_ended_at` | When it ended, while `subscription_ended`. |
-| `subscription_tier` | The plan tier as stored (`User.subscriptionTier`): `NO_TIER`, `TRIAL`, `PRO`, `MAX`, `BUSINESS` (Team) or `ENTERPRISE`, the same values as the events' `subscription_tier` and `chat_blocked.tier`. It is the plan the account is on, not proof of payment (an admin grant is a tier too; `subscription_status` says who pays); the usage limits treat a `TRIAL` whose trial has ended as `NO_TIER` until Stripe's trial-end update moves the stored tier. Break any event down by it, `chat_blocked` included, to split it by plan (SECRT-3411). The event property of the same name on `plan_selected`, `checkout_started`, `trial_offer_viewed` and `trial_started` is the plan picked or offered, not the person's plan: pick the person property in a breakdown. |
+| `subscription_tier` | The plan tier as stored (`User.subscriptionTier`): `NO_TIER`, `TRIAL`, `PRO`, `MAX`, `BUSINESS` (Team), `ENTERPRISE`, or the legacy `BASIC`, the same values as the events' `subscription_tier` and `chat_blocked.tier`. It is the plan the account is on, not proof of payment (an admin grant is a tier too; `subscription_status` says who pays); the usage limits treat a `TRIAL` whose trial has ended as `NO_TIER` until Stripe's trial-end update moves the stored tier. Break any event down by it, `chat_blocked` included, to split it by plan (SECRT-3411). The event property of the same name on `plan_selected`, `checkout_started`, `trial_offer_viewed` and `trial_started` is the plan picked or offered, not the person's plan: pick the person property in a breakdown. |
 
 Dates are ISO-8601 UTC strings of the lifecycle moment, not of the sync. A
 date that doesn't apply to the current status is `$unset`, never sent as
 null.
 
-`subscription_tier` reaches an account the daily sweep doesn't cover (no
-Stripe customer and no trial, such as an admin grant or a signup on
-`NO_TIER`) when its tier next changes, or at its next sign-in
-(`POST /api/auth/user`), which fills it in with `$set_once` and so never
-replaces the value a sync set. `poetry run python
+`subscription_tier` is also set at every sign-in of an existing account
+(`POST /api/auth/user`), from the stored row. That reaches accounts the daily
+sweep doesn't cover (no Stripe customer and no trial, such as an admin grant
+or a signup on `NO_TIER`) before their tier next changes, and repairs a sync
+PostHog never got. A tier change that lands during a sign-in can be
+overwritten by the sign-in's older read until the next sign-in or sync. `poetry run python
 scripts/backfill_posthog_lifecycle.py --send --all-users` sets it on everyone
 at once. A person property is the value now, not at the time of the event:
 a breakdown of last month's events by it shows each person's current plan.

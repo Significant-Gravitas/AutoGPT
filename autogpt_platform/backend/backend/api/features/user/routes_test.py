@@ -144,7 +144,7 @@ def test_get_or_create_user_route_flags_an_internal_sign_in(
         return_value=Mock(user=mock_user, was_created=was_created),
     )
     mark = mocker.patch("backend.api.features.user.routes.mark_internal_on_sign_in")
-    mocker.patch("backend.api.features.user.routes.fill_in_subscription_tier")
+    mocker.patch("backend.api.features.user.routes.set_tier_on_sign_in")
 
     assert client.post("/auth/user").status_code == 200
 
@@ -155,13 +155,15 @@ def test_get_or_create_user_route_flags_an_internal_sign_in(
 
 
 @pytest.mark.parametrize("was_created", [False, True])
-def test_get_or_create_user_route_fills_in_the_tier_at_a_sign_in(
+def test_get_or_create_user_route_sets_the_tier_at_a_sign_in(
     mocker: pytest_mock.MockFixture, test_user_id: str, was_created: bool
 ) -> None:
-    """A sign-in gives the PostHog person its stored tier if it has none yet
-    (SECRT-3411); a new account gets it from the signup sync."""
+    """A sign-in sets the stored tier on the PostHog person (SECRT-3411); a
+    new account gets it from the signup sync."""
     mock_user = Mock(
-        id=test_user_id, email="test@example.com", subscription_tier="BUSINESS"
+        id=test_user_id,
+        email="test@example.com",
+        subscription_tier=SubscriptionTier.BUSINESS,
     )
     mock_user.created_at = datetime(2020, 1, 1, tzinfo=UTC)
     mock_user.model_dump.return_value = {"id": test_user_id}
@@ -170,14 +172,14 @@ def test_get_or_create_user_route_fills_in_the_tier_at_a_sign_in(
         return_value=Mock(user=mock_user, was_created=was_created),
     )
     mocker.patch("backend.api.features.user.routes.mark_internal_on_sign_in")
-    fill = mocker.patch("backend.api.features.user.routes.fill_in_subscription_tier")
+    fill = mocker.patch("backend.api.features.user.routes.set_tier_on_sign_in")
 
     assert client.post("/auth/user").status_code == 200
 
     if was_created:
         fill.assert_not_called()
     else:
-        fill.assert_called_once_with(test_user_id, "BUSINESS")
+        fill.assert_called_once_with(test_user_id, SubscriptionTier.BUSINESS)
 
 
 def test_get_or_create_user_route_documents_creation_header() -> None:

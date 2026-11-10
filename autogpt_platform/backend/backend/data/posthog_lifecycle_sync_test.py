@@ -692,7 +692,7 @@ async def test_a_cancelled_running_sync_keeps_a_requested_rerun(posthog):
     assert not lifecycle._syncs
 
 
-# ---- fill_in_subscription_tier ----------------------------------------------
+# ---- set_tier_on_sign_in ---------------------------------------------------
 
 
 @pytest.fixture
@@ -703,20 +703,27 @@ def shared_posthog():
         yield client
 
 
-def test_a_sign_in_only_fills_in_a_missing_tier(shared_posthog):
-    lifecycle.fill_in_subscription_tier("user-1", SubscriptionTier.BUSINESS)
+@pytest.mark.parametrize(
+    "tier", [SubscriptionTier.BUSINESS, SubscriptionTier.TRIAL, "NO_TIER"]
+)
+def test_a_sign_in_sets_the_stored_tier(shared_posthog, tier):
+    """``$set``, not ``$set_once``: a sign-in also repairs a tier whose last
+    sync PostHog never got."""
+    lifecycle.set_tier_on_sign_in("user-1", tier)
 
     shared_posthog.capture.assert_called_once()
     call = shared_posthog.capture.call_args.kwargs
     assert call["distinct_id"] == "user-1"
     assert call["event"] == "$set"
-    assert call["properties"]["$set_once"] == {"subscription_tier": "BUSINESS"}
-    assert "$set" not in call["properties"]
+    assert call["properties"]["$set"] == {
+        "subscription_tier": getattr(tier, "value", tier)
+    }
+    assert type(call["properties"]["$set"]["subscription_tier"]) is str
 
 
-@pytest.mark.parametrize("tier", [None, "", SubscriptionTier.TRIAL])
-def test_a_sign_in_leaves_trials_and_unknown_tiers_alone(shared_posthog, tier):
-    lifecycle.fill_in_subscription_tier("user-1", tier)
+@pytest.mark.parametrize("tier", [None, ""])
+def test_a_sign_in_without_a_tier_sends_nothing(shared_posthog, tier):
+    lifecycle.set_tier_on_sign_in("user-1", tier)
     shared_posthog.capture.assert_not_called()
 
 
@@ -725,14 +732,15 @@ def test_a_sign_in_while_an_admin_acts_as_the_user_sends_nothing(shared_posthog)
 
     token = posthog_client.set_impersonated(True)
     try:
-        lifecycle.fill_in_subscription_tier("user-1", SubscriptionTier.PRO)
+        lifecycle.set_tier_on_sign_in("user-1", SubscriptionTier.PRO)
     finally:
         posthog_client.reset_impersonated(token)
     shared_posthog.capture.assert_not_called()
 
 
-def test_a_sign_in_survives_posthog_failing(shared_posthog):
+def test_a_sign_in_survives_posthog_failing(shared_posthog, caplog):
     shared_posthog.capture.side_effect = RuntimeError("posthog down")
-    lifecycle.fill_in_subscription_tier("user-1", SubscriptionTier.PRO)
+    lifecycle.set_tier_on_sign_in("user-1", SubscriptionTier.PRO)
     with patch("backend.util.posthog_client.capture", side_effect=RuntimeError("boom")):
-        lifecycle.fill_in_subscription_tier("user-1", SubscriptionTier.PRO)
+        lifecycle.set_tier_on_sign_in("user-1", SubscriptionTier.PRO)
+    assert "Could not set the PostHog tier of user-1" in caplog.text

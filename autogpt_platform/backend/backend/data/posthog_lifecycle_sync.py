@@ -10,8 +10,8 @@ so both agree on who is a paying subscriber.
 Three ways in, all best-effort (a failure is logged, never raised):
 
 - ``schedule_posthog_lifecycle_sync`` after a write that can change the
-  snapshot (signup, ``sync_subscription_from_stripe``, every tier write:
-  ``credit.set_subscription_tier`` and the admin's
+  snapshot (signup, ``sync_subscription_from_stripe``, the tier writes
+  outside it: ``credit.set_subscription_tier`` and the admin's
   ``rate_limit.set_user_tier``), and after a group
   join that can create the MailerLite subscriber
   (``lifecycle_audience.resync_after_group_change``). It runs
@@ -23,10 +23,12 @@ Three ways in, all best-effort (a failure is logged, never raised):
 - ``scripts/backfill_posthog_lifecycle.py``, the same sweep run by hand.
 
 The sync mirrors stored state, not anyone's action, so it runs the same while
-an admin acts as the user. A sign-in only fills in a tier the person doesn't
-hold yet (``fill_in_subscription_tier``), for accounts the sweep doesn't
-cover; that one is dropped while an admin acts as the user, like every other
-``$set`` of a request.
+an admin acts as the user. A sign-in also sets the stored tier
+(``set_tier_on_sign_in``), for accounts the sweep doesn't cover; that one is
+dropped while an admin acts as the user, like every other ``$set`` of a
+request. It reads the row without the sync's coordination, so a tier change
+landing during a sign-in can be overwritten by the older read until the next
+sign-in or sync.
 """
 
 import asyncio
@@ -38,7 +40,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import stripe
-from prisma.enums import SubscriptionTier
 from prisma.models import SubscriptionTrial, User
 from pydantic import BaseModel
 
@@ -316,24 +317,22 @@ def send_lifecycle_snapshot(user_id: str, snapshot: LifecycleSnapshot) -> bool:
         return False
 
 
-def fill_in_subscription_tier(user_id: str, tier: str | None) -> None:
-    """At a sign-in, give a person who has no ``subscription_tier`` yet the
-    stored one, so an account the daily sweep doesn't cover (no Stripe
-    customer, no trial) gets it without waiting for its tier to change.
-
-    ``$set_once`` never replaces the value a sync set. A trial is left to the
-    sweep, which covers every trial row. Never raises."""
+def set_tier_on_sign_in(user_id: str, tier: str | None) -> None:
+    """At a sign-in, set the stored tier on the person, so an account the
+    daily sweep doesn't cover (no Stripe customer, no trial) gets it without
+    waiting for its tier to change, and one whose last sync was lost is
+    repaired. Never raises."""
     try:
         value = getattr(tier, "value", tier)
-        if not value or value == SubscriptionTier.TRIAL.value:
+        if not value:
             return
         posthog_client.capture(
             user_id,
             PostHogEvent.SET_PERSON_PROPERTIES,
-            {"$set_once": {"subscription_tier": str(value)}},
+            {"$set": {"subscription_tier": str(value)}},
         )
     except Exception:
-        logger.warning(f"Could not fill in the PostHog tier of {user_id}")
+        logger.warning(f"Could not set the PostHog tier of {user_id}")
 
 
 async def start_posthog_lifecycle_sweep() -> bool:

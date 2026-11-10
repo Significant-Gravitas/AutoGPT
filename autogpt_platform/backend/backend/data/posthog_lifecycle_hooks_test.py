@@ -165,68 +165,6 @@ async def test_webhook_survives_posthog_and_stripe_failures():
     client.capture.assert_not_called()
 
 
-async def test_a_tier_sweep_resync_that_changes_the_tier_schedules_the_user():
-    """SECRT-3411: the person carries the tier, so a sweep re-sync that moves
-    it (a trial converted or ended without its webhook) syncs that user."""
-    before = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.TRIAL)
-    after = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.PRO)
-    with (
-        patch(
-            "backend.data.credit._sync_subscription_tier_from_stripe",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(find_first=AsyncMock(side_effect=[before, after])),
-        ),
-        patch("backend.data.credit.invalidate_billing_lookups", new=AsyncMock()),
-        patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
-    ):
-        await sync_subscription_from_stripe(TRIAL_SUB, track_lifecycle=False)
-    schedule.assert_called_once_with("user-1")
-
-
-async def test_a_sweep_resync_that_fails_after_moving_the_tier_still_schedules():
-    """A paid conversion commits the tier, then a later Stripe step raises:
-    the next sweep would find nothing to change, so this one syncs."""
-    before = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.NO_TIER)
-    after = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.PRO)
-    with (
-        patch(
-            "backend.data.credit._sync_subscription_tier_from_stripe",
-            new_callable=AsyncMock,
-            side_effect=stripe.APIConnectionError("stripe down"),
-        ),
-        patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(find_first=AsyncMock(side_effect=[before, after])),
-        ),
-        patch("backend.data.credit.invalidate_billing_lookups", new=AsyncMock()),
-        patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
-    ):
-        with pytest.raises(stripe.APIConnectionError):
-            await sync_subscription_from_stripe(TRIAL_SUB, track_lifecycle=False)
-    schedule.assert_called_once_with("user-1")
-
-
-async def test_a_sweep_resync_survives_an_unreadable_tier():
-    with (
-        patch(
-            "backend.data.credit._sync_subscription_tier_from_stripe",
-            new_callable=AsyncMock,
-        ) as inner,
-        patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(find_first=AsyncMock(side_effect=RuntimeError)),
-        ),
-        patch("backend.data.credit.invalidate_billing_lookups", new=AsyncMock()),
-        patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
-    ):
-        await sync_subscription_from_stripe(TRIAL_SUB, track_lifecycle=False)
-    inner.assert_awaited_once()
-    schedule.assert_not_called()
-
-
 @pytest.mark.parametrize("track_lifecycle", [True, False])
 async def test_an_account_deletion_cancel_schedules_nothing(track_lifecycle: bool):
     """The erasure deletes the person; a sync would only bring it back."""
@@ -234,16 +172,10 @@ async def test_an_account_deletion_cancel_schedules_nothing(track_lifecycle: boo
         **TRIAL_SUB,
         "cancellation_details": {"comment": ACCOUNT_DELETION_CANCELLATION_COMMENT},
     }
-    before = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.PRO)
-    after = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.NO_TIER)
     with (
         patch(
             "backend.data.credit._sync_subscription_tier_from_stripe",
             new_callable=AsyncMock,
-        ),
-        patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(find_first=AsyncMock(side_effect=[before, after])),
         ),
         patch("backend.data.credit.invalidate_billing_lookups", new=AsyncMock()),
         patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
@@ -258,7 +190,7 @@ async def test_an_account_deletion_cancel_schedules_nothing(track_lifecycle: boo
 async def test_a_tier_write_schedules_a_sync(tier: SubscriptionTier):
     """SECRT-3411: the person carries the tier, so every tier write syncs it:
     a cancel with no Stripe subscription, a plan changed in place, the lazy
-    and swept reconciles."""
+    reconcile."""
     prisma = MagicMock(update=AsyncMock(), update_many=AsyncMock())
     with (
         patch("backend.data.credit.User.prisma", return_value=prisma),
@@ -269,9 +201,10 @@ async def test_a_tier_write_schedules_a_sync(tier: SubscriptionTier):
     schedule.assert_called_once_with("user-1")
 
 
-async def test_a_tier_write_inside_a_webhook_leaves_the_sync_to_it():
+async def test_a_tier_write_inside_a_webhook_or_the_sweep_leaves_the_sync_out():
     """``sync_subscription_from_stripe`` decides, so an account deletion's
-    cancel doesn't sync the person the erasure deletes."""
+    cancel doesn't sync the person the erasure deletes; the tier sweep leaves
+    its users to the daily lifecycle sweep."""
     with (
         patch(
             "backend.data.credit.User.prisma",
@@ -326,9 +259,13 @@ async def test_a_tier_write_survives_a_failing_sync():
         patch(f"{lifecycle.__name__}.queue_lifecycle_fields", new=AsyncMock()),
     ):
         await set_subscription_tier("user-1", SubscriptionTier.PRO)
-        while lifecycle._background_tasks:
-            await asyncio.gather(*list(lifecycle._background_tasks))
-            await asyncio.sleep(0)
+
+        async def drain() -> None:
+            while lifecycle._background_tasks:
+                await asyncio.gather(*list(lifecycle._background_tasks))
+                await asyncio.sleep(0)
+
+        await asyncio.wait_for(drain(), timeout=10)
 
     client.capture.assert_called_once()
 

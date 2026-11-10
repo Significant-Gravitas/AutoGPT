@@ -41,7 +41,8 @@ doesn't apply is ``$unset``, never sent as null):
 - ``subscription_ended_at``: its Stripe ``ended_at``, while
   ``subscription_ended``.
 - ``subscription_tier``: the plan tier as stored (``User.subscriptionTier``:
-  ``NO_TIER``, ``TRIAL``, ``PRO``, ``MAX``, ``BUSINESS``, ``ENTERPRISE``), so
+  ``NO_TIER``, ``TRIAL``, ``PRO``, ``MAX``, ``BUSINESS``, ``ENTERPRISE``, the
+  legacy ``BASIC``), so
   any event can be split by plan through the person (SECRT-3411). The usage
   limits read the same column, except that they treat a ``TRIAL`` whose trial
   has ended as ``NO_TIER`` until Stripe's trial-end update moves the column.
