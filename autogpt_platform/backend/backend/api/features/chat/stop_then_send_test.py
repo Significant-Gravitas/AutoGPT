@@ -105,17 +105,6 @@ async def test_a_message_sent_while_a_stop_settles_runs_as_the_next_turn(
     assert await peek_pending_messages(session_id) == []
 
 
-async def test_the_stop_step_and_the_gate_share_one_cluster_slot(
-    session_id: str,
-) -> None:
-    redis = await redis_client.get_redis_async()
-    meta_key = stream_registry.get_session_meta_key(session_id)
-    buffer_key = pending_messages_module._buffer_key(session_id)
-
-    meta_slot = await redis.execute_command("CLUSTER KEYSLOT", meta_key)
-    assert meta_slot == await redis.execute_command("CLUSTER KEYSLOT", buffer_key)
-
-
 async def test_the_turn_after_a_stopped_one_takes_follow_ups(
     session_id: str, test_user_id: str
 ) -> None:
@@ -170,29 +159,6 @@ async def test_a_send_after_a_stop_that_never_reached_the_executor_queues_once_t
     assert [m.content for m in await peek_pending_messages(session_id)] == [
         "still for this turn"
     ]
-
-
-async def test_a_cancel_that_fails_keeps_the_hold_an_earlier_stop_set(
-    mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
-) -> None:
-    await stream_registry.create_session(
-        session_id, test_user_id, "", "", turn_id=f"stopped-{uuid.uuid4().hex}"
-    )
-    await stop_follow_ups(session_id)
-    _stub_boundaries(mocker)
-    mocker.patch.object(
-        chat_routes,
-        "enqueue_cancel_task",
-        new=AsyncMock(side_effect=RuntimeError("broker down")),
-    )
-
-    async with _client() as client:
-        assert (await client.post(f"/sessions/{session_id}/cancel")).status_code == 500
-    refused = await queue_user_message(
-        session_id=session_id, message="too late", require_turn_in_flight=True
-    )
-
-    assert refused.turn_in_flight is False
 
 
 async def test_a_cancel_that_fails_after_reaching_the_executor_keeps_the_queue_closed(

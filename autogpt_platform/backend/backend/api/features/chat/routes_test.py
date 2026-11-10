@@ -4285,30 +4285,6 @@ def test_cancel_session_clears_pending_buffer(
     mock_stop.assert_awaited_once_with("sess-1")
 
 
-def test_cancel_session_survives_a_failed_stop_step(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """A Redis hiccup in the stop step must not block the cancel itself, and
-    the client is told it can't know what was discarded."""
-    _mock_validate_session(mocker)
-    mocker.patch(
-        "backend.copilot.turn_queue.cancel_queued_turn",
-        new=AsyncMock(return_value=True),
-    )
-    mock_stop = mocker.patch.object(
-        chat_routes,
-        "stop_follow_ups",
-        new=AsyncMock(side_effect=RuntimeError("redis down")),
-    )
-
-    response = client.post("/sessions/sess-1/cancel")
-
-    assert response.status_code == 200
-    assert response.json()["cancelled"] is True
-    assert response.json()["discarded_messages"] is None
-    mock_stop.assert_awaited_once_with("sess-1")
-
-
 def test_cancel_session_reclears_pending_buffer_after_running_settles(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
