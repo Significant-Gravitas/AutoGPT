@@ -1,12 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 
-import { chatKeys, getSession, listSessions } from "@/lib/api/chat";
+import {
+  chatKeys,
+  getSession,
+  isSessionID,
+  listSessions,
+} from "@/lib/api/chat";
 
-export function useChatScreen(sessionID: string) {
+/** `routeSessionID` comes from the URL, which a deep link controls. */
+export function useChatScreen(routeSessionID: unknown) {
+  const sessionID = isSessionID(routeSessionID) ? routeSessionID : null;
   const detail = useQuery({
-    queryKey: chatKeys.session(sessionID),
-    queryFn: () => getSession(sessionID),
+    queryKey: chatKeys.session(sessionID ?? ""),
+    queryFn: sessionID ? () => getSession(sessionID) : skipToken,
     // The thread reads this once when it mounts, so a chat opened again must
     // load fresh rather than start from an old copy.
     gcTime: 0,
@@ -24,8 +31,9 @@ export function useChatScreen(sessionID: string) {
   }
 
   return {
+    sessionID,
     detail: detail.data,
-    isPending: detail.isPending,
+    isPending: sessionID !== null && detail.isPending,
     refetch: detail.refetch,
     title,
     newChat,

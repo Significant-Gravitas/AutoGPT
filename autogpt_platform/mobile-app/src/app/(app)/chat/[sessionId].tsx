@@ -10,7 +10,8 @@ import { colors, radius, spacing, type } from "@/lib/theme";
 
 export default function ChatScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
-  const { detail, isPending, refetch, title, newChat } = useChatScreen(sessionId);
+  const { sessionID, detail, isPending, refetch, title, newChat } =
+    useChatScreen(sessionId);
 
   function handleRetry() {
     void refetch();
@@ -18,8 +19,8 @@ export default function ChatScreen() {
 
   function renderBody() {
     // Data first: a failed background refetch must not unmount a live thread.
-    if (detail) {
-      return <ChatThread key={sessionId} sessionID={sessionId} detail={detail} />;
+    if (sessionID && detail) {
+      return <ChatThread key={sessionID} sessionID={sessionID} detail={detail} />;
     }
     if (isPending) {
       return (
@@ -31,13 +32,15 @@ export default function ChatScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.notice}>{"Couldn't open this chat."}</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={handleRetry}
-          style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
-        >
-          <Text style={styles.retryLabel}>Try again</Text>
-        </Pressable>
+        {sessionID ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={handleRetry}
+            style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+          >
+            <Text style={styles.retryLabel}>Try again</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }

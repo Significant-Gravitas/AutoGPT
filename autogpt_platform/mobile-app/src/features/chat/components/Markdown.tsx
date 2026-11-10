@@ -4,6 +4,8 @@ import { useMarkdown, type MarkedStyles } from "react-native-marked";
 
 import { colors, radius, spacing, type } from "@/lib/theme";
 
+import { safeRenderer } from "./safeRenderer";
+
 interface Props {
   text: string;
 }
@@ -12,6 +14,7 @@ export function Markdown({ text }: Props) {
   const nodes = useMarkdown(text, {
     colorScheme: "dark",
     styles: markedStyles,
+    renderer: safeRenderer,
   });
 
   return (
@@ -23,7 +26,7 @@ export function Markdown({ text }: Props) {
   );
 }
 
-// Module level, so the parser the hook memoises on these stays the same.
+// Module level, like the renderer, so the hook keeps its memoised parser.
 const markedStyles: MarkedStyles = {
   text: { ...type.body, color: colors.text },
   paragraph: { paddingVertical: spacing.xs },

@@ -26,6 +26,15 @@ interface SuggestedPrompts {
   themes: { name: string; prompts: string[] }[];
 }
 
+// Session ids are UUIDs (`@default(uuid())`, `uuid4`/`uuid5` in the backend).
+// The route param comes from deep links too, so anything else is refused.
+const SESSION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isSessionID(value: unknown): value is string {
+  return typeof value === "string" && SESSION_ID_RE.test(value);
+}
+
 export const chatKeys = {
   sessions: ["chat", "sessions"] as const,
   session: (sessionID: string) => ["chat", "session", sessionID] as const,
@@ -50,9 +59,10 @@ export async function listSessions({
 }
 
 export function getSession(sessionID: string) {
-  return apiRequest<SessionDetail>(`/api/chat/sessions/${sessionID}`, {
-    query: { limit: 200 },
-  });
+  return apiRequest<SessionDetail>(
+    `/api/chat/sessions/${encodeURIComponent(sessionID)}`,
+    { query: { limit: 200 } },
+  );
 }
 
 export function createSession(expertID?: string) {
@@ -64,7 +74,7 @@ export function createSession(expertID?: string) {
 
 export function cancelSession(sessionID: string) {
   return apiRequest<{ cancelled: boolean }>(
-    `/api/chat/sessions/${sessionID}/cancel`,
+    `/api/chat/sessions/${encodeURIComponent(sessionID)}/cancel`,
     { method: "POST" },
   );
 }

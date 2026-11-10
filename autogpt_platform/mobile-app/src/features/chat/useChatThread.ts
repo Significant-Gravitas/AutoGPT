@@ -1,6 +1,6 @@
 import { Chat, useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AppState } from "react-native";
 
 import {
@@ -14,7 +14,7 @@ import { useMountEffect } from "@/lib/useMountEffect";
 
 import { toUIMessages } from "./convertMessages";
 import { takePendingFirstMessage } from "./pendingFirstMessage";
-import { createChatTransport } from "./transport";
+import { chatErrorMessage, createChatTransport } from "./transport";
 
 interface Args {
   sessionID: string;
@@ -38,23 +38,33 @@ export function useChatThread({ sessionID, detail }: Args) {
     chat,
     throttle: 50,
   });
+  const isSyncing = useRef(false);
   const isBusy = status === "submitted" || status === "streaming";
+
+  function isChatBusy() {
+    return chat.status === "submitted" || chat.status === "streaming";
+  }
 
   // The stream route replays a running turn from its first chunk, so the
   // local copy of that turn goes before resuming or its text shows twice.
+  // Read straight from the API: a cache write would outlive the screen.
   async function syncWithServer() {
-    await chat.stop();
-    const fresh = await queryClient.fetchQuery({
-      queryKey: chatKeys.session(sessionID),
-      queryFn: () => getSession(sessionID),
-      staleTime: 0,
-    });
-    setMessages(
-      toUIMessages(sessionID, fresh.messages, {
-        activeTurnStartedAt: fresh.active_stream?.started_at,
-      }),
-    );
-    if (fresh.active_stream) await chat.resumeStream();
+    if (isSyncing.current) return;
+    isSyncing.current = true;
+    let fresh: SessionDetail;
+    try {
+      await chat.stop();
+      fresh = await getSession(sessionID);
+      setMessages(
+        toUIMessages(sessionID, fresh.messages, {
+          activeTurnStartedAt: fresh.active_stream?.started_at,
+        }),
+      );
+      chat.clearError();
+    } finally {
+      isSyncing.current = false;
+    }
+    if (fresh.active_stream && !isChatBusy()) await chat.resumeStream();
   }
 
   useMountEffect(() => {
@@ -69,11 +79,15 @@ export function useChatThread({ sessionID, detail }: Args) {
       wasBackgrounded = false;
       void syncWithServer().catch(() => undefined);
     });
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+      // Only the local stream: the turn keeps running on the server.
+      void chat.stop();
+    };
   });
 
   function send(text: string) {
-    if (isBusy) return;
+    if (isSyncing.current || isChatBusy()) return;
     void chat.sendMessage({ text });
   }
 
@@ -82,5 +96,12 @@ export function useChatThread({ sessionID, detail }: Args) {
     await cancelSession(sessionID).catch(() => undefined);
   }
 
-  return { messages, status, error, isBusy, send, stop };
+  return {
+    messages,
+    status,
+    errorMessage: chatErrorMessage(error),
+    isBusy,
+    send,
+    stop,
+  };
 }

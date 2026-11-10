@@ -8,6 +8,8 @@ import { SignedOutError } from "@/lib/auth/token";
 const OFFLINE_MESSAGE =
   "Can't reach AutoGPT. Check your connection and try again.";
 
+const FALLBACK_MESSAGE = "Otto could not reply just now. Try again in a moment.";
+
 const STATUS_MESSAGES: Record<number, string> = {
   401: "You are signed out. Sign in again to continue.",
   402: "Chat needs an active plan. You can manage your plan on the web.",
@@ -15,9 +17,24 @@ const STATUS_MESSAGES: Record<number, string> = {
   429: "You have reached your usage limit. Try again later.",
 };
 
+const KNOWN_MESSAGES = new Set([
+  ...Object.values(STATUS_MESSAGES),
+  OFFLINE_MESSAGE,
+  FALLBACK_MESSAGE,
+  new SignedOutError().message,
+]);
+
+/** The sentence to show for a chat error: ours as is, anything else generic. */
+export function chatErrorMessage(error: Error | undefined) {
+  if (!error) return null;
+  return KNOWN_MESSAGES.has(error.message) ? error.message : FALLBACK_MESSAGE;
+}
+
 /** Points the AI SDK at the backend's stream route, like the web app does. */
 export function createChatTransport(sessionID: string) {
-  const api = apiUrl(`/api/chat/sessions/${sessionID}/stream`);
+  const api = apiUrl(
+    `/api/chat/sessions/${encodeURIComponent(sessionID)}/stream`,
+  );
 
   return new DefaultChatTransport<UIMessage>({
     api,
@@ -72,10 +89,7 @@ const fetchStream: typeof globalThis.fetch = async (input, init) => {
     throw new Error(OFFLINE_MESSAGE);
   }
   if (response.ok) return response;
-  throw new Error(
-    STATUS_MESSAGES[response.status] ??
-      "Otto could not reply just now. Try again in a moment.",
-  );
+  throw new Error(STATUS_MESSAGES[response.status] ?? FALLBACK_MESSAGE);
 };
 
 function isAbort(error: unknown, init: RequestInit | undefined) {

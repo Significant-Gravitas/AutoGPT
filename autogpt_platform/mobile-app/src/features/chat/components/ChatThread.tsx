@@ -13,7 +13,7 @@ interface Props {
 }
 
 export function ChatThread({ sessionID, detail }: Props) {
-  const { messages, status, error, isBusy, send, stop } = useChatThread({
+  const { messages, status, errorMessage, isBusy, send, stop } = useChatThread({
     sessionID,
     detail,
   });
@@ -28,7 +28,7 @@ export function ChatThread({ sessionID, detail }: Props) {
       style={styles.thread}
     >
       <MessageList messages={messages} status={status} />
-      {error ? <Text style={styles.error}>{error.message}</Text> : null}
+      {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
       <Composer onSend={send} onStop={handleStop} isBusy={isBusy} />
     </KeyboardAvoidingView>
   );
