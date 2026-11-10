@@ -7748,3 +7748,29 @@ async def test_reset_stops_sharing_the_chats_it_archives(
     assert row.archivedAt is not None
     assert row.isShared is False
     assert row.shareToken is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_retried_reset_unshares_a_chat_an_earlier_one_archived(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """A reset interrupted between archiving and unsharing must not leave a
+    chat archived but still shared: the retry picks it up."""
+    expert_id, _, thread = await _hire_with_history(test_user.id)
+    await prisma.models.ChatSession.prisma().update(
+        where={"id": thread},
+        data={
+            "archivedAt": datetime.now(timezone.utc),
+            "isShared": True,
+            "shareToken": str(uuid.uuid4()),
+            "sharedAt": datetime.now(timezone.utc),
+        },
+    )
+
+    result = await expert_reset.reset_expert(test_user.id, expert_id)
+
+    assert result.chats_archived == 0
+    row = await prisma.models.ChatSession.prisma().find_unique(where={"id": thread})
+    assert row is not None
+    assert row.isShared is False
+    assert row.shareToken is None
