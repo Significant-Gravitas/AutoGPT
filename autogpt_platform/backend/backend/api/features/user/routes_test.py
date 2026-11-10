@@ -165,7 +165,7 @@ def test_get_or_create_user_route_sets_the_tier_at_a_sign_in(
         email="test@example.com",
         subscription_tier=SubscriptionTier.BUSINESS,
     )
-    mock_user.created_at = datetime(2020, 1, 1, tzinfo=UTC)
+    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
     mock_user.model_dump.return_value = {"id": test_user_id}
     mocker.patch(
         "backend.api.features.user.routes.get_or_create_user_with_status",
