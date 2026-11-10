@@ -140,8 +140,9 @@ test("a block review raised mid-turn shows its card without a remount, even when
   );
   const turn = [toolCall("m1", "bash_exec", '{"stdout":"ok"}')];
   const { rerender } = render(<ChatCards messages={turn} />);
-  await waitFor(() => expect(requests).toBeGreaterThan(0));
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  // Mounting fetches the chat's cards exactly once; with no card to show and
+  // nothing readable to poll for, nothing fetches again until a block run.
+  await waitFor(() => expect(requests).toBe(1));
   const settled = requests;
 
   waiting = [
