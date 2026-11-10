@@ -162,7 +162,10 @@ class ExaWebhookManager(BaseWebhooksManager):
                 )
             secrets = [secret]
         verify_exa_signature(
-            secrets, request.headers.get(SIGNATURE_HEADER), await request.body()
+            secrets,
+            request.headers.get(SIGNATURE_HEADER),
+            await request.body(),
+            webhook_id=webhook.id,
         )
 
     @classmethod
@@ -269,7 +272,10 @@ async def _delete_unusable_webhook(
 
 
 def verify_exa_signature(
-    secrets: list[str], signature_header: str | None, body: bytes
+    secrets: list[str],
+    signature_header: str | None,
+    body: bytes,
+    webhook_id: str = "",
 ) -> None:
     """Raise 403 unless ``signature_header`` signs ``body`` with one of ``secrets``
     at a time within ``SIGNATURE_TOLERANCE_SECONDS`` of now."""
@@ -291,7 +297,6 @@ def verify_exa_signature(
         raise HTTPException(
             status_code=403, detail=f"Malformed {SIGNATURE_HEADER} header"
         )
-    _reject_stale_timestamp(timestamp)
 
     signed_payload = f"{timestamp}.".encode() + body
     expected = [
@@ -306,19 +311,31 @@ def verify_exa_signature(
         for sig in provided_signatures
     ):
         raise HTTPException(status_code=403, detail="Invalid webhook signature")
+    # Checked once the signature holds, so a delivery refused for its time is
+    # one Exa really sent: worth a log line, which other requests never reach.
+    _reject_stale_timestamp(timestamp, webhook_id)
 
 
-def _reject_stale_timestamp(timestamp: str) -> None:
+def _reject_stale_timestamp(timestamp: str, webhook_id: str) -> None:
     """Raise 403 unless ``timestamp`` (Unix seconds) is close enough to now."""
     # `int()` parses arbitrarily large values, so the subtraction can raise
     # OverflowError as well as ValueError: both mean a malformed header.
     try:
-        offset = abs(time.time() - int(timestamp))
+        age = time.time() - int(timestamp)
     except (ValueError, OverflowError) as exc:
+        logger.warning(
+            f"Refused a signed Exa delivery to webhook #{webhook_id}: its "
+            f"timestamp {timestamp[:32]!r} isn't whole Unix seconds"
+        )
         raise HTTPException(
             status_code=403, detail=f"Malformed {SIGNATURE_HEADER} header"
         ) from exc
-    if offset > SIGNATURE_TOLERANCE_SECONDS:
+    if abs(age) > SIGNATURE_TOLERANCE_SECONDS:
+        when = f"{age:.0f}s ago" if age >= 0 else f"{-age:.0f}s ahead of now"
+        logger.warning(
+            f"Refused a signed Exa delivery to webhook #{webhook_id}: signed "
+            f"{when}, outside the {SIGNATURE_TOLERANCE_SECONDS}s window"
+        )
         raise HTTPException(
             status_code=403,
             detail="Exa webhook timestamp is outside the accepted window",

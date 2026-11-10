@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import json
+import logging
 from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
@@ -488,6 +489,31 @@ class TestSignatureTimestamp:
         header = f"t={timestamp},v1={_sign(BODY, timestamp)}"
         refusal = await _refusal(signed_webhook, {"Exa-Signature": header})
         assert refusal.detail == "Malformed Exa-Signature header"
+
+    async def test_a_signed_delivery_refused_for_its_time_is_logged(
+        self, signed_webhook, caplog: pytest.LogCaptureFixture
+    ):
+        # The line to look for when every delivery to a trigger with a secret
+        # is refused: it names the webhook and how far off the time was
+        with caplog.at_level(logging.WARNING, logger=_webhook.__name__):
+            await _refusal(
+                signed_webhook, _signed_at(-(SIGNATURE_TOLERANCE_SECONDS + 60))
+            )
+
+        assert f"webhook #{signed_webhook.id}" in caplog.text
+        assert "signed 360s ago" in caplog.text
+        assert SECRET not in caplog.text
+
+    async def test_an_unsigned_delivery_out_of_time_leaves_no_log_line(
+        self, signed_webhook, caplog: pytest.LogCaptureFixture
+    ):
+        timestamp = str(int(TIMESTAMP) - 86_400)
+        header = f"t={timestamp},v1={_sign(BODY, timestamp, secret='other')}"
+        with caplog.at_level(logging.WARNING, logger=_webhook.__name__):
+            refusal = await _refusal(signed_webhook, {"Exa-Signature": header})
+
+        assert refusal.detail == "Invalid webhook signature"
+        assert caplog.text == ""
 
 
 class TestValidatePayload:
