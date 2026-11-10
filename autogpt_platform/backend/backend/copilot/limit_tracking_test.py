@@ -9,6 +9,7 @@ from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.limit_tracking import (
     LimitReading,
     executor_turn_surface,
+    set_turn_surface,
     track_chat_blocked,
     track_limit_exceeded,
     track_turn_cap,
@@ -85,6 +86,21 @@ def test_sending_never_raises(monkeypatch):
 
     monkeypatch.setattr(limit_tracking.posthog_client, "capture", broken)
     track_chat_blocked("user-1", limit="rate", outcome="refused", surface="chat")
+
+
+def test_a_refusal_that_cant_be_read_is_dropped_quietly(chat_blocked_events):
+    # Reading the refusal is guarded too: an exception or pause without the
+    # attributes the helpers read must not turn a refusal into an error.
+    odd = object()
+    track_limit_exceeded("user-1", odd, surface="chat")  # type: ignore[arg-type]
+    track_turn_cap(
+        "user-1", odd, surface="chat", outcome="refused"  # type: ignore[arg-type]
+    )
+    track_turn_refusal(
+        "user-1", odd, surface="chat", outcome="queued"  # type: ignore[arg-type]
+    )
+    track_turn_pause("user-1", odd, surface="chat")  # type: ignore[arg-type]
+    assert chat_blocked_events == []
 
 
 @pytest.mark.parametrize(
@@ -238,4 +254,26 @@ def test_the_running_turns_surface_comes_from_its_origin():
         set_turn_origin("scheduled")
         assert turn_surface() == "schedule"
     finally:
+        set_turn_origin(None)
+
+
+def test_a_trial_pause_never_reports_a_refill(chat_blocked_events):
+    # A trial's end is not a refill, whichever path built the pause.
+    pause = TurnPause(reason="trial", resets_at=_RESETS, checkpoint_saved=False)
+    track_turn_pause("user-1", pause, surface="chat")
+    assert chat_blocked_events[0]["resets_at"] is None
+
+
+def test_the_surface_the_executor_worked_out_wins_over_the_origin():
+    # A chat bot's turn has origin "chat", and unattended work "scheduled":
+    # a check deep in the turn reports the surface the executor resolved.
+    try:
+        set_turn_origin("chat")
+        set_turn_surface("chat_bot")
+        assert turn_surface() == "chat_bot"
+        set_turn_origin("scheduled")
+        set_turn_surface("background")
+        assert turn_surface() == "background"
+    finally:
+        set_turn_surface(None)
         set_turn_origin(None)

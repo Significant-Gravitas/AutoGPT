@@ -1,7 +1,7 @@
 """The per-call allowance check for work billed to the platform's own key."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -21,6 +21,15 @@ def _allowance(limits: tuple[int, int, SubscriptionTier], check: AsyncMock):
         patch(f"{_MOD}.get_global_rate_limits", AsyncMock(return_value=limits)),
         patch(f"{_MOD}.check_rate_limit", check),
     )
+
+
+def _usage_state(tier: SubscriptionTier | Exception):
+    read = (
+        AsyncMock(side_effect=tier)
+        if isinstance(tier, Exception)
+        else AsyncMock(return_value=MagicMock(tier=tier))
+    )
+    return patch(f"{_MOD}.get_ready_usage_state", read)
 
 
 @pytest.mark.asyncio
@@ -64,7 +73,7 @@ async def test_a_spent_or_unreadable_allowance_refuses(error, expected):
 async def test_a_plan_with_no_allowance_refuses_without_reading_the_counters():
     check = AsyncMock()
     limits_patch, check_patch = _allowance((0, 0, SubscriptionTier.NO_TIER), check)
-    with limits_patch, check_patch:
+    with limits_patch, check_patch, _usage_state(SubscriptionTier.NO_TIER):
         assert await platform_spend_refusal("u-1", surface="block") is not None
     check.assert_not_awaited()
 
@@ -110,11 +119,48 @@ async def test_a_plan_with_no_allowance_is_a_weekly_window_that_allows_nothing(
     limits_patch, check_patch = _allowance(
         (0, 0, SubscriptionTier.NO_TIER), AsyncMock()
     )
-    with limits_patch, check_patch:
+    with limits_patch, check_patch, _usage_state(SubscriptionTier.NO_TIER):
         await platform_spend_refusal("u-1", surface="chat")
     (event,) = chat_blocked_events
     assert (event["limit"], event["cap"], event["resets_at"]) == ("weekly", 0.0, None)
     assert event["tier"] == SubscriptionTier.NO_TIER.value
+
+
+@pytest.mark.asyncio
+async def test_an_ended_trial_is_named_as_the_turn_gate_names_it(chat_blocked_events):
+    # get_global_rate_limits reads an ended trial as NO_TIER with nothing
+    # allowed; its usage state still says TRIAL, and the turn gate calls it
+    # the trial's allowance, so the per-call check does too.
+    limits_patch, check_patch = _allowance(
+        (0, 0, SubscriptionTier.NO_TIER), AsyncMock()
+    )
+    with limits_patch, check_patch, _usage_state(SubscriptionTier.TRIAL):
+        refusal = await platform_spend_refusal("u-1", surface="chat")
+    assert refusal == "Your plan has no usage allowance for this right now."
+    (event,) = chat_blocked_events
+    assert (event["limit"], event["tier"], event["cap"], event["resets_at"]) == (
+        "trial",
+        "TRIAL",
+        0.0,
+        None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_usage_state_still_refuses_and_reports(
+    chat_blocked_events,
+):
+    limits_patch, check_patch = _allowance(
+        (0, 0, SubscriptionTier.NO_TIER), AsyncMock()
+    )
+    with (
+        limits_patch,
+        check_patch,
+        _usage_state(RateLimitUnavailable("redis down")),
+    ):
+        refusal = await platform_spend_refusal("u-1", surface="chat")
+    assert refusal == "Your plan has no usage allowance for this right now."
+    assert [e["limit"] for e in chat_blocked_events] == ["weekly"]
 
 
 @pytest.mark.asyncio

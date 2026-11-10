@@ -53,6 +53,7 @@ from backend.copilot.expert_context import (
 from backend.copilot.limit_tracking import (
     BlockedSurface,
     executor_turn_surface,
+    set_turn_surface,
     track_turn_pause,
 )
 from backend.copilot.llm_attribution import (
@@ -382,7 +383,7 @@ async def _refuse_turn(
     await record_refusal(session, pause)
     for chunk in (
         StreamStart(messageId=str(uuid.uuid4()), sessionId=entry.session_id),
-        StreamTurnPaused(pause=pause.as_part()),
+        StreamTurnPaused.of(pause),
     ):
         await stream_registry.publish_chunk(
             entry.turn_id, chunk, session_id=entry.session_id
@@ -398,6 +399,7 @@ def _track_paused_part(
     a budget, or one refused before answering messages queued while it ran."""
     pause = pause_from_part(chunk.pause)
     if pause is not None:
+        pause = pause.model_copy(update={"reading": chunk.reading})
         track_turn_pause(user_id, pause, surface=surface)
 
 
@@ -776,6 +778,10 @@ class CoPilotProcessor:
                 scheduled=entry.scheduled is not None,
                 source_platform=session.metadata.source_platform,
             )
+            set_turn_surface(surface)
+            # Before the allowance gate, so a turn it refuses reports to
+            # PostHog as an admin's when an admin started it.
+            set_turn_impersonated(entry.impersonated)
             if (
                 session.metadata.llm_auth_provider != entry.llm_auth_provider
                 or session.metadata.llm_credential_id != entry.llm_credential_id
@@ -1001,7 +1007,6 @@ class CoPilotProcessor:
             # same events as they are produced.
             envelope = taint_for_source_platform(entry.envelope, session)
             set_turn_unattended(session, scheduled=entry.unattended)
-            set_turn_impersonated(entry.impersonated)
             set_current_turn_id(entry.turn_id)
             # A subtask's calls join the trace of the reply it works for.
             set_turn_trace_id(trace_id_for(entry))
@@ -1048,10 +1053,16 @@ class CoPilotProcessor:
             # not close the generator, so GeneratorExit would never reach
             # stream_chat_completion_sdk, leaving its stream lock held
             # until GC eventually runs.
+            # One event per pause, however many parts the engine sent for it.
+            paused_on: set[object] = set()
             try:
                 async for chunk in published_stream:
                     turn.observe(chunk)
-                    if isinstance(chunk, StreamTurnPaused):
+                    if (
+                        isinstance(chunk, StreamTurnPaused)
+                        and chunk.pause.get("reason") not in paused_on
+                    ):
+                        paused_on.add(chunk.pause.get("reason"))
                         _track_paused_part(entry.user_id, chunk, surface)
                     if cancel.is_set():
                         log.info("Cancel requested, breaking stream")

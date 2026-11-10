@@ -830,6 +830,22 @@ async def build_budget_ctx(
     )
 
 
+async def no_allowance_reading(
+    user_id: str, tier: SubscriptionTier
+) -> tuple[Literal["trial", "weekly"], LimitReading]:
+    """The limit that stops an account whose windows allow nothing, and the
+    reading to report with it.
+
+    An ended trial (its usage state still reads ``TRIAL``) is the trial's
+    allowance, used up; anything else is no plan, which reads as a weekly
+    window of nothing. Neither refills.
+    """
+    state = await get_ready_usage_state(user_id)
+    if state.tier == SubscriptionTier.TRIAL:
+        return "trial", LimitReading(tier=state.tier.value, cap=0.0)
+    return "weekly", LimitReading(tier=tier.value, cap=0.0)
+
+
 async def platform_spend_refusal(
     user_id: str | None, *, surface: BlockedSurface
 ) -> str | None:
@@ -848,15 +864,7 @@ async def platform_spend_refusal(
         _chat_config.weekly_cost_limit_microdollars,
     )
     if daily == 0 and weekly == 0:
-        # As the turn gate reads it: a window that allows nothing, and doesn't
-        # refill.
-        track_chat_blocked(
-            user_id,
-            limit="weekly",
-            outcome="refused",
-            surface=surface,
-            reading=LimitReading(tier=tier.value, cap=0.0),
-        )
+        await _track_no_allowance(user_id, tier, surface)
         return "Your plan has no usage allowance for this right now."
     try:
         await check_rate_limit(
@@ -875,6 +883,21 @@ async def platform_spend_refusal(
         )
         return "Usage limits can't be checked right now. Retry shortly."
     return None
+
+
+async def _track_no_allowance(
+    user_id: str, tier: SubscriptionTier, surface: BlockedSurface
+) -> None:
+    """``chat_blocked`` for a call refused because nothing is allowed, as the
+    turn gate names it. Never raises: the refusal stands either way."""
+    try:
+        limit, reading = await no_allowance_reading(user_id, tier)
+    except Exception:
+        logger.warning("Could not read the usage state for chat_blocked", exc_info=True)
+        limit, reading = "weekly", LimitReading(tier=tier.value, cap=0.0)
+    track_chat_blocked(
+        user_id, limit=limit, outcome="refused", surface=surface, reading=reading
+    )
 
 
 async def check_rate_limit(
@@ -929,14 +952,15 @@ async def check_rate_limit(
         trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
             raise RateLimitExceeded("trial", now, reading=LimitReading(tier=tier))
-        trial_reading = LimitReading(
-            tier=tier,
-            used=usd(trial.cost_microdollars),
-            cap=usd(trial.offer.total_cost_limit),
-        )
         if trial.cost_microdollars >= trial.offer.total_cost_limit:
             raise RateLimitExceeded(
-                "trial", trial.ends_at or now, reading=trial_reading
+                "trial",
+                trial.ends_at or now,
+                reading=LimitReading(
+                    tier=tier,
+                    used=usd(trial.cost_microdollars),
+                    cap=usd(trial.offer.total_cost_limit),
+                ),
             )
         if _trial_uses_total_budget(trial, daily_cost_limit, weekly_cost_limit):
             return

@@ -22,11 +22,13 @@ from backend.copilot.executor.processor import (
     CoPilotProcessor,
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.limit_tracking import LimitReading, turn_surface
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import StreamStart, StreamTurnPaused
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.turn_pause import TurnPause, pause_of
+from backend.util import posthog_client
 
 _PROC = "backend.copilot.executor.processor"
 PAUSE = TurnPause(
@@ -438,11 +440,14 @@ async def test_a_refused_turn_is_sent_to_posthog(chat_blocked_events, update, su
 class _Chunks:
     def __init__(self, *chunks) -> None:
         self._chunks = list(chunks)
+        self.surfaces: list[str] = []
 
     def __aiter__(self):
         return self
 
     async def __anext__(self):
+        # What a check deep in the turn (a tool's platform spend) would read.
+        self.surfaces.append(turn_surface())
         if not self._chunks:
             raise StopAsyncIteration
         return self._chunks.pop(0)
@@ -471,11 +476,91 @@ async def test_a_pause_the_engine_streams_is_sent_to_posthog(
     chat_blocked_events, pause, expected
 ):
     turn = _Turn(_session())
-    turn.stream = MagicMock(
-        return_value=_Chunks(StreamTurnPaused(pause=pause.as_part()))
-    )
+    turn.stream = MagicMock(return_value=_Chunks(StreamTurnPaused.of(pause)))
 
     await turn.run(_entry(), AsyncMock(return_value=None))
 
     assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == expected
     assert all(e["surface"] == "chat" for e in chat_blocked_events)
+
+
+@pytest.mark.asyncio
+async def test_a_streamed_pause_keeps_the_reading_its_check_made(chat_blocked_events):
+    # The engine's refusal to go on to queued messages read the account;
+    # the card the client gets doesn't carry it, the event does.
+    pause = TurnPause(
+        reason="daily",
+        started=False,
+        checkpoint_saved=False,
+        reading=LimitReading(tier="PRO", used=3.1, cap=3.0),
+    )
+    part = StreamTurnPaused.of(pause)
+    assert "reading" not in part.pause and "reading" not in part.to_sse()
+    turn = _Turn(_session())
+    turn.stream = MagicMock(return_value=_Chunks(part))
+
+    await turn.run(_entry(), AsyncMock(return_value=None))
+
+    (event,) = chat_blocked_events
+    assert (event["tier"], event["used"], event["cap"]) == ("PRO", 3.1, 3.0)
+
+
+@pytest.mark.asyncio
+async def test_checks_inside_a_bot_turn_report_the_bot_surface():
+    session = _session()
+    session.metadata.source_platform = "slack"
+    chunks = _Chunks()
+    turn = _Turn(session)
+    turn.stream = MagicMock(return_value=chunks)
+
+    await turn.run(_entry(), AsyncMock(return_value=None))
+
+    assert chunks.surfaces and set(chunks.surfaces) == {"chat_bot"}
+
+
+@pytest.mark.asyncio
+async def test_a_refused_turn_an_admin_started_is_marked_impersonated(monkeypatch):
+    marked: list[bool] = []
+
+    def capture(distinct_id, event, properties=None, **_kwargs) -> bool:
+        if event == "chat_blocked":
+            marked.append(posthog_client.is_impersonated())
+        return True
+
+    monkeypatch.setattr(posthog_client, "capture", capture)
+    try:
+        await _Turn(_session()).run(
+            _entry(impersonated=True), AsyncMock(return_value=PAUSE)
+        )
+    finally:
+        posthog_client.set_impersonated(False)
+
+    assert marked == [True]
+
+
+@pytest.mark.asyncio
+async def test_a_refused_turn_still_ends_paused_when_posthog_fails(monkeypatch):
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("posthog down")
+
+    monkeypatch.setattr(posthog_client, "capture", broken)
+    turn = _Turn(_session())
+
+    await turn.run(_entry(), AsyncMock(return_value=PAUSE))
+
+    paused = [c for c in turn.published() if isinstance(c, StreamTurnPaused)]
+    assert [c.pause for c in paused] == [PAUSE.as_part()]
+    turn.engine.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_pause_the_engine_sends_twice_is_one_event(chat_blocked_events):
+    pause = TurnPause(reason="weekly", resets_at=datetime(2026, 10, 19, tzinfo=UTC))
+    turn = _Turn(_session())
+    turn.stream = MagicMock(
+        return_value=_Chunks(StreamTurnPaused.of(pause), StreamTurnPaused.of(pause))
+    )
+
+    await turn.run(_entry(), AsyncMock(return_value=None))
+
+    assert [e["limit"] for e in chat_blocked_events] == ["weekly"]

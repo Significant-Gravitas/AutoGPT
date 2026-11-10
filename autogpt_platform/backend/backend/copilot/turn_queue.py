@@ -151,7 +151,7 @@ class InflightCapExceeded(Exception):
     ``used`` is the user's in-flight count and ``cap`` the hard cap.
     """
 
-    def __init__(self, used: int | None = None, cap: int | None = None) -> None:
+    def __init__(self, *, used: int | None = None, cap: int | None = None) -> None:
         super().__init__()
         self.used = used
         self.cap = cap

@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from backend.copilot.config import ChatConfig
 from backend.copilot.continuation import KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE
 from backend.copilot.db import PaginatedMessages
+from backend.copilot.limit_tracking import LimitReading
 from backend.copilot.model import ChatMessage
 from backend.copilot.pending_message_helpers import (
     StreamRegistryUnavailable,
@@ -33,6 +34,7 @@ from backend.copilot.rate_limit import (
     check_rate_limit,
     get_global_rate_limits,
     get_usage_status,
+    no_allowance_reading,
 )
 from backend.data.db_accessors import chat_db, credit_db
 from backend.util.background import spawn_background_task
@@ -80,6 +82,10 @@ class FireVerdict(BaseModel):
     action: Literal["fire", "drop", "retry", "wait"]
     run_at: datetime | None = None
     why: str = ""
+    # wait and drop on a used-up window: which window, and where the account
+    # stood against it, for analytics.
+    window: Literal["daily", "weekly", "trial"] | None = None
+    reading: LimitReading | None = None
 
 
 def at_reset_schedule_id(kind: AtResetKind, session_id: str) -> str:
@@ -227,7 +233,13 @@ async def _budget_verdict(
             # No plan, or the trial is over. Settled here: an ended
             # trial's usage state still reads TRIAL, which the tier guard
             # below reports as unavailable, so it would only be retried.
-            return FireVerdict(action="drop", why="its allowance never refills")
+            window, reading = await _no_allowance(user_id, tier)
+            return FireVerdict(
+                action="drop",
+                why="its allowance never refills",
+                window=window,
+                reading=reading,
+            )
         await check_rate_limit(
             user_id=user_id,
             daily_cost_limit=daily_limit,
@@ -236,9 +248,26 @@ async def _budget_verdict(
         )
     except RateLimitUnavailable:
         return FireVerdict(action="retry", why="the budget could not be read")
-    except RateLimitExceeded:
-        return await _next_reset_verdict(user_id, session_id, kind)
+    except RateLimitExceeded as exc:
+        verdict = await _next_reset_verdict(user_id, session_id, kind)
+        if verdict.action in ("wait", "drop"):
+            verdict = verdict.model_copy(
+                update={"window": exc.window, "reading": exc.reading}
+            )
+        return verdict
     return FireVerdict(action="fire")
+
+
+async def _no_allowance(
+    user_id: str, tier: SubscriptionTier
+) -> tuple[Literal["trial", "weekly"], LimitReading]:
+    """The limit an account with nothing allowed reads as; analytics only, so
+    an unreadable usage state falls back to the weekly window."""
+    try:
+        return await no_allowance_reading(user_id, tier)
+    except Exception:
+        logger.warning("Could not read the usage state for chat_blocked", exc_info=True)
+        return "weekly", LimitReading(tier=tier.value, cap=0.0)
 
 
 async def _next_reset_verdict(

@@ -10,6 +10,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from backend.api.external.v2 import mcp_calls
 from backend.copilot.limit_tracking import LimitReading
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
+from backend.util import posthog_client
 
 
 @pytest.fixture
@@ -61,3 +62,19 @@ async def test_an_unreadable_cap_refuses_without_an_event(
         await mcp_calls.check_spend_allowance("user-1")
 
     assert chat_blocked_events == []
+
+
+@pytest.mark.asyncio
+async def test_a_tool_call_over_the_cap_is_refused_the_same_when_posthog_fails(
+    limits: AsyncMock, monkeypatch: pytest.MonkeyPatch
+):
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("posthog down")
+
+    monkeypatch.setattr(posthog_client, "capture", broken)
+    limits.side_effect = RateLimitExceeded(
+        "daily", datetime.now(UTC) + timedelta(hours=3)
+    )
+
+    with pytest.raises(ToolError, match="daily usage limit"):
+        await mcp_calls.check_spend_allowance("user-1")

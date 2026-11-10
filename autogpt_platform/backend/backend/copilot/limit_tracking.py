@@ -4,8 +4,8 @@ One backend event every time a limit stops work, from whichever surface the
 work came: the chat, a schedule, a chat bot, a workflow block, voice, the
 external API, or background work such as subtasks and the nightly dream pass.
 The event is sent where the refusal is answered, not where the limit is read,
-because some reads only probe the allowance (``at_reset``) and only the
-caller knows the surface.
+because some reads only probe the allowance (offering "Resume at reset", for
+one) and only the caller knows the surface.
 
 Sending never raises and never waits: ``posthog_client.capture`` queues the
 event for the client's background thread, and anything that fails here is
@@ -16,9 +16,11 @@ the properties say only which limit, what happened, and where the account
 stood against it.
 """
 
+import functools
 import logging
+from contextvars import ContextVar
 from datetime import datetime
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Callable, Literal, ParamSpec
 
 from pydantic import BaseModel
 
@@ -42,6 +44,29 @@ BlockedSurface = Literal[
 ]
 
 _RATE_LIMITS: frozenset[BlockedLimit] = frozenset({"rate", "concurrency"})
+
+# The surface of the turn running now, as the executor worked it out; read by
+# checks deep inside the turn, such as a tool's platform spend.
+_turn_surface: ContextVar["BlockedSurface | None"] = ContextVar(
+    "_turn_surface", default=None
+)
+
+_P = ParamSpec("_P")
+
+
+def _never_raises(send: Callable[_P, None]) -> Callable[_P, None]:
+    """Log and drop anything that goes wrong while sending, reading the
+    refusal included, so the refusal answers as it would without PostHog."""
+
+    @functools.wraps(send)
+    def guarded(*args: _P.args, **kwargs: _P.kwargs) -> None:
+        try:
+            send(*args, **kwargs)
+        except Exception:
+            logger.warning("Failed to send chat_blocked", exc_info=True)
+
+    return guarded
+
 
 # What started the running turn (``turn_tracing.turn_origin``) as a surface.
 _SURFACE_FOR_ORIGIN: dict[str, BlockedSurface] = {
@@ -80,6 +105,7 @@ def refills_at(
     return resets_at
 
 
+@_never_raises
 def track_chat_blocked(
     user_id: str | None,
     *,
@@ -94,27 +120,25 @@ def track_chat_blocked(
     ``resets_at`` is when the window refills; leave it out for a limit that
     doesn't (a trial's allowance, a window that allows nothing).
     """
-    try:
-        reading = reading or LimitReading()
-        posthog_client.capture(
-            user_id,
-            PostHogEvent.CHAT_BLOCKED,
-            {
-                "reason": "rate_limit" if limit in _RATE_LIMITS else "usage_limit",
-                "limit": limit,
-                "outcome": outcome,
-                "surface": surface,
-                "tier": reading.tier,
-                "used": reading.used,
-                "cap": reading.cap,
-                "resets_at": resets_at.isoformat() if resets_at else None,
-            },
-            source=SOURCE,
-        )
-    except Exception:
-        logger.warning("Failed to send chat_blocked", exc_info=True)
+    reading = reading or LimitReading()
+    posthog_client.capture(
+        user_id,
+        PostHogEvent.CHAT_BLOCKED,
+        {
+            "reason": "rate_limit" if limit in _RATE_LIMITS else "usage_limit",
+            "limit": limit,
+            "outcome": outcome,
+            "surface": surface,
+            "tier": reading.tier,
+            "used": reading.used,
+            "cap": reading.cap,
+            "resets_at": resets_at.isoformat() if resets_at else None,
+        },
+        source=SOURCE,
+    )
 
 
+@_never_raises
 def track_limit_exceeded(
     user_id: str | None,
     exc: "RateLimitExceeded",
@@ -133,6 +157,7 @@ def track_limit_exceeded(
     )
 
 
+@_never_raises
 def track_turn_refusal(
     user_id: str | None,
     refusal: "TurnRefusal",
@@ -157,6 +182,7 @@ def track_turn_refusal(
     )
 
 
+@_never_raises
 def track_turn_cap(
     user_id: str | None,
     exc: "ConcurrentTurnLimitError | InflightCapExceeded",
@@ -177,6 +203,7 @@ def track_turn_cap(
     )
 
 
+@_never_raises
 def track_turn_pause(
     user_id: str | None, pause: "TurnPause", *, surface: BlockedSurface
 ) -> None:
@@ -192,12 +219,20 @@ def track_turn_pause(
         outcome="paused" if pause.started else "refused",
         surface=surface,
         reading=pause.reading,
-        resets_at=pause.resets_at,
+        resets_at=refills_at(pause.reason, pause.resets_at, pause.reading),
     )
+
+
+def set_turn_surface(surface: BlockedSurface | None) -> None:
+    """Make *surface* the surface of the turn running now (the executor sets
+    it for every turn, so a value never carries over)."""
+    _turn_surface.set(surface)
 
 
 def turn_surface(default: BlockedSurface = "chat") -> BlockedSurface:
     """The surface of the turn running now, or *default* outside a turn."""
+    if (surface := _turn_surface.get()) is not None:
+        return surface
     origin = current_turn_origin()
     if origin is None:
         return default

@@ -37,7 +37,7 @@ def allowance():
 
 def _usage_state(tier: SubscriptionTier):
     return patch(
-        f"{_MOD}.get_ready_usage_state",
+        "backend.copilot.rate_limit.get_ready_usage_state",
         AsyncMock(return_value=MagicMock(tier=tier)),
     )
 
@@ -125,7 +125,7 @@ async def test_an_ended_trial_is_refused_without_reading_its_stale_tier(allowanc
         resets_at=None,
         checkpoint_saved=False,
         started=False,
-        reading=LimitReading(tier="NO_TIER", cap=0.0),
+        reading=LimitReading(tier="TRIAL", cap=0.0),
     )
     check.assert_not_awaited()
 
