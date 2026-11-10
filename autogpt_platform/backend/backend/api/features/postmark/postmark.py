@@ -41,7 +41,7 @@ postmark_api_key_auth = APIKeyAuthenticator(
 
 
 @router.get("/unsubscribe", include_in_schema=False)
-async def unsubscribe_confirm_page(token: Annotated[str, Query()]):
+async def unsubscribe_confirm_page(token: Annotated[str, Query()] = ""):
     # A click only shows the page: mail scanners open links, and must not
     # unsubscribe anyone by doing so.
     try:

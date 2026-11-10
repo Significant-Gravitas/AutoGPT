@@ -140,19 +140,22 @@ def test_a_click_on_the_email_link_asks_before_unsubscribing(
     assert update.await_args.kwargs["where"] == {"id": user_id}
 
 
-@pytest.mark.parametrize("method", ["GET", "POST"])
-def test_a_broken_link_shows_a_page_that_says_so(
-    method: str, lookup: AsyncMock, update: AsyncMock
-):
-    token = base64.urlsafe_b64encode(b"user-1:not-its-signature").decode()
+_FORGED = base64.urlsafe_b64encode(b"user-1:not-its-signature").decode()
 
-    response = client.request(
-        method, "/unsubscribe", params={"token": token}, headers=_BROWSER
-    )
+
+@pytest.mark.parametrize(
+    "method,params",
+    [("GET", {"token": _FORGED}), ("POST", {"token": _FORGED}), ("GET", {})],
+    ids=["forged-get", "forged-post", "no-token-get"],
+)
+def test_a_broken_link_shows_a_page_that_says_so(
+    method: str, params: dict[str, str], lookup: AsyncMock, update: AsyncMock
+):
+    response = client.request(method, "/unsubscribe", params=params, headers=_BROWSER)
 
     assert response.status_code == 400
     assert response.headers["content-type"].startswith("text/html")
-    assert token not in response.text
+    assert _FORGED not in response.text
     update.assert_not_awaited()
 
 
