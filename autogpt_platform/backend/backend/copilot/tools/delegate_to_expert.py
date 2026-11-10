@@ -54,6 +54,7 @@ from backend.data.db_accessors import experts_db
 from .base import BaseTool
 from .expert_delegation import (
     chain_refusal,
+    is_card_retry,
     is_first_task,
     resolve_target_expert,
     safe_caller_name,
@@ -253,8 +254,14 @@ async def start_delegation(
     The part of ``delegate_to_expert`` after its checks. The caller has
     already resolved *target* and cleared ``chain_refusal``.
     """
+    # Only the hire card's own hand-off introduces a new expert. Its Try again
+    # arrives here through Otto; any other delegation just starts the work.
     # Read before the thread opens: once it exists, every expert has a chat.
-    first_task = not delegated_session_id and await is_first_task(user_id, target.id)
+    first_task = (
+        not delegated_session_id
+        and is_card_retry(session, target.name)
+        and await is_first_task(user_id, target.id)
+    )
     inner_session_id = await _resolve_session(
         user_id=user_id,
         session=session,
@@ -468,17 +475,14 @@ async def _caller_name(user_id: str, caller_expert_id: str | None) -> str:
     return caller.name if caller else "a teammate"
 
 
-# An expert's first task is also the user's first look at them: the thread
-# opens from Otto's card, so the expert says who they are before the work.
-# Their first turn stays ask-first, as the kickoff does (SECRT-2622): the
-# user approved the task on Otto's card and has not yet seen how the expert
-# means to do it. Decided by whether the expert has any chat yet, not by who
-# delegates, so a hand-off the card retries through Otto gets it too.
+# An expert's first task from the hire card is also the user's first look at
+# them, so they open with a one-line hello and then do the work in the same
+# reply. Only the card's hand-off (and its Try again) adds this; a task from a
+# teammate or a routine just starts.
 _FIRST_TASK_NOTE = (
     "[This is your first task since joining the team, and the user reads this "
-    "thread: open with one line introducing yourself to them, then work on it "
-    "or ask what you need. Don't run a workflow, create a schedule or send "
-    "anything on this first turn; ask the user first.]"
+    "thread: open with one line introducing yourself to them, then do the "
+    "task.]"
 )
 
 

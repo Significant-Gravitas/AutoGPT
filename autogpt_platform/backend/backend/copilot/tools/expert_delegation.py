@@ -13,6 +13,7 @@ just passes the task on with the other tool.
 """
 
 import logging
+import re
 from typing import Any
 
 from backend.api.features.experts.models import Expert
@@ -69,14 +70,28 @@ def safe_caller_name(caller: str) -> str:
 async def is_first_task(user_id: str, expert_id: str) -> bool:
     """Whether a task delegated to *expert_id* now opens as their first.
 
-    That turn introduces the expert and has them ask before they act, which
-    only works with someone there to answer. A scheduled or automated turn
-    has nobody, so its task runs as any other would: the first chat it opens
-    simply starts with the work.
+    That turn opens with a one-line introduction, which is for the user
+    reading the new expert's chat. A scheduled or automated turn has nobody
+    reading, so its task starts with the work.
     """
     if is_unattended_turn():
         return False
     return not await has_chat_with(user_id, expert_id)
+
+
+def is_card_retry(session: ChatSession, expert_name: str) -> bool:
+    """Whether the turn answers the hire card's Try again for *expert_name*.
+
+    Try again reaches the new expert through Otto and ``delegate_to_expert``,
+    so this is how that path tells the card's hand-off from any other
+    delegation. The text is the one ``HandoffRetry.tsx`` sends; keep the two
+    in step.
+    """
+    for message in reversed(session.messages):
+        if message.role == "user":
+            pattern = rf"Try handing .+ to {re.escape(expert_name)} again\."
+            return re.fullmatch(pattern, (message.content or "").strip()) is not None
+    return False
 
 
 async def has_chat_with(user_id: str, expert_id: str) -> bool:

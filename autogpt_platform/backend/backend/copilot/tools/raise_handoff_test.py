@@ -222,19 +222,17 @@ class TestCreateAndStartInOneApproval:
         assert "don't ask whether to hand it over" in resp.message.lower()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_the_first_task_opens_with_an_introduction_and_asks_first(self):
-        """The thread is the user's first look at the new expert, and they
-        approved the task on Otto's card, not the expert's plan for it."""
+    async def test_the_first_task_opens_with_an_introduction_then_the_work(self):
+        """The thread is the user's first look at the new expert: a one-line
+        hello, then the task in the same reply, with nothing holding it."""
         with _env() as env:
             await _create_and_start(make_session(_USER))
 
         message = env.turn.await_args.kwargs["message"]
         assert message.startswith("[Delegated task from Otto")
         assert "open with one line introducing yourself" in message
-        assert (
-            "Don't run a workflow, create a schedule or send anything on this "
-            "first turn" in message
-        )
+        assert "then do the task" in message
+        assert "ask the user first" not in message
         assert message.index("introducing yourself") < message.index(_BRIEF)
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -252,7 +250,6 @@ class TestCreateAndStartInOneApproval:
 
         message = env.turn.await_args.kwargs["message"]
         assert "introducing yourself" not in message
-        assert "Don't run a workflow" not in message
         assert _BRIEF in message
 
     @pytest.mark.asyncio(loop_scope="session")

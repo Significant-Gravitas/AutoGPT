@@ -15,12 +15,11 @@ const HANDOFF_PREAMBLE = new RegExp(
     "them\\.\\]\\r?\\n\\r?\\n",
 );
 
-// Follows the delegation preamble on a new hire's first task.
+// Follows the delegation preamble on a new expert's first task from the card.
 const FIRST_TASK_NOTE = new RegExp(
   "^\\[This is your first task since joining the team, and the user reads " +
-    "this thread: open with one line introducing yourself to them, then work " +
-    "on it or ask what you need\\. Don't run a workflow, create a schedule " +
-    "or send anything on this first turn; ask the user first\\.\\]" +
+    "this thread: open with one line introducing yourself to them, then do " +
+    "the task\\.\\]" +
     "\\r?\\n\\r?\\n",
 );
 
