@@ -140,6 +140,8 @@ export async function joinCallRoom({
     });
     if (!track) throw new Error("The call has no microphone to publish");
     await joined.connect(pass.url, pass.token);
+    // The call gave up on this join while it connected.
+    if (isLeaving) return callRoom;
     await joined.localParticipant.publishTrack(track, {
       source: Track.Source.Microphone,
     });

@@ -104,6 +104,18 @@ describe("the call's LiveKit room", () => {
     expect(fakes.room()?.isLeft).toBe(true);
   });
 
+  it("publishes nothing into a room whose join it gave up on", async () => {
+    const letIn = fakes.holdRoomJoins();
+    const { joining } = join({ timeoutMs: 20 });
+    await expect(joining).rejects.toBeInstanceOf(RoomJoinTimeout);
+
+    letIn();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fakes.room()?.published).toEqual([]);
+    expect(fakes.room()?.isLeft).toBe(true);
+  });
+
   it("joins no room with no microphone to publish", async () => {
     const silent = { getAudioTracks: () => [] } as unknown as MediaStream;
     const { joining } = join({ microphone: silent });
