@@ -282,6 +282,19 @@ async def test_the_call_is_told_while_the_persons_audio_stalls_in_the_room():
     await joined.leg.close(play_out=False)
 
 
+async def test_a_microphone_published_again_is_not_held_muted_by_the_one_it_replaces():
+    joined = await join(FakeMedia())
+    room = joined.room
+    old = room.microphone(PERSON)
+    room.mute(PERSON, old, True)
+
+    new = room.add_microphone(PERSON)
+    await until(lambda: new.sid in joined.media.streams)
+
+    assert joined.stalls == [True, False]
+    await joined.leg.close(play_out=False)
+
+
 async def test_another_participants_trouble_does_not_stall_the_call():
     joined = await join(FakeMedia())
     room = joined.room

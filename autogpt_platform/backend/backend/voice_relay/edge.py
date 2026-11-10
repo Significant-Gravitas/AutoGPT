@@ -347,8 +347,11 @@ class RoomLeg:
             return
         # A full reconnect publishes the microphone again: the newer one
         # replaces the one before, and the person stays in the call while
-        # it arrives.
+        # it arrives. Muting belongs to a publication, so the newer one
+        # counts as muted only if it is.
         self._publication = publication
+        self._muted = publication.muted
+        self._update_stall()
         if current is not None:
             self._stop_reading()
             _unsubscribe(current)

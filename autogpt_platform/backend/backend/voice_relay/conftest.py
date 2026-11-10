@@ -112,6 +112,7 @@ class FakePublication:
         self.kind = kind
         self.source = source
         self.track: FakeTrack | None = FakeTrack(sid, kind) if subscribed else None
+        self.muted = False
         # Every set_subscribed the relay made, in order.
         self.subscribe_calls: list[bool] = []
 
@@ -305,6 +306,7 @@ class FakeRoom:
         self.emit("track_unsubscribed", track, publication, participant)
 
     def mute(self, identity: str, publication: FakePublication, muted: bool) -> None:
+        publication.muted = muted
         self.emit(
             "track_muted" if muted else "track_unmuted",
             self.remote_participants[identity],
