@@ -15,9 +15,9 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
-import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { SpendApprovalCard } from "./components/SpendApprovalCard/SpendApprovalCard";
 import { spendSummary } from "./components/SpendApprovalCard/helpers";
+import { isGateReview, waitingOnLine } from "./helpers";
 
 interface PendingReviewsListProps {
   reviews: PendingHumanReviewModel[];
@@ -25,8 +25,6 @@ interface PendingReviewsListProps {
   emptyMessage?: string;
 }
 
-// Copilot action-gate approvals bind exact arguments; auto-approve cannot apply.
-export const COPILOT_GATE_NODE_PREFIX = "copilot-node-gate-";
 // An expert's spend approval (backend SPEND_REVIEW_MARKER) unlocks her week,
 // not a node, so auto-approving its node would do nothing.
 const SPEND_REVIEW_MARKER = "expert-spend:";
@@ -437,27 +435,6 @@ export function PendingReviewsList({
       )}
     </div>
   );
-}
-
-// A chat's reviews wait on the expert whose chat raised them, or on Otto; only
-// a workflow run is paused by its review.
-function waitingOnLine(groups: [string, PendingHumanReviewModel[]][]) {
-  const inChat = groups.every(
-    ([nodeId, nodeReviews]) =>
-      isGateReview(nodeId) || nodeReviews.every((r) => !r.graph_exec_id),
-  );
-  if (!inChat)
-    return "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed.";
-  const experts = new Set(
-    groups.flatMap(([, nodeReviews]) => nodeReviews.map((r) => r.expert_name)),
-  );
-  const [expert] = experts;
-  const name = experts.size === 1 && expert ? expert : AUTOPILOT_NAME;
-  return `${name} is waiting for your approval before the action below.`;
-}
-
-function isGateReview(nodeId: string | null | undefined) {
-  return !!nodeId?.startsWith(COPILOT_GATE_NODE_PREFIX);
 }
 
 function isSpendReview(nodeId: string) {
