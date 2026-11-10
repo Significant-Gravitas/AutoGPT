@@ -11,9 +11,11 @@ from pathlib import Path
 
 import prisma.models
 import pytest
+from prisma.enums import AccountDeletionSource
 
 from backend.api.conn_manager import graph_exec_channel_key
 from backend.api.model import WSMethod
+from backend.data.account_deletion import GRACE_PERIOD
 from backend.data.user import is_user_banned as _read_cached_ban
 from backend.util.clients import get_database_manager_async_client
 from backend.util.test import SpinTestServer
@@ -32,7 +34,7 @@ from starlette.websockets import WebSocketDisconnect
 from backend.api import ws_api
 from backend.api.model import WSMessage, WSMethod
 
-user_id, banned_user_id, graph_exec_id = sys.argv[1:4]
+user_id, banned_user_id, closed_user_id, graph_exec_id = sys.argv[1:5]
 
 
 async def token_subject(token):
@@ -55,7 +57,17 @@ with (
             banned_close = None
     except WebSocketDisconnect as refusal:
         banned_close = refusal.code
-print(json.dumps({"reply": reply, "banned_close": banned_close}))
+    try:
+        with client.websocket_connect(f"/ws?token={closed_user_id}") as socket:
+            socket.receive_text()
+            closed_close = None
+    except WebSocketDisconnect as refusal:
+        closed_close = refusal.code
+print(
+    json.dumps(
+        {"reply": reply, "banned_close": banned_close, "closed_close": closed_close}
+    )
+)
 """
 
 
@@ -65,6 +77,7 @@ async def test_the_server_answers_sockets_with_no_database_of_its_own(
 ):
     user_id, graph_id, graph_exec_id = await _seed_execution()
     banned_user_id = await _seed_auth_user()
+    closed_user_id = await _seed_closed_account()
     assert not await _read_cached_ban(user_id)
     assert not await _read_cached_ban(banned_user_id)
     await prisma.models.AuthUser.prisma().update(
@@ -76,12 +89,17 @@ async def test_the_server_answers_sockets_with_no_database_of_its_own(
     # The probe's reads land here; a cold server is not what is measured.
     await get_database_manager_async_client().health_check_async()
     try:
-        outcome = await _run_probe(user_id, banned_user_id, graph_exec_id)
+        outcome = await _run_probe(
+            user_id, banned_user_id, closed_user_id, graph_exec_id
+        )
     finally:
         await prisma.models.AgentGraph.prisma().delete_many(where={"id": graph_id})
         await prisma.models.User.prisma().delete_many(where={"id": user_id})
         await prisma.models.AuthUser.prisma().delete_many(
-            where={"id": {"in": [user_id, banned_user_id]}}
+            where={"id": {"in": [user_id, banned_user_id, closed_user_id]}}
+        )
+        await prisma.models.AccountDeletionRequest.prisma().delete_many(
+            where={"userId": closed_user_id}
         )
 
     assert outcome["reply"] == {
@@ -92,6 +110,7 @@ async def test_the_server_answers_sockets_with_no_database_of_its_own(
         "error": None,
     }
     assert outcome["banned_close"] == 4004
+    assert outcome["closed_close"] == 4003
 
 
 async def _seed_execution() -> tuple[str, str, str]:
@@ -109,14 +128,13 @@ async def _seed_execution() -> tuple[str, str, str]:
     return user_id, graph_id, execution.id
 
 
-async def _seed_auth_user(*, banned: bool = False) -> str:
+async def _seed_auth_user() -> str:
     user_id = str(uuid.uuid4())
     await prisma.models.AuthUser.prisma().create(
         data={
             "id": user_id,
             "name": "ws-probe",
             "email": f"ws-probe-{user_id}@example.com",
-            "banned": banned,
         }
     )
     await prisma.models.AuthSession.prisma().create(
@@ -130,13 +148,29 @@ async def _seed_auth_user(*, banned: bool = False) -> str:
     return user_id
 
 
-async def _run_probe(user_id: str, banned_user_id: str, graph_exec_id: str) -> dict:
+async def _seed_closed_account() -> str:
+    # A live session, so only the closed-account check can refuse it.
+    user_id = await _seed_auth_user()
+    await prisma.models.AccountDeletionRequest.prisma().create(
+        data={
+            "userId": user_id,
+            "source": AccountDeletionSource.SETTINGS,
+            "eraseAfter": datetime.now(UTC) + GRACE_PERIOD,
+        }
+    )
+    return user_id
+
+
+async def _run_probe(
+    user_id: str, banned_user_id: str, closed_user_id: str, graph_exec_id: str
+) -> dict:
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "-c",
         _PROBE,
         user_id,
         banned_user_id,
+        closed_user_id,
         graph_exec_id,
         cwd=Path(__file__).parents[2],
         env={

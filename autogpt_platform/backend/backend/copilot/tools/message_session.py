@@ -26,6 +26,7 @@ from backend.copilot.active_turns import get_inflight_turn_limit
 from backend.copilot.context import get_current_envelope, take_session_message_slot
 from backend.copilot.db import get_chat_session_metadata, get_chat_session_status
 from backend.copilot.expert_context import escape_prompt_xml_tags
+from backend.copilot.limit_tracking import track_turn_cap
 from backend.copilot.model import CHAT_STATUS_IDLE, ChatSession, ChatSessionInfo
 from backend.copilot.pending_message_helpers import queue_user_message
 from backend.copilot.pending_messages import PENDING_BUFFER_FULL_REFUSAL
@@ -203,7 +204,8 @@ class MessageSessionTool(BaseTool):
                     permissions.model_dump(exclude_none=True) if permissions else None
                 ),
             )
-        except InflightCapExceeded:
+        except InflightCapExceeded as exc:
+            track_turn_cap(user_id, exc, surface="background", outcome="refused")
             return self._error(
                 "That session is not running and you are at your limit of "
                 "turns in flight. Try again once one finishes.",

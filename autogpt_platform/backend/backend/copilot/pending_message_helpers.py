@@ -17,6 +17,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.copilot.limit_tracking import LimitReading, track_chat_blocked
 from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
     CHAT_STATUS_RUNNING,
@@ -358,6 +359,13 @@ async def queue_pending_for_http(
     # but report 429 so the client backs off further pushes.
     call_count = await check_pending_call_rate(user_id)
     if call_count > PENDING_CALL_LIMIT:
+        track_chat_blocked(
+            user_id,
+            limit="rate",
+            outcome="refused",
+            surface="chat",
+            reading=LimitReading(used=call_count, cap=PENDING_CALL_LIMIT),
+        )
         raise HTTPException(
             status_code=429,
             detail=(
