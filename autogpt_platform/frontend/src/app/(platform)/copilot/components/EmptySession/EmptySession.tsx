@@ -7,7 +7,7 @@ import { useFirstRunTourAutoStart } from "@/app/(platform)/components/FirstRunTo
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import type { ComponentProps, ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
@@ -17,9 +17,16 @@ import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
 import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
 import { useCollapsedSuggestions } from "../SuggestedTasks/useCollapsedSuggestions";
 import { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
+import { ComposerTray } from "./components/ComposerTray/ComposerTray";
 import { EmptyHero } from "./components/EmptyHero";
+import { ExpertInfoPanel } from "./components/ExpertInfoPanel/ExpertInfoPanel";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
 import { GreetingLoader } from "./components/GreetingLoader";
+import { HomeBoard } from "./components/HomeBoard/HomeBoard";
+import { HomeRecentChats } from "./components/HomeRecentChats/HomeRecentChats";
+import { HomeViewTabs } from "./components/HomeViewTabs/HomeViewTabs";
+import { useHomeView } from "./components/HomeViewTabs/useHomeView";
+import { InfoToggle } from "./components/InfoToggle";
 import {
   getExpertInputPlaceholder,
   getGreetingName,
@@ -128,121 +135,172 @@ export function EmptySession({
     greetingPath: intro.isVisible ? intro.path : null,
   });
 
+  const [homeView, setHomeView] = useHomeView();
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const showTabs = !intro.isVisible;
+  // The regular hero: its composer sits in the tray, which names the
+  // recipient and the connection, and the expert's profile opens beside it.
+  const isRegularHero = !intro.isVisible && !intro.isAwaitingGreeting;
+
   if (isKickoffStarting) {
     return <ExpertKickoffLoader expertName={expertName} />;
   }
 
-  return (
-    <div className="relative flex h-full flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
-      {/* Which connection the new chat runs on, kept out of the composer and
-          in the page corner, level with the inset header's controls. */}
-      <div className="absolute top-3 right-3 z-30 empty:hidden">
-        <ConnectionPicker className="ml-0" />
-      </div>
-      <motion.div
-        className={cn("relative z-10 w-full text-center", "max-w-[1120px]")}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
-      >
-        <div className="mx-auto max-w-[52rem] pt-6">
-          {intro.isVisible ? (
-            <OnboardingIntroCard
-              name={greetingName}
-              greeting={intro.greeting}
-              suggestions={suggestions}
-              collapse={collapse}
-              transcript={intro.transcript}
-              disabled={isComposerDisabled || !!atReset}
-            />
-          ) : intro.isAwaitingGreeting ? (
-            // For as long as the pipeline is still writing, which can be
-            // behind the first-run walkthrough. The orb it renders is the same
-            // element the card above puts in its heading, so the swap
-            // moves it there rather than replacing it.
-            <GreetingLoader />
-          ) : (
-            <EmptyHero
-              name={greetingName}
-              intro={introLine}
-              recipientPicker={recipientPicker}
-              isExpert={Boolean(selectedExpert)}
-              expertRole={selectedExpert?.role}
-            />
-          )}
-
-          {/* Held back while the greeting is on its way — it enters with
-              the greeting page instead of sitting under a bare hero. */}
-          {!intro.isAwaitingGreeting && (
-            <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
-              <div
-                {...tourTarget("composer")}
-                className={cn(
-                  "text-left transition-colors duration-300 ease-out",
-                  // The greeting's prompt card bleeds 1.25rem past the text
-                  // (-mx-5); the composer stretches the same amount so their
-                  // edges line up. No chrome of its own: the composer card is
-                  // the only outline on screen. The regular hero keeps it
-                  // centered.
-                  intro.isVisible
-                    ? "-mx-5 max-w-[50.5rem]"
-                    : "mx-auto w-full max-w-[42rem]",
-                )}
-              >
-                {usageNotice && (
-                  <div className="mb-3 text-left">{usageNotice}</div>
-                )}
-                <ChatInput
-                  inputId="chat-input-empty"
-                  draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
-                  stacked
-                  voiceMode={voiceMode}
-                  modeSelector={modeSelector}
-                  onSend={onSend}
-                  disabled={isComposerDisabled}
-                  atReset={atReset}
-                  isUploadingFiles={isUploadingFiles}
-                  placeholder={
-                    atReset
-                      ? SEND_AT_RESET_PLACEHOLDER
-                      : selectedExpert
-                        ? getExpertInputPlaceholder(selectedExpert.name)
-                        : inputPlaceholder
-                  }
-                  className={cn(
-                    "w-full max-md:[&_[data-slot=input-group-control]]:min-h-16",
-                    "[&_textarea]:min-h-[4.5rem]",
-                  )}
-                  droppedFiles={droppedFiles}
-                  onDroppedFilesConsumed={onDroppedFilesConsumed}
-                  expertId={expertId}
-                  expertName={expertName}
-                  assistantName={selectedExpert?.name ?? expertName ?? null}
-                  recipientPicker={
-                    intro.isVisible ? recipientPicker : undefined
-                  }
-                />
-                {lowHint}
-              </div>
-            </div>
-          )}
-
-          {/* The greeting's list once the greeting has retired. Each task
-              goes to its own owner, whoever the composer is addressed to. */}
-          {!intro.isVisible &&
-            !intro.isAwaitingGreeting &&
-            suggestions.isStored && (
-              <SuggestedTasksBlock
-                suggestions={suggestions}
-                collapse={collapse}
-                disabled={isComposerDisabled || !!atReset}
-                className="mx-auto mb-6 max-w-[42rem]"
-              />
-            )}
+  if (showTabs && homeView === "board") {
+    return (
+      <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4 md:px-6">
+        <HomeViewTabs value={homeView} onChange={setHomeView} />
+        <div className="mx-auto w-full max-w-6xl">
+          <HomeBoard />
         </div>
+      </div>
+    );
+  }
 
-        {!intro.isVisible && !intro.isAwaitingGreeting && <HomeRecap />}
-      </motion.div>
+  const composer = (
+    <ChatInput
+      inputId="chat-input-empty"
+      draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
+      stacked
+      voiceMode={voiceMode}
+      modeSelector={modeSelector}
+      onSend={onSend}
+      disabled={isComposerDisabled}
+      atReset={atReset}
+      isUploadingFiles={isUploadingFiles}
+      placeholder={
+        atReset
+          ? SEND_AT_RESET_PLACEHOLDER
+          : selectedExpert
+            ? getExpertInputPlaceholder(selectedExpert.name)
+            : inputPlaceholder
+      }
+      className={cn(
+        "w-full max-md:[&_[data-slot=input-group-control]]:min-h-16",
+        "[&_textarea]:min-h-10 [&_textarea]:placeholder:text-foreground-faint",
+      )}
+      droppedFiles={droppedFiles}
+      onDroppedFilesConsumed={onDroppedFilesConsumed}
+      expertId={expertId}
+      expertName={expertName}
+      assistantName={selectedExpert?.name ?? expertName ?? null}
+      recipientPicker={intro.isVisible ? recipientPicker : undefined}
+    />
+  );
+
+  return (
+    <div className="flex h-full min-w-0 flex-1">
+      <div className="relative flex h-full min-w-0 flex-1 flex-col">
+        {isRegularHero ? (
+          <InfoToggle
+            isPanelOpen={isInfoOpen}
+            onOpen={() => setIsInfoOpen(true)}
+          />
+        ) : (
+          // Which connection the new chat runs on, in the page corner while
+          // the composer has no tray to carry it.
+          <div className="absolute top-3 right-3 z-30 empty:hidden">
+            <ConnectionPicker className="ml-0" />
+          </div>
+        )}
+        {showTabs && <HomeViewTabs value={homeView} onChange={setHomeView} />}
+        <div className="relative flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
+          <motion.div
+            className={cn(
+              "relative z-10 my-auto w-full text-center",
+              "max-w-[1120px]",
+            )}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="mx-auto max-w-[52rem] pt-6">
+              {intro.isVisible ? (
+                <OnboardingIntroCard
+                  name={greetingName}
+                  greeting={intro.greeting}
+                  suggestions={suggestions}
+                  collapse={collapse}
+                  transcript={intro.transcript}
+                  disabled={isComposerDisabled || !!atReset}
+                />
+              ) : intro.isAwaitingGreeting ? (
+                // For as long as the pipeline is still writing, which can be
+                // behind the first-run walkthrough. The orb it renders is the
+                // same element the card above puts in its heading, so the
+                // swap moves it there rather than replacing it.
+                <GreetingLoader />
+              ) : (
+                <EmptyHero
+                  intro={introLine}
+                  recipient={recipient}
+                  isExpert={Boolean(selectedExpert)}
+                  expertRole={selectedExpert?.role}
+                />
+              )}
+
+              {/* Held back while the greeting is on its way — it enters with
+                  the greeting page instead of sitting under a bare hero. */}
+              {!intro.isAwaitingGreeting && (
+                <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
+                  <div
+                    {...tourTarget("composer")}
+                    className={cn(
+                      "text-left transition-colors duration-300 ease-out",
+                      // The greeting's prompt card bleeds 1.25rem past the
+                      // text (-mx-5); the composer stretches the same amount
+                      // so their edges line up. The regular hero keeps it
+                      // centered.
+                      intro.isVisible
+                        ? "-mx-5 max-w-[50.5rem]"
+                        : "mx-auto w-full max-w-[42rem]",
+                    )}
+                  >
+                    {usageNotice && (
+                      <div className="mb-3 text-left">{usageNotice}</div>
+                    )}
+                    {intro.isVisible ? (
+                      composer
+                    ) : (
+                      <ComposerTray
+                        recipientPicker={recipientPicker}
+                        connection={
+                          <ConnectionPicker withLabel className="ml-0" />
+                        }
+                      >
+                        {composer}
+                      </ComposerTray>
+                    )}
+                    {lowHint}
+                  </div>
+                </div>
+              )}
+
+              {/* The greeting's list once the greeting has retired. Each task
+                  goes to its own owner, whoever the composer is addressed to. */}
+              {isRegularHero && suggestions.isStored && (
+                <SuggestedTasksBlock
+                  suggestions={suggestions}
+                  collapse={collapse}
+                  disabled={isComposerDisabled || !!atReset}
+                  className="mx-auto mb-6 max-w-[42rem]"
+                />
+              )}
+
+              {isRegularHero && <HomeRecentChats expertId={recipient.id} />}
+            </div>
+
+            {isRegularHero && <HomeRecap />}
+          </motion.div>
+        </div>
+      </div>
+      {isRegularHero && (
+        <ExpertInfoPanel
+          recipient={recipient}
+          isOpen={isInfoOpen}
+          onClose={() => setIsInfoOpen(false)}
+        />
+      )}
     </div>
   );
 }

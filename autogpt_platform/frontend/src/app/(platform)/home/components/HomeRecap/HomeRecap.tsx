@@ -9,6 +9,7 @@ import { HomeHeader } from "../HomeHeader/HomeHeader";
 import { NeedsYou } from "../NeedsYou/NeedsYou";
 import { NowNext } from "../NowNext/NowNext";
 import { RecentWork } from "../RecentWork/RecentWork";
+import { TaskNeedsYou } from "../TaskNeedsYou/TaskNeedsYou";
 
 const SHELL_CLASS = "relative mt-10 px-4 pb-8 pt-6 text-left sm:px-6";
 const CONTENT_CLASS = "relative mx-auto w-full max-w-[1120px]";
@@ -46,6 +47,7 @@ export function HomeRecap() {
         <HomeHeader dashboard={dashboard} />
         <div className={GRID_CLASS}>
           <div className="flex min-w-0 flex-col gap-4 xl:col-span-8">
+            <TaskNeedsYou />
             {dashboard.attention.length > 0 && (
               <NeedsYou dashboard={dashboard} />
             )}
