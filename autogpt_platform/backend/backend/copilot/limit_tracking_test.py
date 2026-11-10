@@ -292,7 +292,7 @@ def _send(user_id: str | None = "user-1", **overrides) -> None:
 
 def test_a_retry_loop_sends_one_event_a_minute(chat_blocked_events, monkeypatch):
     now = [1_000.0]
-    monkeypatch.setattr(limit_tracking.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(limit_tracking, "monotonic", lambda: now[0])
     for _ in range(50):
         _send()
     assert len(chat_blocked_events) == 1
@@ -304,6 +304,24 @@ def test_a_retry_loop_sends_one_event_a_minute(chat_blocked_events, monkeypatch)
     now[0] += 1
     _send()
     assert len(chat_blocked_events) == 2
+
+
+def test_an_expired_event_goes_while_a_newer_one_stays(
+    chat_blocked_events, monkeypatch
+):
+    now = [1_000.0]
+    monkeypatch.setattr(limit_tracking, "monotonic", lambda: now[0])
+    _send("user-1")
+    now[0] += 30
+    _send("user-2")
+    now[0] += limit_tracking.REPEAT_WINDOW_SECONDS - 29
+    _send("user-1")
+    _send("user-2")
+    assert [e["distinct_id"] for e in chat_blocked_events] == [
+        "user-1",
+        "user-2",
+        "user-1",
+    ]
 
 
 @pytest.mark.parametrize(

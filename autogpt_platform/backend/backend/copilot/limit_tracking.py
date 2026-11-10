@@ -25,9 +25,9 @@ stood against it.
 import functools
 import logging
 import threading
-import time
 from contextvars import ContextVar
 from datetime import datetime
+from time import monotonic
 from typing import TYPE_CHECKING, Callable, Literal, ParamSpec
 
 from pydantic import BaseModel
@@ -127,7 +127,7 @@ def refills_at(
 def _first_in_window(key: _SentKey) -> bool:
     """Whether *key* was not sent in the last :data:`REPEAT_WINDOW_SECONDS`;
     if so, it counts as sent now."""
-    now = time.monotonic()
+    now = monotonic()
     with _recently_sent_lock:
         # Oldest first, so the expired ones are at the front.
         while _recently_sent:

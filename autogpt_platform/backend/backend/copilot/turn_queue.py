@@ -749,6 +749,8 @@ async def _track_queued_refusal(
     """``chat_blocked`` for the queued turn a usage window held back, marked
     impersonated as that turn was when it was queued: this pass runs in the
     context of whichever turn just ended, which may not be the same."""
+    if refusal.kind != "usage" or refusal.window is None:
+        return  # Not a usage limit: nothing to send, so nothing to read.
     token = posthog_client.set_impersonated(await _queued_by_admin(head.session_id))
     try:
         track_turn_refusal(

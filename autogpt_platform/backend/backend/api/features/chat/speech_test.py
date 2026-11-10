@@ -104,9 +104,14 @@ def test_speech_refuses_a_caller_over_their_usage_cap(
         ),
     )
 
-    response = client.post("/speech", json={"text": "hello"})
+    first = client.post("/speech", json={"text": "hello"})
+    # A client retrying gets the same answer, but PostHog hears of it once.
+    retries = [client.post("/speech", json={"text": "hello"}) for _ in range(3)]
 
-    assert response.status_code == 429
+    assert first.status_code == 429
+    assert [(r.status_code, r.json()) for r in retries] == [
+        (first.status_code, first.json())
+    ] * 3
     speech_module._speech_client.assert_not_called()
     record_usage.assert_not_awaited()
     assert [(e["limit"], e["outcome"], e["surface"]) for e in chat_blocked_events] == [

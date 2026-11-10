@@ -1778,9 +1778,11 @@ async def test_a_held_queued_turn_is_marked_as_it_was_queued(
 
 
 @pytest.mark.asyncio
-async def test_a_held_queued_turn_whose_row_cant_be_read_still_waits() -> None:
+async def test_a_held_queued_turn_whose_row_cant_be_read_still_waits(
+    chat_blocked_events,
+) -> None:
     """Reading who queued the turn is for analytics only: when it fails, the
-    turn stays queued exactly as before."""
+    turn stays queued exactly as before, and the event goes out as the user's."""
     from backend.copilot.rate_limit import RateLimitExceeded
 
     db = MagicMock()
@@ -1812,6 +1814,9 @@ async def test_a_held_queued_turn_whose_row_cant_be_read_still_waits() -> None:
 
     assert promoted is False
     db.update_chat_session_status.assert_not_awaited()
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == [
+        ("daily", "queued")
+    ]
 
 
 @pytest.mark.asyncio
