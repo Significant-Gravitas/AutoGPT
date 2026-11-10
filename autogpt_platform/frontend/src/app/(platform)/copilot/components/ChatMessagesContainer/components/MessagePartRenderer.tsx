@@ -94,10 +94,12 @@ function TextWithArtifactCards({
   text,
   fileUrlBuilder,
   readOnly,
+  isStreaming,
 }: {
   text: string;
   fileUrlBuilder?: (fileId: string) => string;
   readOnly?: boolean;
+  isStreaming?: boolean;
 }) {
   // A settled part's text never changes, so this only re-runs for the part
   // that is streaming.
@@ -123,6 +125,7 @@ function TextWithArtifactCards({
         <CredentialMentionMarkdown
           components={STREAMDOWN_COMPONENTS}
           className="[&_li]:py-0"
+          isStreaming={isStreaming}
         >
           {resolved}
         </CredentialMentionMarkdown>
@@ -246,6 +249,7 @@ export function MessagePartRenderer({
           text={cleanText}
           fileUrlBuilder={fileUrlBuilder}
           readOnly={readOnly}
+          isStreaming={isCurrentlyStreaming && part.state === "streaming"}
         />
       );
     }

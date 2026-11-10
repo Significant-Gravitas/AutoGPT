@@ -37,6 +37,7 @@ import {
 import { remarkAppLinks } from "./app-links";
 import { MessageLink } from "./components/MessageLink/MessageLink";
 import { rehypeLiteralTags } from "./literal-tags";
+import { rehypeStreamReveal, STREAMING_CLASS } from "./stream-reveal";
 import {
   createComponentsMerger,
   type StreamdownComponents,
@@ -337,7 +338,10 @@ export const MessageBranchPage = ({
   );
 };
 
-export type MessageResponseProps = ComponentProps<typeof Streamdown>;
+export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
+  /** The reply is still arriving: new words fade in behind a caret. */
+  isStreaming?: boolean;
+};
 
 // Single-dollar math is off by default in @streamdown/math, so "$x^2$" reached the
 // reader raw; escapeLiteralDollars keeps prices and shell text out of its formulas.
@@ -415,6 +419,15 @@ const REPLY_REHYPE_PLUGINS: MessageResponseProps["rehypePlugins"] = [
   ],
   ...Object.values(defaultRehypePlugins),
 ];
+const STREAMING_REPLY_REHYPE_PLUGINS: MessageResponseProps["rehypePlugins"] = [
+  ...(REPLY_REHYPE_PLUGINS ?? []),
+  rehypeStreamReveal,
+];
+
+function rehypePluginsFor(from: MessageProps["from"], isStreaming: boolean) {
+  if (from === "user") return USER_REHYPE_PLUGINS;
+  return isStreaming ? STREAMING_REPLY_REHYPE_PLUGINS : REPLY_REHYPE_PLUGINS;
+}
 
 // MessageLink asks before leaving the site itself; Streamdown's own check
 // would draw every link as a button without an href.
@@ -444,6 +457,7 @@ export const MessageResponse = memo(function MessageResponse({
   className,
   children,
   components,
+  isStreaming = false,
   ...props
 }: MessageResponseProps) {
   // Merged on every render, as a plain call would be: the merger itself keeps
@@ -475,14 +489,15 @@ export const MessageResponse = memo(function MessageResponse({
         "[&_td_code]:rounded [&_td_code]:bg-surface-hover [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:whitespace-nowrap [&_td_code]:text-foreground-body",
         "[&_tbody_tr:last-child_td]:border-b-0",
         "[&_tbody_tr:hover_td]:bg-surface-muted",
+        // Also what re-renders Streamdown when the stream ends: its memo
+        // compares the class, not the rehype plugins.
+        isStreaming && STREAMING_CLASS,
         className,
       )}
       components={mergedComponents}
       plugins={STREAMDOWN_PLUGINS}
       remarkPlugins={REMARK_PLUGINS}
-      rehypePlugins={
-        from === "user" ? USER_REHYPE_PLUGINS : REPLY_REHYPE_PLUGINS
-      }
+      rehypePlugins={rehypePluginsFor(from, isStreaming)}
       linkSafety={LINK_SAFETY}
       parseMarkdownIntoBlocksFn={parseEscapedBlocks}
       {...props}
@@ -496,7 +511,10 @@ function areSameChildren(
   prevProps: MessageResponseProps,
   nextProps: MessageResponseProps,
 ) {
-  return prevProps.children === nextProps.children;
+  return (
+    prevProps.children === nextProps.children &&
+    prevProps.isStreaming === nextProps.isStreaming
+  );
 }
 
 MessageResponse.displayName = "MessageResponse";

@@ -1,17 +1,16 @@
-import {
-  BACKLOG_DRAIN_TICKS,
-  findWordCutPoints,
-  TICK_DELAY_MS,
-} from "../copilotStreamSmoothing";
+import { findSegmentCutPoints } from "@/lib/text-segments";
 import type { LogRow, TurnLog } from "./turnLog";
 import type { Segment } from "./turnTail";
 
 const REVEAL_TICK_MS = 30;
+// The share of the backlog shown per 10 ms step: a 25th, a whole word at least.
+const TICK_DELAY_MS = 10;
+const BACKLOG_DRAIN_TICKS = 25;
 
 /**
- * Paces the text the live POST stream writes, as the smoothing transform does
- * on the AI SDK path: what is shown lags what is applied, so the cursor and
- * the turn log stay exact.
+ * Paces the text the live POST stream writes: what is shown lags what is
+ * applied, so the cursor and the turn log stay exact. It keeps the share-per-
+ * tick pacing the AI SDK path used before `copilotStreamPacer.ts`.
  */
 export class TextReveal {
   // Characters shown so far of each row a live block is writing.
@@ -79,7 +78,7 @@ export class TextReveal {
       }
       let next = shown;
       for (let t = 0; t < REVEAL_TICK_MS / TICK_DELAY_MS; t++) {
-        const cuts = findWordCutPoints(row.content.slice(next));
+        const cuts = findSegmentCutPoints(row.content.slice(next));
         if (cuts.length === 0) break;
         const words = Math.max(1, Math.ceil(cuts.length / BACKLOG_DRAIN_TICKS));
         next += cuts[Math.min(words, cuts.length) - 1];

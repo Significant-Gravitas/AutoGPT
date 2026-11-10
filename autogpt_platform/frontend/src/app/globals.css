@@ -588,6 +588,72 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   font-size: 1.1em;
 }
 
+/* A reply while it streams in (organisms/Message/stream-reveal.ts): each word
+   fades in once as it mounts, and a caret marks the end of the text. The
+   caret takes no width and less than a line's height, so no line rewraps or
+   grows around it. It is solid while words keep landing (each one remounts
+   it) and blinks once they pause. Only the reply's last block shows its
+   caret, and only while the reply carries streaming-reply. In the base layer
+   so that utility can show the caret. */
+@layer base {
+  [data-stream-fade] {
+    animation: stream-fade-in 200ms ease-out both;
+  }
+
+  [data-stream-caret] {
+    position: relative;
+    display: none;
+    width: 0;
+    height: 1em;
+    vertical-align: -0.125em;
+  }
+
+  [data-stream-caret]::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: 0.125em;
+    width: 2px;
+    border-radius: 1px;
+    background: currentColor;
+    animation: stream-caret-blink 1100ms ease-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-stream-fade],
+    [data-stream-caret]::before {
+      animation: none;
+    }
+  }
+}
+
+@utility streaming-reply {
+  & > :last-child [data-stream-caret] {
+    display: inline-block;
+  }
+}
+
+@keyframes stream-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* On for 660 ms, a 220 ms fade out, then off until the cycle turns it on. */
+@keyframes stream-caret-blink {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  80%,
+  100% {
+    opacity: 0;
+  }
+}
+
 /* DS2b keyframes */
 
 /* GlassOrb (molecules/GlassOrb): each blob turns on its own spinner and
