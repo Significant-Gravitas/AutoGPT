@@ -55,6 +55,8 @@ import {
 } from "./helpers";
 import { SwapText } from "./SwapText";
 import { ToolResult } from "./ToolResult";
+import { startedTaskOf } from "../TaskStatusLine/helpers";
+import { TaskStatusLine } from "../TaskStatusLine/TaskStatusLine";
 
 const COLLAPSED_WINDOW = 2;
 
@@ -264,6 +266,13 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
       !row.lifted && !askedRecords.some((record) => record.key === row.key),
   );
   const liftedRows = rows.filter((row) => row.lifted);
+  // A public transcript can't read the owner's tasks, so it shows none.
+  const startedTasks = readOnly
+    ? []
+    : rows.flatMap((row) => {
+        const task = row.state === "done" ? startedTaskOf(row.output) : null;
+        return task ? [task] : [];
+      });
 
   const expanded = manualExpanded === true;
   const heading = getChainHeading(rows, isStreaming && !expanded);
@@ -440,6 +449,18 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               <AnsweredQuestions key={record.key} items={record.items} />
             ))}
           </div>
+        )}
+
+        {/* Tasks started here keep a line under the chain, so work that
+            runs in the background stays visible once the steps fold away. */}
+        {startedTasks.length > 0 && (
+          <ul className="mt-1 flex flex-col gap-2">
+            {startedTasks.map((task) => (
+              <li key={task.id}>
+                <TaskStatusLine task={task} />
+              </li>
+            ))}
+          </ul>
         )}
 
         {/* Lifted rows render off-screen: their cards must stay mounted so
