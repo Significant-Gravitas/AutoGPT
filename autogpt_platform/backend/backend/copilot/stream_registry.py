@@ -17,6 +17,7 @@ Subscribers:
 import asyncio
 import logging
 import time
+import uuid
 from collections.abc import AsyncGenerator, Coroutine, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -1128,35 +1129,38 @@ async def _stream_listener(
         _listener_sessions.pop(queue_id, None)
 
 
-async def mark_stop_requested(session_id: str) -> bool:
+async def mark_stop_requested(session_id: str) -> str | None:
     """Flag the session's running turn as stopped by the user.
 
     Its follow-up buffer refuses new messages from then on, so a message sent
     while the turn winds down starts the next turn instead of feeding this
-    one. Returns ``False`` when no turn is running.
+    one. Returns the flag's token for :func:`clear_stop_requested`, or
+    ``None`` when no turn is running.
     """
+    token = uuid.uuid4().hex
     redis = await get_redis_async()
-    return await hash_compare_and_set(
+    flagged = await hash_compare_and_set(
         redis,
         _get_session_meta_key(session_id),
         "status",
         expected="running",
         new="running",
-        updates={STOP_REQUESTED_FIELD: "1"},
+        updates={STOP_REQUESTED_FIELD: token},
     )
+    return token if flagged else None
 
 
-async def clear_stop_requested(session_id: str) -> bool:
+async def clear_stop_requested(session_id: str, token: str) -> bool:
     """Undo :func:`mark_stop_requested` for a turn whose cancel failed, so it
-    takes follow-ups again while it runs on."""
+    takes follow-ups again while it runs on. Clears only the flag that
+    ``token`` set, never a later Stop's."""
     redis = await get_redis_async()
     return await hash_compare_and_set(
         redis,
         _get_session_meta_key(session_id),
-        "status",
-        expected="running",
-        new="running",
-        updates={STOP_REQUESTED_FIELD: ""},
+        STOP_REQUESTED_FIELD,
+        expected=token,
+        new="",
     )
 
 

@@ -158,6 +158,26 @@ async def test_a_stop_that_never_reaches_the_executor_leaves_the_turn_taking_fol
     ]
 
 
+async def test_a_failed_cancel_never_lifts_a_later_stops_flag(
+    session_id: str, test_user_id: str
+) -> None:
+    await stream_registry.create_session(
+        session_id, test_user_id, "", "", turn_id=f"first-{uuid.uuid4().hex}"
+    )
+    first_stop = await stream_registry.mark_stop_requested(session_id)
+    await stream_registry.create_session(
+        session_id, test_user_id, "", "", turn_id=f"second-{uuid.uuid4().hex}"
+    )
+    assert await stream_registry.mark_stop_requested(session_id)
+
+    assert first_stop
+    assert await stream_registry.clear_stop_requested(session_id, first_stop) is False
+    refused = await queue_user_message(
+        session_id=session_id, message="too late", require_turn_in_flight=True
+    )
+    assert refused.turn_in_flight is False
+
+
 class _World:
     def __init__(self) -> None:
         self.cancel_published = asyncio.Event()

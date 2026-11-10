@@ -1727,22 +1727,25 @@ _CANCEL_CONFIRM_TIMEOUT_SECONDS = 5.0
 _CANCEL_CONFIRM_POLL_INTERVAL_SECONDS = 0.5
 
 
-async def _stop_follow_ups_best_effort(session_id: str) -> list[str]:
+async def _stop_follow_ups_best_effort(
+    session_id: str,
+) -> tuple[str | None, list[str]]:
     """Close the running turn to new follow-ups, then drop the ones it holds.
 
-    Returns the user's own dropped follow-ups for the client to give back;
-    an internal sender's entry carries metadata and is left out.
+    Returns the stop flag's token, and the user's own dropped follow-ups for
+    the client to give back; an internal sender's entry carries metadata and
+    is left out.
     """
     try:
-        await stream_registry.mark_stop_requested(session_id)
+        token = await stream_registry.mark_stop_requested(session_id)
         dropped = await drain_pending_messages(session_id)
     except Exception:
         logger.warning(
             f"[CANCEL] Failed to stop follow-ups for session ...{session_id[-8:]}",
             exc_info=True,
         )
-        return []
-    return [message.content for message in dropped if not message.metadata]
+        return None, []
+    return token, [message.content for message in dropped if not message.metadata]
 
 
 async def _clear_pending_best_effort(session_id: str) -> None:
@@ -1785,14 +1788,15 @@ async def cancel_session_task(
     # Stop discards the follow-ups queued before it, which would otherwise feed
     # the next unrelated turn. The flag set first makes the pending-write gate
     # refuse every later send, which ``stream_chat_post`` starts as the next turn.
-    discarded = await _stop_follow_ups_best_effort(session_id)
+    stop_token, discarded = await _stop_follow_ups_best_effort(session_id)
     try:
         response = await _cancel_turn(session_id, user_id)
     except Exception:
         # The turn may run on, so it takes follow-ups again instead of refusing
         # every send until it ends.
-        with contextlib.suppress(Exception):
-            await stream_registry.clear_stop_requested(session_id)
+        if stop_token:
+            with contextlib.suppress(Exception):
+                await stream_registry.clear_stop_requested(session_id, stop_token)
         raise
     response.discarded_messages = discarded
     return response
