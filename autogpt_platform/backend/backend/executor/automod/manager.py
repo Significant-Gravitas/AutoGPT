@@ -116,7 +116,7 @@ class AutoModManager:
                     f"Moderation failed for graph execution {graph_exec.graph_exec_id}"
                 )
                 # Update node statuses for frontend display before raising error
-                await self._update_failed_nodes_for_moderation(
+                await self.update_failed_nodes_for_moderation(
                     db_client, graph_exec.graph_exec_id, "input", content_id
                 )
 
@@ -194,7 +194,7 @@ class AutoModManager:
             if not moderation_passed:
                 logger.warning(f"Moderation failed for graph execution {graph_exec_id}")
                 # Update node statuses for frontend display before raising error
-                await self._update_failed_nodes_for_moderation(
+                await self.update_failed_nodes_for_moderation(
                     db_client, graph_exec_id, "output", content_id
                 )
 
@@ -217,7 +217,7 @@ class AutoModManager:
                 moderation_type="output",
             )
 
-    async def _update_failed_nodes_for_moderation(
+    async def update_failed_nodes_for_moderation(
         self,
         db_client: "DatabaseManagerAsyncClient",
         graph_exec_id: str,
