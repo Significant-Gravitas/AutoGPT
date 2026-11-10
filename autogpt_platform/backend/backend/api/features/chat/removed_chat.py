@@ -6,7 +6,7 @@ answers 410 with a typed detail the chat page recognises, instead of the 404
 a chat that never existed gets.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 import prisma.models
 from fastapi import HTTPException, status
@@ -29,7 +29,7 @@ class ChatRemovedResponse(BaseModel):
     detail: ChatRemovedDetail
 
 
-CHAT_REMOVED_RESPONSE = {
+CHAT_REMOVED_RESPONSE: dict[int | str, dict[str, Any]] = {
     status.HTTP_410_GONE: {
         "model": ChatRemovedResponse,
         "description": "The chat was removed when its expert was reset",
