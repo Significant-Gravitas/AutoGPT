@@ -119,9 +119,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description=(
-            "How many of an executor's graph workers one user's top-level runs "
-            "may hold at once; kept below `num_graph_workers` when that is 2 or "
-            "more, and 1 when it is 1."
+            "How many of an executor's graph workers one user's runs may hold "
+            "at once; kept below `num_graph_workers` when that is 2 or more, "
+            "and 1 when it is 1. Sub-workflow runs may hold one more per level "
+            "of nesting, up to 4 more, so a run waiting on a sub-workflow never "
+            "keeps it from starting; keep this at most `num_graph_workers` "
+            "minus 5 for one user's runs never to hold every worker."
         ),
     )
 
@@ -1075,7 +1078,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
     automod_fail_open: bool = Field(
         default=False,
-        description="If True, allow execution to continue if AutoMod fails",
+        description="If True, allow execution to continue if AutoMod fails or "
+        "times out; if False, the execution fails",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")

@@ -61,6 +61,25 @@ describe("sendAuthEmail", () => {
     });
   });
 
+  it("sends the new address with a change of email", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await sendAuthEmail({
+      to: "old@example.com",
+      type: "change_email",
+      url: resetUrl,
+      newEmail: "new@example.com",
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      type: "change_email",
+      to: "old@example.com",
+      url: resetUrl,
+      new_email: "new@example.com",
+    });
+  });
+
   it("throws in production when the backend returns a non-2xx response", async () => {
     vi.stubEnv("NODE_ENV", "production");
     fetchMock.mockResolvedValue(new Response("mailer down", { status: 503 }));

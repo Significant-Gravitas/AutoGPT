@@ -251,6 +251,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     META_MUSE_SPARK_1_3_CONTRIBUTOR = "meta/muse-spark-1.3-contributor"
     META_MUSE_SPARK_OPEN = "meta/muse-spark-open"
     META_MUSE_WONDER = "meta/muse-wonder"
+    META_MUSE_EMBER = "meta/muse-ember"
     GROK_3 = "x-ai/grok-3"
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"
@@ -286,6 +287,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     INCEPTION_MERCURY_2_5 = "inception/mercury-2.5"
     # Tencent models
     TENCENT_HY4_PREVIEW = "tencent/hy4-preview"
+    TENCENT_HY4 = "tencent/hy4"
     # Unbiased models
     UNBIASED_PARETO = "unbiased/pareto"
     # Llama API models
