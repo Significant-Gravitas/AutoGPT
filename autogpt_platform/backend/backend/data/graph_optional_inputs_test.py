@@ -7,6 +7,7 @@ import pytest
 
 from backend.blocks.io import (
     AgentFileInputBlock,
+    AgentGoogleDriveFileInputBlock,
     AgentInputBlock,
     AgentOutputBlock,
     AgentTableInputBlock,
@@ -43,13 +44,16 @@ def test_an_advanced_output_keeps_its_old_schema() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input_block", [AgentInputBlock, AgentGoogleDriveFileInputBlock]
+)
 @pytest.mark.parametrize("advanced,outputs", [(True, [("result", None)]), (False, [])])
 async def test_a_blank_input_sends_none_only_when_optional(
-    advanced: bool, outputs: list
+    input_block: type[AgentInputBlock], advanced: bool, outputs: list
 ) -> None:
-    input_data = AgentInputBlock.Input(name="x", advanced=advanced)
+    input_data = input_block.Input(name="x", advanced=advanced)
 
-    assert [o async for o in AgentInputBlock().run(input_data)] == outputs
+    assert [o async for o in input_block().run(input_data)] == outputs
 
 
 @pytest.mark.asyncio

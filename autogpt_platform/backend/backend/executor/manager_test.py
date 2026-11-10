@@ -13,6 +13,7 @@ from backend.blocks.basic import StoreValueBlock
 from backend.blocks.data_manipulation import FindInDictionaryBlock
 from backend.blocks.io import AgentInputBlock, AgentTableInputBlock
 from backend.blocks.maths import CalculatorBlock, Operation
+from backend.blocks.text import TextSplitBlock
 from backend.data import execution, graph
 from backend.data.model import User
 from backend.usecases.sample import create_test_graph, create_test_user
@@ -262,6 +263,10 @@ async def test_a_run_can_leave_an_optional_input_blank(
             input_default={"name": "data", "advanced": True},
         ),
         graph.Node(block_id=StoreValueBlock().id),
+        graph.Node(
+            block_id=TextSplitBlock().id,
+            input_default={"text": " otters ", "delimiter": ","},
+        ),
     ]
     links = [
         graph.Link(
@@ -276,6 +281,12 @@ async def test_a_run_can_leave_an_optional_input_blank(
             source_name=source_name,
             sink_name="data",
         ),
+        graph.Link(
+            source_id=nodes[1].id,
+            sink_id=nodes[3].id,
+            source_name=source_name,
+            sink_name="strip",
+        ),
     ]
     test_user = await create_test_user()
     test_graph = await create_graph(
@@ -288,7 +299,7 @@ async def test_a_run_can_leave_an_optional_input_blank(
     assert test_graph.input_schema["required"] == ["topic"]
 
     graph_exec_id = await execute_graph(
-        server.agent_server, test_graph, test_user, {"topic": "otters"}, 3
+        server.agent_server, test_graph, test_user, {"topic": "otters"}, 4
     )
 
     graph_exec = await execution.get_graph_execution(
@@ -300,6 +311,11 @@ async def test_a_run_can_leave_an_optional_input_blank(
     )
     assert store_exec.status == execution.ExecutionStatus.COMPLETED
     assert store_exec.output_data == {"output": ["otters"]}
+    split_exec = next(
+        e for e in graph_exec.node_executions if e.block_id == TextSplitBlock().id
+    )
+    assert split_exec.status == execution.ExecutionStatus.COMPLETED
+    assert split_exec.output_data == {"texts": [["otters"]]}
 
 
 @pytest.mark.asyncio(loop_scope="session")
