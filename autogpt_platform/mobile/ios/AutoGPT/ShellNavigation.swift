@@ -48,8 +48,11 @@ extension ShellViewController: WKNavigationDelegate, WKUIDelegate {
     _ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
     withError error: Error
   ) {
-    if (error as NSError).code != NSURLErrorCancelled {
-      showMessage("Could not connect. Check your connection and tap Refresh.")
+    let error = error as NSError
+    // WebKit reports a navigation the policy delegate cancelled as a failure.
+    let cancelledByPolicy = error.domain == "WebKitErrorDomain" && error.code == 102
+    if error.code != NSURLErrorCancelled && !cancelledByPolicy {
+      showMessage("Could not connect. Check your connection.", canRetry: true)
     }
   }
 
@@ -66,7 +69,7 @@ extension ShellViewController: WKNavigationDelegate, WKUIDelegate {
     if let http = response.response as? HTTPURLResponse, http.statusCode >= 400,
       response.isForMainFrame
     {
-      showMessage("AutoGPT could not load this page. Tap Sign in or Refresh to try again.")
+      showMessage("AutoGPT could not load this page.", canRetry: true)
       decisionHandler(.cancel)
       return
     }

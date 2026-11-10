@@ -11,14 +11,12 @@ final class ShellViewController: UIViewController, ASWebAuthenticationPresentati
     return WKWebView(frame: .zero, configuration: configuration)
   }()
   private let message = UILabel()
-  private let spinner = UIActivityIndicatorView(style: .medium)
+  private let retry = UIButton(configuration: .plain())
   private var authSession: ASWebAuthenticationSession?
-  private var progressObservation: NSKeyValueObservation?
   var downloads: [ObjectIdentifier: URL] = [:]
 
   override func viewDidLoad() {
     super.viewDidLoad()
-    title = "AutoGPT"
     view.backgroundColor = .systemBackground
     webView.navigationDelegate = self
     webView.uiDelegate = self
@@ -26,53 +24,37 @@ final class ShellViewController: UIViewController, ASWebAuthenticationPresentati
     message.numberOfLines = 0
     message.textAlignment = .center
     message.isHidden = true
-    let stack = UIStackView(arrangedSubviews: [message, webView])
-    stack.axis = .vertical
-    stack.translatesAutoresizingMaskIntoConstraints = false
-    view.addSubview(stack)
+    retry.setTitle("Try again", for: .normal)
+    retry.isHidden = true
+    retry.addAction(
+      UIAction { [weak self] _ in
+        self?.showMessage(nil)
+        self?.goHome()
+      }, for: .touchUpInside)
+    let notice = UIStackView(arrangedSubviews: [message, retry])
+    notice.axis = .vertical
+    notice.backgroundColor = .systemBackground
+    notice.translatesAutoresizingMaskIntoConstraints = false
+    webView.translatesAutoresizingMaskIntoConstraints = false
+    view.addSubview(webView)
+    view.addSubview(notice)
     NSLayoutConstraint.activate([
-      stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-      stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-      stack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-      stack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      webView.topAnchor.constraint(equalTo: view.topAnchor),
+      webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+      webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+      webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      notice.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+      notice.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+      notice.trailingAnchor.constraint(equalTo: view.trailingAnchor),
     ])
-    navigationItem.leftBarButtonItems = [
-      UIBarButtonItem(
-        image: UIImage(systemName: "chevron.left"), style: .plain, target: self,
-        action: #selector(goBack)),
-      UIBarButtonItem(
-        image: UIImage(systemName: "house"), style: .plain, target: self, action: #selector(goHome)),
-    ]
-    navigationItem.rightBarButtonItems = [
-      UIBarButtonItem(title: "Sign in", style: .plain, target: self, action: #selector(signIn)),
-      UIBarButtonItem(barButtonSystemItem: .refresh, target: self, action: #selector(reload)),
-      UIBarButtonItem(customView: spinner),
-    ]
-    navigationItem.leftBarButtonItems?[0].accessibilityLabel = "Back"
-    navigationItem.leftBarButtonItems?[1].accessibilityLabel = "Home"
-    progressObservation = webView.observe(\.isLoading, options: [.new]) { [weak self] _, change in
-      if change.newValue == true {
-        self?.spinner.startAnimating()
-      } else {
-        self?.spinner.stopAnimating()
-      }
-    }
     goHome()
   }
 
-  @objc private func goBack() { if webView.canGoBack { webView.goBack() } }
-  @objc func goHome() {
+  func goHome() {
     webView.load(URLRequest(url: policy.origin.appendingPathComponent("home")))
   }
-  @objc private func reload() {
-    if let url = webView.url, policy.isTrusted(url), !url.path.hasPrefix("/api/auth/mobile/") {
-      webView.reload()
-    } else {
-      goHome()
-    }
-  }
 
-  @objc func signIn() {
+  func signIn() {
     guard authSession == nil else { return }
     let attempt = AuthAttempt()
     // Only an app with this host as an associated domain can claim the callback.
@@ -84,7 +66,7 @@ final class ShellViewController: UIViewController, ASWebAuthenticationPresentati
         guard let self else { return }
         self.authSession = nil
         guard let url, let body = attempt.exchangeBody(callback: url, policy: self.policy) else {
-          self.showMessage("Sign-in did not finish. Tap Sign in to try again.")
+          self.showMessage("Sign-in did not finish.", canRetry: true)
           return
         }
         var request = URLRequest(
@@ -99,7 +81,7 @@ final class ShellViewController: UIViewController, ASWebAuthenticationPresentati
     authSession?.presentationContextProvider = self
     if authSession?.start() != true {
       authSession = nil
-      showMessage("Could not open sign-in. Please try again.")
+      showMessage("Could not open sign-in.", canRetry: true)
     }
   }
 
@@ -107,8 +89,9 @@ final class ShellViewController: UIViewController, ASWebAuthenticationPresentati
     view.window!
   }
 
-  func showMessage(_ text: String?) {
+  func showMessage(_ text: String?, canRetry: Bool = false) {
     message.text = text
     message.isHidden = text == nil
+    retry.isHidden = !canRetry
   }
 }
