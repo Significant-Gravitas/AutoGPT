@@ -194,6 +194,7 @@ async def _resume(mocker: MockerFixture, parent: str, stored: dict) -> Execution
     run.nodes_input_masks = {}
     db = _database_manager(mocker, run)
     db.get_graph_execution = AsyncMock(return_value=run)
+    db.get_graph_execution_copilot_tree = AsyncMock(return_value=None)
     db.get_graph_execution_meta = AsyncMock(
         side_effect=lambda user_id, execution_id: stored.get(execution_id)
     )
