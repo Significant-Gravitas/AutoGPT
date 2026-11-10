@@ -8540,6 +8540,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Expert not found" },
+          "409": {
+            "description": "The expert has a turn running; reset once it ends"
+          },
           "422": {
             "description": "Validation Error",
             "content": {

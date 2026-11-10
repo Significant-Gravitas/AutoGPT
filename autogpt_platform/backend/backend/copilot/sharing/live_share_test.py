@@ -27,9 +27,7 @@ async def test_an_allowlisted_file_needs_the_chat_still_shared_under_its_token()
     assert where == {
         "shareToken": TOKEN,
         "fileId": FILE_ID,
-        "Session": {
-            "is": {"shareToken": TOKEN, "isShared": True, "archivedAt": None}
-        },
+        "Session": {"is": {"shareToken": TOKEN, "isShared": True, "archivedAt": None}},
     }
     session_where = session_prisma.return_value.find_first.await_args.kwargs["where"]
     assert session_where == {

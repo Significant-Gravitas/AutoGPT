@@ -544,7 +544,9 @@ async def test_execute_copilot_turn_creates_fresh_expert_session_in_same_scope()
         team_id="team-sched",
     )
     mock_schedule_turn = AsyncMock()
-    new_session = MagicMock(archived_at=None, session_id="new-expert-session", expert_id="expert-1")
+    new_session = MagicMock(
+        archived_at=None, session_id="new-expert-session", expert_id="expert-1"
+    )
     mock_create_session = AsyncMock(return_value=new_session)
 
     with (
@@ -643,7 +645,9 @@ async def test_execute_copilot_turn_skips_but_keeps_schedule_for_inactive_expert
 async def test_explicit_session_skips_but_keeps_schedule_for_inactive_expert(status):
     args = _args(expert_id="expert-1")
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock(archived_at=None, expert_id="expert-1"))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id="expert-1")
+    )
     mock_self_delete = AsyncMock()
     mock_reschedule = AsyncMock()
 
@@ -679,7 +683,9 @@ async def test_execute_copilot_turn_fails_closed_when_expert_lost_during_creatio
     kept, because this window can't tell reversible archive from deletion;
     the next firing's scope check deletes it iff the expert is truly gone."""
     args = _args(session_id=None, expert_id="expert-1")
-    new_session = MagicMock(archived_at=None, session_id="new-session-uuid", expert_id=None)
+    new_session = MagicMock(
+        archived_at=None, session_id="new-session-uuid", expert_id=None
+    )
     mock_create_session = AsyncMock(return_value=new_session)
     mock_schedule_turn = AsyncMock()
     mock_self_delete = AsyncMock()
@@ -765,7 +771,9 @@ async def test_execute_copilot_turn_preserves_legacy_fresh_autopilot_job():
     args = _args(session_id=None)
     payload = args.model_dump(mode="json", exclude={"expert_id"})
     mock_schedule_turn = AsyncMock()
-    new_session = MagicMock(archived_at=None, session_id="new-legacy-session", expert_id=None)
+    new_session = MagicMock(
+        archived_at=None, session_id="new-legacy-session", expert_id=None
+    )
     mock_create_session = AsyncMock(return_value=new_session)
     mock_self_delete = AsyncMock()
 
@@ -799,7 +807,9 @@ async def test_execute_copilot_turn_preserves_legacy_fresh_autopilot_job():
 async def test_execute_copilot_turn_dispatches_when_session_exists():
     args = _args()
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock(archived_at=None, expert_id=None))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id=None)
+    )
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -827,7 +837,9 @@ async def test_execute_copilot_turn_into_an_existing_session_is_not_a_user_turn(
     change the scheduling turn previewed."""
     args = _args()
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock(archived_at=None, expert_id=None))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id=None)
+    )
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -864,7 +876,9 @@ async def test_execute_copilot_turn_into_a_fresh_session_stays_a_user_turn():
 async def test_execute_copilot_turn_dispatches_when_expert_scope_matches():
     args = _args(expert_id="expert-1")
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock(archived_at=None, expert_id="expert-1"))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id="expert-1")
+    )
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -883,7 +897,9 @@ async def test_execute_copilot_turn_dispatches_when_expert_scope_matches():
 async def test_explicit_expert_one_shot_retries_when_lookup_is_unavailable():
     args = _args(expert_id="expert-1")
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock(archived_at=None, expert_id="expert-1"))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id="expert-1")
+    )
     mock_reschedule = AsyncMock()
 
     with (
@@ -961,7 +977,9 @@ async def test_execute_copilot_turn_recovers_legacy_scope_from_owned_session():
 async def test_execute_copilot_turn_rejects_changed_explicit_session_scope():
     args = _args(expert_id="expert-1")
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock(archived_at=None, expert_id="expert-2"))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id="expert-2")
+    )
     mock_self_delete = AsyncMock()
 
     with (
@@ -983,7 +1001,9 @@ async def test_execute_copilot_turn_rejects_changed_explicit_session_scope():
 async def test_execute_copilot_turn_slot_refusal_reschedules_one_shot(refusal):
     args = _args()  # run_at set → one-shot
     mock_schedule_turn = AsyncMock(side_effect=refusal("busy"))
-    mock_get_session = AsyncMock(return_value=MagicMock(archived_at=None, expert_id=None))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id=None)
+    )
     mock_reschedule = AsyncMock()
 
     with (
@@ -1003,7 +1023,9 @@ async def test_execute_copilot_turn_slot_refusal_does_not_reschedule_cron(refusa
     re-fire on the next cron tick."""
     args = _args(run_at=None, cron="* * * * *")  # recurring
     mock_schedule_turn = AsyncMock(side_effect=refusal("busy"))
-    mock_get_session = AsyncMock(return_value=MagicMock(archived_at=None, expert_id=None))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id=None)
+    )
     mock_reschedule = AsyncMock()
 
     with (
@@ -1021,7 +1043,9 @@ async def test_execute_copilot_turn_swallows_generic_exceptions():
     """Non-concurrency errors should be logged but not crash the scheduler."""
     args = _args()
     mock_schedule_turn = AsyncMock(side_effect=RuntimeError("transient queue error"))
-    mock_get_session = AsyncMock(return_value=MagicMock(archived_at=None, expert_id=None))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id=None)
+    )
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -2664,7 +2688,8 @@ async def test_a_switched_on_routine_still_fires():
     db = MagicMock()
     db.get_routine = AsyncMock(return_value=on)
     db.record_routine_fired = AsyncMock()
-    session = MagicMock(archived_at=None, 
+    session = MagicMock(
+        archived_at=None,
         session_id="session-1",
         expert_id=None,
         metadata=MagicMock(llm_auth_provider=None, llm_credential_id=None),
@@ -2708,7 +2733,9 @@ async def _fire_hourly(session_id: str | None, provider: str) -> dict[str, Async
     mocks = {
         "schedule_turn": AsyncMock(),
         "create_chat_session": AsyncMock(
-            return_value=MagicMock(archived_at=None, session_id="new-session", expert_id=None)
+            return_value=MagicMock(
+                archived_at=None, session_id="new-session", expert_id=None
+            )
         ),
         "_self_delete_copilot_turn_schedule": AsyncMock(),
     }
