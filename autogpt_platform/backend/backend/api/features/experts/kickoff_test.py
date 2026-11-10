@@ -62,12 +62,7 @@ def mocks(mocker: pytest_mock.MockerFixture) -> SimpleNamespace:
             new_callable=AsyncMock,
             return_value=("platform", None),
         ),
-        reload=mocker.patch(
-            f"{_MODULE}.get_chat_session",
-            new_callable=AsyncMock,
-            return_value=SimpleNamespace(messages=[]),
-        ),
-        delete=mocker.patch(f"{_MODULE}.delete_chat_session", new_callable=AsyncMock),
+        drop=mocker.patch(f"{_MODULE}._drop_if_untouched", new_callable=AsyncMock),
     )
 
 
@@ -141,7 +136,7 @@ async def test_kickoff_yields_to_a_turn_already_in_the_session(mocks):
 
     assert await kickoff.start_expert_kickoff("user-1", "expert-1") is False
 
-    mocks.delete.assert_not_awaited()
+    mocks.drop.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -152,17 +147,30 @@ async def test_kickoff_at_the_running_cap_leaves_no_empty_thread(mocks):
 
     assert await kickoff.start_expert_kickoff("user-1", "expert-1") is False
 
-    mocks.delete.assert_awaited_once_with("session-1", "user-1")
+    mocks.drop.assert_awaited_once_with("user-1", "session-1")
 
 
 @pytest.mark.asyncio
-async def test_kickoff_at_the_running_cap_keeps_a_thread_that_has_messages(mocks):
-    mocks.schedule.side_effect = ConcurrentTurnLimitError("at cap")
-    mocks.reload.return_value = SimpleNamespace(messages=[object()])
+async def test_only_an_idle_empty_thread_is_dropped(mocker: pytest_mock.MockerFixture):
+    """One conditional delete: a thread the owner adopted and wrote to between
+    the cap and the cleanup is left alone."""
+    prisma_sessions = MagicMock()
+    prisma_sessions.delete_many = AsyncMock(return_value=0)
+    mocker.patch(f"{_MODULE}.PrismaChatSession.prisma", return_value=prisma_sessions)
+    invalidate = mocker.patch(
+        f"{_MODULE}.invalidate_session_cache", new_callable=AsyncMock
+    )
 
-    assert await kickoff.start_expert_kickoff("user-1", "expert-1") is False
+    await kickoff._drop_if_untouched("user-1", "session-1")
 
-    mocks.delete.assert_not_awaited()
+    where = prisma_sessions.delete_many.await_args.kwargs["where"]
+    assert where == {
+        "id": "session-1",
+        "userId": "user-1",
+        "chatStatus": kickoff.ChatSessionStatus.idle,
+        "Messages": {"none": {}},
+    }
+    invalidate.assert_not_awaited()
 
 
 @pytest.mark.asyncio

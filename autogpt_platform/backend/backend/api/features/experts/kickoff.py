@@ -11,6 +11,9 @@ second one.
 
 import logging
 
+from prisma.enums import ChatSessionStatus
+from prisma.models import ChatSession as PrismaChatSession
+
 from backend.api.features.experts.models import HireSurface
 from backend.copilot.active_turns import ConcurrentTurnLimitError, SessionNotIdle
 from backend.copilot.db import chat_message_has_assistant_reply
@@ -21,10 +24,9 @@ from backend.copilot.expert_kickoff import (
     expert_kickoff_metadata,
 )
 from backend.copilot.model import (
-    delete_chat_session,
-    get_chat_session,
     get_or_create_expert_kickoff_session,
     get_user_sessions,
+    invalidate_session_cache,
 )
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.transports import resolve_default_chat_route
@@ -121,8 +123,22 @@ async def _start(
         # next message into this session, so leave no trace instead: drop the
         # thread if it is still empty, and the expert introduces itself when
         # it is first opened, as a browser hire does.
-        fresh = await get_chat_session(session_id, user_id)
-        if fresh is not None and not fresh.messages:
-            await delete_chat_session(session_id, user_id)
+        await _drop_if_untouched(user_id, session_id)
         return False
+
+
+async def _drop_if_untouched(user_id: str, session_id: str) -> None:
+    """Delete the kickoff thread only while it is idle and has no messages,
+    in one statement: a thread the owner adopted and wrote to in the meantime
+    survives."""
+    dropped = await PrismaChatSession.prisma().delete_many(
+        where={
+            "id": session_id,
+            "userId": user_id,
+            "chatStatus": ChatSessionStatus.idle,
+            "Messages": {"none": {}},
+        }
+    )
+    if dropped:
+        await invalidate_session_cache(session_id)
     return turn_id is not None
