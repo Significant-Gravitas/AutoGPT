@@ -238,6 +238,24 @@ class TestCreateAndStartInOneApproval:
         assert message.index("introducing yourself") < message.index(_BRIEF)
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_unattended_turn_starts_the_task_without_asking_first(self):
+        """With nobody watching the turn, the expert's opening question would
+        go unanswered and the task would never start."""
+        with (
+            _env() as env,
+            patch(
+                "backend.copilot.tools.expert_delegation.is_unattended_turn",
+                return_value=True,
+            ),
+        ):
+            await _create_and_start(make_session(_USER))
+
+        message = env.turn.await_args.kwargs["message"]
+        assert "introducing yourself" not in message
+        assert "Don't run a workflow" not in message
+        assert _BRIEF in message
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_a_task_waiting_for_a_slot_is_queued(self):
         with _env(turn_outcome="queued_for_slot"):
             resp = await _create_and_start(make_session(_USER))

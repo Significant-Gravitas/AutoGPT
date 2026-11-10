@@ -37,7 +37,7 @@ from .delegate_to_expert import (
     run_delegated_turn,
 )
 from .expert_change_messages import joined_verb
-from .expert_delegation import chain_refusal, has_chat_with, resolve_target_expert
+from .expert_delegation import chain_refusal, is_first_task, resolve_target_expert
 from .models import (
     ExpertChangeAppliedResponse,
     ExpertHandoffOutcome,
@@ -75,7 +75,7 @@ async def hand_off_to_new_hire(
     try:
         target = await _target(user_id, session, expert.id)
         # A re-hire comes back with the chats it already had.
-        first_task = not await has_chat_with(user_id, target.id)
+        first_task = await is_first_task(user_id, target.id)
         thread = await open_delegation_thread(user_id, session, target)
     except _NotStarted as e:
         return _report(applied, task, "failed", None, e.reason, e.retry)

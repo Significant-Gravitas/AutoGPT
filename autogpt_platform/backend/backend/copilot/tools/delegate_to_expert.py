@@ -54,7 +54,7 @@ from backend.data.db_accessors import experts_db
 from .base import BaseTool
 from .expert_delegation import (
     chain_refusal,
-    has_chat_with,
+    is_first_task,
     resolve_target_expert,
     safe_caller_name,
     sent_from_metadata,
@@ -254,9 +254,7 @@ async def start_delegation(
     already resolved *target* and cleared ``chain_refusal``.
     """
     # Read before the thread opens: once it exists, every expert has a chat.
-    first_task = not delegated_session_id and not await has_chat_with(
-        user_id, target.id
-    )
+    first_task = not delegated_session_id and await is_first_task(user_id, target.id)
     inner_session_id = await _resolve_session(
         user_id=user_id,
         session=session,

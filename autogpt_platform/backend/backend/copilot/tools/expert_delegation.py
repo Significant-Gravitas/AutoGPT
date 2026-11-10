@@ -16,6 +16,7 @@ import logging
 from typing import Any
 
 from backend.api.features.experts.models import Expert
+from backend.copilot.context import is_unattended_turn
 from backend.copilot.model import ChatSession, get_chat_session, get_user_sessions
 from backend.copilot.tree import MAX_DEPTH
 from backend.data.db_accessors import experts_db
@@ -63,6 +64,19 @@ def safe_caller_name(caller: str) -> str:
     """
     one_line = " ".join(caller.split()).translate(_FRAMING_DELIMITERS)
     return one_line[:CALLER_NAME_LIMIT].strip() or "a teammate"
+
+
+async def is_first_task(user_id: str, expert_id: str) -> bool:
+    """Whether a task delegated to *expert_id* now opens as their first.
+
+    That turn introduces the expert and has them ask before they act, which
+    only works with someone there to answer. A scheduled or automated turn
+    has nobody, so its task runs as any other would: the first chat it opens
+    simply starts with the work.
+    """
+    if is_unattended_turn():
+        return False
+    return not await has_chat_with(user_id, expert_id)
 
 
 async def has_chat_with(user_id: str, expert_id: str) -> bool:

@@ -473,6 +473,27 @@ class TestDelegation:
         assert "introducing yourself" not in mock_turn.await_args.kwargs["message"]
 
     @pytest.mark.asyncio
+    async def test_an_unattended_turn_gives_a_new_expert_no_introduction(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        """A schedule or an automation delegating to an expert with no chat
+        has nobody to answer the first turn's question, so the task runs."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.expert_delegation.is_unattended_turn",
+            lambda: True,
+        )
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id=None),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        message = mock_turn.await_args.kwargs["message"]
+        assert "introducing yourself" not in message
+        assert "Don't run a workflow" not in message
+
+    @pytest.mark.asyncio
     async def test_sub_runs_in_target_scope_with_provenance(
         self, roster, mock_turn, mock_sessions
     ):
