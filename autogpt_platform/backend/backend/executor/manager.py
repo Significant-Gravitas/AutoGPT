@@ -2274,8 +2274,9 @@ class ExecutionManager(AppProcess):
             + (f", parent={parent_exec_id}" if parent_exec_id else "")
         )
 
-        # None for a sub-workflow run queued before runs carried their chain:
-        # its depth is unknown, so it is left out of the share, as all were
+        # None for a sub-workflow run that carries no chain, which only a run
+        # queued before runs carried one can be: its depth is unknown, so it
+        # is left out of the share
         depth = sub_workflow_depth(graph_exec_entry)
         if depth is not None and not self._has_worker_share_for(user_id, depth):
             logger.info(

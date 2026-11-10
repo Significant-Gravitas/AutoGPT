@@ -151,20 +151,43 @@ def _stored(graph_id: str, parent: str | None = None) -> MagicMock:
             },
             ["outer", "middle"],
         ),
-        # The run the chain started in is gone: its level is left out
-        (
-            "run-middle",
-            {"run-middle": _stored("middle", parent="run-outer")},
-            ["middle"],
-        ),
     ],
-    ids=["one-level", "two-levels", "top-run-gone"],
+    ids=["one-level", "two-levels"],
 )
 @pytest.mark.asyncio
 async def test_a_resumed_sub_workflow_run_gets_its_chain_back(
     mocker: MockerFixture, parent: str, stored: dict, chain: list[str]
 ) -> None:
-    # Resumed after a review, from a context that names no chain
+    context = await _resume(mocker, parent, stored)
+
+    assert context.ancestor_graph_ids == chain
+
+
+@pytest.mark.parametrize(
+    "parent, stored",
+    [
+        ("run-middle", {"run-middle": _stored("middle", parent="run-outer")}),
+        ("run-middle", {}),
+    ],
+    ids=["top-run-gone", "parent-run-gone"],
+)
+@pytest.mark.asyncio
+async def test_a_resumed_run_whose_chain_is_gone_runs_on_but_starts_no_sub_workflow(
+    mocker: MockerFixture, parent: str, stored: dict
+) -> None:
+    # With a run of its chain gone, how deep the run sits isn't known: it is
+    # counted as deep as chains go, and can't start a run of anything
+    context = await _resume(mocker, parent, stored)
+
+    assert sub_workflow_depth(_queued("run-inner", context)) == MAX_SUB_WORKFLOW_DEPTH
+    with pytest.raises(GraphValidationError, match="no longer exists"):
+        nested_context(context, "leaf")
+
+
+async def _resume(mocker: MockerFixture, parent: str, stored: dict) -> ExecutionContext:
+    """Resume a run of "inner" started by the run `parent`, after a review, from
+    a context that names no chain, with `stored` the runs that still exist;
+    return the context it is queued with."""
     run = _created_run(mocker, graph_id="inner")
     run.trigger_source = ExecutionTrigger.SUBGRAPH
     run.trigger_ref = parent
@@ -193,8 +216,7 @@ async def test_a_resumed_sub_workflow_run_gets_its_chain_back(
         graph_id="inner", user_id="user-1", graph_exec_id="run-inner"
     )
 
-    context = run.to_graph_execution_entry.call_args.kwargs["execution_context"]
-    assert context.ancestor_graph_ids == chain
+    return run.to_graph_execution_entry.call_args.kwargs["execution_context"]
 
 
 def _levels(count: int) -> list[str]:
