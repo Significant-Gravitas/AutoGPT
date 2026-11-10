@@ -22,6 +22,7 @@ export function ResetBusy({ expertName, isRetrying, onClose, onRetry }: Props) {
           variant="secondary"
           disabled={isRetrying}
           onClick={onClose}
+          data-testid="reset-expert-busy-close"
         >
           Close
         </Button>

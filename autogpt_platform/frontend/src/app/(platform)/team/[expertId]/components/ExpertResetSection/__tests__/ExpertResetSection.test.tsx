@@ -221,7 +221,7 @@ describe("Reset expert", () => {
     await user.click(await screen.findByTestId("reset-expert-confirm"));
     await screen.findByRole("dialog", { name: "Maria is still working" });
 
-    await user.click(screen.getByRole("button", { name: "Close" }));
+    await user.click(screen.getByTestId("reset-expert-busy-close"));
 
     await waitFor(() =>
       expect(
