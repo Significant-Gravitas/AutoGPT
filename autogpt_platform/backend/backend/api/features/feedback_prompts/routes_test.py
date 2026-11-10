@@ -107,6 +107,19 @@ def test_claim_rejects_an_unknown_kind(mocker: pytest_mock.MockerFixture) -> Non
     claim.assert_not_awaited()
 
 
+@pytest.mark.parametrize("kind", ["work_check", "otto_mistake"])
+def test_claim_rejects_chat_only_kinds(
+    mocker: pytest_mock.MockerFixture, posthog_capture: MagicMock, kind: str
+) -> None:
+    claim = _mock_claim(mocker, PROMPT_ID)
+
+    response = client.post("/claim", json={"kind": kind})
+
+    assert response.status_code == 422
+    claim.assert_not_awaited()
+    posthog_capture.assert_not_called()
+
+
 def test_patch_sends_the_answer_as_saved(
     mocker: pytest_mock.MockerFixture, posthog_capture: MagicMock, test_user_id: str
 ) -> None:

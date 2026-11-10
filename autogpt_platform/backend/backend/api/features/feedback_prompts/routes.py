@@ -52,6 +52,11 @@ async def claim_prompt(
     request: Request,
 ) -> ClaimFeedbackPromptResponse:
     """Record a showing if the prompt's limit allows one."""
+    if body.kind in _ANSWERED_THROUGH_CHAT_FEEDBACK:
+        raise HTTPException(
+            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="This prompt can only be requested in chat",
+        )
     if is_impersonated_request(request):
         return ClaimFeedbackPromptResponse(id=None)
     prompt_id = await claim_feedback_prompt(user_id=user_id, kind=body.kind)
