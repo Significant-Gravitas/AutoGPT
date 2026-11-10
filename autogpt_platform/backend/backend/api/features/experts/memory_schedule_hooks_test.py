@@ -236,11 +236,7 @@ async def test_a_lifecycle_request_is_not_held_up_by_a_hanging_scheduler(
     env = install_registry_env(monkeypatch)
     use_short_deadline(monkeypatch)
     hang = Hang()
-    for rpc in (
-        "remove_scope_memory_jobs",
-        "add_scope_community_rebuild_schedule",
-        "add_scope_nightly_batch_schedule",
-    ):
+    for rpc in ("remove_scope_memory_jobs", "add_scope_nightly_batch_schedule"):
         monkeypatch.setattr(env.scheduler, rpc, hang.forever)
     expert_table = SimpleNamespace(
         update_many=AsyncMock(return_value=1),

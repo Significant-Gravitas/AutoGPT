@@ -23,18 +23,13 @@ export function WorkItemRow({ item, timezone }: Props) {
         />
       </span>
       <Text
-        variant="body"
+        variant="body-tight"
         tone="secondary"
-        className="min-w-0 flex-1 truncate leading-5"
+        className="min-w-0 flex-1 truncate"
       >
         {item.title}
       </Text>
-      <Text
-        variant="small"
-        as="span"
-        tone="muted"
-        className="shrink-0 tabular-nums"
-      >
+      <Text variant="small" as="span" tone="muted" tabular className="shrink-0">
         {item.provider ? `${item.provider} · ` : ""}
         {formatWorkTime(item.occurred_at, timezone)}
       </Text>

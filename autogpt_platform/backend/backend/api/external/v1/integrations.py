@@ -17,6 +17,7 @@ from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, SecretStr
 
 from backend.api.external.middleware import require_permission
+from backend.api.external.rate_limit import EXECUTION_LIMIT, READ_LIMIT
 from backend.api.features.integrations.models import get_all_provider_names
 from backend.api.features.integrations.router import (
     CredentialsMetaResponse,
@@ -41,6 +42,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.oauth.microsoft_identity import MICROSOFT_PROVIDERS
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import InvalidInputError
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -266,7 +268,11 @@ def _get_oauth_handler_for_external(
 # ==================== Endpoints ==================== #
 
 
-@integrations_router.get("/providers", response_model=list[ProviderInfo])
+@integrations_router.get(
+    "/providers",
+    response_model=list[ProviderInfo],
+    dependencies=[READ_LIMIT],
+)
 async def list_providers(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
@@ -331,6 +337,7 @@ async def list_providers(
     "/{provider}/oauth/initiate",
     response_model=OAuthInitiateResponse,
     summary="Initiate OAuth flow",
+    dependencies=[EXECUTION_LIMIT],
 )
 async def initiate_oauth(
     provider: Annotated[str, Path(title="The OAuth provider")],
@@ -410,6 +417,7 @@ async def initiate_oauth(
     "/{provider}/oauth/complete",
     response_model=OAuthCompleteResponse,
     summary="Complete OAuth flow",
+    dependencies=[EXECUTION_LIMIT],
 )
 async def complete_oauth(
     provider: Annotated[str, Path(title="The OAuth provider")],
@@ -489,7 +497,11 @@ async def complete_oauth(
     )
 
 
-@integrations_router.get("/credentials", response_model=list[CredentialsMetaResponse])
+@integrations_router.get(
+    "/credentials",
+    response_model=list[CredentialsMetaResponse],
+    dependencies=[READ_LIMIT],
+)
 async def list_credentials(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
@@ -507,7 +519,9 @@ async def list_credentials(
 
 
 @integrations_router.get(
-    "/{provider}/credentials", response_model=list[CredentialsMetaResponse]
+    "/{provider}/credentials",
+    response_model=list[CredentialsMetaResponse],
+    dependencies=[READ_LIMIT],
 )
 async def list_credentials_by_provider(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
@@ -531,6 +545,7 @@ async def list_credentials_by_provider(
     response_model=CreateCredentialResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create credentials",
+    dependencies=[EXECUTION_LIMIT],
 )
 async def create_credential(
     provider: Annotated[str, Path(title="The provider to create credentials for")],
@@ -603,6 +618,8 @@ async def create_credential(
     # Store credentials
     try:
         await creds_manager.create(auth.user_id, credentials)
+    except InvalidInputError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception:
         logger.exception("Failed to store credentials")
         raise HTTPException(
@@ -630,6 +647,7 @@ class DeleteCredentialResponse(BaseModel):
 @integrations_router.delete(
     "/{provider}/credentials/{cred_id}",
     response_model=DeleteCredentialResponse,
+    dependencies=[EXECUTION_LIMIT],
 )
 async def delete_credential(
     provider: Annotated[str, Path(title="The provider")],

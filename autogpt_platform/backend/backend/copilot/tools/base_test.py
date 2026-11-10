@@ -1,8 +1,8 @@
 """Tests for BaseTool large-output persistence in execute()."""
 
-import base64
 import json
 import re
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -46,6 +46,7 @@ from backend.copilot.trial_reads import shared_trial_read, trial_reads_shared
 from backend.copilot.usage_activation import get_ready_usage_state
 from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
+from backend.data.workspace import WorkspaceFile
 
 
 class _HugeOutputTool(BaseTool):
@@ -235,6 +236,49 @@ class TestBaseToolExecuteLargeOutput:
         assert ("omitted" in str(result.output)) == (size > 100_000)
 
     @pytest.mark.asyncio
+    async def test_a_non_ascii_window_reaches_the_model_as_text_in_one_result(self):
+        """Read back at the length a persisted preview asks for, a non-ASCII window
+        came back as base64, which a large enough window pushed past the persistence
+        threshold, so the model got ``<binary, ~N bytes>`` and none of the text."""
+        text = "日本語のテキスト" * 10_000
+        raw = text.encode()
+        now = datetime.now(UTC)
+        reader = AsyncMock()
+        reader.get_file_info = AsyncMock(
+            return_value=WorkspaceFile(
+                id="f-1",
+                workspace_id="ws-1",
+                created_at=now,
+                updated_at=now,
+                name="tc-1.json",
+                path="/tool-outputs/tc-1.json",
+                storage_path="local://tc-1.json",
+                mime_type="application/json",
+                size_bytes=len(raw),
+            )
+        )
+        reader.read_file_head_by_id = AsyncMock(side_effect=lambda _id, n: raw[:n])
+        writer = AsyncMock()
+        session = MagicMock(session_id="s-1", external_caller=False)
+        db_patch, mgr_patch = _workspace_patches(writer)
+
+        with (
+            db_patch,
+            mgr_patch,
+            patch(
+                "backend.copilot.tools.workspace_files.get_workspace_manager",
+                AsyncMock(return_value=reader),
+            ),
+        ):
+            result = await ReadWorkspaceFileTool().execute(
+                "user-1", session, "tc-window", file_id="f-1", offset=0, length=50_000
+            )
+
+        writer.write_file.assert_not_awaited()
+        # The internal per-read cap is 30,000 bytes: 10,000 three-byte characters.
+        assert json.loads(str(result.output))["content"] == text[:10_000]
+
+    @pytest.mark.asyncio
     async def test_no_persistence_without_user_id(self):
         """Anonymous users skip persistence (no workspace)."""
         tool = _HugeOutputTool(output_size=_LARGE_OUTPUT_THRESHOLD + 10_000)
@@ -353,7 +397,7 @@ class _RetrievalTool(ReadWorkspaceFileTool):
             name="tc-digest.json",
             path="tool-outputs/tc-digest.json",
             mime_type="text/plain",
-            content_base64=base64.b64encode(self._text.encode()).decode(),
+            content=self._text,
             message=f"Read chars 0-{len(self._text)} of {len(self._text):,} total",
         )
 
@@ -436,12 +480,12 @@ class TestDigestThreshold:
 
     @pytest.mark.asyncio
     async def test_a_retrieved_window_is_never_digested(self):
-        """The way back must fit through the door: base64 pushes any window
-        over ~5.8K past the trigger, and digesting it returns base64, not text."""
+        """The way back must fit through the door: a window past the trigger,
+        digested, would come back as an outline of itself, not its text."""
         text = "R" * (_DIGEST_THRESHOLD * 2)
         result = await _execute_with_flag(_RetrievalTool(text), flag_on=True)
         payload = json.loads(str(result.output))
-        assert base64.b64decode(payload["content_base64"]).decode() == text
+        assert payload["content"] == text
 
     @pytest.mark.asyncio
     async def test_the_outline_summarizes_binary_fields_instead_of_quoting_them(self):
@@ -532,9 +576,21 @@ class TestOutline:
         most of the file is a read the model must never be offered."""
         data = {"tag": "x", "record": {f"k{i}": {"v": "v" * 200} for i in range(10)}}
         body, outline = _outline_of(data, 900)
-        assert "record={…10 keys}" in outline  # spans the file: no window
         widest = max(int(m) for m in re.findall(r"@\d+\+(\d+)", outline))
         assert widest * 4 // 3 < len(body)
+
+    def test_an_oversized_node_gets_its_first_chunk(self):
+        """A node too big to quote whole used to carry no window at all, which
+        left the model nothing to read it back with."""
+        data = {"tag": "x", "record": {f"k{i}": {"v": "v" * 200} for i in range(10)}}
+        body, parsed, offsets = _index_json(json.dumps(data))
+        outline = _outline(parsed, offsets, 900)
+        node_start, node_length = offsets["$.record"]
+        window = re.search(r"record=\{…10 keys @(\d+)\+(\d+)\}", outline)
+        assert window, outline
+        cap = len(body) * 3 // 4
+        assert node_length > cap, "the fixture's node must be oversized"
+        assert (int(window[1]), int(window[2])) == (node_start, cap)
 
     def test_a_single_long_string_still_says_something(self):
         """Structure alone leaves the budget unspent, so the scalar cap widens."""

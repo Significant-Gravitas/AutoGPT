@@ -1385,7 +1385,7 @@ async def test_validate_node_input_credentials_auto_creds_valid(
     mock_store = mocker.MagicMock()
     mock_creds = mocker.MagicMock()
     mock_creds.id = "valid-cred-id"
-    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=mock_creds)
+    mock_store.get_all_creds = mocker.AsyncMock(return_value=[mock_creds])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1440,7 +1440,7 @@ async def test_validate_node_input_credentials_auto_creds_missing(
 
     # Mock the credentials store to return None (cred not found for this user)
     mock_store = mocker.MagicMock()
-    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=None)
+    mock_store.get_all_creds = mocker.AsyncMock(return_value=[])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1520,14 +1520,9 @@ async def test_validate_node_input_credentials_both_regular_and_auto(
     mock_auto_creds = mocker.MagicMock()
     mock_auto_creds.id = "auto-cred-id"
 
-    def get_creds_side_effect(user_id, cred_id):
-        if cred_id == "regular-cred-id":
-            return mock_regular_creds
-        elif cred_id == "auto-cred-id":
-            return mock_auto_creds
-        return None
-
-    mock_store.get_creds_by_id = mocker.AsyncMock(side_effect=get_creds_side_effect)
+    mock_store.get_all_creds = mocker.AsyncMock(
+        return_value=[mock_regular_creds, mock_auto_creds]
+    )
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1579,7 +1574,7 @@ async def test_validate_node_input_credentials_auto_creds_optional_missing(
     mock_graph.nodes = [mock_node]
 
     mock_store = mocker.MagicMock()
-    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=None)
+    mock_store.get_all_creds = mocker.AsyncMock(return_value=[])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1947,6 +1942,46 @@ async def test_validate_node_input_credentials_linked_picker_is_not_checked(
     assert mock_node.id not in nodes_to_skip
 
 
+class _CountedLinks(list):
+    """A graph's links that count how many are read."""
+
+    reads = 0
+
+    def __iter__(self):
+        for link in super().__iter__():
+            _CountedLinks.reads += 1
+            yield link
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_reads_each_link_once(
+    mocker: MockerFixture,
+):
+    """Whether a picker is fed by a link is looked up in an index built
+    from the graph's links once."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    count = 300
+    nodes = []
+    for i in range(count):
+        node = _picker_node(mocker, None, annotation=GoogleDriveFile)
+        node.id = f"node-{i}"
+        nodes.append(node)
+    links = _CountedLinks(
+        mocker.MagicMock(sink_id=node.id, sink_name="spreadsheet") for node in nodes
+    )
+    mock_graph = mocker.MagicMock(nodes=nodes, links=links)
+    _CountedLinks.reads = 0
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph, user_id="some-user", nodes_input_masks=None
+    )
+
+    assert not errors
+    assert not nodes_to_skip
+    assert _CountedLinks.reads <= count
+
+
 @pytest.mark.asyncio
 async def test_validate_node_input_credentials_link_into_one_attribute_needs_a_file(
     mocker: MockerFixture,
@@ -2155,7 +2190,7 @@ async def test_add_graph_execution_refuses_a_banned_owner(
     from backend.util.exceptions import UserBannedError
 
     mocker.patch(
-        "backend.executor.utils.is_user_banned",
+        "backend.executor.utils.is_user_refused",
         new=mocker.AsyncMock(return_value=True),
     )
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
@@ -2571,6 +2606,54 @@ async def test_a_run_given_an_org_the_user_isnt_in_goes_to_their_own(
         "execution_context"
     ]
     assert (context.organization_id, context.team_id) == ("runner-org", "runner-team")
+
+
+@pytest.mark.asyncio
+async def test_a_triggered_run_moves_to_the_runners_org_with_its_nested_inputs(
+    mocker: MockerFixture,
+):
+    """A delivery to a preset tagged with an org its owner isn't in runs in the
+    owner's own, and the trigger still gets only its config and the payload."""
+    import backend.executor.utils as executor_utils
+    from backend.api.features.integrations.router import _execute_webhook_preset_trigger
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    membership = _runner_is_not_in_the_given_org(mocker)
+    trigger_node = mocker.MagicMock(id="abc123-0")
+    trigger_node.block.is_triggered_by_event_type.return_value = True
+    mocker.patch(
+        "backend.api.features.integrations.router.get_graph",
+        new=mocker.AsyncMock(
+            return_value=mocker.MagicMock(webhook_input_node=trigger_node)
+        ),
+    )
+    preset = mocker.MagicMock(
+        id="preset-1",
+        is_active=True,
+        user_id="runner",
+        graph_id="g",
+        graph_version=1,
+        expert_id=None,
+        organization_id="other-org",
+        team_id="other-team",
+        credentials={},
+        inputs={"topic": "news", "_node_input_mask_abc123": {"repo": "o/r"}},
+    )
+    webhook = mocker.MagicMock(id="wh-1", user_id="runner")
+
+    await _execute_webhook_preset_trigger(preset, webhook, "wh-1", "push", {"event": 1})
+
+    membership.assert_awaited_once_with("runner", "other-org", "other-team")
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert (create_kwargs["organization_id"], create_kwargs["team_id"]) == (
+        "runner-org",
+        "runner-team",
+    )
+    validate = executor_utils.validate_and_construct_node_execution_input
+    assert validate.call_args.kwargs["graph_inputs"] == {"topic": "news"}
+    assert validate.call_args.kwargs["nodes_input_masks"] == {
+        "abc123-0": {"repo": "o/r", "payload": {"event": 1}}
+    }
 
 
 @pytest.mark.asyncio
@@ -3140,10 +3223,12 @@ async def test_add_graph_execution_subgraph_untenanted_parent_triggers_fallback(
     mock_edb, mock_get_default_team = _mock_add_graph_execution_create_path(
         mocker, org_id="org-sub", team_id="team-sub"
     )
+    # The parent's own context, as AgentExecutorBlock passes it on: the
+    # parent's workflow, not the sub-graph's, which would be running itself
     parent_ctx = ExecutionContext(
         user_id="user-1",
-        graph_id="g",
-        graph_exec_id="child",
+        graph_id="parent-graph",
+        graph_exec_id="parent-123",
         graph_version=1,
         parent_execution_id="parent-123",
         organization_id=None,
