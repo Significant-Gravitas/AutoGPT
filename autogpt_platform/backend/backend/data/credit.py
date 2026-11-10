@@ -1797,10 +1797,12 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
     get_user_by_id.cache_delete(user_id)
 
 
-async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
-    """Set the user's subscription tier. No lifecycle sync: the subscription
-    status doesn't read the tier, and the Stripe change that comes with a
-    tier change syncs through its own webhook.
+async def set_subscription_tier(
+    user_id: str, tier: SubscriptionTier, *, track_lifecycle: bool = True
+) -> None:
+    """Set the user's subscription tier, then sync the PostHog person in the
+    background, since it carries the tier. ``track_lifecycle=False`` is for
+    ``sync_subscription_from_stripe``, which decides that itself.
 
     A drop from a plan or trial to NO_TIER stamps ``subscriptionEndedAt``, which
     keeps product mail going for the win-back window; any other tier clears it."""
@@ -1821,6 +1823,8 @@ async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
         data["subscriptionEndedAt"] = None
         await User.prisma().update(where={"id": user_id}, data=data)
     invalidate_subscription_caches(user_id)
+    if track_lifecycle:
+        schedule_posthog_lifecycle_sync(user_id)
 
 
 async def invalidate_billing_lookups(customer_id: str) -> None:
@@ -3200,9 +3204,10 @@ async def sync_subscription_from_stripe(
     up here, so this is also where the PostHog lifecycle properties are
     refreshed (in the background, from the customer's current state).
     ``track_lifecycle=False`` is for the periodic tier sweep, which would
-    otherwise fan out one Stripe call per trial; the daily lifecycle sweep
-    covers those users. Nor is it refreshed for a cancel made by an account
-    deletion: that would only update the PostHog person the erasure deletes.
+    otherwise fan out one Stripe call per trial: it refreshes them only when
+    the stored tier changed, and the daily lifecycle sweep covers the rest.
+    Nor are they refreshed for a cancel made by an account deletion: that
+    would only update the PostHog person the erasure deletes.
 
     The payload is Stripe's latest word on the subscription, so afterwards
     the cached lookups the billing page reads (the active subscription and
@@ -3212,15 +3217,31 @@ async def sync_subscription_from_stripe(
     is canceled), and a read in between would cache the state before that.
     """
     customer_id = stripe_subscription.get("customer")
+    tier_before = None if track_lifecycle else await _customer_tier(customer_id)
     try:
         await _sync_subscription_tier_from_stripe(stripe_subscription)
     finally:
         if isinstance(customer_id, str) and customer_id:
             await invalidate_billing_lookups(customer_id)
-    if track_lifecycle and not is_account_deletion_cancellation(stripe_subscription):
-        schedule_posthog_lifecycle_sync(
-            stripe_customer_id=stripe_subscription.get("customer")
-        )
+    if is_account_deletion_cancellation(stripe_subscription):
+        return
+    if track_lifecycle:
+        schedule_posthog_lifecycle_sync(stripe_customer_id=customer_id)
+    elif tier_before is not None and tier_before != await _customer_tier(customer_id):
+        schedule_posthog_lifecycle_sync(tier_before[0])
+
+
+async def _customer_tier(customer_id: object) -> tuple[str, str] | None:
+    """The user id and stored tier of a Stripe customer, or None when there is
+    none or it can't be read: only analytics depends on it."""
+    if not isinstance(customer_id, str) or not customer_id:
+        return None
+    try:
+        user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
+    except Exception:
+        logger.warning(f"Could not read the tier of customer {customer_id}")
+        return None
+    return (user.id, str(user.subscriptionTier)) if user else None
 
 
 async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None:
@@ -3476,7 +3497,7 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
         # A future improvement would be to write the new tier first, then
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
-    await set_subscription_tier(user.id, tier)
+    await set_subscription_tier(user.id, tier, track_lifecycle=False)
     if is_tier_upgrade(current_tier, tier):
         billing_cycle = (
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None

@@ -9,9 +9,10 @@ inputs and sends the result to both.
 The status is worked out from the current state every time (the trial row and
 all of the customer's Stripe subscriptions), never from the event that
 triggered a sync, so an out-of-order webhook can't leave it wrong. The
-subscription tier is not read: only a payment makes a subscriber, so an
-admin-granted plan (ENTERPRISE or any other) with no paid Stripe subscription
-is ``signed``.
+status does not read the subscription tier: only a payment makes a
+subscriber, so an admin-granted plan (ENTERPRISE or any other) with no paid
+Stripe subscription is ``signed``. The tier is sent beside it as a property
+of its own.
 
 Person properties, set on distinct id = platform user id (dates are ISO-8601
 UTC strings of the real lifecycle moment, never the sync time; a date that
@@ -39,6 +40,12 @@ doesn't apply is ``$unset``, never sent as null):
   ``subscription_ended``.
 - ``subscription_ended_at``: its Stripe ``ended_at``, while
   ``subscription_ended``.
+- ``subscription_tier``: the plan tier as stored (``User.subscriptionTier``:
+  ``NO_TIER``, ``TRIAL``, ``PRO``, ``MAX``, ``BUSINESS``, ``ENTERPRISE``), the
+  value the usage limits and ``chat_blocked.tier`` read, so any event can be
+  split by plan through the person (SECRT-3411). Unlike the status, it is
+  not worked out from Stripe. Left out, never unset, when the caller didn't
+  read it.
 
 A paid subscription is one that charges something: a subscription whose
 discounts take the whole price (a 100% coupon, or an amount off at least the
@@ -87,10 +94,12 @@ class LifecycleUser(BaseModel):
     id: str
     created_at: datetime | None = None
     stripe_customer_id: str | None = None
+    subscription_tier: str | None = None
 
 
 class LifecycleSnapshot(BaseModel):
     subscription_status: LifecycleStatus
+    subscription_tier: str | None = None
     signup_at: datetime | None = None
     trial_started_at: datetime | None = None
     subscription_started_at: datetime | None = None
@@ -105,9 +114,11 @@ class LifecycleSnapshot(BaseModel):
         the user has since replaced) can't linger on the person.
         """
         dates: dict[str, datetime | None] = self.model_dump(
-            exclude={"subscription_status"}
+            exclude={"subscription_status", "subscription_tier"}
         )
         to_set = {"subscription_status": self.subscription_status}
+        if self.subscription_tier:
+            to_set["subscription_tier"] = self.subscription_tier
         to_set.update({name: _iso(value) for name, value in dates.items() if value})
         return to_set, [name for name, value in dates.items() if value is None]
 
@@ -152,6 +163,7 @@ def compute_lifecycle_snapshot(
     started = _trial_started(trial)
     all_subs = list(subscriptions)
     common: dict[str, Any] = {
+        "subscription_tier": _tier_value(user.subscription_tier),
         "signup_at": user.created_at,
         "trial_started_at": (
             trial.started_at if trial and started else _native_trial_start(all_subs)
@@ -193,6 +205,13 @@ def compute_lifecycle_snapshot(
         return ended
     trial_end = _ended_trial_status(trial, started, all_subs, now)
     return LifecycleSnapshot(subscription_status=trial_end or "signed", **common)
+
+
+def _tier_value(tier: str | None) -> str | None:
+    """Prisma hands the enum column back as a ``str`` enum; PostHog gets its
+    plain value."""
+    value = getattr(tier, "value", tier)
+    return str(value) if value else None
 
 
 def _has_live_free(
