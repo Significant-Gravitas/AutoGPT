@@ -344,6 +344,8 @@ INTERACTIVE_ORIGIN_TOOLS: frozenset[str] = frozenset(
         "raise_expert",
         "update_expert",
         "confirm_expert_change",
+        "grant_expert_credential",
+        "revoke_expert_credential",
     }
 )
 

@@ -274,6 +274,27 @@ async def test_expert_cannot_grant_itself(experts):
     experts.grant_expert_credentials.assert_not_awaited()
 
 
+@pytest.mark.parametrize("origin", ["automation", None])
+@pytest.mark.parametrize(
+    "tool",
+    [GrantExpertCredentialTool(), RevokeExpertCredentialTool()],
+    ids=["grant", "revoke"],
+)
+async def test_grants_change_only_in_a_chat_the_user_is_typing_in(
+    experts, tool, origin
+):
+    """The origins ``autopilot_session_guard`` refuses;
+    ``test_autopilot_grants_and_revokes`` is the interactive arm."""
+    session = _session(None)
+    session.metadata.origin = origin
+    result = await tool._execute(
+        "user-1", session, expert_id="expert-a", credential_id="cred-1"
+    )
+    assert isinstance(result, ErrorResponse)
+    experts.grant_expert_credentials.assert_not_awaited()
+    experts.revoke_expert_credential.assert_not_awaited()
+
+
 async def test_expert_install_settles_its_grants_before_the_workflow_lands(experts):
     order: list[str] = []
     experts.settle_credential_seed.side_effect = lambda *_: order.append("settle")
@@ -296,6 +317,26 @@ async def test_autopilot_install_does_not_touch_the_experts_grants(experts):
     )
     assert isinstance(result, ExpertWorkflowResponse)
     experts.settle_credential_seed.assert_not_awaited()
+
+
+@pytest.mark.parametrize("origin", ["automation", None])
+async def test_an_install_from_a_chat_nobody_types_in_settles_the_grants_first(
+    experts, origin
+):
+    """The interactive arm is the test above."""
+    order: list[str] = []
+    experts.settle_credential_seed.side_effect = lambda *_: order.append("settle")
+    experts.install_workflow.side_effect = lambda *_, **__: (
+        order.append("install") or _ref()
+    )
+    session = _session(None)
+    session.metadata.origin = origin
+    result = await InstallExpertWorkflowTool()._execute(
+        "user-1", session, expert_id="expert-a", library_agent_id="lib-1"
+    )
+    assert isinstance(result, ExpertWorkflowResponse)
+    assert order == ["settle", "install"]
+    experts.settle_credential_seed.assert_awaited_once_with("user-1", "expert-a")
 
 
 async def test_a_grant_request_is_a_different_response_type_from_a_grant_list():

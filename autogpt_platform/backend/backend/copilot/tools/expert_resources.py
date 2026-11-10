@@ -2,7 +2,7 @@
 
 An expert session installs onto itself. Personal AutoPilot names the expert.
 Credential grants are the owner's decision, so grant/revoke live in the
-``expert_admin`` group and only personal AutoPilot sees them.
+``expert_admin`` group and run only in an Otto chat the owner is typing in.
 """
 
 import logging
@@ -16,6 +16,7 @@ from backend.data.db_accessors import chat_db, experts_db
 from backend.util.exceptions import ExpertNotFoundError, NotFoundError
 
 from .base import BaseTool
+from .expert_proposal import autopilot_session_guard
 from .expert_scope import resolve_target_expert, settle_expert_grants
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 from .utils import fetch_graph_from_store_slug
@@ -127,7 +128,7 @@ class InstallExpertWorkflowTool(BaseTool):
                         message=f"Marketplace workflow '{username_agent_slug}' not found",
                         session_id=session_id,
                     )
-            await settle_expert_grants(user_id, session)
+            await settle_expert_grants(user_id, session, target)
             ref: ExpertWorkflowRef = await experts_db().install_workflow(
                 user_id,
                 target,
@@ -303,6 +304,12 @@ class GrantExpertCredentialTool(BaseTool):
         credential_id: str = "",
         **kwargs,
     ) -> ToolResponseBase:
+        # An expert session falls through to _change_grant's refusal, which
+        # names the tool it may use instead.
+        if session.expert_id is None and (
+            error := autopilot_session_guard(user_id, session)
+        ):
+            return error
         return await _change_grant(
             user_id, session, expert_id, credential_id, grant=True
         )
@@ -348,6 +355,12 @@ class RevokeExpertCredentialTool(BaseTool):
         credential_id: str = "",
         **kwargs,
     ) -> ToolResponseBase:
+        # An expert session falls through to _change_grant's refusal, which
+        # names the tool it may use instead.
+        if session.expert_id is None and (
+            error := autopilot_session_guard(user_id, session)
+        ):
+            return error
         return await _change_grant(
             user_id, session, expert_id, credential_id, grant=False
         )
