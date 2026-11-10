@@ -54,7 +54,11 @@ async def start_background_subtask(
     parent: ChatSession,
     prompt: str,
 ) -> BackgroundTask:
-    if not await is_feature_enabled(Flag.COPILOT_BACKGROUND_SUBTASKS, user_id):
+    # On unless PostHog says otherwise: ``start_task`` depends on it, and the
+    # flag stays as the switch to turn background work off.
+    if not await is_feature_enabled(
+        Flag.COPILOT_BACKGROUND_SUBTASKS, user_id, default=True
+    ):
         raise TreeRefusal("Background subtasks are not enabled for this account.")
     envelope, call_id, turn_id = (
         get_current_envelope(),
