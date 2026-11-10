@@ -18045,8 +18045,12 @@
           "200": {
             "description": "Successful Response",
             "content": { "text/plain": { "schema": { "type": "string" } } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/my-unpublished-agents": {
