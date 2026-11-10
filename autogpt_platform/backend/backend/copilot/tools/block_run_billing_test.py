@@ -9,7 +9,7 @@ out by hand from the price rules, not by the code under test.
 """
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -317,6 +317,124 @@ async def test_a_run_stopped_during_a_model_call_is_billed_the_requests_input(
 
     assert provider.calls == 1
     assert wallet.paid == billed
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_run_that_costs_more_than_the_balance_is_billed_in_full():
+    """The balance covers the debit before the run but not what the run
+    cost. The provider has been paid, so the rest is owed."""
+    block = AITextGeneratorBlock()
+    wallet = _Wallet(balance=5)
+    provider = _Provider(block, cost_usd=0.075)
+
+    with provider.serving():
+        response = await _run_block(block, wallet)
+
+    assert isinstance(response, BlockOutputResponse)
+    assert wallet.paid == 12
+    assert wallet.balance == -7
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_runs_settlement_is_metered_like_its_debit():
+    """The chat's spend ledger and the expert's weekly spend see what the
+    run cost, not only the debit taken before it."""
+    block = AITextGeneratorBlock()
+    wallet = _Wallet(balance=100)
+    provider = _Provider(block, cost_usd=0.075)
+    ledger: list[int] = []
+    weekly: list[int] = []
+
+    async def charge_credits(user_id: str, credits: Callable[[], int]) -> None:
+        ledger.append(credits())
+
+    async def add_weekly_spend(expert_id: str, credits: int) -> None:
+        weekly.append(credits)
+
+    with (
+        provider.serving(),
+        patch.object(helpers, "charge_credits", charge_credits),
+        patch.object(helpers, "add_weekly_spend", add_weekly_spend),
+        patch.object(helpers, "metered_expert_id", AsyncMock(return_value="expert-1")),
+    ):
+        await _run_block(block, wallet)
+
+    assert wallet.paid == 12
+    assert sum(ledger) == 12
+    assert sum(weekly) == 12
+
+
+class _SlowToSettle(_Wallet):
+    """A wallet whose second debit, the run's settlement, waits until the
+    test lets it through."""
+
+    def __init__(self, balance: int) -> None:
+        super().__init__(balance)
+        self.settling = asyncio.Event()
+        self.let_through = asyncio.Event()
+
+    async def spend_credits(
+        self,
+        *,
+        user_id: str,
+        cost: int,
+        metadata: UsageTransactionMetadata,
+        fail_insufficient_credits: bool = True,
+    ) -> int:
+        if self.debits:
+            self.settling.set()
+            await self.let_through.wait()
+        return await super().spend_credits(
+            user_id=user_id,
+            cost=cost,
+            metadata=metadata,
+            fail_insufficient_credits=fail_insufficient_credits,
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_stopped_run_is_settled_even_if_stopped_again_meanwhile():
+    """Stopped during a model call, then again while its settlement is being
+    recorded: the run is still billed the request's input."""
+    block = AITextGeneratorBlock()
+    wallet = _SlowToSettle(balance=100)
+    provider = _Provider(block, abandons_input_tokens=100_000)
+
+    with provider.serving():
+        run = asyncio.ensure_future(_run_block(block, wallet))
+        await asyncio.wait_for(provider.request_sent.wait(), 60)
+        run.cancel()
+        await asyncio.wait_for(wallet.settling.wait(), 60)
+        run.cancel()
+        await asyncio.sleep(0.05)
+        wallet.let_through.set()
+        with pytest.raises(asyncio.CancelledError):
+            await run
+
+    assert wallet.paid == 38
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_run_refunded_before_any_output_is_not_settled_again():
+    """A setup card before any output gives the debit back once."""
+    block = AITextGeneratorBlock()
+    wallet = _Wallet(balance=100)
+
+    async def refuses_the_account(
+        input_data: dict, **kwargs: Any
+    ) -> AsyncIterator[tuple[str, Any]]:
+        raise BlockExecutionError("The account is not connected.", block.name, block.id)
+        yield  # an async generator, as Block.execute is
+
+    with (
+        patch.object(block, "execute", refuses_the_account),
+        patch.object(helpers, "_is_setup_card_failure", return_value=True),
+    ):
+        response = await _run_block(block, wallet)
+
+    assert isinstance(response, ErrorResponse)
+    assert wallet.paid == 0
+    assert wallet.balance == 100
 
 
 @pytest.mark.asyncio(loop_scope="session")
