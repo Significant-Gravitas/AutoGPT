@@ -90,6 +90,7 @@ from backend.copilot.usage_state import LimitWindow
 from backend.data.db_accessors import chat_db
 from backend.data.user import is_user_banned
 from backend.integrations.codex.access import has_codex_access
+from backend.util import posthog_client
 
 logger = logging.getLogger(__name__)
 
@@ -719,12 +720,7 @@ class _UserGates:
             refusal = await turn_refusal(self.user_id, route)
             self._refusals[route] = refusal
             if refusal is not None:
-                track_turn_refusal(
-                    self.user_id,
-                    refusal,
-                    surface=_queued_surface(head),
-                    outcome="queued",
-                )
+                await _track_queued_refusal(self.user_id, refusal, head)
         refusal = self._refusals[route]
         if refusal is None:
             return True
@@ -745,6 +741,36 @@ class _UserGates:
                 )
                 self._advanced = False
         return self._advanced
+
+
+async def _track_queued_refusal(
+    user_id: str, refusal: "TurnRefusal", head: ChatSessionInfo
+) -> None:
+    """``chat_blocked`` for the queued turn a usage window held back, marked
+    impersonated as that turn was when it was queued: this pass runs in the
+    context of whichever turn just ended, which may not be the same."""
+    token = posthog_client.set_impersonated(await _queued_by_admin(head.session_id))
+    try:
+        track_turn_refusal(
+            user_id, refusal, surface=_queued_surface(head), outcome="queued"
+        )
+    finally:
+        posthog_client.reset_impersonated(token)
+
+
+async def _queued_by_admin(session_id: str) -> bool:
+    """Whether an admin acting as the user queued the turn waiting in
+    *session_id*, as its row recorded it; False when the row can't be read."""
+    try:
+        pending = await chat_db().get_latest_user_message_in_session(session_id)
+    except Exception:
+        logger.warning(
+            f"dispatch_next_for_user: could not read the queued turn of "
+            f"session={session_id}",
+            exc_info=True,
+        )
+        return False
+    return pending is not None and (pending.metadata or {}).get("impersonated") is True
 
 
 class _QueueOnHold(Exception):
