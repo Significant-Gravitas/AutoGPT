@@ -6,10 +6,12 @@ flip, keyed by the trial's notification revision.
 """
 
 from datetime import UTC, datetime
+from typing import Literal
 
 import stripe
 
 from backend.data.credit import sync_subscription_from_stripe
+from backend.data.feedback_prompts import TrialCancelReason
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_checkout import (
     ANOTHER_PLAN_LIVE,
@@ -27,16 +29,36 @@ TRIAL_BUSY = "Your trial is already being updated. Please retry."
 CARD_NEEDED = "Update your card under Payment method, then resume your trial."
 
 
+# Stripe's own list of reasons, so the cancellation reads the same in its
+# dashboard and churn reports as in ours.
+_STRIPE_FEEDBACK: dict[
+    TrialCancelReason,
+    Literal["too_expensive", "low_quality", "missing_features", "unused", "other"],
+] = {
+    "too_expensive": "too_expensive",
+    "no_results_yet": "low_quality",
+    "missing_something": "missing_features",
+    "only_trying": "unused",
+    "other": "other",
+}
+
+
 class TrialChangeRefused(ValueError):
     """The live trial cannot take this change; the message is safe to show."""
 
 
-async def schedule_trial_cancellation(trial: TrialState) -> None:
+async def schedule_trial_cancellation(
+    trial: TrialState,
+    reason: TrialCancelReason | None = None,
+    comment: str | None = None,
+) -> None:
     """Under the checkout lock, so it never lands on the paid plan that
-    subscribing now converts the trial into."""
+    subscribing now converts the trial into. The optional *reason* and
+    *comment* reach Stripe as the subscription's ``cancellation_details``."""
+    details = _cancellation_details(reason, comment)
     try:
         async with subscription_checkout_lock(trial.user_id):
-            await _schedule_locked(trial)
+            await _schedule_locked(trial, details)
     except SubscriptionCheckoutUnavailable as exc:
         raise TrialChangeRefused(TRIAL_BUSY) from exc
 
@@ -56,13 +78,28 @@ async def resume_trial_subscription(trial: TrialState | None) -> None:
         raise TrialChangeRefused(TRIAL_BUSY) from exc
 
 
-async def _schedule_locked(trial: TrialState) -> None:
+async def _schedule_locked(
+    trial: TrialState,
+    details: stripe.Subscription.ModifyParamsCancellationDetails | None,
+) -> None:
     subscription = await _live_trial_subscription(trial)
     if not subscription.get("cancel_at_period_end"):
-        subscription = await _change_live_trial(
-            subscription, {"cancel_at_period_end": True}
-        )
+        change: stripe.Subscription.ModifyParams = {"cancel_at_period_end": True}
+        if details:
+            change["cancellation_details"] = details
+        subscription = await _change_live_trial(subscription, change)
     await sync_subscription_from_stripe(dict(subscription))
+
+
+def _cancellation_details(
+    reason: TrialCancelReason | None, comment: str | None
+) -> stripe.Subscription.ModifyParamsCancellationDetails | None:
+    details: stripe.Subscription.ModifyParamsCancellationDetails = {}
+    if reason is not None:
+        details["feedback"] = _STRIPE_FEEDBACK[reason]
+    if comment:
+        details["comment"] = comment
+    return details or None
 
 
 async def _resume_locked(trial: TrialState) -> None:

@@ -2,7 +2,7 @@ import json
 import re
 import urllib.parse
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
@@ -12,6 +12,7 @@ import fastapi.testclient
 import httpx
 import pytest
 import pytest_mock
+from autogpt_libs.auth import forget_account_state, remember_account_closed
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi.routing import APIRoute
 from prisma.actions import UserActions
@@ -159,6 +160,48 @@ def test_get_or_create_user_route_documents_creation_header() -> None:
         "description": "Whether this request created a new user",
         "schema": {"type": "string", "enum": ["true", "false"]},
     }
+
+
+@pytest.fixture
+def closed_account() -> Iterator[str]:
+    """Signed in as an account its owner deleted: a token minted before the
+    close still verifies, so the backend itself must refuse it."""
+    user_id = f"closed-{uuid.uuid4()}"
+    app.dependency_overrides[get_jwt_payload] = lambda: {
+        "sub": user_id,
+        "role": "user",
+        "email": f"{user_id}@example.com",
+    }
+    remember_account_closed(user_id)
+    yield user_id
+    forget_account_state(user_id)
+
+
+@pytest.mark.parametrize(
+    "method,path,provision",
+    [
+        ("POST", "/auth/user", "get_or_create_user_with_status"),
+        ("GET", "/auth/user/timezone", "get_or_create_user"),
+    ],
+)
+def test_a_closed_account_is_refused_and_never_provisioned(
+    mocker: pytest_mock.MockFixture,
+    closed_account: str,
+    method: str,
+    path: str,
+    provision: str,
+) -> None:
+    """Both routes create the User row from the token when it is missing, so
+    after erasure they would bring a deleted account back."""
+    provisioned = mocker.patch(
+        f"backend.api.features.user.routes.{provision}", new_callable=AsyncMock
+    )
+
+    response = client.request(method, path)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "This account is closed."}
+    provisioned.assert_not_awaited()
 
 
 def _consented_user(user_id: str, opted_out_at: datetime | None) -> User:

@@ -316,8 +316,14 @@ from ._test_data import make_session
 #     dev 7ca3671f6a                              77,726 (89 tools)
 #     + #11220's two arguments        +178        77,904 (89 tools)
 #     + headroom                      +300        78,204
+# Raised for request_work_check and flag_mistake, the two tools this PR adds:
+# both open a chat card, so they must be eager. Measured on this branch,
+# 2285c61736 plus this PR (91 tools):
+#     merged tree                                 78,567
+#     + headroom                       +300       78,867
+#     + flag_mistake's reason argument +150       79,017
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 78_204
+_CHAR_BUDGET = 79_017
 
 
 @pytest.fixture(scope="module")
@@ -545,8 +551,20 @@ def test_total_schema_char_budget() -> None:
 #     dev e6a3d35514                              70,416
 #     + raise_expert's two fields     +240        70,656
 #     + headroom                      +300        70,956
+#
+# request_work_check and flag_mistake, the same two tools as ``_CHAR_BUDGET``
+# above, ride the largest session. Measured on this branch, 2285c61736 plus
+# this PR:
+#     merged tree                                 70,773
+#     + headroom                       +300       71,073
+#     + flag_mistake's reason argument +150       71,223
+#
+# Re-measured on the SECRT-3401 branch merged with dev 83f6ce57 (2026-11-10),
+# where raise_expert's two fields no longer fit under the line above:
+#     merged tree                                 71,391
+#     + headroom                       +300       71,691
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 70_956
+_SESSION_WIRE_BUDGET = 71_691
 
 
 def test_largest_declared_session_wire_budget() -> None:
