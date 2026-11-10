@@ -31,6 +31,7 @@ from backend.copilot.google_data_redaction import (
     is_google_output,
     remember_google_output,
 )
+from backend.copilot.limit_tracking import track_turn_cap
 from backend.copilot.model import CHAT_STATUS_RUNNING, ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamStatus
@@ -370,7 +371,7 @@ async def wake(
                     await woken_turns.record(
                         session_id, [c.review_id for c in calls], turn_id
                     )
-            except ConcurrentTurnLimitError:
+            except ConcurrentTurnLimitError as running_cap:
                 await try_enqueue_turn(
                     user_id=user_id,
                     inflight_cap=get_inflight_turn_limit(),
@@ -387,11 +388,15 @@ async def wake(
                     ),
                     envelope=envelope,
                 )
+                track_turn_cap(
+                    user_id, running_cap, surface="background", outcome="queued"
+                )
             except TreeRefusal as refused:
                 await post_refusal(
                     session_id, f"{refused.message} {WAKE_LATER}", message_id=refusal_id
                 )
-    except InflightCapExceeded:
+    except InflightCapExceeded as inflight_cap:
+        track_turn_cap(user_id, inflight_cap, surface="background", outcome="refused")
         logger.info(f"Held calls in {session_id} wait for the user's next turn")
     except Exception:
         logger.warning(f"Could not wake session {session_id}", exc_info=True)
