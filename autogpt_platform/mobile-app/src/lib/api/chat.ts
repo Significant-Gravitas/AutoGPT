@@ -32,9 +32,19 @@ export const chatKeys = {
   suggestedPrompts: ["chat", "suggested-prompts"] as const,
 };
 
-export async function listSessions() {
+interface ListSessionsOptions {
+  expertID?: string;
+  limit?: number;
+  pinnedFirst?: boolean;
+}
+
+export async function listSessions({
+  expertID,
+  limit = 50,
+  pinnedFirst,
+}: ListSessionsOptions = {}) {
   const data = await apiRequest<SessionList>("/api/chat/sessions", {
-    query: { limit: 50 },
+    query: { limit, expert_id: expertID, pinned_first: pinnedFirst },
   });
   return data.sessions;
 }
@@ -57,12 +67,6 @@ export function cancelSession(sessionID: string) {
     `/api/chat/sessions/${sessionID}/cancel`,
     { method: "POST" },
   );
-}
-
-export function deleteSession(sessionID: string) {
-  return apiRequest<void>(`/api/chat/sessions/${sessionID}`, {
-    method: "DELETE",
-  });
 }
 
 export async function getSuggestedPrompts() {
