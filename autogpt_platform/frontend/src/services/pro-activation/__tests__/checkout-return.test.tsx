@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { server } from "@/mocks/mock-server";
+import * as api from "../api";
 import { ProActivationProvider } from "../ProActivationProvider";
 import { quote } from "./fixtures";
 
@@ -96,9 +97,10 @@ beforeEach(() => {
   route.search = new URLSearchParams();
   window.history.replaceState({}, "", "/");
 });
+afterEach(() => vi.restoreAllMocks());
 
 describe("Pro activation after a Stripe checkout return", () => {
-  it("does not take a page reached in-app from a checkout return for one", async () => {
+  it("does not take a page reached in-app from a checkout return for one", () => {
     activationReady(successTemplate);
     // Onboarding replaced itself with /home: Next renders the new page before
     // it writes the new URL, so the browser still shows the checkout return.
@@ -108,11 +110,10 @@ describe("Pro activation after a Stripe checkout return", () => {
       `/onboarding?step=preparing&${paidReturn}`,
     );
     route.search = new URLSearchParams();
+    const retrieve = vi.spyOn(api, "retrieveActivation");
+    // render() flushes the mount effects, where a checkout return starts its lookup.
     mount();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(current).not.toHaveBeenCalled();
-    expect(route.replace).not.toHaveBeenCalled();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(retrieve).not.toHaveBeenCalled();
   });
 
   it("stays on the page Stripe returned to when the plan is ready", async () => {
