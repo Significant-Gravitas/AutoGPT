@@ -190,6 +190,31 @@ describe("ConnectorRow with several untitled sign-ins for one provider", () => {
     expect(screen.getByText("use-me@example.com")).toBeDefined();
     expect(screen.queryByText("use-GitHub")).toBeNull();
   });
+
+  it("auto-selects a single untitled account by its email", () => {
+    const signIn = {
+      id: "cred-google",
+      provider: "github",
+      type: "oauth2",
+      title: undefined,
+      username: "otto@example.com",
+      scopes: [],
+    };
+    const current = row({
+      schema: {
+        credentials_provider: ["github"],
+        credentials_types: ["oauth2"],
+      },
+    });
+    renderRow(current, [signIn] as never);
+
+    expect(current.select).toHaveBeenCalledWith({
+      id: "cred-google",
+      provider: "github",
+      type: "oauth2",
+      title: "otto@example.com",
+    });
+  });
 });
 
 describe("ConnectorRow with a refused credential", () => {
