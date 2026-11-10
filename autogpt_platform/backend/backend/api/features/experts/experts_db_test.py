@@ -7844,6 +7844,8 @@ async def test_reset_declines_an_approval_waiting_in_needs_you(
     assert answered.value.status_code == 410
     assert answered.value.detail == {
         "type": "chat_removed",
+        # Still on the team, so the page can offer a chat with them.
+        "expert_id": expert_id,
         "expert_name": "My Maria",
         "message": "This chat was removed when My Maria was reset.",
     }
