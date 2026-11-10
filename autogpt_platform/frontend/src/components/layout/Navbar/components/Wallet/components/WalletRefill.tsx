@@ -8,36 +8,12 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import {
-  useToast,
-  useToastOnFail,
-} from "@/components/molecules/Toast/use-toast";
 import { TopUpForm } from "@/components/layout/TopUpPrompt/TopUpForm/TopUpForm";
 import useCredits from "@/hooks/useCredits";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
-import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { useForm, FormProvider } from "react-hook-form";
-import { z } from "zod";
-
-const autoRefillSchema = z
-  .object({
-    threshold: z
-      .number({ coerce: true, invalid_type_error: "Enter min. balance" })
-      .min(
-        5,
-        "Looks like your balance is too low for auto-refill. Try $5 or more.",
-      ),
-    refillAmount: z
-      .number({ coerce: true, invalid_type_error: "Enter top-up amount" })
-      .min(5, "Top-ups start at $5. Please enter a higher amount."),
-  })
-  .refine((data) => data.refillAmount >= data.threshold, {
-    message:
-      "Your refill amount must be equal to or greater than the balance you entered above.",
-    path: ["refillAmount"],
-  });
+import { FormProvider } from "react-hook-form";
+import { useAutoRefillForm } from "./useAutoRefillForm";
 
 export function WalletRefill() {
   const identityKey = useAuthStore((state) => state.user?.id ?? null);
@@ -48,8 +24,8 @@ export function WalletRefill() {
 
   return (
     <WalletRefillState
+      key={identityKey ?? "logged-out"}
       autoTopUpConfig={autoTopUpConfig}
-      identityKey={identityKey}
       updateAutoTopUpConfig={updateAutoTopUpConfig}
     />
   );
@@ -57,18 +33,15 @@ export function WalletRefill() {
 
 interface Props {
   autoTopUpConfig: { amount: number; threshold: number } | null;
-  identityKey: string | null;
   updateAutoTopUpConfig: (
     amount: number,
     threshold: number,
   ) => Promise<boolean>;
 }
 
-function WalletRefillState({
-  autoTopUpConfig,
-  identityKey,
-  updateAutoTopUpConfig,
-}: Props) {
+function WalletRefillState({ autoTopUpConfig, updateAutoTopUpConfig }: Props) {
+  const autoRefill = useAutoRefillForm(autoTopUpConfig, updateAutoTopUpConfig);
+
   return (
     <div className="mx-1 border-b border-border-strong">
       <Text
@@ -128,11 +101,7 @@ function WalletRefillState({
             >
               Choose a one-time top-up or set up automatic refills.
             </Text>
-            <AutoRefillForm
-              key={identityKey ?? "logged-out"}
-              autoTopUpConfig={autoTopUpConfig}
-              updateAutoTopUpConfig={updateAutoTopUpConfig}
-            />
+            <AutoRefillForm {...autoRefill} />
           </TabsLineContent>
           <Text
             variant="small-lh-tight"
@@ -156,54 +125,11 @@ function WalletRefillState({
   );
 }
 
-interface AutoRefillFormProps {
-  autoTopUpConfig: { amount: number; threshold: number } | null;
-  updateAutoTopUpConfig: Props["updateAutoTopUpConfig"];
-}
-
 function AutoRefillForm({
-  autoTopUpConfig,
-  updateAutoTopUpConfig,
-}: AutoRefillFormProps) {
-  const { toast } = useToast();
-  const toastOnFail = useToastOnFail();
-  const [isLoading, setIsLoading] = useState(false);
-
-  const autoRefillForm = useForm<z.infer<typeof autoRefillSchema>>({
-    resolver: zodResolver(autoRefillSchema),
-  });
-
-  // Pre-fill the auto-refill form with existing values
-  useEffect(() => {
-    if (
-      autoTopUpConfig &&
-      autoTopUpConfig.amount > 0 &&
-      autoTopUpConfig.threshold > 0 &&
-      !autoRefillForm.getFieldState("threshold").isTouched &&
-      !autoRefillForm.getFieldState("refillAmount").isTouched
-    ) {
-      autoRefillForm.setValue("threshold", autoTopUpConfig.threshold / 100);
-      autoRefillForm.setValue("refillAmount", autoTopUpConfig.amount / 100);
-    }
-  }, [autoTopUpConfig, autoRefillForm]);
-
-  const submitAutoTopUpConfig = useCallback(
-    async (data: z.infer<typeof autoRefillSchema>) => {
-      setIsLoading(true);
-      await updateAutoTopUpConfig(data.refillAmount * 100, data.threshold * 100)
-        .then((updated) => {
-          if (!updated) return;
-          toast({
-            title: "Auto top-up config updated! 🎉",
-            variant: "success",
-          });
-        })
-        .catch(toastOnFail("update auto top-up config"));
-      setIsLoading(false);
-    },
-    [updateAutoTopUpConfig, toast, toastOnFail],
-  );
-
+  autoRefillForm,
+  isLoading,
+  submitAutoTopUpConfig,
+}: ReturnType<typeof useAutoRefillForm>) {
   return (
     <FormProvider {...autoRefillForm}>
       <form
