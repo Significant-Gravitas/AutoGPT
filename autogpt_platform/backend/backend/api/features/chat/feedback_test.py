@@ -231,8 +231,8 @@ def test_database_failure_is_an_error_the_ui_can_show(
         {"score_name": "work_check", "score_value": 3},
         {"score_name": "otto_mistake", "score_value": 1},
         {"score_name": "copy", "score_value": 2},
-        {"score_name": "work_check", "score_value": 1, "reason": "made_up"},
-        {"score_name": "otto_mistake", "score_value": 0, "reason": "missed_ask"},
+        {"score_name": "work_check", "score_value": 1, "reason": "price"},
+        {"score_name": "otto_mistake", "score_value": 0, "reason": "price"},
         {"reason": "wrong_facts"},
         {"score_name": "copy", "score_value": 1, "reason": "wrong_facts"},
     ],
@@ -299,28 +299,43 @@ def test_card_ratings_save_their_score(
     assert upsert.await_args.kwargs["score_value"] == score_value
 
 
+@pytest.mark.parametrize("score_name", ["work_check", "otto_mistake"])
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "wrong_facts",
+        "missed_ask",
+        "made_up",
+        "too_slow",
+        "too_much_help",
+        "not_usable",
+        "other",
+    ],
+)
 def test_card_reason_is_saved_and_sent_to_posthog(
     mocker: pytest_mock.MockerFixture,
     upsert: AsyncMock,
     posthog_capture: MagicMock,
+    score_name: str,
+    reason: str,
 ) -> None:
     _mock_message(mocker, _reply())
 
     response = _post(
         {
             "message_id": f"{SESSION_ID}-seq-7",
-            "score_name": "work_check",
+            "score_name": score_name,
             "score_value": 0,
-            "reason": "too_slow",
+            "reason": reason,
         }
     )
 
     assert response.status_code == 200
     assert upsert.await_args is not None
-    assert upsert.await_args.kwargs["reason"] == "too_slow"
+    assert upsert.await_args.kwargs["reason"] == reason
     properties = posthog_capture.call_args.args[2]
-    assert properties["$ai_metric_name"] == "work_check"
-    assert properties["reason"] == "too_slow"
+    assert properties["$ai_metric_name"] == score_name
+    assert properties["reason"] == reason
 
 
 def test_rating_is_sent_to_posthog_as_the_user(

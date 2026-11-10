@@ -133,12 +133,6 @@ export async function completeOnboardingWizard(
   });
   await skipBrainDump.click();
   await expect(skipBrainDump).toBeHidden({ timeout: 10000 });
-  const skipReason = page.getByText("No problem. Mind telling us why?", {
-    exact: true,
-  });
-  await expect(skipReason).toBeVisible();
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await expect(skipReason).toBeHidden();
 
   const connect = page.getByRole("heading", {
     name: "Already paying for an AI subscription?",
