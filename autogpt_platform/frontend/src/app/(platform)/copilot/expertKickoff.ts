@@ -41,6 +41,12 @@ export interface ExpertKickoffSend {
 export type KickoffStatus = "idle" | "pending" | "done";
 export type KickoffAttemptToken = string;
 
+/** Opens the expert's chat, adopting their latest thread, or starts their
+ *  first one with the introduction when they have none yet. */
+export function expertKickoffHref(expertId: string) {
+  return `/copilot?expertId=${encodeURIComponent(expertId)}&kickoff=1`;
+}
+
 export function buildKickoffMessage(
   expertId: string,
   attemptToken?: KickoffAttemptToken,

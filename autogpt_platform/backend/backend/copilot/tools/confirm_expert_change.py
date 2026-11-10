@@ -3,8 +3,8 @@
 Step 2 of the confirm-gated team-change flow. One confirm tool serves both
 kinds: it takes nothing but the id, so the applied change is exactly what the
 user saw. The id is single-use and bound to the Otto session that
-produced it. A hire offered with its task also starts that task when the id
-confirmed is the "hire and start" one (see ``hire_handoff``).
+produced it. A hire or new expert offered with its task also starts that
+task when the id confirmed is the "and start" one (see ``hire_handoff``).
 """
 
 import logging
@@ -108,7 +108,13 @@ class ConfirmExpertChangeTool(BaseTool):
         )
         if isinstance(proposal, ErrorResponse):
             return proposal
-        applied = await apply_proposal(user_id, session_id, proposal)
+        applied = await apply_proposal(
+            user_id,
+            session_id,
+            proposal,
+            # A chat-platform conversation renders no card to point at.
+            on_card=session.metadata.source_platform is None,
+        )
         task = proposal.handoff
         if (
             isinstance(applied, ExpertChangeAppliedResponse)

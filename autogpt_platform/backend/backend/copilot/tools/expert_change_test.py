@@ -42,6 +42,7 @@ _RAISE_MODULE = "backend.copilot.tools.raise_expert"
 _UPDATE_MODULE = "backend.copilot.tools.update_expert"
 _PROPOSAL_MODULE = "backend.copilot.tools.expert_proposal"
 _CONFIRM_MODULE = "backend.copilot.tools.confirm_expert_change"
+_PARK_MODULE = "backend.copilot.tools.expert_handoff_proposal"
 
 _CHARTER = {
     "name": "Otto",
@@ -152,8 +153,7 @@ def _env(
         patch(f"{_UPDATE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_PROPOSAL_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_CONFIRM_MODULE}.expert_kickoff_db", MagicMock(return_value=db)),
-        patch(f"{_HIRE_MODULE}.get_redis_async", shared_redis),
-        patch(f"{_RAISE_MODULE}.get_redis_async", shared_redis),
+        patch(f"{_PARK_MODULE}.get_redis_async", shared_redis),
         patch(f"{_UPDATE_MODULE}.get_redis_async", shared_redis),
         patch(f"{_CONFIRM_MODULE}.get_redis_async", shared_redis),
     ):

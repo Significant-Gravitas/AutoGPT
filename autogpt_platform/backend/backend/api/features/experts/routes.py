@@ -55,6 +55,7 @@ from backend.copilot.tools.skills import SkillVersionConflictError, SkillWriteLo
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.sandbox_limits import SandboxLimitError
 
 logger = logging.getLogger(__name__)
 
@@ -428,6 +429,7 @@ async def get_expert_computer(
     operation_id="postV2StartExpertDesktop",
     responses={
         404: {"description": "Expert not found"},
+        429: {"description": "Too many sandboxes are running"},
         502: {"description": "The desktop could not be started"},
         503: {"description": "E2B is not configured"},
     },
@@ -458,6 +460,8 @@ async def start_expert_desktop(
             api_key,
             user_id=user_id,
         )
+    except SandboxLimitError as refusal:
+        raise fastapi.HTTPException(status_code=429, detail=str(refusal))
     except Exception as exc:
         logger.error(
             "[E2B] start_expert_desktop failed for %s: %s",

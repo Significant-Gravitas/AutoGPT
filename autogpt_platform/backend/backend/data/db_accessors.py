@@ -67,6 +67,19 @@ def expert_check_db():
     return expert_check_db
 
 
+def feedback_prompts_db():
+    if db.is_connected():
+        from backend.data import feedback_prompts as _feedback_prompts_db
+
+        feedback_prompts_db = _feedback_prompts_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        feedback_prompts_db = get_database_manager_async_client()
+
+    return feedback_prompts_db
+
+
 def spend_approval_db():
     if db.is_connected():
         from backend.api.features.experts import spend_approval as _spend_approval

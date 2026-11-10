@@ -119,9 +119,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description=(
-            "How many of an executor's graph workers one user's top-level runs "
-            "may hold at once; kept below `num_graph_workers` when that is 2 or "
-            "more, and 1 when it is 1."
+            "How many of an executor's graph workers one user's runs may hold "
+            "at once; kept below `num_graph_workers` when that is 2 or more, "
+            "and 1 when it is 1. Sub-workflow runs may hold one more per level "
+            "of nesting, up to 4 more, so a run waiting on a sub-workflow never "
+            "keeps it from starting; keep this at most `num_graph_workers` "
+            "minus 5 for one user's runs never to hold every worker."
         ),
     )
 
@@ -568,6 +571,22 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "egresses through (see backend.util.e2b_network). Empty leaves egress "
         "direct. Do not set it before the proxy exists: E2B fails closed, so a "
         "box pointed at nothing has no egress at all.",
+    )
+    e2b_deployment_sandbox_limit: int = Field(
+        default=0,
+        ge=0,
+        description="Most E2B boxes this deployment (its APP_ENV) may have running "
+        "at once on the platform's E2B key; a start past it is refused. 0 sets no "
+        "ceiling of its own.",
+    )
+    e2b_account_sandbox_limit: int = Field(
+        # Twice the running-turn cap, so a user at that cap can still open
+        # desktops and run sandboxed blocks beside it.
+        default=10,
+        ge=0,
+        description="Most E2B boxes one account may have running at once in this "
+        "deployment on the platform's E2B key; a start past it is refused. 0 turns "
+        "the cap off.",
     )
 
     frontend_base_url: str = Field(
@@ -1068,7 +1087,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
     automod_fail_open: bool = Field(
         default=False,
-        description="If True, allow execution to continue if AutoMod fails",
+        description="If True, allow execution to continue if AutoMod fails or "
+        "times out; if False, the execution fails",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
