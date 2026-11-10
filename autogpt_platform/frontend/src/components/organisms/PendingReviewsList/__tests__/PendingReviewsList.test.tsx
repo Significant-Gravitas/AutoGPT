@@ -196,6 +196,57 @@ test("an AutoPilot action's card neither calls it a workflow nor offers an edit"
   expect(screen.queryByText(/Node #/)).toBeNull();
 });
 
+function chatBlockReview(overrides: Partial<PendingHumanReviewModel> = {}) {
+  return makeReview({
+    node_exec_id: "copilot-node-gmail:ab12",
+    node_id: "copilot-node-gmail",
+    graph_exec_id: null,
+    graph_id: null,
+    graph_version: null,
+    session_id: "chat-1",
+    agent_name: null,
+    instructions: "GmailSendBlock",
+    action: "Gmail Send",
+    ...overrides,
+  });
+}
+
+const WORKFLOW_LINE =
+  "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed.";
+
+test.each([
+  ["the expert whose chat raised it", "Issa", "Issa"],
+  ["Otto in a chat without an expert", null, "Otto"],
+])(
+  "a block review raised in a chat names %s, not a workflow",
+  (_, expertName, waitingOn) => {
+    render(
+      <PendingReviewsList
+        reviews={[chatBlockReview({ expert_name: expertName })]}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        `${waitingOn} is waiting for your approval before the action below.`,
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(WORKFLOW_LINE)).toBeNull();
+    expect(screen.queryByText(/workflow/i)).toBeNull();
+  },
+);
+
+test("a workflow run's review still says the workflow is paused", () => {
+  render(
+    <PendingReviewsList
+      reviews={[makeReview({ expert_name: "Issa", session_id: null })]}
+    />,
+  );
+
+  expect(screen.getByText(WORKFLOW_LINE)).toBeDefined();
+  expect(screen.queryByText(/is waiting for your approval/)).toBeNull();
+});
+
 // The JSON editor keeps a half-typed draft on screen. Approving must not send
 // the last valid JSON in its place: with a trailing comma left behind,
 // "b@x.com" would still go out while the reviewer sees it deleted.

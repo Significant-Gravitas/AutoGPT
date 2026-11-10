@@ -15,6 +15,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { SpendApprovalCard } from "./components/SpendApprovalCard/SpendApprovalCard";
 import { spendSummary } from "./components/SpendApprovalCard/helpers";
 
@@ -293,9 +294,7 @@ export function PendingReviewsList({
               </Text>
             </AttentionCard.Row>
             <Text variant="large" tone="body">
-              {reviewGroups.every(([nodeId]) => isGateReview(nodeId))
-                ? "Otto is waiting for your approval before the action below."
-                : "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed."}
+              {waitingOnLine(reviewGroups)}
             </Text>
           </div>
 
@@ -438,6 +437,23 @@ export function PendingReviewsList({
       )}
     </div>
   );
+}
+
+// A chat's reviews wait on the expert whose chat raised them, or on Otto; only
+// a workflow run is paused by its review.
+function waitingOnLine(groups: [string, PendingHumanReviewModel[]][]) {
+  const inChat = groups.every(
+    ([nodeId, nodeReviews]) =>
+      isGateReview(nodeId) || nodeReviews.every((r) => !r.graph_exec_id),
+  );
+  if (!inChat)
+    return "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed.";
+  const experts = new Set(
+    groups.flatMap(([, nodeReviews]) => nodeReviews.map((r) => r.expert_name)),
+  );
+  const [expert] = experts;
+  const name = experts.size === 1 && expert ? expert : AUTOPILOT_NAME;
+  return `${name} is waiting for your approval before the action below.`;
 }
 
 function isGateReview(nodeId: string | null | undefined) {

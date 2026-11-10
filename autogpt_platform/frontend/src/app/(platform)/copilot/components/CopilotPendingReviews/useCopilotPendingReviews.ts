@@ -17,8 +17,9 @@ import type { RunReviewTarget } from "../ChatMessagesContainer/helpers";
 interface Args {
   runs?: RunReviewTarget[];
   chatSessionId?: string;
-  // Off for the chat's own list: it polls only while it holds cards, and
-  // fetches again whenever ``refetchKey`` changes (a new held call).
+  // Off for the chat's own list once its turn is over: it then polls only
+  // while it holds cards, and fetches again whenever ``refetchKey`` changes
+  // (a new held call, or a block run that returned).
   pollWhileEmpty?: boolean;
   refetchKey?: number;
 }
