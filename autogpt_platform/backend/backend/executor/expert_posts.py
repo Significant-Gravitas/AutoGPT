@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _POST_NAMESPACE = uuid.UUID("0b7c8a52-3d1e-4f6a-9c0d-7e5b2a91c4d8")
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 _DAILY_POST_CAP = 10
 _CAP_KEY_TTL_SECONDS = 2 * 24 * 3600
 _MAX_ERROR_LENGTH = 500

@@ -21,6 +21,7 @@ from backend.util.exceptions import GraphValidationError
 
 # How many levels of sub-workflows may run below a top-level run. With the
 # default share of 5 of 10 workers, one account's runs then hold at most 9.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 MAX_SUB_WORKFLOW_DEPTH = 4
 
 # A level of a chain whose run no longer exists, so its workflow isn't known.

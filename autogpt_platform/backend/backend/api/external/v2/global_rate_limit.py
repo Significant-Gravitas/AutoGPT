@@ -44,6 +44,7 @@ from .errors import error_response
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+# Documented in docs/platform/rate-limits.md and integrating/api-conventions.md.
 _authenticated_limiter = RateLimiter("v2:global", max_requests=200, window_seconds=60)
 _anonymous_limiter = RateLimiter("v2:global:anon", max_requests=5, window_seconds=60)
 # Above the per-user cap, so a client within its own limit never meets it.

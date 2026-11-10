@@ -107,6 +107,7 @@ class UpdateTrackingModel(BaseModel, Generic[T]):
 class Config(UpdateTrackingModel["Config"], BaseSettings):
     """Config for the server."""
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     num_graph_workers: int = Field(
         default=10,
         ge=1,
@@ -114,6 +115,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum number of workers to use for graph execution.",
     )
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_graph_workers_per_user: int = Field(
         default=5,
         ge=1,
@@ -133,6 +135,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Send rate-limited messages to back of queue by republishing instead of front requeue to prevent blocking other users.",
     )
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     graph_run_requeue_delay_seconds: int = Field(
         default=30,
         ge=1,
@@ -281,16 +284,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=500,
         description="Credit threshold for low balance notifications (100 = $1, default 500 = $5)",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     expert_weekly_credit_budget_default: int = Field(
         default=500,
         ge=0,
         description="Default weekly credit budget per hired expert when the expert has no explicit budget (100 = $1). 0 disables the guardrail.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     expert_spend_approval_threshold_default: int = Field(
         default=250,
         ge=0,
         description="Credits an expert may spend per window on her own; at this amount new work waits for the user's approval (100 = $1). 0 disables the check.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     expert_spend_approval_window: Literal["week", "day"] = Field(
         default="week",
         description="Accounting window for the spend-approval threshold: the ISO week the weekly budget also uses, or the UTC day.",
@@ -327,12 +333,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=60 * 60,
         description="Time in seconds for how far back to check for the late executions.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_concurrent_graph_executions_per_user: int = Field(
         default=25,
         ge=1,
         le=1000,
         description="Maximum number of concurrent graph executions allowed per user per graph.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_inflight_copilot_turns_per_user: int = Field(
         default=15,
         ge=1,
@@ -347,6 +355,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "schedule_turn and share this cap."
         ),
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_running_copilot_turns_per_user: int = Field(
         default=5,
         ge=1,
@@ -426,16 +435,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "emit 1536-dim vectors to match the hardcoded pgvector column."
         ),
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     public_search_requests_per_minute: int = Field(
         default=30,
         ge=1,
         description="Store search requests one signed-out client may make per minute.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     public_search_user_requests_per_minute: int = Field(
         default=120,
         ge=1,
         description="Store search requests one signed-in account may make per minute.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     public_search_embeddings_per_minute: int = Field(
         default=1000,
         ge=0,
@@ -552,6 +564,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This is necessary to make sure webhooks find their way.",
     )
 
+    # Documented in docs/platform/client-ip.md: update it with any change here.
     trusted_proxy_count: int = Field(
         # Prod is Cloudflare -> Google LB -> pod, so the client is 3rd from the
         # right; 1 keys every anonymous caller on the LB's address, one bucket.
@@ -683,6 +696,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The pool size for the scheduler database connection pool",
     )
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_schedules_per_user: int = Field(
         default=200,
         ge=1,

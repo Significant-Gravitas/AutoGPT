@@ -95,9 +95,11 @@ You can have up to 25 runs of the same workflow running at once. More runs aren'
 - **Counted per:** account and workflow, whether a run was started by hand, by a schedule, by a trigger, by Otto or through the API.
 - **Self-hosting:** `MAX_CONCURRENT_GRAPH_EXECUTIONS_PER_USER` (default `25`).
 
-Across all your workflows, each of the Platform's executors (the servers that run workflows) also runs at most 5 of your runs at once, and always keeps a worker free for other accounts. A run past that waits as **Queued** and is offered to an executor again after 30 seconds. A workflow that another run calls doesn't count toward the 5.
+Across all your workflows, each of the Platform's executors (the servers that run workflows, on 10 workers each) also runs at most 5 of your runs at once. A run past that waits as **Queued** and is offered to an executor again after 30 seconds.
 
-- **Self-hosting:** `MAX_GRAPH_WORKERS_PER_USER` (default `5`) and `GRAPH_RUN_REQUEUE_DELAY_SECONDS` (default `30`).
+Sub-workflows, the workflows a run starts as one of its steps, count toward the 5 too. A run waiting on its sub-workflow keeps its worker, so each level of nesting may use one more worker than the level above it, and sub-workflows nest at most 4 levels deep. Your runs then hold at most 9 of an executor's 10 workers, so another account's run can always start. A fifth level fails with "Sub-workflows can be nested at most 4 levels deep".
+
+- **Self-hosting:** `MAX_GRAPH_WORKERS_PER_USER` (default `5`), `NUM_GRAPH_WORKERS` (default `10`) and `GRAPH_RUN_REQUEUE_DELAY_SECONDS` (default `30`). Keep `MAX_GRAPH_WORKERS_PER_USER` at most `NUM_GRAPH_WORKERS` minus 5, so that one account's runs never hold every worker.
 
 ### Schedules
 
@@ -105,6 +107,14 @@ You can have up to 200 schedules, paused ones included. A new one past that is r
 
 - **Counted per:** account.
 - **Self-hosting:** `MAX_SCHEDULES_PER_USER` (default `200`).
+
+### Generated workflow images
+
+The Platform generates a picture for each workflow you add to your library, sub-workflows included, and for a marketplace listing when you ask it to. It generates up to 25 a day.
+
+- **Counted per:** account. The count starts over 24 hours after the first image in it. Failed generations count too; a workflow that already has a generated picture keeps it, and that doesn't count.
+- **What you see:** past the limit, a workflow you add has no picture, and generating one for a listing is refused with `429` and "Limit: 25 generated agent images per day."
+- Not configurable.
 
 ## Search
 
@@ -207,11 +217,21 @@ Each path counts on its own. A path allows that many requests in a row, and star
 
 These limits apply to production builds of the frontend and aren't configurable. On a self-hosted install behind a reverse proxy, see [Client IP Addresses](client-ip.md).
 
+## Closing your account
+
+### Telling us why you're leaving
+
+Where you can close your account yourself, the **Delete account** dialog asks why you're leaving and may suggest an alternative. Opening the dialog, your answer and each click on a suggestion are recorded anonymously, up to 20 times an hour.
+
+- **Counted per:** account. The hour starts on the clock hour.
+- **What you see:** nothing. Past the limit, the Platform stops recording them, and closing your account works as before. The API answers `429` with "Too many answers. Try again later.", without a `Retry-After` header.
+- Not configurable.
+
 ## The External API
 
 ### API v2
 
-Every call to [API v2](integrating/api-guide.md) shares one limit, on top of any limit on the endpoint itself:
+Every call to [API v2](integrating/api-guide.md) shares one limit, on top of the lower limits on a few endpoints that [Errors, rate limits, and pagination](integrating/api-conventions.md#rate-limits) lists:
 
 | Caller                                                     | Limit                 | Counted per |
 | ---------------------------------------------------------- | --------------------- | ----------- |
@@ -235,6 +255,10 @@ The deprecated v1 has no limit across all calls. Instead, its endpoints share tw
 - Each minute starts on the clock minute. Responses carry `X-RateLimit-*` headers, with `X-RateLimit-Reset` as a Unix time.
 - **What you see:** `429`, with "Rate limit exceeded for scope 'read'. Retry after …s." (`'execution'` on the 30-a-minute tier) and a `Retry-After` header.
 - Not configurable.
+
+### Running a block on its own
+
+Running one block directly, through v1's `POST /blocks/{block_id}/execute` or the same path in the Platform's own API, allows 4 runs at once per account on each of the Platform's servers. A fifth is refused with `429` and "You already have 4 blocks running. Wait for one to finish, then try again." Not configurable.
 
 ## Not on this page
 
