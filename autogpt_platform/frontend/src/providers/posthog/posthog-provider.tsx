@@ -54,6 +54,9 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
         ...getConsentGatedConfig(),
         session_recording: {
           maskCapturedNetworkRequestFn: maskCapturedNetworkRequest,
+          // A custom mask takes the place of PostHog's own body scrubbing,
+          // so bodies stay off whatever the project's capture setting says.
+          recordBody: false,
         },
         before_send: [dropWithoutConsent, markImpersonatedEvent],
       });
