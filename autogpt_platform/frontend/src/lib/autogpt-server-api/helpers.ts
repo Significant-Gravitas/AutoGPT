@@ -207,6 +207,14 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
     });
     // Better Auth's answer to a missing, expired or revoked session.
     if (response.status === 401) return null;
+    // This self-request carries no client IP, so every user's SSR mint shares
+    // Better Auth's single no-IP rate-limit bucket. Render without a token, as
+    // before, rather than failing public pages under load. Any other status
+    // is a failure the client retries as a 503.
+    if (response.status === 429) {
+      console.warn("/api/auth/token rate-limited the SSR token mint");
+      return null;
+    }
     if (!response.ok) {
       throw new Error(`/api/auth/token answered ${response.status}`);
     }

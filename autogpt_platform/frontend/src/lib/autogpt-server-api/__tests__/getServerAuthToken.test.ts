@@ -177,6 +177,23 @@ describe("getServerAuthToken", () => {
     expect(captureExceptionMock).not.toHaveBeenCalled();
   });
 
+  it("returns null without reporting when Better Auth rate-limits the mint", async () => {
+    getAllCookiesMock.mockReturnValue([
+      { name: "better-auth.session_token", value: "session-rate-limited" },
+    ]);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ message: "Too many requests" }), {
+        status: 429,
+      }),
+    );
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    const token = await getServerAuthToken();
+
+    expect(token).toBeNull();
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+  });
+
   it("throws a retryable 503 when the token endpoint fails for a live session", async () => {
     // A 500 here is the auth database refusing a connection, not a signed-out
     // user. Returning null sent the request on without a token, and the

@@ -507,6 +507,8 @@ describe("customMutator — server-side auth", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
+    mockIsClientSide.mockReset();
     vi.mocked(environment.isServerSide).mockReset();
     vi.mocked(getServerAuthToken).mockReset();
   });
