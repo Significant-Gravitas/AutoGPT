@@ -1036,9 +1036,11 @@ class ExecutionProcessor:
         could start another in its place, so the worker stays taken until
         the block returns.
         """
+        # Read from copies: a stopped Orchestrator can still add the tool nodes
+        # it runs, from the node loop's thread, while this one goes through them
         running = [
             node_id
-            for node_id, progress in self.running_node_execution.items()
+            for node_id, progress in list(self.running_node_execution.items())
             if not progress.has_ended()
         ]
         if not running:
@@ -1047,7 +1049,8 @@ class ExecutionProcessor:
         started = warned = time.monotonic()
         lock_kept = True
         while not all(
-            progress.has_ended() for progress in self.running_node_execution.values()
+            progress.has_ended()
+            for progress in list(self.running_node_execution.values())
         ):
             # Without the lock another worker can take the run up meanwhile
             if not cluster_lock.refresh() and lock_kept:

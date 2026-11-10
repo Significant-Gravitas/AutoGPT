@@ -401,6 +401,55 @@ def test_a_held_worker_that_cant_keep_the_runs_lock_says_so_once(caplog):
     assert "['node-1']" in lock_warnings[0]
 
 
+@pytest.mark.parametrize(
+    "added_on_read", [1, 2], ids=["while-listing-the-stopped", "while-holding"]
+)
+def test_a_node_added_while_the_worker_is_held_is_waited_for_too(
+    added_on_read: int,
+):
+    """A stopped Orchestrator can carry on and run a tool node, adding it to
+    the run's nodes from the node loop's thread while the held worker goes
+    through them; the worker neither fails on that nor stops waiting early."""
+    processor = ExecutionProcessor()
+    orchestrator_ended = threading.Event()
+    tool_ended = threading.Event()
+    tool = MagicMock(spec=NodeExecutionProgress)
+    tool.has_ended.side_effect = tool_ended.is_set
+    orchestrator = MagicMock(spec=NodeExecutionProgress)
+    orchestrator.has_ended.side_effect = orchestrator_ended.is_set
+    ended = MagicMock(spec=NodeExecutionProgress)
+    reads = 0
+
+    def ended_while_the_tool_node_is_added() -> bool:
+        # The other thread adds the tool node right as this one is read
+        nonlocal reads
+        reads += 1
+        if reads == added_on_read:
+            processor.running_node_execution["tool"] = tool
+        return True
+
+    ended.has_ended.side_effect = ended_while_the_tool_node_is_added
+    processor.running_node_execution = {"ended": ended, "orchestrator": orchestrator}
+    refreshes = 0
+
+    def refresh() -> bool:
+        nonlocal refreshes
+        refreshes += 1
+        if refreshes == 1:
+            orchestrator_ended.set()
+        if refreshes == 2:
+            tool_ended.set()
+        return True
+
+    cluster_lock = MagicMock()
+    cluster_lock.refresh.side_effect = refresh
+    processor.wait_for_nodes_to_end(cluster_lock)
+
+    # Held until the added tool node ended too, a pass after the Orchestrator
+    assert refreshes == 2
+    assert tool.has_ended.called
+
+
 def test_a_tool_node_run_inline_holds_the_cleanup_only_for_itself():
     """The Orchestrator runs a tool node inline from its own long-lived task,
     tracked by a bare future. Once the tool node is done, a stop's cleanup
