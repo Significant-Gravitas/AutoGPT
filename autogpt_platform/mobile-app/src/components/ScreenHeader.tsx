@@ -1,0 +1,47 @@
+import { Menu01Icon } from "@hugeicons/core-free-icons";
+import { useNavigation } from "expo-router";
+import { DrawerActions } from "expo-router/react-navigation";
+import type { ReactNode } from "react";
+import { StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { colors, spacing, type } from "@/lib/theme";
+
+import { IconButton } from "./IconButton";
+
+interface Props {
+  title?: string;
+  right?: ReactNode;
+}
+
+export function ScreenHeader({ title, right }: Props) {
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+
+  function openMenu() {
+    navigation.dispatch(DrawerActions.openDrawer());
+  }
+
+  return (
+    <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
+      <IconButton icon={Menu01Icon} label="Open menu" onPress={openMenu} />
+      <Text numberOfLines={1} style={styles.title}>
+        {title}
+      </Text>
+      <View style={styles.right}>{right}</View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.xs,
+    backgroundColor: colors.background,
+  },
+  title: { ...type.heading, flex: 1, color: colors.text, textAlign: "center" },
+  right: { width: 40, alignItems: "flex-end" },
+});
