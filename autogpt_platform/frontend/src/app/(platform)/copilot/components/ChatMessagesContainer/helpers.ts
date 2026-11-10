@@ -12,6 +12,8 @@ import { COMPACTION_PART_TYPE, isExpertChangePart } from "../ToolChain/helpers";
 import { parseTruncatedOutput } from "../ToolChain/resultHelpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
 import { CHAT_IMAGE_TOKEN_PREFIXES } from "../../helpers/chatImageTokens";
+import { extractDbSequence } from "../../helpers/convertChatSessionToUiMessages";
+import { isFeedbackCardPart } from "../../tools/FeedbackPrompts/helpers";
 
 export type MessagePart = UIMessage<
   unknown,
@@ -22,18 +24,29 @@ export type MessagePart = UIMessage<
 // Every assistant tool renders inside the ToolChain. ToolResult supplies a
 // compact result view for known backend tools and a structured fallback for
 // SDK or future tools, so no tool ever renders as a bare top-level part.
-// Compaction, expert changes and the hire's onboarding card are the
-// exceptions: each owns a card that must stay on screen, so they render as
-// parts of their own.
+// Compaction, expert changes, the hire's onboarding card and the feedback
+// cards are the exceptions: each owns a card that must stay on screen, so
+// they render as parts of their own.
 export function isChainableToolPart(part: MessagePart): boolean {
   if (
     part.type === COMPACTION_PART_TYPE ||
     part.type === EXPERT_ONBOARDING_PART_TYPE ||
+    isFeedbackCardPart(part) ||
     isExpertChangePart(part)
   ) {
     return false;
   }
   return part.type === "reasoning" || part.type.startsWith("tool-");
+}
+
+// Only a saved reply can be rated: a reply that just streamed is keyed by the
+// stream until the chat swaps in its saved id or learns it.
+export function getRatedMessageId(
+  message: UIMessage<unknown, UIDataTypes, UITools>,
+  savedMessageId?: string | null,
+) {
+  if (savedMessageId !== undefined) return savedMessageId;
+  return extractDbSequence(message) !== null ? message.id : null;
 }
 
 const COMPACTION_PHASES = new Set(["summarizing", "rebuilding"]);

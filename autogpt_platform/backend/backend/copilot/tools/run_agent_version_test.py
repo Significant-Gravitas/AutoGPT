@@ -112,7 +112,9 @@ def _mock_execution_database(mocker: MockerFixture, graph: GraphModel):
     mocker.patch(
         "backend.executor.utils.is_user_paywalled", AsyncMock(return_value=False)
     )
-    mocker.patch("backend.executor.utils.is_user_banned", AsyncMock(return_value=False))
+    mocker.patch(
+        "backend.executor.utils.is_user_refused", AsyncMock(return_value=False)
+    )
     mocker.patch(
         "backend.executor.utils._construct_starting_node_execution_input",
         AsyncMock(return_value=([], set())),

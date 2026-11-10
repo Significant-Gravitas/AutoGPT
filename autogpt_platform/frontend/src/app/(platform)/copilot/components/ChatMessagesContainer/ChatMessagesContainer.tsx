@@ -515,6 +515,7 @@ export function ChatMessagesContainer({
         filePattern={filePattern}
         fileUrlBuilder={fileUrlBuilder}
         onRetry={isLastAssistant ? onRetry : undefined}
+        expert={isLastAssistant ? expertIdentity : undefined}
       />
     );
   }

@@ -10,6 +10,7 @@ from backend.copilot.graphiti.memory_model import MemoryForgetFailure
 from backend.copilot.tool_image import ImageCarrier
 from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.copilot.tools.review_card import preview_input
+from backend.data.feedback_prompts import FeedbackPromptKind
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.providers import ProviderName
@@ -151,6 +152,7 @@ class ResponseType(str, Enum):
     EXPERT_CHAT_LIST = "expert_chat_list"
     EXPERT_CHAT_TRANSCRIPT = "expert_chat_transcript"
     EXPERT_ONBOARDING = "expert_onboarding"
+    FEEDBACK_PROMPT = "feedback_prompt"
     TEAM_CONSULT = "team_consult"
     SESSION_LIST = "session_list"
     SESSION_MESSAGE = "session_message"
@@ -936,6 +938,15 @@ class ExpertOnboardingResponse(ToolResponseBase):
     expert_id: str
     greeting: str
     steps: list[ExpertOnboardingStep] = Field(default_factory=list)
+
+
+class FeedbackPromptToolResponse(ToolResponseBase):
+    """A work check or mistake card, or the news that none will appear."""
+
+    type: ResponseType = ResponseType.FEEDBACK_PROMPT
+    kind: FeedbackPromptKind
+    prompt_id: str | None = None
+    is_first: bool = False
 
 
 class SuggestedGoalResponse(ToolResponseBase):
