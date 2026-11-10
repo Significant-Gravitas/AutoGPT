@@ -6,6 +6,7 @@ cancel is not reported as an error.
 
 import asyncio
 import logging
+import re
 import threading
 import time
 import uuid
@@ -20,6 +21,7 @@ from backend.blocks._base import BlockType
 from backend.data.execution import ExecutionContext, ExecutionStatus, NodeExecutionEntry
 from backend.data.graph import Node
 from backend.data.model import GraphExecutionStats
+from backend.executor import manager as manager_module
 from backend.executor.manager import ExecutionProcessor, _finish_despite_cancel
 from backend.executor.utils import NodeExecutionProgress
 from backend.util.decorator import TimingInfo
@@ -309,6 +311,171 @@ def test_a_block_that_ignores_the_stop_holds_the_cleanup_only_briefly():
         while not run.update_graph.await_count and time.monotonic() < deadline:
             time.sleep(0.01)
         run.update_graph.assert_awaited_once()
+
+
+def test_a_stopped_run_keeps_its_worker_until_its_blocked_node_ends():
+    """A block in a synchronous call holds its loop's thread, so it can't take
+    a stop's cancel. The stop still ends the run after the unwind grace, and
+    answers promptly, but the worker isn't handed back, to another run or to
+    its owner's share, until the block has returned."""
+    block_started = threading.Event()
+    release = threading.Event()
+    run_ended = threading.Event()
+
+    async def block_in_a_synchronous_call(**kwargs):
+        block_started.set()
+        release.wait(timeout=30)
+        return TimingInfo(cpu_time=0.1, wall_time=1.0), ExecutionStatus.COMPLETED
+
+    run = _Run(threading.Event())
+    processor = ExecutionProcessor()
+    progress = NodeExecutionProgress()
+
+    def stopped_run(*_args):
+        # What a stop does: cancel the node, wait out the grace, end the run
+        processor.running_node_execution = {"node-1": progress}
+        _start_node(loop, run, processor, progress)
+        assert block_started.wait(timeout=5)
+        progress.stop(stop_requested=True)
+        progress.wait_for_done(timeout=5)
+        run_ended.set()
+
+    def worker():
+        manager_module._tls.processor = processor
+        manager_module.execute_graph(MagicMock(), threading.Event(), MagicMock())
+
+    with _node_loop() as loop, ExitStack() as stack:
+        run.patches(stack)
+        stack.enter_context(
+            patch.object(
+                processor, "_on_node_execution", new=block_in_a_synchronous_call
+            )
+        )
+        stack.enter_context(
+            patch.object(processor, "on_graph_execution", new=stopped_run)
+        )
+        stack.enter_context(
+            patch("backend.executor.utils.NODE_UNWIND_GRACE_SECONDS", 0.1)
+        )
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        try:
+            assert run_ended.wait(timeout=10)
+            thread.join(timeout=1)
+            assert thread.is_alive()
+        finally:
+            release.set()
+        thread.join(timeout=10)
+        assert not thread.is_alive()
+        run.update_graph.assert_awaited_once()
+
+
+def test_a_held_worker_that_cant_keep_the_runs_lock_says_so_once(caplog):
+    """Without the run's lock, another worker can take the run up while its
+    stopped node still runs here: the held worker says so, but only once,
+    though it tries to refresh the lock every second."""
+    node_ended = threading.Event()
+    progress = MagicMock(spec=NodeExecutionProgress)
+    progress.has_ended.side_effect = node_ended.is_set
+    processor = ExecutionProcessor()
+    processor.running_node_execution = {"node-1": progress}
+    refreshes: list[bool] = []
+
+    def lost_lock_refresh() -> bool:
+        refreshes.append(False)
+        if len(refreshes) == 2:
+            node_ended.set()
+        return False
+
+    cluster_lock = MagicMock()
+    cluster_lock.refresh.side_effect = lost_lock_refresh
+    with caplog.at_level(logging.WARNING, logger=manager_module.__name__):
+        processor.wait_for_nodes_to_end(cluster_lock)
+
+    assert len(refreshes) == 2
+    lock_warnings = [
+        record.getMessage()
+        for record in caplog.records
+        if "the run's lock" in record.getMessage()
+    ]
+    assert len(lock_warnings) == 1
+    assert "['node-1']" in lock_warnings[0]
+
+
+def test_a_worker_held_for_long_keeps_saying_how_long(caplog):
+    """A block that never returns keeps its worker for good, so the held
+    worker repeats its warning, with the time it has waited, every
+    STOPPED_NODE_WARNING_SECONDS."""
+    node_ended = threading.Event()
+    progress = MagicMock(spec=NodeExecutionProgress)
+    progress.has_ended.side_effect = node_ended.is_set
+    processor = ExecutionProcessor()
+    processor.running_node_execution = {"node-1": progress}
+    cluster_lock = MagicMock()
+    cluster_lock.refresh.side_effect = lambda: node_ended.set() or True
+
+    with (
+        patch.object(manager_module, "STOPPED_NODE_WARNING_SECONDS", 0),
+        caplog.at_level(logging.WARNING, logger=manager_module.__name__),
+    ):
+        processor.wait_for_nodes_to_end(cluster_lock)
+
+    still_holding = [
+        record.getMessage()
+        for record in caplog.records
+        if "Still holding this worker" in record.getMessage()
+    ]
+    assert len(still_holding) == 1
+    assert re.search(r"\['node-1'\], \d+s on", still_holding[0])
+
+
+@pytest.mark.parametrize(
+    "added_on_read", [1, 2], ids=["while-listing-the-stopped", "while-holding"]
+)
+def test_a_node_added_while_the_worker_is_held_is_waited_for_too(
+    added_on_read: int,
+):
+    """A stopped Orchestrator can carry on and run a tool node, adding it to
+    the run's nodes from the node loop's thread while the held worker goes
+    through them; the worker neither fails on that nor stops waiting early."""
+    processor = ExecutionProcessor()
+    orchestrator_ended = threading.Event()
+    tool_ended = threading.Event()
+    tool = MagicMock(spec=NodeExecutionProgress)
+    tool.has_ended.side_effect = tool_ended.is_set
+    orchestrator = MagicMock(spec=NodeExecutionProgress)
+    orchestrator.has_ended.side_effect = orchestrator_ended.is_set
+    ended = MagicMock(spec=NodeExecutionProgress)
+    reads = 0
+
+    def ended_while_the_tool_node_is_added() -> bool:
+        # The other thread adds the tool node right as this one is read
+        nonlocal reads
+        reads += 1
+        if reads == added_on_read:
+            processor.running_node_execution["tool"] = tool
+        return True
+
+    ended.has_ended.side_effect = ended_while_the_tool_node_is_added
+    processor.running_node_execution = {"ended": ended, "orchestrator": orchestrator}
+    refreshes = 0
+
+    def refresh() -> bool:
+        nonlocal refreshes
+        refreshes += 1
+        if refreshes == 1:
+            orchestrator_ended.set()
+        if refreshes == 2:
+            tool_ended.set()
+        return True
+
+    cluster_lock = MagicMock()
+    cluster_lock.refresh.side_effect = refresh
+    processor.wait_for_nodes_to_end(cluster_lock)
+
+    # Held until the added tool node ended too, a pass after the Orchestrator
+    assert refreshes == 2
+    assert tool.has_ended.called
 
 
 def test_a_tool_node_run_inline_holds_the_cleanup_only_for_itself():

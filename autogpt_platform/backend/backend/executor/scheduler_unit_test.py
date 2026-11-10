@@ -66,7 +66,9 @@ from backend.executor.scheduler import (
     reconcile_memory_scope_crons,
     reconcile_stripe_tiers,
     refresh_near_expiry_credentials,
+    send_trial_last_calls,
 )
+from backend.util.cron import MAX_CRON_LENGTH
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -144,6 +146,29 @@ def test_build_trigger_requires_exactly_one_of_cron_or_run_at():
 def test_build_trigger_cron_returns_crontrigger():
     trigger = _build_trigger(cron="0 9 * * 1", run_at=None, user_timezone="UTC")
     assert isinstance(trigger, CronTrigger)
+
+
+def test_build_trigger_accepts_the_rarest_cron_and_leaves_it_open_ended():
+    # Feb 29 on a Monday: decades between fires, but it does fire.
+    trigger = _build_trigger(cron="0 0 29 2 1", run_at=None, user_timezone="UTC")
+    assert isinstance(trigger, CronTrigger)
+    assert trigger.end_date is None
+
+
+@pytest.mark.parametrize("cron", ["0 0 30 2 *", "0 0 31 4,6,9,11 *"])
+def test_build_trigger_refuses_a_cron_that_never_fires(cron: str):
+    with pytest.raises(ValueError, match="never fires"):
+        _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+
+
+def test_build_trigger_refuses_an_overlong_cron_before_parsing_it():
+    cron = "0 9 * * *" + " " * MAX_CRON_LENGTH
+    with (
+        patch.object(CronTrigger, "from_crontab") as parse,
+        pytest.raises(ValueError, match="too long"),
+    ):
+        _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+    parse.assert_not_called()
 
 
 def test_build_trigger_run_at_returns_datetrigger():
@@ -929,7 +954,9 @@ async def test_execute_copilot_turn_rejects_changed_explicit_session_scope():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("refusal", [ConcurrentTurnLimitError, SessionNotIdle])
-async def test_execute_copilot_turn_slot_refusal_reschedules_one_shot(refusal):
+async def test_execute_copilot_turn_slot_refusal_reschedules_one_shot(
+    refusal, chat_blocked_events
+):
     args = _args()  # run_at set → one-shot
     mock_schedule_turn = AsyncMock(side_effect=refusal("busy"))
     mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
@@ -943,6 +970,15 @@ async def test_execute_copilot_turn_slot_refusal_reschedules_one_shot(refusal):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
     mock_reschedule.assert_awaited_once()
+    # The turn cap is a limit; a chat already busy with a turn is not.
+    expected = (
+        [("concurrency", "refused", "schedule")]
+        if refusal is ConcurrentTurnLimitError
+        else []
+    )
+    assert [
+        (e["limit"], e["outcome"], e["surface"]) for e in chat_blocked_events
+    ] == expected
 
 
 @pytest.mark.asyncio
@@ -1828,6 +1864,20 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
     assert call.kwargs["max_instances"] == 1
     # 6 hours -> 6 * 3600 seconds, driven by the config setting.
     assert call.kwargs["seconds"] == 6 * 3600
+
+
+def test_trial_last_call_pass_registered_hourly_and_single_instance(monkeypatch):
+    """The last-call notice window is seven hours wide, so an hourly pass
+    reaches every canceled trial inside it at least once."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+
+    [call] = [c for c in calls if c.args and c.args[0] is send_trial_last_calls]
+    assert call.kwargs["id"] == "send_trial_last_calls"
+    assert call.kwargs["max_instances"] == 1
+    assert call.kwargs["jobstore"] == scheduler_module.Jobstores.EXECUTION.value
+    assert isinstance(call.args[1], CronTrigger)
+    hourly = CronTrigger.from_crontab("15 * * * *")
+    assert [str(f) for f in call.args[1].fields] == [str(f) for f in hourly.fields]
 
 
 def test_memory_cron_reconcile_registered_after_start_on_its_interval(
@@ -2793,7 +2843,7 @@ def _over_the_daily_limit(gate: _OwnerGate, resets_at: datetime) -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("window", ["daily", "weekly"])
 async def test_a_one_shot_refused_by_a_used_up_limit_waits_for_the_reset(
-    owner_gate, post_notice, window
+    owner_gate, post_notice, chat_blocked_events, window
 ):
     """Nick (2026-10-10): once usage comes back, the run should happen. A
     one-shot is moved to the reset, spread over a few minutes, and its chat is
@@ -2815,11 +2865,15 @@ async def test_a_one_shot_refused_by_a_used_up_limit_waits_for_the_reset(
     assert kwargs["usage_wait_count"] == 1
     notice = post_notice.call_args.args[0]
     assert notice.body.startswith("“check CI” will run when the limit resets")
+    # Held back to the reset, not refused.
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == [
+        (window, "queued")
+    ]
 
 
 @pytest.mark.asyncio
 async def test_a_one_shot_still_over_its_limit_after_waiting_is_dropped(
-    owner_gate, post_notice
+    owner_gate, post_notice, chat_blocked_events
 ):
     _over_the_daily_limit(
         owner_gate, datetime.now(tz=timezone.utc) + timedelta(hours=3)
@@ -2836,6 +2890,9 @@ async def test_a_one_shot_still_over_its_limit_after_waiting_is_dropped(
     scheduler_client.add_copilot_turn_schedule.assert_not_awaited()
     store.mark_routine_unscheduled.assert_awaited_once_with("routine-1", "sched-1")
     assert post_notice.call_args.args[0].body == "“check CI” didn't run."
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == [
+        ("daily", "refused")
+    ]
 
 
 async def _fire(args: CopilotTurnJobArgs) -> dict[str, AsyncMock]:
@@ -2886,6 +2943,27 @@ async def test_a_skipped_run_tells_its_chat_why(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("refuse", "expected"),
+    [
+        (_over_a_cap, [("daily", "refused", "schedule")]),
+        (_paywalled, []),
+        (_limits_unreadable, []),
+    ],
+    ids=["over-a-cap", "paywalled", "brown-out"],
+)
+async def test_only_a_run_skipped_on_a_usage_limit_is_sent_to_posthog(
+    owner_gate, post_notice, chat_blocked_events, refuse, expected
+):
+    refuse(owner_gate)
+    await _fire_hourly("session-1", "platform")
+
+    assert [
+        (e["limit"], e["outcome"], e["surface"]) for e in chat_blocked_events
+    ] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "refuse", [_limits_unreadable, _lookup_fails], ids=["brown-out", "lookup-fails"]
 )
 async def test_a_run_skipped_by_our_outage_tells_nobody(
@@ -2913,7 +2991,7 @@ async def test_a_banned_owners_run_is_skipped_and_its_chat_told_nothing(
     when the ban is lifted, a one-shot is dropped as a paywalled one is, and
     nothing is posted into its chats."""
     with (
-        patch(f"{_TURN_QUEUE_PATH}.is_user_banned", AsyncMock(return_value=True)),
+        patch(f"{_TURN_QUEUE_PATH}.is_user_refused", AsyncMock(return_value=True)),
         caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH),
     ):
         mocks = await _fire(_args(**timing))

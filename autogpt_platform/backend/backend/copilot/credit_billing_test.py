@@ -614,7 +614,7 @@ async def test_outside_a_credit_billed_turn_a_tool_asks_the_allowance(mocker):
     assert await tool_spend_refusal("user-1") == (
         "You've reached your daily usage limit."
     )
-    allowance.assert_awaited_once_with("user-1")
+    allowance.assert_awaited_once_with("user-1", surface="chat")
 
 
 @pytest.mark.asyncio

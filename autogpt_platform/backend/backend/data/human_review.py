@@ -1019,7 +1019,8 @@ async def delete_review_by_node_exec_id(node_exec_id: str, user_id: str) -> int:
     """Delete a review record by node execution ID after it has been consumed.
 
     Used by CoPilot's resume_capability to clean up one-time-use review records
-    after successful execution.
+    after successful execution, and to use up an approval whose block has since
+    been disabled.
 
     Args:
         node_exec_id: The node execution ID of the review to delete

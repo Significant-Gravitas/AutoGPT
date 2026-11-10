@@ -1,5 +1,6 @@
 """Chat transport discovery and the connection a user made their default."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -131,6 +132,105 @@ async def test_saved_choice_beats_the_server_pick() -> None:
     _saved("codex", "cred-codex")
 
     assert _default_of(await get_chat_transports(USER_ID)) == ("codex", "cred-codex")
+
+
+@pytest.mark.asyncio
+async def test_the_connections_and_the_saved_default_are_read_side_by_side() -> None:
+    """Each read is a database round trip a new chat waits on: no read waits
+    for another to finish. Read one after another, the first never would."""
+    started = 0
+    all_started = asyncio.Event()
+
+    async def read() -> None:
+        nonlocal started
+        started += 1
+        if started == 3:
+            all_started.set()
+        await all_started.wait()
+
+    async def connections(_user_id: str, provider: str):
+        # The Microsoft lookup reads the shared connection, then the legacy
+        # Copilot one: only its first read is one of the three.
+        await read()
+        if provider == "codex":
+            return [_codex_credentials()]
+        if provider == "microsoft_365_copilot":
+            return [_microsoft_credentials()]
+        return []
+
+    async def saved_default(_user_id: str):
+        await read()
+        return ("codex", "cred-codex")
+
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = connections
+    transports.user_db().get_user_default_chat_route.side_effect = saved_default
+
+    found = await asyncio.wait_for(get_chat_transports(USER_ID), timeout=5)
+
+    assert [(t.auth_provider, t.credential_id) for t in found] == [
+        ("platform", None),
+        ("codex", "cred-codex"),
+        ("microsoft_365_copilot", "cred-microsoft"),
+    ]
+    assert _default_of(found) == ("codex", "cred-codex")
+
+
+@pytest.mark.parametrize("broken", ["codex", "microsoft_365_copilot", "saved default"])
+@pytest.mark.asyncio
+async def test_a_read_that_fails_fails_the_list(broken: str) -> None:
+    """Taken for "no connections", a failed read would hide an account or move
+    the user's default without a word."""
+
+    async def connections(_user_id: str, provider: str):
+        if provider == broken:
+            raise RuntimeError(f"{broken} read failed")
+        return [
+            _codex_credentials() if provider == "codex" else _microsoft_credentials()
+        ]
+
+    async def saved_default(_user_id: str):
+        if broken == "saved default":
+            raise RuntimeError(f"{broken} read failed")
+        return ("microsoft_365_copilot", "cred-microsoft")
+
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = connections
+    transports.user_db().get_user_default_chat_route.side_effect = saved_default
+
+    with pytest.raises(RuntimeError, match=f"{broken} read failed"):
+        await get_chat_transports(USER_ID)
+
+
+@pytest.mark.asyncio
+async def test_failed_reads_raise_in_order_once_every_read_has_ended() -> None:
+    """The Microsoft read fails first, the ChatGPT read after it, and the saved
+    default is still being read. The list fails with the ChatGPT error, the
+    same one whichever read finishes first, and only after the saved default's
+    read has ended: no read is left running once the list has answered."""
+    microsoft_failed = asyncio.Event()
+    codex_failed = asyncio.Event()
+    saved_default_read_ended = False
+
+    async def connections(_user_id: str, provider: str):
+        if provider == "codex":
+            await microsoft_failed.wait()
+            codex_failed.set()
+            raise RuntimeError("codex read failed")
+        microsoft_failed.set()
+        raise RuntimeError("microsoft read failed")
+
+    async def saved_default(_user_id: str):
+        nonlocal saved_default_read_ended
+        await codex_failed.wait()
+        await asyncio.sleep(0)
+        saved_default_read_ended = True
+        return (None, None)
+
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = connections
+    transports.user_db().get_user_default_chat_route.side_effect = saved_default
+
+    with pytest.raises(RuntimeError, match="codex read failed"):
+        await asyncio.wait_for(get_chat_transports(USER_ID), timeout=5)
+    assert saved_default_read_ended
 
 
 @pytest.mark.asyncio

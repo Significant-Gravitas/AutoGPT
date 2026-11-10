@@ -133,7 +133,7 @@ export function FileRow({
               sideOffset={16}
               collisionPadding={16}
               // oxlint-disable-next-line design-system/no-restyle -- the hover preview is a card, which the tooltip atom has no variant for
-              className="max-w-none rounded-2xl border border-border-base bg-surface p-0 text-body text-foreground-strong shadow-xl shadow-black/10 outline-none"
+              className="max-w-none rounded-2xl border border-border-base bg-surface p-0 text-body text-foreground-strong shadow-xl shadow-scrim/10 outline-none"
             >
               <FilePreviewCard file={file} />
             </TooltipContent>

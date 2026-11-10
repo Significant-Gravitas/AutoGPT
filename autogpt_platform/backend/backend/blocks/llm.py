@@ -75,6 +75,25 @@ settings = Settings()
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter(autoescape=False)
 
+# str.strip() keeps U+FEFF, which the builder's JavaScript trim() removes.
+_KEY_PADDING = re.compile(r"^[\s\ufeff]+|[\s\ufeff]+$")
+
+
+def strip_prompt_value_keys(values: dict[str, str]) -> dict[str, str]:
+    """Strip whitespace around prompt-value keys so `{{name}}` finds `name `.
+
+    A key that is already clean wins over one that only matches once stripped;
+    among padded keys that strip to the same name, the first one wins. A key
+    that is only whitespace is dropped.
+    """
+    stripped: dict[str, str] = {}
+    for key, value in values.items():
+        clean = _KEY_PADDING.sub("", key)
+        if clean and (clean == key or clean not in values):
+            stripped.setdefault(clean, value)
+    return stripped
+
+
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
 USER_ERROR_STATUS_CODES = (401, 403, 429)
 
@@ -676,8 +695,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         logger.debug(f"Calling LLM with input data: {input_data}")
         prompt = [json.to_dict(p) for p in input_data.conversation_history or [] if p]
 
-        values = input_data.prompt_values
-        if values:
+        if input_data.prompt_values:
+            values = strip_prompt_value_keys(input_data.prompt_values)
             input_data.prompt = await fmt.format_string(input_data.prompt, values)
             input_data.sys_prompt = await fmt.format_string(
                 input_data.sys_prompt, values

@@ -81,6 +81,7 @@ from backend.data import skill_publication as skill_publication_data
 from backend.data import skill_reviews as skill_reviews_data
 from backend.data import skill_use as skill_use_data
 from backend.data import skill_versions as skill_versions_data
+from backend.data.account_deletion import is_account_closed
 from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
     count_alerts_sent_since,
@@ -146,6 +147,7 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
+from backend.data.feedback_prompts import claim_feedback_prompt, count_feedback_prompts
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -193,6 +195,7 @@ from backend.data.push_subscription import (
 from backend.data.stripe_reconciliation import reconcile_all_stripe_tiers
 from backend.data.subscription_trial import (
     get_subscription_trial,
+    list_trials_ending_unrenewed,
     record_subscription_trial_cost,
 )
 from backend.data.understanding import (
@@ -239,6 +242,7 @@ from backend.data.workspace_skill import (
     publish_workspace_skill_file,
     skill_root_has_room,
 )
+from backend.notifications.trial import send_trial_last_calls
 from backend.platform_linking import db as platform_linking_db
 from backend.util.service import (
     AppService,
@@ -433,6 +437,7 @@ class DatabaseManager(AppService):
     get_user_subscription_tier = _(get_user_subscription_tier)
     get_usage_activation_state = _(get_usage_activation_state)
     get_subscription_trial = _(get_subscription_trial)
+    list_trials_ending_unrenewed = _(list_trials_ending_unrenewed)
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
     record_subscription_trial_cost = _(record_subscription_trial_cost)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
@@ -440,6 +445,8 @@ class DatabaseManager(AppService):
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
     # Background work skips a banned owner in Prisma-less workers too.
     is_auth_user_banned = _(is_auth_user_banned)
+    # The websocket server has no Prisma of its own.
+    is_account_closed = _(is_account_closed)
     # Exposed for the scheduler's auth-identity invariant monitor.
     heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
     get_user_integrations = _(get_user_integrations)
@@ -584,6 +591,10 @@ class DatabaseManager(AppService):
     # ============ Activity Events ============ #
     create_activity_event = _(create_activity_event)
 
+    # ============ Feedback Prompts ============ #
+    claim_feedback_prompt = _(claim_feedback_prompt)
+    count_feedback_prompts = _(count_feedback_prompts)
+
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
     delete_push_subscription = _(delete_push_subscription)
@@ -602,6 +613,7 @@ class DatabaseManager(AppService):
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
     start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
     request_posthog_lifecycle_sync = _(request_posthog_lifecycle_sync)
+    send_trial_last_calls = _(send_trial_last_calls)
 
     # ============ Platform Linking ============ #
     # ============ Orgs ============ #
@@ -647,6 +659,7 @@ class DatabaseManager(AppService):
     set_scope_state = _(memory_schedule_db.set_scope_state)
     forget_scope_job = _(memory_schedule_db.forget_scope_job)
     record_scope_run = _(memory_schedule_db.record_scope_run)
+    list_due_community_scopes = _(memory_schedule_db.list_due_community_scopes)
     list_user_scope_schedules = _(memory_schedule_db.list_user_scope_schedules)
     list_scope_schedules = _(memory_schedule_db.list_scope_schedules)
     existing_user_ids = _(memory_schedule_db.existing_user_ids)
@@ -665,6 +678,7 @@ class DatabaseManager(AppService):
     resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
+    check_private_expert = _(experts_db.check_private_expert)
     get_autopilot_mode = _(experts_db.get_autopilot_mode)
     list_expert_identities = _(experts_db.list_expert_identities)
     owns_active_expert = _(experts_db.owns_active_expert)
@@ -783,16 +797,15 @@ class DatabaseManager(AppService):
     complete_background_task = _(background_task_db.complete_background_task)
     list_background_tasks = _(background_task_db.list_background_tasks)
     enqueue_background_followup = _(background_task_db.enqueue_background_followup)
-    get_background_followup_envelope = _(
-        background_task_db.get_background_followup_envelope
-    )
     suppress_background_followup = _(background_task_db.suppress_background_followup)
     release_deleted_background_turn = _(
         background_task_db.release_deleted_background_turn
     )
-    release_expired_background_turn = _(
-        background_task_db.release_expired_background_turn
+    release_abandoned_background_turn = _(
+        background_task_db.release_abandoned_background_turn
     )
+    background_child_result = _(background_task_db.background_child_result)
+    has_open_handoffs = _(background_task_db.has_open_handoffs)
     cancel_background_tasks = _(background_task_db.cancel_background_tasks)
     cancel_queued_background_followup = _(
         background_task_db.cancel_queued_background_followup
@@ -912,6 +925,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Graphs
     get_graph_metadata = _(d.get_graph_metadata)
+    get_node = _(d.get_node)
 
     # Credits
     spend_credits = _(d.spend_credits)
@@ -1019,10 +1033,12 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_subscription_tier = d.get_user_subscription_tier
     get_usage_activation_state = d.get_usage_activation_state
     get_subscription_trial = d.get_subscription_trial
+    list_trials_ending_unrenewed = d.list_trials_ending_unrenewed
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
     is_auth_user_banned = d.is_auth_user_banned
+    is_account_closed = d.is_account_closed
     heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
@@ -1188,6 +1204,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Activity Events ============ #
     create_activity_event = d.create_activity_event
 
+    # ============ Feedback Prompts ============ #
+    claim_feedback_prompt = d.claim_feedback_prompt
+    count_feedback_prompts = d.count_feedback_prompts
+
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions
     delete_push_subscription = d.delete_push_subscription
@@ -1199,6 +1219,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
     start_posthog_lifecycle_sweep = d.start_posthog_lifecycle_sweep
     request_posthog_lifecycle_sync = d.request_posthog_lifecycle_sync
+    send_trial_last_calls = d.send_trial_last_calls
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
@@ -1235,6 +1256,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     set_scope_state = d.set_scope_state
     forget_scope_job = d.forget_scope_job
     record_scope_run = d.record_scope_run
+    list_due_community_scopes = d.list_due_community_scopes
     list_user_scope_schedules = d.list_user_scope_schedules
     list_scope_schedules = d.list_scope_schedules
     existing_user_ids = d.existing_user_ids
@@ -1251,6 +1273,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
+    check_private_expert = d.check_private_expert
     get_autopilot_mode = d.get_autopilot_mode
     list_expert_identities = d.list_expert_identities
     owns_active_expert = d.owns_active_expert
@@ -1351,10 +1374,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     complete_background_task = d.complete_background_task
     list_background_tasks = d.list_background_tasks
     enqueue_background_followup = d.enqueue_background_followup
-    get_background_followup_envelope = d.get_background_followup_envelope
     suppress_background_followup = d.suppress_background_followup
     release_deleted_background_turn = d.release_deleted_background_turn
-    release_expired_background_turn = d.release_expired_background_turn
+    release_abandoned_background_turn = d.release_abandoned_background_turn
+    background_child_result = d.background_child_result
+    has_open_handoffs = d.has_open_handoffs
     cancel_background_tasks = d.cancel_background_tasks
     cancel_queued_background_followup = d.cancel_queued_background_followup
     cancel_orphaned_background_tasks = d.cancel_orphaned_background_tasks

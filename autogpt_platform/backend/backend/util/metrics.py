@@ -1,8 +1,10 @@
 import os
 import re
 import sys
+from collections import deque
 from enum import Enum
 from types import TracebackType
+from typing import Any
 
 from pydantic import SecretStr
 from sentry_sdk._init_implementation import init as _sentry_init
@@ -112,30 +114,23 @@ _EMBEDDED_SECRET_ASSIGNMENT = re.compile(
 )
 _TOKEN_SHAPED_VALUE = re.compile(
     r"(?i)(?:\b(?:bearer|basic)\s+[a-z0-9._~+/=-]{8,}|"
-    r"\beyJ[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\b|"
+    # Matches what \beyJ... matched, entered once from the start of each base64url run.
+    r"(?<![a-z0-9_-])(?>[a-z0-9_-]*?\beyJ)"
+    r"[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\b|"
     r"\b(?:sk-(?:proj-)?|gh[pousr]_|github_pat_|xox[baprs]-)[a-z0-9_-]{8,})"
 )
 _FILTERED_VALUE = "[Filtered]"
+# Three bounds in the order the SDK applies them: ``custom_repr`` caps a frame local
+# before it is repr()'d, ``max_value_length`` then cuts every string in the event, and
+# the ``before_send`` scrubber searches what is left.
 _MAX_LOCAL_REPR = 1024
-
-
-def _scrub_secrets(value: object) -> object:
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            if isinstance(key, str) and key.lower() in _SENTRY_SENSITIVE_KEYS:
-                value[key] = _FILTERED_VALUE
-            else:
-                value[key] = _scrub_secrets(nested)
-        return value
-    if isinstance(value, list):
-        for index, nested in enumerate(value):
-            value[index] = _scrub_secrets(nested)
-        return value
-    if isinstance(value, str) and (
-        _EMBEDDED_SECRET_ASSIGNMENT.search(value) or _TOKEN_SHAPED_VALUE.search(value)
-    ):
-        return _FILTERED_VALUE
-    return value
+# The SDK cuts every string in an event to this length before ``before_send``.
+_SENTRY_MAX_VALUE_LENGTH = 8 * 1024
+# Characters of text the scrubber searches per event; strings past it are filtered.
+_SENTRY_SCRUB_BUDGET = 512 * 1024
+# Sentry lists breadcrumbs, chained exceptions and frames oldest or outermost first;
+# the scrubber walks them from the end so the budget goes to the newest.
+_OLDEST_FIRST_LISTS = frozenset({"values", "frames"})
 
 
 def _scrub_sentry_event(event: dict) -> None:
@@ -146,11 +141,49 @@ def _scrub_sentry_event(event: dict) -> None:
     JSON: sentry's EventScrubber writes ``AnnotatedValue`` objects, and one of
     those here made the SDK drop the whole event as an internal error. ``_meta``
     is the SDK's own annotation tree and is left alone.
+
+    It searches at most ``_SENTRY_SCRUB_BUDGET`` characters per event and filters
+    any string beyond that rather than send it unsearched; it walks breadth-first,
+    newest breadcrumb and innermost frame first, and the breadcrumbs get only what
+    the rest of the event left.
     """
     _redact_request_urls(event)
-    for key, value in event.items():
-        if key != "_meta":
-            event[key] = _scrub_secrets(value)
+    keys = [key for key in event if key not in ("_meta", "breadcrumbs")]
+    budget = _scrub_breadth_first([(event, key) for key in keys], _SENTRY_SCRUB_BUDGET)
+    if "breadcrumbs" in event:
+        _scrub_breadth_first([(event, "breadcrumbs")], budget)
+
+
+def _scrub_breadth_first(roots: list[tuple[dict[Any, Any], Any]], budget: int) -> int:
+    """Scrub the values under ``roots`` and return the budget left over."""
+    queue: deque[tuple[dict[Any, Any] | list[Any], Any]] = deque(roots)
+    while queue:
+        parent, key = queue.popleft()
+        value = parent[key]
+        if isinstance(value, dict):
+            for nested_key in value:
+                if (
+                    isinstance(nested_key, str)
+                    and nested_key.lower() in _SENTRY_SENSITIVE_KEYS
+                ):
+                    value[nested_key] = _FILTERED_VALUE
+                else:
+                    queue.append((value, nested_key))
+        elif isinstance(value, list):
+            indices = range(len(value))
+            if key in _OLDEST_FIRST_LISTS:
+                indices = indices[::-1]
+            queue.extend((value, index) for index in indices)
+        elif isinstance(value, str):
+            if len(value) > budget:
+                parent[key] = _FILTERED_VALUE
+                continue
+            budget -= len(value)
+            if _EMBEDDED_SECRET_ASSIGNMENT.search(value) or _TOKEN_SHAPED_VALUE.search(
+                value
+            ):
+                parent[key] = _FILTERED_VALUE
+    return budget
 
 
 def _redact_request_urls(event: dict) -> None:
@@ -394,6 +427,7 @@ def sentry_init():
         # The SDK default, pinned: no IP address, request headers with
         # personal data or cookies.
         send_default_pii=False,
+        max_value_length=_SENTRY_MAX_VALUE_LENGTH,
         before_send=_before_send,
         before_send_transaction=_before_send_transaction,
         custom_repr=_bounded_repr,
