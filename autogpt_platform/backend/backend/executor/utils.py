@@ -75,7 +75,7 @@ from backend.executor.input_depth import (
 from backend.executor.nesting import nested_context, resumed_chain
 from backend.integrations.credentials_store import (
     CredentialsSnapshot,
-    is_expert_ungated_credential,
+    is_system_credential,
 )
 from backend.monitoring.instrumentation import record_graph_execution
 from backend.util import product_analytics
@@ -1520,7 +1520,7 @@ async def _enforce_expert_credential_scope(
         {
             meta.id
             for meta in graph_credentials_inputs.values()
-            if not is_expert_ungated_credential(meta.id) and meta.id not in allowed
+            if not is_system_credential(meta.id) and meta.id not in allowed
         }
     )
     if denied:

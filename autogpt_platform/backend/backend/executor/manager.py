@@ -61,7 +61,7 @@ from backend.executor.cost_tracking import (
 from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import (
-    is_expert_ungated_credential,
+    is_system_credential,
     provider_matches,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -686,9 +686,8 @@ async def execute_node(
 
             credentials_meta = input_type(**field_value)
             # An expert run uses only the credentials granted to it.
-            if (
-                execution_context.expert_id is not None
-                and not is_expert_ungated_credential(credentials_meta.id)
+            if execution_context.expert_id is not None and not is_system_credential(
+                credentials_meta.id
             ):
                 if expert_allowed_credentials is None:
                     expert_allowed_credentials = set(

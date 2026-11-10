@@ -21,7 +21,7 @@ import prisma.models
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import ExpertCredentialRef
 from backend.data.model import Credentials
-from backend.integrations.credentials_store import is_expert_ungated_credential
+from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.service_identity import service_for_credential
 from backend.util.exceptions import ExpertNotFoundError
 
@@ -99,12 +99,12 @@ async def _derive_from_workflows(
             is_complete = False
             continue
         for meta in matched.values():
-            if not is_expert_ungated_credential(meta.id):
+            if not is_system_credential(meta.id):
                 derived[meta.id] = str(meta.provider)
         for credential_id, provider in pickers.items():
-            if credential_id in (
-                owned_ids or set()
-            ) and not is_expert_ungated_credential(credential_id):
+            if credential_id in (owned_ids or set()) and not is_system_credential(
+                credential_id
+            ):
                 derived.setdefault(credential_id, provider)
     return derived, is_complete
 
@@ -239,7 +239,7 @@ async def grant_expert_credentials(
     unknown = [
         credential_id
         for credential_id in credential_ids
-        if credential_id not in by_id or is_expert_ungated_credential(credential_id)
+        if credential_id not in by_id or is_system_credential(credential_id)
     ]
     if unknown:
         raise ValueError(f"Not your credentials: {', '.join(sorted(unknown))}")
@@ -311,5 +311,5 @@ def filter_credentials_for_expert(
     return [
         credential
         for credential in credentials
-        if is_expert_ungated_credential(credential.id) or credential.id in allowed_ids
+        if is_system_credential(credential.id) or credential.id in allowed_ids
     ]

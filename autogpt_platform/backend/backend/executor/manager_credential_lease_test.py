@@ -560,7 +560,7 @@ async def test_a_granted_system_or_personal_credential_runs(
     with (
         patch("backend.executor.manager.experts_db", return_value=db),
         patch(
-            "backend.executor.manager.is_expert_ungated_credential",
+            "backend.executor.manager.is_system_credential",
             lambda credentials_id: system,
         ),
     ):

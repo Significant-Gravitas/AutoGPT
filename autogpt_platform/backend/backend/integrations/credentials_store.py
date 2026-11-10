@@ -298,35 +298,45 @@ DEFAULT_CREDENTIALS = [
 ]
 
 
+# The platform's own keys come from two places. The list above predates the
+# block SDK; providers built with the SDK register theirs through
+# ``ProviderBuilder.with_api_key`` as ``"{provider}-default"`` (see
+# ``backend.sdk.registry``). Both are the platform's key, billed in credits, and
+# must behave the same everywhere: ask "is this ours?" with
+# ``is_system_credential`` / ``is_system_provider``, never with these sets.
 SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
 
-# Set of providers that have system credentials available
+# Set of providers that have built-in system credentials available
 SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS}
 
 
 def is_system_credential(credential_id: str) -> bool:
-    """Check if a credential ID belongs to a system-managed credential."""
-    return credential_id in SYSTEM_CREDENTIAL_IDS
+    """Whether this is one of the platform's own keys rather than a user's.
 
-
-def is_expert_ungated_credential(credential_id: str) -> bool:
-    """Whether every expert may use this credential without being granted it.
-
-    The platform's own keys belong to no user, so there is nothing for the user
-    to grant: the system credentials (LLM keys and the like, from settings) and
-    the SDK default key of a provider whose shared key may run (Firecrawl,
-    DataForSEO, Tavily and the rest of ``RUNNABLE_SDK_DEFAULT_PROVIDERS``).
-    Gating those would ask the user to "share" an account they never had, and
-    the account cannot be shared, so the expert could never use the provider.
+    True for the built-in system credentials and for the SDK default key of a
+    provider whose shared key may run (Firecrawl, DataForSEO, Tavily and the
+    rest of ``RUNNABLE_SDK_DEFAULT_PROVIDERS``). An SDK default for any other
+    provider is refused wherever it is used, so it is not one of ours to offer.
     """
-    return is_system_credential(credential_id) or (
+    return credential_id in SYSTEM_CREDENTIAL_IDS or (
         is_sdk_default(credential_id) and not is_refused_sdk_default(credential_id)
     )
 
 
+def system_providers() -> set[str]:
+    """Providers the platform supplies a usable key for."""
+    from backend.sdk.registry import AutoRegistry
+
+    return SYSTEM_PROVIDERS | {
+        str(cred.provider)
+        for cred in AutoRegistry.get_all_credentials()
+        if is_system_credential(cred.id)
+    }
+
+
 def is_system_provider(provider: str) -> bool:
     """Check if a provider has system-managed credentials available."""
-    return provider in SYSTEM_PROVIDERS
+    return provider in system_providers()
 
 
 class IntegrationCredentialsStore:
@@ -372,7 +382,7 @@ class IntegrationCredentialsStore:
             raise InvalidInputError("Only user-owned credentials can be added")
         async with await self.locked_user_integrations(user_id):
             # Check system/managed IDs without triggering provisioning
-            if credentials.id in SYSTEM_CREDENTIAL_IDS:
+            if is_system_credential(credentials.id):
                 raise ValueError(
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
@@ -474,7 +484,7 @@ class IntegrationCredentialsStore:
         return list(set(c.provider for c in credentials))
 
     async def update_creds(self, user_id: str, updated: Credentials) -> None:
-        if updated.id in SYSTEM_CREDENTIAL_IDS:
+        if is_system_credential(updated.id):
             raise ValueError(
                 f"System credential #{updated.id} cannot be updated directly"
             )
@@ -525,7 +535,7 @@ class IntegrationCredentialsStore:
         credentials: Credentials,
     ) -> Credentials:
         check_storable_size(credentials)
-        if credentials.id in SYSTEM_CREDENTIAL_IDS or credentials.is_managed:
+        if is_system_credential(credentials.id) or credentials.is_managed:
             raise ValueError("Single-provider upsert requires user-owned credentials")
 
         async with await self.locked_user_integrations(user_id):
@@ -571,7 +581,7 @@ class IntegrationCredentialsStore:
             return replacement
 
     async def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
-        if credentials_id in SYSTEM_CREDENTIAL_IDS:
+        if is_system_credential(credentials_id):
             raise ValueError(f"System credential #{credentials_id} cannot be deleted")
         async with await self.locked_user_integrations(user_id):
             persisted = await self._get_persisted_user_creds_unlocked(user_id)

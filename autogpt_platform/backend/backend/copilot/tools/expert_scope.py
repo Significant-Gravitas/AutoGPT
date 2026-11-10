@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 from backend.data.model import Credentials, CredentialsFieldInfo, CredentialsType
-from backend.integrations.credentials_store import is_expert_ungated_credential
+from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 
@@ -73,8 +73,7 @@ class CredentialScopeSnapshot:
         return [
             credential
             for credential in self.owned
-            if is_expert_ungated_credential(credential.id)
-            or credential.id in self.allowed_ids
+            if is_system_credential(credential.id) or credential.id in self.allowed_ids
         ]
 
 
@@ -286,7 +285,7 @@ async def _ungranted_credentials(
         for c in scope.owned
         if provider_slug(c.provider) in providers
         and c.id not in (scope.allowed_ids or set())
-        and not is_expert_ungated_credential(c.id)
+        and not is_system_credential(c.id)
     ]
 
 

@@ -74,7 +74,7 @@ def test_filter_always_keeps_system_credentials(mocker: pytest_mock.MockFixture)
     """Platform LLM keys carry no grant; filtering them would stop every expert
     from running a single LLM block."""
     mocker.patch(
-        "backend.integrations.credentials_store.is_system_credential",
+        "backend.api.features.experts.credentials.is_system_credential",
         side_effect=lambda credential_id: credential_id == "cred-system",
     )
     system = _api_key_credential("cred-system", "openai")
