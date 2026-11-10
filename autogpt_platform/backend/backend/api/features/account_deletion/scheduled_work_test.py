@@ -86,7 +86,6 @@ def scheduler(mocker: MockerFixture) -> MagicMock:
     client.delete_schedule = AsyncMock()
     client.remove_morning_briefing_schedule = AsyncMock()
     client.delete_nightly_batch_schedule = AsyncMock()
-    client.delete_community_rebuild_schedule = AsyncMock()
     mocker.patch(f"{MODULE}.get_scheduler_client", return_value=client)
     return client
 
@@ -139,7 +138,6 @@ def _assert_per_user_jobs_removed(scheduler: MagicMock) -> None:
     account is kept."""
     scheduler.remove_morning_briefing_schedule.assert_awaited_once_with(user_id=USER_ID)
     scheduler.delete_nightly_batch_schedule.assert_not_awaited()
-    scheduler.delete_community_rebuild_schedule.assert_not_awaited()
 
 
 def _errors(caplog: pytest.LogCaptureFixture) -> list[str]:

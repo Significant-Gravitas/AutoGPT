@@ -429,7 +429,6 @@ async def test_schedules_are_removed(
     )
     # Gated by is_user_refused instead, so they resume if the account is kept.
     scheduler.delete_nightly_batch_schedule.assert_not_awaited()
-    scheduler.delete_community_rebuild_schedule.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1057,7 +1056,6 @@ def _scheduler(mocker: MockerFixture, user_id: str) -> MagicMock:
     client.delete_schedule = AsyncMock()
     client.remove_morning_briefing_schedule = AsyncMock()
     client.delete_nightly_batch_schedule = AsyncMock()
-    client.delete_community_rebuild_schedule = AsyncMock()
     mocker.patch(f"{PACKAGE}.scheduled_work.get_scheduler_client", return_value=client)
     return client
 

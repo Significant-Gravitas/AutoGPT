@@ -69,9 +69,11 @@ row deleted by reopening the account is simply gone. It
 should first rerun ``stop_user_work``, as a schedule or trigger whose removal
 failed here is not retried (``is_user_refused`` keeps them from starting work
 meanwhile). It owns removing the memory crons closing leaves registered so
-they resume if the account is kept: ``delete_nightly_batch_schedule``,
-``delete_community_rebuild_schedule`` and ``delete_skill_learning_schedule``,
-for the account and for each of its experts. It must also delete the user's
+they resume if the account is kept: ``delete_nightly_batch_schedule`` and
+``delete_skill_learning_schedule``, for the account and for each of its
+experts. Community rebuilds have no cron of their own: the hourly sweep reads
+the ``MemoryScopeSchedule`` rows, which go with the User row, and skips a
+closed account until then. It must also delete the user's
 auth identities with the User row, or the auth-identity monitor re-creates
 the User. A request whose ``confirmationSentAt`` is still null got no email:
 by then the 14 days are over, so the routine words its own.
