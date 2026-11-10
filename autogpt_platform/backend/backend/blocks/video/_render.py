@@ -377,7 +377,9 @@ EDITS: dict[str, Callable[..., Any]] = {
 }
 
 
-def main() -> None:
+# Runs only in `run_edit`'s child process, where coverage isn't measured; the
+# edits it calls are tested in-process
+def main() -> None:  # pragma: no cover
     """Do one edit: its name and arguments come as JSON on stdin, and its
     result, refusal or error goes as JSON to the answer file it names."""
     request = json.load(sys.stdin)
@@ -393,5 +395,5 @@ def main() -> None:
         json.dump(answer, answer_file, default=float)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

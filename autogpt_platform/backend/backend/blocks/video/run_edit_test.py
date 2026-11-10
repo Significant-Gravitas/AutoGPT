@@ -4,6 +4,8 @@ stop, ends the encode itself rather than leaving it to run on."""
 
 import asyncio
 import contextlib
+import logging
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterable
@@ -14,8 +16,9 @@ import psutil
 import pytest
 from moviepy import ColorClip
 
+from backend.blocks.video import _utils
 from backend.blocks.video._render import clip_video
-from backend.blocks.video._utils import _EDIT_SCRIPT, run_edit
+from backend.blocks.video._utils import _EDIT_SCRIPT, _kill_tree, run_edit
 from backend.blocks.video.clip import VideoClipBlock
 from backend.blocks.video.loop import LoopVideoBlock
 from backend.data.execution import ExecutionContext
@@ -152,6 +155,88 @@ def test_an_edit_runs_from_an_event_loop_on_another_thread(one_second_clip: Path
         loop.close()
 
     assert duration == pytest.approx(0.5)
+
+
+async def test_an_edit_that_fails_raises_its_error(tmp_path: Path):
+    not_a_video = tmp_path / "not_a_video.mp4"
+    not_a_video.write_bytes(b"not a video")
+
+    # moviepy's own message, from the child
+    with pytest.raises(RuntimeError, match="ffmpeg -i"):
+        await run_edit(
+            VideoClipBlock(),
+            clip_video,
+            [str(not_a_video)],
+            str(tmp_path / "out.mp4"),
+            0.0,
+            0.5,
+        )
+
+
+async def test_an_edit_whose_process_ends_without_an_answer_says_why(
+    one_second_clip: Path, tmp_path: Path, caplog
+):
+    dies = tmp_path / "dies.py"
+    dies.write_text("import sys\nsys.stderr.write('out of memory')\nsys.exit(3)\n")
+
+    with (
+        patch("backend.blocks.video._utils._EDIT_SCRIPT", str(dies)),
+        caplog.at_level(logging.WARNING, logger=_utils.__name__),
+        pytest.raises(RuntimeError, match=r"stopped unexpectedly \(exit code 3\)"),
+    ):
+        await run_edit(
+            VideoClipBlock(),
+            clip_video,
+            [str(one_second_clip)],
+            str(tmp_path / "out.mp4"),
+            0.0,
+            0.5,
+        )
+
+    assert "out of memory" in caplog.text
+
+
+async def test_without_process_groups_an_edit_is_killed_with_what_it_started():
+    # How the edit's child and its ffmpegs are killed on Windows
+    child = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", _STARTS_A_SLEEPER
+    )
+    started: dict[int, psutil.Process] = {}
+    try:
+        await _until(
+            lambda: any(
+                _runs(p, _SLEEPER) for p in _note_tree(child.pid, started).values()
+            )
+        )
+    finally:
+        _kill_tree(child.pid)
+        await child.wait()
+    await _until_ended(started.values())
+
+
+_SLEEPER = "import time; time.sleep(60)"
+_STARTS_A_SLEEPER = (
+    "import subprocess, sys, time\n"
+    f"subprocess.Popen([sys.executable, '-c', {_SLEEPER!r}])\n"
+    "time.sleep(60)\n"
+)
+
+
+def _runs(process: psutil.Process, code: str) -> bool:
+    with contextlib.suppress(psutil.Error):
+        return process.cmdline()[-1:] == [code]
+    return False
+
+
+def _note_tree(
+    pid: int, started: dict[int, psutil.Process]
+) -> dict[int, psutil.Process]:
+    """Note the process and every process it started, however indirectly."""
+    with contextlib.suppress(psutil.Error):
+        parent = psutil.Process(pid)
+        for process in [parent, *parent.children(recursive=True)]:
+            started.setdefault(process.pid, process)
+    return started
 
 
 async def _loop_to_an_hour(block: LoopVideoBlock, clip: Path) -> None:

@@ -6,6 +6,7 @@ cancel is not reported as an error.
 
 import asyncio
 import logging
+import re
 import threading
 import time
 import uuid
@@ -399,6 +400,33 @@ def test_a_held_worker_that_cant_keep_the_runs_lock_says_so_once(caplog):
     ]
     assert len(lock_warnings) == 1
     assert "['node-1']" in lock_warnings[0]
+
+
+def test_a_worker_held_for_long_keeps_saying_how_long(caplog):
+    """A block that never returns keeps its worker for good, so the held
+    worker repeats its warning, with the time it has waited, every
+    STOPPED_NODE_WARNING_SECONDS."""
+    node_ended = threading.Event()
+    progress = MagicMock(spec=NodeExecutionProgress)
+    progress.has_ended.side_effect = node_ended.is_set
+    processor = ExecutionProcessor()
+    processor.running_node_execution = {"node-1": progress}
+    cluster_lock = MagicMock()
+    cluster_lock.refresh.side_effect = lambda: node_ended.set() or True
+
+    with (
+        patch.object(manager_module, "STOPPED_NODE_WARNING_SECONDS", 0),
+        caplog.at_level(logging.WARNING, logger=manager_module.__name__),
+    ):
+        processor.wait_for_nodes_to_end(cluster_lock)
+
+    still_holding = [
+        record.getMessage()
+        for record in caplog.records
+        if "Still holding this worker" in record.getMessage()
+    ]
+    assert len(still_holding) == 1
+    assert re.search(r"\['node-1'\], \d+s on", still_holding[0])
 
 
 @pytest.mark.parametrize(
