@@ -53,7 +53,7 @@ class VerdictPayload(BaseModel):
 
 def audit_frame(reviewer: Expert) -> str:
     """The fixed auditor prompt. The reviewer's identity and voice stay out, since a
-    persona swings this judgement; only ``boundaries`` cross, fenced as policy."""
+    persona swings this judgement; only their name and fenced ``boundaries`` cross."""
     name = _escaped(reviewer.name)
     policy = _escaped(reviewer.boundaries.strip()[:MAX_POLICY_CHARS])
     if policy:
