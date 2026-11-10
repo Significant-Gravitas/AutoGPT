@@ -1,8 +1,8 @@
-from typing import Optional
+from typing import Annotated, Optional
 
 from autogpt_libs.auth import reject_closed_account
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
-from fastapi import FastAPI, HTTPException, Security, status
+from fastapi import FastAPI, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, ConfigDict
@@ -124,14 +124,18 @@ def verified_credential(scope: Scope) -> Optional[VerifiedCredential]:
 
 
 async def require_auth(
-    auth: APIAuthorizationInfo | None = Security(resolve_auth_info),
+    request: Request,
+    api_key: Annotated[str | None, Security(api_key_header)] = None,
+    bearer: Annotated[
+        HTTPAuthorizationCredentials | None, Security(bearer_auth)
+    ] = None,
 ) -> APIAuthorizationInfo:
-    """
-    Unified authentication dependency that requires valid credentials.
+    """The request's verified caller; 401 when it sent no credentials.
 
-    Depends on `resolve_auth_info` (which accepts API key or Bearer token)
-    and rejects requests with no credentials.
+    Resolved once per request: v1's rate limiter and its routes ask for it under
+    different scopes, which FastAPI caches apart.
     """
+    auth = await resolve_request_auth(request.scope, api_key=api_key, bearer=bearer)
     if auth is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
