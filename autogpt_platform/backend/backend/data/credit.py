@@ -3217,18 +3217,21 @@ async def sync_subscription_from_stripe(
     is canceled), and a read in between would cache the state before that.
     """
     customer_id = stripe_subscription.get("customer")
-    tier_before = None if track_lifecycle else await _customer_tier(customer_id)
+    deletion = is_account_deletion_cancellation(stripe_subscription)
+    tier_before = (
+        None if track_lifecycle or deletion else await _customer_tier(customer_id)
+    )
     try:
         await _sync_subscription_tier_from_stripe(stripe_subscription)
     finally:
         if isinstance(customer_id, str) and customer_id:
             await invalidate_billing_lookups(customer_id)
-    if is_account_deletion_cancellation(stripe_subscription):
-        return
-    if track_lifecycle:
+        # Also after a failure: the tier can be saved before a later step
+        # raises, and the next sweep would find nothing left to change.
+        if tier_before is not None and tier_before != await _customer_tier(customer_id):
+            schedule_posthog_lifecycle_sync(tier_before[0])
+    if track_lifecycle and not deletion:
         schedule_posthog_lifecycle_sync(stripe_customer_id=customer_id)
-    elif tier_before is not None and tier_before != await _customer_tier(customer_id):
-        schedule_posthog_lifecycle_sync(tier_before[0])
 
 
 async def _customer_tier(customer_id: object) -> tuple[str, str] | None:

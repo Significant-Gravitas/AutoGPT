@@ -186,6 +186,29 @@ async def test_a_tier_sweep_resync_that_changes_the_tier_schedules_the_user():
     schedule.assert_called_once_with("user-1")
 
 
+async def test_a_sweep_resync_that_fails_after_moving_the_tier_still_schedules():
+    """A paid conversion commits the tier, then a later Stripe step raises:
+    the next sweep would find nothing to change, so this one syncs."""
+    before = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.NO_TIER)
+    after = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.PRO)
+    with (
+        patch(
+            "backend.data.credit._sync_subscription_tier_from_stripe",
+            new_callable=AsyncMock,
+            side_effect=stripe.APIConnectionError("stripe down"),
+        ),
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(side_effect=[before, after])),
+        ),
+        patch("backend.data.credit.invalidate_billing_lookups", new=AsyncMock()),
+        patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
+    ):
+        with pytest.raises(stripe.APIConnectionError):
+            await sync_subscription_from_stripe(TRIAL_SUB, track_lifecycle=False)
+    schedule.assert_called_once_with("user-1")
+
+
 async def test_a_sweep_resync_survives_an_unreadable_tier():
     with (
         patch(

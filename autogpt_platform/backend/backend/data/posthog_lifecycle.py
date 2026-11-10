@@ -41,11 +41,12 @@ doesn't apply is ``$unset``, never sent as null):
 - ``subscription_ended_at``: its Stripe ``ended_at``, while
   ``subscription_ended``.
 - ``subscription_tier``: the plan tier as stored (``User.subscriptionTier``:
-  ``NO_TIER``, ``TRIAL``, ``PRO``, ``MAX``, ``BUSINESS``, ``ENTERPRISE``), the
-  value the usage limits and ``chat_blocked.tier`` read, so any event can be
-  split by plan through the person (SECRT-3411). Unlike the status, it is
-  not worked out from Stripe. Left out, never unset, when the caller didn't
-  read it.
+  ``NO_TIER``, ``TRIAL``, ``PRO``, ``MAX``, ``BUSINESS``, ``ENTERPRISE``), so
+  any event can be split by plan through the person (SECRT-3411). The usage
+  limits read the same column, except that they treat a ``TRIAL`` whose trial
+  has ended as ``NO_TIER`` until Stripe's trial-end update moves the column.
+  Unlike the status, it is not worked out from Stripe. Left out, never
+  unset, when the caller didn't read it.
 
 A paid subscription is one that charges something: a subscription whose
 discounts take the whole price (a 100% coupon, or an amount off at least the
