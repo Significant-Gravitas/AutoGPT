@@ -52,7 +52,8 @@ def _page(title: str, body: str, status_code: int = 200) -> HTMLResponse:
 
 def _settings_url() -> str:
     base = settings.config.frontend_base_url or settings.config.platform_base_url
-    return html.escape(f"{base}/settings/account")
+    # /settings/account shows the email toggles only behind settings-notifications.
+    return html.escape(f"{base}/profile/settings")
 
 
 def _headers(nonce: str) -> dict[str, str]:
