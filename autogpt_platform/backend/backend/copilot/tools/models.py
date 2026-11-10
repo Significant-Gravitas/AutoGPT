@@ -665,7 +665,8 @@ class ExpertChangePreview(BaseModel):
 
 
 class ExpertHandoffTask(BaseModel):
-    """The task a hire was proposed for, handed over when the user approves.
+    """The task a hire or new expert was proposed for, handed over when the
+    user approves.
 
     ``title`` is how the user would name it and labels the card's primary
     button; ``brief`` is the task written for the expert, who cannot see the
@@ -677,7 +678,7 @@ class ExpertHandoffTask(BaseModel):
 
 
 class ExpertHandoffOutcome(BaseModel):
-    """Whether the task a hire was approved for reached the new expert.
+    """Whether the task a hire or new expert was approved for reached them.
 
     ``link`` opens the expert's thread, where the work is happening; it is
     unset when the task did not start.
@@ -855,10 +856,10 @@ class ExpertChangeProposedResponse(ToolResponseBase):
     applied: bool = False
     preview: ExpertChangePreview
     confirmation_id: str
-    # Set when the hire was proposed for a task already in the chat: the card
-    # then asks Hire and start (``handoff_confirmation_id``) or Not now; the
-    # plain ``confirmation_id`` is for a user who asks in chat to hire without
-    # starting the task.
+    # Set when the hire or new expert was proposed for a task already in the
+    # chat: the card then asks Hire (or Create) and start
+    # (``handoff_confirmation_id``) or Not now; the plain ``confirmation_id``
+    # is for a user who asks in chat to add them without starting the task.
     handoff: ExpertHandoffTask | None = None
     handoff_confirmation_id: str | None = None
 
@@ -871,7 +872,7 @@ class ExpertChangeAppliedResponse(ToolResponseBase):
     kind: ExpertChangeKind
     expert: ExpertSummary
     failed_workflows: list[str] = Field(default_factory=list)
-    # Only for a hire approved together with its task.
+    # Only for a hire or new expert approved together with its task.
     handoff: ExpertHandoffOutcome | None = None
 
 
