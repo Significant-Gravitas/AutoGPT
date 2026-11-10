@@ -564,3 +564,25 @@ async def test_a_pause_the_engine_sends_twice_is_one_event(chat_blocked_events):
     await turn.run(_entry(), AsyncMock(return_value=None))
 
     assert [e["limit"] for e in chat_blocked_events] == ["weekly"]
+
+
+@pytest.mark.asyncio
+async def test_a_streamed_pause_still_reaches_the_turn_when_posthog_fails(
+    monkeypatch,
+):
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("posthog down")
+
+    monkeypatch.setattr(posthog_client, "capture", broken)
+    pause = TurnPause(reason="weekly", resets_at=datetime(2026, 10, 19, tzinfo=UTC))
+    part = StreamTurnPaused.of(pause)
+    after = StreamStart(messageId="m-2")
+    chunks = _Chunks(part, after)
+    turn = _Turn(_session())
+    turn.stream = MagicMock(return_value=chunks)
+
+    await turn.run(_entry(), AsyncMock(return_value=None))
+
+    # The stream went on past the pause: every chunk was read.
+    assert chunks._chunks == []
+    turn.complete.assert_awaited_once()

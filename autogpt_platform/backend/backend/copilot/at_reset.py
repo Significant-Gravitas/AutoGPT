@@ -86,6 +86,9 @@ class FireVerdict(BaseModel):
     # stood against it, for analytics.
     window: Literal["daily", "weekly", "trial"] | None = None
     reading: LimitReading | None = None
+    # When that window refills (None for a trial or a window of nothing);
+    # ``run_at`` is later, past the reset and its jitter.
+    refills_at: datetime | None = None
 
 
 def at_reset_schedule_id(kind: AtResetKind, session_id: str) -> str:
@@ -252,7 +255,11 @@ async def _budget_verdict(
         verdict = await _next_reset_verdict(user_id, session_id, kind)
         if verdict.action in ("wait", "drop"):
             verdict = verdict.model_copy(
-                update={"window": exc.window, "reading": exc.reading}
+                update={
+                    "window": exc.window,
+                    "reading": exc.reading,
+                    "refills_at": exc.refills_at,
+                }
             )
         return verdict
     return FireVerdict(action="fire")

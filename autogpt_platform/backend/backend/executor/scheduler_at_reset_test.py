@@ -354,8 +354,10 @@ async def test_still_out_of_budget_is_sent_to_posthog_as_queued(
         "tier": "PRO",
         "used": 3.0,
         "cap": 3.0,
-        "resets_at": moved["run_at"].isoformat(),
+        # When the window refills, not the later, jittered time it fires.
+        "resets_at": DAILY_RESET.isoformat(),
     }
+    assert moved["run_at"] > DAILY_RESET
 
 
 @pytest.mark.asyncio
@@ -381,6 +383,32 @@ async def test_an_allowance_that_never_refills_is_sent_as_refused(
         0.0,
         None,
     )
+
+
+@pytest.mark.asyncio
+async def test_a_spent_trial_is_sent_as_refused_with_its_reading(
+    fire_env, chat_blocked_events
+):
+    reading = LimitReading(tier="TRIAL", used=5.0, cap=5.0)
+    fire_env.gate.side_effect = RateLimitExceeded(
+        "trial", WEEKLY_RESET, reading=reading
+    )
+    with (
+        patch(
+            f"{_AT_RESET}.get_global_rate_limits",
+            AsyncMock(return_value=(3_000_000, 6_000_000, SubscriptionTier.TRIAL)),
+        ),
+        patch(f"{_AT_RESET}._trial_allowance_spent", AsyncMock(return_value=True)),
+    ):
+        await _fire(_args("send"))
+    fire_env.dispatch.assert_not_awaited()
+    (event,) = chat_blocked_events
+    assert (event["limit"], event["outcome"], event["resets_at"]) == (
+        "trial",
+        "refused",
+        None,
+    )
+    assert (event["tier"], event["used"], event["cap"]) == ("TRIAL", 5.0, 5.0)
 
 
 @pytest.mark.asyncio

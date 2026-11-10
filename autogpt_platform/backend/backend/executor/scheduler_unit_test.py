@@ -2843,7 +2843,7 @@ def _over_the_daily_limit(gate: _OwnerGate, resets_at: datetime) -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("window", ["daily", "weekly"])
 async def test_a_one_shot_refused_by_a_used_up_limit_waits_for_the_reset(
-    owner_gate, post_notice, window
+    owner_gate, post_notice, chat_blocked_events, window
 ):
     """Nick (2026-10-10): once usage comes back, the run should happen. A
     one-shot is moved to the reset, spread over a few minutes, and its chat is
@@ -2865,11 +2865,15 @@ async def test_a_one_shot_refused_by_a_used_up_limit_waits_for_the_reset(
     assert kwargs["usage_wait_count"] == 1
     notice = post_notice.call_args.args[0]
     assert notice.body.startswith("“check CI” will run when the limit resets")
+    # Held back to the reset, not refused.
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == [
+        (window, "queued")
+    ]
 
 
 @pytest.mark.asyncio
 async def test_a_one_shot_still_over_its_limit_after_waiting_is_dropped(
-    owner_gate, post_notice
+    owner_gate, post_notice, chat_blocked_events
 ):
     _over_the_daily_limit(
         owner_gate, datetime.now(tz=timezone.utc) + timedelta(hours=3)
@@ -2886,6 +2890,9 @@ async def test_a_one_shot_still_over_its_limit_after_waiting_is_dropped(
     scheduler_client.add_copilot_turn_schedule.assert_not_awaited()
     store.mark_routine_unscheduled.assert_awaited_once_with("routine-1", "sched-1")
     assert post_notice.call_args.args[0].body == "“check CI” didn't run."
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == [
+        ("daily", "refused")
+    ]
 
 
 async def _fire(args: CopilotTurnJobArgs) -> dict[str, AsyncMock]:

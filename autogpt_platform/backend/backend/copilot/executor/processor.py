@@ -393,14 +393,23 @@ async def _refuse_turn(
 
 
 def _track_paused_part(
-    user_id: str | None, chunk: StreamTurnPaused, surface: BlockedSurface
+    user_id: str | None,
+    chunk: StreamTurnPaused,
+    surface: BlockedSurface,
+    sent: set[str],
 ) -> None:
     """``chat_blocked`` for a pause the engine streamed: a turn that landed on
-    a budget, or one refused before answering messages queued while it ran."""
+    a budget, or one refused before answering messages queued while it ran.
+
+    Once per reason in a turn (*sent* holds those already sent): the engine
+    can send the same landing twice, and a landed turn never goes on to an
+    auto-continue that could pause again on the same limit."""
     pause = pause_from_part(chunk.pause)
-    if pause is not None:
-        pause = pause.model_copy(update={"reading": chunk.reading})
-        track_turn_pause(user_id, pause, surface=surface)
+    if pause is None or pause.reason == "steps" or pause.reason in sent:
+        return
+    sent.add(pause.reason)
+    pause = pause.model_copy(update={"reading": chunk.reading})
+    track_turn_pause(user_id, pause, surface=surface)
 
 
 def execute_copilot_turn(
@@ -1053,17 +1062,12 @@ class CoPilotProcessor:
             # not close the generator, so GeneratorExit would never reach
             # stream_chat_completion_sdk, leaving its stream lock held
             # until GC eventually runs.
-            # One event per pause, however many parts the engine sent for it.
-            paused_on: set[object] = set()
+            paused_on: set[str] = set()
             try:
                 async for chunk in published_stream:
                     turn.observe(chunk)
-                    if (
-                        isinstance(chunk, StreamTurnPaused)
-                        and chunk.pause.get("reason") not in paused_on
-                    ):
-                        paused_on.add(chunk.pause.get("reason"))
-                        _track_paused_part(entry.user_id, chunk, surface)
+                    if isinstance(chunk, StreamTurnPaused):
+                        _track_paused_part(entry.user_id, chunk, surface, paused_on)
                     if cancel.is_set():
                         log.info("Cancel requested, breaking stream")
                         break

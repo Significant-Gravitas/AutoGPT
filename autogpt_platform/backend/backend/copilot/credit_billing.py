@@ -112,6 +112,7 @@ class CreditBilledTurn:
             limiting=_BUDGET_WINDOW[self.refusal.reason],
             resets_at=self.refusal.resets_at,
             hard_cap=True,
+            tier=self.refusal.reading.tier if self.refusal.reading else None,
         )
 
     def wait_for(self, recording: asyncio.Task) -> None:

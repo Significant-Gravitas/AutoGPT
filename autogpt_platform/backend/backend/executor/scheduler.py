@@ -819,7 +819,6 @@ async def _refuse_if_turn_may_not_start(
         retry = _reschedule_one_shot_after_plan_unreadable
     if refusal is None:
         return False
-    track_turn_refusal(job_args.user_id, refusal, surface="schedule", outcome="refused")
     waits = refusal.kind == "usage" and refusal.window in ("daily", "weekly")
     if waits:
         retry = functools.partial(
@@ -840,6 +839,14 @@ async def _refuse_if_turn_may_not_start(
         )
     else:
         run, outcome = "dropped", "the one-shot is dropped"
+    # A one-shot moved to the window's reset is held back; any other fire
+    # doesn't run.
+    track_turn_refusal(
+        job_args.user_id,
+        refusal,
+        surface="schedule",
+        outcome="queued" if waits and run == "waits_for_reset" else "refused",
+    )
     logger.log(
         logging.WARNING if refusal.transient else logging.INFO,
         f"Skipping scheduled copilot turn {job_args.schedule_id}: owner "
@@ -1262,7 +1269,7 @@ def _track_at_reset_verdict(user_id: str, verdict: FireVerdict) -> None:
         outcome="queued" if verdict.action == "wait" else "refused",
         surface="schedule",
         reading=verdict.reading,
-        resets_at=verdict.run_at if verdict.action == "wait" else None,
+        resets_at=verdict.refills_at if verdict.action == "wait" else None,
     )
 
 
