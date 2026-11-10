@@ -74,7 +74,7 @@ def test_filter_always_keeps_system_credentials(mocker: pytest_mock.MockFixture)
     """Platform LLM keys carry no grant; filtering them would stop every expert
     from running a single LLM block."""
     mocker.patch(
-        "backend.api.features.experts.credentials.is_system_credential",
+        "backend.integrations.credentials_store.is_system_credential",
         side_effect=lambda credential_id: credential_id == "cred-system",
     )
     system = _api_key_credential("cred-system", "openai")
@@ -83,6 +83,23 @@ def test_filter_always_keeps_system_credentials(mocker: pytest_mock.MockFixture)
     kept = filter_credentials_for_expert([system, ungranted], set())
 
     assert [c.id for c in kept] == ["cred-system"]
+
+
+def test_filter_keeps_the_platform_key_of_a_runnable_sdk_provider():
+    """The platform's own Firecrawl key belongs to no user, so there is nothing
+    to grant: an expert must reach it without asking (SECRT-3207)."""
+    platform_key = _api_key_credential("firecrawl-default", "firecrawl")
+
+    kept = filter_credentials_for_expert([platform_key], set())
+
+    assert [c.id for c in kept] == ["firecrawl-default"]
+
+
+def test_filter_drops_the_platform_key_of_a_refused_sdk_provider():
+    """A provider whose shared key may not run gains nothing from the exemption."""
+    refused = _api_key_credential("notion-default", "notion")
+
+    assert filter_credentials_for_expert([refused], set()) == []
 
 
 def test_filter_with_no_grants_keeps_nothing_user_owned():
@@ -192,6 +209,28 @@ async def test_execution_is_allowed_when_every_credential_was_granted(
         {
             "field": CredentialsMetaInput(
                 id="cred-granted", provider="linkedin", type="api_key"
+            )
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_execution_is_allowed_on_a_platform_key_without_a_grant(
+    mocker: pytest_mock.MockFixture,
+):
+    mocker.patch(
+        "backend.executor.utils.get_experts_db",
+        return_value=AsyncMock(
+            expert_allowed_credential_ids=AsyncMock(return_value=[])
+        ),
+    )
+
+    await _enforce_expert_credential_scope(
+        "user-1",
+        "expert-1",
+        {
+            "field": CredentialsMetaInput(
+                id="firecrawl-default", provider="firecrawl", type="api_key"
             )
         },
     )

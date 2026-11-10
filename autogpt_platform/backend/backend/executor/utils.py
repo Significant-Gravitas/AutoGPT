@@ -75,7 +75,7 @@ from backend.executor.input_depth import (
 from backend.executor.nesting import nested_context, resumed_chain
 from backend.integrations.credentials_store import (
     CredentialsSnapshot,
-    is_system_credential,
+    is_expert_ungated_credential,
 )
 from backend.monitoring.instrumentation import record_graph_execution
 from backend.util import product_analytics
@@ -1507,8 +1507,9 @@ async def _enforce_expert_credential_scope(
     copilot tool runs alike. Enforcing at creation also means a revoke takes effect
     on the next run instead of only on newly created schedules.
 
-    System credentials (platform LLM keys) carry no grant and are always allowed;
-    filtering them would stop every expert from running an LLM block.
+    The platform's own keys (system LLM keys, and the shared key of a provider
+    such as Firecrawl) carry no grant and are always allowed; filtering them
+    would stop every expert from running an LLM block or a platform-keyed one.
     """
     if not graph_credentials_inputs:
         return
@@ -1519,7 +1520,7 @@ async def _enforce_expert_credential_scope(
         {
             meta.id
             for meta in graph_credentials_inputs.values()
-            if not is_system_credential(meta.id) and meta.id not in allowed
+            if not is_expert_ungated_credential(meta.id) and meta.id not in allowed
         }
     )
     if denied:

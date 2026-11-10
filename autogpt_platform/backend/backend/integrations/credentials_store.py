@@ -19,6 +19,8 @@ from backend.data.model import (
     OAuthState,
     UserIntegrations,
     UserPasswordCredentials,
+    is_refused_sdk_default,
+    is_sdk_default,
 )
 from backend.data.redis_client import get_redis_async
 from backend.util.cache import thread_cached
@@ -305,6 +307,21 @@ SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS}
 def is_system_credential(credential_id: str) -> bool:
     """Check if a credential ID belongs to a system-managed credential."""
     return credential_id in SYSTEM_CREDENTIAL_IDS
+
+
+def is_expert_ungated_credential(credential_id: str) -> bool:
+    """Whether every expert may use this credential without being granted it.
+
+    The platform's own keys belong to no user, so there is nothing for the user
+    to grant: the system credentials (LLM keys and the like, from settings) and
+    the SDK default key of a provider whose shared key may run (Firecrawl,
+    DataForSEO, Tavily and the rest of ``RUNNABLE_SDK_DEFAULT_PROVIDERS``).
+    Gating those would ask the user to "share" an account they never had, and
+    the account cannot be shared, so the expert could never use the provider.
+    """
+    return is_system_credential(credential_id) or (
+        is_sdk_default(credential_id) and not is_refused_sdk_default(credential_id)
+    )
 
 
 def is_system_provider(provider: str) -> bool:
