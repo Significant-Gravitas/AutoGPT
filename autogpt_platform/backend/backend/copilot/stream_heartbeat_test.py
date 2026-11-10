@@ -306,3 +306,41 @@ async def test_wrap_underlying_stream_closed_on_early_consumer_exit():
     await gen.aclose()  # exit early
     await asyncio.sleep(0.05)  # let cleanup propagate
     assert closed, "Underlying stream was not closed on early consumer exit"
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_during_the_drivers_cleanup_waits_for_it():
+    """The executor stops a turn by closing its stream and by cancelling the
+    turn, so the cancel can land while the driver cleans up (an SDK turn's CLI
+    close among it); the cleanup still runs to its end, then the turn ends
+    cancelled."""
+    cleaning = asyncio.Event()
+    finish_cleanup = asyncio.Event()
+    cleaned_up = False
+
+    async def _driver() -> AsyncGenerator[StreamBaseResponse, None]:
+        nonlocal cleaned_up
+        try:
+            while True:
+                yield StreamTextDelta(id="t1", delta="x")
+                await asyncio.sleep(0.01)
+        finally:
+            cleaning.set()
+            await finish_cleanup.wait()
+            cleaned_up = True
+
+    async def _stopped_turn() -> None:
+        stream = wrap_stream_with_heartbeat(
+            _driver(), schedule=[(60.0, "Working on it…")], tick_s=0.05
+        )
+        await stream.__anext__()
+        await stream.aclose()
+
+    turn = asyncio.create_task(_stopped_turn())
+    await asyncio.wait_for(cleaning.wait(), timeout=5)
+    turn.cancel()
+    finish_cleanup.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(turn, timeout=5)
+    assert cleaned_up

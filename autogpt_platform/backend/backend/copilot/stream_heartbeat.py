@@ -219,5 +219,20 @@ async def wrap_stream_with_heartbeat(
                 yield event
     finally:
         drain_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await drain_task
+        await _wait_out(drain_task)
+
+
+async def _wait_out(drain_task: asyncio.Task[None]) -> None:
+    """Wait for the cancelled driver's cleanup to finish, holding a cancel of
+    this task back until then: passed on, it cuts that cleanup short, and an
+    SDK turn's CLI then outlives the turn."""
+    held_back = False
+    while not drain_task.done():
+        try:
+            await asyncio.wait({drain_task})
+        except asyncio.CancelledError:
+            held_back = True
+    if held_back:
+        raise asyncio.CancelledError
+    if not drain_task.cancelled():
+        drain_task.result()
