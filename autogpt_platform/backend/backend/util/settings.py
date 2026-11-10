@@ -908,9 +908,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=3310,
         description="The port for the ClamAV daemon",
     )
-    clamav_service_timeout: int = Field(
-        default=60,
-        description="The timeout in seconds for the ClamAV daemon",
+    clamav_service_timeout: int | None = Field(
+        default=None,
+        description="Seconds to wait for the ClamAV daemon; unset, a scan's "
+        "deadline grows with the file (60 s plus 1 s per MiB)",
     )
     clamav_service_enabled: bool = Field(
         default=True,

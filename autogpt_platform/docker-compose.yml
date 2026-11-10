@@ -127,11 +127,14 @@ services:
     environment:
       - CLAMAV_NO_FRESHCLAMD=false
       # The backend scans each upload whole and refuses one clamd won't take,
-      # so these three must cover the largest upload: 256 MB by default
-      # (UPLOAD_FILE_SIZE_LIMIT_MB). Raise them with the upload limits.
+      # so the first three must cover the largest upload: 256 MB by default
+      # (UPLOAD_FILE_SIZE_LIMIT_MB). PCREMaxFileSize must too, or clamd skips
+      # its signatures' regular expressions in larger files. Raise all four
+      # with the upload limits.
       - CLAMD_CONF_StreamMaxLength=256M
       - CLAMD_CONF_MaxFileSize=256M
       - CLAMD_CONF_MaxScanSize=256M
+      - CLAMD_CONF_PCREMaxFileSize=256M
       - CLAMD_CONF_MaxThreads=12
       - CLAMD_CONF_ReadTimeout=300
       - CLAMD_CONF_TCPAddr=0.0.0.0

@@ -278,7 +278,9 @@ stored beside it as `name (1).ext`, `name (2).ext`, and so on.
 
 Tools like `WriteWorkspaceFileTool` don't need to scan because `WorkspaceManager.write_file()` handles it.
 
-Each file goes to ClamAV whole, in one stream. A file ClamAV won't take whole (one over its `StreamMaxLength`) fails the scan with `VirusScanError` and is refused; it is never scanned in pieces. So ClamAV's `StreamMaxLength`, `MaxFileSize` and `MaxScanSize` must each be at least the largest upload cap: `upload_file_size_limit_mb`, 256 MB by default. `docker-compose.yml` sets all three to `256M`; a deployment that runs its own ClamAV needs the same.
+Each file goes to ClamAV whole, in one stream. A file ClamAV won't take whole (one over its `StreamMaxLength`) fails the scan with `VirusScanError` and is refused; it is never scanned in pieces. So ClamAV's `StreamMaxLength`, `MaxFileSize` and `MaxScanSize` must each be at least the largest upload cap: `upload_file_size_limit_mb`, 256 MB by default. So must its `PCREMaxFileSize` (100M by default): ClamAV doesn't run the regular expressions in its signatures on a larger file, so those signatures can't match it. `docker-compose.yml` sets all four to `256M`; a deployment that runs its own ClamAV needs the same.
+
+A scan's deadline grows with the file: 60 seconds plus one per MiB, so a 256 MiB upload has about five minutes to stream and scan. Setting `CLAMAV_SERVICE_TIMEOUT` replaces that with a fixed number of seconds for every scan.
 
 ### Persistence
 

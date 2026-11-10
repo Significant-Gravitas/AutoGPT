@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 _STREAM_FRAME_SIZE = 64 * 1024
+_MiB = 1024 * 1024
+# With no timeout configured, a scan gets this long plus this much per MiB of
+# the file, so a large upload has time to stream to ClamAV and scan whole.
+_DEFAULT_TIMEOUT_S = 60.0
+_TIMEOUT_S_PER_MIB = 1.0
 
 T = TypeVar("T")
 
@@ -39,7 +44,8 @@ class VirusScannerSettings(BaseSettings):
     # Tunables for the scanner layer (NOT the ClamAV daemon).
     clamav_service_host: str = "localhost"
     clamav_service_port: int = 3310
-    clamav_service_timeout: int = 60
+    # Seconds to wait for ClamAV; None scales each scan's deadline with the file.
+    clamav_service_timeout: Optional[int] = None
     clamav_service_enabled: bool = True
     # If the service is disabled, all files are considered clean.
     mark_failed_scans_as_clean: bool = False
@@ -63,7 +69,7 @@ class VirusScannerService:
         self._client = _DrainingClamdClient(
             host=settings.clamav_service_host,
             port=settings.clamav_service_port,
-            timeout=settings.clamav_service_timeout,
+            timeout=settings.clamav_service_timeout or _DEFAULT_TIMEOUT_S,
         )
         self._sem = asyncio.Semaphore(settings.max_concurrency)
 
@@ -88,10 +94,13 @@ class VirusScannerService:
         self, content: bytes, filename: str
     ) -> Tuple[bool, Optional[str]]:
         """Scan all of `content` in one stream, with concurrency control."""
-        size = f"{len(content) / 1_048_576:.1f} MB"
+        size = f"{len(content) / _MiB:.1f} MB"
+        timeout = self.settings.clamav_service_timeout or (
+            _DEFAULT_TIMEOUT_S + _TIMEOUT_S_PER_MIB * len(content) / _MiB
+        )
         async with self._sem:
             try:
-                raw = await self._client.instream(io.BytesIO(content))
+                raw = await self._client.instream(io.BytesIO(content), timeout)
                 return self._parse_raw(raw)
             except (
                 BrokenPipeError,
@@ -160,18 +169,18 @@ class _DrainingClamdClient(aioclamd.ClamdAsyncClient):
     """aioclamd 1.0.0 ignores ``timeout``, and its ``instream`` queues the whole buffer
     unyielding, quadratic on Python 3.12+: it held a copilot turn's loop for minutes."""
 
-    async def instream(self, buffer: BinaryIO) -> dict:
-        return await self._answered(self._stream(buffer))
+    async def instream(self, buffer: BinaryIO, timeout: Optional[float] = None) -> dict:
+        return await self._answered(self._stream(buffer), timeout or self.timeout)
 
     async def ping(self):
-        return await self._answered(super().ping())
+        return await self._answered(super().ping(), self.timeout)
 
-    async def _answered(self, call: Awaitable[T]) -> T:
+    async def _answered(self, call: Awaitable[T], timeout: float) -> T:
         try:
-            return await asyncio.wait_for(call, self.timeout)
+            return await asyncio.wait_for(call, timeout)
         except TimeoutError:
             raise aioclamd.ClamdConnectionError(
-                f"ClamAV did not answer within {self.timeout}s"
+                f"ClamAV did not answer within {timeout:.0f}s"
             ) from None
 
     async def _stream(self, buffer: BinaryIO) -> dict:

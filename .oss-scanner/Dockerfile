@@ -300,6 +300,7 @@ PidFile /run/clamav/clamd.pid
 StreamMaxLength 256M
 MaxFileSize 256M
 MaxScanSize 256M
+PCREMaxFileSize 256M
 MaxThreads 4
 ReadTimeout 300
 EOF
