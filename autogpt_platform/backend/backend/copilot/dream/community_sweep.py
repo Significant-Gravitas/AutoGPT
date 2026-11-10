@@ -30,7 +30,7 @@ from backend.copilot.graphiti.communities import (
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.db_accessors import memory_schedule_db
 from backend.data.memory_schedule import MemoryScopeSchedule
-from backend.data.user import is_user_banned
+from backend.data.user import account_refusal
 
 from .deadline import within_deadline
 from .scope_crons import ExpertStatusLookup, memory_scope_may_fire, record_scope_run
@@ -119,16 +119,19 @@ async def _attempt(
 
 async def _owner_allows(scope: MemoryScope, expert_status: ExpertStatusLookup) -> bool:
     """What a dream-system cron body asks before it runs: the owner is not
-    banned, and the registry row, and an expert's lifecycle, let it run."""
+    banned and has not closed the account, and the registry row, and an
+    expert's lifecycle, let it run."""
     try:
-        banned = await within_deadline(is_user_banned(scope.owner_user_id))
+        refusal = await within_deadline(account_refusal(scope.owner_user_id))
     except Exception:
         logger.warning(
-            f"Community rebuild of {scope_label(scope)} skipped: ban unreadable",
+            f"Community rebuild of {scope_label(scope)} skipped: account unreadable",
             exc_info=True,
         )
         return False
-    if banned:
-        logger.info(f"Community rebuild of {scope_label(scope)} skipped: owner banned")
+    if refusal is not None:
+        logger.info(
+            f"Community rebuild of {scope_label(scope)} skipped: owner {refusal}"
+        )
         return False
     return await memory_scope_may_fire(scope, expert_status)

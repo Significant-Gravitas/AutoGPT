@@ -88,9 +88,10 @@ async def _remove_schedules(user_id: str) -> None:
             scheduler.remove_morning_briefing_schedule(user_id=user_id),
         ),
     )
-    # The memory crons (nightly batch, community rebuild, skill learning) stay
-    # registered: their gate (is_user_refused) skips a closed account, and
-    # they resume on their own if it is kept. The erasure removes them.
+    # The memory crons (nightly batch, skill learning) stay registered: their
+    # gate (is_user_refused) skips a closed account, and they resume on their
+    # own if it is kept. The erasure removes them. Community rebuilds run from
+    # the hourly sweep, whose owner check refuses a closed account too.
 
 
 async def _remove_listed_schedules(scheduler: SchedulerClient, user_id: str) -> None:
