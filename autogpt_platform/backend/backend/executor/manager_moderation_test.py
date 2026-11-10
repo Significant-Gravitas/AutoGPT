@@ -4,6 +4,7 @@ time is cancelled, and the run goes on without it only with automod_fail_open.""
 import asyncio
 import inspect
 import threading
+import time
 from collections.abc import Coroutine, Iterator
 from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock
@@ -50,11 +51,13 @@ def _fail_open(
 
 
 def _check_that_never_answers() -> (
-    tuple[Coroutine[Any, Any, Exception | None], threading.Event]
+    tuple[Coroutine[Any, Any, Exception | None], threading.Event, threading.Event]
 ):
+    started = threading.Event()
     cancelled = threading.Event()
 
     async def check() -> Exception | None:
+        started.set()
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
@@ -62,7 +65,25 @@ def _check_that_never_answers() -> (
             raise
         return None
 
-    return check(), cancelled
+    return check(), started, cancelled
+
+
+def _stopped(
+    work: Coroutine[Any, Any, Any], started: threading.Event, cancelled: threading.Event
+) -> bool:
+    """Whether work the run gave up on was stopped rather than left running: it
+    saw the cancel or, cancelled before its first step, never ran at all. From
+    Python 3.13.10 a task is cancelled before that step when the run gave up on
+    it before the loop got to it, as a loaded runner can make it."""
+    for _ in range(1000):
+        if cancelled.is_set():
+            return True
+        if not started.is_set() and (
+            inspect.getcoroutinestate(work) == inspect.CORO_CLOSED
+        ):
+            return True
+        time.sleep(0.01)
+    return False
 
 
 def _await(
@@ -88,14 +109,14 @@ def test_a_check_that_runs_out_of_time_fails_the_execution(
 ) -> None:
     automod = _fail_open(monkeypatch, False)
     monkeypatch.setattr(manager, "MODERATION_WAIT_SECONDS", 0.2)
-    check, cancelled = _check_that_never_answers()
+    check, started, cancelled = _check_that_never_answers()
 
     with pytest.raises(ModerationError) as refused:
         _await(check, evaluation_loop, stage)
 
     assert refused.value.moderation_type == stage
     assert refused.value.graph_exec_id == "exec-1"
-    assert cancelled.wait(timeout=10), "the timed-out check kept running"
+    assert _stopped(check, started, cancelled), "the timed-out check kept running"
     # Its nodes are failed as a refused check of the same kind fails them
     automod.update_failed_nodes_for_moderation.assert_awaited_once_with(
         db_client, "exec-1", stage
@@ -109,12 +130,12 @@ def test_with_automod_off_a_run_never_waits_on_a_check(
     evaluation loop must not hold the run up, let alone fail it."""
     _fail_open(monkeypatch, False, enabled=False)
     monkeypatch.setattr(manager, "MODERATION_WAIT_SECONDS", 0.2)
-    check, cancelled = _check_that_never_answers()
+    check, started, cancelled = _check_that_never_answers()
 
     _await(check, evaluation_loop)
 
     assert inspect.getcoroutinestate(check) == inspect.CORO_CLOSED
-    assert not cancelled.is_set(), "the check ran"
+    assert not started.is_set(), "the check ran"
 
 
 def test_with_fail_open_a_check_that_runs_out_of_time_is_skipped(
@@ -122,11 +143,11 @@ def test_with_fail_open_a_check_that_runs_out_of_time_is_skipped(
 ) -> None:
     automod = _fail_open(monkeypatch, True)
     monkeypatch.setattr(manager, "MODERATION_WAIT_SECONDS", 0.2)
-    check, cancelled = _check_that_never_answers()
+    check, started, cancelled = _check_that_never_answers()
 
     _await(check, evaluation_loop)
 
-    assert cancelled.wait(timeout=10), "the timed-out check kept running"
+    assert _stopped(check, started, cancelled), "the timed-out check kept running"
     automod.update_failed_nodes_for_moderation.assert_not_called()
 
 
@@ -134,12 +155,13 @@ def test_a_check_the_loop_starts_after_the_wait_is_over_is_still_cancelled(
     monkeypatch: pytest.MonkeyPatch, evaluation_loop: asyncio.AbstractEventLoop
 ) -> None:
     """A loaded runner may get to a check only after the run has given up on
-    it. The check must still be cancelled once it starts, not left running."""
+    it. The check must still be stopped, not left running: cancelled once it
+    starts or, from Python 3.13.10, before it starts."""
     _fail_open(monkeypatch, True)
     monkeypatch.setattr(manager, "MODERATION_WAIT_SECONDS", 0.2)
     loop_is_free = threading.Event()
     evaluation_loop.call_soon_threadsafe(loop_is_free.wait, 30)
-    check, cancelled = _check_that_never_answers()
+    check, started, cancelled = _check_that_never_answers()
 
     try:
         _await(check, evaluation_loop)
@@ -147,16 +169,18 @@ def test_a_check_the_loop_starts_after_the_wait_is_over_is_still_cancelled(
     finally:
         loop_is_free.set()
 
-    assert cancelled.wait(timeout=10), "the check that started late kept running"
+    assert _stopped(check, started, cancelled), "the late check kept running"
 
 
 def _automod_that_never_answers(
     monkeypatch: pytest.MonkeyPatch, *, fail_open: bool
-) -> tuple[AutoModManager, threading.Event]:
+) -> tuple[AutoModManager, threading.Event, threading.Event]:
     """The real AutoMod manager, switched on, whose request never comes back."""
+    request_started = threading.Event()
     request_cancelled = threading.Event()
 
     async def never_answers(*args: object, **kwargs: object) -> object:
+        request_started.set()
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
@@ -176,7 +200,7 @@ def _automod_that_never_answers(
     monkeypatch.setattr(automod_module, "Requests", requests)
     automod = AutoModManager()
     monkeypatch.setattr(manager, "automod_manager", automod)
-    return automod, request_cancelled
+    return automod, request_started, request_cancelled
 
 
 @pytest.mark.parametrize("fail_open", [False, True], ids=["fail closed", "fail open"])
@@ -189,7 +213,7 @@ def test_when_automod_never_answers_the_run_follows_fail_open(
     """End to end through the real AutoMod manager: its request hangs, so the
     run stops waiting, cancels the request and fails with its queued node
     failed as a refusal fails it, unless automod_fail_open lets it go on."""
-    automod, request_cancelled = _automod_that_never_answers(
+    automod, request_started, request_cancelled = _automod_that_never_answers(
         monkeypatch, fail_open=fail_open
     )
     monkeypatch.setattr(manager, "MODERATION_WAIT_SECONDS", 0.2)
@@ -230,7 +254,9 @@ def test_when_automod_never_answers_the_run_follows_fail_open(
         assert update.args == ("node-exec-1",)
         assert update.kwargs["status"] == ExecutionStatus.FAILED
 
-    assert request_cancelled.wait(timeout=10), "the AutoMod request kept running"
+    assert _stopped(
+        moderation, request_started, request_cancelled
+    ), "the AutoMod request kept running"
 
 
 @pytest.mark.parametrize("fail_open", [False, True])
