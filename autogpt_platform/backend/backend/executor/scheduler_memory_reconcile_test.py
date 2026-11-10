@@ -31,8 +31,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from backend.copilot.dream.scheduling import (
-    COMMUNITY_REBUILD_JOB_PREFIX,
     NIGHTLY_BATCH_JOB_PREFIX,
+    SKILL_LEARNING_JOB_PREFIX,
     dream_system_job,
 )
 from backend.copilot.dream.scope_reconcile import (
@@ -115,13 +115,15 @@ def scheduler_loop():
 
 def test_the_listing_reads_only_the_dream_system_crons() -> None:
     """One read, filtered by prefix, with ``_`` matched literally: a job id
-    that only a LIKE wildcard would match is left out."""
+    that only a LIKE wildcard would match is left out. A community rebuild
+    cron is no dream-system cron now: the community sweep removes those."""
     with _sqlite_file() as url, _scheduler_on(url) as scheduler:
         for job_id in (
             "community_rebuild_user-1",
             "dream_nightly_batch_user-2",
-            "communityXrebuild_user-3",
+            "dream_nightlyXbatch_user-3",
             "dream_nightly_batchy",
+            "skill_learning_nightly_user-4",
             "graph-execution-1",
         ):
             scheduler.scheduler.add_job(
@@ -135,7 +137,7 @@ def test_the_listing_reads_only_the_dream_system_crons() -> None:
 
         listed = sorted(job.id for job in scheduler._memory_jobs())
 
-    assert listed == ["community_rebuild_user-1", "dream_nightly_batch_user-2"]
+    assert listed == ["dream_nightly_batch_user-2", "skill_learning_nightly_user-4"]
 
 
 def test_the_listing_names_each_crons_scope_and_timezone() -> None:
@@ -144,16 +146,16 @@ def test_the_listing_names_each_crons_scope_and_timezone() -> None:
     the registry row keeps."""
     account = MemoryScope.for_user("user-1")
     with _sqlite_file() as url, _scheduler_on(url) as scheduler:
-        community = dream_system_job(COMMUNITY_REBUILD_JOB_PREFIX)
         nightly = dream_system_job(NIGHTLY_BATCH_JOB_PREFIX)
-        scheduler._add_memory_job(noop, "0 4 * * 0", community, EXPERT, "Asia/Tokyo")
-        scheduler._add_memory_job(noop, "0 3 * * *", nightly, account, "UTC")
+        learning = dream_system_job(SKILL_LEARNING_JOB_PREFIX)
+        scheduler._add_memory_job(noop, "0 3 * * *", nightly, EXPERT, "Asia/Tokyo")
+        scheduler._add_memory_job(noop, "0 3 * * *", learning, account, "UTC")
 
         listed = sorted(scheduler._memory_crons(), key=lambda cron: cron.job_id)
 
     assert [(cron.job_id, cron.scope, cron.timezone) for cron in listed] == [
-        (community.job_id(EXPERT), EXPERT, "Asia/Tokyo"),
-        (nightly.job_id(account), account, "UTC"),
+        (nightly.job_id(EXPERT), EXPERT, "Asia/Tokyo"),
+        (learning.job_id(account), account, "UTC"),
     ]
     assert not any(cron.reconciled for cron in listed)
 
@@ -172,12 +174,9 @@ def test_a_cron_the_reconcile_registers_lists_as_its():
     assert untagged.reconciled is False
 
 
-@pytest.mark.parametrize(
-    "prefix", [COMMUNITY_REBUILD_JOB_PREFIX, NIGHTLY_BATCH_JOB_PREFIX]
-)
-def test_expert_crons_use_a_separate_callable_reference(prefix):
-    job = dream_system_job(prefix)
-    body, crontab = scheduler_module._MEMORY_CRONS[prefix]
+def test_expert_crons_use_a_separate_callable_reference():
+    job = dream_system_job(NIGHTLY_BATCH_JOB_PREFIX)
+    body, crontab = scheduler_module._MEMORY_CRONS[NIGHTLY_BATCH_JOB_PREFIX]
     with _sqlite_file() as url, _scheduler_on(url) as scheduler:
         expert = scheduler._add_memory_job(body, crontab, job, EXPERT, "UTC")
         account = scheduler._add_memory_job(
@@ -255,13 +254,13 @@ def test_a_statement_timeout_leaves_a_sqlite_read_as_it_was() -> None:
             noop,
             "interval",
             hours=1,
-            id="community_rebuild_user-1",
+            id="dream_nightly_batch_user-1",
             jobstore=_EXECUTION,
         )
 
         jobs = scheduler._execution_jobstore._get_jobs(statement_timeout=0.001)
 
-    assert [job.id for job in jobs] == ["community_rebuild_user-1"]
+    assert [job.id for job in jobs] == ["dream_nightly_batch_user-1"]
 
 
 def _postgres_url() -> str | None:
@@ -312,7 +311,7 @@ async def test_the_cron_store_lists_and_registers_as_the_scope_rpcs_do() -> None
         patch.object(scheduler, "remove_scope_memory_jobs") as remove,
     ):
         assert await crons.listing() == listed
-        await crons.add(dream_system_job(COMMUNITY_REBUILD_JOB_PREFIX), EXPERT, "UTC")
+        await crons.add(dream_system_job(SKILL_LEARNING_JOB_PREFIX), EXPERT, "UTC")
         await crons.add(nightly, EXPERT, "UTC")
         await crons.drop(nightly, EXPERT)
         await crons.remove(EXPERT)
@@ -320,7 +319,7 @@ async def test_the_cron_store_lists_and_registers_as_the_scope_rpcs_do() -> None
     drop.assert_called_once_with(nightly, EXPERT)
 
     assert [call.args[:2] for call in add.call_args_list] == [
-        (scheduler_module.execute_community_rebuild, "0 4 * * 0"),
+        (scheduler_module.execute_skill_learning_sync, "0 3 * * *"),
         (scheduler_module.execute_nightly_batch_sync, "0 3 * * *"),
     ]
     assert [call.args[3:] for call in add.call_args_list] == [(EXPERT, "UTC", True)] * 2
@@ -543,10 +542,11 @@ def test_a_removal_another_scheduler_made_first_is_no_error() -> None:
     """The review's probe: two schedulers on one jobstore both read a
     scope's crons, the other removes them first, and this one's removal
     finds them gone. It reports only what it removed, and raises nothing."""
+    account = MemoryScope.for_user("user-1")
     with _sqlite_file() as url, _scheduler_on(url) as one, _scheduler_on(url) as other:
-        for prefix in (COMMUNITY_REBUILD_JOB_PREFIX, NIGHTLY_BATCH_JOB_PREFIX):
+        for prefix in (NIGHTLY_BATCH_JOB_PREFIX, SKILL_LEARNING_JOB_PREFIX):
             one._add_memory_job(
-                noop, "0 3 * * *", dream_system_job(prefix), EXPERT, "UTC"
+                noop, "0 3 * * *", dream_system_job(prefix), account, "UTC"
             )
         get_job = one.scheduler.get_job
 
@@ -557,9 +557,9 @@ def test_a_removal_another_scheduler_made_first_is_no_error() -> None:
             return job
 
         with patch.object(one.scheduler, "get_job", side_effect=read_then_lose):
-            removed = one.remove_scope_memory_jobs(EXPERT)
+            removed = one.remove_scope_memory_jobs(account)
 
         left = one.scheduler.get_jobs(jobstore=_EXECUTION)
 
-    assert removed == [dream_system_job(COMMUNITY_REBUILD_JOB_PREFIX).job_id(EXPERT)]
+    assert removed == [dream_system_job(SKILL_LEARNING_JOB_PREFIX).job_id(account)]
     assert left == []

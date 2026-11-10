@@ -60,6 +60,7 @@ from backend.copilot.expert_kickoff import (
     scoped_client_message_id,
 )
 from backend.copilot.gate.card_approval import record_card_decisions
+from backend.copilot.limit_tracking import track_limit_exceeded, track_turn_cap
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
@@ -255,6 +256,7 @@ async def enforce_platform_allowance(user_id: str) -> None:
             expected_tier=usage_tier,
         )
     except RateLimitExceeded as e:
+        track_limit_exceeded(user_id, e, surface="chat")
         # Structured envelope (not a bare string) so the frontend can
         # offer "switch to another connection" (e.g. a connected
         # BYOSUB/Codex credential) instead of only "upgrade your plan" --
@@ -2197,6 +2199,7 @@ async def stream_chat_post(
         ) from exc
     except ConcurrentTurnLimitError as exc:
         if resume_persisted_kickoff:
+            track_turn_cap(user_id, exc, surface="chat", outcome="refused")
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         # Soft running cap (default 5) hit. Fall through to the queue:
         # if total in-flight (running + queued) is still under the hard
@@ -2226,7 +2229,8 @@ async def stream_chat_post(
                 request_arrival_at=request_arrival_at,
                 impersonated=is_impersonated_request(http_request),
             )
-        except turn_queue.InflightCapExceeded:
+        except turn_queue.InflightCapExceeded as cap_exc:
+            track_turn_cap(user_id, cap_exc, surface="chat", outcome="refused")
             await release_client_message_claim()
             raise HTTPException(
                 status_code=429,
@@ -2238,6 +2242,7 @@ async def stream_chat_post(
             await release_client_message_claim()
             raise
         await accept_client_message_claim()
+        track_turn_cap(user_id, exc, surface="chat", outcome="queued")
         logger.info(
             f"[STREAM] Queued turn for session={session_id} "
             f"(running cap reached; inflight cap={inflight_cap})"

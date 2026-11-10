@@ -107,6 +107,7 @@ from .activity_status_generator import (
 from .auto_credentials import acquire_auto_credentials
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
+from .nesting import sub_workflow_depth
 from .node_tracing import (
     node_transaction,
     output_trace_headers,
@@ -555,7 +556,7 @@ async def execute_node(
     # A dry run skips credits, so a block it runs for real on the platform's
     # key is bounded by the user's allowance instead.
     if _dry_run_creds is not None and (
-        refusal := await platform_spend_refusal(user_id)
+        refusal := await platform_spend_refusal(user_id, surface="block")
     ):
         log_metadata.warning(f"Dry-run block not run: {refusal}")
         yield "error", refusal
@@ -1965,8 +1966,8 @@ class ExecutionManager(AppProcess):
         super().__init__()
         self.pool_size = settings.config.num_graph_workers
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
-        # Owner of each active top-level run, for the per-user worker share.
-        self._root_run_owners: dict[str, str] = {}
+        # Owner of each active run, for the per-user worker share.
+        self._run_owners: dict[str, str] = {}
         self.executor_id = str(uuid.uuid4())
 
         self._executor = None
@@ -2273,8 +2274,11 @@ class ExecutionManager(AppProcess):
             + (f", parent={parent_exec_id}" if parent_exec_id else "")
         )
 
-        is_root_run = root_exec_id is None or root_exec_id == graph_exec_id
-        if is_root_run and not self._has_worker_share_for(user_id):
+        # None for a sub-workflow run that carries no chain, which only a run
+        # queued before runs carried one can be: its depth is unknown, so it
+        # is left out of the share
+        depth = sub_workflow_depth(graph_exec_entry)
+        if depth is not None and not self._has_worker_share_for(user_id, depth):
             logger.info(
                 f"[{self.service_name}] User {user_id} holds its share of workers; "
                 f"requeueing {graph_exec_id}"
@@ -2370,8 +2374,8 @@ class ExecutionManager(AppProcess):
                 execute_graph, graph_exec_entry, cancel_event, cluster_lock
             )
             self.active_graph_runs[graph_exec_id] = (future, cancel_event)
-            if is_root_run:
-                self._root_run_owners[graph_exec_id] = user_id
+            if depth is not None:
+                self._run_owners[graph_exec_id] = user_id
         except Exception as e:
             logger.warning(
                 f"[{self.service_name}] Failed to setup execution for {graph_exec_id}: {type(e).__name__}: {e}"
@@ -2421,20 +2425,29 @@ class ExecutionManager(AppProcess):
         for geid in completed_runs:
             logger.info(f"[{self.service_name}] ✅ Cleaned up completed run {geid}")
             self.active_graph_runs.pop(geid, None)
-            self._root_run_owners.pop(geid, None)
+            self._run_owners.pop(geid, None)
 
         self._update_prompt_metrics()
         return completed_runs
 
-    def _has_worker_share_for(self, user_id: str) -> bool:
-        """Whether *user_id* may start another top-level run on this executor."""
-        # Kept below the pool, so one account can never hold every worker.
+    def _has_worker_share_for(self, user_id: str, depth: int) -> bool:
+        """Whether *user_id* may start another run on this executor, one
+        nested *depth* levels of sub-workflows below its top-level run.
+
+        Runs at every depth count, and each level may hold one more worker
+        than the level above it. A run waiting on a sub-workflow keeps its
+        worker, so the run admitted last can always start its next level:
+        however the user's runs nest, they never wait on each other for
+        good, and they hold at most the share plus MAX_SUB_WORKFLOW_DEPTH.
+        """
+        # Kept below the pool, so one account's top-level runs can never hold
+        # every worker.
         share = max(
             1, min(settings.config.max_graph_workers_per_user, self.pool_size - 1)
         )
         # Counted on a snapshot: a run's done-callback can drop an owner mid-count.
-        held = list(self._root_run_owners.values()).count(user_id)
-        return held < share
+        held = list(self._run_owners.values()).count(user_id)
+        return held < share + depth
 
     def _update_prompt_metrics(self):
         active_count = len(self.active_graph_runs)

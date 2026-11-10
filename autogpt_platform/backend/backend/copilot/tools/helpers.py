@@ -66,6 +66,7 @@ from backend.util.exceptions import (
     BlockInputError,
     InsufficientBalanceError,
 )
+from backend.util.file import separate_exec_files
 from backend.util.json import same_json
 from backend.util.request import HTTPClientError
 from backend.util.settings import Settings
@@ -601,10 +602,14 @@ async def execute_block(
             started = perf_counter()
             refunded = stopped = False
             try:
-                await asyncio.wait_for(
-                    _collect_block_outputs(block, input_data, exec_kwargs, outputs),
-                    timeout=MAX_TOOL_WAIT_SECONDS,
-                )
+                # Every call in the chat shares its execution id, and calls from
+                # one message run at once: each keeps its local media files in
+                # a folder of its own, removed when the call ends.
+                with separate_exec_files(synthetic_graph_id):
+                    await asyncio.wait_for(
+                        _collect_block_outputs(block, input_data, exec_kwargs, outputs),
+                        timeout=MAX_TOOL_WAIT_SECONDS,
+                    )
                 return BlockOutputResponse(
                     message=f"Block '{block.name}' executed successfully",
                     block_id=block_id,

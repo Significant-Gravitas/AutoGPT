@@ -586,6 +586,28 @@ def test_muse_wonder_bills_at_authored_rates():
     assert entry.supports_reasoning is True
 
 
+def test_muse_ember_bills_at_authored_rates():
+    """Muse Ember (OpenRouter, Meta list price $0.10/$0.50 per 1M, cache
+    read $0.004/1M) — flat tier and per-1M projections must match the
+    authored catalog entry."""
+    ember = LLMModel("meta/muse-ember")
+    assert ember is LLMModel.META_MUSE_EMBER
+    assert MODEL_COST[ember] == 1
+    assert TOKEN_COST[ember].model_dump() == {
+        "input": 15.0,
+        "output": 75.0,
+        "cache_read": 0.6,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[ember].max_output_tokens == 943718
+    entry = next(m for m in CATALOG.models if m.slug == "meta/muse-ember")
+    assert entry.price_tier == 1
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
+
+
 def test_qwen3_8_max_0902_bills_at_authored_rates():
     """Qwen 3.8 Max (0902) (OpenRouter, Alibaba list price $2.00/$6.00 per
     1M) — flat tier and per-1M projections must match the authored catalog

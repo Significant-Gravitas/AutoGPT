@@ -473,7 +473,9 @@ class TestMessageLimitsAndCaps:
         fetch.assert_not_awaited()
         deliver.assert_not_awaited()
 
-    async def test_over_the_inflight_cap_reports_rather_than_raises(self) -> None:
+    async def test_over_the_inflight_cap_reports_rather_than_raises(
+        self, chat_blocked_events
+    ) -> None:
         queued = QueuePendingMessageResponse(
             buffer_length=0, max_buffer_length=10, turn_in_flight=False
         )
@@ -489,12 +491,19 @@ class TestMessageLimitsAndCaps:
                     new=AsyncMock(return_value="idle"),
                 ), patch(
                     f"{_MSG}.try_enqueue_turn",
-                    new=AsyncMock(side_effect=InflightCapExceeded()),
+                    new=AsyncMock(side_effect=InflightCapExceeded(used=15, cap=15)),
                 ):
                     result = await MessageSessionTool()._execute(
                         OWNER, _session(), session_id=TARGET_SESSION, message="hi"
                     )
         assert isinstance(result, ErrorResponse)
+        (event,) = chat_blocked_events
+        assert (event["limit"], event["outcome"], event["surface"]) == (
+            "concurrency",
+            "refused",
+            "background",
+        )
+        assert (event["distinct_id"], event["used"], event["cap"]) == (OWNER, 15, 15)
 
 
 class TestQueuedTargetRidesItsOwnTurn:

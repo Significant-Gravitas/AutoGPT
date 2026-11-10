@@ -573,8 +573,13 @@ async def schedule_turn(
 
     if user_id:
         inflight_cap = get_inflight_turn_limit()
-        if await count_inflight_turns(user_id) >= inflight_cap:
-            raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
+        inflight = await count_inflight_turns(user_id)
+        if inflight >= inflight_cap:
+            raise ConcurrentTurnLimitError(
+                inflight_turn_limit_message(inflight_cap),
+                cap=inflight_cap,
+                used=inflight,
+            )
 
     capacity = get_delegated_turn_limit() if delegated else get_inflight_turn_limit()
     async with acquire_turn_slot(user_id, session_id, capacity=capacity) as slot:
@@ -791,8 +796,11 @@ async def queue_spawned_turn(
     from backend.copilot.turn_queue import count_inflight_turns, enqueue_turn
 
     inflight_cap = get_inflight_turn_limit()
-    if await count_inflight_turns(user_id) >= inflight_cap:
-        raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
+    inflight = await count_inflight_turns(user_id)
+    if inflight >= inflight_cap:
+        raise ConcurrentTurnLimitError(
+            inflight_turn_limit_message(inflight_cap), cap=inflight_cap, used=inflight
+        )
     envelope = await _admitted_turn_envelope(
         str(uuid4()), session_id, user_id, permissions, spawn
     )

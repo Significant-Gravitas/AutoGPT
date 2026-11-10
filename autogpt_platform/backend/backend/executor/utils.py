@@ -67,11 +67,12 @@ from backend.data.model import (
     sdk_default_refused_message,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import is_user_banned
+from backend.data.user import is_user_refused
 from backend.executor.input_depth import (
     validate_graph_input_depth,
     validate_starting_node_input_depth,
 )
+from backend.executor.nesting import nested_context, resumed_chain
 from backend.integrations.credentials_store import (
     CredentialsSnapshot,
     is_system_credential,
@@ -1676,8 +1677,10 @@ async def _add_graph_execution(
 
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run workflows.")
-    if await is_user_banned(user_id):
-        raise UserBannedError("This account is banned, so its workflows can't run.")
+    if await is_user_refused(user_id):
+        raise UserBannedError(
+            "This account is banned or closed, so its workflows can't run."
+        )
 
     is_new_execution = graph_exec_id is None
     tenancy_replaced = False
@@ -1805,6 +1808,14 @@ async def _add_graph_execution(
 
         logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
     else:
+        parent_exec_id = (
+            execution_context.parent_execution_id if execution_context else None
+        )
+        if execution_context and parent_exec_id is not None:
+            # Refused before anything is written: a workflow already running
+            # in this chain would start itself again without end.
+            execution_context = nested_context(execution_context, graph_id)
+
         if expert_id:
             organization_id, team_id = await _resolve_expert_execution_tenancy(
                 user_id, expert_id
@@ -1814,9 +1825,6 @@ async def _add_graph_execution(
                 user_id, expert_id, graph_credentials_inputs
             )
 
-        parent_exec_id = (
-            execution_context.parent_execution_id if execution_context else None
-        )
         # A sub-graph asks in the chat that started its parent run.
         if trigger == ExecutionTrigger.COPILOT:
             approval_chat_id = trigger_ref
@@ -2036,6 +2044,15 @@ async def _add_graph_execution(
     if nesting:
         execution_context = await _keep_nesting_safe_modes(
             execution_context, nesting, user_id, gdb
+        )
+        # A resumed sub-graph run keeps its place in its chain, by which the
+        # executor admits it and refuses a run of a workflow already in it.
+        execution_context = execution_context.model_copy(
+            update={
+                "ancestor_graph_ids": resumed_chain(
+                    [run.graph_id if run else None for run in nesting]
+                )
+            }
         )
 
     stamp: dict[str, Any] = {

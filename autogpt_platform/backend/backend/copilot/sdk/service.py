@@ -4527,7 +4527,7 @@ async def _run_stream_attempt(
             state.governor.hangup_pause() if state.governor is not None else None
         )
         if hangup_pause is not None:
-            yield StreamTurnPaused(pause=hangup_pause.as_part())
+            yield StreamTurnPaused.of(hangup_pause)
         else:
             notice_block_id = str(uuid.uuid4())
             yield StreamTextStart(id=notice_block_id)
@@ -7130,7 +7130,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session, user_id, platform_billed=not is_codex_transport
         )
         if auto_continue.pause is not None:
-            yield StreamTurnPaused(pause=auto_continue.pause.as_part())
+            yield StreamTurnPaused.of(auto_continue.pause)
         _auto_pending_messages = (
             await drain_pending_safe(session_id, log_prefix)
             if auto_continue.proceed
