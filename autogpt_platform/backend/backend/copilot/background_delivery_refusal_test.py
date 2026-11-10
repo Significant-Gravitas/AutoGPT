@@ -17,6 +17,7 @@ def _task():
         id="task-1",
         user_id=USER_ID,
         child_session_id="child-1",
+        context=SimpleNamespace(child_envelope=None),
         wake_suppressed=False,
         outcome="cancelled",
         followup_state="queued",
