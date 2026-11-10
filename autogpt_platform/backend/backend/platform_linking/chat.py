@@ -10,6 +10,10 @@ from backend.copilot.active_turns import (
     acquire_turn_slot,
     get_inflight_turn_limit,
 )
+from backend.copilot.chat_platform_header import (
+    bridge_lines,
+    strip_chat_platform_header,
+)
 from backend.copilot.config import ChatConfig, CopilotLLMModel
 from backend.copilot.executor.utils import dispatch_turn
 from backend.copilot.model import (
@@ -27,6 +31,7 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
+from backend.copilot.service import EmptyUserMessage, normalise_user_message
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.tree import root_envelope
 from backend.copilot.turn_queue import count_inflight_turns
@@ -77,6 +82,40 @@ def _unavailable_denial() -> TurnDenial:
         reason="unavailable",
         message="Chat is temporarily unavailable — please try again in a moment.",
     )
+
+
+def _empty_message_denial() -> TurnDenial:
+    """The message has no text of its own once server-only blocks are removed."""
+    return TurnDenial(
+        reason="empty_message",
+        message="That message is empty. Please send it again with some text.",
+    )
+
+
+def _rewritten_message_denial() -> TurnDenial:
+    """Removing the message's server-only blocks would change the bot's lines."""
+    return TurnDenial(
+        reason="invalid_message",
+        message="That message can't be sent as written. Please rephrase it and send it again.",
+    )
+
+
+def _normalise_bot_message(text: str) -> tuple[str, TurnDenial | None]:
+    """``text`` as the engines read it, or why the turn is refused.
+
+    Removing a server-only block may change the sender's words, never the
+    bot's own header, labels or sections, and a turn needs something left
+    beyond those.
+    """
+    try:
+        message = normalise_user_message(text)
+    except EmptyUserMessage:
+        return text, _empty_message_denial()
+    if bridge_lines(message) != bridge_lines(text):
+        return text, _rewritten_message_denial()
+    if not strip_chat_platform_header(message, bridge_origin=True).strip():
+        return text, _empty_message_denial()
+    return message, None
 
 
 async def _check_ban(user_id: str) -> TurnDenial | None:
@@ -181,16 +220,23 @@ async def resolve_owner(
     """Resolve the AutoGPT user that owns a platform conversation.
 
     Server context → server owner. DM context → the DM-linked user.
+
+    A closed account's links count as unlinked (``open_only``): account
+    deletion unlinks the chat platforms only best effort, and the bot's turn
+    gate checks the plan and usage, not a closed account, so a link that
+    outlived the close must not run turns as the deleted user.
     """
     db = platform_linking_db()
 
     if platform_server_id:
-        owner = await db.find_server_link_owner(platform, platform_server_id)
+        owner = await db.find_server_link_owner(
+            platform, platform_server_id, open_only=True
+        )
         if owner is None:
             raise NotFoundError("This server is not linked to an AutoGPT account.")
         return owner
 
-    owner = await db.find_user_link_owner(platform, platform_user_id)
+    owner = await db.find_user_link_owner(platform, platform_user_id, open_only=True)
     if owner is None:
         raise NotFoundError("Your DMs are not linked to an AutoGPT account.")
     return owner
@@ -375,6 +421,16 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
             session_id="", turn_id="", user_id=owner_user_id, denial=denial
         )
 
+    # The message is stored and run as the engines read it, the same as a
+    # message sent from the web app; one that can't be is refused before any
+    # session is touched.
+    message, denial = _normalise_bot_message(request.message)
+    if denial is not None:
+        return ChatTurnHandle(
+            session_id="", turn_id="", user_id=owner_user_id, denial=denial
+        )
+    request = request.model_copy(update={"message": message})
+
     # Bot turns share the owner's in-flight cap with every other turn source.
     inflight_cap = get_inflight_turn_limit()
     if await count_inflight_turns(owner_user_id) >= inflight_cap:
@@ -543,7 +599,7 @@ async def list_user_chats(
     server — so a caller can only ever see their own conversations.
     """
     owner_user_id = await platform_linking_db().find_user_link_owner(
-        platform.value, platform_user_id
+        platform.value, platform_user_id, open_only=True
     )
     if owner_user_id is None:
         raise NotFoundError("Your DMs are not linked to an AutoGPT account.")

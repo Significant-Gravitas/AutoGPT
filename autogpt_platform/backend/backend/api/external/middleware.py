@@ -1,5 +1,6 @@
 from typing import Optional
 
+from autogpt_libs.auth import reject_closed_account
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 from fastapi import FastAPI, HTTPException, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
@@ -33,6 +34,9 @@ class VerifiedCredential(BaseModel):
     rejection: Optional[HTTPException] = None
 
 
+# Every path rejects a closed account's key or token with a 401: deletion
+# revokes every key and grant, but one issued while the account was closing
+# would otherwise keep working until the account's data is erased.
 async def resolve_auth_info(
     api_key: str | None = Security(api_key_header),
     bearer: HTTPAuthorizationCredentials | None = Security(bearer_auth),
@@ -46,6 +50,7 @@ async def resolve_auth_info(
     if api_key is not None:
         api_key_info = await validate_api_key(api_key)
         if api_key_info:
+            await reject_closed_account(api_key_info.user_id)
             await _refuse_banned_owner(api_key_info)
             return api_key_info
         raise HTTPException(
@@ -59,6 +64,7 @@ async def resolve_auth_info(
         if not is_access_token(bearer.credentials) and (
             api_key_info := await validate_api_key(bearer.credentials)
         ):
+            await reject_closed_account(api_key_info.user_id)
             await _refuse_banned_owner(api_key_info)
             return api_key_info
 
@@ -66,6 +72,7 @@ async def resolve_auth_info(
             token_info, _ = await validate_access_token(bearer.credentials)
         except (InvalidClientError, InvalidTokenError) as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        await reject_closed_account(token_info.user_id)
         await _refuse_banned_owner(token_info)
         return token_info
 

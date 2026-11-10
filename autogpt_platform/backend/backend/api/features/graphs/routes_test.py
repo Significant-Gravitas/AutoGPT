@@ -15,6 +15,7 @@ from pytest_snapshot.plugin import Snapshot
 from backend.api.features.graphs.routes import router
 from backend.api.rest_api import app as real_app
 from backend.api.utils.exceptions import add_exception_handlers
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
@@ -23,7 +24,7 @@ from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus
-from backend.data.graph import GraphModel, NodeModel
+from backend.data.graph import SUB_WORKFLOW_RUNS_ITSELF, GraphModel, NodeModel
 from backend.data.onboarding import OnboardingStep
 from backend.util.exceptions import GraphInUseError, GraphValidationError
 
@@ -701,6 +702,54 @@ def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
     update_lib_agent_mock.assert_not_awaited()
 
 
+def test_create_new_graph_refuses_a_workflow_that_runs_itself(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Its sub-workflow node names the id the workflow was sent with, which
+    saving rewrites to the new workflow's own id. The builder gets the node
+    marked under the id it sent, and nothing is saved."""
+    activate_mock = mocker.patch(
+        "backend.api.features.graphs.routes.before_graph_activate", new=AsyncMock()
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+    runs_itself = {
+        "id": "runs-itself",
+        "block_id": AgentExecutorBlock().id,
+        "input_default": {
+            "user_id": "",
+            "graph_id": "as-sent",
+            "graph_version": 1,
+            "inputs": {},
+            "input_schema": {},
+            "output_schema": {},
+        },
+    }
+
+    response = client.post(
+        "/graphs",
+        json={
+            "graph": {
+                "id": "as-sent",
+                "name": "Runs itself",
+                "description": "",
+                "nodes": [runs_itself],
+                "links": [],
+            }
+        },
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["message"] == SUB_WORKFLOW_RUNS_ITSELF
+    assert detail["node_errors"] == {
+        "runs-itself": {"graph_id": SUB_WORKFLOW_RUNS_ITSELF}
+    }
+    activate_mock.assert_not_awaited()
+    create_graph_mock.assert_not_awaited()
+
+
 def test_get_graph_all_versions_returns_404_when_empty(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -1355,7 +1404,9 @@ def test_execute_graph_refuses_an_input_nested_too_deep(
     mocker.patch(
         "backend.executor.utils.is_user_paywalled", AsyncMock(return_value=False)
     )
-    mocker.patch("backend.executor.utils.is_user_banned", AsyncMock(return_value=False))
+    mocker.patch(
+        "backend.executor.utils.is_user_refused", AsyncMock(return_value=False)
+    )
     created = mocker.patch(
         "backend.executor.utils.execution_db.create_graph_execution", AsyncMock()
     )

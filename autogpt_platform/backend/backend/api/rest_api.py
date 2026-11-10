@@ -14,6 +14,7 @@ from autogpt_libs.auth import verify_settings as verify_auth_settings
 from fastapi.routing import APIRoute
 from mcp.shared.auth import ProtectedResourceMetadata
 
+import backend.api.features.account_deletion.routes as account_deletion_routes
 import backend.api.features.admin.access_block_admin_routes
 import backend.api.features.admin.block_cost_admin_routes
 import backend.api.features.admin.bot_analytics_routes
@@ -335,6 +336,8 @@ app.include_router(
     backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api/internal"
 )
 app.include_router(subscription_trial_routes.router, prefix="/api/internal")
+app.include_router(account_deletion_routes.router, prefix="/api/internal")
+app.include_router(account_deletion_routes.status_router, prefix="/api/internal")
 app.include_router(subscription_activation_routes.router, prefix="/api/internal")
 app.include_router(
     api_keys_routes.router,

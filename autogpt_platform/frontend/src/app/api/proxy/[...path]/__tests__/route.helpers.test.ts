@@ -11,6 +11,7 @@ import {
   watchResponseStart,
   RESPONSE_START_TIMEOUT_MS,
   CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS,
+  ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS,
   getResponseStartTimeoutMs,
   getSafePrivateMediaRange,
   isPrivateStoreMediaRequest,
@@ -56,13 +57,21 @@ describe("a proxied path under api/internal", () => {
     expect(classify()).toBe(true);
   });
 
-  it("gives the Codex login its longer response timeout", () => {
-    expect(
-      getResponseStartTimeoutMs(
-        ["api", "internal", "integrations", "codex", "login"],
-        "GET",
-      ),
-    ).toBe(CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS);
+  it.each([
+    [
+      "the Codex login",
+      ["api", "internal", "integrations", "codex", "login"],
+      "GET",
+      CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS,
+    ],
+    [
+      "an account deletion",
+      ["api", "internal", "account", "deletion"],
+      "POST",
+      ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS,
+    ],
+  ])("gives %s its longer response timeout", (_name, path, method, timeout) => {
+    expect(getResponseStartTimeoutMs(path, method)).toBe(timeout);
   });
 });
 
@@ -1186,6 +1195,36 @@ describe("watchResponseStart", () => {
       ).toBe(CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS);
     }
   });
+
+  it("waits longer for an account deletion, which outlasts the standard budget", () => {
+    const timeout = getResponseStartTimeoutMs(
+      ["api", "account", "deletion"],
+      "POST",
+    );
+    expect(timeout).toBe(ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS);
+    const watch = watchResponseStart(null, timeout);
+
+    vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS + 1);
+    expect(watch.signal.aborted).toBe(false);
+
+    vi.advanceTimersByTime(
+      ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS - RESPONSE_START_TIMEOUT_MS,
+    );
+    expect(watch.signal.aborted).toBe(true);
+  });
+
+  it("keeps the standard budget for the exit feedback and other methods", () => {
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "account", "deletion", "feedback"],
+        "POST",
+      ),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
+    expect(
+      getResponseStartTimeoutMs(["api", "account", "deletion"], "GET"),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
+  });
+
   it("does not abort once cleared (backend started responding)", () => {
     const watch = watchResponseStart(null);
 
