@@ -3,7 +3,7 @@ import { AUTH_PASSWORD_MIN_LENGTH } from "@/lib/auth/password-policy";
 
 const MIN_LENGTH_MESSAGE = `Password must contain at least ${AUTH_PASSWORD_MIN_LENGTH} characters`;
 
-export type LoginProvider = "google" | "github" | "discord";
+export type LoginProvider = "google" | "github" | "discord" | "microsoft";
 
 export const loginFormSchema = z.object({
   email: z
@@ -32,9 +32,7 @@ export const signupFormSchema = z
       .string()
       .min(AUTH_PASSWORD_MIN_LENGTH, MIN_LENGTH_MESSAGE)
       .max(64, "Password must contain at most 64 characters"),
-    agreeToTerms: z.boolean().refine((value) => value === true, {
-      message: "You must agree to the Terms of Use and Privacy Policy",
-    }),
+    marketingOptOut: z.boolean().default(false),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords don't match",

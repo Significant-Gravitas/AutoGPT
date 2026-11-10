@@ -40,9 +40,9 @@ export const PLANS: PlanDef[] = [
     features: [
       "Access to virtually any leading AI model",
       "Agents work non-stop in the background",
-      "Visual agent builder and chat-based agent creation",
+      "Visual workflow builder and chat-based workflow creation",
       "File-aware agents that can work with your documents",
-      "End-to-end agent management and run visibility",
+      "End-to-end workflow management and run visibility",
       "Scheduled and event-based triggers",
     ],
     cta: "Get Pro",
@@ -110,9 +110,9 @@ export const PLAN_METADATA: Record<
     features: [
       "Access to virtually any leading AI model",
       "Agents work non-stop in the background",
-      "Visual agent builder and chat-based agent creation",
+      "Visual workflow builder and chat-based workflow creation",
       "File-aware agents that can work with your documents",
-      "End-to-end agent management and run visibility",
+      "End-to-end workflow management and run visibility",
       "Scheduled and event-based triggers",
     ],
     cta: "Upgrade to Pro",

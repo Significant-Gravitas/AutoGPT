@@ -19,7 +19,7 @@ export function OutputItem({
   return (
     <div className="relative">
       {label && (
-        <Text variant="large-medium" className="capitalize">
+        <Text variant="large-medium" transform="capitalize">
           {label}
         </Text>
       )}

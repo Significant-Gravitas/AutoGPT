@@ -1,0 +1,96 @@
+"""Each bash_exec sandbox keeps its own processes and IPC objects."""
+
+import asyncio
+
+import pytest
+
+from backend.copilot.tools.sandbox import (
+    PROC_MOUNT_REFUSED,
+    _build_bwrap_command,
+    explain_proc_mount_failure,
+    has_full_sandbox,
+    run_sandboxed,
+)
+
+
+def test_bwrap_gives_each_sandbox_its_own_processes_and_ipc():
+    command = _build_bwrap_command(["true"], "/tmp/copilot-test", {"PATH": "/bin"})
+
+    flags = command[: command.index("--")]
+
+    assert "--unshare-pid" in flags
+    assert "--unshare-ipc" in flags
+    assert "--unshare-net" in flags
+
+
+def test_a_refused_proc_mount_names_the_host_setting():
+    explained = explain_proc_mount_failure(
+        f"bwrap: {PROC_MOUNT_REFUSED}: Operation not permitted"
+    )
+
+    assert "systempaths=unconfined" in explained
+    assert "procMount: Unmasked" in explained
+    assert PROC_MOUNT_REFUSED in explained
+
+
+def test_a_commands_own_stderr_is_left_alone():
+    assert explain_proc_mount_failure("ls: /nope: No such file") == (
+        "ls: /nope: No such file"
+    )
+
+
+# The test below runs only where bubblewrap can create namespaces. CI's runners
+# refuse them, so it skips there and its body is left out of coverage.
+
+
+async def _sandbox_runs_here(cwd: str) -> bool:  # pragma: no cover
+    """Whether this host can run the sandbox at all.
+
+    Docker's default seccomp profile and Ubuntu's AppArmor userns restriction
+    stop bwrap from creating namespaces, and the sandbox fails closed there.  A
+    host that grants namespaces but masks ``/proc`` runs no command at all, so
+    that one is a failure rather than a skip.
+    """
+    if not has_full_sandbox():
+        return False
+    _, stderr, exit_code, _ = await run_sandboxed(["true"], cwd)
+    if PROC_MOUNT_REFUSED in stderr:
+        pytest.fail(stderr)
+    return exit_code == 0
+
+
+@pytest.mark.asyncio
+async def test_sandbox_cannot_read_another_sandboxes_command_line(
+    tmp_path,
+):  # pragma: no cover
+    other = tmp_path / "other"
+    scanner = tmp_path / "scanner"
+    other.mkdir()
+    scanner.mkdir()
+    if not await _sandbox_runs_here(str(scanner)):
+        pytest.skip("bubblewrap cannot create namespaces on this host")
+
+    marker = "Bearer ghp_another_chats_token"
+    other_chat = asyncio.create_task(
+        run_sandboxed(["sh", "-c", "sleep 5", "other-chat", marker], str(other))
+    )
+    await asyncio.sleep(1)
+    try:
+        assert not other_chat.done(), "the other chat exited before the scan"
+        stdout, _, exit_code, _ = await run_sandboxed(
+            [
+                "sh",
+                "-c",
+                'cat /proc/[0-9]*/cmdline 2>/dev/null | tr "\\0" " "',
+            ],
+            str(scanner),
+        )
+    finally:
+        _, _, other_exit_code, other_timed_out = await other_chat
+
+    assert exit_code == 0
+    # Without its own command line in the output the scan read an empty /proc,
+    # where the assertion below holds however little is isolated.
+    assert "cat /proc/" in stdout
+    assert marker not in stdout
+    assert (other_exit_code, other_timed_out) == (0, False)

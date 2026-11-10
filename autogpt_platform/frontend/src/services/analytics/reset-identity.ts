@@ -1,6 +1,11 @@
-import { syncPostHogConsent } from "@/providers/posthog/posthog-consent";
+import {
+  forgetPostHogStorage,
+  syncPostHogConsent,
+} from "@/providers/posthog/posthog-consent";
+import { hasConsentFor } from "@/services/consent/consent";
 import posthog from "posthog-js";
 import { resetAnonymousID } from "./anonymous-id";
+import { getPostHogBaseProperties } from "./posthog-base-properties";
 
 export function resetAnalyticsIdentity(): void {
   let anonymousID: string | undefined;
@@ -14,7 +19,17 @@ export function resetAnalyticsIdentity(): void {
   } catch {
     anonymousID = undefined;
   }
+  if (didReset) restoreBaseProperties();
   resetAnonymousID(anonymousID);
+  // With consent reset() rewrote PostHog's storage with the new identity;
+  // without it (declined or still pending) the old one would stay stored.
+  if (!hasConsentFor("analytics")) {
+    try {
+      forgetPostHogStorage();
+    } catch {
+      // Analytics must never block an account change.
+    }
+  }
   // reset() also drops PostHog's own opt-in, which opts a consenting visitor
   // out until the next page load unless it is restored here.
   if (didReset) {
@@ -23,5 +38,14 @@ export function resetAnalyticsIdentity(): void {
     } catch {
       // Analytics must never block an account change.
     }
+  }
+}
+
+// reset() wipes the super properties along with the identity.
+function restoreBaseProperties() {
+  try {
+    posthog.register(getPostHogBaseProperties());
+  } catch {
+    // Analytics is never worth a broken logout.
   }
 }

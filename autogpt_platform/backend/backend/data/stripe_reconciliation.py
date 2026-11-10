@@ -2,22 +2,23 @@
 
 Webhooks give low-latency tier updates; this sweep is the safety net that makes
 Stripe the eventual source of truth. It pages through every active/trialing
-Stripe subscription once, builds an authoritative ``{customer_id -> tier}`` map,
+Stripe subscription once, builds a candidate ``{customer_id -> tier}`` map,
 then for every reconcilable user (has a Stripe customer, not ENTERPRISE) sets the
 tier from the map (NO_TIER when the customer is absent). Manual grants (no Stripe
 customer) and ENTERPRISE rows are never touched.
 
-Cost: one Stripe ``Subscription.list`` pass (not one call per user). The sweep
-skips users whose tier already matches the map (``target_tier == current_tier``
-in ``_reconcile_one``), so a steady-state run does no DB writes.
+Pro/Max candidates without a completed activation for their current subscription pass
+through subscription and settled-invoice reconciliation: tier assignment alone
+does not establish that first paid activation and its usage generation completed.
+Other unchanged tiers need no writes. Manual grants (no customer) remain excluded.
 """
 
 import logging
 
 import stripe
 from prisma.enums import SubscriptionTier
-from prisma.models import User
-from pydantic import BaseModel
+from prisma.models import PaidUsageActivation, User
+from pydantic import BaseModel, Field
 
 from backend.data.credit import (
     alert_tier_reconciliation_discrepancy,
@@ -35,6 +36,8 @@ logger = logging.getLogger(__name__)
 # hit the sweep logs and stops rather than silently truncating without notice.
 _MAX_SUBSCRIPTION_PAGES = 5000
 _PAGE_SIZE = 100
+# How many failed trial subscription ids the run-health alert lists by name.
+_MAX_ALERT_SUBSCRIPTION_IDS = 20
 
 
 class TierDiscrepancy(BaseModel):
@@ -58,6 +61,7 @@ class ReconciliationSummary(BaseModel):
     errors: int = 0
     skipped_incomplete: int = 0
     pagination_capped: bool = False
+    failed_trial_subscriptions: list[str] = []
     discrepancies: list[TierDiscrepancy] = []
 
 
@@ -67,6 +71,7 @@ async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
     summary = ReconciliationSummary(
         stripe_active_subscriptions=len(customer_to_tier.tiers),
         pagination_capped=customer_to_tier.capped,
+        failed_trial_subscriptions=list(customer_to_tier.failed_trials),
     )
     # Match `_is_stripe_reconcilable`: every user with a Stripe customer that is
     # not on ENTERPRISE. This covers paid payers as well as paid-but-NO_TIER rows
@@ -80,8 +85,16 @@ async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
     )
     summary.candidate_users = len(candidates)
     map_complete = not customer_to_tier.capped
+    unknown_tier_customers = {c for c in customer_to_tier.failed_trials.values() if c}
     for user in candidates:
-        await _reconcile_one(user, customer_to_tier.tiers, summary, map_complete)
+        await _reconcile_one(
+            user,
+            customer_to_tier.tiers,
+            summary,
+            map_complete,
+            customer_to_tier.pro_subscriptions,
+            unknown_tier_customers,
+        )
     logger.info(
         "reconcile_all_stripe_tiers: active_subs=%d candidates=%d upgrades=%d"
         " downgrades=%d unchanged=%d skipped_incomplete=%d errors=%d capped=%s",
@@ -96,6 +109,12 @@ async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
     )
     if summary.discrepancies:
         await _alert_sweep_discrepancies(summary)
+    if (
+        summary.pagination_capped
+        or summary.failed_trial_subscriptions
+        or summary.errors
+    ):
+        await _alert_sweep_incomplete(summary)
     return summary
 
 
@@ -131,22 +150,70 @@ async def _alert_sweep_discrepancies(summary: ReconciliationSummary) -> None:
     )
 
 
+async def _alert_sweep_incomplete(summary: ReconciliationSummary) -> None:
+    """Post one Discord (PLATFORM) alert when the sweep could not reconcile
+    everyone: the Stripe snapshot was incomplete, a trial subscription failed its
+    re-sync, or a user errored. Each leaves some tiers unreconciled, possibly on
+    every run, so it must not stay buried in the logs."""
+    problems = []
+    if summary.pagination_capped:
+        problems.append(
+            f"Stripe snapshot incomplete (a list call failed or the page cap was "
+            f"hit): {summary.skipped_incomplete} absence-based downgrade(s) held back."
+        )
+    failed = summary.failed_trial_subscriptions
+    if failed:
+        listed = ", ".join(f"`{s}`" for s in failed[:_MAX_ALERT_SUBSCRIPTION_IDS])
+        if len(failed) > _MAX_ALERT_SUBSCRIPTION_IDS:
+            listed += f" and {len(failed) - _MAX_ALERT_SUBSCRIPTION_IDS} more"
+        problems.append(
+            f"{len(failed)} trial subscription(s) failed their re-sync; their "
+            f"customers' tiers were left unchanged: {listed}"
+        )
+    if summary.errors:
+        problems.append(
+            f"{summary.errors} user(s) were not reconciled, including any "
+            f"skipped for a failed trial re-sync (see the logs for "
+            f"reconcile_all_stripe_tiers)."
+        )
+    message = "\n".join(f"- {p}" for p in problems)
+    logger.warning(
+        "Stripe tier reconciliation sweep did not reconcile every user:\n%s", message
+    )
+    await alert_tier_reconciliation_discrepancy(
+        f"⚠️ **Stripe tier reconciliation: run did not reconcile every user**\n"
+        f"{message}"
+    )
+
+
 async def _reconcile_one(
     user: User,
     customer_to_tier: dict[str, SubscriptionTier],
     summary: ReconciliationSummary,
     map_complete: bool,
+    pro_subscriptions: dict[str, dict] | None = None,
+    unknown_tier_customers: set[str] | None = None,
 ) -> None:
     """Set one user's tier from the Stripe map, updating the summary counts."""
+    # A trial subscription that failed its re-sync was still listed as active or
+    # trialing, so this customer has a live subscription whose tier we don't
+    # know. Leave their tier alone this run rather than downgrade them.
+    if user.stripeCustomerId and user.stripeCustomerId in (
+        unknown_tier_customers or set()
+    ):
+        summary.errors += 1
+        logger.warning(
+            "reconcile_all_stripe_tiers: skipped user %s; a trial subscription"
+            " failed its re-sync",
+            user.id[:8],
+        )
+        return
     current_tier = SubscriptionTier(user.subscriptionTier or SubscriptionTier.NO_TIER)
     target_tier = SubscriptionTier.NO_TIER
     if user.stripeCustomerId:
         target_tier = customer_to_tier.get(
             user.stripeCustomerId, SubscriptionTier.NO_TIER
         )
-    if target_tier == current_tier:
-        summary.unchanged += 1
-        return
     # When the Stripe snapshot is incomplete (a failed list page or the
     # pagination cap), absence from the map is unreliable — the user may sit on
     # a page we never fetched. Never revoke a tier off a partial snapshot;
@@ -156,7 +223,22 @@ async def _reconcile_one(
         summary.skipped_incomplete += 1
         return
     try:
-        await set_subscription_tier(user.id, target_tier)
+        pro_candidate = target_tier in (SubscriptionTier.PRO, SubscriptionTier.MAX)
+        if pro_candidate:
+            subscription = (pro_subscriptions or {}).get(user.stripeCustomerId or "")
+            if subscription is None:
+                raise ValueError("Paid reconciliation requires a subscription identity")
+            # The list price is only a routing hint. Reconciliation refetches
+            # Stripe under the activation lock and requires settled evidence.
+            # Run this even for an unchanged tier to recover incomplete usage
+            # activation; never grant Pro/Max by calling set_subscription_tier.
+            if await _requires_pro_reconciliation(user, subscription, target_tier):
+                target_tier = await _reconcile_pro_tier(user, subscription)
+        if target_tier == current_tier:
+            summary.unchanged += 1
+            return
+        if not pro_candidate:
+            await set_subscription_tier(user.id, target_tier)
     except Exception:
         summary.errors += 1
         logger.exception(
@@ -188,9 +270,33 @@ async def _reconcile_one(
         summary.upgrades += 1
 
 
+async def _requires_pro_reconciliation(
+    user: User, subscription: dict, target_tier: SubscriptionTier
+) -> bool:
+    if user.subscriptionTier != target_tier:
+        return True
+    activation = await PaidUsageActivation.prisma().find_unique(
+        where={"userId": user.id}
+    )
+    return not (
+        activation
+        and activation.readyAt is not None
+        and activation.stripeSubscriptionId == subscription.get("id")
+    )
+
+
+async def _reconcile_pro_tier(user: User, subscription: dict) -> SubscriptionTier:
+    await sync_subscription_from_stripe(subscription, track_lifecycle=False)
+    reconciled = await User.prisma().find_unique_or_raise(where={"id": user.id})
+    return SubscriptionTier(reconciled.subscriptionTier)
+
+
 class _CustomerTierMap(BaseModel):
     tiers: dict[str, SubscriptionTier]
     capped: bool
+    pro_subscriptions: dict[str, dict] = Field(default_factory=dict)
+    # Trial subscriptions whose re-sync failed: subscription id -> customer id.
+    failed_trials: dict[str, str] = Field(default_factory=dict)
 
 
 async def _build_customer_tier_map() -> _CustomerTierMap:
@@ -201,22 +307,34 @@ async def _build_customer_tier_map() -> _CustomerTierMap:
     """
     price_to_tier = await build_price_to_tier_map()
     tiers: dict[str, SubscriptionTier] = {}
+    pro_subscriptions: dict[str, dict] = {}
+    failed_trials: dict[str, str] = {}
     capped = False
     for status in ("active", "trialing"):
-        page_capped = await _collect_status_page(status, price_to_tier, tiers)
+        page_capped = await _collect_status_page(
+            status, price_to_tier, tiers, pro_subscriptions, failed_trials
+        )
         capped = capped or page_capped
-    return _CustomerTierMap(tiers=tiers, capped=capped)
+    return _CustomerTierMap(
+        tiers=tiers,
+        capped=capped,
+        pro_subscriptions=pro_subscriptions,
+        failed_trials=failed_trials,
+    )
 
 
 async def _collect_status_page(
     status: str,
     price_to_tier: dict[str, SubscriptionTier],
     tiers: dict[str, SubscriptionTier],
+    pro_subscriptions: dict[str, dict] | None = None,
+    failed_trials: dict[str, str] | None = None,
 ) -> bool:
     """Accumulate one Stripe status's subscriptions into ``tiers``. Returns
-    True if a list or trial sync failed, or pagination was capped."""
+    True if a list call failed or pagination was capped. A trial subscription
+    whose re-sync fails is recorded in ``failed_trials`` instead: it only leaves
+    that one customer's tier unknown, not the snapshot as a whole."""
     starting_after: str | None = None
-    incomplete = False
     for _ in range(_MAX_SUBSCRIPTION_PAGES):
         list_kwargs: dict = {"status": status, "limit": _PAGE_SIZE}
         if starting_after:
@@ -236,13 +354,17 @@ async def _collect_status_page(
         for sub in subs.data:
             if (sub.get("metadata") or {}).get("trial_enrollment_id"):
                 try:
-                    await sync_subscription_from_stripe(dict(sub))
-                except (ValueError, stripe.StripeError):
+                    await sync_subscription_from_stripe(
+                        dict(sub), track_lifecycle=False
+                    )
+                except Exception:
                     logger.exception(
-                        "Trial reconciliation failed for subscription %s; snapshot is incomplete",
+                        "Trial reconciliation failed for subscription %s; its"
+                        " customer is skipped this run",
                         sub.id,
                     )
-                    incomplete = True
+                    if failed_trials is not None:
+                        failed_trials[sub.id] = str(sub.get("customer") or "")
                     continue
                 user = await User.prisma().find_first(
                     where={"stripeCustomerId": str(sub.customer)}
@@ -252,10 +374,15 @@ async def _collect_status_page(
                     existing = tiers.get(str(sub.customer))
                     if existing is None or _TIER_RANK[tier] > _TIER_RANK[existing]:
                         tiers[str(sub.customer)] = tier
+                        if (
+                            tier in (SubscriptionTier.PRO, SubscriptionTier.MAX)
+                            and pro_subscriptions is not None
+                        ):
+                            pro_subscriptions[str(sub.customer)] = dict(sub)
                 continue
-            _record_subscription(sub, price_to_tier, tiers)
+            _record_subscription(sub, price_to_tier, tiers, pro_subscriptions)
         if not subs.has_more or not subs.data:
-            return incomplete
+            return False
         starting_after = subs.data[-1].id
     logger.warning(
         "reconcile_all_stripe_tiers: hit %d-page cap for status=%s; remaining"
@@ -270,6 +397,7 @@ def _record_subscription(
     sub: stripe.Subscription,
     price_to_tier: dict[str, SubscriptionTier],
     tiers: dict[str, SubscriptionTier],
+    pro_subscriptions: dict[str, dict] | None = None,
 ) -> None:
     """Map one subscription's customer to its tier, keeping the highest tier."""
     customer = sub.get("customer")
@@ -285,6 +413,12 @@ def _record_subscription(
     existing = tiers.get(customer)
     if existing is None or _TIER_RANK[tier] > _TIER_RANK[existing]:
         tiers[customer] = tier
+    if (
+        tier in (SubscriptionTier.PRO, SubscriptionTier.MAX)
+        and pro_subscriptions is not None
+        and (existing is None or _TIER_RANK[tier] > _TIER_RANK[existing])
+    ):
+        pro_subscriptions[customer] = dict(sub)
 
 
 _TIER_RANK: dict[SubscriptionTier, int] = {

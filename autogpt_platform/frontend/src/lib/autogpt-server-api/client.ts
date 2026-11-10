@@ -1,14 +1,14 @@
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
+import { handleRefusedAccount } from "@/lib/auth/account-banned";
 import { getWebSocketToken } from "@/lib/auth/actions";
 import { ImpersonationState } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
-  AnalyticsDetails,
-  AnalyticsMetrics,
   APIKey,
   APIKeyCredentials,
   APIKeyPermission,
@@ -126,10 +126,6 @@ export default class BackendAPI {
 
   createUser(): Promise<User> {
     return this._request("POST", "/auth/user", {});
-  }
-
-  updateUserEmail(email: string): Promise<{ email: string }> {
-    return this._request("POST", "/auth/user/email", { email });
   }
 
   ////////////////////////////////////////
@@ -458,14 +454,6 @@ export default class BackendAPI {
     return this._request("POST", `/integrations/webhooks/${webhook_id}/ping`);
   }
 
-  logMetric(metric: AnalyticsMetrics) {
-    return this._request("POST", "/analytics/log_raw_metric", metric);
-  }
-
-  logAnalytic(analytic: AnalyticsDetails) {
-    return this._request("POST", "/analytics/log_raw_analytics", analytic);
-  }
-
   async uploadFile(
     file: File,
     expiration_hours: number = 24,
@@ -744,7 +732,9 @@ export default class BackendAPI {
     });
 
     if (!response.ok) {
-      throw await handleFetchError(response);
+      const error = await handleFetchError(response);
+      handleRefusedAccount(error.status, error.response);
+      throw error;
     }
 
     return await response.json();
@@ -805,6 +795,7 @@ export default class BackendAPI {
           let errorMessage = `Upload failed (${xhr.status})`;
           try {
             const errorData = JSON.parse(xhr.responseText);
+            handleRefusedAccount(xhr.status, errorData);
             if (errorData.detail) {
               if (
                 typeof errorData.detail === "string" &&
@@ -905,6 +896,7 @@ export default class BackendAPI {
     }
 
     Object.assign(headers, getDatafastAttribution());
+    Object.assign(headers, getPostHogSessionHeader());
 
     const response = await fetch(url, {
       method,
@@ -915,6 +907,7 @@ export default class BackendAPI {
 
     if (!response.ok) {
       const error = await handleFetchError(response);
+      handleRefusedAccount(error.status, error.response);
       if (
         isAuthenticationError(response, error.message) &&
         isLogoutInProgress()
@@ -1101,7 +1094,16 @@ export default class BackendAPI {
               this.wsUrl,
               phase,
             );
-            if (phase == "connecting") {
+            // A logout in this tab or another closes the socket on purpose,
+            // and one still connecting then reports a 1006: not a failure.
+            if (
+              this.isIntentionallyDisconnected ||
+              this._hasDisconnectIntent()
+            ) {
+              console.debug(
+                `[BackendAPI] WebSocket closed on purpose: ${summary}`,
+              );
+            } else if (phase == "connecting") {
               logWebSocketIssue(
                 "error",
                 `[BackendAPI] WebSocket failed to connect: ${summary}`,

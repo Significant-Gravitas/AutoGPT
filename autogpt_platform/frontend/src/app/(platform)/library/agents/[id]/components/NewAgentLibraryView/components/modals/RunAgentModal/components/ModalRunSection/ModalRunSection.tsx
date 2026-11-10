@@ -18,11 +18,15 @@ export function ModalRunSection() {
     inputValues,
     setInputValue,
     agentInputFields,
+    triggerConfigValues,
+    setTriggerConfigValue,
+    triggerConfigFields,
     agentCredentialsInputFields,
     inputCredentials,
     setInputCredentialsValue,
   } = useRunAgentModalContext();
 
+  const triggerConfigFieldEntries = Object.entries(triggerConfigFields || {});
   const inputFields = Object.entries(agentInputFields || {});
 
   const credentialFields = useMemo(() => {
@@ -40,12 +44,12 @@ export function ModalRunSection() {
       defaultRunType === "manual-trigger" ? (
         <ModalSection
           title="Task Trigger"
-          subtitle="Set up a trigger for the agent to run this task automatically"
+          subtitle="Set up a trigger for the workflow to run this task automatically"
         >
           <WebhookTriggerBanner />
           <div className="flex flex-col gap-4">
             <div className="flex flex-col space-y-2">
-              <label className="flex items-center gap-1 text-sm font-medium">
+              <label className="flex items-center gap-1 text-body font-medium">
                 Trigger Name
                 <InformationTooltip description="Name of the trigger you are setting up" />
               </label>
@@ -60,7 +64,7 @@ export function ModalRunSection() {
               />
             </div>
             <div className="flex flex-col space-y-2">
-              <label className="flex items-center gap-1 text-sm font-medium">
+              <label className="flex items-center gap-1 text-body font-medium">
                 Trigger Description
                 <InformationTooltip description="Description of the trigger you are setting up" />
               </label>
@@ -78,10 +82,28 @@ export function ModalRunSection() {
         </ModalSection>
       ) : null}
 
+      {triggerConfigFieldEntries.length > 0 ? (
+        <ModalSection
+          title="Trigger Configuration"
+          subtitle="Configure what this trigger listens for"
+        >
+          {triggerConfigFieldEntries.map(([key, inputSubSchema]) => (
+            <RunAgentInputs
+              key={key}
+              schema={inputSubSchema}
+              value={triggerConfigValues[key] ?? inputSubSchema.default}
+              placeholder={inputSubSchema.description}
+              onChange={(value) => setTriggerConfigValue(key, value)}
+              data-testid={`trigger-config-${key}`}
+            />
+          ))}
+        </ModalSection>
+      ) : null}
+
       {inputFields.length > 0 ? (
         <ModalSection
           title="Task Inputs"
-          subtitle="Enter the information you want to provide to the agent for this task"
+          subtitle="Enter the information you want to provide to the workflow for this task"
         >
           {inputFields.map(([key, inputSubSchema]) => (
             <RunAgentInputs
@@ -99,7 +121,7 @@ export function ModalRunSection() {
       {credentialFields.length > 0 ? (
         <ModalSection
           title="Task Credentials"
-          subtitle="These are the credentials the agent will use to perform this task"
+          subtitle="These are the credentials the workflow will use to perform this task"
         >
           <CredentialsGroupedView
             credentialFields={credentialFields}

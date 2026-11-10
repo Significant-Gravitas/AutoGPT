@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getAnimationText, kindLabel, parseOutput } from "../helpers";
+import {
+  connectionBadge,
+  getAnimationText,
+  kindLabel,
+  parseOutput,
+} from "../helpers";
 
 const OUTPUT = {
   type: "capability_list",
@@ -39,6 +44,21 @@ describe("find_capability helpers", () => {
     expect(parseOutput(OUTPUT)?.capabilities).toHaveLength(2);
     expect(parseOutput({ type: "block_list", blocks: [] })).toBeNull();
     expect(parseOutput("")).toBeNull();
+  });
+
+  it("badges connection state, with a grant state for expert sessions", () => {
+    const base = OUTPUT.capabilities[0];
+    expect(connectionBadge({ ...base, connected: true })?.label).toBe(
+      "connected",
+    );
+    expect(connectionBadge({ ...base, connected: false })?.label).toBe(
+      "sign in",
+    );
+    expect(
+      connectionBadge({ ...base, connected: "needs_expert_grant" })?.label,
+    ).toBe("grant needed");
+    expect(connectionBadge({ ...base, connected: null })).toBeNull();
+    expect(connectionBadge({ ...base, connected: undefined })).toBeNull();
   });
 
   it("labels kinds for the card footer", () => {

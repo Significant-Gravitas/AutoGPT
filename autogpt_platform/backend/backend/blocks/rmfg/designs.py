@@ -7,6 +7,7 @@ from backend.data.execution import ExecutionContext
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -134,6 +135,7 @@ class RMFGAnalyzeDesignBlock(Block):
                 "read_step_file": lambda *args, **kwargs: ("bracket.step", b"ISO"),
                 "analyze": lambda *args, **kwargs: TEST_DESIGN,
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -239,6 +241,7 @@ class RMFGGetDesignBlock(Block):
                 ("image_url", TEST_DESIGN.image_url),
             ],
             test_mock={"get_design": lambda *args, **kwargs: TEST_DESIGN},
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

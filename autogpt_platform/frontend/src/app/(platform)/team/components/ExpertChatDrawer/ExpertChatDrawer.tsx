@@ -80,7 +80,7 @@ export function ExpertChatDrawer({
             variant="ghost"
             size="icon-xs"
             leadingIcon={ArrowExpandIcon}
-            aria-label="Open in Copilot"
+            aria-label="Open in Chat"
           />
         </>
       }
@@ -88,7 +88,12 @@ export function ExpertChatDrawer({
       onClose={onClose}
     >
       {identity && target ? (
-        <ChatPanelBody target={target} identity={identity} chat={chat} />
+        <ChatPanelBody
+          key={threadKey}
+          target={target}
+          identity={identity}
+          chat={chat}
+        />
       ) : null}
     </ExpertSidePanel>
   );
@@ -108,15 +113,17 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
     error,
     stop,
     onSend,
+    onActionSend,
     queuedMessages,
     isResolvingSession,
     isCreating,
+    pendingSend,
   } = chat;
 
   const isStreaming = status === "streaming" || status === "submitted";
 
   return (
-    <CopilotChatActionsProvider onSend={onSend}>
+    <CopilotChatActionsProvider onSend={onActionSend}>
       <div className="flex min-h-0 flex-1 flex-col">
         {isResolvingSession ? (
           <div className="flex flex-1 items-center justify-center px-4 py-6">
@@ -124,7 +131,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
               Opening chat…
             </Text>
           </div>
-        ) : sessionId ? (
+        ) : sessionId || pendingSend ? (
           <div className="flex min-h-0 flex-1 flex-col">
             <ChatMessagesContainer
               messages={messages}
@@ -133,6 +140,8 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
               isLoading={false}
               sessionID={sessionId}
               queuedMessages={queuedMessages}
+              pendingSend={pendingSend}
+              isTurnSettling={chat.isTurnSettling}
               variant="compact"
               showThreadHeader={false}
             />
@@ -154,17 +163,23 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
             </div>
           </div>
         )}
-        <div className="shrink-0 px-3 pb-5 pt-2">
+        <div className="shrink-0 px-3 pt-2 pb-5">
           <ChatInput
             inputId="expert-chat-input"
             variant="compact"
             onSend={onSend}
             disabled={isResolvingSession || isCreating}
+            isUploadingFiles={!!pendingSend}
             isStreaming={isStreaming}
+            isTurnStarting={status === "submitted"}
             onStop={stop}
             onEnqueue={onSend}
+            canAttachWhileStreaming
             placeholder={`Message ${target.name}…`}
             hasSession={!!sessionId}
+            expertId={target.expertId}
+            expertName={target.name}
+            assistantName={target.name}
           />
         </div>
       </div>

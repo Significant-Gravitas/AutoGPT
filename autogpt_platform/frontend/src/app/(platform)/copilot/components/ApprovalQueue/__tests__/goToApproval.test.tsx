@@ -32,7 +32,7 @@ test.each([1, 4])(
         type: "approval_required",
         tool_name: "create_folder",
         review_id: reviews[0].node_exec_id,
-        ask: "Create folder",
+        ask: "Create library folder",
         object: "Folder 0",
       },
     } as MessagePart;

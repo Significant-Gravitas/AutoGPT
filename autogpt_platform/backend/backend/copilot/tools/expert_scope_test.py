@@ -171,7 +171,7 @@ async def test_hint_lists_owned_but_ungranted_credentials(experts):
         ]
     )
     with patch(
-        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        f"{_PATH}.IntegrationCredentialsManager",
         return_value=MagicMock(store=store),
     ):
         hint = await ungranted_credential_hint("user-1", "expert-a", {"github"})
@@ -180,6 +180,9 @@ async def test_hint_lists_owned_but_ungranted_credentials(experts):
     assert "spare-cred" in hint and "GH spare" in hint
     assert "granted-cred" not in hint and "other-cred" not in hint
     assert "grant_expert_credential" in hint
+    assert "request_credential_grant" in hint
+    assert "Grant button" in hint
+    assert "Do not ask the user to sign in" in hint
     assert none == "" and personal == ""
 
 
@@ -206,7 +209,7 @@ async def test_missing_credentials_are_annotated_with_expert_grants(experts):
         }
     }
     with patch(
-        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        f"{_PATH}.IntegrationCredentialsManager",
         return_value=MagicMock(store=store),
     ):
         annotated = await annotate_expert_grants("user-1", "expert-a", missing)
@@ -248,7 +251,7 @@ async def test_grant_candidates_must_match_the_requested_mcp_server(experts):
         }
     }
     with patch(
-        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        f"{_PATH}.IntegrationCredentialsManager",
         return_value=MagicMock(store=store),
     ):
         annotated = await annotate_expert_grants("user-1", "expert-a", missing)

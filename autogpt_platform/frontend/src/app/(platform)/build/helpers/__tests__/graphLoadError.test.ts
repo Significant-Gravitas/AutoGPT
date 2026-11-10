@@ -9,7 +9,7 @@ describe("getGraphLoadErrorToast", () => {
   it("labels a 404 as not found and surfaces the backend message", () => {
     const error = new ApiError("Graph not found", 404, { detail: "..." });
     const toast = getGraphLoadErrorToast(error);
-    expect(toast.title).toBe("Agent not found");
+    expect(toast.title).toBe("Workflow not found");
     expect(toast.description).toBe("Graph not found");
   });
 
@@ -17,7 +17,7 @@ describe("getGraphLoadErrorToast", () => {
     for (const status of [401, 403]) {
       const error = new ApiError("Not authorized", status, {});
       const toast = getGraphLoadErrorToast(error);
-      expect(toast.title).toBe("Not authorized to view this agent");
+      expect(toast.title).toBe("Not authorized to view this workflow");
       expect(toast.description).toBe("Not authorized");
     }
   });
@@ -25,19 +25,19 @@ describe("getGraphLoadErrorToast", () => {
   it("falls back to a generic failure title for other statuses", () => {
     const error = new ApiError("Internal server error", 500, {});
     const toast = getGraphLoadErrorToast(error);
-    expect(toast.title).toBe("Failed to load agent");
+    expect(toast.title).toBe("Failed to load workflow");
     expect(toast.description).toBe("Internal server error");
   });
 
   it("falls back to a generic description for a non-ApiError", () => {
     const toast = getGraphLoadErrorToast(new Error());
-    expect(toast.title).toBe("Failed to load agent");
+    expect(toast.title).toBe("Failed to load workflow");
     expect(toast.description).toBe("An unexpected error occurred.");
   });
 
   it("falls back to a generic description for a non-Error value", () => {
     const toast = getGraphLoadErrorToast("boom");
-    expect(toast.title).toBe("Failed to load agent");
+    expect(toast.title).toBe("Failed to load workflow");
     expect(toast.description).toBe("An unexpected error occurred.");
   });
 });

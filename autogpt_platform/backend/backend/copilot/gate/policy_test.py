@@ -9,6 +9,7 @@ from backend.copilot.gate.policy import (
     Verdict,
     classified_tools,
     effect_for,
+    strictest_mode,
     verdict_for,
 )
 from backend.copilot.tools import TOOL_REGISTRY
@@ -30,10 +31,12 @@ def test_the_table_names_no_tool_that_does_not_exist():
         ("web_search", Verdict.RUN, Verdict.RUN, Verdict.RUN),
         ("write_workspace_file", Verdict.RUN, Verdict.RUN, Verdict.RUN),
         ("Write", Verdict.RUN, Verdict.RUN, Verdict.RUN),
-        ("bash_exec", Verdict.ASK, Verdict.JUDGE, Verdict.RUN),
+        ("bash_exec", Verdict.JUDGE, Verdict.JUDGE, Verdict.RUN),
         ("delete_folder", Verdict.ASK, Verdict.JUDGE, Verdict.RUN),
-        ("post_to_chat_platform", Verdict.ASK, Verdict.ASK, Verdict.RUN),
-        ("run_agent", Verdict.RUN, Verdict.RUN, Verdict.RUN),
+        ("delegate_to_expert", Verdict.ASK, Verdict.RUN, Verdict.RUN),
+        ("handoff_to_expert", Verdict.ASK, Verdict.RUN, Verdict.RUN),
+        ("post_to_chat_platform", Verdict.ASK, Verdict.JUDGE, Verdict.RUN),
+        ("browser_act", Verdict.ASK, Verdict.ASK, Verdict.RUN),
     ],
 )
 def test_each_modes_column(tool, ask_first, auto, unsupervised):
@@ -57,10 +60,9 @@ def test_questions_to_the_user_and_completions_are_never_gated(tool):
 
 
 @pytest.mark.parametrize("tool", ["run_capability", "run_agent"])
-def test_capability_and_workflow_runs_stay_on_the_irreversible_pause(tool):
-    """They get a subject the mode can decide on in L5a; until then the
-    irreversible-action pause is their gate."""
-    assert effect_for(tool) is Effect.UNGATED
+def test_a_run_without_a_subject_is_unreadable(tool):
+    """Their subject decides; if resolving it is ever skipped, they ask."""
+    assert effect_for(tool) is Effect.EXTERNAL
 
 
 def test_retired_tool_names_are_gone():
@@ -72,3 +74,9 @@ def test_reading_a_truncated_tool_result_is_a_read():
     from backend.copilot.sdk.tool_adapter import _READ_TOOL_NAME
 
     assert effect_for(_READ_TOOL_NAME) is Effect.READ
+
+
+def test_the_strictest_mode_is_the_one_that_asks_most():
+    assert strictest_mode("auto", "ask_first") == "ask_first"
+    assert strictest_mode("unsupervised", "auto") == "auto"
+    assert strictest_mode("unsupervised") == "unsupervised"

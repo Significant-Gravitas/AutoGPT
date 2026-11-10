@@ -3,13 +3,16 @@
 import { useEffect } from "react";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { useCanDeleteAccount } from "@/components/organisms/DeleteAccountFlow/useCanDeleteAccount";
 import { isConsentManagerConfigured } from "@/services/consent/consent";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 import { AccountCard } from "./components/AccountCard/AccountCard";
+import { BrowserNotificationsCard } from "./components/BrowserNotificationsCard/BrowserNotificationsCard";
 import { NotificationsCard } from "./components/NotificationsCard/NotificationsCard";
 import { PreferencesHeader } from "./components/PreferencesHeader/PreferencesHeader";
 import { CookieSettingsCard } from "./components/CookieSettingsCard/CookieSettingsCard";
+import { DeleteAccountCard } from "./components/DeleteAccountCard/DeleteAccountCard";
 import { PreferencesSkeleton } from "./components/PreferencesSkeleton/PreferencesSkeleton";
 import { SaveBar } from "./components/SaveBar/SaveBar";
 import { TimezoneCard } from "./components/TimezoneCard/TimezoneCard";
@@ -38,6 +41,10 @@ export default function SettingsPreferencesPage() {
   } = usePreferencesPage();
 
   const showNotifications = useGetFlag(Flag.SETTINGS_NOTIFICATIONS);
+  const showAccountDeletion = useCanDeleteAccount();
+  const showCookieSettings = isConsentManagerConfigured();
+  const browserCardIndex = showNotifications ? 3 : 2;
+  const deleteCardIndex = browserCardIndex + (showCookieSettings ? 2 : 1);
 
   if (isError) {
     return (
@@ -79,7 +86,15 @@ export default function SettingsPreferencesPage() {
         />
       ) : null}
 
-      {isConsentManagerConfigured() ? <CookieSettingsCard index={3} /> : null}
+      <BrowserNotificationsCard index={browserCardIndex} />
+
+      {showCookieSettings ? (
+        <CookieSettingsCard index={browserCardIndex + 1} />
+      ) : null}
+
+      {showAccountDeletion ? (
+        <DeleteAccountCard index={deleteCardIndex} />
+      ) : null}
 
       <SaveBar
         visible={dirty}

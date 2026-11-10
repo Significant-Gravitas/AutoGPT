@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Response, Security
 from pydantic import BaseModel, Field
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.limit_tracking import track_limit_exceeded
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
     RateLimitUnavailable,
@@ -93,7 +94,7 @@ async def _enforce_spend_allowance(user_id: str) -> None:
     await enforce_payment_paywall(user_id)
 
     try:
-        daily_limit, weekly_limit, _ = await get_global_rate_limits(
+        daily_limit, weekly_limit, usage_tier = await get_global_rate_limits(
             user_id,
             config.daily_cost_limit_microdollars,
             config.weekly_cost_limit_microdollars,
@@ -102,8 +103,10 @@ async def _enforce_spend_allowance(user_id: str) -> None:
             user_id=user_id,
             daily_cost_limit=daily_limit,
             weekly_cost_limit=weekly_limit,
+            expected_tier=usage_tier,
         )
     except RateLimitExceeded as exc:
+        track_limit_exceeded(user_id, exc, surface="voice")
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except RateLimitUnavailable as exc:
         # Fail closed, as the chat route does: a Redis brown-out cannot prove

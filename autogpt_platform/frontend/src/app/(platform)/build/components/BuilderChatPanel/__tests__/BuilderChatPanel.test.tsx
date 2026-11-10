@@ -32,12 +32,15 @@ function makeMockHook(
     onSend: vi.fn(),
     queuedMessages: [],
     isBootstrapping: false,
+    hasNoModel: false,
     revertTargetVersion: null,
     handleRevert: vi.fn(),
     bindError: null,
     bootstrapError: null,
     retryBind: vi.fn(),
     retryBootstrap: vi.fn(),
+    transportCheckError: null,
+    retryTransportCheck: vi.fn(),
     ...overrides,
   } as ReturnType<typeof useBuilderChatPanel>;
 }
@@ -133,7 +136,9 @@ describe("BuilderChatPanel", () => {
       }),
     );
     render(<BuilderChatPanel />);
-    expect(screen.getByText(/Could not create a blank agent/i)).toBeDefined();
+    expect(
+      screen.getByText(/Could not create a blank workflow/i),
+    ).toBeDefined();
     const retry = screen.getByRole("button", { name: /Retry/i });
     fireEvent.click(retry);
     expect(retryBootstrap).toHaveBeenCalledOnce();

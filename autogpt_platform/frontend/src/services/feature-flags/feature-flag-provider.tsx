@@ -1,42 +1,17 @@
 "use client";
 
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { LDProvider } from "launchdarkly-react-client-sdk";
 import type { ReactNode } from "react";
-import { useMemo } from "react";
-import { getAnonymousID } from "../analytics/anonymous-id";
-import { environment } from "../environment";
-import { LD_INIT_TIMEOUT_SECONDS } from "./constants";
-import { usesLaunchDarkly } from "./flag-backend";
-import { buildLDContext } from "./helpers";
+import { FlagResolutionContext } from "./flag-resolution";
 
-export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
-  const { user, isUserLoading } = useAuth();
-  const envEnabled = usesLaunchDarkly() && environment.areFeatureFlagsEnabled();
-  const clientId = environment.getLaunchDarklyClientId();
+export function FeatureFlagProvider({ children }: { children: ReactNode }) {
+  const { isUserLoading } = useAuth();
 
-  const context = useMemo(() => {
-    if (isUserLoading) return;
-    return buildLDContext(user, getAnonymousID());
-  }, [user, isUserLoading]);
-
-  if (!envEnabled) {
-    return <>{children}</>;
-  }
-
-  if (isUserLoading) {
-    return <LoadingSpinner size="large" cover />;
-  }
-
+  // The server reads flags for the signed-in user, so the wait starts once the
+  // session is known. The page renders regardless so crawlers get its content.
   return (
-    <LDProvider
-      clientSideID={clientId ?? ""}
-      context={context}
-      timeout={LD_INIT_TIMEOUT_SECONDS}
-      reactOptions={{ useCamelCaseFlagKeys: false }}
-    >
+    <FlagResolutionContext.Provider value={!isUserLoading}>
       {children}
-    </LDProvider>
+    </FlagResolutionContext.Provider>
   );
 }
