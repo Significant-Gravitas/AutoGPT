@@ -21,6 +21,7 @@ from backend.data import versioned_cache
 from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_pending_cache import PENDING_CHANGES
+from backend.util import posthog_client
 from backend.util.logging import configure_logging
 from backend.util.platform_payment import settings as platform_payment_settings
 from backend.util.tracing import traces_sampler
@@ -193,6 +194,22 @@ def admin_user_id() -> str:
 def target_user_id() -> str:
     """Target user ID fixture."""
     return "5e53486c-cf57-477e-ba2a-cb02dc828e1c"
+
+
+@pytest.fixture
+def chat_blocked_events(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+    """Every ``chat_blocked`` PostHog event the test sends, as
+    ``{"distinct_id": ..., **properties}``. Other events are dropped, as they
+    are with no PostHog key."""
+    events: list[dict] = []
+
+    def capture(distinct_id, event, properties=None, **_kwargs) -> bool:
+        if event == "chat_blocked":
+            events.append({"distinct_id": distinct_id, **(properties or {})})
+        return True
+
+    monkeypatch.setattr(posthog_client, "capture", capture)
+    return events
 
 
 class _SentryTransactionCapture(Transport):

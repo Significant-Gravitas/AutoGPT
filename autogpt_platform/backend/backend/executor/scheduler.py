@@ -89,6 +89,7 @@ from backend.copilot.dream.scope_reconcile import (
 from backend.copilot.executor.utils import ScheduledTurnOrigin, schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.limit_tracking import track_turn_cap, track_turn_refusal
 from backend.copilot.model import ChatSessionInfo, create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
@@ -754,17 +755,11 @@ async def _execute_copilot_turn(**kwargs):
         )
         if args.run_at is not None:
             await _reschedule_one_shot_after_expert_unavailable(args)
-    except (ConcurrentTurnLimitError, SessionNotIdle) as e:
-        # The user's cap or a busy chat prevented admission. For cron schedules the
-        # next tick retries automatically; for one-shot (run_at) schedules
-        # APScheduler removes the job after fire regardless of our error,
-        # so re-schedule a copy 5 min out to give the slot time to free.
-        logger.warning(
-            f"Scheduled copilot turn for session {_session_id_label(args)} "
-            f"could not acquire a turn slot; cron={args.cron is not None}: {e}"
-        )
-        if args.run_at is not None:
-            await _reschedule_one_shot_after_cap(args)
+    except ConcurrentTurnLimitError as e:
+        track_turn_cap(args.user_id, e, surface="schedule", outcome="refused")
+        await _skip_fire_without_slot(args, e)
+    except SessionNotIdle as e:
+        await _skip_fire_without_slot(args, e)
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
@@ -772,6 +767,19 @@ async def _execute_copilot_turn(**kwargs):
             f"{_session_id_label(args)} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+async def _skip_fire_without_slot(args: "CopilotTurnJobArgs", e: Exception) -> None:
+    """The user's cap or a busy chat prevented admission. For cron schedules the
+    next tick retries automatically; for one-shot (run_at) schedules
+    APScheduler removes the job after fire regardless of our error, so
+    re-schedule a copy 5 min out to give the slot time to free."""
+    logger.warning(
+        f"Scheduled copilot turn for session {_session_id_label(args)} "
+        f"could not acquire a turn slot; cron={args.cron is not None}: {e}"
+    )
+    if args.run_at is not None:
+        await _reschedule_one_shot_after_cap(args)
 
 
 async def _refuse_if_turn_may_not_start(
@@ -806,6 +814,7 @@ async def _refuse_if_turn_may_not_start(
         retry = _reschedule_one_shot_after_plan_unreadable
     if refusal is None:
         return False
+    track_turn_refusal(job_args.user_id, refusal, surface="schedule", outcome="refused")
     waits = refusal.kind == "usage" and refusal.window in ("daily", "weekly")
     if waits:
         retry = functools.partial(

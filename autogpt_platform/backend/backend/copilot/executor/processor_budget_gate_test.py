@@ -407,3 +407,75 @@ async def test_an_unreadable_balance_fails_a_block_turn_closed(credits):
         turn_id="turn-1",
         skip_error_publish=False,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "update, surface",
+    [({}, "chat"), ({"unattended": True}, "background")],
+    ids=["typed-message", "unattended-work"],
+)
+async def test_a_refused_turn_is_sent_to_posthog(chat_blocked_events, update, surface):
+    turn = _Turn(_session())
+
+    await turn.run(_entry(**update), AsyncMock(return_value=PAUSE))
+
+    assert chat_blocked_events == [
+        {
+            "distinct_id": "user-1",
+            "reason": "usage_limit",
+            "limit": "daily",
+            "outcome": "refused",
+            "surface": surface,
+            "tier": None,
+            "used": None,
+            "cap": None,
+            "resets_at": PAUSE.resets_at.isoformat(),
+        }
+    ]
+
+
+class _Chunks:
+    def __init__(self, *chunks) -> None:
+        self._chunks = list(chunks)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self._chunks:
+            raise StopAsyncIteration
+        return self._chunks.pop(0)
+
+    async def aclose(self) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pause, expected",
+    [
+        (
+            TurnPause(reason="weekly", resets_at=datetime(2026, 10, 19, tzinfo=UTC)),
+            [("weekly", "paused")],
+        ),
+        (TurnPause(reason="task", checkpoint_saved=False), [("task", "paused")]),
+        # The engine refusing to go on to queued messages: not started.
+        (TurnPause(reason="daily", started=False), [("daily", "refused")]),
+        # A check-in after many steps is not a limit.
+        (TurnPause(reason="steps", steps=200), []),
+    ],
+    ids=["weekly-landing", "task-budget", "auto-continue-refused", "step-check-in"],
+)
+async def test_a_pause_the_engine_streams_is_sent_to_posthog(
+    chat_blocked_events, pause, expected
+):
+    turn = _Turn(_session())
+    turn.stream = MagicMock(
+        return_value=_Chunks(StreamTurnPaused(pause=pause.as_part()))
+    )
+
+    await turn.run(_entry(), AsyncMock(return_value=None))
+
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == expected
+    assert all(e["surface"] == "chat" for e in chat_blocked_events)

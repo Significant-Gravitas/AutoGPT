@@ -9,6 +9,7 @@ from backend.copilot.budget_gate import (
     record_refusal,
     refusal_for,
 )
+from backend.copilot.limit_tracking import LimitReading
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
@@ -72,12 +73,15 @@ async def test_a_turn_without_a_user_is_not_checked(allowance):
 @pytest.mark.asyncio
 async def test_a_used_up_window_refuses_the_turn_until_it_refills(allowance):
     _, check = allowance
-    check.side_effect = RateLimitExceeded("weekly", WEEKLY_RESET)
-    assert await refusal_for("u-1") == TurnPause(
+    reading = LimitReading(tier="PRO", used=6.0, cap=6.0)
+    check.side_effect = RateLimitExceeded("weekly", WEEKLY_RESET, reading=reading)
+    pause = await refusal_for("u-1")
+    assert pause == TurnPause(
         reason="weekly",
         resets_at=WEEKLY_RESET,
         checkpoint_saved=False,
         started=False,
+        reading=reading,
     )
 
 
@@ -117,7 +121,11 @@ async def test_an_ended_trial_is_refused_without_reading_its_stale_tier(allowanc
         pause = await refusal_for("u-1")
     # Named as the trial, which is what ended: Upgrade, not a reset.
     assert pause == TurnPause(
-        reason="trial", resets_at=None, checkpoint_saved=False, started=False
+        reason="trial",
+        resets_at=None,
+        checkpoint_saved=False,
+        started=False,
+        reading=LimitReading(tier="NO_TIER", cap=0.0),
     )
     check.assert_not_awaited()
 
@@ -202,7 +210,10 @@ async def test_queued_messages_wait_when_the_allowance_is_used_up(allowance, que
     assert gate.pause is not None and not gate.pause.started
     assert (gate.pause.reason, gate.pause.resets_at) == ("weekly", WEEKLY_RESET)
     # Recorded in the chat; the queue itself was only looked at, never drained.
-    assert pause_of(session.messages[-1]) == gate.pause
+    # The marker keeps what the card shows, not the analytics reading.
+    assert pause_of(session.messages[-1]) == gate.pause.model_copy(
+        update={"reading": None}
+    )
     save.assert_awaited_once_with(session)
     queued.assert_awaited_once_with(session.session_id)
 

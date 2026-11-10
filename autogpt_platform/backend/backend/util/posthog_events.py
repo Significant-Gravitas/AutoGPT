@@ -48,6 +48,9 @@ class PostHogEvent(StrEnum):
     CHAT_TOOL_CALLED = "chat_tool_called"
     CHAT_OUTCOME = "chat_outcome"
     CHAT_LIBRARY_CHECK_OUTCOME = "chat_library_check_outcome"
+    # backend/copilot/limit_tracking.py (SECRT-3411): a usage limit refused,
+    # paused or queued work, from any surface.
+    CHAT_BLOCKED = "chat_blocked"
     # backend/copilot/gate/shadow.py
     CHAT_READ_SCREEN_SHADOW_DECISION = "chat_read_screen_shadow_decision"
 

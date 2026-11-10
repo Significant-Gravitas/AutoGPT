@@ -90,7 +90,9 @@ def test_speech_refuses_a_paywalled_caller_before_spending(
 
 
 def test_speech_refuses_a_caller_over_their_usage_cap(
-    record_usage: AsyncMock, mocker: pytest_mock.MockerFixture
+    record_usage: AsyncMock,
+    mocker: pytest_mock.MockerFixture,
+    chat_blocked_events: list[dict],
 ) -> None:
     mocker.patch.object(
         speech_routes,
@@ -107,6 +109,9 @@ def test_speech_refuses_a_caller_over_their_usage_cap(
     assert response.status_code == 429
     speech_module._speech_client.assert_not_called()
     record_usage.assert_not_awaited()
+    assert [(e["limit"], e["outcome"], e["surface"]) for e in chat_blocked_events] == [
+        ("daily", "refused", "voice")
+    ]
 
 
 def test_speech_fails_closed_when_the_cap_cannot_be_read(

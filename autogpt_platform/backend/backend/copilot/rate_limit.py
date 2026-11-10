@@ -65,6 +65,14 @@ from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.limit_tracking import (
+    BlockedSurface,
+    LimitReading,
+    refills_at,
+    track_chat_blocked,
+    track_limit_exceeded,
+    usd,
+)
 from backend.copilot.trial_cost_context import capture_cost_context
 from backend.copilot.trial_reads import forget_usage_state, shared_trial_read
 from backend.copilot.usage_activation import (
@@ -526,11 +534,24 @@ def _reading(
 
 
 class RateLimitExceeded(Exception):
-    """Raised when a user exceeds their CoPilot usage limit."""
+    """Raised when a user exceeds their CoPilot usage limit.
 
-    def __init__(self, window: LimitWindow, resets_at: datetime):
+    ``reading`` is where the account stood against the limit (tier, and spend
+    and cap in dollars), for analytics; ``refills_at`` is ``resets_at`` when
+    the window refills, and None for a trial or a window that allows nothing.
+    """
+
+    def __init__(
+        self,
+        window: LimitWindow,
+        resets_at: datetime,
+        *,
+        reading: LimitReading | None = None,
+    ):
         self.window: LimitWindow = window
         self.resets_at = resets_at
+        self.reading = reading or LimitReading()
+        self.refills_at = refills_at(window, resets_at, self.reading)
         delta = resets_at - datetime.now(UTC)
         total_secs = delta.total_seconds()
         if total_secs <= 0:
@@ -809,12 +830,15 @@ async def build_budget_ctx(
     )
 
 
-async def platform_spend_refusal(user_id: str | None) -> str | None:
+async def platform_spend_refusal(
+    user_id: str | None, *, surface: BlockedSurface
+) -> str | None:
     """Why a call billed to the platform's own key may not run for *user_id* now.
 
     Turn admission checks the allowance once per turn; a tool call or a dry run
     that pays a provider itself asks again right before each call. Fails closed
-    when the allowance can't be read. ``None`` means the call may run.
+    when the allowance can't be read. ``None`` means the call may run. A
+    refusal sends ``chat_blocked`` for *surface*.
     """
     if not user_id:
         return None
@@ -824,6 +848,15 @@ async def platform_spend_refusal(user_id: str | None) -> str | None:
         _chat_config.weekly_cost_limit_microdollars,
     )
     if daily == 0 and weekly == 0:
+        # As the turn gate reads it: a window that allows nothing, and doesn't
+        # refill.
+        track_chat_blocked(
+            user_id,
+            limit="weekly",
+            outcome="refused",
+            surface=surface,
+            reading=LimitReading(tier=tier.value, cap=0.0),
+        )
         return "Your plan has no usage allowance for this right now."
     try:
         await check_rate_limit(
@@ -833,6 +866,7 @@ async def platform_spend_refusal(user_id: str | None) -> str | None:
             expected_tier=tier,
         )
     except RateLimitExceeded as e:
+        track_limit_exceeded(user_id, e, surface=surface)
         return str(e)
     except RateLimitUnavailable:
         logger.warning(
@@ -890,12 +924,20 @@ async def check_rate_limit(
     ):
         raise RateLimitUnavailable("Subscription changed while resolving usage limits")
     d_key, w_key = usage_keys(user_id, state.generation, now)
+    tier = state.tier.value
     if state.tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
-            raise RateLimitExceeded("trial", now)
+            raise RateLimitExceeded("trial", now, reading=LimitReading(tier=tier))
+        trial_reading = LimitReading(
+            tier=tier,
+            used=usd(trial.cost_microdollars),
+            cap=usd(trial.offer.total_cost_limit),
+        )
         if trial.cost_microdollars >= trial.offer.total_cost_limit:
-            raise RateLimitExceeded("trial", trial.ends_at or now)
+            raise RateLimitExceeded(
+                "trial", trial.ends_at or now, reading=trial_reading
+            )
         if _trial_uses_total_budget(trial, daily_cost_limit, weekly_cost_limit):
             return
     if (skip_daily or daily_cost_limit < 0) and weekly_cost_limit < 0:
@@ -936,10 +978,22 @@ async def check_rate_limit(
     # one that refills last, and the weekly window never refills before the
     # daily one (on Sundays they refill together).
     if weekly_cost_limit >= 0 and weekly_used >= weekly_cost_limit:
-        raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
+        raise RateLimitExceeded(
+            "weekly",
+            _weekly_reset_time(now=now),
+            reading=LimitReading(
+                tier=tier, used=usd(weekly_used), cap=usd(weekly_cost_limit)
+            ),
+        )
 
     if not skip_daily and daily_cost_limit >= 0 and daily_used >= daily_cost_limit:
-        raise RateLimitExceeded("daily", _daily_reset_time(now=now))
+        raise RateLimitExceeded(
+            "daily",
+            _daily_reset_time(now=now),
+            reading=LimitReading(
+                tier=tier, used=usd(daily_used), cap=usd(daily_cost_limit)
+            ),
+        )
 
 
 def _trial_uses_total_budget(

@@ -43,6 +43,7 @@ from backend.copilot.constants import (
     AUTOPILOT_BLOCK_TOOL_NAME,
     PER_TURN_SPEND_FLOOR_USD,
 )
+from backend.copilot.limit_tracking import turn_surface
 from backend.copilot.rate_limit import RateLimitUnavailable, platform_spend_refusal
 from backend.copilot.tree import MICRODOLLARS_PER_CREDIT
 from backend.copilot.turn_budget import BudgetWindow, TurnBudget
@@ -296,7 +297,7 @@ async def tool_spend_refusal(user_id: str | None) -> str | None:
     """
     turn = credit_billed_turn(user_id)
     if turn is None:
-        return await platform_spend_refusal(user_id)
+        return await platform_spend_refusal(user_id, surface=turn_surface())
     if turn.spent_microdollars < turn.cap_credits * MICRODOLLARS_PER_CREDIT:
         return None
     return "This run has used all the credits it can spend."

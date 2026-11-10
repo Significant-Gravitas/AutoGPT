@@ -7,6 +7,7 @@ import pytest
 from redis.exceptions import RedisClusterException, RedisError
 
 from backend.copilot import rate_limit, usage_activation
+from backend.copilot.limit_tracking import LimitReading
 from backend.copilot.trial_cost_context import TrialCostContext
 from backend.copilot.trial_reads import trial_reads_shared
 from backend.data import pro_activation
@@ -274,6 +275,9 @@ class TestCheckRateLimit:
                     _USER, daily_cost_limit=10000, weekly_cost_limit=50000
                 )
             assert exc_info.value.window == "daily"
+        # Where the account stood, in dollars, for chat_blocked.
+        assert exc_info.value.reading == LimitReading(tier="PRO", used=0.01, cap=0.01)
+        assert exc_info.value.refills_at == exc_info.value.resets_at
 
     @pytest.mark.asyncio
     async def test_skip_daily_bypasses_daily_cap_but_still_checks_weekly(self):
@@ -324,6 +328,7 @@ class TestCheckRateLimit:
                     _USER, daily_cost_limit=10000, weekly_cost_limit=50000
                 )
             assert exc_info.value.window == "weekly"
+        assert exc_info.value.reading == LimitReading(tier="PRO", used=0.05, cap=0.05)
 
     @pytest.mark.asyncio
     async def test_both_windows_used_up_names_the_one_that_refills_last(self):

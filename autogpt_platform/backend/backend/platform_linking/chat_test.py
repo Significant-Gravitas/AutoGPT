@@ -143,12 +143,12 @@ class TestStartChatTurn:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("cause", ["at-cap", "lost-slot-race"])
     async def test_a_turn_over_the_inflight_cap_is_refused_without_dispatch(
-        self, turn_slot, cause
+        self, turn_slot, cause, chat_blocked_events
     ):
         if cause == "at-cap":
             turn_slot.count.return_value = 3
         else:
-            turn_slot.acquire.side_effect = ConcurrentTurnLimitError()
+            turn_slot.acquire.side_effect = ConcurrentTurnLimitError(cap=3, used=3)
         db_mock = MagicMock()
         db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
         mock_append = AsyncMock(return_value=MagicMock())
@@ -180,6 +180,14 @@ class TestStartChatTurn:
         assert handle.turn_id == ""
         mock_append.assert_not_awaited()
         mock_dispatch.assert_not_awaited()
+        (event,) = chat_blocked_events
+        assert event["distinct_id"] == "owner-1"
+        assert (event["limit"], event["outcome"], event["surface"]) == (
+            "concurrency",
+            "refused",
+            "chat_bot",
+        )
+        assert (event["used"], event["cap"]) == (3, 3)
 
     @pytest.mark.asyncio
     async def test_no_user_link_raises_not_found(self):
@@ -1111,7 +1119,9 @@ class TestEvaluateTurnGate:
         assert denial.button_label == "Subscribe"
 
     @pytest.mark.asyncio
-    async def test_rate_limited_returns_window_and_reset_message(self):
+    async def test_rate_limited_returns_window_and_reset_message(
+        self, chat_blocked_events
+    ):
         from datetime import timedelta, timezone
 
         resets_at = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
@@ -1132,6 +1142,12 @@ class TestEvaluateTurnGate:
         assert denial.reason == "rate_limited"
         assert "daily usage limit" in denial.message
         assert "Resets in" in denial.message
+        (event,) = chat_blocked_events
+        assert (event["limit"], event["surface"], event["resets_at"]) == (
+            "daily",
+            "chat_bot",
+            resets_at.isoformat(),
+        )
 
     @pytest.mark.asyncio
     async def test_rate_unavailable_returns_transient_message_no_button(self):

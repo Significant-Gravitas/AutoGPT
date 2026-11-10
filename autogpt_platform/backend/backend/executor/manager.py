@@ -555,7 +555,7 @@ async def execute_node(
     # A dry run skips credits, so a block it runs for real on the platform's
     # key is bounded by the user's allowance instead.
     if _dry_run_creds is not None and (
-        refusal := await platform_spend_refusal(user_id)
+        refusal := await platform_spend_refusal(user_id, surface="block")
     ):
         log_metadata.warning(f"Dry-run block not run: {refusal}")
         yield "error", refusal

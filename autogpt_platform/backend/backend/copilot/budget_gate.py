@@ -20,6 +20,7 @@ import logging
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.limit_tracking import LimitReading
 from backend.copilot.model import ChatSession, upsert_chat_session
 from backend.copilot.pending_messages import peek_pending_count
 from backend.copilot.rate_limit import (
@@ -70,6 +71,7 @@ async def refusal_for(user_id: str | None) -> TurnPause | None:
             resets_at=None,
             checkpoint_saved=False,
             started=False,
+            reading=LimitReading(tier=tier.value, cap=0.0),
         )
     try:
         await check_rate_limit(
@@ -87,6 +89,7 @@ async def refusal_for(user_id: str | None) -> TurnPause | None:
             resets_at=exc.resets_at if limit > 0 else None,
             checkpoint_saved=False,
             started=False,
+            reading=exc.reading,
         )
     return None
 

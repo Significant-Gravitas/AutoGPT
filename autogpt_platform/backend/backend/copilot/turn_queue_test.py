@@ -1676,15 +1676,20 @@ async def test_codex_dispatch_leaves_queued_when_user_lacks_access() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dispatch_leaves_queued_on_rate_limit_exceeded() -> None:
+async def test_dispatch_leaves_queued_on_rate_limit_exceeded(
+    chat_blocked_events,
+) -> None:
     """Mid-queue rate-limit lapse: leave the head queued, the next tick
-    re-validates."""
+    re-validates. PostHog hears of it once for the pass, not once per row."""
     from backend.copilot.rate_limit import RateLimitExceeded
 
     db = MagicMock()
     db.update_chat_session_status = AsyncMock()
+    rows = [_queued_row("s1"), _queued_row("s2")]
+    for row in rows:
+        row.metadata.origin = "interactive"
     with (
-        _patch_queued_list([_queued_row()]),
+        _patch_queued_list(rows),
         patch.object(turn_queue, "chat_db", return_value=db),
         patch(
             "backend.copilot.turn_queue.is_user_paywalled",
@@ -1706,6 +1711,10 @@ async def test_dispatch_leaves_queued_on_rate_limit_exceeded() -> None:
         promoted = await turn_queue.dispatch_next_for_user("u1")
     assert promoted is False
     db.update_chat_session_status.assert_not_awaited()
+    assert [
+        (e["distinct_id"], e["limit"], e["outcome"], e["surface"])
+        for e in chat_blocked_events
+    ] == [("u1", "daily", "queued", "chat")]
 
 
 @pytest.mark.asyncio

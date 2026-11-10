@@ -16,6 +16,11 @@ from backend.copilot.chat_platform_header import (
 )
 from backend.copilot.config import ChatConfig, CopilotLLMModel
 from backend.copilot.executor.utils import dispatch_turn
+from backend.copilot.limit_tracking import (
+    LimitReading,
+    track_chat_blocked,
+    track_limit_exceeded,
+)
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -176,6 +181,7 @@ async def _check_usage_limits(user_id: str) -> TurnDenial | None:
             expected_tier=_tier,
         )
     except RateLimitExceeded as exc:
+        track_limit_exceeded(user_id, exc, surface="chat_bot")
         # str(exc) already reads e.g. "You've reached your daily usage limit.
         # Resets in 5h 30m." — exactly the window + countdown we want to show.
         billing = _billing_url()
@@ -426,8 +432,9 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
 
     # Bot turns share the owner's in-flight cap with every other turn source.
     inflight_cap = get_inflight_turn_limit()
-    if await count_inflight_turns(owner_user_id) >= inflight_cap:
-        return _busy_handle(owner_user_id, inflight_cap)
+    inflight = await count_inflight_turns(owner_user_id)
+    if inflight >= inflight_cap:
+        return _busy_handle(owner_user_id, inflight_cap, used=inflight)
 
     await require_turn_expert(
         owner_user_id, request.expert_id, request.platform_server_id
@@ -464,8 +471,8 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
             turn_id = await _persist_and_dispatch(
                 request, slot, session, owner_user_id, model
             )
-    except ConcurrentTurnLimitError:
-        return _busy_handle(owner_user_id, inflight_cap)
+    except ConcurrentTurnLimitError as exc:
+        return _busy_handle(owner_user_id, inflight_cap, used=exc.used)
 
     logger.info(
         f"Bot chat turn started: {request.platform.value} "
@@ -535,7 +542,16 @@ async def _persist_and_dispatch(
     return turn_id
 
 
-def _busy_handle(owner_user_id: str, inflight_cap: int) -> ChatTurnHandle:
+def _busy_handle(
+    owner_user_id: str, inflight_cap: int, *, used: int | None
+) -> ChatTurnHandle:
+    track_chat_blocked(
+        owner_user_id,
+        limit="concurrency",
+        outcome="refused",
+        surface="chat_bot",
+        reading=LimitReading(used=used, cap=inflight_cap),
+    )
     return ChatTurnHandle(
         session_id="",
         turn_id="",
