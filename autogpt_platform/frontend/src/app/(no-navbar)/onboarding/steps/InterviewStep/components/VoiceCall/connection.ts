@@ -52,6 +52,8 @@ export interface Connection {
     turns: number;
     startedAt: number | null;
     droppedAt: number;
+    // What ended it, once a read of the call says.
+    reason: string | null;
   } | null;
   timers: Set<ReturnType<typeof setTimeout>>;
 }

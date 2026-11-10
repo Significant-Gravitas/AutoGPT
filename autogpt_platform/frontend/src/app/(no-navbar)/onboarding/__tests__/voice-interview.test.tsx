@@ -537,6 +537,14 @@ function holdFinish() {
   return answer;
 }
 
+// Moves the clock on by *ms*, for a check that something does not happen:
+// the test runs with fake timers that otherwise keep pace with real time.
+async function passTime(ms: number) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+}
+
 function expectPlanStep() {
   return waitFor(() => expect(screen.getByTestId("step-plan")).toBeDefined());
 }
@@ -594,6 +602,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   server.events.removeListener("request:start", onRequest);
   fakes.uninstall();
   useAuthStore.setState({ user: null, hasLoadedUser: false });
@@ -1151,6 +1160,7 @@ describe("onboarding interview by voice: the call", () => {
   });
 
   it("lets the call go on in the tab that rejoined it, and takes nothing back", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<OnboardingPage />);
     const socket = await liveCall();
     const microphone = await fakes.getUserMedia.mock.results[0].value;
@@ -1164,7 +1174,8 @@ describe("onboarding interview by voice: the call", () => {
       ),
     ).toBeDefined();
     expect(screen.getByRole("button", { name: "End that call" })).toBeDefined();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Past the whole re-attach window (2 s here): no socket tries again.
+    await passTime(3_000);
     expect(fakes.sockets).toEqual([socket]);
     expect(microphone.getTracks()[0].stop).toHaveBeenCalled();
   });
@@ -1514,6 +1525,7 @@ describe("onboarding interview by voice: how a call ends", () => {
   });
 
   it("never moves on when the step goes away while a call's finish is on its way", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     callStates[CALL_ID] = [callRecord({ end_reason: "vendor_error" })];
     const answerFinish = holdFinish();
     render(<OnboardingPage />);
@@ -1527,7 +1539,7 @@ describe("onboarding interview by voice: how a call ends", () => {
 
     cleanup();
     answerFinish();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await passTime(1_000);
 
     expect(useOnboardingWizardStore.getState().currentStep).toBe(stepBefore);
     expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
@@ -1633,6 +1645,7 @@ describe("onboarding interview by voice: how a call ends", () => {
   });
 
   it("offers Type instead past the wait while a call's finish waits, and stops finishing once the person types", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     callStates[CALL_ID] = [callRecord({ end_reason: "vendor_error" })];
     server.use(
       http.post(`${VOICE}/:callId/finish`, ({ params }) => {
@@ -1657,9 +1670,11 @@ describe("onboarding interview by voice: how a call ends", () => {
     );
 
     expect(await screen.findByText(GREETING)).toBeDefined();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // A finish already on its way lands first; after it, none is asked
+    // again, well past the wait's slower reads (40 ms apart here).
+    await passTime(100);
     const asked = finishes.length;
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await passTime(1_000);
     expect(finishes.length).toBe(asked);
     expect(screen.queryByTestId("step-plan")).toBeNull();
   });
@@ -1715,6 +1730,39 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(screen.getByRole("button", { name: "Type instead" })).toBeDefined();
   });
 
+  it("reports how a lost call ended when the person types before its words have an answer", async () => {
+    callStates[CALL_ID] = [
+      callRecord({ status: "live", end_reason: null, hand_off: null }),
+      callRecord({
+        status: "transcribing",
+        end_reason: "client_gone",
+        hand_off: null,
+      }),
+    ];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    act(() => socket.drop(1006));
+    const again = await relaySocketAfter(socket);
+    act(() => again.drop(4404));
+    expect(
+      await screen.findByText("We lost the call. Saving what you said…"),
+    ).toBeDefined();
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Type instead" }));
+
+    expect(await screen.findByText(GREETING)).toBeDefined();
+    expect(tracked("interview_ended")).toEqual([
+      {
+        mode: "voice",
+        reason: "client_gone",
+        elapsed_s: expect.any(Number),
+        turns: 0,
+      },
+    ]);
+  });
+
   it("offers typing, another call or skipping when the call's words said too little", async () => {
     callStates[CALL_ID] = [
       callRecord({
@@ -1750,6 +1798,7 @@ describe("onboarding interview by voice: how a call ends", () => {
   it.each(["transcribing", "handing_off"] as const)(
     "keeps Wrapping up beside Type instead past the wait while the call is %s, and stops reading the call once the person types",
     async (status) => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
       callStates[CALL_ID] = [callRecord({ status, hand_off: null })];
       render(<OnboardingPage />);
       const socket = await liveCall();
@@ -1763,7 +1812,8 @@ describe("onboarding interview by voice: how a call ends", () => {
       await userEvent.setup().click(typeInstead);
       expect(await screen.findByText(GREETING)).toBeDefined();
       const readsWhenTyping = statusReads.length;
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Well past the wait's slower reads (40 ms apart here).
+      await passTime(1_000);
 
       expect(statusReads.length).toBe(readsWhenTyping);
     },

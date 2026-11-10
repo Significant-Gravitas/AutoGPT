@@ -578,6 +578,7 @@ export function useVoiceCall(args: Args) {
       turns: call.turns,
       startedAt: call.startedAt,
       droppedAt: conn.droppedAt ?? Date.now(),
+      reason: null,
     };
     conn.call = null;
     conn.isReady = false;
@@ -617,6 +618,11 @@ export function useVoiceCall(args: Args) {
         );
         return;
       }
+      // What ended a lost call, for its report should the person type
+      // before its words have an answer.
+      if (call?.end_reason && conn.lostCall) {
+        conn.lostCall.reason = call.end_reason;
+      }
       const answer = call ? answerOf(call, { taken: conn.taken }) : null;
       if (answer === "typed") {
         openTypedForLaterTake();
@@ -633,21 +639,29 @@ export function useVoiceCall(args: Args) {
     }
   }
 
-  function settle(next: CallEnding, call: VoiceCallStatusResponse | null) {
+  // A call lost on the way is reported ended once with what ended it, its
+  // length up to the drop, and the turns heard before it.
+  function reportLostCall(reason: string | null) {
     const conn = connRef.current;
     const lost = conn.lostCall;
-    if (lost && call?.end_reason) {
-      conn.lostCall = null;
-      trackInterview("interview_ended", {
-        mode: "voice",
-        reason: call.end_reason,
-        elapsed_s: lost.startedAt
-          ? secondsBetween(lost.startedAt, lost.droppedAt)
-          : null,
-        turns: lost.turns,
-      });
+    if (!lost) return;
+    conn.lostCall = null;
+    trackInterview("interview_ended", {
+      mode: "voice",
+      reason,
+      elapsed_s: lost.startedAt
+        ? secondsBetween(lost.startedAt, lost.droppedAt)
+        : null,
+      turns: lost.turns,
+    });
+  }
+
+  function settle(next: CallEnding, call: VoiceCallStatusResponse | null) {
+    const conn = connRef.current;
+    if (call?.end_reason) {
+      reportLostCall(call.end_reason);
+      setEndReason(call.end_reason);
     }
-    if (call?.end_reason) setEndReason(call.end_reason);
     setEnding(next);
     setFinishFailure(null);
     setPhase("ended");
@@ -712,6 +726,10 @@ export function useVoiceCall(args: Args) {
       setPhase("ending_call");
       await endCall(call.callId);
       if (attempt !== conn.attempt) return;
+    } else if (conn.lostCall) {
+      // Lost before its words had an answer: reported with what the reads
+      // last said ended it.
+      reportLostCall(conn.lostCall.reason);
     }
     resetView();
     setPhase("idle");
