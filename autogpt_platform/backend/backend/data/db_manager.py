@@ -651,6 +651,7 @@ class DatabaseManager(AppService):
     set_scope_state = _(memory_schedule_db.set_scope_state)
     forget_scope_job = _(memory_schedule_db.forget_scope_job)
     record_scope_run = _(memory_schedule_db.record_scope_run)
+    list_due_community_scopes = _(memory_schedule_db.list_due_community_scopes)
     list_user_scope_schedules = _(memory_schedule_db.list_user_scope_schedules)
     list_scope_schedules = _(memory_schedule_db.list_scope_schedules)
     existing_user_ids = _(memory_schedule_db.existing_user_ids)
@@ -1242,6 +1243,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     set_scope_state = d.set_scope_state
     forget_scope_job = d.forget_scope_job
     record_scope_run = d.record_scope_run
+    list_due_community_scopes = d.list_due_community_scopes
     list_user_scope_schedules = d.list_user_scope_schedules
     list_scope_schedules = d.list_scope_schedules
     existing_user_ids = d.existing_user_ids
