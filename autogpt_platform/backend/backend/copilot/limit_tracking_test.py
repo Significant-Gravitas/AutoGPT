@@ -22,6 +22,7 @@ from backend.copilot.llm_attribution import set_turn_origin
 from backend.copilot.rate_limit import RateLimitExceeded
 from backend.copilot.turn_pause import TurnPause
 from backend.copilot.turn_queue import InflightCapExceeded, TurnRefusal
+from backend.util import posthog_client
 
 _RESETS = datetime(2026, 11, 10, 0, 0, tzinfo=UTC) + timedelta(days=1)
 
@@ -278,3 +279,76 @@ def test_the_surface_the_executor_worked_out_wins_over_the_origin():
     finally:
         set_turn_surface(None)
         set_turn_origin(None)
+
+
+def _send(user_id: str | None = "user-1", **overrides) -> None:
+    track_chat_blocked(
+        user_id,
+        limit=overrides.get("limit", "daily"),
+        outcome=overrides.get("outcome", "refused"),
+        surface=overrides.get("surface", "chat"),
+    )
+
+
+def test_a_retry_loop_sends_one_event_a_minute(chat_blocked_events, monkeypatch):
+    now = [1_000.0]
+    monkeypatch.setattr(limit_tracking.time, "monotonic", lambda: now[0])
+    for _ in range(50):
+        _send()
+    assert len(chat_blocked_events) == 1
+
+    now[0] += limit_tracking.REPEAT_WINDOW_SECONDS - 1
+    _send()
+    assert len(chat_blocked_events) == 1
+
+    now[0] += 1
+    _send()
+    assert len(chat_blocked_events) == 2
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        {"user_id": "user-2"},
+        {"limit": "weekly"},
+        {"outcome": "paused"},
+        {"surface": "voice"},
+    ],
+)
+def test_another_user_limit_outcome_or_surface_is_its_own_event(
+    chat_blocked_events, other
+):
+    _send()
+    _send(**other)
+    assert len(chat_blocked_events) == 2
+
+
+def test_an_admins_refusal_never_hides_the_users_own(chat_blocked_events):
+    token = posthog_client.set_impersonated(True)
+    try:
+        _send()
+    finally:
+        posthog_client.reset_impersonated(token)
+    _send()
+    assert len(chat_blocked_events) == 2
+
+
+def test_the_window_forgets_the_oldest_when_full(chat_blocked_events, monkeypatch):
+    monkeypatch.setattr(limit_tracking, "_REPEAT_WINDOW_SIZE", 2)
+    _send("user-1")
+    _send("user-2")
+    _send("user-3")
+    _send("user-1")
+    _send("user-3")
+    assert [e["distinct_id"] for e in chat_blocked_events] == [
+        "user-1",
+        "user-2",
+        "user-3",
+        "user-1",
+    ]
+
+
+def test_no_user_is_no_event_and_holds_no_place_in_the_window(chat_blocked_events):
+    _send(None)
+    _send()
+    assert [e["distinct_id"] for e in chat_blocked_events] == ["user-1"]

@@ -196,6 +196,16 @@ def target_user_id() -> str:
     return "5e53486c-cf57-477e-ba2a-cb02dc828e1c"
 
 
+@pytest.fixture(autouse=True)
+def fresh_chat_blocked_window():
+    """``chat_blocked`` drops a repeat sent within a minute; each test starts
+    with none sent, so one test's events never hide another's."""
+    if (
+        limit_tracking := sys.modules.get("backend.copilot.limit_tracking")
+    ) is not None:
+        limit_tracking.forget_recent_events()
+
+
 @pytest.fixture
 def chat_blocked_events(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     """Every ``chat_blocked`` PostHog event the test sends, as

@@ -11,6 +11,12 @@ Sending never raises and never waits: ``posthog_client.capture`` queues the
 event for the client's background thread, and anything that fails here is
 logged and dropped, so a refusal answers exactly as it would without it.
 
+A client that retries a refused request in a loop gets the same answer every
+time, so each process sends at most one event per user, limit, outcome and
+surface a minute (:data:`REPEAT_WINDOW_SECONDS`); the repeats in between are
+dropped. The window is kept in memory, so it costs the refusal nothing and
+can't fail it.
+
 No message content and no personal data: the distinct id is the user id, and
 the properties say only which limit, what happened, and where the account
 stood against it.
@@ -18,6 +24,8 @@ stood against it.
 
 import functools
 import logging
+import threading
+import time
 from contextvars import ContextVar
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable, Literal, ParamSpec
@@ -44,6 +52,17 @@ BlockedSurface = Literal[
 ]
 
 _RATE_LIMITS: frozenset[BlockedLimit] = frozenset({"rate", "concurrency"})
+
+# A repeat of an event this process sent less than this long ago is dropped.
+REPEAT_WINDOW_SECONDS = 60.0
+# How many recent events the window remembers; past it, the oldest is
+# forgotten, which at worst lets its repeat through.
+_REPEAT_WINDOW_SIZE = 10_000
+
+_SentKey = tuple[str, BlockedLimit, BlockedOutcome, BlockedSurface, bool]
+# When each recent event was sent (monotonic seconds), oldest first.
+_recently_sent: dict[_SentKey, float] = {}
+_recently_sent_lock = threading.Lock()
 
 # The surface of the turn running now, as the executor worked it out; read by
 # checks deep inside the turn, such as a tool's platform spend.
@@ -105,6 +124,31 @@ def refills_at(
     return resets_at
 
 
+def _first_in_window(key: _SentKey) -> bool:
+    """Whether *key* was not sent in the last :data:`REPEAT_WINDOW_SECONDS`;
+    if so, it counts as sent now."""
+    now = time.monotonic()
+    with _recently_sent_lock:
+        # Oldest first, so the expired ones are at the front.
+        while _recently_sent:
+            oldest = next(iter(_recently_sent))
+            if now - _recently_sent[oldest] < REPEAT_WINDOW_SECONDS:
+                break
+            del _recently_sent[oldest]
+        if key in _recently_sent:
+            return False
+        if len(_recently_sent) >= _REPEAT_WINDOW_SIZE:
+            del _recently_sent[next(iter(_recently_sent))]
+        _recently_sent[key] = now
+        return True
+
+
+def forget_recent_events() -> None:
+    """Forget which events were sent recently, so the next of each is sent."""
+    with _recently_sent_lock:
+        _recently_sent.clear()
+
+
 @_never_raises
 def track_chat_blocked(
     user_id: str | None,
@@ -115,11 +159,17 @@ def track_chat_blocked(
     reading: LimitReading | None = None,
     resets_at: datetime | None = None,
 ) -> None:
-    """Send one ``chat_blocked``. Never raises.
+    """Send one ``chat_blocked``, unless this process sent the same one in
+    the last minute. Never raises.
 
     ``resets_at`` is when the window refills; leave it out for a limit that
     doesn't (a trial's allowance, a window that allows nothing).
     """
+    if not user_id:
+        return
+    key = (user_id, limit, outcome, surface, posthog_client.is_impersonated())
+    if not _first_in_window(key):
+        return
     reading = reading or LimitReading()
     posthog_client.capture(
         user_id,
