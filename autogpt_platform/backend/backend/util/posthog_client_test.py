@@ -385,6 +385,98 @@ def test_capture_dedup_key_is_insert_id_and_a_stable_uuid(
     )
 
 
+def test_capture_anonymous_sends_a_random_id_and_no_person(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+    monkeypatch.setattr(posthog_client, "_environment", lambda: "prod")
+
+    posthog_client.capture_anonymous(
+        PostHogEvent.ACCOUNT_DELETION_FEEDBACK,
+        {"reason": "cost", "plan_state": "pro"},
+    )
+
+    kwargs = client.capture.call_args.kwargs
+    assert uuid.UUID(kwargs["distinct_id"]).version == 4
+    assert kwargs["event"] == "account_deletion_feedback"
+    assert kwargs["properties"] == {
+        "reason": "cost",
+        "plan_state": "pro",
+        "$process_person_profile": False,
+        "environment": "prod",
+        "source": "platform",
+    }
+
+
+def test_capture_anonymous_uses_a_new_id_for_every_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+
+    posthog_client.capture_anonymous(PostHogEvent.ACCOUNT_DELETION_COMPLETED)
+    posthog_client.capture_anonymous(PostHogEvent.ACCOUNT_DELETION_COMPLETED)
+
+    first, second = (c.kwargs["distinct_id"] for c in client.capture.call_args_list)
+    assert first != second
+
+
+def test_capture_anonymous_base_properties_win_over_the_caller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+    monkeypatch.setattr(posthog_client, "_environment", lambda: "prod")
+
+    posthog_client.capture_anonymous(
+        PostHogEvent.ACCOUNT_DELETION_ALTERNATIVE_CLICKED,
+        {
+            "alternative": "billing",
+            "$process_person_profile": True,
+            "environment": "caller",
+            "source": "caller",
+        },
+        source="web_relay",
+    )
+
+    assert client.capture.call_args.kwargs["properties"] == {
+        "alternative": "billing",
+        "$process_person_profile": False,
+        "environment": "prod",
+        "source": "web_relay",
+    }
+
+
+def test_capture_anonymous_is_a_noop_when_analytics_is_off(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: None)
+
+    with caplog.at_level("WARNING", logger=posthog_client.__name__):
+        posthog_client.capture_anonymous(PostHogEvent.ACCOUNT_DELETION_COMPLETED)
+
+    assert not caplog.records
+
+
+def test_capture_anonymous_swallows_a_client_error_and_logs_no_properties(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    client = Mock()
+    client.capture.side_effect = RuntimeError("rejected: I am leaving because of X")
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+
+    with caplog.at_level("WARNING", logger=posthog_client.__name__):
+        posthog_client.capture_anonymous(
+            PostHogEvent.ACCOUNT_DELETION_FEEDBACK,
+            {"reason": "other", "text": "I am leaving because of X"},
+        )
+
+    assert "account_deletion_feedback" in caplog.text
+    assert "leaving because of X" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
 @pytest.fixture
 def shared_client(monkeypatch: pytest.MonkeyPatch) -> Mock:
     client = Mock()

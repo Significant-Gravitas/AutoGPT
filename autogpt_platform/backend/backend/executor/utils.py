@@ -69,7 +69,7 @@ from backend.data.model import (
     sdk_default_refused_message,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import is_user_banned
+from backend.data.user import is_user_refused
 from backend.executor.input_depth import (
     validate_graph_input_depth,
     validate_starting_node_input_depth,
@@ -1686,8 +1686,10 @@ async def _add_graph_execution(
 
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run workflows.")
-    if await is_user_banned(user_id):
-        raise UserBannedError("This account is banned, so its workflows can't run.")
+    if await is_user_refused(user_id):
+        raise UserBannedError(
+            "This account is banned or closed, so its workflows can't run."
+        )
 
     is_new_execution = graph_exec_id is None
     tenancy_replaced = False
