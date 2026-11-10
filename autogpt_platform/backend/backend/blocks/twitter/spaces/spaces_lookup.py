@@ -73,7 +73,7 @@ class TwitterGetSpacesBlock(Block):
 
     class Input(SpaceExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["spaces.read", "users.read", "offline.access"]
+            ["space.read", "users.read", "offline.access"]
         )
 
         identifier: Union[SpaceList, UserList] = SchemaField(
@@ -229,7 +229,7 @@ class TwitterGetSpaceByIdBlock(Block):
 
     class Input(SpaceExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["spaces.read", "users.read", "offline.access"]
+            ["space.read", "users.read", "offline.access"]
         )
 
         space_id: str = SchemaField(
@@ -391,7 +391,7 @@ class TwitterGetSpaceBuyersBlock(Block):
 
     class Input(UserExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["spaces.read", "users.read", "offline.access"]
+            ["space.read", "users.read", "offline.access"]
         )
 
         space_id: str = SchemaField(
@@ -519,7 +519,7 @@ class TwitterGetSpaceTweetsBlock(Block):
 
     class Input(TweetExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["spaces.read", "users.read", "offline.access"]
+            ["space.read", "users.read", "offline.access"]
         )
 
         space_id: str = SchemaField(

@@ -157,6 +157,11 @@ async def test_exhausted_trial_stays_blocked_before_and_after_window_resets(
 
     assert exc.value.window == "trial"
     assert exc.value.resets_at == trial.ends_at
+    # For analytics: the lifetime allowance in dollars, which never refills.
+    assert exc.value.reading.tier == rate_limit.SubscriptionTier.TRIAL.value
+    assert exc.value.reading.used == spent / 1_000_000
+    assert exc.value.reading.cap == trial.offer.total_cost_limit / 1_000_000
+    assert exc.value.refills_at is None
     assert await rate_limit.get_remaining_usd_budget(_USER, daily, weekly) == 0.0
     assert trial.cost_microdollars == spent
     assert trial.started_at == _SUNDAY

@@ -80,7 +80,7 @@ export function CreateAgentTool({ part }: Props) {
   return (
     <div className="py-2">
       {isOperating && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-body text-foreground-tertiary">
           <ToolIcon isStreaming={isStreaming} isError={isError} />
           <MorphingTextAnimation
             text={text}

@@ -103,7 +103,7 @@ export function TierToggle({
             onClick={() => onSelect(segment.tier)}
             className={cn(
               "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-              "focus-visible:bg-background focus-visible:outline-none",
+              "focus-visible:bg-canvas focus-visible:outline-none",
             )}
           >
             <Icon
@@ -123,7 +123,7 @@ export function TierToggle({
                 {segment.name ?? segment.label}
               </Text>
               {segment.model && (
-                <span className="text-sm leading-snug text-foreground-tertiary">
+                <span className="text-body leading-snug text-foreground-tertiary">
                   <Swap className="max-w-full truncate">{segment.model}</Swap>
                 </span>
               )}
@@ -134,7 +134,7 @@ export function TierToggle({
               aria-hidden
               motion="opacity"
               className={cn(
-                "flex-none text-primary",
+                "flex-none text-action",
                 segment.tier === value ? "opacity-100" : "opacity-0",
               )}
             />
@@ -182,7 +182,7 @@ function LockedSegment({ segment }: { segment: Segment }) {
             {segment.name ?? segment.label}
           </Text>
           {segment.model && (
-            <span className="text-sm leading-snug text-foreground-subtle">
+            <span className="text-body leading-snug text-foreground-subtle">
               <Swap className="max-w-full truncate">{segment.model}</Swap>
             </span>
           )}

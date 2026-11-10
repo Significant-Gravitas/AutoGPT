@@ -14,13 +14,16 @@ import {
   PlugSocketIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import type { IntegrationMention } from "../helpers";
-import type { MentionOption } from "../useChatMentions";
+import type { IntegrationMention, SkillCommand } from "../helpers";
+import type { MentionOption, MentionTrigger } from "../useChatMentions";
+
 import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
-  /** Integrations first, then folders and files, then "Connect an
-   *  integration" — indices match the highlight cursor. */
+  /** "/" lists skills; "@" lists integrations, folders and files. */
+  trigger?: MentionTrigger;
+  /** Skills, or integrations then folders and files — indices match the
+   *  highlight cursor. */
   options: MentionOption[];
   /** Whether workspace files are part of this picker; drives the file
    *  loading/error/empty copy. */
@@ -36,6 +39,7 @@ interface Props {
 }
 
 export function MentionDropdown({
+  trigger = "@",
   options,
   showFiles,
   hasIntegrations,
@@ -82,7 +86,7 @@ export function MentionDropdown({
         }}
         onMouseEnter={() => onHighlight(index)}
         className={cn(
-          "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm",
+          "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-body",
           isHighlighted
             ? "bg-surface-hover text-foreground-strong"
             : "text-foreground-body",
@@ -90,6 +94,38 @@ export function MentionDropdown({
       >
         {children}
       </button>
+    );
+  }
+
+  if (trigger === "/") {
+    return (
+      <div
+        role="listbox"
+        aria-label="Skill commands"
+        onMouseDown={(e) => e.preventDefault()}
+        className="absolute bottom-full left-0 z-50 mb-2 max-h-80 w-80 max-w-full overflow-y-auto rounded-2xl border border-border-base bg-surface p-1.5 shadow-md"
+      >
+        {options.map((option, index) =>
+          option.kind === "skill"
+            ? renderOption(
+                option,
+                index,
+                <SkillOption skill={option.skill} />,
+                `/${option.skill.name}: ${option.skill.description}`,
+              )
+            : null,
+        )}
+        {isLoading ? (
+          <p className="flex items-center gap-2 px-3 py-2 text-body text-foreground-tertiary">
+            <Icon icon={Loading03Icon} className="h-4 w-4 shrink-0" />
+            Loading skills…
+          </p>
+        ) : options.length === 0 ? (
+          <p className="px-3 py-2 text-body text-foreground-tertiary">
+            No matching skills.
+          </p>
+        ) : null}
+      </div>
     );
   }
 
@@ -138,18 +174,18 @@ export function MentionDropdown({
           return null;
         })}
         {isError ? (
-          <p className="flex items-center gap-2 px-3 py-2 text-sm text-error-foreground">
+          <p className="flex items-center gap-2 px-3 py-2 text-body text-error-foreground">
             <Icon icon={AlertCircleIcon} className="h-4 w-4 shrink-0" />
             Couldn&apos;t load files. Try again.
           </p>
         ) : isLoading ? (
-          <p className="flex items-center gap-2 px-3 py-2 text-sm text-foreground-tertiary">
+          <p className="flex items-center gap-2 px-3 py-2 text-body text-foreground-tertiary">
             <Icon icon={Loading03Icon} spin className="h-4 w-4 shrink-0" />
             Searching files…
           </p>
         ) : null}
         {showEmpty && (
-          <p className="px-3 py-2 text-sm text-foreground-tertiary">
+          <p className="px-3 py-2 text-body text-foreground-tertiary">
             {emptyMessage(showFiles, hasIntegrations)}
           </p>
         )}
@@ -181,7 +217,7 @@ function ConnectOption({ query }: { query: string }) {
           Connect an integration
         </span>
         {search && (
-          <span className="block truncate text-xs text-foreground-tertiary">
+          <span className="block truncate text-caption text-foreground-tertiary">
             Search services for “{search}”
           </span>
         )}
@@ -223,6 +259,27 @@ function IntegrationOption({
   );
 }
 
+function SkillOption({ skill }: { skill: SkillCommand }) {
+  return (
+    <span className="min-w-0 flex-1">
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="truncate font-medium">/{skill.name}</span>
+        {skill.argumentHint && (
+          <span className="shrink-0 text-caption text-foreground-subtle">
+            {skill.argumentHint}
+          </span>
+        )}
+      </span>
+      <span
+        className="block truncate text-caption text-foreground-tertiary"
+        title={skill.description}
+      >
+        {skill.description}
+      </span>
+    </span>
+  );
+}
+
 function FolderOption({
   folder,
   count,
@@ -258,7 +315,7 @@ function SectionHeading({ label }: { label: string }) {
   return (
     <p
       role="presentation"
-      className="px-3 pt-2 pb-1 text-left text-xs font-medium tracking-wide text-foreground-subtle uppercase"
+      className="px-3 pt-2 pb-1 text-left text-caption font-medium tracking-wide text-foreground-subtle uppercase"
     >
       {label}
     </p>
@@ -268,6 +325,7 @@ function SectionHeading({ label }: { label: string }) {
 function mentionOptionKey(option: MentionOption): string {
   if (option.kind === "file") return `file:${option.file.id}`;
   if (option.kind === "folder") return `folder:${option.folder.id}`;
+  if (option.kind === "skill") return `skill:${option.skill.name}`;
   if (option.kind === "connect") return "connect";
   return `integration:${option.integration.credentialId}`;
 }
