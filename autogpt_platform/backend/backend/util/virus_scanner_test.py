@@ -576,6 +576,9 @@ def test_the_shipped_clamd_takes_the_largest_upload_whole(compose_file):
         "PCREMaxFileSize",
     }
     assert all(int(mb) >= largest_upload_mb for mb in limits.values())
+    # MaxScanSize counts an archive and everything it unpacks, so an archive
+    # at the cap needs room for both.
+    assert int(limits["MaxScanSize"]) >= 2 * largest_upload_mb
 
 
 @pytest.mark.parametrize(

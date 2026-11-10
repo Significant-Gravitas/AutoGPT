@@ -299,7 +299,7 @@ LogFile /var/log/autogpt-services/clamd.log
 PidFile /run/clamav/clamd.pid
 StreamMaxLength 256M
 MaxFileSize 256M
-MaxScanSize 256M
+MaxScanSize 1024M
 PCREMaxFileSize 256M
 AlertExceedsMax yes
 MaxScanTime 300000
