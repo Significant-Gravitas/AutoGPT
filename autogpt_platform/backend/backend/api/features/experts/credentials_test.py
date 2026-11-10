@@ -61,6 +61,32 @@ def test_refs_read_title_from_the_live_credential():
     assert refs[0].title == "Work Notion"
 
 
+def test_refs_name_untitled_oauth_accounts_by_their_email():
+    """Google and most OAuth sign-ins store no title, so two Google accounts
+    listed by provider alone could not be told apart."""
+    accounts = [
+        OAuth2Credentials(
+            id=f"cred-{name}",
+            provider="google",
+            title=None,
+            username=f"{name}@example.com",
+            access_token=SecretStr("token"),
+            scopes=[],
+        )
+        for name in ("work", "personal")
+    ]
+
+    refs = _to_refs(
+        [_Grant("cred-work", "google"), _Grant("cred-personal", "google")],  # type: ignore[arg-type]
+        accounts,
+    )
+
+    assert [ref.title for ref in refs] == [
+        "work@example.com",
+        "personal@example.com",
+    ]
+
+
 def test_filter_drops_ungranted_credentials():
     granted = _api_key_credential("cred-granted", "linkedin")
     ungranted = _api_key_credential("cred-ungranted", "notion")

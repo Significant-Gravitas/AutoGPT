@@ -259,6 +259,42 @@ async def test_grant_candidates_must_match_the_requested_mcp_server(experts):
     assert [c["id"] for c in grant["credentials"]] == ["right-server"]
 
 
+async def test_untitled_grant_candidates_are_named_by_their_email(experts):
+    """A Google sign-in stores no title, so naming candidates by provider
+    listed every account as "google" in the grant dialog."""
+    from backend.copilot.tools.expert_scope import annotate_expert_grants
+    from backend.data.model import OAuth2Credentials
+
+    def google(id: str, email: str):
+        return OAuth2Credentials(
+            id=id,
+            provider="google",
+            title=None,
+            username=email,
+            access_token=SecretStr("token"),
+            scopes=[],
+        )
+
+    store = MagicMock()
+    store.get_all_creds = AsyncMock(
+        return_value=[
+            google("work", "work@example.com"),
+            google("personal", "personal@example.com"),
+        ]
+    )
+    missing = {"google_credentials": {"provider": "google", "types": ["oauth2"]}}
+    with patch(
+        f"{_PATH}.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    ):
+        annotated = await annotate_expert_grants("user-1", "expert-a", missing)
+    grant = annotated["google_credentials"]["expert_grant"]
+    assert [c["title"] for c in grant["credentials"]] == [
+        "work@example.com",
+        "personal@example.com",
+    ]
+
+
 async def test_agent_built_by_expert_settles_grants_before_install(experts):
     order: list[str] = []
     experts.settle_credential_seed.side_effect = lambda *_: order.append("settle")
