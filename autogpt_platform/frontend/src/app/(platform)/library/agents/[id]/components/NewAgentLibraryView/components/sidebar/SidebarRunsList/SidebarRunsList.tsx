@@ -125,7 +125,7 @@ export function SidebarRunsList({
             className="min-w-max px-4"
           >
             <TabsLineTrigger value="runs">
-              Tasks <span className="ml-3 inline-block">{runsCount}</span>
+              Runs <span className="ml-3 inline-block">{runsCount}</span>
             </TabsLineTrigger>
             <TabsLineTrigger value="scheduled">
               Scheduled{" "}

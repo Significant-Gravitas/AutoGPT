@@ -1,4 +1,5 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   getGetHomeDashboardMockHandler200,
   getGetHomeDashboardResponseMock200,
@@ -105,12 +106,12 @@ afterEach(() => {
 });
 
 describe("AppSidebar", () => {
-  it("marks chats, Team, Files and the Workspace group for the first-run walkthrough", () => {
+  it("marks chats (the Experts group), Team, Files and the Workspace group for the first-run walkthrough", () => {
     const { container } = renderSidebar();
     const target = (name: string) =>
       container.querySelector(`[data-tour-target="${name}"]`);
 
-    expect(target("chats")?.textContent).toContain("Recent chats");
+    expect(target("chats")?.textContent).toContain("Experts");
     expect(target("team")?.textContent).toContain("Team");
     expect(target("files")?.textContent).toContain("Files");
     expect(target("workspace")?.textContent).toContain("Workspace");
@@ -164,11 +165,11 @@ describe("AppSidebar", () => {
     expect(home.getAttribute("href")).toBe("/home");
   });
 
-  it("renders the workspace and recent chats group headers", () => {
+  it("renders the Workspace and Experts group headers", () => {
     useGetFlagMock.mockReturnValue(true);
     renderSidebar();
-    expect(screen.getByText("Workspace")).toBeDefined();
-    expect(screen.getByText("Recent chats")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Workspace" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Experts" })).toBeDefined();
   });
 
   it("always shows Team and Files when the flag provider returns false", () => {
@@ -185,9 +186,11 @@ describe("AppSidebar", () => {
     expect(marketplaceLink?.getAttribute("href")).toBe("/marketplace");
   });
 
-  it("shows the recent-chats empty state once sessions resolve", async () => {
+  it("offers a new chat with Otto once the expert roster resolves empty", async () => {
+    server.use(getListExpertIdentitiesMockHandler([]));
     renderSidebar();
-    expect(await screen.findByText(/no conversations yet/i)).toBeDefined();
+    const otto = await screen.findByRole("link", { name: /^Otto/ });
+    expect(otto.getAttribute("href")).toBe("/home");
   });
 
   it("does not nest the team roster under Team", async () => {

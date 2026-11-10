@@ -10,7 +10,7 @@ const meta: Meta<typeof LoadingSpinner> = {
     docs: {
       description: {
         component:
-          "Animated loading indicator using the Hugeicons Loading03 icon. Provide a `size` prop or custom classes to fit different contexts.",
+          "Animated loading indicator using the Hugeicons Loading03 icon. Provide a `size` prop, and a `tone` for its colour (it takes the colour around it without one).",
       },
     },
   },
@@ -53,6 +53,13 @@ export const Large: Story = {
 export const CustomColor: Story = {
   args: {
     className: "text-success",
+  },
+};
+
+export const Tone: Story = {
+  args: {
+    tone: "sidebar-soft",
+    className: undefined,
   },
 };
 

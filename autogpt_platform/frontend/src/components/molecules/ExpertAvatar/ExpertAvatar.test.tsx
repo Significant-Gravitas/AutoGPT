@@ -95,3 +95,31 @@ test("a managed identity keeps its opaque studio tile on a topic background", ()
   );
   expect(image.getAttribute("alt")).toBe("Mina, AI Expert");
 });
+
+describe("ExpertAvatar shape", () => {
+  test.each([
+    ["soft", "rounded-lg"],
+    ["tile", "rounded-2xl"],
+  ] as const)("%s rounds a managed image with %s", (shape, cls) => {
+    const { container } = render(
+      <ExpertAvatar name="Mina" avatarUrl={MINA} size={32} shape={shape} />,
+    );
+    const frame = container.querySelector('[data-slot="expert-avatar"]');
+    expect(frame?.className).toContain(cls);
+    expect(frame?.className).not.toContain("rounded-xl");
+  });
+
+  test("rounds a custom upload's frame", () => {
+    const { container } = render(
+      <ExpertAvatar
+        name="Maria"
+        avatarUrl="https://example.com/my-image.png"
+        size={32}
+        shape="soft"
+      />,
+    );
+    expect(
+      container.querySelector('[data-slot="expert-avatar"]')?.className,
+    ).toContain("rounded-lg");
+  });
+});

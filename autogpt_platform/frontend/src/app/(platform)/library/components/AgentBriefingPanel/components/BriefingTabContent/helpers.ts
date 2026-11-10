@@ -26,9 +26,9 @@ export function getAgentStatusLabel(tab: string, agent: LibraryAgent): string {
 const EMPTY_MESSAGES: Record<string, string> = {
   running: "No workflows running right now",
   attention: "No workflows that need attention",
-  completed: "No recently completed tasks",
+  completed: "No recently completed runs",
   listening: "No workflows listening for events",
-  scheduled: "No workflows with scheduled tasks",
+  scheduled: "No workflows with scheduled runs",
   idle: "No idle workflows",
 };
 

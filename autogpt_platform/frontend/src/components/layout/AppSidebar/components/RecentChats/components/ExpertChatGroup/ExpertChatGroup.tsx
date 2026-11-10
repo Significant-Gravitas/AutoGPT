@@ -76,13 +76,13 @@ export function ExpertChatGroup({
       {/* The trigger is itself a button, so the new-chat link sits beside it
           and floats over a slot the trigger reserves before the chevron —
           long labels then truncate against the link rather than under it. */}
-      <div className="group/expert-header relative mb-1 flex items-center rounded-md hover:bg-surface-hover">
+      <div className="group/expert-header relative mb-1 flex items-center rounded-lg hover:bg-shell-hover">
         <CollapsibleTrigger
           aria-label={`${label} chats`}
           // The size and weight reach ManagedExpertImage's fallback initials (a
           // span that sets its colour, not its size or weight), and the weight
           // ExpertAvatar's initial; every other piece of copy is a toned Text.
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-body leading-5 font-medium max-md:py-2 max-md:text-body-lg max-md:leading-6"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1 text-left text-body leading-5 font-medium max-md:py-2 max-md:text-body-lg max-md:leading-6"
         >
           {isAutopilot ? (
             <AutopilotAvatar
@@ -148,7 +148,7 @@ export function ExpertChatGroup({
                   isAutopilot ? Infinity : count + EXPERT_CHAT_PAGE_SIZE,
                 )
               }
-              className="mt-0.5 w-full rounded-md px-2 py-1 text-left text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-emphasis max-md:py-2.5"
+              className="mt-0.5 w-full rounded-lg px-2 py-1 text-left text-foreground-tertiary hover:bg-shell-hover hover:text-shell-foreground-strong max-md:py-2.5"
             >
               <Text
                 as="span"

@@ -18,6 +18,21 @@ export const COLOR_ROLE_GROUPS = [
     ],
   },
   {
+    name: "Shell",
+    description:
+      "The app sidebar and the page behind content (AffectUI's shell).",
+    roles: [
+      "shell",
+      "shell-hover",
+      "shell-foreground",
+      "shell-foreground-strong",
+      "shell-foreground-subtle",
+      "shell-border",
+      "shell-ring",
+      "page",
+    ],
+  },
+  {
     name: "Text",
     description: "Text and icon colours, strongest first.",
     roles: [
@@ -84,6 +99,30 @@ export const COLOR_ROLE_GROUPS = [
       "indigo",
       "pink",
       "pink-foreground",
+    ],
+  },
+  {
+    name: "Inbox",
+    description:
+      "The tasks inbox and board (AffectUI's clean palette): black at set opacities, swapped by palette-classic.",
+    roles: [
+      "surface-tray",
+      "surface-wash",
+      "border-hairline",
+      // oxlint-disable-next-line design-system/no-shadcn-alias-colours -- a role name in this list, not a border-colour class
+      "border-card",
+      "foreground-black",
+      "foreground-ink",
+      "foreground-text",
+      "foreground-quiet",
+      "foreground-faint",
+      "status-waiting",
+      "status-ok",
+      "status-ok-surface",
+      "focus-inbox",
+      "action-inbox",
+      "action-inbox-hover",
+      "action-inbox-foreground",
     ],
   },
   {

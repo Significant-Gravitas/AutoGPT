@@ -47,6 +47,22 @@ function declarationsOf(root: Root, selector: string) {
   return found;
 }
 
+// Each role's alpha in globals.css's `@theme inline`: `1`, a fixed opacity
+// (the inbox's black washes) or `var(--alpha-<role>)`, which a scoped palette
+// such as `palette-classic` can swap.
+function registeredAlphas() {
+  const theme = [
+    ...globalsCss.matchAll(/^@theme inline[^{]*\{([^}]*)\}/gm),
+  ].join("\n");
+  const alphas = new Map<string, string>();
+  for (const [, name, read, alpha] of theme.matchAll(
+    /--color-([a-z-]+):\s*rgb\(\s*var\(--color-([a-z-]+)\)\s*\/\s*(1|0?\.\d+|var\(--alpha-[a-z-]+\))\s*\);/g,
+  )) {
+    if (name === read) alphas.set(name, alpha);
+  }
+  return alphas;
+}
+
 function rootRoleBlocks() {
   return [...themeCss.matchAll(/^:root\s*\{([^}]*)\}/gm)].filter(([, body]) =>
     /--color-[a-z-]+:\s*\d+ \d+ \d+;/.test(body),
@@ -64,13 +80,12 @@ describe("colour roles", () => {
   });
 
   it("maps every role into Tailwind in globals.css's @theme inline", () => {
-    const theme = [
-      ...globalsCss.matchAll(/^@theme inline[^{]*\{([^}]*)\}/gm),
-    ].join("\n");
+    const alphas = registeredAlphas();
     for (const role of COLOR_ROLES) {
-      expect(theme, role).toContain(
-        `--color-${role}: rgb(var(--color-${role}) / 1);`,
-      );
+      const alpha = alphas.get(role);
+      expect(alpha, role).toBeDefined();
+      if (alpha?.startsWith("var("))
+        expect(alpha, role).toBe(`var(--alpha-${role})`);
     }
   });
 
@@ -95,10 +110,15 @@ describe("colour roles", () => {
       ...COLOR_ROLES.map((role) => `bg-${role}`),
       ...palette,
     ]);
+    // A long entry wraps over lines in globals.css; compare without spaces.
+    const squash = (value: string) => value.replace(/\s+/g, "");
+    const alphas = registeredAlphas();
     for (const role of COLOR_ROLES) {
-      expect(declarationsOf(root, `.bg-${role}`), role).toEqual({
-        "background-color": `rgb(var(--color-${role}) / 1)`,
-      });
+      const found = declarationsOf(root, `.bg-${role}`);
+      expect(Object.keys(found), role).toEqual(["background-color"]);
+      expect(squash(found["background-color"]), role).toBe(
+        squash(`rgb(var(--color-${role}) / ${alphas.get(role)})`),
+      );
     }
     for (const name of palette) {
       expect(declarationsOf(root, `.${name}`), name).toEqual({});

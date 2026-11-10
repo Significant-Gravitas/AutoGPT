@@ -86,7 +86,7 @@ export function LibraryAgentCard({
           <div className="relative flex items-center gap-3 pt-3 pr-4 pl-2">
             <StatusBadge status={statusInfo.status} />
             <Text variant="small" tone="subtle">
-              {statusInfo.totalRuns} tasks
+              {statusInfo.totalRuns} runs
             </Text>
           </div>
         </NextLink>
@@ -137,7 +137,7 @@ export function LibraryAgentCard({
               className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm leading-inherit font-medium whitespace-nowrap text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
             >
               <Icon icon={EyeIcon} size={14} className="shrink-0" />
-              See tasks
+              See runs
             </button>
             <ContextualActionButton
               status={statusInfo.status}

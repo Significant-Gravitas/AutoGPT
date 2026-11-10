@@ -67,9 +67,9 @@ test("setup modal surfaces regular graph inputs alongside the trigger config", a
   expect(await screen.findByText("Trigger Configuration")).toBeTruthy();
   expect(await screen.findByText("Events")).toBeTruthy();
 
-  // ...and the graph's regular inputs are now surfaced under "Task Inputs"
+  // ...and the graph's regular inputs are now surfaced under "Run Inputs"
   // (previously omitted for triggered agents).
-  expect(await screen.findByText("Task Inputs")).toBeTruthy();
+  expect(await screen.findByText("Run Inputs")).toBeTruthy();
   expect(await screen.findByText("Topic")).toBeTruthy();
 });
 

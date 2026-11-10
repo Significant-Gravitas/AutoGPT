@@ -36,6 +36,16 @@ describe("LoadingSpinner", () => {
     expect(classes).not.toContain("h-6");
   });
 
+  it("inherits the colour around it unless a tone is given", () => {
+    const { container: plain } = render(<LoadingSpinner />);
+    expect(svgOf(plain).getAttribute("class")).toContain("text-inherit");
+
+    const { container: toned } = render(<LoadingSpinner tone="sidebar-soft" />);
+    const classes = svgOf(toned).getAttribute("class") ?? "";
+    expect(classes).toContain("text-shell-foreground/90");
+    expect(classes).not.toContain("text-inherit");
+  });
+
   it("keeps the default glyph when no variant is given", () => {
     const { container } = render(<LoadingSpinner />);
 

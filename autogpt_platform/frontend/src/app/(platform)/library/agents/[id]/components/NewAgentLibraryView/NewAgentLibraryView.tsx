@@ -242,7 +242,7 @@ export function NewAgentLibraryView() {
           fixed column on the right, and both panels own their scroll on
           desktop (h-svh + minmax rows). Children's mb-3 would overflow the
           viewport-sized rows. */}
-      <div className="grid h-full w-full min-w-0 grid-cols-1 gap-4 px-4 pt-3 pb-3 lg:h-svh lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)] lg:[&>*]:mb-0">
+      <div className="grid h-full w-full min-w-0 grid-cols-1 gap-4 px-4 pt-3 pb-3 lg:h-(--inset-height) lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-[minmax(0,1fr)] lg:[&>*]:mb-0">
         <SectionWrap className="mb-3 block lg:order-2 lg:flex lg:min-h-0 lg:flex-col">
           <div
             className={cn(
@@ -263,7 +263,7 @@ export function NewAgentLibraryView() {
                     activeTab,
                   })}
                 >
-                  <Icon icon={PlusSignIcon} size={16} /> New workflow task
+                  <Icon icon={PlusSignIcon} size={16} /> New run
                 </Button>
               }
               agent={agent}
@@ -324,8 +324,8 @@ export function NewAgentLibraryView() {
             banner={renderMarketplaceUpdateBanner()}
           >
             <ErrorCard
-              context="workflow tasks"
-              hint="Use Try Again in the sidebar to reload your tasks."
+              context="workflow runs"
+              hint="Use Try Again in the sidebar to reload your runs."
             />
           </SelectedViewLayout>
         ) : sidebarLoading ? (

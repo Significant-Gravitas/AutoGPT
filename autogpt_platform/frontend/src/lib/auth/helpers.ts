@@ -12,6 +12,7 @@ export const PROTECTED_PAGES = [
   "/profile",
   "/library",
   "/settings",
+  "/tasks",
   "/team",
 ] as const;
 

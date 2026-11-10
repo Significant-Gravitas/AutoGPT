@@ -20,13 +20,63 @@
 
 :root {
   /* Surfaces */
-  --color-canvas: 246 247 248; /* #F6F7F8, the page behind everything */
+  --color-canvas: 252 252 252; /* #FCFCFC, AffectUI --panel, the page behind everything */
   --color-surface: 254 254 254; /* white #FEFEFE */
   --color-surface-muted: 249 249 250; /* zinc-50 #F9F9FA */
   --color-surface-hover: 239 239 240; /* zinc-100 #EFEFF0 */
   --color-surface-active: 218 218 220; /* zinc-200 #DADADC */
+  /* Inbox (AffectUI "clean" palette, used by /tasks). Black at set
+     opacities: each triplet below is read with the alpha in the theme. */
+  --color-surface-tray: 0 0 0; /* rgba(0,0,0,.03), the wash: hover and fills */
+  --color-surface-wash: 0 0 0; /* rgba(0,0,0,.03) */
+  --color-border-hairline: 0 0 0; /* rgba(0,0,0,.06), dividers */
+  --color-border-card: 0 0 0; /* rgba(0,0,0,.06) */
+  --color-foreground-black: 0 0 0; /* #000, strong */
+  --color-foreground-ink: 0 0 0; /* rgba(0,0,0,.88), titles */
+  --color-foreground-text: 0 0 0; /* rgba(0,0,0,.61), body copy */
+  --color-foreground-quiet: 0 0 0; /* rgba(0,0,0,.45), meta */
+  --color-foreground-faint: 0 0 0; /* rgba(0,0,0,.27), timestamps and hints */
+  --color-status-waiting: 232 162 12; /* #E8A20C, needs you / waiting */
+  --color-status-ok: 26 154 82; /* #1A9A52, done */
+  --color-status-ok-surface: 26 154 82; /* rgba(26,154,82,.08) */
+  --color-focus-inbox: 0 96 226; /* rgba(0,96,226,.35), focus ring */
+  --color-action-inbox: 0 0 0; /* rgba(0,0,0,.88) primary fill */
+  --color-action-inbox-hover: 0 0 0; /* rgba(0,0,0,.8) */
+  --color-action-inbox-foreground: 252 252 252; /* #FCFCFC */
+  /* Their opacities, so a palette can swap them (see palette-classic). */
+  --alpha-surface-tray: 0.03;
+  --alpha-border-hairline: 0.06;
+  --alpha-border-card: 0.06;
+  --alpha-foreground-ink: 0.88;
+  --alpha-foreground-text: 0.61;
+  --alpha-foreground-quiet: 0.45;
+  --alpha-foreground-faint: 0.27;
+  --inbox-radius-card: 10px;
+  --inbox-shadow-card:
+    0 0 0 0.5px rgb(0 0 0 / 0.06), 0 1px 1px -1px rgb(0 0 0 / 0.1),
+    0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --inbox-shadow-card-hover:
+    0 0 0 0.5px rgb(0 0 0 / 0.1), 0 1px 1px -1px rgb(0 0 0 / 0.12),
+    0 1px 3px 0 rgb(0 0 0 / 0.07);
+  /* The hairline edges and the pill shadow globals.css's @theme reads. */
+  --inbox-shadow-hairline-b: inset 0 -0.5px 0 rgb(0 0 0 / 0.06);
+  --inbox-shadow-hairline-l: inset 0.5px 0 0 rgb(0 0 0 / 0.06);
+  --inbox-shadow-pill:
+    0 0 0 0.5px rgb(0 0 0 / 0.06), 0 1px 1px -1px rgb(0 0 0 / 0.1),
+    0 1px 2px 0 rgb(0 0 0 / 0.05);
   --color-overlay: 120 113 108; /* stone-500 #78716C, used at /20 */
   --color-scrim: 20 20 20; /* black #141414, dialog backdrops and shadows */
+  /* App shell (AffectUI site shell, affectui.com assets/index-*.css :root):
+     the sidebar sits on the page grey and the content on a lighter panel
+     edged by a hairline. */
+  --color-shell: 245 245 245; /* #F5F5F5, AffectUI --bg, the sidebar */
+  --color-shell-hover: 233 233 233; /* #E9E9E9, AffectUI --hover-bg rgba(0,0,0,.05) over #F5F5F5: hover and current item */
+  --color-shell-foreground: 115 115 115; /* #737373, AffectUI --text-muted, nav text and icons */
+  --color-shell-foreground-strong: 10 10 10; /* #0A0A0A, AffectUI --text, hovered and current item */
+  --color-shell-foreground-subtle: 0 0 0; /* AffectUI --text-subtle #0006, black at /40: group labels */
+  --color-shell-border: 236 236 236; /* #ECECEC, AffectUI --panel-stroke, the sidebar edge */
+  --color-shell-ring: 161 161 166; /* #A1A1A6, AffectUI --focus-ring */
+  --color-page: 252 252 252; /* #FCFCFC, AffectUI --panel, the page behind content */
 
   /* Text */
   --color-foreground-base: 20 20 20; /* black #141414, the Text default */
@@ -148,4 +198,64 @@
   &.text-red-800 {
     color: rgb(131 37 37); /* red-800 #832525 */
   }
+}
+
+/* Tasks board and activity trail: the AffectUI clean look, as our tokens. */
+:root {
+  --board-lane: #f4f4f5;
+  --board-card: #ffffff;
+  --board-line: #e9e9ec;
+  --board-line-hover: #dcdce1;
+  --board-ink: #1c1c1f;
+  --board-ink-hover: #33333a;
+  --board-text: #55555c;
+  --board-muted: #8e8e96;
+  --board-faint: #b4b4bb;
+  --board-blue: #2f6bff;
+  --board-amber: #e8a20c;
+  --board-green: #22a05a;
+  --board-red: #e5484d;
+  --board-chip: rgba(16, 16, 24, 0.06);
+  --board-focus: rgba(23, 23, 23, 0.22);
+  --board-ease: cubic-bezier(0.32, 0.72, 0.24, 1);
+  --trail-tray: #f0f0f0;
+  --trail-card: #ffffff;
+  --trail-strong: #171717;
+  --trail-text: #6b6b6b;
+  --trail-muted: #8a8a8a;
+  --trail-faint: #b8b8b8;
+  --trail-line: #ececec;
+  --trail-hover: rgba(0, 0, 0, 0.03);
+  --trail-rail: #d6d6d6;
+  --trail-link: #82bcff;
+  --trail-head: #2f6bff;
+  --trail-failed-bg: #fdecea;
+  --trail-failed-ink: #c2331f;
+}
+
+/* AffectUI "classic" palette for the inbox tokens, scoped to an element and
+   its children: the tasks board. A #F0F0F0 tray (rounded-tray, p-1.5) holds
+   white cards; text is solid gray. Everything else stays "clean". */
+@utility palette-classic {
+  --color-surface-tray: 240 240 240; /* #F0F0F0 */
+  --alpha-surface-tray: 1;
+  --color-border-hairline: 240 240 240; /* #F0F0F0 */
+  --alpha-border-hairline: 1;
+  --color-border-card: 229 229 229; /* #E5E5E5 */
+  --alpha-border-card: 1;
+  --color-foreground-ink: 23 23 23; /* #171717 */
+  --alpha-foreground-ink: 1;
+  --color-foreground-text: 64 64 64; /* #404040 */
+  --alpha-foreground-text: 1;
+  --color-foreground-quiet: 143 143 143; /* #8F8F8F */
+  --alpha-foreground-quiet: 1;
+  --color-foreground-faint: 181 181 181; /* #B5B5B5 */
+  --alpha-foreground-faint: 1;
+  --color-status-waiting: 232 89 12; /* #E8590C */
+  --color-status-ok: 31 138 76; /* #1F8A4C */
+  --color-status-ok-surface: 31 138 76;
+  --inbox-radius-card: 16px;
+  --inbox-shadow-card: 0 0 0 1px rgb(229 229 229), 0 1px 2px rgb(0 0 0 / 0.06);
+  --inbox-shadow-card-hover:
+    0 0 0 1px rgb(214 214 214), 0 2px 6px rgb(0 0 0 / 0.08);
 }

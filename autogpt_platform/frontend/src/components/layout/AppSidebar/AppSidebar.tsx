@@ -13,14 +13,14 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/molecules/Sidebar/Sidebar";
-import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isEditableElement } from "@/lib/platform";
 import {
   AddTeamIcon,
+  CheckListIcon,
   FlowIcon,
   Folder01Icon,
   GridViewIcon,
-  Home10Icon,
+  Home01Icon,
   Store01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -28,14 +28,14 @@ import { tourTarget, type TourTarget } from "@/lib/tour-targets";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ComponentProps, ReactNode, useEffect } from "react";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { ComponentProps, ReactNode, Suspense, useEffect } from "react";
 import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
-import { ChatsNavSection } from "./components/ChatsNavSection/ChatsNavSection";
 import { CollapsibleNavGroup } from "./components/CollapsibleNavGroup/CollapsibleNavGroup";
+import { ExpertsNavSection } from "./components/ExpertsNavSection/ExpertsNavSection";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
-import { useNavItemClassName } from "./useNavItemClassName";
 
 type NavLink = {
   name: string;
@@ -60,6 +60,12 @@ const WORKSPACE_LINKS: NavLink[] = [
   },
 ];
 
+const TASKS_LINK: NavLink = {
+  name: "Tasks",
+  href: "/tasks",
+  icon: CheckListIcon,
+};
+
 function isLinkActive(pathname: string | null, href: string) {
   if (!pathname) return false;
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -75,7 +81,8 @@ function NavLinkLoader() {
   return (
     <LoadingSpinner
       size="small"
-      className="ml-auto !size-4 shrink-0 text-foreground-emphasis/90 group-data-[collapsible=icon]:!size-4.5"
+      tone="sidebar-soft"
+      className="ml-auto !size-4 shrink-0"
     />
   );
 }
@@ -87,31 +94,25 @@ function HomeIcon() {
     return (
       <LoadingSpinner
         size="small"
-        className="!size-4 shrink-0 text-foreground-emphasis/90 group-data-[collapsible=icon]:!size-4.5"
+        tone="sidebar-soft"
+        className="!size-4 shrink-0"
       />
     );
   }
 
-  return (
-    <Icon
-      icon={Home10Icon}
-      tone="emphasis-soft"
-      className="size-4 group-data-[collapsible=icon]:size-4.5"
-    />
-  );
+  return <Icon icon={Home01Icon} tone="inherit" className="size-4" />;
 }
 
 function HomeItem() {
   const pathname = usePathname();
-  const navItemClassName = useNavItemClassName();
 
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
         asChild
+        size="shell"
         tooltip="Home"
         isActive={isLinkActive(pathname, "/home")}
-        className={navItemClassName}
       >
         <Link href="/home">
           <HomeIcon />
@@ -129,22 +130,17 @@ interface NavItemProps {
 
 function NavItem({ link }: NavItemProps) {
   const pathname = usePathname();
-  const navItemClassName = useNavItemClassName();
 
   return (
     <SidebarMenuItem {...(link.tourTarget && tourTarget(link.tourTarget))}>
       <SidebarMenuButton
         asChild
+        size="shell"
         tooltip={link.name}
         isActive={isLinkActive(pathname, link.href)}
-        className={navItemClassName}
       >
         <Link href={link.href}>
-          <Icon
-            icon={link.icon}
-            tone="emphasis-soft"
-            className="size-4 group-data-[collapsible=icon]:size-4.5"
-          />
+          <Icon icon={link.icon} tone="inherit" className="size-4" />
           <span className="truncate">{link.name}</span>
           <NavLinkLoader />
         </Link>
@@ -161,7 +157,7 @@ function NavMenu({
   leading?: ReactNode;
 }) {
   return (
-    <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
+    <SidebarMenu>
       {leading}
       {links.map((link) => (
         <NavItem key={link.href} link={link} />
@@ -188,6 +184,7 @@ export function AppSidebar(props: Props) {
       icon: AddTeamIcon,
       tourTarget: "team" as const,
     },
+    ...(isLoggedIn ? [TASKS_LINK] : []),
     ...WORKSPACE_LINKS,
   ];
 
@@ -217,10 +214,10 @@ export function AppSidebar(props: Props) {
           // top of it delays the items and costs frames on phones.
           initial={isMobile ? false : "hidden"}
           animate="show"
-          className="flex shrink-0 flex-col gap-2"
+          className="flex shrink-0 flex-col"
         >
           <motion.div variants={itemVariants}>
-            <SidebarGroup className="mt-0 py-1">
+            <SidebarGroup size="shell" className="mt-0">
               <SidebarGroupContent>
                 <NavMenu links={mainLinks} leading={<HomeItem />} />
               </SidebarGroupContent>
@@ -235,7 +232,19 @@ export function AppSidebar(props: Props) {
             </motion.div>
           ) : null}
 
-          {isLoggedIn && <ChatsNavSection itemVariants={itemVariants} />}
+          {isLoggedIn && (
+            <motion.div
+              variants={itemVariants}
+              className="group-data-[collapsible=icon]:hidden"
+              {...tourTarget("chats")}
+            >
+              {/* ExpertsNavSection reads useSearchParams(), which Next.js
+                  requires to sit under a Suspense boundary. */}
+              <Suspense fallback={null}>
+                <ExpertsNavSection />
+              </Suspense>
+            </motion.div>
+          )}
         </motion.div>
 
         <SidebarUserActions />

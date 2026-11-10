@@ -43,8 +43,50 @@
   --color-surface-muted: rgb(var(--color-surface-muted) / 1);
   --color-surface-hover: rgb(var(--color-surface-hover) / 1);
   --color-surface-active: rgb(var(--color-surface-active) / 1);
+  --color-surface-tray: rgb(
+    var(--color-surface-tray) / var(--alpha-surface-tray)
+  );
+  --color-surface-wash: rgb(var(--color-surface-wash) / 0.03);
+  --color-border-hairline: rgb(
+    var(--color-border-hairline) / var(--alpha-border-hairline)
+  );
+  --color-border-card: rgb(var(--color-border-card) / var(--alpha-border-card));
+  --color-foreground-black: rgb(var(--color-foreground-black) / 1);
+  --color-foreground-ink: rgb(
+    var(--color-foreground-ink) / var(--alpha-foreground-ink)
+  );
+  --color-foreground-text: rgb(
+    var(--color-foreground-text) / var(--alpha-foreground-text)
+  );
+  --color-foreground-quiet: rgb(
+    var(--color-foreground-quiet) / var(--alpha-foreground-quiet)
+  );
+  --color-foreground-faint: rgb(
+    var(--color-foreground-faint) / var(--alpha-foreground-faint)
+  );
+  --color-status-waiting: rgb(var(--color-status-waiting) / 1);
+  --color-status-ok: rgb(var(--color-status-ok) / 1);
+  --color-status-ok-surface: rgb(var(--color-status-ok-surface) / 0.08);
+  --color-focus-inbox: rgb(var(--color-focus-inbox) / 0.35);
+  --color-action-inbox: rgb(var(--color-action-inbox) / 0.88);
+  --color-action-inbox-hover: rgb(var(--color-action-inbox-hover) / 0.8);
+  --color-action-inbox-foreground: rgb(
+    var(--color-action-inbox-foreground) / 1
+  );
   --color-overlay: rgb(var(--color-overlay) / 1);
   --color-scrim: rgb(var(--color-scrim) / 1);
+  --color-shell: rgb(var(--color-shell) / 1);
+  --color-shell-hover: rgb(var(--color-shell-hover) / 1);
+  --color-shell-foreground: rgb(var(--color-shell-foreground) / 1);
+  --color-shell-foreground-strong: rgb(
+    var(--color-shell-foreground-strong) / 1
+  );
+  --color-shell-foreground-subtle: rgb(
+    var(--color-shell-foreground-subtle) / 0.4
+  );
+  --color-shell-border: rgb(var(--color-shell-border) / 1);
+  --color-shell-ring: rgb(var(--color-shell-ring) / 1);
+  --color-page: rgb(var(--color-page) / 1);
   --color-foreground-base: rgb(var(--color-foreground-base) / 1);
   --color-foreground-strong: rgb(var(--color-foreground-strong) / 1);
   --color-foreground-emphasis: rgb(var(--color-foreground-emphasis) / 1);
@@ -185,6 +227,24 @@
   --radius-large: 1rem;
   --radius-xlarge: 1.25rem;
   --radius-2xlarge: 1.5rem;
+
+  /* The inbox and app shell (AffectUI): radii, card shadows and motion. The
+     values that carry a colour are in tokens/theme.css. */
+  --radius-card: var(--inbox-radius-card);
+  --radius-panel: 12px; /* affectUI app-shell --radius-panel, the inset content panel */
+  --radius-tray: 22px;
+  --radius-composer-tray: 18px; /* affectUI assistant-home composer tray */
+  --radius-control: 6px;
+  --shadow-card: var(--inbox-shadow-card);
+  --shadow-card-hover: var(--inbox-shadow-card-hover);
+  --shadow-hairline-b: var(--inbox-shadow-hairline-b);
+  --shadow-hairline-l: var(--inbox-shadow-hairline-l);
+  --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
+  --shadow-pill: var(--inbox-shadow-pill);
+  --animate-inbox-enter: inbox-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-inbox-empty: inbox-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) 300ms
+    both;
+  --animate-number-in: number-in 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* Base styles of the utilities below. */
@@ -247,6 +307,18 @@
   text-shadow:
     0 0 6px rgb(var(--color-info) / 0.45),
     0 0 18px rgb(var(--color-info) / 0.55);
+}
+
+/* The right edge of a row that scrolls sideways: what is past it blurs out
+   into the page, so it reads as "more this way". */
+@utility edge-blur-right {
+  backdrop-filter: blur(6px);
+  background: linear-gradient(
+    to right,
+    rgb(var(--color-page) / 0),
+    rgb(var(--color-page) / 0.85)
+  );
+  mask-image: linear-gradient(to right, transparent, black 60%);
 }
 
 /* The scrollbar utilities of tailwind-scrollbar 3.1.0 (MIT License,
@@ -651,6 +723,27 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   80%,
   100% {
     opacity: 0;
+  }
+}
+
+/* Inbox motion (/tasks): items rise in, rolling digits drop in. */
+@keyframes inbox-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes number-in {
+  from {
+    opacity: 0;
+    transform: translateY(-35%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-inbox-enter,
+  .animate-inbox-empty,
+  .animate-number-in {
+    animation: none;
   }
 }
 
