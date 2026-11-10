@@ -27142,6 +27142,7 @@
           "copilot-auto-mode",
           "copilot-stream-shadow",
           "copilot-stream-runtime",
+          "onboarding-step-order",
           "self-serve-account-deletion"
         ],
         "title": "FrontendFlag",
@@ -27162,6 +27163,7 @@
           "COPILOT_AUTO_MODE",
           "COPILOT_STREAM_SHADOW",
           "COPILOT_STREAM_RUNTIME",
+          "ONBOARDING_STEP_ORDER",
           "SELF_SERVE_ACCOUNT_DELETION"
         ]
       },
@@ -31482,6 +31484,7 @@
           "currentStep": {
             "type": "string",
             "enum": [
+              "access",
               "team",
               "autopilot",
               "role",
@@ -31497,6 +31500,7 @@
             "items": {
               "type": "string",
               "enum": [
+                "access",
                 "team",
                 "autopilot",
                 "role",

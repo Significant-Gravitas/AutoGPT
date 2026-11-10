@@ -55,7 +55,7 @@ describe("POST /api/auth/login/with-provider", () => {
       body: {
         provider: "google",
         callbackURL: "/auth/callback?next=/marketplace",
-        errorCallbackURL: "/login",
+        errorCallbackURL: "/login?next=%2Fmarketplace",
       },
       headers: request.headers,
     });
@@ -89,6 +89,58 @@ describe("POST /api/auth/login/with-provider", () => {
     expect(signInSocialMock.mock.calls[0][0].body.errorCallbackURL).toBe(
       "/login",
     );
+  });
+
+  it("tells /login that a refused sign-in was Microsoft's", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://login.example/x" });
+
+    await POST(makeProviderRequest({ provider: "microsoft" }));
+
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        provider: "microsoft",
+        errorCallbackURL: "/login?provider=microsoft",
+      }),
+      headers: expect.any(Headers),
+    });
+  });
+
+  it("keeps the deep link when it sends a refused Microsoft sign-in to /login", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://login.example/x" });
+
+    await POST(
+      makeProviderRequest({
+        provider: "microsoft",
+        redirectTo:
+          "http://localhost:3000/auth/callback?provider=microsoft&next=%2Flink%2Fabc",
+      }),
+    );
+
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        errorCallbackURL: "/login?provider=microsoft&next=%2Flink%2Fabc",
+      }),
+      headers: expect.any(Headers),
+    });
+  });
+
+  it("leaves out a next that would go off the site", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://login.example/x" });
+
+    await POST(
+      makeProviderRequest({
+        provider: "microsoft",
+        redirectTo:
+          "http://localhost:3000/auth/callback?provider=microsoft&next=https%3A%2F%2Fevil.example",
+      }),
+    );
+
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        errorCallbackURL: "/login?provider=microsoft",
+      }),
+      headers: expect.any(Headers),
+    });
   });
 
   it("returns 400 when no provider is supplied", async () => {
