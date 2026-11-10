@@ -26,7 +26,7 @@ from backend.data.model import APIKeyCredentials
 
 from . import cli_version, subscription
 from .env import build_sdk_env
-from .launch_env import SDK_MANAGED_NAMES, inherited, launch_options
+from .launch_env import SDK_MANAGED_NAMES, inherited, inherited_env, launch_options
 
 _HOST_LOGIN = "sk-ant-oat01-FAKE-host-login"
 # The deployment's own Anthropic key: the direct-Anthropic route's credential,
@@ -452,3 +452,16 @@ def _record_runs(
 
     monkeypatch.setattr(subprocess, "run", run)
     return envs
+
+
+def test_a_launch_keeps_the_account_name_the_keychain_login_is_stored_under(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("USER", "someone")
+    monkeypatch.setenv("LOGNAME", "someone")
+    monkeypatch.setenv("DATABASE_URL", "postgres://secret")
+
+    env = inherited_env()
+
+    assert env["USER"] == env["LOGNAME"] == "someone"
+    assert "DATABASE_URL" not in env
