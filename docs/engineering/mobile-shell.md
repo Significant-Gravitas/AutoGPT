@@ -16,7 +16,8 @@ not have the new auth endpoints until those changes ship.
 ## iOS
 
 Requires macOS, Xcode with the iOS SDK, and XcodeGen (`brew install xcodegen`).
-The app supports iOS 16 and later.
+The app supports iOS 17.4 and later, the first release whose authentication
+session accepts an HTTPS callback.
 
 ```sh
 cd autogpt_platform/mobile/ios
@@ -32,10 +33,15 @@ and a connected iPhone. Install an iOS simulator runtime through Xcode Settings
 if none exists. The generated Xcode project is ignored; edit `project.yml` and
 regenerate it. `Info.plist` comes from that specification too.
 
-For a test deployment, set the `AUTOGPT_ORIGIN` build setting to its HTTPS origin
-(for example `https://mobile-test.example.com`). On the command line, append
-`AUTOGPT_ORIGIN=https://mobile-test.example.com` to `xcodebuild`.
-Use an origin with no path or trailing slash. Do not add ATS exceptions.
+For a test deployment, set the `AUTOGPT_HOST` build setting to its host (for
+example `mobile-test.example.com`); the app loads `https://$(AUTOGPT_HOST)` and
+lists the host as an associated domain. On the command line, append
+`AUTOGPT_HOST=mobile-test.example.com` to `xcodebuild`. Do not add ATS exceptions.
+
+Sign-in needs a build signed by the Apple team named in that deployment's
+`MOBILE_APPLE_TEAM_ID` (see [App links](#app-links)): only an app associated
+with the host receives the callback. An unsigned simulator build loads the site
+but cannot finish signing in.
 
 ## Android
 
@@ -52,8 +58,11 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Use `-PautogptOrigin=https://mobile-test.example.com` to build against a test
 deployment. Cleartext HTTP is disabled. The debug package is
-`co.agpt.autogpt.dev`; the release package is `co.agpt.autogpt`. Both use the
-`autogpt` callback scheme, so install only one when testing sign-in.
+`co.agpt.autogpt.dev`; the release package is `co.agpt.autogpt`. Each verifies
+the sign-in link on its own, so a debug build finishes signing in only against a
+deployment that lists the debug key (see [App links](#app-links)). After
+installing, `adb shell pm verify-app-links --re-verify co.agpt.autogpt.dev` and
+`adb shell pm get-app-links co.agpt.autogpt.dev` show whether the link verified.
 
 The launcher icon copies `frontend/public/notification-icon-512.png` unchanged.
 
@@ -70,9 +79,14 @@ The launcher icon copies `frontend/public/notification-icon-512.png` unchanged.
 4. The server creates a random code, valid for 60 seconds, in Better Auth's
    existing verification table. Its identifier binds the code hash to the
    verifier challenge; its value references the source session.
-5. The fixed `autogpt://auth/callback` link carries the code and state. No
-   session token goes into a URL. The native app rejects wrong states, wrong
-   callback routes, duplicate parameters, and attempts older than 10 minutes.
+5. The server redirects to `https://<host>/auth/mobile/callback` with the code
+   and state. Only an app the site vouches for receives that link: Android
+   verifies it against `/.well-known/assetlinks.json`, and iOS matches the
+   authentication session's HTTPS callback against
+   `/.well-known/apple-app-site-association`. Without the app, the browser
+   shows a page sending the user back to it, which never shows the code. No
+   session token goes into a URL. The native app rejects wrong states, other
+   hosts or routes, duplicate parameters, and attempts older than 10 minutes.
 6. The app POSTs the code and verifier to `/api/auth/mobile/exchange`. The
    server atomically consumes the grant, checks the source session and ban
    status, and creates a separate app session. The webview receives HttpOnly
@@ -88,6 +102,28 @@ and bans. Production uses Better Auth's database-backed atomic consume.
 Keep request bodies and full auth callback URLs out of logs. Mobile grant
 records expire through the same mechanism as other Better Auth verifications.
 Do not enable a secondary verification cache without atomic `getAndDelete`.
+
+## App links
+
+The frontend serves the two association files from environment values, each
+checked against a strict pattern. While a value is unset or invalid its file is
+a 404, so the app never receives a code and mobile sign-in fails closed:
+
+| variable                           | file                                         | value                                                                   |
+| ---------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------- |
+| `MOBILE_APPLE_TEAM_ID`             | `/.well-known/apple-app-site-association`    | the Apple Developer Team ID; the file names `<TEAM_ID>.co.agpt.autogpt` |
+| `MOBILE_ANDROID_CERT_SHA256`       | `/.well-known/assetlinks.json`               | comma-separated SHA-256 fingerprints of the release signing key         |
+| `MOBILE_ANDROID_DEBUG_CERT_SHA256` | `/.well-known/assetlinks.json`, second entry | the same for `co.agpt.autogpt.dev`; test deployments only, never prod   |
+
+With Play App Signing, the release fingerprint is the app signing key's, from the
+Play Console's App integrity page, not the upload key's. A debug
+key's fingerprint comes from `keytool -list -v -keystore ~/.android/debug.keystore
+-alias androiddebugkey -storepass android`. Apple and Google fetch these files
+through their own caches, so a change can take a while to reach devices.
+
+On Android 12 and later an HTTPS link opens only in an app that verified it, or
+in the browser. Android 8 to 11 may still offer an unverified app claiming the
+same link in a chooser, if ours is not installed.
 
 ## Navigation and permissions
 
@@ -120,6 +156,8 @@ Against a test deployment, on both iOS and Android:
 - Grant and deny microphone permission; select and cancel file uploads.
 - Test an integration connection, an external link, and a downloadable result.
 - Verify that an unsolicited or replayed callback cannot sign the app in.
+- Confirm the callback opens the app, not the browser, and that with the app
+  removed the browser shows the "Continue in the AutoGPT app" page.
 
 Automated builds and handler tests do not replace these device checks.
 
@@ -137,6 +175,9 @@ Automated builds and handler tests do not replace these device checks.
 - Test on actual devices and current OS versions; confirm store SDK requirements.
 - Set the final bundle/package IDs and versions. Use AutoGPT's organization
   accounts and keep signing keys outside the repository.
+- From those accounts, supply the two [app link](#app-links) values production
+  needs before anyone can sign in: the Apple Team ID (`MOBILE_APPLE_TEAM_ID`) and
+  the release signing key's SHA-256 fingerprint (`MOBILE_ANDROID_CERT_SHA256`).
 
 For iOS, archive the Release scheme with the team's signing settings, then
 upload through Xcode Organizer for TestFlight and App Store review. For

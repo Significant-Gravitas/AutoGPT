@@ -13,15 +13,21 @@ class ShellPolicyTest {
         }
     }
 
-    @Test fun callbackRequiresMatchingStateAndExactRoute() {
+    @Test fun callbackRequiresMatchingStateAndOurHTTPSRoute() {
         val attempt = AuthAttempt()
         val code = "a".repeat(43)
-        val valid = "autogpt://auth/callback?code=$code&state=${attempt.state}"
-        assertEquals("code=$code&verifier=${attempt.verifier}", attempt.exchangeBody(valid))
-        assertNull(attempt.exchangeBody(valid + "&code=$code"))
-        assertNull(attempt.exchangeBody(valid.replace(attempt.state, "wrong")))
-        assertNull(attempt.exchangeBody(valid.replace("//auth", "//evil")))
-        assertNull(attempt.exchangeBody(valid.replace("autogpt:", "https:")))
-        assertNull(AuthAttempt(attempt.verifier, attempt.state, 0).exchangeBody(valid))
+        val valid = "https://platform.agpt.co/auth/mobile/callback?code=$code&state=${attempt.state}"
+        assertEquals("code=$code&verifier=${attempt.verifier}", attempt.exchangeBody(valid, policy))
+        listOf(
+            valid + "&code=$code",
+            valid.replace(attempt.state, "wrong"),
+            valid.replace("https://platform.agpt.co", "autogpt://auth"),
+            valid.replace("platform.agpt.co", "platform.agpt.co.evil.com"),
+            valid.replace("platform.agpt.co", "platform.agpt.co:444"),
+            valid.replace("https:", "http:"),
+            valid.replace("/auth/mobile/callback", "/auth/mobile/callback/x"),
+            "$valid#fragment",
+        ).forEach { assertNull(it, attempt.exchangeBody(it, policy)) }
+        assertNull(AuthAttempt(attempt.verifier, attempt.state, 0).exchangeBody(valid, policy))
     }
 }
