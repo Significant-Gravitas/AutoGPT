@@ -16,10 +16,16 @@ from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
     ExecutionTrigger,
+    GraphExecutionEntry,
     GraphExecutionWithNodes,
 )
 from backend.data.graph import GraphSettings, Node
 from backend.data.model import User
+from backend.executor.nesting import (
+    MAX_SUB_WORKFLOW_DEPTH,
+    nested_context,
+    sub_workflow_depth,
+)
 from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
     CRED_ERR_INVALID_TYPE_MISMATCH,
@@ -31,6 +37,7 @@ from backend.executor.utils import (
     is_credential_validation_error_message,
     validate_exec,
 )
+from backend.util.exceptions import GraphValidationError
 from backend.util.mock import MockObject
 
 
@@ -4085,11 +4092,12 @@ async def test_only_a_sub_graph_inherits_its_parents_chat(
 
 
 @pytest.mark.asyncio
-async def test_a_sub_graph_of_a_chat_turns_run_keeps_its_tree_and_its_chat(
+async def test_a_sub_graph_of_a_chat_turns_run_keeps_its_tree_chat_and_chain(
     mocker: MockerFixture,
 ):
-    """The sub-graph's own row needs the tree for its resume to keep it, and
-    its context needs the chat whose gate answers its pauses."""
+    """The sub-graph's own row needs the tree for its resume to keep it, its
+    context the chat whose gate answers its pauses, and its chain, by which the
+    executor counts it and bounds the sub-workflows below it."""
     from backend.blocks.autopilot import _spawner_envelope_from
     from backend.copilot.tree import TurnEnvelope
     from backend.data.execution import ExecutionContext
@@ -4102,7 +4110,11 @@ async def test_a_sub_graph_of_a_chat_turns_run_keeps_its_tree_and_its_chat(
         tools=frozenset({"run_sub_session"}),
         spend_session_id="chat-1",
     )
+    chain = [f"level-{i}" for i in range(MAX_SUB_WORKFLOW_DEPTH)]
+    # What AgentExecutorBlock passes on from a run of the chain's last workflow.
     parent = ExecutionContext(
+        graph_id=chain[-1],
+        ancestor_graph_ids=chain[:-1],
         approval_chat_id="chat-1",
         parent_execution_id="parent-exec",
         copilot_tree_id=tree.tree_id,
@@ -4124,6 +4136,17 @@ async def test_a_sub_graph_of_a_chat_turns_run_keeps_its_tree_and_its_chat(
     context = graph_exec.to_graph_execution_entry.call_args.kwargs["execution_context"]
     assert context.approval_chat_id == "chat-1"
     assert _spawner_envelope_from(context) == tree
+    assert context.ancestor_graph_ids == chain
+    queued = GraphExecutionEntry(
+        user_id="u",
+        graph_exec_id="exec-id",
+        graph_id="g",
+        graph_version=1,
+        execution_context=context,
+    )
+    assert sub_workflow_depth(queued) == MAX_SUB_WORKFLOW_DEPTH
+    with pytest.raises(GraphValidationError, match="nested at most"):
+        nested_context(context, "leaf")
 
 
 @pytest.mark.asyncio
