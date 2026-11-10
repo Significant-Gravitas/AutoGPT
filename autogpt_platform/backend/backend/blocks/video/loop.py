@@ -81,7 +81,7 @@ class LoopVideoBlock(Block):
         await run_edit(
             self,
             loop_video,
-            input_abspath,
+            [input_abspath],
             output_abspath,
             input_data.duration,
             input_data.n_loops,

@@ -7,6 +7,11 @@ request could end it. So the blocks hand each edit to `run_edit` in `_utils`,
 which runs this file in a child interpreter and kills it, with every ffmpeg it
 started, when the block's time is up or its run is stopped.
 
+Each edit takes the paths of its input files first, as a list. `run_edit`
+hands it copies of its own, made before the child starts, so an edit strips
+their chapters in place without touching a file another node reads, and a
+node storing the same input meanwhile can't change it under the edit.
+
 The child runs this file as a script, outside the blocks package, so it must
 import nothing from `backend`: importing the package loads every block.
 """
@@ -36,16 +41,18 @@ class EditRefused(ValueError):
     """An input an edit refuses, with the reason to show the user."""
 
 
-def check_input_video(video_path: str) -> None:
+def check_input_video(inputs: list[str]) -> None:
     """Strip chapters and check the frame size, without opening the video."""
+    (video_path,) = inputs
     strip_chapters_inplace(video_path)
     check_frame_size(video_path)
 
 
 def clip_video(
-    video_path: str, output_path: str, start_time: float, end_time: float
+    inputs: list[str], output_path: str, start_time: float, end_time: float
 ) -> float:
     """Extract a segment from the video and return its duration."""
+    (video_path,) = inputs
     clip = None
     subclip = None
     try:
@@ -65,12 +72,13 @@ def clip_video(
 
 
 def concat_videos(
-    video_paths: list[str],
+    inputs: list[str],
     output_path: str,
     transition: str,
     transition_duration: int,
 ) -> float:
     """Concatenate the videos and return the total duration."""
+    video_paths = inputs
     clips = []
     faded_clips = []
     final = None
@@ -134,12 +142,13 @@ def concat_videos(
 
 
 def loop_video(
-    video_path: str,
+    inputs: list[str],
     output_path: str,
     duration: float | None,
     n_loops: int | None,
 ) -> None:
     """Loop the video until a duration, or a number of times."""
+    (video_path,) = inputs
     strip_chapters_inplace(video_path)
     clip = None
     looped_clip = None
@@ -166,10 +175,9 @@ def loop_video(
             clip.close()
 
 
-def add_audio_to_video(
-    video_path: str, audio_path: str, output_path: str, volume: float
-) -> None:
+def add_audio_to_video(inputs: list[str], output_path: str, volume: float) -> None:
     """Attach the audio file to the video as its audio track."""
+    video_path, audio_path = inputs
     strip_chapters_inplace(video_path)
     strip_chapters_inplace(audio_path)
     video_clip = None
@@ -196,14 +204,14 @@ def add_audio_to_video(
 
 
 def add_narration_to_video(
-    video_path: str,
-    audio_path: str,
+    inputs: list[str],
     output_path: str,
     mix_mode: str,
     narration_volume: float,
     original_volume: float,
 ) -> None:
     """Add the narration audio to the video."""
+    video_path, audio_path = inputs
     video = None
     final = None
     narration_original = None

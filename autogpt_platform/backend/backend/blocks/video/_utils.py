@@ -8,12 +8,13 @@ import json
 import logging
 import os
 import re
+import shutil
 import signal
 import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, Concatenate, ParamSpec, TypeVar
 
 import psutil
 
@@ -60,9 +61,14 @@ _UUID_PREFIX_RE = re.compile(
 
 
 async def run_edit(
-    block: AnyBlockSchema, edit: Callable[P, T], *args: P.args, **kwargs: P.kwargs
+    block: AnyBlockSchema,
+    edit: Callable[Concatenate[list[str], P], T],
+    inputs: list[str],
+    *args: P.args,
+    **kwargs: P.kwargs,
 ) -> T:
-    """Do one of `_render`'s edits in a child process and return its result.
+    """Do one of `_render`'s edits, on copies of its `inputs`, in a child
+    process, and return its result.
 
     The event loop stays free while the edit runs, so the executor's time
     limit on the block and a stop request can end it; either kills the child
@@ -78,48 +84,22 @@ async def run_edit(
     with tempfile.TemporaryDirectory(
         prefix="video-edit-", ignore_cleanup_errors=True
     ) as scratch:
-        answer_path = os.path.join(scratch, "answer.json")
-        stderr_path = os.path.join(scratch, "stderr.log")
         request = {
             "edit": edit.__name__,
-            "args": args,
+            "args": [_copy_inputs(inputs, scratch), *args],
             "kwargs": kwargs,
-            "answer_path": answer_path,
+            "answer_path": os.path.join(scratch, "answer.json"),
         }
-        with open(stderr_path, "wb") as stderr:
-            child = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-I",
-                _EDIT_SCRIPT,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=stderr,
-                # moviepy writes its temporary audio track to the working directory
-                cwd=scratch,
-                # The ffmpeg processes it starts join its group, so die with it
-                start_new_session=True,
-            )
-            try:
-                await asyncio.wait_for(
-                    child.communicate(json.dumps(request).encode()), timeout
-                )
-            except TimeoutError as e:
-                await _kill(child)
-                raise TimeoutError(
-                    f"Video editing did not finish within {timeout} seconds"
-                ) from e
-            except BaseException:
-                await _kill(child)
-                raise
-        answer = _read_answer(answer_path)
+        exit_code = await _run_child(request, scratch, timeout)
+        answer = _read_answer(request["answer_path"])
         if answer is None:
-            stderr_tail = Path(stderr_path).read_text(errors="replace")[-_STDERR_TAIL:]
+            stderr = Path(scratch, "stderr.log").read_text(errors="replace")
             logger.warning(
-                f"Video edit {edit.__name__} ended with exit code "
-                f"{child.returncode} and no answer: {stderr_tail}"
+                f"Video edit {edit.__name__} ended with exit code {exit_code} "
+                f"and no answer: {stderr[-_STDERR_TAIL:]}"
             )
             raise RuntimeError(
-                f"Video editing stopped unexpectedly (exit code {child.returncode})"
+                f"Video editing stopped unexpectedly (exit code {exit_code})"
             )
     if "refused" in answer:
         raise BlockExecutionError(
@@ -128,6 +108,50 @@ async def run_edit(
     if "error" in answer:
         raise RuntimeError(answer["error"])
     return answer["value"]
+
+
+def _copy_inputs(inputs: list[str], scratch: str) -> list[str]:
+    """Copy the edit's input files into its scratch directory, here on the
+    event loop, so another node storing the same input can't change one
+    mid-copy or later under the edit, and the edit, which strips chapters in
+    place, changes no file another node reads."""
+    return [
+        shutil.copyfile(path, os.path.join(scratch, f"{i}-{os.path.basename(path)}"))
+        for i, path in enumerate(inputs)
+    ]
+
+
+async def _run_child(
+    request: dict[str, Any], scratch: str, timeout: float | None
+) -> int | None:
+    """Run the edit script on `request` and return its exit code, killing it
+    on a cancel or once `timeout` passes."""
+    with open(os.path.join(scratch, "stderr.log"), "wb") as stderr:
+        child = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-I",
+            _EDIT_SCRIPT,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=stderr,
+            # moviepy writes its temporary audio track to the working directory
+            cwd=scratch,
+            # The ffmpeg processes it starts join its group, so die with it
+            start_new_session=True,
+        )
+        try:
+            await asyncio.wait_for(
+                child.communicate(json.dumps(request).encode()), timeout
+            )
+        except TimeoutError as e:
+            await _kill(child)
+            raise TimeoutError(
+                f"Video editing did not finish within {timeout} seconds"
+            ) from e
+        except BaseException:
+            await _kill(child)
+            raise
+    return child.returncode
 
 
 async def _kill(child: asyncio.subprocess.Process) -> None:

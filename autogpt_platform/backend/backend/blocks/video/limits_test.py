@@ -214,11 +214,11 @@ async def test_narration_refuses_oversized_frame_before_tts(video_dir, exec_ctx,
 @pytest.mark.parametrize(
     "edit, make_args",
     [
-        (_render.clip_video, lambda small, video, out: (video, out, 0.0, 0.04)),
-        (_render.loop_video, lambda small, video, out: (video, out, None, 2)),
+        (_render.clip_video, lambda small, video, out: ([video], out, 0.0, 0.04)),
+        (_render.loop_video, lambda small, video, out: ([video], out, None, 2)),
         (
             _render.add_audio_to_video,
-            lambda small, video, out: (video, small, out, 1.0),
+            lambda small, video, out: ([video, small], out, 1.0),
         ),
         (
             _render.concat_videos,
@@ -226,9 +226,9 @@ async def test_narration_refuses_oversized_frame_before_tts(video_dir, exec_ctx,
         ),
         (
             _render.add_narration_to_video,
-            lambda small, video, out: (video, small, out, "ducking", 1.0, 0.3),
+            lambda small, video, out: ([video, small], out, "ducking", 1.0, 0.3),
         ),
-        (_render.check_input_video, lambda small, video, out: (video,)),
+        (_render.check_input_video, lambda small, video, out: ([video],)),
     ],
     ids=["clip", "loop", "add_audio", "concat", "narration", "check"],
 )

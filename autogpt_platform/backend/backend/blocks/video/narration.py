@@ -124,7 +124,7 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
 
     async def _check_input_video(self, video_abspath: str) -> None:
         """Strip chapters and check the frame size, before any narration is paid for."""
-        await run_edit(self, check_input_video, video_abspath)
+        await run_edit(self, check_input_video, [video_abspath])
 
     def _generate_narration_audio(
         self, api_key: str, script: str, voice_id: str, model_id: str
@@ -152,8 +152,7 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
         await run_edit(
             self,
             add_narration_to_video,
-            video_abspath,
-            audio_abspath,
+            [video_abspath, audio_abspath],
             output_abspath,
             mix_mode,
             narration_volume,

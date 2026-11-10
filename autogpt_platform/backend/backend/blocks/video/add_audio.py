@@ -79,8 +79,7 @@ class AddAudioToVideoBlock(Block):
         await run_edit(
             self,
             add_audio_to_video,
-            video_abspath,
-            audio_abspath,
+            [video_abspath, audio_abspath],
             output_abspath,
             input_data.volume,
         )

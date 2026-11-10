@@ -334,6 +334,9 @@ def execute_graph(
 
 T = TypeVar("T")
 
+# How often a worker held for a stopped node that hasn't ended says so again
+STOPPED_NODE_WARNING_SECONDS = 600
+
 
 async def _finish_despite_cancel(work: Awaitable[T]) -> T:
     """Await ``work`` to its end even if the caller is cancelled meanwhile,
@@ -1043,12 +1046,19 @@ class ExecutionProcessor:
         logger.warning(
             f"[GraphExecutor] Holding this worker until stopped nodes {running} end"
         )
-        started = time.monotonic()
+        started = warned = time.monotonic()
         while not all(
             progress.has_ended() for progress in self.running_node_execution.values()
         ):
             cluster_lock.refresh()
             time.sleep(1)
+            # A block that never returns keeps its worker for good: keep saying so
+            if time.monotonic() - warned >= STOPPED_NODE_WARNING_SECONDS:
+                warned = time.monotonic()
+                logger.warning(
+                    f"[GraphExecutor] Still holding this worker for stopped nodes "
+                    f"{running}, {warned - started:.0f}s on"
+                )
         logger.info(
             f"[GraphExecutor] Stopped nodes {running} ended after "
             f"{time.monotonic() - started:.0f}s; the worker is free"

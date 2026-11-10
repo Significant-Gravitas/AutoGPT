@@ -83,7 +83,7 @@ async def test_an_edit_gets_its_arguments_and_returns_its_result(
     duration = await run_edit(
         VideoClipBlock(),
         clip_video,
-        str(one_second_clip),
+        [str(one_second_clip)],
         str(output),
         start_time=0.0,
         end_time=0.5,
@@ -91,6 +91,37 @@ async def test_an_edit_gets_its_arguments_and_returns_its_result(
 
     assert duration == pytest.approx(0.5)
     assert output.stat().st_size > 0
+
+
+async def test_an_edit_works_on_its_own_copy_of_its_inputs(one_second_clip: Path):
+    # Two nodes of a run that take the same video store it at the same path,
+    # and the second writes it over again while the first one's edit runs
+    original = one_second_clip.read_bytes()
+    edit = asyncio.ensure_future(
+        run_edit(
+            VideoClipBlock(),
+            clip_video,
+            [str(one_second_clip)],
+            str(one_second_clip.with_name("first_half.mp4")),
+            0.0,
+            0.5,
+        )
+    )
+    await asyncio.sleep(0)
+    one_second_clip.write_bytes(b"")
+
+    assert await edit == pytest.approx(0.5)
+    one_second_clip.write_bytes(original)
+    await run_edit(
+        VideoClipBlock(),
+        clip_video,
+        [str(one_second_clip)],
+        str(one_second_clip.with_name("again.mp4")),
+        0.0,
+        0.5,
+    )
+    # Its chapters are stripped from its copy, not from the stored file
+    assert one_second_clip.read_bytes() == original
 
 
 def test_an_edit_runs_from_an_event_loop_on_another_thread(one_second_clip: Path):
@@ -103,7 +134,7 @@ def test_an_edit_runs_from_an_event_loop_on_another_thread(one_second_clip: Path
         edit = run_edit(
             VideoClipBlock(),
             clip_video,
-            str(one_second_clip),
+            [str(one_second_clip)],
             str(one_second_clip.with_name("first_half.mp4")),
             0.0,
             0.5,

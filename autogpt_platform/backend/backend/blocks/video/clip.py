@@ -67,7 +67,7 @@ class VideoClipBlock(VideoMediaStorage, Block):
     ) -> float:
         """Extract a clip from a video. Extracted for testability."""
         return await run_edit(
-            self, clip_video, video_abspath, output_abspath, start_time, end_time
+            self, clip_video, [video_abspath], output_abspath, start_time, end_time
         )
 
     async def run(
