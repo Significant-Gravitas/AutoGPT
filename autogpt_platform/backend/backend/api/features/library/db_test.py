@@ -2743,6 +2743,48 @@ async def test_another_organizations_entry_on_the_version_is_not_replaced(
     library_rows.update.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_a_refused_version_leaves_the_other_fields_unwritten(mocker):
+    """A PATCH that names a bad graph_version answers 404 and must leave the
+    entry unchanged. The other fields in the same request used to be written
+    before the version was validated, so a caller that got the error — and
+    reasonably assumed nothing changed — had an entry that was, e.g., already
+    archived and gone from the listings."""
+    rows = MagicMock()
+    rows.find_first_or_raise = AsyncMock(return_value=MagicMock(id="entry-a"))
+    rows.find_many = AsyncMock(return_value=[])
+    rows.delete_many = AsyncMock()
+    rows.update = AsyncMock(return_value=MagicMock())
+    rows.update_many = AsyncMock()
+    mocker.patch("prisma.models.LibraryAgent.prisma", return_value=rows)
+    # The requested version doesn't exist.
+    mocker.patch(
+        "prisma.models.AgentGraph.prisma",
+        return_value=MagicMock(find_unique=AsyncMock(return_value=None)),
+    )
+
+    @asynccontextmanager
+    async def transaction():
+        yield None
+
+    mocker.patch("backend.api.features.library.db.transaction", transaction)
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new=AsyncMock(return_value=MagicMock(graph_id="graph-1")),
+    )
+
+    with pytest.raises(NotFoundError):
+        await db.update_library_agent(
+            "entry-a",
+            "test-user",
+            is_favorite=True,
+            graph_version=99,
+        )
+
+    rows.update_many.assert_not_awaited()
+    rows.update.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "organization_id, organization_ids",
     [

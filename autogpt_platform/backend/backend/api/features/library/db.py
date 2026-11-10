@@ -751,6 +751,7 @@ async def update_agent_version_in_library(
     *,
     library_agent_id: Optional[str] = None,
     organization_ids: Optional[frozenset[str | None]] = None,
+    extra_fields: Optional[prisma.types.LibraryAgentUpdateManyMutationInput] = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the agent version in the library for any agent owned by the user.
@@ -765,6 +766,9 @@ async def update_agent_version_in_library(
             organizations (None for untagged ones), so that a call acting in
             one organization moves only its own entry and removes none of
             another's, and onto none of the user's own versions outside them.
+        extra_fields: Other LibraryAgent column updates to apply to the entry
+            in the same transaction, so a refused version or conflict leaves
+            the entry wholly unchanged.
 
     Raises:
         DatabaseError: If there's an error with the update.
@@ -822,6 +826,14 @@ async def update_agent_version_in_library(
         if conflicts:
             await prisma.models.LibraryAgent.prisma(tx).delete_many(
                 where={"id": {"in": [conflict.id for conflict in conflicts]}}
+            )
+
+        if extra_fields:
+            # Applied here rather than by the caller so they can't survive a
+            # version change that ends up refused.
+            await prisma.models.LibraryAgent.prisma(tx).update_many(
+                where={"id": library_agent.id, "userId": user_id},
+                data=extra_fields,
             )
 
         lib = await prisma.models.LibraryAgent.prisma(tx).update(
@@ -1134,21 +1146,18 @@ async def update_library_agent(
 
     # If graph_version is provided, update to that specific version
     if graph_version is not None:
-        # Apply any other field updates first so they aren't lost
-        if update_fields:
-            await prisma.models.LibraryAgent.prisma().update_many(
-                where={"id": library_agent_id, "userId": user_id},
-                data=update_fields,
-            )
         # Get the current agent to find its graph_id
         agent = await get_library_agent(id=library_agent_id, user_id=user_id)
-        # Update to the specified version using existing function
+        # Update to the specified version using existing function. The other
+        # field updates ride along in the same transaction, so a refused
+        # version leaves the entry unchanged instead of partially updated.
         return await update_agent_version_in_library(
             user_id=user_id,
             agent_graph_id=agent.graph_id,
             agent_graph_version=graph_version,
             library_agent_id=library_agent_id,
             organization_ids=organization_ids,
+            extra_fields=update_fields or None,
         )
 
     # Otherwise, just update the simple fields
