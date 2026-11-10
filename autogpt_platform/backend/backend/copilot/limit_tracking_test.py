@@ -1,6 +1,7 @@
 """``chat_blocked``: what it carries, and that sending it never gets in the way."""
 
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 import pytest
 
@@ -92,14 +93,14 @@ def test_a_refusal_that_cant_be_read_is_dropped_quietly(chat_blocked_events):
     # Reading the refusal is guarded too: an exception or pause without the
     # attributes the helpers read must not turn a refusal into an error.
     odd = object()
-    track_limit_exceeded("user-1", odd, surface="chat")  # type: ignore[arg-type]
+    track_limit_exceeded("user-1", cast(RateLimitExceeded, odd), surface="chat")
     track_turn_cap(
-        "user-1", odd, surface="chat", outcome="refused"  # type: ignore[arg-type]
+        "user-1", cast(InflightCapExceeded, odd), surface="chat", outcome="refused"
     )
     track_turn_refusal(
-        "user-1", odd, surface="chat", outcome="queued"  # type: ignore[arg-type]
+        "user-1", cast(TurnRefusal, odd), surface="chat", outcome="queued"
     )
-    track_turn_pause("user-1", odd, surface="chat")  # type: ignore[arg-type]
+    track_turn_pause("user-1", cast(TurnPause, odd), surface="chat")
     assert chat_blocked_events == []
 
 

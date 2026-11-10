@@ -1162,6 +1162,7 @@ class CoPilotProcessor:
                         if scheduled_watch is not None:
                             await scheduled_watch.record(error_msg)
                     finally:
+                        set_turn_surface(None)
                         await cost_context_stack.aclose()
                         # A browser turn leaves a Chromium tree on this pod
                         # that nothing else ever stops; state is already
