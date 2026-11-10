@@ -271,8 +271,10 @@ async def run_sandboxed(
     return stdout, explain_proc_mount_failure(stderr), exit_code, timed_out
 
 
-# bwrap's wording when the kernel refuses the sandbox its own procfs.
-PROC_MOUNT_REFUSED = "Can't mount proc on /proc"
+# bwrap's wording when the kernel refuses the sandbox its own procfs. Its
+# format string is "Can't mount proc on %s", and the destination it fills in
+# is newroot-relative in some versions, so match what comes before it.
+PROC_MOUNT_REFUSED = "Can't mount proc on "
 
 _PROC_MOUNT_HELP = (
     "The sandbox could not mount its own /proc, which its PID namespace "
