@@ -26,6 +26,12 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AutoGPTOrigin: $(AUTOGPT_ORIGIN)
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
         UILaunchScreen: {}
         NSMicrophoneUsageDescription: AutoGPT uses the microphone when you record a voice message.
         NSCameraUsageDescription: AutoGPT uses the camera when you attach a photo.
