@@ -328,7 +328,7 @@ def system_providers() -> set[str]:
     from backend.sdk.registry import AutoRegistry
 
     return SYSTEM_PROVIDERS | {
-        str(cred.provider)
+        str(getattr(cred.provider, "value", cred.provider))
         for cred in AutoRegistry.get_all_credentials()
         if is_system_credential(cred.id)
     }

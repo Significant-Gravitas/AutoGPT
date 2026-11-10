@@ -11,7 +11,6 @@ import { useState } from "react";
 import { AyrshareConnectButton } from "../AyrshareConnectButton/AyrshareConnectButton";
 import { CredentialRow } from "../CredentialRow/CredentialRow";
 import { CredentialsSelect } from "../CredentialsSelect/CredentialsSelect";
-import { isSystemCredential } from "../../helpers";
 
 type Credential = {
   id: string;
@@ -169,7 +168,7 @@ export function CredentialsFlatView({
                     // The platform's own keys can't be deleted, only replaced.
                     onDeleteCredential &&
                     !credential.is_managed &&
-                    !isSystemCredential(credential)
+                    !credential.is_system
                       ? () =>
                           onDeleteCredential({
                             id: credential.id,

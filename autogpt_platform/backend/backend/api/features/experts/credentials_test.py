@@ -61,6 +61,21 @@ def test_refs_read_title_from_the_live_credential():
     assert refs[0].title == "Work Notion"
 
 
+def test_refs_skip_a_leftover_grant_of_a_platform_key():
+    """Seeding once stored the platform's Firecrawl key like a user's account.
+
+    Every expert may use it without a grant, so listing it would only show the
+    platform's key as one of the user's accounts (SECRT-3207).
+    """
+    platform_key = _api_key_credential("firecrawl-default", "firecrawl")
+    own = _api_key_credential("cred-own", "firecrawl")
+    grants = [_Grant("firecrawl-default", "firecrawl"), _Grant("cred-own", "firecrawl")]
+
+    refs = _to_refs(grants, [platform_key, own])  # type: ignore[arg-type]
+
+    assert [ref.credential_id for ref in refs] == ["cred-own"]
+
+
 def test_filter_drops_ungranted_credentials():
     granted = _api_key_credential("cred-granted", "linkedin")
     ungranted = _api_key_credential("cred-ungranted", "notion")

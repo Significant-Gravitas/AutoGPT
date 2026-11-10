@@ -198,7 +198,11 @@ def _to_refs(
     refs: list[ExpertCredentialRef] = []
     for grant in grants:
         credential = by_id.get(grant.credentialId)
-        if credential is None:
+        # A grant of one of the platform's own keys is left over from before
+        # SDK keys counted as the platform's (seeding stored them like a user's
+        # account). Every expert may use those keys anyway, so the row would
+        # only list the platform's key as one of the user's accounts.
+        if credential is None or is_system_credential(credential.id):
             continue
         identity = service_for_credential(credential)
         refs.append(
