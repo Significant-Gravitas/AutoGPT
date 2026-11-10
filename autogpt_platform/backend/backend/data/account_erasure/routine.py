@@ -58,10 +58,25 @@ from backend.data.account_erasure.third_parties import (
     forget_mailerlite_subscriber,
 )
 from backend.data.account_erasure.work import stop_work
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 Step = Callable[..., Awaitable[StepReport]]
+
+# The outside service each step needs. A step skips only when its service is
+# not configured; an apply then stops there, before the rows go (they hold the
+# address MailerLite needs and the expert IDs that name the memory graphs), so
+# the request stays open until someone makes sure that data is gone. A stack
+# that doesn't use a service says so in `account_erasure_unused_services`.
+_SERVICE_OF_STEP = {
+    "org_subscriptions": "stripe",
+    "files": "buckets",
+    "memory": "falkordb",
+    "posthog": "posthog",
+    "mailerlite": "mailerlite",
+}
+
 KeepAlive = Callable[[], Awaitable[bool]]
 
 # Steps whose exception messages can't quote the account's address, so their
@@ -161,6 +176,8 @@ async def _run(
             )
             break
         result = await _run_step(name, step, subject, dry_run)
+        if not dry_run:
+            result = _stop_on_a_missing_service(result)
         report.steps.append(result)
         if result.status == StepStatus.FAILED and not dry_run:
             break
@@ -185,6 +202,25 @@ async def _claim(subject: Subject, report: ErasureReport) -> bool:
     )
     logger.info(f"Account erasure of {subject.user_id}: not claimed")
     return False
+
+
+def _stop_on_a_missing_service(result: StepReport) -> StepReport:
+    """A step skipped for want of its settings fails the apply, so the request
+    is never marked done with that service's data left behind, unless the
+    stack doesn't use the service."""
+    service = _SERVICE_OF_STEP.get(result.name)
+    if result.status != StepStatus.SKIPPED or service is None:
+        return result
+    if service in Settings().config.account_erasure_unused_services:
+        return result
+    return result.model_copy(
+        update={
+            "status": StepStatus.FAILED,
+            "note": f"{result.note}. Set it up and run again, or delete this "
+            f'data by hand and run with "{service}" in '
+            "ACCOUNT_ERASURE_UNUSED_SERVICES.",
+        }
+    )
 
 
 def _erasure_steps() -> list[tuple[str, Step]]:

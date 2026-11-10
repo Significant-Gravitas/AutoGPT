@@ -390,6 +390,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=5 * 60,
         description="Interval in seconds between account erasure sweeps.",
     )
+    account_erasure_unused_services: List[str] = Field(
+        default=[],
+        description=(
+            "Outside services this stack does not use, so the account erasure "
+            "may skip their step: any of buckets, falkordb, posthog, mailerlite, "
+            "stripe. A step skipped for a service not listed stops the erasure "
+            "before the account's rows go, and the request stays open."
+        ),
+    )
 
     # Auth identity <-> platform User invariant monitoring
     auth_identity_orphan_sweep_enabled: bool = Field(

@@ -96,6 +96,19 @@ def lease(monkeypatch):
 
 
 @pytest.fixture
+def unused_services(monkeypatch):
+    services: list[str] = []
+    monkeypatch.setattr(
+        routine,
+        "Settings",
+        lambda: SimpleNamespace(
+            config=SimpleNamespace(account_erasure_unused_services=services)
+        ),
+    )
+    return services
+
+
+@pytest.fixture
 def account(monkeypatch):
     subject = Subject(
         user_id=USER_ID,
@@ -273,14 +286,51 @@ async def test_a_malformed_id_runs_no_step(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_a_skipped_step_does_not_stop_the_apply(monkeypatch, account):
-    """A setting this stack lacks: logged by the sweep, not a stop."""
+@pytest.mark.parametrize(
+    "step", ["org_subscriptions", "files", "memory", "posthog", "mailerlite"]
+)
+async def test_a_step_skipped_for_want_of_its_service_stops_before_the_rows(
+    monkeypatch, account, unused_services, step
+):
+    """The request stays open, and the rows stay for a rerun once the setting
+    is in: they hold the address MailerLite needs and the expert IDs that name
+    the memory graphs."""
+    steps = Steps(monkeypatch, skipping=step)
+
+    report = await routine.erase_account(USER_ID, dry_run=False)
+
+    ran = [name for name, _ in steps.calls]
+    assert ran[-1] == step
+    assert "database" not in ran and "request" not in ran
+    assert report.steps[-1].status == StepStatus.FAILED
+    assert "ACCOUNT_ERASURE_UNUSED_SERVICES" in report.steps[-1].note
+    assert not report.complete
+
+
+@pytest.mark.asyncio
+async def test_a_service_the_stack_does_not_use_may_be_skipped(
+    monkeypatch, account, unused_services
+):
+    unused_services.append("posthog")
     steps = Steps(monkeypatch, skipping="posthog")
 
     report = await routine.erase_account(USER_ID, dry_run=False)
 
     assert [name for name, _ in steps.calls] == STEP_NAMES
     assert report.complete
+
+
+@pytest.mark.asyncio
+async def test_a_dry_run_reports_a_skip_as_a_skip(
+    monkeypatch, account, unused_services
+):
+    Steps(monkeypatch, skipping="memory")
+
+    report = await routine.erase_account(USER_ID)
+
+    assert len(report.steps) == len(STEP_NAMES)
+    memory = next(s for s in report.steps if s.name == "memory")
+    assert memory.status == StepStatus.SKIPPED
 
 
 @pytest.mark.asyncio
