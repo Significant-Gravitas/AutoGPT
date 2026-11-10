@@ -61,6 +61,11 @@ export const mockHandlers = [
   getGetFeatureFlagsMockHandler({ flags: {}, configured: false }),
   // Payment off unless a test turns it on.
   getGetPlatformConfigMockHandler({ payment_enabled: false }),
+  // Signed up with email unless a test provides a sign-in provider, so
+  // onboarding has no access step.
+  http.get("*/api/auth/sign-in-providers", () =>
+    HttpResponse.json({ providers: ["credential"] }),
+  ),
   ...getAdminMock(),
   ...getAnalyticsMock(),
   ...getApiKeysMock(),

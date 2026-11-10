@@ -56,6 +56,10 @@ OPEN_WHILE_PAYWALLED = {
     "PUT /api/internal/chat/transports/default",
     "GET /api/internal/experiments/assignments",
     "GET /api/internal/experiments/assignments/{experiment}",
+    # Feedback stays open during onboarding and after a cancelled checkout.
+    "POST /api/internal/feedback-prompts/claim",
+    "PATCH /api/internal/feedback-prompts/{id}",
+    "GET /api/internal/feedback-prompts/{id}",
     "GET /api/internal/invitations/pending",
     "POST /api/internal/invitations/{token}/accept",
     "POST /api/internal/invitations/{token}/decline",

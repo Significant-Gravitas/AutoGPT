@@ -46,6 +46,7 @@ import backend.api.features.desktop_preview
 import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
 import backend.api.features.feature_flags.routes as feature_flags_routes
+import backend.api.features.feedback_prompts.routes as feedback_prompt_routes
 import backend.api.features.graph_executions.review.routes
 import backend.api.features.graph_executions.routes as graph_executions_routes
 import backend.api.features.graphs.routes as graphs_routes
@@ -618,6 +619,11 @@ app.include_router(
     transfer_routes.router,
     tags=["v2", "transfers"],
     prefix="/api/internal/transfers",
+)
+app.include_router(
+    feedback_prompt_routes.router,
+    tags=["v2", "feedback-prompts"],
+    prefix="/api/internal/feedback-prompts",
 )
 app.include_router(
     push_routes.router,

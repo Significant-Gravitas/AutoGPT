@@ -30,6 +30,7 @@ LIVE_EVENT_NAMES = {
     "chat_tool_called",
     "chat_outcome",
     "chat_library_check_outcome",
+    "chat_blocked",
     "chat_read_screen_shadow_decision",
     "topup_completed",
     "subscription_cancellation_scheduled",
@@ -65,6 +66,9 @@ LIVE_EVENT_NAMES = {
     "email_clicked",
     "email_bounced",
     "email_complained",
+    "feedback_prompt_shown",
+    "feedback_prompt_answered",
+    "otto_mistake_flagged",
 }
 
 PLANNED_EVENT_NAMES: set[str] = set()

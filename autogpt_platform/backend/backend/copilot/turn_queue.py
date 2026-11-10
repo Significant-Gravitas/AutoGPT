@@ -47,6 +47,11 @@ from backend.copilot.active_turns import (
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.duplicate_message_id import is_duplicate_chat_message_id_error
+from backend.copilot.limit_tracking import (
+    BlockedSurface,
+    LimitReading,
+    track_turn_refusal,
+)
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_QUEUED,
@@ -81,9 +86,11 @@ from backend.copilot.trial_cost_context import (
     capture_cost_context,
     restore_cost_context,
 )
+from backend.copilot.usage_state import LimitWindow
 from backend.data.db_accessors import chat_db
 from backend.data.user import is_user_refused
 from backend.integrations.codex.access import has_codex_access
+from backend.util import posthog_client
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +149,13 @@ class InflightCapExceeded(Exception):
     """User's running + queued total has reached the configured hard cap.
 
     Raised by :func:`try_enqueue_turn` so the route can map to HTTP 429.
+    ``used`` is the user's in-flight count and ``cap`` the hard cap.
     """
+
+    def __init__(self, *, used: int | None = None, cap: int | None = None) -> None:
+        super().__init__()
+        self.used = used
+        self.cap = cap
 
 
 async def try_enqueue_turn(
@@ -172,8 +185,9 @@ async def try_enqueue_turn(
     rate-limit accepts on its INCRBY path; the cap is a safeguard, not
     a budget.
     """
-    if await count_inflight_turns(user_id) >= inflight_cap:
-        raise InflightCapExceeded()
+    inflight = await count_inflight_turns(user_id)
+    if inflight >= inflight_cap:
+        raise InflightCapExceeded(used=inflight, cap=inflight_cap)
     return await enqueue_turn(
         user_id=user_id,
         session_id=session_id,
@@ -663,7 +677,7 @@ async def _may_start(gates: "_UserGates", head: ChatSessionInfo) -> bool:
     """Whether ``head`` may start now: :func:`turn_refusal` for its route and,
     on the platform route, an Advanced turn's tier."""
     route_provider = head.metadata.llm_auth_provider
-    if not await gates.route_open(route_provider):
+    if not await gates.route_open(route_provider, head):
         return False
     if route_provider != "platform":
         return True
@@ -694,11 +708,19 @@ class _UserGates:
         self._refusals: dict[CopilotLlmAuthProvider, TurnRefusal | None] = {}
         self._advanced: bool | None = None
 
-    async def route_open(self, route: CopilotLlmAuthProvider) -> bool:
+    async def route_open(
+        self, route: CopilotLlmAuthProvider, head: ChatSessionInfo
+    ) -> bool:
         """Raises :class:`_QueueOnHold` when the gate could not read the user's
-        state, which leaves the whole queue for the next tick."""
+        state, which leaves the whole queue for the next tick.
+
+        A usage limit keeps the turn queued; PostHog hears of it once per pass,
+        for the first turn it held back."""
         if route not in self._refusals:
-            self._refusals[route] = await turn_refusal(self.user_id, route)
+            refusal = await turn_refusal(self.user_id, route)
+            self._refusals[route] = refusal
+            if refusal is not None:
+                await _track_queued_refusal(self.user_id, refusal, head)
         refusal = self._refusals[route]
         if refusal is None:
             return True
@@ -721,8 +743,48 @@ class _UserGates:
         return self._advanced
 
 
+async def _track_queued_refusal(
+    user_id: str, refusal: "TurnRefusal", head: ChatSessionInfo
+) -> None:
+    """``chat_blocked`` for the queued turn a usage window held back, marked
+    impersonated as that turn was when it was queued: this pass runs in the
+    context of whichever turn just ended, which may not be the same."""
+    if refusal.kind != "usage" or refusal.window is None:
+        return  # Not a usage limit: nothing to send, so nothing to read.
+    token = posthog_client.set_impersonated(await _queued_by_admin(head.session_id))
+    try:
+        track_turn_refusal(
+            user_id, refusal, surface=_queued_surface(head), outcome="queued"
+        )
+    finally:
+        posthog_client.reset_impersonated(token)
+
+
+async def _queued_by_admin(session_id: str) -> bool:
+    """Whether an admin acting as the user queued the turn waiting in
+    *session_id*, as its row recorded it; False when the row can't be read."""
+    try:
+        pending = await chat_db().get_latest_user_message_in_session(session_id)
+    except Exception:
+        logger.warning(
+            f"dispatch_next_for_user: could not read the queued turn of "
+            f"session={session_id}",
+            exc_info=True,
+        )
+        return False
+    return pending is not None and (pending.metadata or {}).get("impersonated") is True
+
+
 class _QueueOnHold(Exception):
     """Nothing is promoted this tick: the user's state could not be read."""
+
+
+def _queued_surface(session: ChatSessionInfo) -> BlockedSurface:
+    """Where a queued turn came from: a chat bot's chat, the user's own chat,
+    or work another session or a workflow started."""
+    if session.metadata.source_platform:
+        return "chat_bot"
+    return "chat" if is_users_own_chat(session) else "background"
 
 
 def is_users_own_chat(session: ChatSessionInfo) -> bool:
@@ -863,9 +925,10 @@ class TurnRefusal(BaseModel):
     # The usage store was unreadable: an outage, not the user's state.
     transient: bool = False
     # Usage refusals only: the window that ran out ("daily", "weekly" or
-    # "trial") and when it resets.
-    window: str | None = None
+    # "trial"), when it resets, and where the account stood against it.
+    window: LimitWindow | None = None
     resets_at: datetime | None = None
+    reading: LimitReading | None = None
 
 
 async def turn_refusal(
@@ -907,6 +970,7 @@ async def turn_refusal(
             kind="usage",
             window=exc.window,
             resets_at=exc.resets_at,
+            reading=exc.reading,
         )
     except RateLimitUnavailable:
         return TurnRefusal(

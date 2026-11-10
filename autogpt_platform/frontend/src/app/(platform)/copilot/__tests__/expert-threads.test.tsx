@@ -138,12 +138,18 @@ vi.mock(
     ThinkingIndicator: () => null,
   }),
 );
-vi.mock("../components/ChatMessagesContainer/helpers", () => ({
-  extractReviewTargets: () => ({ chat: false, runs: [] }),
-  getLatestCompactionPhase: () => null,
-  getTurnMessages: () => [],
-  isChainableToolPart: () => false,
-}));
+vi.mock(
+  "../components/ChatMessagesContainer/helpers",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../components/ChatMessagesContainer/helpers")
+    >()),
+    extractReviewTargets: () => ({ chat: false, runs: [] }),
+    getLatestCompactionPhase: () => null,
+    getTurnMessages: () => [],
+    isChainableToolPart: () => false,
+  }),
+);
 vi.mock("../components/JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
 }));
