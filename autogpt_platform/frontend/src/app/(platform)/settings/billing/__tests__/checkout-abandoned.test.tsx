@@ -21,7 +21,11 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 
-import { setTrialUser } from "@/tests/integrations/trial-fixtures";
+import { getGetTrialsGetTrialStatusMockHandler200 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
+import {
+  setTrialUser,
+  trialResponse,
+} from "@/tests/integrations/trial-fixtures";
 
 import SettingsBillingPage from "../page";
 
@@ -65,6 +69,9 @@ function setup(params: Record<string, string>) {
   const claims: unknown[] = [];
   const patches: unknown[] = [];
   server.use(
+    getGetTrialsGetTrialStatusMockHandler200(
+      trialResponse({ active: false, status: null }),
+    ),
     jsonHandler("/api/credits/subscription", {
       tier: "PRO",
       monthly_cost: 5000,
