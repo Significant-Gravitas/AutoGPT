@@ -197,7 +197,7 @@
   },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer.tsx": {
     "no-inline-styles": 1,
-    "no-restyle": 39,
+    "no-restyle": 32,
     "require-static-classes": 1
   },
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/AssistantMessageActions.tsx": {

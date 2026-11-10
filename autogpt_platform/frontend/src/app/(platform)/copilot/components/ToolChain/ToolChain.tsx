@@ -1,18 +1,8 @@
 "use client";
 
 import { useStableCallback } from "@/hooks/useStableCallback";
-import {
-  ArrowDown01Icon,
-  SentIcon,
-  Tick02Icon,
-} from "@hugeicons/core-free-icons";
-import {
-  AnimatePresence,
-  domAnimation,
-  LazyMotion,
-  m,
-  useReducedMotion,
-} from "framer-motion";
+import { ArrowDown01Icon, SentIcon } from "@hugeicons/core-free-icons";
+import { domAnimation, LazyMotion, m, useReducedMotion } from "framer-motion";
 import {
   useCallback,
   useContext,
@@ -40,7 +30,7 @@ import {
 } from "./chainActions";
 import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
-import { ChainRowView } from "./ChainRowView";
+import { ChainRows } from "./ChainRows";
 import { useNoteRunningSteps } from "./StepClock";
 import { applyHeldOutcome } from "./heldRow";
 import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
@@ -59,6 +49,10 @@ import { startedTaskOf } from "../TaskStatusLine/helpers";
 import { TaskStatusLine } from "../TaskStatusLine/TaskStatusLine";
 
 const COLLAPSED_WINDOW = 2;
+// A burst of fast tools changes the live heading faster than it can be read:
+// each heading stays up at least this long, then the newest one shows.
+const HEADING_HOLD_MS = 500;
+const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as const;
 
 async function sendOnce(
   sending: { current: boolean },
@@ -317,7 +311,16 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     <LazyMotion features={domAnimation} strict>
       <div className="my-2">
         {shownRows.length > 0 && (
-          <>
+          // A chain that starts while the reply streams comes in as one
+          // piece, header and first row together. Read at mount only, so
+          // neither a re-render nor a reloaded transcript plays it again.
+          <m.div
+            initial={
+              isStreaming && !reducedMotion ? { opacity: 0, y: 4 } : false
+            }
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2, ease: EASE_OUT_QUINT }}
+          >
             <button
               type="button"
               onClick={() => setManualExpanded(!open)}
@@ -328,6 +331,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               <SwapText
                 text={heading}
                 shimmer={isStreaming && !expanded}
+                minHoldMs={HEADING_HOLD_MS}
                 className={
                   "min-w-0 text-body font-normal " +
                   (hasError && !isStreaming
@@ -357,88 +361,20 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                     (panelOpen && !windowMode ? " " + PANEL_REVEAL : "")
                   }
                 >
-                  <AnimatePresence mode="popLayout">
-                    {visible.map((row, i) => {
-                      // While streaming the window slides on every tool, so
-                      // rows enter without stagger and leave quickly — the
-                      // stagger is for the settled list revealed on expand.
-                      // Post-stream mounts (manual expand) skip per-row
-                      // animation entirely; PANEL_REVEAL fades the panel.
-                      const stagger =
-                        reducedMotion || windowMode
-                          ? 0
-                          : Math.min(i, 6) * 0.035;
-                      const animateIn = !reducedMotion && isStreaming;
-                      return (
-                        <m.div
-                          key={row.key}
-                          layout={!reducedMotion}
-                          initial={
-                            animateIn
-                              ? { opacity: 0, y: 8, scale: 0.985 }
-                              : false
-                          }
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={
-                            reducedMotion
-                              ? undefined
-                              : {
-                                  opacity: 0,
-                                  y: -6,
-                                  scale: 0.985,
-                                  transition: {
-                                    duration: 0.12,
-                                    ease: [0.22, 1, 0.36, 1],
-                                  },
-                                }
-                          }
-                          transition={{
-                            opacity: {
-                              duration: reducedMotion ? 0 : 0.18,
-                              delay: stagger,
-                              ease: [0.22, 1, 0.36, 1],
-                            },
-                            y: {
-                              duration: reducedMotion ? 0 : 0.22,
-                              delay: stagger,
-                              ease: [0.22, 1, 0.36, 1],
-                            },
-                            scale: {
-                              duration: reducedMotion ? 0 : 0.22,
-                              delay: stagger,
-                              ease: [0.22, 1, 0.36, 1],
-                            },
-                            layout: {
-                              duration: reducedMotion ? 0 : 0.22,
-                              ease: [0.22, 1, 0.36, 1],
-                            },
-                          }}
-                        >
-                          <ChainActionsContext.Provider value={chainActions}>
-                            <ChainRowView
-                              row={row}
-                              isLast={i === visible.length - 1 && !showDone}
-                              readOnly={readOnly}
-                            />
-                          </ChainActionsContext.Provider>
-                        </m.div>
-                      );
-                    })}
-                  </AnimatePresence>
-                  {showDone && (
-                    <div className="flex items-stretch gap-2.5">
-                      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-                        <Icon icon={Tick02Icon} size={14} tone="secondary" />
-                      </div>
-                      <div className="flex h-7 items-center text-body text-foreground-secondary">
-                        Done
-                      </div>
-                    </div>
-                  )}
+                  <ChainRows
+                    rows={visible}
+                    isStreaming={isStreaming}
+                    windowMode={windowMode}
+                    showDone={showDone}
+                    reducedMotion={!!reducedMotion}
+                    newestLiveKey={isStreaming ? rows.at(-1)?.key : undefined}
+                    chainActions={chainActions}
+                    readOnly={readOnly}
+                  />
                 </div>
               </div>
             </div>
-          </>
+          </m.div>
         )}
 
         {/* Questions the user has moved past stay where their card was,

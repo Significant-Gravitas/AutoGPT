@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from "react";
+import { memo } from "react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import {
   Message,
@@ -51,8 +51,6 @@ interface Props {
   turnMessages?: ChatMessage[];
   /** Live elapsed seconds; only the last row gets them. */
   elapsedSeconds?: number;
-  /** Thinking indicator rendered at the bottom of the last assistant row. */
-  indicator?: ReactNode;
   /** User row while the session is queued; the queue badge shows on the
    *  latest user message. */
   isSessionQueued: boolean;
@@ -80,7 +78,6 @@ export const MessageRow = memo(function MessageRow({
   turnStat,
   turnMessages,
   elapsedSeconds,
-  indicator,
   isSessionQueued,
   sessionSentFrom,
   sessionID,
@@ -202,7 +199,6 @@ export const MessageRow = memo(function MessageRow({
             isSettling={isTurnSettling}
           />
         )}
-        {indicator}
       </MessageContent>
       {message.role === "user" && (
         <UserRowActions

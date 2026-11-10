@@ -246,6 +246,79 @@ describe("toChainRow", () => {
     });
   });
 
+  it("names a streaming call's subject once its argument is finished", () => {
+    function streamingRow(input: unknown) {
+      return toChainRow(
+        {
+          type: "tool-web_search",
+          state: "input-streaming",
+          toolCallId: "call-stream",
+          input,
+        } as MessagePart,
+        0,
+      );
+    }
+
+    expect(streamingRow({ query: "paris hot" })?.text).toBe(
+      "Searching the web for…",
+    );
+    const finished = streamingRow({ query: "paris hotels", max_res: 3 });
+    expect(finished).toMatchObject({
+      key: "call-stream",
+      state: "running",
+      text: 'Searching the web for "paris hotels"…',
+    });
+    // The row keeps no input until the call completes.
+    expect(finished?.input).toBeUndefined();
+  });
+
+  it.each([undefined, null, "", '{"query": "pa', 42, ["a", "b"], {}])(
+    "shows the running label for a streaming call whose input is %j",
+    (input) => {
+      const row = toChainRow(
+        {
+          type: "tool-web_search",
+          state: "input-streaming",
+          toolCallId: "call-stream",
+          input,
+        } as MessagePart,
+        0,
+      );
+
+      expect(row).toMatchObject({
+        state: "running",
+        text: "Searching the web for…",
+      });
+    },
+  );
+
+  it("labels a streaming non-catalog call without reading its input", () => {
+    const row = toChainRow(
+      {
+        type: "tool-Grep",
+        state: "input-streaming",
+        toolCallId: "call-grep",
+        input: '{"pattern": "TO',
+      } as MessagePart,
+      0,
+    );
+
+    expect(row).toMatchObject({ state: "running", category: "search" });
+  });
+
+  it("keeps the running label on a finished row for its minimum running look", () => {
+    const row = toChainRow(
+      toolPart("web_search", { query: "hotels" }, { results: [1] }),
+      0,
+    );
+
+    expect(row).toMatchObject({
+      state: "done",
+      text: 'Searched the web for "hotels"',
+      runningText: 'Searching the web for "hotels"…',
+    });
+  });
+
   it("falls back to generic categorization for non-catalog tools", () => {
     const grep = toChainRow(
       toolPart("Grep", { pattern: "TODO" }, "3 matches"),

@@ -5,6 +5,7 @@ import type { ChatStatus, UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
 import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
+import { completeStreamingInput } from "./components/ToolChain/partialInput";
 import { parseSpecialMarkers } from "./helpers/messageMarkers";
 import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
 import { TURN_PAUSED_PART_TYPE } from "./turnPause";
@@ -165,18 +166,27 @@ export function resolveInProgressTools(
           ? {
               ...part,
               state: "output-error" as const,
-              input: part.input,
+              input: settledToolInput(part),
               errorText: "Cancelled",
             }
           : {
               ...part,
               state: "output-available" as const,
-              input: part.input,
+              input: settledToolInput(part),
               output: "",
             }
         : part,
     ),
   }));
+}
+
+/** The input a tool part closed before its call completed keeps: only the
+ *  finished arguments of one whose JSON was still streaming, so a closed row
+ *  never reads as having run with a half-written argument. */
+function settledToolInput(part: { state: string; input?: unknown }) {
+  return part.state === "input-streaming"
+    ? completeStreamingInput(part.input)
+    : part.input;
 }
 
 const IN_PROGRESS_PART_STATES = new Set([
@@ -231,7 +241,7 @@ export function resolveInterruptedMessage(messages: UIMessage[]): UIMessage[] {
       return {
         ...part,
         state: "output-error" as const,
-        input: part.input,
+        input: settledToolInput(part),
         errorText: "Interrupted",
       };
     }
@@ -423,15 +433,14 @@ export function shouldDebounceReconnect(
  */
 export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
-  // Fingerprints seen per user turn. Nested rather than one composite
-  // `${userID}:${fingerprint}` string, which would be rebuilt and re-hashed in
-  // full for every assistant message on every call; the cached fingerprint
-  // string keeps its hash.
-  const seenFingerprintsByTurn = new Map<string, Set<string>>();
+  // Assistant messages seen per user turn, bucketed by a cheap key. The full
+  // fingerprint serialises every part, so it is only built for messages that
+  // share a bucket — a reply streaming in alone is never serialised.
+  const seenByTurn = new Map<string, Map<string, UIMessage[]>>();
   let lastUserMsgID = "";
-  const newestIndex = messages.length - 1;
+  const newest = messages[messages.length - 1];
 
-  const kept = messages.filter((msg, index) => {
+  const kept = messages.filter((msg) => {
     if (seenIds.has(msg.id)) return false;
     seenIds.add(msg.id);
 
@@ -443,35 +452,55 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
       lastUserMsgID = msg.id;
     }
 
-    if (msg.role === "assistant") {
-      const contentFingerprint = getContentFingerprint(
-        msg,
-        index === newestIndex,
-      );
-
-      if (contentFingerprint !== "[]") {
-        // Scope to the preceding user message turn so that identical assistant
-        // replies to *different* user prompts are preserved.
-        // NOTE: A streaming (in-progress) assistant message has a partial
-        // fingerprint that differs from its final form, so it would not be
-        // caught by this dedup. This is safe because every caller that invokes
-        // resumeStream() first strips the in-progress assistant message —
-        // handleReconnect, the wake-resync path, and the hydration-effect path
-        // all do this. See useCopilotStream.ts.
-        let seenInTurn = seenFingerprintsByTurn.get(lastUserMsgID);
-        if (!seenInTurn) {
-          seenInTurn = new Set<string>();
-          seenFingerprintsByTurn.set(lastUserMsgID, seenInTurn);
-        }
-        if (seenInTurn.has(contentFingerprint)) return false;
-        seenInTurn.add(contentFingerprint);
-      }
+    // An assistant message without parts is never a duplicate. Scoped to the
+    // preceding user message turn so that identical assistant replies to
+    // *different* user prompts are preserved.
+    // NOTE: A streaming (in-progress) assistant message has a partial
+    // fingerprint that differs from its final form, so it would not be
+    // caught by this dedup. This is safe because every caller that invokes
+    // resumeStream() first strips the in-progress assistant message —
+    // handleReconnect, the wake-resync path, and the hydration-effect path
+    // all do this. See useCopilotStream.ts.
+    if (msg.role !== "assistant" || msg.parts.length === 0) return true;
+    let seenInTurn = seenByTurn.get(lastUserMsgID);
+    if (!seenInTurn) {
+      seenInTurn = new Map();
+      seenByTurn.set(lastUserMsgID, seenInTurn);
     }
-
+    const bucketKey = getBucketKey(msg.parts);
+    const bucket = seenInTurn.get(bucketKey);
+    if (!bucket) {
+      seenInTurn.set(bucketKey, [msg]);
+      return true;
+    }
+    const fingerprint = getContentFingerprint(msg, msg === newest);
+    if (bucket.some((seen) => getContentFingerprint(seen) === fingerprint)) {
+      return false;
+    }
+    bucket.push(msg);
     return true;
   });
   // Same array back when nothing was dropped, so memos keyed on it hold.
   return kept.length === messages.length ? messages : kept;
+}
+
+// One fingerprint element per part: its text, its tool call id, or the part
+// itself serialised (e.g. step-start), so structurally different parts never
+// collapse to the same element.
+function fingerprintElement(part: UIMessage["parts"][number]): string {
+  return (
+    ("text" in part && part.text) ||
+    ("toolCallId" in part && part.toolCallId) ||
+    JSON.stringify(part)
+  );
+}
+
+// Built from the full fingerprint's own elements, so two messages with equal
+// fingerprints always share a key. Reads a string's length, never its text.
+function getBucketKey(parts: UIMessage["parts"]): string {
+  const first = fingerprintElement(parts[0]).length;
+  const last = fingerprintElement(parts[parts.length - 1]).length;
+  return `${parts.length}:${first}:${last}`;
 }
 
 // Keyed by the parts array, which every streamed update replaces, so a
@@ -483,7 +512,7 @@ const contentFingerprints = new WeakMap<
   { partCount: number; fingerprint: string }
 >();
 
-function getContentFingerprint(msg: UIMessage, isNewest: boolean): string {
+function getContentFingerprint(msg: UIMessage, isNewest = false): string {
   if (isNewest) return computeContentFingerprint(msg.parts);
   const cached = contentFingerprints.get(msg.parts);
   if (cached && cached.partCount === msg.parts.length) {
@@ -504,14 +533,7 @@ function computeContentFingerprint(parts: UIMessage["parts"]): string {
   // Fall back to JSON.stringify(p) for parts that carry neither a text nor
   // a toolCallId (e.g. step-start) so structurally different parts never
   // collapse to the same empty-string fingerprint element.
-  return JSON.stringify(
-    parts.map(
-      (p) =>
-        ("text" in p && p.text) ||
-        ("toolCallId" in p && p.toolCallId) ||
-        JSON.stringify(p),
-    ),
-  );
+  return JSON.stringify(parts.map(fingerprintElement));
 }
 
 /**

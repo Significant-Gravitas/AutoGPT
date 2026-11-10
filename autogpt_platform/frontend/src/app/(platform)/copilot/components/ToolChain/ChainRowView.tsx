@@ -1,13 +1,16 @@
 "use client";
 
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { HIDDEN_FROM_REPLAY } from "@/lib/replay-privacy";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../store";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
+import { areChainRowPropsEqual } from "./chainRowEquality";
 import type { ChainRow } from "./helpers";
+import { ReasoningStream } from "./ReasoningStream";
+import { isLiveSubSessionRow, SUB_SESSION_TOOLS } from "./subSessionRow";
 import { ProviderIcon, RowIcon } from "./RowIcon";
 import { useSubSessionEffectiveStatus } from "./SubSessionLive";
 import { StepClock } from "./StepClock";
@@ -18,68 +21,39 @@ import { hidesOutputFromReplay } from "./replayPrivacy";
 import { getCatalogLabel } from "./toolCatalog";
 import { ToolResult } from "./ToolResult";
 import { ToolStatusBadge } from "./ToolStatusBadge";
-
-interface ReasoningStreamProps {
-  text: string;
-  live: boolean;
-}
-
-function ReasoningStream({ text, live }: ReasoningStreamProps) {
-  const viewportRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll pinned to the newest line while thinking streams.
-  useEffect(() => {
-    const el = viewportRef.current;
-    if (live && el) el.scrollTop = el.scrollHeight;
-  }, [text, live]);
-
-  return (
-    <div
-      ref={viewportRef}
-      className={cn(
-        "text-body-sm leading-5 text-foreground-subtle",
-        live
-          ? "max-h-24 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0,black_16px,black_100%)]"
-          : "scrollbar-none max-h-64 overflow-y-auto",
-      )}
-    >
-      <p className="whitespace-pre-wrap">{text}</p>
-    </div>
-  );
-}
+import { useMinimumRunning } from "./useMinimumRunning";
 
 interface Props {
   row: ChainRow;
   isLast: boolean;
   readOnly?: boolean;
+  /** The row is the newest one of a live chain and arrived already finished
+   *  (see useMinimumRunning). Only its value at mount counts. */
+  arrivedFinished?: boolean;
 }
 
-const SUB_SESSION_TOOLS = new Set([
-  "run_sub_session",
-  "delegate_to_expert",
-  "handoff_to_expert",
-  "get_sub_session_result",
-]);
-
-function isLiveSubSessionRow(row: ChainRow): boolean {
-  if (!row.tool || !SUB_SESSION_TOOLS.has(row.tool)) return false;
-  // A blocking delegate has no output while the teammate works — that IS
-  // the live window, covered by the pending card built from the input.
-  // Result polls render no pending card (see ToolResult), so an outputless
-  // poll row has nothing to open.
-  if (row.output === undefined)
-    return row.state === "running" && row.tool !== "get_sub_session_result";
-  if (!row.output || typeof row.output !== "object") return false;
-  const status = (row.output as { status?: unknown }).status;
-  return (
-    typeof status === "string" &&
-    ["running", "queued"].includes(status.toLowerCase())
-  );
-}
-
-export function ChainRowView({ row, isLast, readOnly = false }: Props) {
+// memo-boundary: a chain row. Its chain rebuilds every row object on each
+// streamed flush, text included; areChainRowPropsEqual finds the rows whose
+// data really changed, so a settled row skips its render and its result card.
+export const ChainRowView = memo(function ChainRowView({
+  row,
+  isLast,
+  readOnly = false,
+  arrivedFinished = false,
+}: Props) {
   const [open, setOpen] = useState(row.requiresAction === true);
   const isReasoning = row.category === "reasoning";
+  const shownState = useMinimumRunning({
+    state: row.state,
+    arrivedFinished,
+    enabled:
+      !!row.tool &&
+      !isReasoning &&
+      !row.held &&
+      !row.requiresAction &&
+      !row.supersededSubSession,
+  });
+  const holdingRun = shownState === "running" && row.state !== "running";
   const artifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
 
   // What the row needs from the user is only known once the output lands, so
@@ -137,11 +111,14 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
   const rowText = (
     <SwapText
       text={
-        stillWorking && row.tool
-          ? (getCatalogLabel(row.tool, row.input, "running")?.text ?? row.text)
-          : row.text
+        holdingRun
+          ? (row.runningText ?? row.text)
+          : stillWorking && row.tool
+            ? (getCatalogLabel(row.tool, row.input, "running")?.text ??
+              row.text)
+            : row.text
       }
-      shimmer={row.state === "running" || stillWorking}
+      shimmer={shownState === "running" || stillWorking}
       className={cn(
         "max-w-full text-body transition-colors duration-300",
         row.state === "error"
@@ -174,7 +151,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
             row.state === "error" ? "bg-error-surface" : "bg-surface-hover",
           )}
         >
-          <ToolStatusBadge state={row.state} label={row.text}>
+          <ToolStatusBadge state={shownState} label={row.text}>
             {row.state !== "error" && row.providerIconSrc ? (
               <ProviderIcon src={row.providerIconSrc} row={row} />
             ) : (
@@ -249,4 +226,4 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
       </div>
     </div>
   );
-}
+}, areChainRowPropsEqual);

@@ -17,7 +17,6 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
-import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnEndAnnouncer } from "../JobStatsBar/TurnEndAnnouncer";
 import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
@@ -36,12 +35,7 @@ import {
   splitMessagesAtDrainHints,
   turnMessagesForRow,
 } from "./midTurnSplit";
-import {
-  isBookkeepingPart,
-  PENDING_DRAINED_PART_TYPE,
-} from "../../messageParts";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
-import { TURN_PAUSED_PART_TYPE } from "../../turnPause";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
 import { getWorkRunMetadata } from "../WorkCard/helpers";
@@ -57,6 +51,8 @@ import {
   PendingUploadMessage,
 } from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { ThinkingSlot } from "./components/ThinkingSlot/ThinkingSlot";
+import { getTurnActivity } from "./thinkingActivity";
 import { isSessionOpeningMessage, type SentFrom } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
@@ -359,52 +355,7 @@ export function ChatMessagesContainer({
   // assistant message already carries the marker.
   const lastAssistantHasErrorMarker = hasTrailingErrorMarker(messages);
 
-  const hasInflight = (() => {
-    if (lastMessage?.role !== "assistant") return false;
-    // Ignore bookkeeping parts — none of them counts as "real" content that
-    // hides the Thinking indicator. See `isBookkeepingPart` for the list.
-    // A drain hint newer than the last content part is the one exception:
-    // the follow-up just landed and nothing has been produced past it, so
-    // the text or tool above it is settled and Thinking is the only sign
-    // the assistant picked the follow-up up.
-    let lastIndex = lastMessage.parts.length - 1;
-    while (lastIndex >= 0 && isBookkeepingPart(lastMessage.parts[lastIndex])) {
-      if (lastMessage.parts[lastIndex].type === PENDING_DRAINED_PART_TYPE)
-        return false;
-      lastIndex--;
-    }
-    if (lastIndex < 0) return false;
-
-    const lastPart = lastMessage.parts[lastIndex];
-
-    if (lastPart.type === "text" && lastPart.text.trim().length > 0)
-      return true;
-
-    // Reasoning chunks stream before the final text — while they have
-    // rendered content, the "Thinking..." indicator should give way to the
-    // reasoning view (e.g. Perplexity deep research streams minutes of
-    // reasoning before any answer text).
-    if (lastPart.type === "reasoning" && lastPart.text.trim().length > 0)
-      return true;
-
-    // step-start is a turn boundary emitted right before the next tool or
-    // text chunk. Treat it as inflight so the bubble transitions straight
-    // into the next part without flashing back to "Thinking...".
-    if (lastPart.type === "step-start") return true;
-
-    // A pause is how the turn ends, so nothing more is coming to wait on.
-    if (lastPart.type === TURN_PAUSED_PART_TYPE) return true;
-
-    if (
-      lastPart.type.startsWith(TOOL_PART_PREFIX) &&
-      "state" in lastPart &&
-      (lastPart.state === "input-streaming" ||
-        lastPart.state === "input-available")
-    )
-      return true;
-
-    return false;
-  })();
+  const turnActivity = getTurnActivity(lastMessage, status);
 
   const isActivelyStreaming = status === "streaming" || status === "submitted";
   const isTurnBusy =
@@ -428,29 +379,18 @@ export function ChatMessagesContainer({
       ? getLatestCompactionPhase(lastMessage.parts)
       : null;
 
-  // Suppressed during active-session restore so the ThinkingIndicator and
+  // Handed off during active-session restore so the ThinkingIndicator and
   // the "Retrieving latest messages" spinner can't both render — the
   // restore spinner wins until real content arrives (see the
   // ``hasConnectedThisMountRef`` latch in useCopilotStream for why).
-  const showThinking =
-    !isRestoringActiveSession &&
-    liveCompactionPhase === null &&
-    (status === "submitted" || (status === "streaming" && !hasInflight));
+  const thinkingHandedOff =
+    !!isRestoringActiveSession || liveCompactionPhase !== null;
   // Only the start time lives here: the indicator ticks its own label, so
   // the transcript does not re-render every second for the whole turn.
   const streamClock = useElapsedAnchor(
     isActivelyStreaming,
     activeStreamStartedAt,
   );
-  const indicator = (
-    <ThinkingIndicator
-      active={showThinking}
-      startedAtMs={streamClock.startedAtMs}
-    />
-  );
-  // Public viewers of a shared chat never see a live turn, so the indicator
-  // stays out of the transcript for them wherever it would render.
-  const showIndicator = !readOnly && showThinking;
   const [showRestoreFallback, setShowRestoreFallback] = useState(false);
   useEffect(() => {
     if (!isRestoringActiveSession) {
@@ -505,7 +445,6 @@ export function ChatMessagesContainer({
             : undefined
         }
         elapsedSeconds={isLastRow ? streamClock.frozenSeconds : undefined}
-        indicator={isLastAssistant && showIndicator ? indicator : null}
         isSessionQueued={
           message.role === "user" && sessionChatStatus === "queued"
         }
@@ -591,16 +530,15 @@ export function ChatMessagesContainer({
               isCompact={isCompact}
             />
           )}
-          {showIndicator && lastMessage?.role !== "assistant" && (
-            <Message
-              from="assistant"
-              className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-            >
-              <MessageContent className="text-body-lg leading-relaxed">
-                {indicator}
-              </MessageContent>
-            </Message>
-          )}
+          {/* Public viewers of a shared chat never see a live turn. */}
+          <ThinkingSlot
+            activity={turnActivity}
+            enabled={!readOnly && isActivelyStreaming}
+            handedOff={thinkingHandedOff}
+            startedAtMs={streamClock.startedAtMs}
+            attached={lastMessage?.role === "assistant"}
+            compact={isCompact}
+          />
           {!readOnly && isRestoringActiveSession && (
             <Message from="assistant">
               <MessageContent className="text-body-lg leading-relaxed text-foreground-strong">
