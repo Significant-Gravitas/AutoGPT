@@ -1,4 +1,5 @@
 import type { ChartBlock } from "@/app/api/__generated__/models/chartBlock";
+import type { TableBlock } from "@/app/api/__generated__/models/tableBlock";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { UIBlocksResponse } from "@/app/api/__generated__/models/uIBlocksResponse";
 import type { Tone } from "@/components/styles/tones";
@@ -75,4 +76,14 @@ export function getChartData(block: ChartBlock) {
       ]),
     ),
   }));
+}
+
+// A number, money or a percentage, optionally signed: "1,240", "$3.5k", "-12%".
+const NUMERIC_CELL = /^[-+]?[$€£]?\d[\d,.]*\s?(%|[kKmMbB])?$/;
+
+/** Columns whose every cell is a number, so they line up on the right. */
+export function getNumericColumns(block: TableBlock) {
+  return block.columns.map((_column, index) =>
+    block.rows.every((row) => NUMERIC_CELL.test((row[index] ?? "").trim())),
+  );
 }

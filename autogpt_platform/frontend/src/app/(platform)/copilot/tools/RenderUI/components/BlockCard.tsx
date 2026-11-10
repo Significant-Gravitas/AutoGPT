@@ -8,9 +8,15 @@ interface Props {
 
 export function BlockCard({ title, children }: Props) {
   return (
-    <section className="min-w-0 rounded-2xl border border-separator bg-surface p-4">
+    <section className="min-w-0 rounded-2xl bg-gradient-to-b from-surface to-surface-muted p-5 smooth-shadow-ring-sm">
       {title ? (
-        <Text variant="body-medium" tone="primary" className="mb-3">
+        <Text
+          variant="small-medium"
+          tone="secondary"
+          transform="uppercase"
+          tracking="caps"
+          className="mb-4 break-words"
+        >
           {title}
         </Text>
       ) : null}

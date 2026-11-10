@@ -41,7 +41,7 @@ export function RenderUI({
   }
 
   return (
-    <div className="my-2 flex w-full min-w-0 flex-col gap-2">
+    <div className="my-3 flex w-full min-w-0 flex-col gap-3">
       {blocks.map((block, index) => (
         <BlockView
           key={index}

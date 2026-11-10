@@ -26,12 +26,12 @@ export function GalleryBlockView({
                 src={fileUrlBuilder(file.fileID)}
                 alt={image.caption}
                 loading="lazy"
-                className="aspect-square w-full rounded-lg border border-separator object-cover"
+                className="aspect-square w-full rounded-xl object-cover smooth-shadow-ring-sm"
               />
               <Text
                 variant="small"
                 tone="secondary"
-                className="mt-1 break-words"
+                className="mt-2 break-words"
               >
                 {image.caption}
               </Text>

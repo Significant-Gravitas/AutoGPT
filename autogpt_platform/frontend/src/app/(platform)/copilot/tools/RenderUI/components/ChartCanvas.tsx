@@ -13,6 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useId } from "react";
 import { getChartData } from "../helpers";
 
 // Hex throughout: recharts writes these as SVG attributes, where CSS variables
@@ -28,6 +29,8 @@ interface Props {
 
 export function ChartCanvas({ block }: Props) {
   const annotation = block.annotation;
+  // SVG ids inside url(#…) must be plain, and useId returns colons.
+  const gradientPrefix = `render-ui-fill-${useId().replace(/[^a-zA-Z0-9-]/g, "")}`;
 
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -35,7 +38,34 @@ export function ChartCanvas({ block }: Props) {
         data={getChartData(block)}
         margin={{ top: 16, right: 8, bottom: 0, left: -16 }}
       >
-        <CartesianGrid vertical={false} stroke={GRID_COLOR} />
+        <defs>
+          {block.series.map((_series, index) => (
+            <linearGradient
+              key={index}
+              id={`${gradientPrefix}-${index}`}
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
+              <stop
+                offset="0%"
+                stopColor={SERIES_COLORS[index]}
+                stopOpacity={block.kind === "bar" ? 0.95 : 0.28}
+              />
+              <stop
+                offset="100%"
+                stopColor={SERIES_COLORS[index]}
+                stopOpacity={block.kind === "bar" ? 0.55 : 0}
+              />
+            </linearGradient>
+          ))}
+        </defs>
+        <CartesianGrid
+          vertical={false}
+          stroke={GRID_COLOR}
+          strokeDasharray="3 4"
+        />
         <XAxis
           dataKey="label"
           tickLine={false}
@@ -75,7 +105,7 @@ export function ChartCanvas({ block }: Props) {
               <Bar
                 key={index}
                 {...shared}
-                fill={SERIES_COLORS[index]}
+                fill={`url(#${gradientPrefix}-${index})`}
                 maxBarSize={24}
                 radius={[4, 4, 0, 0]}
               />
@@ -88,8 +118,8 @@ export function ChartCanvas({ block }: Props) {
                 {...shared}
                 type="monotone"
                 strokeWidth={2}
-                fill={SERIES_COLORS[index]}
-                fillOpacity={0.15}
+                fill={`url(#${gradientPrefix}-${index})`}
+                fillOpacity={1}
               />
             );
           }
