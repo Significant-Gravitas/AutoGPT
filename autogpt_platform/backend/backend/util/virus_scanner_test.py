@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import aioclamd
 import pytest
+from pydantic import ValidationError
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.util import virus_scanner
@@ -467,6 +468,27 @@ class TestStreamingToClamd:
         assert result.threat_name == "Eicar-Test-Signature"
 
     @pytest.mark.asyncio
+    async def test_a_file_clamd_stops_scanning_at_a_limit_is_refused_as_too_complex(
+        self, monkeypatch
+    ):
+        reply = b"stream: Heuristics.Limits.Exceeded.MaxScanTime FOUND\n"
+        async with _fake_clamd(reply=reply) as port:
+            scanner = VirusScannerService(
+                VirusScannerSettings(
+                    clamav_service_port=port, mark_failed_scans_as_clean=True
+                )
+            )
+            monkeypatch.setattr(virus_scanner, "_scanner", scanner)
+            with pytest.raises(VirusDetectedError) as caught:
+                await scan_content_safe(b"some upload")
+
+        assert caught.value.threat_name == "Heuristics.Limits.Exceeded.MaxScanTime"
+        assert str(caught.value) == (
+            "File rejected: too large or complex to scan whole "
+            "(ClamAV's MaxScanTime limit)"
+        )
+
+    @pytest.mark.asyncio
     async def test_an_error_reply_refuses_the_file(self, monkeypatch):
         async with _fake_clamd(reply=b"stream: Can't allocate memory ERROR\n") as port:
             scanner = VirusScannerService(
@@ -552,6 +574,37 @@ def test_the_shipped_clamd_takes_the_largest_upload_whole(compose_file):
         "PCREMaxFileSize",
     }
     assert all(int(mb) >= largest_upload_mb for mb in limits.values())
+
+
+@pytest.mark.parametrize(
+    "compose_file", ["docker-compose.yml", "backend/docker-compose.test.yaml"]
+)
+def test_the_shipped_clamd_flags_a_file_it_stops_scanning_at_a_limit(compose_file):
+    text = (_PLATFORM_DIR / compose_file).read_text(encoding="utf-8")
+    largest_upload_mb = max(
+        Config.model_fields[name].default
+        for name in ("upload_file_size_limit_mb", "max_file_size_mb")
+    )
+    max_scan_time = re.search(r"CLAMD_CONF_MaxScanTime=(\d+)", text)
+
+    assert "CLAMD_CONF_AlertExceedsMax=yes" in text
+    assert max_scan_time is not None
+    # clamd's own limit, not the backend's deadline, ends the largest scan.
+    assert int(max_scan_time[1]) / 1000 < (
+        virus_scanner._DEFAULT_TIMEOUT_S
+        + virus_scanner._TIMEOUT_S_PER_MIB * largest_upload_mb
+    )
+
+
+@pytest.mark.parametrize("value", ["0", "-5"])
+@pytest.mark.parametrize("settings_class", [Config, VirusScannerSettings])
+def test_a_clamav_timeout_of_zero_or_less_is_refused(
+    monkeypatch, settings_class, value
+):
+    monkeypatch.setenv("CLAMAV_SERVICE_TIMEOUT", value)
+
+    with pytest.raises(ValidationError, match="clamav_service_timeout"):
+        settings_class()
 
 
 _PLATFORM_DIR = Path(__file__).parents[3]

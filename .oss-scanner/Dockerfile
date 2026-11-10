@@ -301,6 +301,8 @@ StreamMaxLength 256M
 MaxFileSize 256M
 MaxScanSize 256M
 PCREMaxFileSize 256M
+AlertExceedsMax yes
+MaxScanTime 300000
 MaxThreads 4
 ReadTimeout 300
 EOF

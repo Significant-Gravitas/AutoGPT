@@ -8,12 +8,14 @@ sets, and marked `pytest.mark.slow`."""
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 import re
 import shutil
 import socket
 import subprocess
 import time
+import zipfile
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from uuid import uuid4
@@ -64,6 +66,17 @@ def _hashed(size: int) -> bytes:
 
 def _ending_in_regex_match(size: int) -> bytes:
     return bytes(size - len(REGEX_MATCH)) + REGEX_MATCH
+
+
+def _nested_zip(depth: int) -> bytes:
+    """A clean text file in a zip in a zip, `depth` zips deep."""
+    data, name = b"plain text\n", "inner.txt"
+    for level in range(depth):
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr(name, data)
+        data, name = out.getvalue(), f"level-{level}.zip"
+    return data
 
 
 def _clamd_enabled() -> bool:
@@ -141,6 +154,15 @@ class TestScanningThroughClamdAsShipped:
             )
 
         assert caught.value.threat_name.startswith(REGEX_SIGNATURE)
+
+    @pytest.mark.asyncio
+    async def test_an_archive_nested_past_clamds_limit_is_refused_not_passed(self):
+        # 40 deep is past ClamAV's MaxRecursion default (17), which compose
+        # leaves as it is.
+        with pytest.raises(VirusDetectedError, match="too large or complex") as caught:
+            await scan_content_safe(_nested_zip(40), filename="nested.zip")
+
+        assert caught.value.threat_name.startswith("Heuristics.Limits.Exceeded.")
 
 
 # Class-scoped, so only one of these containers runs at a time.

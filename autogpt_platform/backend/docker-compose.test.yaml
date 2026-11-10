@@ -106,6 +106,8 @@ services:
       - CLAMD_CONF_MaxFileSize=256M
       - CLAMD_CONF_MaxScanSize=256M
       - CLAMD_CONF_PCREMaxFileSize=256M
+      - CLAMD_CONF_AlertExceedsMax=yes
+      - CLAMD_CONF_MaxScanTime=300000
       - CLAMD_CONF_MaxThreads=12
       - CLAMD_CONF_ReadTimeout=300
     healthcheck:

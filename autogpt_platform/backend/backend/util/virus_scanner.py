@@ -15,7 +15,7 @@ with warnings.catch_warnings():
     )
     import aioclamd
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
 from backend.util.settings import Settings
@@ -29,6 +29,9 @@ _MiB = 1024 * 1024
 # the file, so a large upload has time to stream to ClamAV and scan whole.
 _DEFAULT_TIMEOUT_S = 60.0
 _TIMEOUT_S_PER_MIB = 1.0
+# What clamd, with AlertExceedsMax on, names a file it stopped scanning at one
+# of its limits, e.g. Heuristics.Limits.Exceeded.MaxScanTime.
+_LIMITS_EXCEEDED = "Heuristics.Limits.Exceeded."
 
 T = TypeVar("T")
 
@@ -45,7 +48,7 @@ class VirusScannerSettings(BaseSettings):
     clamav_service_host: str = "localhost"
     clamav_service_port: int = 3310
     # Seconds to wait for ClamAV; None scales each scan's deadline with the file.
-    clamav_service_timeout: int | None = None
+    clamav_service_timeout: int | None = Field(default=None, gt=0)
     clamav_service_enabled: bool = True
     # If the service is disabled, all files are considered clean.
     mark_failed_scans_as_clean: bool = False
@@ -241,6 +244,14 @@ async def scan_content_safe(content: bytes, *, filename: str = "unknown") -> Non
         result = await get_virus_scanner().scan_file(content, filename=filename)
         if not result.is_clean:
             threat_name = result.threat_name or "Unknown threat"
+            if threat_name.startswith(_LIMITS_EXCEEDED):
+                limit = threat_name.removeprefix(_LIMITS_EXCEEDED)
+                logger.warning(f"File {filename} stopped at ClamAV's {limit} limit")
+                raise VirusDetectedError(
+                    threat_name,
+                    "File rejected: too large or complex to scan whole "
+                    f"(ClamAV's {limit} limit)",
+                )
             logger.warning(f"Virus detected in file {filename}: {threat_name}")
             raise VirusDetectedError(
                 threat_name, f"File rejected due to virus detection: {threat_name}"

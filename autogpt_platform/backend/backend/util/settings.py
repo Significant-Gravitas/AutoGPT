@@ -910,6 +910,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
     clamav_service_timeout: int | None = Field(
         default=None,
+        gt=0,
         description="Seconds to wait for the ClamAV daemon; unset, a scan's "
         "deadline grows with the file (60 s plus 1 s per MiB)",
     )
