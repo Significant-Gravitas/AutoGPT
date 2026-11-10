@@ -35,6 +35,9 @@ DiscordCredentialsField = DiscordBotCredentialsField
 TEST_CREDENTIALS = TEST_BOT_CREDENTIALS
 TEST_CREDENTIALS_INPUT = TEST_BOT_CREDENTIALS_INPUT
 
+# How much of a .txt/.py attachment ReadDiscordMessagesBlock adds to the message.
+MAX_TEXT_ATTACHMENT_BYTES = 1024 * 1024
+
 
 class ThreadArchiveDuration(str, Enum):
     """Discord thread auto-archive duration options"""
@@ -137,8 +140,15 @@ class ReadDiscordMessagesBlock(Block):
             if message.attachments:
                 attachment = message.attachments[0]  # Process the first attachment
                 if attachment.filename.endswith((".txt", ".py")):
-                    response = await Requests().get(attachment.url)
+                    response = await Requests().get(
+                        attachment.url, max_body_bytes=MAX_TEXT_ATTACHMENT_BYTES
+                    )
+                    # A capped read keeps one byte past the cap when the file is longer.
+                    truncated = len(response.content) > MAX_TEXT_ATTACHMENT_BYTES
+                    response.content = response.content[:MAX_TEXT_ATTACHMENT_BYTES]
                     file_content = response.text()
+                    if truncated:
+                        file_content += f"\n[File truncated to its first {MAX_TEXT_ATTACHMENT_BYTES} bytes.]"
                     self.output_data += f"\n\nFile from user: {attachment.filename}\nContent: {file_content}"
 
             await client.close()
