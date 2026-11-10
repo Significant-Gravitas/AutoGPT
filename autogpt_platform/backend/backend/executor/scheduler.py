@@ -1239,10 +1239,16 @@ async def _at_reset_chat(args: "CopilotTurnJobArgs") -> PaginatedMessages | None
         if args.session_id
         else None
     )
-    if chat is None or chat.session.expert_id != args.expert_id:
+    if (
+        chat is None
+        or chat.session.expert_id != args.expert_id
+        # Archived by an expert reset: closed, so its turns retire with it.
+        or chat.session.archived_at is not None
+    ):
         logger.info(
             f"At-reset turn {args.schedule_id} skipped — session "
-            f"{_session_id_label(args)} is gone or out of scope; removing it"
+            f"{_session_id_label(args)} is gone, archived or out of scope; "
+            "removing it"
         )
         await _self_delete_copilot_turn_schedule(args)
         return None

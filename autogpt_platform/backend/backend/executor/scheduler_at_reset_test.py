@@ -363,6 +363,21 @@ async def test_an_unreadable_expert_puts_it_back_as_itself(fire_env):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["resume", "send"])
+async def test_an_at_reset_turn_into_an_archived_chat_retires(fire_env, kind):
+    """Resetting an expert archives its chats; a resume or send set before
+    the reset must not dispatch into one."""
+    archived = _chat()
+    archived.session.archived_at = SET_AT
+    fire_env.load.return_value = archived
+
+    await _fire(_args(kind))
+
+    fire_env.dispatch.assert_not_awaited()
+    fire_env.client.delete_schedule.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_followups_keep_their_own_path(fire_env):
     followup = CopilotTurnJobArgs(
         schedule_id="sched-1", user_id=USER, session_id=SESSION, message="check CI"

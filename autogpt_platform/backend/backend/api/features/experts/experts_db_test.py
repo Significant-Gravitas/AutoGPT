@@ -7723,3 +7723,28 @@ async def test_reset_waits_for_a_turn_in_flight(
         where={"id": thread}
     )
     assert still_open is not None and still_open.archivedAt is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_stops_sharing_the_chats_it_archives(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """A shared chat's link stops serving once archived; the reset also runs
+    the owner's stop-sharing cascade so runs shared through it close too."""
+    expert_id, _, thread = await _hire_with_history(test_user.id)
+    await prisma.models.ChatSession.prisma().update(
+        where={"id": thread},
+        data={
+            "isShared": True,
+            "shareToken": str(uuid.uuid4()),
+            "sharedAt": datetime.now(timezone.utc),
+        },
+    )
+
+    await expert_reset.reset_expert(test_user.id, expert_id)
+
+    row = await prisma.models.ChatSession.prisma().find_unique(where={"id": thread})
+    assert row is not None
+    assert row.archivedAt is not None
+    assert row.isShared is False
+    assert row.shareToken is None
