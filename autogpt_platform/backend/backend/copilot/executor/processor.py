@@ -51,6 +51,12 @@ from backend.copilot.expert_context import (
     ExpertSessionUnavailableError,
     read_private_expert,
 )
+from backend.copilot.limit_tracking import (
+    BlockedSurface,
+    executor_turn_surface,
+    set_turn_surface,
+    track_turn_pause,
+)
 from backend.copilot.llm_attribution import (
     set_turn_impersonated,
     set_turn_origin,
@@ -72,7 +78,7 @@ from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
 from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
-from backend.copilot.turn_pause import TurnPause
+from backend.copilot.turn_pause import TurnPause, pause_from_part
 from backend.copilot.turn_tracing import (
     MODEL_OUTPUT_CHUNKS,
     TurnTrace,
@@ -364,6 +370,7 @@ async def _refuse_turn(
     session: "ChatSession",
     pause: TurnPause,
     scheduled_watch: ScheduledTurnWatch | None,
+    surface: BlockedSurface,
 ) -> None:
     """End a turn the allowance can't cover without running it.
 
@@ -371,21 +378,42 @@ async def _refuse_turn(
     a not-started marker; the live stream carries the same pause part the
     engines end a landed turn with. A scheduled turn's watch sees it too, so
     its streak counts the run as not run rather than as one that tried
-    nothing.
+    nothing. PostHog hears of it as ``chat_blocked`` for *surface*.
     """
+    track_turn_pause(entry.user_id, pause, surface=surface)
     maybe_append_user_message(
         session, entry.message or None, entry.is_user_message, entry.message_metadata
     )
     await record_refusal(session, pause)
     for chunk in (
         StreamStart(messageId=str(uuid.uuid4()), sessionId=entry.session_id),
-        StreamTurnPaused(pause=pause.as_part()),
+        StreamTurnPaused.of(pause),
     ):
         await stream_registry.publish_chunk(
             entry.turn_id, chunk, session_id=entry.session_id
         )
         if scheduled_watch is not None:
             scheduled_watch.observe(chunk)
+
+
+def _track_paused_part(
+    user_id: str | None,
+    chunk: StreamTurnPaused,
+    surface: BlockedSurface,
+    sent: set[str],
+) -> None:
+    """``chat_blocked`` for a pause the engine streamed: a turn that landed on
+    a budget, or one refused before answering messages queued while it ran.
+
+    Once per reason in a turn (*sent* holds those already sent): the engine
+    can send the same landing twice, and a landed turn never goes on to an
+    auto-continue that could pause again on the same limit."""
+    pause = pause_from_part(chunk.pause)
+    if pause is None or pause.reason == "steps" or pause.reason in sent:
+        return
+    sent.add(pause.reason)
+    pause = pause.model_copy(update={"reading": chunk.reading})
+    track_turn_pause(user_id, pause, surface=surface)
 
 
 def execute_copilot_turn(
@@ -765,6 +793,15 @@ class CoPilotProcessor:
             # automation chat, and a turn there was not typed by anyone.
             origin = turn_origin(entry, session.metadata.origin)
             turn.set_origin(origin)
+            surface = executor_turn_surface(
+                origin,
+                scheduled=entry.scheduled is not None,
+                source_platform=session.metadata.source_platform,
+            )
+            set_turn_surface(surface)
+            # Before the allowance gate, so a turn it refuses reports to
+            # PostHog as an admin's when an admin started it.
+            set_turn_impersonated(entry.impersonated)
             if (
                 session.metadata.llm_auth_provider != entry.llm_auth_provider
                 or session.metadata.llm_credential_id != entry.llm_credential_id
@@ -807,7 +844,7 @@ class CoPilotProcessor:
                     return
                 if pause is not None and credit_turn is None:
                     log.info(f"Turn not started: the {pause.reason} limit is used up")
-                    await _refuse_turn(entry, session, pause, scheduled_watch)
+                    await _refuse_turn(entry, session, pause, scheduled_watch, surface)
                     if (entry.message_metadata or {}).get("background_task_id"):
                         # The finally block persists this as the subtask's failure.
                         error_msg = (
@@ -990,7 +1027,6 @@ class CoPilotProcessor:
             # same events as they are produced.
             envelope = taint_for_source_platform(entry.envelope, session)
             set_turn_unattended(session, scheduled=entry.unattended)
-            set_turn_impersonated(entry.impersonated)
             set_current_turn_id(entry.turn_id)
             # A subtask's calls join the trace of the reply it works for.
             set_turn_trace_id(trace_id_for(entry))
@@ -1037,9 +1073,12 @@ class CoPilotProcessor:
             # not close the generator, so GeneratorExit would never reach
             # stream_chat_completion_sdk, leaving its stream lock held
             # until GC eventually runs.
+            paused_on: set[str] = set()
             try:
                 async for chunk in published_stream:
                     turn.observe(chunk)
+                    if isinstance(chunk, StreamTurnPaused):
+                        _track_paused_part(entry.user_id, chunk, surface, paused_on)
                     if cancel.is_set():
                         log.info("Cancel requested, breaking stream")
                         break
@@ -1134,6 +1173,7 @@ class CoPilotProcessor:
                         if scheduled_watch is not None:
                             await scheduled_watch.record(error_msg)
                     finally:
+                        set_turn_surface(None)
                         await cost_context_stack.aclose()
                         # A browser turn leaves a Chromium tree on this pod
                         # that nothing else ever stops; state is already
