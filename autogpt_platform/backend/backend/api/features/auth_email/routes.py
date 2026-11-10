@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 from autogpt_libs.auth import requires_frontend_service
 from fastapi import APIRouter, HTTPException, Security, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from backend.data.account_erasure.ban_record import is_banned_address
 from backend.notifications.auth import AuthLinkEmailType, render_auth_email
@@ -57,7 +57,7 @@ class AuthEmailSuppressionResponse(BaseModel):
 
 
 class AuthEmailBanRecordRequest(BaseModel):
-    email: EmailStr
+    email: EmailStr = Field(max_length=320)
 
 
 class AuthEmailBanRecordResponse(BaseModel):

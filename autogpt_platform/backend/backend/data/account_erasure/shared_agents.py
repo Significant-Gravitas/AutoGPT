@@ -38,6 +38,7 @@ from backend.data.account_erasure.deleted_user import (
 )
 from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema, transaction
+from backend.data.graph import hand_over_graphs
 
 logger = logging.getLogger(__name__)
 
@@ -97,10 +98,6 @@ _KEPT_LISTINGS = """
     SELECT l."id" FROM {schema_prefix}"StoreListing" l
      WHERE l."owningUserId" = $1 AND l."agentGraphId" = ANY($2::text[])
      ORDER BY l."id"
-"""
-_TRANSFER_GRAPHS = """
-    UPDATE {schema_prefix}"AgentGraph" SET "userId" = $1
-     WHERE "userId" = $2 AND "id" = ANY($3::text[])
 """
 _TRANSFER_LISTING = """
     UPDATE {schema_prefix}"StoreListing" SET "owningUserId" = $1, "slug" = $2
@@ -171,8 +168,11 @@ async def _transfer(subject: Subject) -> None:
     uid = subject.user_id
     async with transaction(timeout=_TRANSACTION_TIMEOUT) as tx:
         placeholder_profile = await ensure_deleted_user(tx)
-        await execute_raw_with_schema(
-            _TRANSFER_GRAPHS, DELETED_USER_ID, uid, subject.shared_graph_ids, client=tx
+        await hand_over_graphs(
+            subject.shared_graph_ids,
+            from_user_id=uid,
+            to_user_id=DELETED_USER_ID,
+            tx=tx,
         )
         listings = await StoreListing.prisma(tx).find_many(
             where={"id": {"in": subject.kept_listing_ids}, "owningUserId": uid}

@@ -38,12 +38,14 @@ def db(monkeypatch):
         return_value=SimpleNamespace(id="profile-of-user")
     )
     execute = AsyncMock(return_value=3)
+    hand_over = AsyncMock(return_value=3)
     ensure = AsyncMock(return_value="profile-of-placeholder")
     clear = MagicMock()
     monkeypatch.setattr(shared_agents, "transaction", transaction)
     monkeypatch.setattr(shared_agents, "StoreListing", listings)
     monkeypatch.setattr(shared_agents, "Profile", profiles)
     monkeypatch.setattr(shared_agents, "execute_raw_with_schema", execute)
+    monkeypatch.setattr(shared_agents, "hand_over_graphs", hand_over)
     monkeypatch.setattr(shared_agents, "ensure_deleted_user", ensure)
     monkeypatch.setattr(shared_agents, "clear_store_caches", clear)
     monkeypatch.setattr(
@@ -55,6 +57,7 @@ def db(monkeypatch):
         tx=tx,
         listings=listings,
         execute=execute,
+        hand_over=hand_over,
         ensure=ensure,
         clear=clear,
     )
@@ -80,6 +83,7 @@ async def test_a_dry_run_counts_and_changes_nothing(db):
     }
     db.ensure.assert_not_awaited()
     db.execute.assert_not_awaited()
+    db.hand_over.assert_not_awaited()
     db.clear.assert_not_called()
 
 
@@ -93,6 +97,7 @@ async def test_an_account_nobody_else_uses_creates_no_placeholder(db):
     assert set(report.counts.values()) == {0}
     db.ensure.assert_not_awaited()
     db.execute.assert_not_awaited()
+    db.hand_over.assert_not_awaited()
     db.clear.assert_not_called()
 
 
@@ -104,14 +109,13 @@ async def test_agents_and_listings_go_to_the_placeholder_in_one_transaction(db):
     db.ensure.assert_awaited_once_with(db.tx)
     for call in db.execute.await_args_list:
         assert call.kwargs["client"] is db.tx
-    graphs = next(
-        call
-        for call in db.execute.await_args_list
-        if 'UPDATE {schema_prefix}"AgentGraph"' in call.args[0]
+    # Only this account's rows, only the shared ones (graph.hand_over_graphs).
+    db.hand_over.assert_awaited_once_with(
+        SUBJECT.shared_graph_ids,
+        from_user_id=USER_ID,
+        to_user_id=DELETED_USER_ID,
+        tx=db.tx,
     )
-    # Only this account's rows, only the shared ones.
-    assert '"userId" = $2' in graphs.args[0]
-    assert graphs.args[1:] == (DELETED_USER_ID, USER_ID, SUBJECT.shared_graph_ids)
     listing = _listing_update(db.execute)
     assert listing.args[1:] == (DELETED_USER_ID, "weather", "listing-1", USER_ID)
     db.clear.assert_called_once()
