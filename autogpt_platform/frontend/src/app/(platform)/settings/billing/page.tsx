@@ -28,6 +28,11 @@ import {
 } from "@/services/analytics/monetization-analytics";
 
 import { AutomationCreditsTab } from "./components/AutomationCreditsTab/AutomationCreditsTab";
+import { CheckoutAbandonedPrompt } from "./components/CheckoutAbandonedPrompt/CheckoutAbandonedPrompt";
+import {
+  readAbandonedPlan,
+  type AbandonedPlan,
+} from "./components/CheckoutAbandonedPrompt/helpers";
 import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
 
 type BillingTab = "subscription" | "automation-credits";
@@ -63,6 +68,11 @@ function SettingsBillingPage() {
   const { mutateAsync: fulfillCheckout } = usePatchV1FulfillCheckoutSession();
   const handledTopupRef = useRef<string | null>(null);
   const handledSubscriptionRef = useRef<string | null>(null);
+  // Set on return from an upgrade checkout left unpaid; the plan is null when
+  // the cancel URL did not name one.
+  const [abandonedCheckout, setAbandonedCheckout] = useState<{
+    plan: AbandonedPlan | null;
+  } | null>(null);
   const [isExplainerOpen, setIsExplainerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<BillingTab>(() =>
     resolveInitialTab(searchParams),
@@ -135,16 +145,12 @@ function SettingsBillingPage() {
           checkout_kind: "subscription",
           surface: "billing",
         });
-        toast({
-          title: "Checkout cancelled",
-          description: "Your plan was not changed.",
-          variant: "destructive",
-        });
+        setAbandonedCheckout({ plan: readAbandonedPlan(searchParams) });
       }
 
       router.replace("/settings/billing");
     },
-    [subscriptionStatus, queryClient, router],
+    [subscriptionStatus, queryClient, router, searchParams],
   );
 
   useEffect(
@@ -158,12 +164,7 @@ function SettingsBillingPage() {
     <div className="mx-auto flex w-full max-w-[900px] flex-col gap-5 px-4 pb-8 sm:px-6">
       <header className="space-y-1">
         <div className="flex items-center gap-1">
-          <Text
-            // TODO(tokens): no exact text token (tracking-[-0.035em])
-            variant="h3"
-            as="h1"
-            className="tracking-[-0.035em]"
-          >
+          <Text variant="h3-tracking-tight" as="h1">
             Billing &amp; usage
           </Text>
           <Button
@@ -172,8 +173,8 @@ function SettingsBillingPage() {
             size="icon-sm"
             leadingIcon={InformationCircleIcon}
             aria-label="How usage and credits work"
+            tone="muted"
             onClick={() => setIsExplainerOpen(true)}
-            className="text-foreground-tertiary"
           />
         </div>
         <Text variant="body" tone="secondary">
@@ -203,6 +204,9 @@ function SettingsBillingPage() {
         onOpenChange={setIsExplainerOpen}
         showBillingLink={false}
       />
+      {abandonedCheckout ? (
+        <CheckoutAbandonedPrompt plan={abandonedCheckout.plan} />
+      ) : null}
     </div>
   );
 }

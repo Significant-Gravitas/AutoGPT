@@ -48,8 +48,7 @@ const PRIORITY_CONFIG: Record<
   },
   stale: {
     icon: ClockFadingIcon,
-    // oxlint-disable-next-line design-system/no-raw-colors -- yellow-600 #DFAF00 has no role; gold to amber change deferred (see PR)
-    color: "text-yellow-600",
+    color: "text-yellow-foreground",
     bg: "bg-warning-surface",
   },
   warning: {
@@ -69,8 +68,7 @@ const PRIORITY_CONFIG: Record<
   },
   scheduled: {
     icon: Calendar03Icon,
-    // oxlint-disable-next-line design-system/no-raw-colors -- yellow-600 #DFAF00 has no role; gold to amber change deferred (see PR)
-    color: "text-yellow-600",
+    color: "text-yellow-foreground",
     bg: "bg-warning-surface",
   },
   idle: {
@@ -140,7 +138,7 @@ export function SitrepItem({ item }: Props) {
         {item.priority === "success" || item.priority === "warning" ? (
           <NextLink
             href={`/library/agents/${item.agentID}${item.executionID ? `?activeItem=${item.executionID}` : ""}`}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm font-medium leading-inherit text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm leading-inherit font-medium text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
           >
             <Icon icon={EyeIcon} size={14} className="shrink-0" />
             See task
@@ -155,7 +153,7 @@ export function SitrepItem({ item }: Props) {
         <button
           type="button"
           onClick={handleAskAutoPilot}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm font-medium leading-inherit text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm leading-inherit font-medium text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
         >
           <Icon icon={Chatting01Icon} size={14} className="shrink-0" />
           Ask Otto

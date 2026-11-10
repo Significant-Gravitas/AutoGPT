@@ -75,7 +75,7 @@ export function ActivityDropdown({
     <div className="overflow-hidden">
       {/* Header */}
       <div className="sticky top-0 z-10 px-4">
-        <div className="flex items-center justify-between pb-1 pt-3">
+        <div className="flex items-center justify-between pt-3 pb-1">
           {isSearchVisible && withSearch ? (
             <div
               className={`${styles.searchContainer} ${
@@ -98,34 +98,31 @@ export function ActivityDropdown({
                 />
                 <button
                   onClick={handleClearSearch}
-                  className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
+                  className="absolute top-1/2 right-1 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
                   aria-label="Clear search"
                 >
-                  <Icon
-                    icon={Cancel01Icon}
-                    size={16}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={Cancel01Icon} size={16} tone="muted" />
                 </button>
               </div>
             </div>
           ) : (
             <div className={`${styles.headerContainer} py-0.5`}>
-              <span className="text-xs font-medium uppercase text-foreground-tertiary">
+              <span className="text-caption font-medium text-foreground-tertiary uppercase">
                 Workflow Activity
               </span>
               {withSearch ? (
                 <Button
-                  variant="ghost"
-                  size="small"
+                  variant="toggle"
+                  size="inline"
                   onClick={toggleSearch}
                   aria-label="Search workflows"
-                  className="!h-auto !w-fit !min-w-0 !p-0 hover:border-transparent hover:bg-transparent"
+                  className="w-fit"
                 >
                   <Icon
                     icon={Search01Icon}
                     size={16}
-                    className="h-4 w-4 text-foreground-secondary"
+                    tone="secondary"
+                    className="h-4 w-4"
                   />
                 </Button>
               ) : null}
@@ -149,12 +146,9 @@ export function ActivityDropdown({
             style={{ width: "100%", height: listHeight }}
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
-            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">
-              <Icon
-                icon={BellIcon}
-                className="h-6 w-6 text-foreground-disabled"
-              />
+          <div className="flex h-full flex-col items-center justify-center gap-5 pt-6 pb-8">
+            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-surface-hover p-6">
+              <Icon icon={BellIcon} tone="disabled" className="h-6 w-6" />
             </div>
             <div className="flex flex-col items-center justify-center">
               <Text variant="body-medium">

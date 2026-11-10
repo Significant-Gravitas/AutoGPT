@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import json
 import logging
 import mimetypes
 import os
@@ -18,9 +19,11 @@ from backend.copilot.context import (
     get_workspace_manager,
     is_allowed_local_path,
     looks_like_sdk_tool_result_path,
+    resolve_allowed_local_path,
     sdk_tool_result_redirect_hint,
 )
 from backend.copilot.google_data_redaction import GOOGLE_DATA_METADATA_KEY
+from backend.copilot.host_fs import open_no_follow
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_image import (
     BINARY_IMAGE_READ_GUIDANCE,
@@ -40,6 +43,7 @@ from backend.copilot.tools.workdir import (
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.workspace_folder import WorkspaceFolder
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
+from backend.util.sandbox_output import read_sandbox_file
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
@@ -120,16 +124,16 @@ async def _resolve_write_content(
 
 
 async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorResponse:
-    """Read *source_path* from E2B sandbox or local ephemeral directory."""
-
+    """Read *source_path* from E2B sandbox or local ephemeral directory, up to
+    one byte past the size limit, which the caller then refuses."""
+    max_size = _MAX_FILE_SIZE_MB * 1024 * 1024
     sandbox = get_current_sandbox()
     if sandbox is not None:
         remote = resolve_sandbox_path_or_error(source_path, session_id, "source_path")
         if isinstance(remote, ErrorResponse):
             return remote
         try:
-            data = await sandbox.files.read(remote, format="bytes")
-            return bytes(data)
+            return await read_sandbox_file(sandbox, remote, max_size)
         except Exception as exc:
             return ErrorResponse(
                 message=f"Source file not found on sandbox: {source_path} ({exc})",
@@ -143,8 +147,8 @@ async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorR
     if isinstance(validated, ErrorResponse):
         return validated
     try:
-        with open(validated, "rb") as f:
-            return f.read()
+        with open(validated, "rb", opener=open_no_follow) as f:
+            return f.read(max_size + 1)
     except FileNotFoundError:
         return ErrorResponse(
             message=f"Source file not found: {source_path}",
@@ -212,14 +216,15 @@ class WorkspaceFileListResponse(ToolResponseBase):
 
 
 class WorkspaceFileContentResponse(ToolResponseBase):
-    """Response containing workspace file content (legacy, for small text files)."""
+    """A file's content inline: text as ``content``, other bytes as ``content_base64``."""
 
     type: ResponseType = ResponseType.WORKSPACE_FILE_CONTENT
     file_id: str
     name: str
     path: str
     mime_type: str
-    content_base64: str
+    content: str | None = None
+    content_base64: str | None = None
 
 
 _MAX_LOCAL_TOOL_RESULT_BYTES = 10 * 1024 * 1024  # 10 MB
@@ -233,11 +238,14 @@ _MAX_RANGE_CHARS = 1_000_000
 # serves the whole file.
 _MAX_EXTERNAL_RANGE_END = 1_000_000
 
-# The most text one External API ranged read returns: its base64 has to fit in
-# the 100,000 characters a tool result keeps, or the slice would come back cut.
+# The most text one External API ranged read returns: escaped as JSON, it has
+# to fit in the 100,000 characters a tool result keeps, or it comes back cut.
 _MAX_EXTERNAL_RANGE_BYTES = 60_000
-# Base64 and metadata must stay below the 45K tool-output persistence threshold.
+_MAX_EXTERNAL_RANGE_ESCAPED = 80_000
+# Escaped as JSON, with its metadata, an internal read must stay below the 45K
+# tool-output persistence threshold, or its window is saved again as a preview.
 _MAX_INTERNAL_RANGE_BYTES = 30_000
+_MAX_INTERNAL_RANGE_ESCAPED = 40_000
 
 
 def _fit_utf8(text: str, max_bytes: int) -> str:
@@ -262,22 +270,19 @@ def _read_local_tool_result(
     ``read_workspace_file`` with an SDK tool-result path that only exists on
     the host filesystem, not in cloud workspace storage.
 
-    Defence-in-depth: validates *path* via :func:`is_allowed_local_path`
+    Defence-in-depth: validates *path* via :func:`resolve_allowed_local_path`
     regardless of what the caller has already checked.
     """
-    # TOCTOU: path validated then opened separately. Acceptable because
-    # the tool-results directory is server-controlled, not user-writable.
-    expanded = os.path.realpath(os.path.expanduser(path))
-    # Defence-in-depth: re-check with resolved path (caller checked raw path).
-    if not is_allowed_local_path(expanded, sdk_cwd or get_sdk_cwd()):
+    expanded = resolve_allowed_local_path(path, sdk_cwd or get_sdk_cwd())
+    if expanded is None:
         return ErrorResponse(
             message=f"Path not allowed: {os.path.basename(path)}", session_id=session_id
         )
     try:
-        # The 10 MB cap (_MAX_LOCAL_TOOL_RESULT_BYTES) bounds memory usage.
-        # Pre-read size check prevents loading files far above the cap;
-        # the remaining TOCTOU gap is acceptable for server-controlled paths.
-        file_size = os.path.getsize(expanded)
+        # The 10 MB cap bounds memory: read one byte past it, never the whole file.
+        with open(expanded, "rb", opener=open_no_follow) as fh:
+            raw = fh.read(_MAX_LOCAL_TOOL_RESULT_BYTES + 1)
+        file_size = len(raw)
         if file_size > _MAX_LOCAL_TOOL_RESULT_BYTES:
             return ErrorResponse(
                 message=(f"File too large: {os.path.basename(path)}"),
@@ -286,8 +291,6 @@ def _read_local_tool_result(
 
         # Detect binary files: try strict UTF-8 first, fall back to
         # base64-encoding the raw bytes for binary content.
-        with open(expanded, "rb") as fh:
-            raw = fh.read()
         try:
             text_content = raw.decode("utf-8")
         except UnicodeDecodeError:
@@ -308,7 +311,10 @@ def _read_local_tool_result(
         end = (
             char_offset + char_length if char_length is not None else len(text_content)
         )
-        slice_text = _fit_utf8(text_content[char_offset:end], _MAX_INTERNAL_RANGE_BYTES)
+        slice_text = _fit_escaped(
+            _fit_utf8(text_content[char_offset:end], _MAX_INTERNAL_RANGE_BYTES),
+            _MAX_INTERNAL_RANGE_ESCAPED,
+        )
     except FileNotFoundError:
         return ErrorResponse(
             message=f"File not found: {os.path.basename(path)}", session_id=session_id
@@ -323,7 +329,7 @@ def _read_local_tool_result(
         name=os.path.basename(path),
         path=path,
         mime_type=mimetypes.guess_type(path)[0] or "text/plain",
-        content_base64=base64.b64encode(slice_text.encode("utf-8")).decode("ascii"),
+        content=slice_text,
         message=(
             f"Read chars {char_offset}\u2013{char_offset + len(slice_text)} "
             f"of {len(text_content):,} chars from local tool-result "
@@ -364,6 +370,9 @@ class WorkspaceWriteResponse(ToolResponseBase):
     download_url: str
     source: str | None = None  # "content", "base64", or "copied from <path>"
     content_preview: str | None = None  # First 200 chars for text files
+    # The file this overwrite replaced, whose id is now dead. A client showing
+    # that file follows it to file_id.
+    replaced_file_id: str | None = None
     # Otto's own working file (e.g. build_state.json), as the write marked it.
     # For the activity log only; neither the model nor the client sees it.
     is_internal: bool = Field(default=False, exclude=True)
@@ -611,6 +620,9 @@ def _folder_subtree(
 class ReadWorkspaceFileTool(BaseTool):
     """Tool for reading file content from workspace."""
 
+    # ``save_to_path`` copies the file into the sandbox.
+    writes_files = True
+
     MAX_INLINE_SIZE_BYTES = 32 * 1024
     PREVIEW_SIZE = 500
 
@@ -834,21 +846,20 @@ class ReadWorkspaceFileTool(BaseTool):
                 )
                 text = raw[: 4 * end].decode("utf-8", errors="replace")
                 slice_text = text[char_offset:end]
-                max_bytes = (
-                    _MAX_EXTERNAL_RANGE_BYTES
-                    if session.external_caller
-                    else _MAX_INTERNAL_RANGE_BYTES
-                )
-                slice_text = _fit_utf8(slice_text, max_bytes)
+                if session.external_caller:
+                    max_bytes = _MAX_EXTERNAL_RANGE_BYTES
+                    max_escaped = _MAX_EXTERNAL_RANGE_ESCAPED
+                else:
+                    max_bytes = _MAX_INTERNAL_RANGE_BYTES
+                    max_escaped = _MAX_INTERNAL_RANGE_ESCAPED
+                slice_text = _fit_escaped(_fit_utf8(slice_text, max_bytes), max_escaped)
                 per_read = f"{max_bytes:,} bytes"
                 return WorkspaceFileContentResponse(
                     file_id=file_info.id,
                     name=file_info.name,
                     path=file_info.path,
                     mime_type="text/plain",
-                    content_base64=base64.b64encode(slice_text.encode("utf-8")).decode(
-                        "utf-8"
-                    ),
+                    content=slice_text,
                     message=(
                         f"Read chars {char_offset}–"
                         f"{char_offset + len(slice_text)} "
@@ -871,12 +882,21 @@ class ReadWorkspaceFileTool(BaseTool):
                 )
                 if save_to_path:
                     msg += f" — also saved to {save_to_path}"
+                text, encoded = _inline(
+                    content,
+                    (
+                        _MAX_EXTERNAL_RANGE_ESCAPED
+                        if session.external_caller
+                        else _MAX_INTERNAL_RANGE_ESCAPED
+                    ),
+                )
                 return WorkspaceFileContentResponse(
                     file_id=file_info.id,
                     name=file_info.name,
                     path=file_info.path,
                     mime_type=file_info.mime_type,
-                    content_base64=base64.b64encode(content).decode("utf-8"),
+                    content=text,
+                    content_base64=encoded,
                     message=msg,
                     session_id=session_id,
                 ).with_google_data(google_data)
@@ -943,6 +963,33 @@ class ReadWorkspaceFileTool(BaseTool):
             )
 
 
+def _fit_escaped(text: str, max_chars: int) -> str:
+    """The longest start of *text* whose JSON string is at most *max_chars* long."""
+
+    def fits(n: int) -> bool:
+        return len(json.dumps(text[:n], ensure_ascii=False)) - 2 <= max_chars
+
+    if fits(len(text)):
+        return text
+    low, high = 0, len(text)
+    while high - low > 1:
+        middle = (low + high) // 2
+        low, high = (middle, high) if fits(middle) else (low, middle)
+    return text[:low]
+
+
+def _inline(raw: bytes, max_escaped: int) -> tuple[str | None, str | None]:
+    """``(content, content_base64)``: UTF-8 text no longer than *max_escaped* once
+    escaped as JSON, else the bytes' base64, which a whole read's size cap bounds."""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = None
+    if text is not None and _fit_escaped(text, max_escaped) == text:
+        return text, None
+    return None, base64.b64encode(raw).decode("ascii")
+
+
 # Paths under ``/skills/`` and ``/experts/<id>/skills/`` are managed by the
 # skills registry — the ``store_skill`` / ``delete_skill`` tools enforce
 # frontmatter validation, the per-expert cap, name regex, and content
@@ -983,6 +1030,8 @@ def _path_under_skills_registry(path: str | None) -> bool:
 
 class WriteWorkspaceFileTool(BaseTool):
     """Tool for writing files to workspace."""
+
+    writes_files = True
 
     @property
     def name(self) -> str:
@@ -1200,6 +1249,7 @@ class WriteWorkspaceFileTool(BaseTool):
                 download_url=download_url,
                 source=source,
                 content_preview=preview,
+                replaced_file_id=rec.replaced_file_id,
                 message=msg,
                 session_id=session_id,
                 is_internal=rec.is_internal,
@@ -1243,6 +1293,8 @@ class WriteWorkspaceFileTool(BaseTool):
 
 class DeleteWorkspaceFileTool(BaseTool):
     """Tool for deleting files from workspace."""
+
+    writes_files = True
 
     @property
     def name(self) -> str:

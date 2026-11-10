@@ -97,7 +97,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
         <button
           type="button"
           onClick={() => setDismissedId(dockId)}
-          className="rounded-full px-2 py-0.5 text-xs text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
+          className="rounded-full px-2 py-0.5 text-caption text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
         >
           Skip
         </button>
@@ -150,7 +150,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
                 placeholder={
                   q.example ? `e.g. ${q.example}` : "Type your answer"
                 }
-                className="rounded-xl bg-surface-muted px-2.5 py-1.5 text-body-sm leading-inherit text-foreground-emphasis ring-1 ring-border-base/70 transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-foreground-subtle"
+                className="rounded-xl bg-surface-muted px-2.5 py-1.5 text-body-sm leading-inherit text-foreground-emphasis ring-1 ring-border-base/70 transition-shadow placeholder:text-foreground-subtle focus:ring-foreground-subtle focus:outline-none"
               />
             </label>
           ),
@@ -162,7 +162,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
             type="button"
             onClick={handleSubmit}
             aria-disabled={!allAnswered}
-            className="rounded-full bg-action-hover px-3.5 py-1.5 text-xs font-medium text-action-foreground transition-opacity hover:bg-action aria-disabled:opacity-40"
+            className="rounded-full bg-action-hover px-3.5 py-1.5 text-caption font-medium text-action-foreground transition-opacity hover:bg-action aria-disabled:opacity-40"
           >
             Answer
           </button>

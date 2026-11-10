@@ -35,15 +35,11 @@ export function ExpertHireCard({ expert, firstName, actions }: Props) {
       </ul>
 
       <div className="mt-5 border-t border-separator pt-4">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground-strong">
-          <Icon
-            icon={Coins01Icon}
-            size={16}
-            className="text-foreground-tertiary"
-          />
+        <h2 className="flex items-center gap-2 text-body font-semibold text-foreground-strong">
+          <Icon icon={Coins01Icon} size={16} tone="muted" />
           Included with your plan
         </h2>
-        <p className="mt-1.5 text-sm leading-6 text-foreground-secondary">
+        <p className="mt-1.5 text-body leading-6 text-foreground-secondary">
           {`Hiring ${firstName} costs nothing extra. Their work draws on your existing balance`}
           {weeklyBudget
             ? `, capped at ${creditsToUsdLabel(weeklyBudget)} a week — a limit you can change once they are on your team.`
@@ -62,12 +58,12 @@ function Perk({
   children: ReactNode;
 }) {
   return (
-    <li className="flex items-start gap-2 text-sm text-foreground-body">
+    <li className="flex items-start gap-2 text-body text-foreground-body">
       <Icon
         icon={icon}
         size={16}
-        // TODO(tokens): no exact role: text-emerald-600 #059669
-        className="mt-0.5 shrink-0 text-emerald-600"
+        tone="success"
+        className="mt-0.5 shrink-0"
         aria-hidden
       />
       <span>{children}</span>

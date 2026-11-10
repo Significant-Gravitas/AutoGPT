@@ -50,7 +50,7 @@ export function AutopilotModeSelector({
             aria-label={`Approval mode: ${current.label}. Change mode`}
             title={`Approval mode: ${current.label}`}
             className={cn(
-              "inline-flex h-8 items-center justify-center gap-1 rounded-full text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
+              "inline-flex h-8 items-center justify-center gap-1 rounded-full text-caption font-medium transition-colors focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:outline-none",
               isDefault
                 ? "w-8 text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-body"
                 : "px-2.5",
@@ -66,7 +66,7 @@ export function AutopilotModeSelector({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
-          <DropdownMenuLabel className="text-xs font-medium text-foreground-tertiary">
+          <DropdownMenuLabel className="text-caption font-medium text-foreground-tertiary">
             Approvals in this chat
           </DropdownMenuLabel>
           <DropdownMenuRadioGroup value={mode} onValueChange={selectMode}>
@@ -80,7 +80,7 @@ export function AutopilotModeSelector({
                   <span className="font-medium text-foreground-strong">
                     {option.label}
                   </span>
-                  <span className="text-xs text-foreground-tertiary">
+                  <span className="text-caption text-foreground-tertiary">
                     {option.description}
                   </span>
                 </span>

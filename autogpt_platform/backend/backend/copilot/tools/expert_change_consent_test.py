@@ -22,7 +22,7 @@ from backend.copilot.gate.headline import Headline
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.trial_cost_context import TrialCostContext
 
-from . import hire_expert, raise_expert, update_expert, update_soul
+from . import expert_handoff_proposal, update_expert, update_soul
 from .base import BaseTool
 from .confirm_expert_change import ConfirmExpertChangeTool
 from .expert_change_test import _CHARTER, _USER, _card_answers, _env, _FakeRedis
@@ -104,8 +104,7 @@ def gate(mode: str):
         ),
         patch(f"{_GATE}.reads.release_held_read", AsyncMock(return_value=None)),
         patch(f"{_GATE}.reads.screen_read", AsyncMock(return_value=None)),
-        patch.object(hire_expert, "uuid", _FIXED_UUID),
-        patch.object(raise_expert, "uuid", _FIXED_UUID),
+        patch.object(expert_handoff_proposal, "uuid", _FIXED_UUID),
         patch.object(update_expert, "uuid", _FIXED_UUID),
         patch.object(update_soul, "uuid", _FIXED_UUID),
     ):

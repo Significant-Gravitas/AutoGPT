@@ -3,8 +3,8 @@
 Note: These endpoints use ephemeral sessions that are not persisted to Redis.
 As a result, session-based rate limiting (max_agent_runs, max_agent_schedules)
 is not enforced for external API calls. Each request creates a fresh session
-with zeroed counters. Rate limiting for external API consumers should be
-handled separately (e.g., via API key quotas).
+with zeroed counters. Both routes use rate_limit.EXECUTION_LIMIT to share the
+per-user execution budget with the other v1 write operations.
 """
 
 import logging
@@ -15,6 +15,7 @@ from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
 from backend.api.external.middleware import require_permission
+from backend.api.external.rate_limit import EXECUTION_LIMIT
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import find_agent_tool, run_agent_tool
 from backend.copilot.tools.models import ToolResponseBase
@@ -84,6 +85,7 @@ def _create_ephemeral_session(
 
 @tools_router.post(
     path="/find-agent",
+    dependencies=[EXECUTION_LIMIT],
 )
 async def find_agent(
     request: FindAgentRequest,
@@ -111,6 +113,7 @@ async def find_agent(
 
 @tools_router.post(
     path="/run-agent",
+    dependencies=[EXECUTION_LIMIT],
 )
 async def run_agent(
     request: RunAgentRequest,

@@ -498,6 +498,7 @@ class _Turn:
             for name, value in (
                 ("build_skills_update_notice", None),
                 ("build_session_context", ""),
+                ("first_message_expert_context", ""),
                 ("inject_user_context", None),
                 ("drain_pending_for_persist", []),
             ):

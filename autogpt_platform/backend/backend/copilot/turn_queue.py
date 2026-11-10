@@ -38,13 +38,20 @@ from prisma.errors import UniqueViolationError
 from pydantic import BaseModel, ValidationError
 
 from backend.copilot.active_turns import (
+    SessionNotIdle,
     TurnSlot,
     count_running_turns,
     get_delegated_turn_limit,
     get_running_turn_limit,
 )
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
-from backend.copilot.db import is_duplicate_chat_message_id_error
+from backend.copilot.credential_selection import CredentialPin
+from backend.copilot.duplicate_message_id import is_duplicate_chat_message_id_error
+from backend.copilot.limit_tracking import (
+    BlockedSurface,
+    LimitReading,
+    track_turn_refusal,
+)
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_QUEUED,
@@ -65,17 +72,25 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
+from backend.copilot.service import normalise_user_message
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tracking import track_user_message
-from backend.copilot.tree import TreeRefusal, TurnEnvelope, release_turn
+from backend.copilot.tree import (
+    TreeRefusal,
+    TurnEnvelope,
+    release_turn,
+    reopen_closed_tree,
+)
 from backend.copilot.trial_cost_context import (
     TrialCostContext,
     capture_cost_context,
     restore_cost_context,
 )
+from backend.copilot.usage_state import LimitWindow
 from backend.data.db_accessors import chat_db
-from backend.data.user import is_user_banned
+from backend.data.user import is_user_refused
 from backend.integrations.codex.access import has_codex_access
+from backend.util import posthog_client
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +111,9 @@ UNREADABLE_SPAWN = (
 UNRECORDED_WAKE = (
     "The approved action could not be resumed: what it was allowed to do was "
     f"not recorded. {WAKE_LATER}"
+)
+UNREADABLE_BACKGROUND = (
+    "Otto couldn't start this background work because its saved limits are unavailable."
 )
 
 
@@ -127,16 +145,17 @@ async def list_queued_sessions(user_id: str):
     )
 
 
-class SessionNotIdle(Exception):
-    """The session already has a turn queued or running, so a spawned child
-    cannot be queued into it."""
-
-
 class InflightCapExceeded(Exception):
     """User's running + queued total has reached the configured hard cap.
 
     Raised by :func:`try_enqueue_turn` so the route can map to HTTP 429.
+    ``used`` is the user's in-flight count and ``cap`` the hard cap.
     """
+
+    def __init__(self, *, used: int | None = None, cap: int | None = None) -> None:
+        super().__init__()
+        self.used = used
+        self.cap = cap
 
 
 async def try_enqueue_turn(
@@ -166,8 +185,9 @@ async def try_enqueue_turn(
     rate-limit accepts on its INCRBY path; the cap is a safeguard, not
     a budget.
     """
-    if await count_inflight_turns(user_id) >= inflight_cap:
-        raise InflightCapExceeded()
+    inflight = await count_inflight_turns(user_id)
+    if inflight >= inflight_cap:
+        raise InflightCapExceeded(used=inflight, cap=inflight_cap)
     return await enqueue_turn(
         user_id=user_id,
         session_id=session_id,
@@ -213,10 +233,17 @@ async def enqueue_turn(
     AND session-ownership check upstream — once the row is committed
     the dispatcher owns it.
 
-    The user message is a regular ChatMessage row (no special status).
+    The user message is a regular ChatMessage row (no special status),
+    with the same input normalisation as a message that starts a turn
+    directly; one with nothing left once normalised raises
+    :class:`~backend.copilot.service.EmptyUserMessage` and writes no row.
     The dispatcher's submit-time payload is stashed in the row's
     ``metadata`` JSONB so a later promotion replays the turn faithfully.
     """
+    if is_user_message:
+        # Promotion replays this row as the turn's message and later turns
+        # replay it as history, so it is normalised before it is stored.
+        message = normalise_user_message(message)
     metadata = dict(message_metadata or {})
     metadata["cost_context"] = (await capture_cost_context(user_id)).model_dump(
         mode="json"
@@ -319,7 +346,9 @@ async def _flip(db: Any, session_id: str, user_id: str) -> bool:
     )
 
 
-async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
+async def cancel_queued_turn(
+    *, user_id: str, session_id: str, expected_turn_id: str | None = None
+) -> bool:
     """Flip the user's session from ``"queued"`` → ``"idle"``.  A queued child
     gets a closing row saying it was cancelled, which its waiter reads, and its
     node goes back to its tree.  Returns True iff the CAS matched AND the
@@ -332,6 +361,11 @@ async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
         async with _get_session_lock(session_id):
             # Read before the flip: once idle, a new message can become the latest.
             pending = await db.get_latest_user_message_in_session(session_id)
+            if expected_turn_id is not None and (
+                pending is None
+                or (pending.metadata or {}).get("turn_id") != expected_turn_id
+            ):
+                return False
             if not await db.update_chat_session_status(
                 session_id=session_id,
                 expect_status=CHAT_STATUS_QUEUED,
@@ -449,6 +483,7 @@ async def _promote_head(user_id: str) -> bool | None:
     # The admitted envelope of a queued child, whose node a refusal gives back.
     child: TurnEnvelope | None = None
     spawned = False
+    background = False
     try:
         # Find the pending user message in this session (the most recent
         # user-role row with no following assistant rows — i.e. the one
@@ -488,6 +523,14 @@ async def _promote_head(user_id: str) -> bool | None:
         metadata = pending.metadata or {}
         queued_envelope = _stored_envelope(metadata)
         spawned = _is_spawned(pending)
+        background = bool(metadata.get("background_task_id"))
+        if background and queued_envelope is None:
+            await _refuse_queued_turn(head, UNREADABLE_BACKGROUND)
+            return None
+        if background and queued_envelope is not None:
+            # Background work keeps no clock, so its tree may have expired
+            # while it waited; the recheck below would refuse a closed one.
+            await reopen_closed_tree(queued_envelope, user_id=user_id)
         if spawned and queued_envelope is None:
             # Nothing but that envelope bounds a child its spawner admitted.
             await _refuse_queued_turn(
@@ -505,7 +548,7 @@ async def _promote_head(user_id: str) -> bool | None:
             await _refuse_queued_turn(head, UNRECORDED_WAKE)
             return None
 
-        turn_id = str(uuid.uuid4())
+        turn_id = str(metadata["turn_id"]) if background else str(uuid.uuid4())
         # The user's message is already persisted AND the session is
         # already ``chatStatus='running'`` from claim_queued_session.
         # Build a TurnSlot directly (no acquire) so we don't re-check
@@ -542,6 +585,16 @@ async def _promote_head(user_id: str) -> bool | None:
                 impersonated=metadata.get("impersonated") is True,
                 tool_call_id=metadata.get("tool_call_id") or "chat_stream",
                 tool_name=metadata.get("tool_name") or "chat",
+                message_metadata=metadata if background else None,
+                unattended=background,
+                credential_pins=(
+                    {
+                        key: CredentialPin.model_validate(value)
+                        for key, value in metadata.get("credential_pins", {}).items()
+                    }
+                    if background
+                    else None
+                ),
                 # A typed message is a root, as the chat route makes it, not the
                 # child of the turn this hook runs in; a wake or a child brings its own.
                 envelope=queued_envelope,
@@ -551,7 +604,11 @@ async def _promote_head(user_id: str) -> bool | None:
         # Only a stored envelope is re-checked here; a root is never refused.
         await _refuse_queued_turn(
             head,
-            refused.message if spawned else f"{refused.message} {WAKE_LATER}",
+            (
+                refused.message
+                if spawned or background
+                else f"{refused.message} {WAKE_LATER}"
+            ),
             release=child,
         )
         return None
@@ -586,7 +643,7 @@ async def _promote_head(user_id: str) -> bool | None:
         f"user={user_id} turn={turn_id} sub_work={sub_work[head.session_id]}"
     )
 
-    if pending.role == "user" and pending.content and not spawned:
+    if pending.role == "user" and pending.content and not spawned and not background:
         try:
             track_user_message(
                 user_id=user_id,
@@ -620,7 +677,7 @@ async def _may_start(gates: "_UserGates", head: ChatSessionInfo) -> bool:
     """Whether ``head`` may start now: :func:`turn_refusal` for its route and,
     on the platform route, an Advanced turn's tier."""
     route_provider = head.metadata.llm_auth_provider
-    if not await gates.route_open(route_provider):
+    if not await gates.route_open(route_provider, head):
         return False
     if route_provider != "platform":
         return True
@@ -651,11 +708,19 @@ class _UserGates:
         self._refusals: dict[CopilotLlmAuthProvider, TurnRefusal | None] = {}
         self._advanced: bool | None = None
 
-    async def route_open(self, route: CopilotLlmAuthProvider) -> bool:
+    async def route_open(
+        self, route: CopilotLlmAuthProvider, head: ChatSessionInfo
+    ) -> bool:
         """Raises :class:`_QueueOnHold` when the gate could not read the user's
-        state, which leaves the whole queue for the next tick."""
+        state, which leaves the whole queue for the next tick.
+
+        A usage limit keeps the turn queued; PostHog hears of it once per pass,
+        for the first turn it held back."""
         if route not in self._refusals:
-            self._refusals[route] = await turn_refusal(self.user_id, route)
+            refusal = await turn_refusal(self.user_id, route)
+            self._refusals[route] = refusal
+            if refusal is not None:
+                await _track_queued_refusal(self.user_id, refusal, head)
         refusal = self._refusals[route]
         if refusal is None:
             return True
@@ -678,8 +743,48 @@ class _UserGates:
         return self._advanced
 
 
+async def _track_queued_refusal(
+    user_id: str, refusal: "TurnRefusal", head: ChatSessionInfo
+) -> None:
+    """``chat_blocked`` for the queued turn a usage window held back, marked
+    impersonated as that turn was when it was queued: this pass runs in the
+    context of whichever turn just ended, which may not be the same."""
+    if refusal.kind != "usage" or refusal.window is None:
+        return  # Not a usage limit: nothing to send, so nothing to read.
+    token = posthog_client.set_impersonated(await _queued_by_admin(head.session_id))
+    try:
+        track_turn_refusal(
+            user_id, refusal, surface=_queued_surface(head), outcome="queued"
+        )
+    finally:
+        posthog_client.reset_impersonated(token)
+
+
+async def _queued_by_admin(session_id: str) -> bool:
+    """Whether an admin acting as the user queued the turn waiting in
+    *session_id*, as its row recorded it; False when the row can't be read."""
+    try:
+        pending = await chat_db().get_latest_user_message_in_session(session_id)
+    except Exception:
+        logger.warning(
+            f"dispatch_next_for_user: could not read the queued turn of "
+            f"session={session_id}",
+            exc_info=True,
+        )
+        return False
+    return pending is not None and (pending.metadata or {}).get("impersonated") is True
+
+
 class _QueueOnHold(Exception):
     """Nothing is promoted this tick: the user's state could not be read."""
+
+
+def _queued_surface(session: ChatSessionInfo) -> BlockedSurface:
+    """Where a queued turn came from: a chat bot's chat, the user's own chat,
+    or work another session or a workflow started."""
+    if session.metadata.source_platform:
+        return "chat_bot"
+    return "chat" if is_users_own_chat(session) else "background"
 
 
 def is_users_own_chat(session: ChatSessionInfo) -> bool:
@@ -820,9 +925,10 @@ class TurnRefusal(BaseModel):
     # The usage store was unreadable: an outage, not the user's state.
     transient: bool = False
     # Usage refusals only: the window that ran out ("daily", "weekly" or
-    # "trial") and when it resets.
-    window: str | None = None
+    # "trial"), when it resets, and where the account stood against it.
+    window: LimitWindow | None = None
     resets_at: datetime | None = None
+    reading: LimitReading | None = None
 
 
 async def turn_refusal(
@@ -830,13 +936,13 @@ async def turn_refusal(
 ) -> TurnRefusal | None:
     """Why a turn billed to this route may not start for this user, if so.
 
-    A ban first, on every route; then access (Codex entitlement, the platform
+    A ban or a closed account first, on every route; then access (Codex entitlement, the platform
     paywall), then the platform route's usage: its daily and weekly windows and
     a trial's total budget. Lookup errors propagate, so each caller decides what
     an unknown means.
     """
-    if await is_user_banned(user_id):
-        return TurnRefusal(reason="is banned", kind="banned")
+    if await is_user_refused(user_id):
+        return TurnRefusal(reason="is banned or closed", kind="banned")
     if llm_auth_provider == "codex":
         if await has_codex_access(user_id):
             return None
@@ -864,6 +970,7 @@ async def turn_refusal(
             kind="usage",
             window=exc.window,
             resets_at=exc.resets_at,
+            reading=exc.reading,
         )
     except RateLimitUnavailable:
         return TurnRefusal(

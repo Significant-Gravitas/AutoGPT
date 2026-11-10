@@ -29,7 +29,7 @@ export const Integration: IntegrationComponent = ({
       type="button"
       className={cn(
         blockMenuButtonBase,
-        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-xl bg-surface-muted px-3.5 py-2.5 text-start",
+        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 rounded-xl bg-surface-muted px-3.5 py-2.5 text-start whitespace-normal",
         "hover:cursor-default hover:bg-surface-hover active:bg-surface-muted active:ring-1 active:ring-border-strong disabled:pointer-events-none",
         className,
       )}
@@ -52,26 +52,28 @@ export const Integration: IntegrationComponent = ({
           {title && (
             <Text
               variant="body-medium"
-              tone="body"
-              className="line-clamp-1 flex-1 group-disabled:text-foreground-subtle"
+              tone={rest.disabled ? "subtle" : "body"}
+              className="line-clamp-1 flex-1"
             >
               {beautifyString(title)}
             </Text>
           )}
-          <Text
-            variant="body-medium"
-            as="span"
-            tone="muted"
-            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-full bg-surface-hover p-1.5 group-disabled:text-foreground-subtle"
-          >
-            {number_of_blocks}
-          </Text>
+          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-full bg-surface-hover p-1.5">
+            <Text
+              variant="body-medium"
+              as="span"
+              tone={rest.disabled ? "subtle" : "muted"}
+              className="block"
+            >
+              {number_of_blocks}
+            </Text>
+          </span>
         </div>
         <Text
           variant="small-loose"
           as="span"
-          tone="muted"
-          className="line-clamp-1 group-disabled:text-foreground-subtle"
+          tone={rest.disabled ? "subtle" : "muted"}
+          className="line-clamp-1"
         >
           {description}
         </Text>

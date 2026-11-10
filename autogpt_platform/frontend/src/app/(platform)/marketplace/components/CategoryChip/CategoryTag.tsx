@@ -16,10 +16,9 @@ const TAG_ICON_SIZE: Record<ChipSize, number> = {
  *  for the fill and edge, so the tag reads clearly on white. */
 export function categoryTagStyle(color: string): CSSProperties {
   return {
-    color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-secondary-foreground)))`,
-    backgroundColor: `color-mix(in srgb, ${color} 12%, rgb(var(--color-card)))`,
-    // TODO(tokens): no fitting role for white #FFFFFF; #FFFFFF is card (a surface fill), popover (a surface fill), accent-foreground (a text colour)
-    borderColor: `color-mix(in srgb, ${color} 35%, white)`,
+    color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-foreground-strong)))`,
+    backgroundColor: `color-mix(in srgb, ${color} 12%, rgb(var(--color-surface)))`,
+    borderColor: `color-mix(in srgb, ${color} 35%, rgb(var(--color-surface)))`,
   };
 }
 
@@ -46,6 +45,7 @@ export function CategoryTag({ category, size = "small", className }: Props) {
         accent.icon,
         className,
       )}
+      // oxlint-disable-next-line design-system/no-inline-styles -- the tint is mixed at runtime from the category's own colour
       style={color ? categoryTagStyle(color) : undefined}
     >
       {icon ? (

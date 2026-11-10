@@ -26,11 +26,7 @@ export function InputsSection({ requests }: Props) {
           className="overflow-hidden rounded-3xl border border-separator bg-surface"
         >
           <div className="flex items-center gap-2.5 border-b border-separator px-4 py-3">
-            <Icon
-              icon={PencilEdit02Icon}
-              size={18}
-              className="text-foreground-subtle"
-            />
+            <Icon icon={PencilEdit02Icon} size={18} tone="subtle" />
             <Text variant="body-medium-tight" as="span" tone="primary">
               {request.title
                 ? formatInputsTitle(request.title)
@@ -51,11 +47,11 @@ export function InputsSection({ requests }: Props) {
           {/* Each RJSF field carries an inline 16px bottom margin — the
               negative margin swallows the last field's so the card edge
               sits ~8px below the form. */}
-          <div className="px-4 pb-0 pt-2">
+          <div className="px-4 pt-2 pb-0">
             {request.schema && (
               <FormRenderer
                 jsonSchema={request.schema}
-                className="-mb-2 mt-0"
+                className="mt-0 -mb-2"
                 handleChange={(v) => request.onChange(v.formData ?? {})}
                 uiSchema={{
                   "ui:submitButtonOptions": { norender: true },
@@ -70,7 +66,7 @@ export function InputsSection({ requests }: Props) {
             {request.hasAdvanced && (
               <button
                 type="button"
-                className="mb-2 mt-1 text-xs text-muted-foreground underline"
+                className="mt-1 mb-2 text-caption text-foreground-tertiary underline"
                 onClick={request.onToggleAdvanced}
               >
                 {request.showAdvanced

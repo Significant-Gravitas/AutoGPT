@@ -16,7 +16,7 @@ export function PopularProviderTile({ provider, onSelect }: Props) {
     <button
       type="button"
       onClick={() => onSelect(provider.id)}
-      className="group flex min-h-16 w-full items-center gap-3 rounded-xl border border-border-base bg-surface py-2.5 pl-3 pr-2.5 text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand active:bg-surface-hover"
+      className="group flex min-h-16 w-full items-center gap-3 rounded-xl border border-border-base bg-surface py-2.5 pr-2.5 pl-3 text-left transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none active:bg-surface-hover"
     >
       <ProviderLogo provider={provider} size="sm" />
       <span className="flex min-w-0 flex-1 flex-col">
@@ -24,16 +24,16 @@ export function PopularProviderTile({ provider, onSelect }: Props) {
           variant="body-medium"
           as="span"
           tone="emphasis"
-          className="truncate leading-5.5"
+          className="truncate"
         >
           {provider.name}
         </Text>
         {provider.description && (
           <Text
-            variant="small"
+            variant="small-tight"
             as="span"
             tone="secondary"
-            className="truncate leading-4"
+            className="truncate"
             title={provider.description}
           >
             {provider.description}
@@ -44,7 +44,9 @@ export function PopularProviderTile({ provider, onSelect }: Props) {
         icon={PlusSignIcon}
         size={16}
         aria-hidden
-        className="shrink-0 text-foreground-secondary transition-colors group-hover:text-foreground-emphasis"
+        tone="secondary"
+        motion="colors"
+        className="shrink-0 group-hover:text-foreground-emphasis"
       />
     </button>
   );

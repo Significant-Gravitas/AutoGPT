@@ -205,6 +205,8 @@ it("keeps the voice aura layers around their child and resizes with the avatar",
       <span>Avatar</span>
     </VoiceAura>,
   );
-  expect(container.querySelector("canvas")?.style.width).toBe("480px");
+  expect(
+    container.querySelector("canvas")?.style.getPropertyValue("--streak-box"),
+  ).toBe("480px");
   tick(400);
 });

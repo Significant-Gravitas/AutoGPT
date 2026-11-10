@@ -25,7 +25,7 @@ export const IntegrationChip: IntegrationChipComponent = ({
       type="button"
       className={cn(
         blockMenuButtonBase,
-        "flex h-[3.25rem] w-full min-w-[7.5rem] justify-start gap-2 whitespace-normal rounded-lg bg-surface-muted p-2 pr-3",
+        "flex h-[3.25rem] w-full min-w-[7.5rem] justify-start gap-2 rounded-lg bg-surface-muted p-2 pr-3 whitespace-normal",
         "hover:cursor-default hover:bg-surface-hover active:bg-surface-hover active:ring-1 active:ring-border-strong",
         className,
       )}

@@ -35,6 +35,8 @@ from backend.util.exceptions import (
     ExpertWriteNotReadableError,
 )
 
+from .expert_change_messages import applied_message
+from .expert_delegation import has_chat_with
 from .models import (
     ErrorResponse,
     ExpertChangeAppliedResponse,
@@ -54,8 +56,8 @@ _PROPOSAL_KEY_PREFIX = "copilot:expert_change_proposal:"
 # answered with "already done" instead of the same message an expired
 # preview gets.
 _CONSUMED_KEY_PREFIX = "copilot:expert_change_consumed:"
-# Claimed by whichever of a hire's two ids (the plain hire / hire and start)
-# is confirmed first, so one approval can never hire twice.
+# Claimed by whichever of a proposal's two ids (the plain change / "and
+# start") is confirmed first, so one approval can never add a teammate twice.
 _CLAIM_KEY_PREFIX = "copilot:expert_change_claim:"
 _LOG_ID_PREFIX_LENGTH = 12
 _PREVIEW_TOOLS = "tool:hire_expert, tool:raise_expert or tool:update_expert"
@@ -86,9 +88,9 @@ class ExpertChangeProposal(BaseModel):
     expert_id: str | None = None
     # Only set for ``kind == "update"``: see ``ExpertSoulSnapshot``.
     expected_soul: ExpertSoulSnapshot | None = None
-    # Only for a hire proposed for a task already in the chat (see
-    # ``hire_expert``): the task, whether confirming this id hands it over,
-    # and the id of the other choice for the same hire.
+    # Only for a hire or new expert proposed for a task already in the chat
+    # (see ``expert_handoff_proposal``): the task, whether confirming this id
+    # hands it over, and the id of the other choice for the same change.
     handoff: ExpertHandoffTask | None = None
     hand_off: bool = False
     sibling_confirmation_id: str | None = None
@@ -336,12 +338,16 @@ async def apply_proposal(
     user_id: str,
     session_id: str,
     proposal: ExpertChangeProposal,
+    *,
+    on_card: bool = True,
 ) -> ToolResponseBase:
+    """Apply *proposal*. *on_card*: the confirm renders as a card the user
+    can act on, which a chat-platform conversation does not show."""
     preview = proposal.preview
     if preview.kind == "hire":
-        return await _apply_hire(user_id, session_id, preview)
+        return await _apply_hire(user_id, session_id, preview, on_card=on_card)
     if preview.kind == "raise":
-        return await _apply_raise(user_id, session_id, preview)
+        return await _apply_raise(user_id, session_id, preview, on_card=on_card)
     if preview.kind == "update":
         return await _apply_update(user_id, session_id, proposal)
     logger.error(
@@ -362,6 +368,8 @@ async def _apply_hire(
     user_id: str,
     session_id: str,
     preview: ExpertChangePreview,
+    *,
+    on_card: bool,
 ) -> ToolResponseBase:
     if preview.template_id is None:
         return _discarded_proposal_error(session_id, "template", "hire_expert")
@@ -374,18 +382,16 @@ async def _apply_hire(
         )
     except Exception as e:
         return _hire_failure_response(e, session_id)
+    # Hiring a template already on the team, or fired from it, returns that
+    # expert with the chats they had.
+    has_chat = await has_chat_with(user_id, result.expert.id)
     return ExpertChangeAppliedResponse(
-        message=hire_message(result.expert.name),
+        message=applied_message(
+            "hire", result.expert.name, has_chat=has_chat, on_card=on_card
+        ),
         session_id=session_id,
         kind="hire",
         expert=_summary(result.expert),
-    )
-
-
-def hire_message(name: str) -> str:
-    return (
-        f"{name} is hired and on the team; their workflows and skills finish "
-        "installing in the background. Tell the user who joined and what they own."
     )
 
 
@@ -393,6 +399,8 @@ async def _apply_raise(
     user_id: str,
     session_id: str,
     preview: ExpertChangePreview,
+    *,
+    on_card: bool,
 ) -> ToolResponseBase:
     try:
         result: RaiseResult = await experts_db().create_raised_expert(
@@ -411,9 +419,8 @@ async def _apply_raise(
     except Exception as e:
         return _raise_failure_response(e, session_id)
     return ExpertChangeAppliedResponse(
-        message=(
-            f"{result.expert.name} is raised and on the team. Tell the user "
-            "who joined and what they own."
+        message=applied_message(
+            "raise", result.expert.name, has_chat=False, on_card=on_card
         ),
         session_id=session_id,
         kind="raise",

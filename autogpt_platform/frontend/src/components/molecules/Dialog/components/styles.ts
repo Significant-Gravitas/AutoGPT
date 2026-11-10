@@ -1,7 +1,6 @@
 // Common styles as Tailwind class strings
 const commonStyles = {
-  // TODO(tokens): SECRT-3152, no text role for 18px (md:text-lg).
-  title: "font-poppins text-md md:text-lg leading-none",
+  title: "font-poppins md:text-lead leading-none",
   overlay: "fixed inset-0 z-50 bg-overlay/20 backdrop-blur-md animate-fade-in",
   content: "bg-surface p-6 fixed rounded-2xlarge flex flex-col z-50 w-full",
 };
@@ -12,8 +11,7 @@ export const modalStyles = {
   content: `${commonStyles.content} p-6 min-w-[40vw] max-w-[60vw] max-h-[95vh] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-fadein`,
   iconWrap:
     "absolute top-2 right-3 bg-transparent p-2 rounded-full transition-colors duration-300 ease-in-out outline-none border-none",
-  // TODO(tokens): no role for stone-800 (#292524).
-  icon: "w-4 h-4 text-stone-800",
+  icon: "w-4 h-4 text-foreground-emphasis",
 };
 
 // Compact variant: dense neutral dialog for in-app forms — smaller radius,
@@ -22,7 +20,6 @@ export const compactStyles = {
   content: "rounded-xl p-5",
   title: "font-sans text-body-lg font-medium leading-6 text-foreground-strong",
   header: "pb-4",
-  close: "right-3 top-3",
   // Bottom sheet keeps its top-only radius; only the padding tightens.
   drawerContent: "p-5",
 };

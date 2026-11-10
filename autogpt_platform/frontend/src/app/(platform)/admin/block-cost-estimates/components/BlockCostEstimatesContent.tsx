@@ -36,38 +36,38 @@ export function BlockCostEstimatesContent() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3 rounded border p-4">
         <div className="flex flex-col gap-1">
-          <label htmlFor="bce-start" className="text-sm">
+          <label htmlFor="bce-start" className="text-body">
             Start date (UTC)
           </label>
           <input
             id="bce-start"
             type="date"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded border px-3 py-1.5 text-body"
             value={start}
             onChange={(e) => setStart(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="bce-end" className="text-sm">
+          <label htmlFor="bce-end" className="text-body">
             End date (UTC)
           </label>
           <input
             id="bce-end"
             type="date"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded border px-3 py-1.5 text-body"
             value={end}
             onChange={(e) => setEnd(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="bce-min-samples" className="text-sm">
+          <label htmlFor="bce-min-samples" className="text-body">
             Min samples
           </label>
           <input
             id="bce-min-samples"
             type="number"
             min={1}
-            className="w-28 rounded border px-3 py-1.5 text-sm"
+            className="w-28 rounded border px-3 py-1.5 text-body"
             value={minSamples}
             onChange={(e) =>
               setMinSamples(Math.max(1, Number(e.target.value) || 1))
@@ -95,7 +95,7 @@ export function BlockCostEstimatesContent() {
 
       {data ? (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-body text-foreground-tertiary">
             {data.total_rows} blocks · window {data.window_days}d (cap{" "}
             {data.max_window_days}d) · min samples {data.min_samples} ·
             generated{" "}
@@ -104,8 +104,8 @@ export function BlockCostEstimatesContent() {
               : String(data.generated_at)}
           </p>
           <div className="overflow-x-auto rounded border">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
+            <table className="w-full text-body">
+              <thead className="bg-surface-hover/50">
                 <tr>
                   <th className="p-2 text-left">Block ID</th>
                   <th className="p-2 text-left">Block name</th>
@@ -119,7 +119,7 @@ export function BlockCostEstimatesContent() {
               <tbody>
                 {data.estimates.map((r) => (
                   <tr key={r.block_id} className="border-t">
-                    <td className="p-2 font-mono text-xs">{r.block_id}</td>
+                    <td className="p-2 font-mono text-caption">{r.block_id}</td>
                     <td className="p-2">{r.block_name}</td>
                     <td className="p-2">{r.cost_type}</td>
                     <td className="p-2 text-right">{r.samples}</td>
@@ -135,7 +135,7 @@ export function BlockCostEstimatesContent() {
           </div>
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-body text-foreground-tertiary">
           Pick a window and click Aggregate to compute per-block average
           credits-per-execution.
         </p>

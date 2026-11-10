@@ -16,6 +16,7 @@ didn't: ``max_budget_usd`` above the budget (in the CLI's price units) and
 from claude_agent_sdk import AssistantMessage, Message, StreamEvent
 
 from backend.copilot.constants import PER_TURN_SPEND_FLOOR_USD
+from backend.copilot.limit_tracking import LimitReading
 from backend.copilot.turn_budget import TurnBudget
 from backend.copilot.turn_pause import PauseReason, TurnPause
 
@@ -167,4 +168,9 @@ class TurnGovernor:
             resets_at=resets_at,
             steps=self.meter.main_calls if reason == "steps" else None,
             checkpoint_saved=checkpoint_saved,
+            reading=(
+                LimitReading(tier=self.budget.tier)
+                if self.budget is not None and self.budget.tier
+                else None
+            ),
         )

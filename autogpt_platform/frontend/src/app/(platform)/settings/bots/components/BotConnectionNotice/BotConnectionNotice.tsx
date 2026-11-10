@@ -23,7 +23,7 @@ export function BotConnectionNotice() {
 
   return (
     <div className="mb-6 ml-4 rounded-2xl border border-border-base bg-surface px-4 py-3">
-      <Text variant="small" className="text-foreground-body">
+      <Text variant="small" tone="body">
         Conversations that come in over a bot start on{" "}
         <span className="font-medium text-foreground-base">
           {current.label}
@@ -31,8 +31,7 @@ export function BotConnectionNotice() {
         , the connection you chose in{" "}
         <Link
           href="/settings/integrations"
-          // TODO(tokens): no exact role (text-[#7444E5])
-          className="font-medium text-[#7444E5] underline underline-offset-2"
+          className="font-medium text-brand underline underline-offset-2"
         >
           AI subscriptions
         </Link>

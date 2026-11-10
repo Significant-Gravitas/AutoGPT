@@ -16,9 +16,12 @@ interface Props {
   onSubmit: () => void;
   isTooLong: boolean;
   rows?: number;
+  placeholder?: string;
 }
 
 const LIMIT_HINT_ID = "brain-dump-text-limit";
+const DEFAULT_PLACEHOLDER =
+  "What repeats every week? What would you hand off first?";
 
 export function TypedFallback({
   value,
@@ -26,6 +29,7 @@ export function TypedFallback({
   onSubmit,
   isTooLong,
   rows = 6,
+  placeholder = DEFAULT_PLACEHOLDER,
 }: Props) {
   return (
     <FadeIn className="w-full">
@@ -37,8 +41,7 @@ export function TypedFallback({
             label="Your brain dump"
             hideLabel
             rows={rows}
-            className="rounded-xl border-border-base"
-            placeholder="What repeats every week? What would you hand off first?"
+            placeholder={placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             maxLength={MAX_TYPED_CHARS}

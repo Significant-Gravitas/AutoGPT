@@ -75,6 +75,29 @@ describe("readSseFrames", () => {
       }),
     ]);
   });
+
+  it("keeps recovered terminal controls and compatibility errors id-less", async () => {
+    const control = {
+      type: "data-turn-error",
+      data: { turnId: "t", errorText: "failed" },
+      transient: true,
+    };
+    const frames = await framesOf([
+      'id: t:1-0\ndata: {"type":"start","messageId":"m"}\n\n',
+      `data: ${JSON.stringify(control)}\n\n`,
+      'data: {"type":"error","errorText":"failed"}\n\n',
+      'id: t:2-0\ndata: {"type":"finish"}\n\n',
+      "data: [DONE]\n\n",
+    ]);
+    expect(frames.map((frame) => frame.kind)).toEqual([
+      "entry",
+      "synthetic",
+      "synthetic",
+      "entry",
+      "done",
+    ]);
+    expect(frames[1]).toEqual({ kind: "synthetic", chunk: control });
+  });
 });
 
 describe("fetchSse", () => {

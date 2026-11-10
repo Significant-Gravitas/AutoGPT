@@ -82,29 +82,14 @@ export function ExpertChatGroup({
           // The size and weight reach ManagedExpertImage's fallback initials (a
           // span that sets its colour, not its size or weight), and the weight
           // ExpertAvatar's initial; every other piece of copy is a toned Text.
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-body font-medium leading-5 max-md:py-2 max-md:text-body-lg max-md:leading-6"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-body leading-5 font-medium max-md:py-2 max-md:text-body-lg max-md:leading-6"
         >
-          {isAutopilot ? (
-            <AutopilotAvatar
-              size={32}
-              transparent
-              className="rounded-full border border-border-base"
-            />
-          ) : (
-            <ExpertAvatar
-              name={label}
-              avatarUrl={avatarUrl}
-              color={color}
-              size={32}
-              className="rounded-full border border-border-base"
-            />
-          )}
-          <ExpertIdentityDetails
-            isOtto={isAutopilot}
-            name={label}
+          <ExpertGroupIdentity
+            label={label}
             role={role}
-            size="compact"
-            areaClassName="opacity-70"
+            avatarUrl={avatarUrl}
+            color={color}
+            isAutopilot={isAutopilot}
             nameAccessory={<SessionCount count={sessions.length} />}
           />
           {newChatHref && (
@@ -119,8 +104,9 @@ export function ExpertChatGroup({
               so nothing shifts. On touch widths it stays visible. */}
           <Icon
             icon={ArrowDown01Icon}
+            tone="subtle"
             className={cn(
-              "shrink-0 text-foreground-subtle transition-[opacity,transform] duration-200 group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none md:opacity-0",
+              "shrink-0 transition-[opacity,transform] duration-200 group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none md:opacity-0",
               CHEVRON_SIZE_CLASS,
               !newChatHref && "ml-auto",
             )}
@@ -165,11 +151,59 @@ export function ExpertChatGroup({
   );
 }
 
+interface IdentityProps {
+  label: string;
+  role?: string | null;
+  avatarUrl: string | null;
+  color?: string | null;
+  isAutopilot?: boolean;
+  nameAccessory: ReactNode;
+}
+
+/** Avatar, name and role of a group header; shared with NewExpertGroup so a
+ *  new expert's entry looks the same before and after their first chat. */
+export function ExpertGroupIdentity({
+  label,
+  role,
+  avatarUrl,
+  color,
+  isAutopilot,
+  nameAccessory,
+}: IdentityProps) {
+  return (
+    <>
+      {isAutopilot ? (
+        <AutopilotAvatar
+          size={32}
+          transparent
+          className="rounded-full border border-border-base"
+        />
+      ) : (
+        <ExpertAvatar
+          name={label}
+          avatarUrl={avatarUrl}
+          color={color}
+          size={32}
+          className="rounded-full border border-border-base"
+        />
+      )}
+      <ExpertIdentityDetails
+        isOtto={isAutopilot}
+        name={label}
+        role={role}
+        size="compact"
+        areaClassName="opacity-70"
+        nameAccessory={nameAccessory}
+      />
+    </>
+  );
+}
+
 function SessionCount({ count }: { count: number }) {
   return (
     <span
       aria-hidden
-      className="shrink-0 rounded-full bg-surface-active/70 px-1.5 text-caption-sm font-medium tabular-nums leading-4.5 text-foreground-secondary"
+      className="shrink-0 rounded-full bg-surface-active/70 px-1.5 text-caption-sm leading-4.5 font-medium text-foreground-secondary tabular-nums"
     >
       {count}
     </span>
@@ -186,7 +220,7 @@ function NewChatLink({ href, label }: { href: string; label: string }) {
           href={href}
           aria-label={name}
           className={cn(
-            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-foreground-tertiary transition-opacity hover:bg-surface-active hover:text-foreground-strong focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 md:opacity-0",
+            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-foreground-tertiary transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-surface-active hover:text-foreground-strong focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:outline-none md:opacity-0",
             NEW_CHAT_SLOT_SIZE_CLASS,
             NEW_CHAT_LINK_OFFSET_CLASS,
           )}
@@ -216,7 +250,7 @@ function NewChatIcon() {
   return <Icon icon={PlusSignIcon} className="size-4 max-md:size-5" />;
 }
 
-function GroupBody({ children }: { children: ReactNode }) {
+export function GroupBody({ children }: { children: ReactNode }) {
   return (
     <div className="relative ml-[24px] pl-1.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gradient-to-b before:from-surface-active/70 before:to-transparent">
       {children}

@@ -121,7 +121,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
             aria-hidden="true"
           />
           <Drawer.Content
-            className="fixed right-0 top-0 z-[70] flex h-full w-full flex-col overflow-hidden bg-card shadow-xl outline-none"
+            className="fixed top-0 right-0 z-[70] flex h-full w-full flex-col overflow-hidden bg-surface shadow-xl outline-none"
             style={{ userSelect: "text" }}
             aria-describedby={undefined}
           >
@@ -204,7 +204,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
           animate={{ width: renderedWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
-          className="relative h-full shrink-0 select-text bg-sidebar"
+          className="relative h-full shrink-0 bg-surface-muted select-text"
         >
           {/* Sibling of the clip, not a child of it: the handle straddles the
               border, so clipping it here would halve the drag target. */}
@@ -224,7 +224,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
                   ? "100%"
                   : `calc(${renderedWidth}px - 0.75rem)`,
               }}
-              className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm [&:fullscreen]:rounded-none [&:fullscreen]:border-0"
+              className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border-base bg-surface shadow-sm [&:fullscreen]:rounded-none [&:fullscreen]:border-0"
             >
               <ArtifactPanelHeader
                 artifact={

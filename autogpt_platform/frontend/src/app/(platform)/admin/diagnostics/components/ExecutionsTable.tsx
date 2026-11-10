@@ -543,8 +543,8 @@ export function ExecutionsTable({
                       size="small"
                       onClick={() => confirmStop("all", "cleanup")}
                       disabled={isStopping}
-                      // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- orange has no role and Button no orange outline variant; amber would change the hue (deferred)
-                      className="border-orange-500 text-orange-700 hover:bg-orange-50"
+                      // oxlint-disable-next-line design-system/no-restyle -- Button has no orange outline variant (deferred)
+                      className="border-orange text-warning-foreground hover:bg-orange/10"
                     >
                       <Icon icon={StopCircleIcon} className="mr-2 h-4 w-4" />
                       Cleanup All ({total})
@@ -554,8 +554,9 @@ export function ExecutionsTable({
                       size="small"
                       onClick={() => confirmStop("all", "requeue")}
                       disabled={isStopping}
-                      // oxlint-disable-next-line design-system/no-restyle -- Button has no info outline variant; outline would turn it grey (deferred)
-                      className="border-info text-info-foreground hover:bg-info-surface"
+                      tone="info-strong"
+                      // oxlint-disable-next-line design-system/no-restyle -- Button has no info outline variant; outline would turn its border and hover grey (deferred)
+                      className="border-info hover:bg-info-surface"
                     >
                       <Icon icon={Refresh01Icon} className="mr-2 h-4 w-4" />
                       Requeue All ({total})
@@ -574,8 +575,7 @@ export function ExecutionsTable({
                       <Icon icon={StopCircleIcon} className="mr-2 h-4 w-4" />
                       Stop Selected ({selectedIds.size})
                       {hasOrphanedSelected && (
-                        // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
-                        <span className="ml-1 text-caption font-medium leading-4 text-orange-200">
+                        <span className="ml-1 text-caption leading-4 font-medium text-action-foreground/80">
                           ({selectedOrphanedIds.length} orphaned)
                         </span>
                       )}
@@ -604,8 +604,7 @@ export function ExecutionsTable({
                   </Text>
                 )}
                 {activeTab === "invalid" && (
-                  // oxlint-disable-next-line design-system/no-raw-colors -- pink has no role; red would change the hue (deferred)
-                  <div className="rounded-md bg-pink-50 px-3 py-2 text-body leading-5 text-pink-700">
+                  <div className="rounded-md bg-pink/10 px-3 py-2 text-body leading-5 text-pink-foreground">
                     ⚠️ Read-only: Invalid states require manual investigation
                   </div>
                 )}
@@ -717,8 +716,8 @@ export function ExecutionsTable({
                             key={execution.execution_id}
                             className={
                               isOrphaned
-                                ? // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- orange has no role and TableRow no highlight variant; amber would change the hue (deferred)
-                                  "bg-orange-50 hover:bg-orange-100"
+                                ? // oxlint-disable-next-line design-system/no-restyle -- TableRow has no highlight variant (deferred)
+                                  "bg-orange/10 hover:bg-orange/30"
                                 : ""
                             }
                           >
@@ -801,11 +800,10 @@ export function ExecutionsTable({
                             <TableCell>
                               <span
                                 className={cn(
-                                  "inline-flex rounded-full px-2 py-1 text-caption font-semibold leading-4",
+                                  "inline-flex rounded-full px-2 py-1 text-caption leading-4 font-semibold",
                                   execution.status === "RUNNING"
                                     ? "bg-success/30 text-success-foreground"
-                                    : // oxlint-disable-next-line design-system/no-raw-colors -- yellow has no role; amber would change the hue (deferred)
-                                      "bg-yellow-100 text-yellow-800",
+                                    : "bg-yellow/30 text-yellow-foreground",
                                 )}
                               >
                                 {execution.status}
@@ -829,8 +827,7 @@ export function ExecutionsTable({
                                     <span
                                       className={
                                         ageDays > 1
-                                          ? // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
-                                            "font-semibold text-orange-600"
+                                          ? "font-semibold text-orange-foreground"
                                           : ""
                                       }
                                     >
@@ -884,8 +881,8 @@ export function ExecutionsTable({
                                         )
                                       }
                                       disabled={isStopping}
-                                      // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- orange has no role and Button no orange ghost variant; amber would change the hue (deferred)
-                                      className="text-orange-600 hover:bg-orange-50"
+                                      // oxlint-disable-next-line design-system/no-restyle -- Button has no orange ghost variant (deferred)
+                                      className="text-orange-foreground hover:bg-orange/10"
                                       title="Cleanup (mark as FAILED)"
                                     >
                                       <Icon
@@ -904,8 +901,9 @@ export function ExecutionsTable({
                                         )
                                       }
                                       disabled={isStopping}
-                                      // oxlint-disable-next-line design-system/no-restyle -- Button has no info ghost variant; ghost would turn it black (deferred)
-                                      className="text-info-foreground hover:bg-info-surface"
+                                      tone="info-strong"
+                                      // oxlint-disable-next-line design-system/no-restyle -- Button has no info ghost variant; ghost would turn its hover grey (deferred)
+                                      className="hover:bg-info-surface"
                                       title="Requeue (send to RabbitMQ)"
                                     >
                                       <Icon
@@ -931,8 +929,8 @@ export function ExecutionsTable({
                                     disabled={isStopping}
                                     className={
                                       orphanedIds.has(execution.execution_id)
-                                        ? // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- orange has no role and Button no orange ghost variant; amber would change the hue (deferred)
-                                          "text-orange-600 hover:bg-orange-50"
+                                        ? // oxlint-disable-next-line design-system/no-restyle -- Button has no orange ghost variant (deferred)
+                                          "text-orange-foreground hover:bg-orange/10"
                                         : ""
                                     }
                                   >
@@ -1065,8 +1063,7 @@ export function ExecutionsTable({
                         <>
                           <br />
                           <br />
-                          {/* oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred) */}
-                          <span className="text-orange-600">
+                          <span className="text-orange-foreground">
                             Includes {selectedOrphanedIds.length} orphaned
                             execution(s) that will be cleaned up directly.
                           </span>
@@ -1082,8 +1079,7 @@ export function ExecutionsTable({
                         <>
                           <br />
                           <br />
-                          {/* oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred) */}
-                          <span className="text-orange-600">
+                          <span className="text-orange-foreground">
                             Includes {orphanedIds.size} orphaned execution(s) (
                             {">"}24h old) that will be cleaned up directly.
                           </span>
@@ -1114,11 +1110,11 @@ export function ExecutionsTable({
               onClick={handleStop}
               className={
                 stopMode === "cleanup"
-                  ? // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- orange has no role and Button no orange variant; amber would change the hue (deferred)
-                    "bg-orange-600 hover:bg-orange-700"
+                  ? // oxlint-disable-next-line design-system/no-restyle -- Button has no orange variant (deferred)
+                    "bg-orange-foreground hover:bg-warning-foreground"
                   : stopMode === "requeue"
-                    ? // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- Button has no info variant and no role is blue-700 (deferred)
-                      "bg-info-foreground hover:bg-blue-700"
+                    ? // oxlint-disable-next-line design-system/no-restyle -- Button has no info variant (deferred)
+                      "bg-info-foreground hover:bg-info-foreground/90"
                     : undefined
               }
             >

@@ -80,7 +80,7 @@ export function ExpertComputerSection({ expertId, expertName }: Props) {
       </div>
 
       {!computer.e2b_active ? (
-        <div className="rounded-xl bg-warning-surface px-4 py-2.5 ring-1 ring-inset ring-warning-border">
+        <div className="rounded-xl bg-warning-surface px-4 py-2.5 ring-1 ring-warning-border ring-inset">
           <Text variant="small" tone="warning">
             Cloud sandboxes are not configured on this deployment.
           </Text>

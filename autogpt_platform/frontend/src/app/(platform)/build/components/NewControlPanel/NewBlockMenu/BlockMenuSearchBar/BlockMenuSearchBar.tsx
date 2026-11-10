@@ -32,7 +32,8 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
       <div className="flex h-6 w-6 items-center justify-center">
         <Icon
           icon={Search01Icon}
-          className="h-6 w-6 text-foreground-body"
+          tone="body"
+          className="h-6 w-6"
           strokeWidth={2}
         />
       </div>
@@ -46,8 +47,8 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
         }}
         placeholder={"Blocks, Workflows, Integrations or Keywords..."}
         className={cn(
-          "m-0 border-none p-0 font-sans text-body-lg font-normal leading-6 text-foreground-emphasis shadow-none outline-none",
-          "placeholder:text-foreground-subtle focus:shadow-none focus:outline-none focus:ring-0",
+          "m-0 border-none p-0 font-sans text-body-lg leading-6 font-normal text-foreground-emphasis shadow-none outline-none",
+          "placeholder:text-foreground-subtle focus:shadow-none focus:ring-0 focus:outline-none",
         )}
       />
       {localQuery.length > 0 && (
@@ -60,7 +61,8 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
         >
           <Icon
             icon={Cancel01Icon}
-            className="h-6 w-6 text-foreground-body"
+            tone="body"
+            className="h-6 w-6"
             strokeWidth={2}
           />
         </Button>

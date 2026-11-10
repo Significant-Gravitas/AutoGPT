@@ -8,6 +8,8 @@ import {
   type HandoffOutcome,
   type HandoffState,
   handoffStateOf,
+  NEW_EXPERT_COPY,
+  type NewExpertKind,
   possessive,
 } from "./expertHandoff";
 import { HandoffRetry } from "./HandoffRetry";
@@ -16,6 +18,8 @@ import { useSubSessionEffectiveStatus } from "./SubSessionLive";
 
 interface Props {
   outcome: HandoffOutcome;
+  /** Whether the expert was hired or created, for the failed line. */
+  kind: NewExpertKind;
   name: string;
   /** The hire; absent on outputs that don't carry it. */
   expertId: string | null;
@@ -32,6 +36,7 @@ interface Props {
  *  records it. */
 export function HandoffStatus({
   outcome,
+  kind,
   name,
   expertId,
   avatarUrl,
@@ -59,18 +64,23 @@ export function HandoffStatus({
       <div className="w-full overflow-hidden rounded-3xl border border-separator bg-surface">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
           {avatar(32)}
-          <p className="min-w-[min(100%,14rem)] flex-1 text-sm text-foreground-secondary [overflow-wrap:anywhere]">
-            <HandoffSentence outcome={outcome} name={name} state={state} />
+          <p className="min-w-[min(100%,14rem)] flex-1 text-body [overflow-wrap:anywhere] text-foreground-secondary">
+            <HandoffSentence
+              outcome={outcome}
+              kind={kind}
+              name={name}
+              state={state}
+            />
           </p>
           {unknown && (
-            <span className="inline-flex shrink-0 items-center rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm font-medium leading-inherit text-foreground-tertiary">
+            <span className="inline-flex shrink-0 items-center rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit font-medium text-foreground-tertiary">
               Status unknown
             </span>
           )}
           {outcome.link && (
             <NextLink
               href={outcome.link}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border-base bg-surface px-3 py-1.5 text-sm font-medium text-foreground-emphasis shadow-sm transition-colors hover:border-border-strong hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border-base bg-surface px-3 py-1.5 text-body font-medium text-foreground-emphasis shadow-sm transition-colors hover:border-border-strong hover:bg-surface-muted focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
             >
               Open {possessive(name)} chat
               <Icon
@@ -92,9 +102,14 @@ export function HandoffStatus({
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 pt-0.5">
         <p
           role={state === "failed" ? "status" : undefined}
-          className="min-w-0 text-sm text-foreground-secondary [overflow-wrap:anywhere]"
+          className="min-w-0 text-body [overflow-wrap:anywhere] text-foreground-secondary"
         >
-          <HandoffSentence outcome={outcome} name={name} state={state} />
+          <HandoffSentence
+            outcome={outcome}
+            kind={kind}
+            name={name}
+            state={state}
+          />
         </p>
         {state === "failed"
           ? outcome.retry &&
@@ -110,7 +125,7 @@ export function HandoffStatus({
           : outcome.link && (
               <NextLink
                 href={outcome.link}
-                className="inline-flex shrink-0 items-center gap-1 rounded text-sm font-medium text-foreground-emphasis underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
+                className="inline-flex shrink-0 items-center gap-1 rounded text-body font-medium text-foreground-emphasis underline-offset-2 hover:underline focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
               >
                 Open {possessive(name)} chat
                 <Icon
@@ -128,11 +143,12 @@ export function HandoffStatus({
 
 interface SentenceProps {
   outcome: HandoffOutcome;
+  kind: NewExpertKind;
   name: string;
   state: HandoffState;
 }
 
-function HandoffSentence({ outcome, name, state }: SentenceProps) {
+function HandoffSentence({ outcome, kind, name, state }: SentenceProps) {
   const who = (
     <span className="font-medium text-foreground-emphasis">{name}</span>
   );
@@ -140,7 +156,8 @@ function HandoffSentence({ outcome, name, state }: SentenceProps) {
     case "failed":
       return (
         <>
-          {who} is hired, but {outcome.title} didn&apos;t start.
+          {who} is {NEW_EXPERT_COPY[kind].done}, but {outcome.title} didn&apos;t
+          start.
         </>
       );
     case "unconfirmed":
