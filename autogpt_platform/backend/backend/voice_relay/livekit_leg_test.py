@@ -21,6 +21,9 @@ from backend.voice_relay.session_test import FAST, USER, Call, _session, open_ca
 from backend.voice_relay.vendor import AgentAudio, Interrupted
 
 PERSON = f"user:{USER}"
+# A re-attach window far longer than any wait inside it, so a slow runner
+# cannot close it early.
+LONG_WINDOW = FAST.model_copy(update={"reattach_s": 10.0})
 
 
 def _fallbacks(why: str) -> float:
@@ -197,13 +200,13 @@ async def test_the_persons_microphone_out_of_the_room_past_the_window_ends_the_c
 
 async def test_the_persons_microphone_back_within_the_window_keeps_the_call(redis):
     media = FakeMedia()
-    call, _ = await _room_call(redis, media)
+    call, _ = await _room_call(redis, media, timing=LONG_WINDOW)
     room = media.rooms[0]
 
     room.participant_leaves(PERSON)
-    await asyncio.sleep(FAST.reattach_s / 2)
+    await until(lambda: call.session.away_since is not None)
     room.add_microphone(PERSON)
-    await asyncio.sleep(FAST.reattach_s)
+    await until(lambda: call.session.away_since is None)
 
     assert not call.session.ended.is_set()
     assert (await _hang_up(call))["reason"] == "user_hangup"
@@ -213,14 +216,15 @@ async def test_the_idle_clock_waits_while_the_persons_microphone_is_out_of_the_r
     redis,
 ):
     media = FakeMedia()
-    call, _ = await _room_call(redis, media, audio_s=0.04)
+    call, _ = await _room_call(redis, media, audio_s=0.04, timing=LONG_WINDOW)
     room = media.rooms[0]
     # Otto's few words have played out, so quiet time counts.
     await until(lambda: call.session.quiet_s > 0)
 
     room.participant_leaves(PERSON)
+    await until(lambda: call.session.away_since is not None)
     quiet = call.session.quiet_s
-    await asyncio.sleep(FAST.reattach_s / 2)
+    await asyncio.sleep(LONG_WINDOW.reattach_s / 20)
     assert call.session.quiet_s == quiet
 
     room.add_microphone(PERSON)
