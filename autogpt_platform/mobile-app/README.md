@@ -27,6 +27,8 @@ Sign-up, onboarding, billing and paywalls, social login, connecting integrations
 
 3. Press `i` for the iOS simulator or `a` for the Android emulator, or scan the QR code with Expo Go.
 
+Expo Go sends an `exp://` origin, which the web app accepts only when it runs with `NODE_ENV=development` (`pnpm dev`). Against the docker compose frontend, sign-in from Expo Go fails.
+
 `localhost` only works on the iOS simulator. On the Android emulator use `10.0.2.2` in `.env.local`; on a phone use your computer's address on the local network.
 
 ### How sign-in works on the server

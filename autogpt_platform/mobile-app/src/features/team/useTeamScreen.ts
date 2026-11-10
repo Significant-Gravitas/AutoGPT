@@ -2,7 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useRef, useState } from "react";
 
+import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/transport";
 import { chatKeys, createSession, listSessions } from "@/lib/api/chat";
+import { ApiError } from "@/lib/api/client";
 import { type Expert, expertKeys, listExperts } from "@/lib/api/experts";
 import { queryClient } from "@/lib/session";
 
@@ -43,8 +45,12 @@ export function useTeamScreen() {
     try {
       const sessionID = await latestOrNewSession(expert.id);
       router.push(`/chat/${sessionID}`);
-    } catch {
-      setOpenError("Couldn't open that chat. Try again.");
+    } catch (caught) {
+      setOpenError(
+        caught instanceof ApiError && caught.status === 402
+          ? PLAN_REQUIRED_MESSAGE
+          : "Couldn't open that chat. Try again.",
+      );
     } finally {
       isOpening.current = false;
       setOpeningID(null);

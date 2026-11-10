@@ -9,7 +9,8 @@ import {
   getSession,
   type SessionDetail,
 } from "@/lib/api/chat";
-import { queryClient } from "@/lib/session";
+import { SignedOutError } from "@/lib/auth/token";
+import { queryClient, signOut } from "@/lib/session";
 import { useMountEffect } from "@/lib/useMountEffect";
 
 import { toUIMessages } from "./convertMessages";
@@ -32,6 +33,10 @@ export function useChatThread({ sessionID, detail }: Args) {
         transport: createChatTransport(sessionID),
         onFinish: () =>
           void queryClient.invalidateQueries({ queryKey: chatKeys.sessions }),
+        // A dead session goes back to Login instead of a stuck error line.
+        onError: (chatError) => {
+          if (chatError instanceof SignedOutError) void signOut();
+        },
       }),
   );
   const { messages, status, error, setMessages } = useChat({
@@ -48,13 +53,14 @@ export function useChatThread({ sessionID, detail }: Args) {
   // The stream route replays a running turn from its first chunk, so the
   // local copy of that turn goes before resuming or its text shows twice.
   // Read straight from the API: a cache write would outlive the screen.
+  // Fetch first: if that fails, the live stream is left as it was.
   async function syncWithServer() {
     if (isSyncing.current) return;
     isSyncing.current = true;
     let fresh: SessionDetail;
     try {
-      await chat.stop();
       fresh = await getSession(sessionID);
+      await chat.stop();
       setMessages(
         toUIMessages(sessionID, fresh.messages, {
           activeTurnStartedAt: fresh.active_stream?.started_at,
@@ -86,9 +92,11 @@ export function useChatThread({ sessionID, detail }: Args) {
     };
   });
 
+  // True once the SDK has the message; it keeps it shown if the stream fails.
   function send(text: string) {
-    if (isSyncing.current || isChatBusy()) return;
+    if (isSyncing.current || isChatBusy()) return false;
     void chat.sendMessage({ text });
+    return true;
   }
 
   async function stop() {

@@ -1,5 +1,5 @@
 import { ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -7,7 +7,7 @@ import { IconButton } from "@/components/IconButton";
 import { colors, radius, spacing, type } from "@/lib/theme";
 
 interface Props {
-  onSend: (text: string) => void;
+  onSend: (text: string) => boolean | Promise<boolean>;
   onStop?: () => void;
   isBusy?: boolean;
   isDisabled?: boolean;
@@ -22,13 +22,24 @@ export function Composer({
   placeholder = "Ask Otto anything",
 }: Props) {
   const [text, setText] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  // State lands a render late; the ref stops a second press in the same frame.
+  const isSendingRef = useRef(false);
   const insets = useSafeAreaInsets();
-  const canSend = text.trim().length > 0 && !isBusy && !isDisabled;
+  const canSend =
+    text.trim().length > 0 && !isBusy && !isDisabled && !isSending;
 
-  function handleSend() {
-    if (!canSend) return;
-    onSend(text.trim());
-    setText("");
+  // The text stays until the send is accepted, so a failure keeps it.
+  async function handleSend() {
+    if (!canSend || isSendingRef.current) return;
+    isSendingRef.current = true;
+    setIsSending(true);
+    try {
+      if (await onSend(text.trim())) setText("");
+    } finally {
+      isSendingRef.current = false;
+      setIsSending(false);
+    }
   }
 
   return (

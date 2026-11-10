@@ -43,7 +43,7 @@ export default function HomeScreen() {
           </Text>
         ) : null}
         <PromptChips prompts={prompts} onPick={handleSend} />
-        <Composer onSend={handleSend} isDisabled={isStarting} />
+        <Composer onSend={submit} isDisabled={isStarting} />
       </KeyboardAvoidingView>
     </View>
   );

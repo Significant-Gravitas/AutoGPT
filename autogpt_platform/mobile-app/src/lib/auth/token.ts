@@ -10,6 +10,9 @@ interface CachedToken {
 
 let cached: CachedToken | null = null;
 let pending: Promise<string> | null = null;
+// Bumped on every clear, so a mint that started before a sign-out cannot
+// cache the old user's token for the next one.
+let generation = 0;
 
 export class SignedOutError extends Error {
   constructor() {
@@ -24,18 +27,22 @@ export async function getAccessToken() {
     return cached.token;
   }
   if (!pending) {
-    pending = mintAccessToken().finally(() => {
-      pending = null;
+    const mint = mintAccessToken().finally(() => {
+      if (pending === mint) pending = null;
     });
+    pending = mint;
   }
   return pending;
 }
 
 export function clearAccessToken() {
+  generation += 1;
   cached = null;
+  pending = null;
 }
 
 async function mintAccessToken() {
+  const startedIn = generation;
   cached = null;
   const { data, error } = await authClient.$fetch<{ token: string }>("/token");
   if (error && error.status !== 401 && error.status !== 403) {
@@ -46,7 +53,9 @@ async function mintAccessToken() {
     );
   }
   if (error || !data?.token) throw new SignedOutError();
-  cached = { token: data.token, expiresAt: readExpiry(data.token) };
+  if (generation === startedIn) {
+    cached = { token: data.token, expiresAt: readExpiry(data.token) };
+  }
   return data.token;
 }
 

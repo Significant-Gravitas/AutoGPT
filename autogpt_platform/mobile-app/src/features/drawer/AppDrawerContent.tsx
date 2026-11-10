@@ -73,7 +73,7 @@ export function AppDrawerContent({ navigation }: Props) {
         keyExtractor={(session) => session.id}
         renderItem={({ item }) => (
           <DrawerRow
-            label={item.title ?? "New chat"}
+            label={item.title || "New chat"}
             isActive={item.id === activeSessionID}
             isBusy={item.is_processing}
             onPress={() => openChat(item.id)}

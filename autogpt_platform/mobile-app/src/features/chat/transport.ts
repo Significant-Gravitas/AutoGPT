@@ -3,16 +3,20 @@ import * as Crypto from "expo-crypto";
 import { fetch as expoFetch } from "expo/fetch";
 
 import { apiUrl, authHeaders } from "@/lib/api/client";
-import { SignedOutError } from "@/lib/auth/token";
+import { clearAccessToken, SignedOutError } from "@/lib/auth/token";
 
 const OFFLINE_MESSAGE =
   "Can't reach AutoGPT. Check your connection and try again.";
 
-const FALLBACK_MESSAGE = "Otto could not reply just now. Try again in a moment.";
+const FALLBACK_MESSAGE =
+  "Otto could not reply just now. Try again in a moment.";
+
+export const PLAN_REQUIRED_MESSAGE =
+  "Chat needs an active plan. You can manage your plan on the web.";
 
 const STATUS_MESSAGES: Record<number, string> = {
   401: "You are signed out. Sign in again to continue.",
-  402: "Chat needs an active plan. You can manage your plan on the web.",
+  402: PLAN_REQUIRED_MESSAGE,
   404: "This chat no longer exists.",
   429: "You have reached your usage limit. Try again later.",
 };
@@ -89,6 +93,8 @@ const fetchStream: typeof globalThis.fetch = async (input, init) => {
     throw new Error(OFFLINE_MESSAGE);
   }
   if (response.ok) return response;
+  // A refused token is dropped so the next send mints a fresh one.
+  if (response.status === 401) clearAccessToken();
   throw new Error(STATUS_MESSAGES[response.status] ?? FALLBACK_MESSAGE);
 };
 
