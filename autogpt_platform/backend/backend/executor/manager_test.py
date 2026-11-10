@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import fastapi.responses
@@ -316,6 +317,38 @@ async def test_a_run_can_leave_an_optional_input_blank(
     )
     assert split_exec.status == execution.ExecutionStatus.COMPLETED
     assert split_exec.output_data == {"texts": [["otters"]]}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delayed_optional_inputs_keep_each_value_in_its_own_execution(
+    server: SpinTestServer,
+):
+    test_user = await create_test_user()
+    test_graph = await create_graph(server, create_test_graph(), test_user)
+    run = await execution.create_graph_execution(
+        graph_id=test_graph.id,
+        graph_version=test_graph.version,
+        starting_nodes_input=[],
+        inputs={},
+        user_id=test_user.id,
+    )
+    node_id = test_graph.nodes[-1].id
+    first, _ = await execution.upsert_execution_input(node_id, run.id, "data", "keep")
+    await prisma.models.AgentNodeExecutionInputOutput.prisma().update_many(
+        where={"referencedByInputExecId": first.node_exec_id},
+        data={"time": datetime.now(timezone.utc) - timedelta(days=2)},
+    )
+
+    second, inputs = await execution.upsert_execution_input(
+        node_id, run.id, "data", None
+    )
+    _, first_inputs = await execution.upsert_execution_input(
+        node_id, run.id, "input", "trigger", node_exec_id=first.node_exec_id
+    )
+
+    assert second.node_exec_id != first.node_exec_id
+    assert inputs == {"data": None}
+    assert first_inputs == {"data": "keep", "input": "trigger"}
 
 
 @pytest.mark.asyncio(loop_scope="session")
