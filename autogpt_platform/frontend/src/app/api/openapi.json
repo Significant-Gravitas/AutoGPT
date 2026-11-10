@@ -34606,6 +34606,7 @@
           },
           "name": {
             "type": "string",
+            "maxLength": 1000,
             "minLength": 1,
             "pattern": "\\S",
             "title": "Name"
@@ -34854,7 +34855,12 @@
         "properties": {
           "name": {
             "anyOf": [
-              { "type": "string", "minLength": 1, "pattern": "\\S" },
+              {
+                "type": "string",
+                "maxLength": 1000,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
               { "type": "null" }
             ],
             "title": "Name"

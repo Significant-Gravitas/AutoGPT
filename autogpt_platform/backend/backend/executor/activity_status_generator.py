@@ -5,6 +5,7 @@ Module for generating AI-based activity status for graph executions.
 import json
 import logging
 import math
+import re
 from typing import TYPE_CHECKING, Any, TypedDict
 
 try:
@@ -37,6 +38,14 @@ _OPENROUTER_INCLUDE_USAGE_COST: dict[str, Any] = {"usage": {"include": True}}
 
 _MAX_JSON_RETRIES = 3
 _MAX_OUTPUT_TOKENS = 150
+
+# Bounds on what one run's own data adds to the prompt.
+_MAX_AGENT_IO_CHARS = 2_000
+_MAX_ERROR_CHARS = 1_000
+_MAX_GRAPH_NAME_CHARS = 200
+_MAX_GRAPH_DESCRIPTION_CHARS = 2_000
+_MAX_EXECUTION_DATA_CHARS = 30_000
+_PROMPT_PLACEHOLDER = re.compile(r"\{\{(GRAPH_NAME|EXECUTION_DATA)\}\}")
 
 # Sentinel for ``generate_activity_status_for_execution.model_name``. The
 # parameter defaults to this for cloud routing. Under the local transport
@@ -334,8 +343,14 @@ async def generate_activity_status_for_execution(
             skip_access_check=True,
         )
 
-        graph_name = graph_metadata.name if graph_metadata else f"Graph {graph_id}"
-        graph_description = graph_metadata.description if graph_metadata else ""
+        graph_name = truncate(
+            graph_metadata.name if graph_metadata else f"Graph {graph_id}",
+            _MAX_GRAPH_NAME_CHARS,
+        )
+        graph_description = truncate(
+            (graph_metadata.description or "") if graph_metadata else "",
+            _MAX_GRAPH_DESCRIPTION_CHARS,
+        )
         graph_links = graph.links if graph else []
 
         # Build execution data summary
@@ -357,9 +372,13 @@ async def generate_activity_status_for_execution(
             "  - correctness_score: number between 0.0 and 1.0\n"
         )
 
-        execution_data_json = json.dumps(execution_data, indent=2)
-        user_prompt_content = user_prompt.replace("{{GRAPH_NAME}}", graph_name).replace(
-            "{{EXECUTION_DATA}}", execution_data_json
+        # Cut from the middle, which keeps graph_info and overall_status.
+        execution_data_json = truncate(
+            json.dumps(execution_data, indent=2), _MAX_EXECUTION_DATA_CHARS
+        )
+        values = {"GRAPH_NAME": graph_name, "EXECUTION_DATA": execution_data_json}
+        user_prompt_content = _PROMPT_PLACEHOLDER.sub(
+            lambda match: values[match.group(1)], user_prompt
         )
 
         messages: list[ChatCompletionMessageParam] = [
@@ -642,6 +661,7 @@ def _build_execution_summary(
                         error_message = str(error_output[0])
                     else:
                         error_message = str(error_output)
+            error_message = truncate(error_message, _MAX_ERROR_CHARS)
 
             # Group errors by node_id
             if node_exec.node_id not in node_errors:
@@ -706,12 +726,12 @@ def _build_execution_summary(
         # Store input/output data for special blocks (input/output blocks)
         if block.name in ["AgentInputBlock", "AgentOutputBlock", "UserInputBlock"]:
             if node_exec.input_data:
-                input_output_data[f"{node_exec.node_id}_inputs"] = dict(
-                    node_exec.input_data
+                input_output_data[f"{node_exec.node_id}_inputs"] = truncate(
+                    node_exec.input_data, _MAX_AGENT_IO_CHARS
                 )
             if node_exec.output_data:
-                input_output_data[f"{node_exec.node_id}_outputs"] = dict(
-                    node_exec.output_data
+                input_output_data[f"{node_exec.node_id}_outputs"] = truncate(
+                    node_exec.output_data, _MAX_AGENT_IO_CHARS
                 )
 
     # Add execution and error counts to node data, plus limited errors and output samples
@@ -791,7 +811,9 @@ def _build_execution_summary(
                 execution_stats.error or execution_stats.node_error_count > 0
             ),
             "graph_error": (
-                str(execution_stats.error) if execution_stats.error else None
+                truncate(str(execution_stats.error), _MAX_ERROR_CHARS)
+                if execution_stats.error
+                else None
             ),
             "graph_execution_status": (
                 execution_status.value if execution_status else None

@@ -1,23 +1,30 @@
 import datetime
+import decimal
+import enum
 import gc
+import itertools
+import pathlib
 import threading
 import urllib.request
-from collections import OrderedDict
+import uuid
+from collections import OrderedDict, deque
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, cast
 
 import jsonschema
 import numpy as np
+import orjson
 import pytest
 import referencing.exceptions
 from prisma import Json
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from pydantic.dataclasses import dataclass
 
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.blocks.slack.blocks import SendSlackMessageBlock
 from backend.integrations.providers import ProviderName
 from backend.util import json as json_util
-from backend.util.json import SafeJson, validate_with_jsonschema
+from backend.util.json import SafeJson, sanitize_string, validate_with_jsonschema
 
 
 class SamplePydanticModel(BaseModel):
@@ -771,6 +778,110 @@ class TestSafeJson:
         metadata = cast(dict[str, Any], inner["metadata"])
         nested_metadata = metadata["nested_key"]
         assert nested_metadata == "NestedValueDelete"
+
+
+class _Colour(enum.Enum):
+    RED = "red"
+
+
+class _Size(enum.IntEnum):
+    LARGE = 3
+
+
+class _Mode(str, enum.Enum):
+    FAST = "fast"
+
+
+@dataclass
+class _Point:
+    x: int
+    _label: str = "p"
+
+
+class _Aliased(BaseModel):
+    value: str = Field(alias="Value")
+    when: datetime.datetime
+
+
+_AT_ODD_OFFSET = datetime.datetime(
+    2026, 1, 2, 3, 4, 5, tzinfo=datetime.timezone(datetime.timedelta(seconds=3725))
+)
+
+# Values JSON has no type for, each converted the way `to_dict` converts it.
+_NON_JSON_VALUES = [
+    _AT_ODD_OFFSET,
+    datetime.time(3, 4, tzinfo=datetime.UTC),
+    datetime.date(2026, 1, 2),
+    datetime.timedelta(seconds=90),
+    _Point(1),
+    _Colour.RED,
+    _Size.LARGE,
+    _Mode.FAST,
+    uuid.UUID(int=1),
+    decimal.Decimal("1.5"),
+    decimal.Decimal(10),
+    b"bytes",
+    pathlib.PurePosixPath("/a/b"),
+    {3, 1, 2},
+    frozenset({"a"}),
+    (1, "two"),
+    deque([1, 2]),
+    np.float64(1.5),
+    np.float32(0.1),
+    np.int64(7),
+    np.bool_(True),
+    np.str_("s"),
+    _Aliased(Value="v\x00", when=_AT_ODD_OFFSET),
+    float("nan"),
+    float("inf"),
+]
+
+
+def _dumps_before(data: Any) -> str:
+    return orjson.dumps(json_util.to_dict(data)).decode()
+
+
+def _sanitize_before(data: Any) -> Any:
+    return json_util.to_dict(
+        json_util.to_dict(data), custom_encoder={str: sanitize_string}
+    )
+
+
+class TestJSONHelpersSkipThePythonWalk:
+    @pytest.mark.parametrize("value", _NON_JSON_VALUES, ids=repr)
+    def test_output_matches_the_full_conversion(self, value: Any):
+        data = {"k\x01": [value, {"nested": value}], "text": "a\x00b\\f"}
+
+        assert json_util.dumps(value) == _dumps_before(value)
+        assert json_util.dumps(data) == _dumps_before(data)
+        # repr, because NaN != NaN and 1 == 1.0
+        assert repr(json_util.sanitize_json(data)) == repr(_sanitize_before(data))
+
+    def test_json_data_and_models_never_reach_to_dict(self, monkeypatch):
+        calls: list[Any] = []
+        to_dict = json_util.to_dict
+        monkeypatch.setattr(
+            json_util, "to_dict", lambda *a, **kw: calls.append(a) or to_dict(*a, **kw)
+        )
+        payload = {
+            "lists": [[]] * 1000,
+            "text": "tab\tnull\x00",
+            "nan": float("nan"),
+            "model": _Aliased(Value="v", when=_AT_ODD_OFFSET),
+        }
+
+        assert json_util.loads(json_util.dumps(payload))["text"] == "tab\tnull\x00"
+        stored = cast(dict[str, Any], SafeJson({**payload, "big": 2**80}).data)
+
+        assert calls == []
+        assert stored["text"] == "tab\tnull"
+        assert stored["big"] == 2**80
+
+    def test_every_mix_of_backslashes_and_control_characters(self):
+        pieces = ["\\", "\x00", "\x08", "\x0b", "\x0c", "\x1f", "\x7f", "\t", "\n"]
+        for text in map("".join, itertools.product([*pieces, "b", "f", "u"], repeat=4)):
+            clean = sanitize_string(text)
+            assert SafeJson({text: text}).data == {clean: clean}, repr(text)
 
 
 @pytest.mark.parametrize(
