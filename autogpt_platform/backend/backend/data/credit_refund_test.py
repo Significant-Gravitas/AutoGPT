@@ -5,14 +5,21 @@ These tests ensure that refund operations (deduct_credits, handle_dispute)
 are atomic and maintain data consistency.
 """
 
+import hashlib
+import hmac
+import json
+import time
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import fastapi
 import pytest
 import stripe
+from httpx import ASGITransport, AsyncClient
 from prisma.enums import CreditRefundRequestStatus, CreditTransactionType
 from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
 
+from backend.api.features.billing.subscriptions.routes import router as billing_router
 from backend.data import credit as credit_module
 from backend.data.credit import UsageTransactionMetadata, UserCredit
 from backend.util.exceptions import InsufficientBalanceError
@@ -20,6 +27,9 @@ from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
 credit_system = UserCredit()
+WEBHOOK_SECRET = "whsec_refund_update_test_only"
+webhook_app = fastapi.FastAPI()
+webhook_app.include_router(billing_router)
 
 # Test user ID for refund tests
 REFUND_TEST_USER_ID = "refund-test-user"
@@ -994,6 +1004,83 @@ async def test_auto_approved_refund_is_deducted_once(
         await cleanup_test_user()
 
 
+@pytest.mark.parametrize(
+    "balance, balance_after_request, balance_after",
+    [(1000, 0, 0), (300, 300, -700)],
+    ids=["auto-approved", "manual-review"],
+)
+@pytest.mark.asyncio(loop_scope="session")
+@patch("stripe.Refund.create_async", new_callable=AsyncMock)
+async def test_a_refund_reported_succeeded_by_an_update_is_settled_once(
+    mock_refund_create,
+    balance: int,
+    balance_after_request: int,
+    balance_after: int,
+    monkeypatch,
+    server: SpinTestServer,
+):
+    """A refund Stripe creates `pending` takes its credits and approves its
+    request when `refund.updated` reports it succeeded; an update that leaves
+    the status alone changes nothing."""
+    topup_tx = await setup_test_user_with_topup()
+    monkeypatch.setattr(
+        credit_module.settings.config, "refund_credit_tolerance_threshold", 500
+    )
+    refund = {
+        "object": "refund",
+        "id": "re_test_settles_later",
+        "payment_intent": topup_tx.transactionKey,
+        "amount": 1000,
+        "status": "pending",
+        "reason": "requested_by_customer",
+    }
+    mock_refund_create.return_value = _stripe_refund(topup_tx.transactionKey, 1000)
+    notify = AsyncMock()
+    try:
+        await UserBalance.prisma().update(
+            where={"userId": REFUND_TEST_USER_ID}, data={"balance": balance}
+        )
+        with patch.object(UserCredit, "_send_refund_notification", notify):
+            await credit_system.top_up_refund(
+                REFUND_TEST_USER_ID, topup_tx.transactionKey, {}
+            )
+            await _deliver_refund_event("refund.created", refund)
+            assert await credit_system.get_credits(REFUND_TEST_USER_ID) == (
+                balance_after_request
+            )
+
+            await _deliver_refund_event(
+                "refund.updated",
+                {**refund, "status": "succeeded"},
+                previous_attributes={"status": "pending"},
+            )
+            await _deliver_refund_event(
+                "refund.updated",
+                {**refund, "status": "succeeded"},
+                previous_attributes={"destination_details": {"card": {}}},
+            )
+
+        assert await credit_system.get_credits(REFUND_TEST_USER_ID) == balance_after
+        refund_txs = await CreditTransaction.prisma().find_many(
+            where={
+                "userId": REFUND_TEST_USER_ID,
+                "type": CreditTransactionType.REFUND,
+            }
+        )
+        assert [(tx.transactionKey, tx.amount) for tx in refund_txs] == [
+            (refund["id"], -1000)
+        ]
+        refund_request = await CreditRefundRequest.prisma().find_first_or_raise(
+            where={"userId": REFUND_TEST_USER_ID}
+        )
+        assert refund_request.status == CreditRefundRequestStatus.APPROVED
+        assert [call.kwargs["kind"] for call in notify.await_args_list] == (
+            ["processed"] if balance_after_request == 0 else ["request", "processed"]
+        )
+    finally:
+        await cleanup_test_user()
+
+
 @pytest.fixture
 def subscription_payment_intent(monkeypatch):
     """A PaymentIntent that paid a subscription invoice, with the SDK's default
@@ -1033,3 +1120,38 @@ def _stripe_refund(payment_intent: str, amount: int) -> MagicMock:
     refund.status = "succeeded"
     refund.reason = "requested_by_customer"
     return refund
+
+
+async def _deliver_refund_event(
+    event_type: str, refund: dict, previous_attributes: dict | None = None
+) -> None:
+    """Posts a signed Stripe event for `refund` to the billing webhook."""
+    data: dict = {"object": refund}
+    if previous_attributes is not None:
+        data["previous_attributes"] = previous_attributes
+    payload = json.dumps(
+        {
+            "id": f"evt_test_{time.time_ns()}",
+            "object": "event",
+            "type": event_type,
+            "data": data,
+        }
+    )
+    timestamp = int(time.time())
+    signature = hmac.new(
+        WEBHOOK_SECRET.encode(), f"{timestamp}.{payload}".encode(), hashlib.sha256
+    ).hexdigest()
+    routes = "backend.api.features.billing.subscriptions.routes"
+    with (
+        patch(f"{routes}.settings.secrets.stripe_webhook_secret", new=WEBHOOK_SECRET),
+        patch(f"{routes}._claim_stripe_event", AsyncMock(return_value=True)),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=webhook_app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/credits/stripe_webhook",
+                content=payload,
+                headers={"stripe-signature": f"t={timestamp},v1={signature}"},
+            )
+    assert response.status_code == 200
