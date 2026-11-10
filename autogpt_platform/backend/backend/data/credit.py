@@ -1887,6 +1887,9 @@ async def cancel_all_subscriptions_now(user_id: str) -> int:
     Stripe customer, which this never creates. Raises stripe.StripeError so
     the caller can stop before closing the account.
     """
+    # Read past the five-minute user cache, so a customer saved since it was
+    # filled can't be missed and its plan left running.
+    get_user_by_id.cache_delete(user_id)
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:
         return 0
