@@ -55,6 +55,7 @@ from .helpers import (
     resolve_block_credentials,
 )
 from .models import (
+    REVIEW_CARD_LOCATION,
     CapabilityDetailsResponse,
     ErrorResponse,
     ReviewRequiredResponse,
@@ -85,7 +86,8 @@ class RunCapabilityTool(BaseTool):
             "skills: {}). "
             "Never guess ids: take them from find_capability. An unconnected "
             "capability returns a sign-in card: show it and stop. review_required "
-            "means wait for approval, then resume_capability(review_id). "
+            "means its card is at the bottom of this chat: wait for approval, "
+            "then resume_capability(review_id). "
             "validate_only=true inspects without running."
         )
 
@@ -472,7 +474,8 @@ async def _run_mcp(
             message=(
                 f"'{tool_name}' on {host} looks like a write to a server outside the "
                 "official catalog, so it needs the user's approval. Tell the user; "
-                f"after they approve, call resume_capability(review_id='{review_id}')."
+                f"after they approve, call resume_capability(review_id='{review_id}'). "
+                f"{REVIEW_CARD_LOCATION}"
             ),
             session_id=session.session_id,
             block_id=entry.id if entry else server_url,

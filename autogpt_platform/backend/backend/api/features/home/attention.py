@@ -166,7 +166,7 @@ def _preview_value(value: object) -> str:
 
 def _waiting_on(review: PendingHumanReviewModel) -> str:
     if review.session_id:
-        return AUTOPILOT_NAME
+        return review.expert_name or AUTOPILOT_NAME
     if review.agent_name:
         return f"Workflow “{review.agent_name}”"
     return "A workflow"

@@ -509,6 +509,28 @@ def test_a_direct_autopilot_review_is_not_called_a_workflow() -> None:
     assert item.description == "Otto is waiting for your approval."
 
 
+def test_an_experts_chat_review_names_the_expert() -> None:
+    review = _review(NOW).model_copy(
+        update={
+            "graph_exec_id": None,
+            "session_id": "abc",
+            "agent_name": None,
+            "action": "Gmail Send",
+            "expert_id": "issa",
+            "expert_name": "Issa",
+        }
+    )
+
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+
+    assert item.title == "Gmail Send"
+    assert item.description == "Issa is waiting for your approval."
+    assert item.expert is not None and item.expert.name == "Issa"
+    assert item.primary_action.href == "/copilot?sessionId=abc"
+
+
 def test_a_workflow_review_without_a_name_still_says_workflow() -> None:
     review = _review(NOW).model_copy(update={"agent_name": None})
 

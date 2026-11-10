@@ -1,5 +1,6 @@
 """Pydantic models for tool responses."""
 
+import json
 from datetime import datetime
 from enum import Enum
 from typing import Any, Literal, Self
@@ -1101,8 +1102,24 @@ class BlockOutputResponse(ToolResponseBase):
         return self.provider == ProviderName.GOOGLE.value or self._google_data
 
 
+# Where the user finds a review's card, for the reply that follows it: a
+# model that cannot see the card itself has sent people to look in another
+# chat, or called again to raise it, which only returns the same review.
+REVIEW_CARD_LOCATION = (
+    "Its approval card is at the bottom of this chat and under Needs you on "
+    "Home; if the user can't see it, a reload of this chat shows it. Never say "
+    "it is in another chat, and don't repeat this call to raise it again."
+)
+
+
 class ReviewRequiredResponse(ToolResponseBase):
-    """Response when a block requires human review before execution."""
+    """Response when a block requires human review before execution.
+
+    The chat mounts the approval card from this output, and the card reads the
+    input from the review itself, so ``input_data`` is a preview: long values
+    are replaced by their size, which keeps the output short enough that it is
+    never digested into something the chat cannot recognise.
+    """
 
     type: ResponseType = ResponseType.REVIEW_REQUIRED
     block_id: str
@@ -1111,6 +1128,55 @@ class ReviewRequiredResponse(ToolResponseBase):
     input_data: dict[str, Any] = Field(
         description="The input data that requires review"
     )
+    input_preview: bool | None = Field(
+        default=None,
+        description="Set when long input values are shown as their size; the review holds them whole.",
+    )
+
+    @model_validator(mode="after")
+    def preview_input(self) -> "ReviewRequiredResponse":
+        preview = _preview_input(self.input_data)
+        if preview != self.input_data:
+            self.input_data = preview
+            self.input_preview = True
+        return self
+
+
+# Longest input string a review output carries as is, and the most the whole
+# input may take before each long field is shown as its size instead.
+_INPUT_STRING_CHARS = 500
+_INPUT_PREVIEW_CHARS = 4_000
+
+
+def _preview_input(input_data: dict[str, Any]) -> dict[str, Any]:
+    capped = {key: _sized_strings(value) for key, value in input_data.items()}
+    if len(json.dumps(capped, default=str)) <= _INPUT_PREVIEW_CHARS:
+        return capped
+    return {
+        key: (
+            capped[key]
+            if len(json.dumps(capped[key], default=str)) <= _INPUT_STRING_CHARS
+            else _size_of(value)
+        )
+        for key, value in input_data.items()
+    }
+
+
+def _sized_strings(value: Any) -> Any:
+    match value:
+        case str() if len(value) > _INPUT_STRING_CHARS:
+            return _size_of(value)
+        case dict():
+            return {key: _sized_strings(item) for key, item in value.items()}
+        case list():
+            return [_sized_strings(item) for item in value]
+        case _:
+            return value
+
+
+def _size_of(value: Any) -> str:
+    text = value if isinstance(value, str) else json.dumps(value, default=str)
+    return f"<{len(text):,} chars>"
 
 
 class ApprovalRequiredResponse(ToolResponseBase):

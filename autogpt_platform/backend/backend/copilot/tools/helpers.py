@@ -81,6 +81,7 @@ from .expert_scope import (
     ungranted_credential_hint,
 )
 from .models import (
+    REVIEW_CARD_LOCATION,
     BlockOutputResponse,
     CredentialRejection,
     ErrorResponse,
@@ -1578,7 +1579,8 @@ async def check_hitl_review(
             message=(
                 f"Block '{block.name}' requires human review. "
                 f"After the user approves, call resume_capability with "
-                f"review_id='{existing_review.node_exec_id}' to execute."
+                f"review_id='{existing_review.node_exec_id}' to execute. "
+                f"{REVIEW_CARD_LOCATION}"
             ),
             session_id=session_id,
             block_id=block_id,
@@ -1616,7 +1618,8 @@ async def check_hitl_review(
             message=(
                 f"Block '{block.name}' requires human review. "
                 f"After the user approves, call resume_capability with "
-                f"review_id='{synthetic_node_exec_id}' to execute."
+                f"review_id='{synthetic_node_exec_id}' to execute. "
+                f"{REVIEW_CARD_LOCATION}"
             ),
             session_id=session_id,
             block_id=block_id,
@@ -1658,7 +1661,7 @@ async def check_spend_approval(
     return ReviewRequiredResponse(
         message=(
             f"{needed.headline}. Tell the user, and after they approve "
-            "call run_capability again with the same input."
+            f"call run_capability again with the same input. {REVIEW_CARD_LOCATION}"
         ),
         session_id=session.session_id,
         block_id=prep.block_id,

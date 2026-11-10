@@ -893,6 +893,85 @@ class TestRunBlockSensitiveAction:
         assert response.block_name == "Delete Branch"
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_review_tells_the_model_where_its_card_is(self):
+        """The reply after a review points to the card in this chat and on
+        Home, never to another chat or a second call to raise it again."""
+        session = make_session(user_id=_TEST_USER_ID)
+        input_data = {"to": "ada@example.com"}
+        mock_block = make_mock_block_with_schema(
+            block_id="gmail-send-id",
+            name="Gmail Send",
+            input_properties={"to": {"type": "string"}},
+            required_fields=["to"],
+        )
+        mock_block.is_irreversible_action = True
+        mock_block.is_block_exec_need_review = AsyncMock(
+            return_value=(True, input_data)
+        )
+
+        with (
+            patch("backend.copilot.tools.helpers.get_block", return_value=mock_block),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+        ):
+            response = await RunBlockTool()._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="gmail-send-id",
+                input_data=input_data,
+                dry_run=False,
+            )
+
+        assert isinstance(response, ReviewRequiredResponse)
+        assert "bottom of this chat" in response.message
+        assert "Needs you on Home" in response.message
+        assert "Never say it is in another chat" in response.message
+        assert "don't repeat this call to raise it again" in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_review_keeps_the_input_the_stream_previews(self):
+        """The card reads the input from the review, so the review is written
+        with all of it while the tool output carries a preview."""
+        session = make_session(user_id=_TEST_USER_ID)
+        body = "<p>" + "Hello. " * 1_400 + "</p>"
+        input_data = {"to": "ada@example.com", "body": body}
+        mock_block = make_mock_block_with_schema(
+            block_id="gmail-send-id",
+            name="Gmail Send",
+            input_properties={"to": {"type": "string"}, "body": {"type": "string"}},
+            required_fields=["to", "body"],
+        )
+        mock_block.is_irreversible_action = True
+        mock_block.is_block_exec_need_review = AsyncMock(
+            return_value=(True, input_data)
+        )
+
+        with (
+            patch("backend.copilot.tools.helpers.get_block", return_value=mock_block),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+        ):
+            response = await RunBlockTool()._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="gmail-send-id",
+                input_data=input_data,
+                dry_run=False,
+            )
+
+        assert mock_block.is_block_exec_need_review.await_args.args[0] == input_data
+        assert isinstance(response, ReviewRequiredResponse)
+        assert response.input_data == {
+            "to": "ada@example.com",
+            "body": f"<{len(body):,} chars>",
+        }
+        assert response.input_preview is True
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_sensitive_block_executes_after_approval(self):
         """After approval (should_pause=False), sensitive blocks execute and return outputs."""
         session = make_session(user_id=_TEST_USER_ID)
