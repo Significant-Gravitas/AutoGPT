@@ -3,6 +3,7 @@ import { CredentialMentionMarkdown } from "../../CredentialMention/CredentialMen
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { StoppedTaskCard } from "./StoppedTaskCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { useMemo } from "react";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
 import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
@@ -27,6 +28,8 @@ import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
 import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
+import { TurnPausedCard } from "../../TurnPausedCard/TurnPausedCard";
+import { TURN_PAUSED_PART_TYPE } from "../../../turnPause";
 import {
   parseCompactionOutput,
   type CompactionPhase,
@@ -34,10 +37,19 @@ import {
 } from "../../CompactionCard/helpers";
 import { COMPACTION_PART_TYPE } from "../../ToolChain/helpers";
 import {
+  defaultWorkspaceFileUrl,
   extractWorkspaceArtifacts,
   isRetiredCompactionRow,
   resolveWorkspaceUrls,
+  workspaceLinkFileID,
 } from "../helpers";
+import { MistakeTool } from "../../../tools/FeedbackPrompts/MistakeTool";
+import {
+  type FeedbackCardTarget,
+  MISTAKE_PART_TYPE,
+  WORK_CHECK_PART_TYPE,
+} from "../../../tools/FeedbackPrompts/helpers";
+import { WorkspaceLink, WorkspaceLinksContext } from "./WorkspaceLink";
 import { ReasoningCollapse } from "./ReasoningCollapse";
 
 /**
@@ -50,12 +62,16 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 
   if (!src) return null;
 
-  if (alt?.startsWith("video:")) {
+  const linkedFileID =
+    typeof src === "string" ? workspaceLinkFileID(src) : null;
+  if (linkedFileID) return <WorkspaceLink fileID={linkedFileID} label={alt} />;
+
+  if (alt?.startsWith("video:") && typeof src === "string") {
     return (
       <span className="my-2 inline-block">
         <video
           controls
-          className="h-auto max-w-full rounded-md border border-zinc-200"
+          className="h-auto max-w-full rounded-md border border-border-base"
           preload="metadata"
         >
           <source src={src} />
@@ -66,11 +82,11 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
+    // eslint-disable-next-line @next/next/no-img-element -- a user or workspace image URL next/image cannot optimise
     <img
       src={src}
       alt={alt || "Image"}
-      className="h-auto max-w-full rounded-md border border-zinc-200"
+      className="h-auto max-w-full rounded-md border border-border-base"
       loading="lazy"
       {...rest}
     />
@@ -89,18 +105,34 @@ function TextWithArtifactCards({
   fileUrlBuilder?: (fileId: string) => string;
   readOnly?: boolean;
 }) {
-  const artifacts = extractWorkspaceArtifacts(text, fileUrlBuilder);
-  const resolved = resolveWorkspaceUrls(text, fileUrlBuilder);
+  // A settled part's text never changes, so this only re-runs for the part
+  // that is streaming.
+  const artifacts = useMemo(
+    () => extractWorkspaceArtifacts(text, fileUrlBuilder),
+    [text, fileUrlBuilder],
+  );
+  const resolved = useMemo(
+    () => resolveWorkspaceUrls(text, fileUrlBuilder),
+    [text, fileUrlBuilder],
+  );
 
   // Text reads first, with the artifact cards trailing.
   return (
     <>
-      <CredentialMentionMarkdown
-        components={STREAMDOWN_COMPONENTS}
-        className="[&_li]:py-0"
+      <WorkspaceLinksContext
+        value={{
+          artifacts,
+          readOnly,
+          fileURL: fileUrlBuilder ?? defaultWorkspaceFileUrl,
+        }}
       >
-        {resolved}
-      </CredentialMentionMarkdown>
+        <CredentialMentionMarkdown
+          components={STREAMDOWN_COMPONENTS}
+          className="[&_li]:py-0"
+        >
+          {resolved}
+        </CredentialMentionMarkdown>
+      </WorkspaceLinksContext>
       {artifacts.length > 0 && (
         <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
           {artifacts.map((artifact) => (
@@ -145,6 +177,9 @@ interface Props {
    *  only animates while it is; once the stream ends the row is history,
    *  however it was left. */
   isCurrentlyStreaming?: boolean;
+  /** Set on the last settled reply: where the mistake card sends its answer.
+   *  Absent, the card does not show. */
+  feedbackTarget?: FeedbackCardTarget | null;
 }
 
 export function MessagePartRenderer({
@@ -158,6 +193,7 @@ export function MessagePartRenderer({
   liveCompactionCallId,
   liveCompactionStats,
   isCurrentlyStreaming,
+  feedbackTarget,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
 
@@ -174,7 +210,7 @@ export function MessagePartRenderer({
       const isActive = reasoningState === "streaming";
       return (
         <ReasoningCollapse key={key} isActive={isActive}>
-          <pre className="whitespace-pre-wrap text-sm text-zinc-700">
+          <pre className="text-body whitespace-pre-wrap text-foreground-body">
             {reasoningText}
           </pre>
         </ReasoningCollapse>
@@ -207,7 +243,7 @@ export function MessagePartRenderer({
         return (
           <div
             key={key}
-            className="my-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm italic text-neutral-600"
+            className="my-2 rounded-lg bg-surface-hover px-3 py-2 text-body text-foreground-secondary italic"
           >
             {markerText}
           </div>
@@ -220,6 +256,19 @@ export function MessagePartRenderer({
           text={cleanText}
           fileUrlBuilder={fileUrlBuilder}
           readOnly={readOnly}
+        />
+      );
+    }
+    case TURN_PAUSED_PART_TYPE: {
+      // A pause built from its stored row is keyed by that row; one still
+      // streaming in has no row yet, so its key is this render's only.
+      const rowKey = "id" in part ? part.id : undefined;
+      return (
+        <TurnPausedCard
+          key={key}
+          data={"data" in part ? part.data : undefined}
+          pauseKey={rowKey || key}
+          isStoredRow={Boolean(rowKey)}
         />
       );
     }
@@ -272,6 +321,17 @@ export function MessagePartRenderer({
     case "tool-delete_folder":
     case "tool-move_agents_to_folder":
       return <FolderTool key={key} part={part as ToolUIPart} />;
+    case WORK_CHECK_PART_TYPE:
+      // Sits under the reply's actions, drawn by MessageRow.
+      return null;
+    case MISTAKE_PART_TYPE:
+      return feedbackTarget ? (
+        <MistakeTool
+          key={key}
+          part={part as ToolUIPart}
+          target={feedbackTarget}
+        />
+      ) : null;
     case "tool-TodoWrite":
       // Hidden inline — the task list surfaces through TaskProgressBar above
       // the composer, not as a message part. That bar is gated on
@@ -280,7 +340,7 @@ export function MessagePartRenderer({
     case COMPACTION_PART_TYPE: {
       const toolPart = part as ToolUIPart;
       // A failed compaction, or one closed by the abort sentinel (output ""),
-      // condensed nothing — settled "Condensed…" copy would report work that
+      // condensed nothing — a settled summary claim would report work that
       // never happened. Render nothing; failure messaging belongs to the
       // turn-level error surfaces, not a maintenance row. Same predicate the
       // phase derivation uses, so the row and the bar can never disagree.
@@ -288,7 +348,7 @@ export function MessagePartRenderer({
       const settled = toolPart.state === "output-available";
       // A row still open when the stream is over never completed — the
       // user stopped the turn or the connection dropped mid-compaction.
-      // Claiming "Condensed the conversation" would report work that
+      // Claiming a finished summary would report work that
       // never finished, so render nothing, like the abort sentinel.
       if (!isCurrentlyStreaming && !settled) return null;
       const isLiveRow =

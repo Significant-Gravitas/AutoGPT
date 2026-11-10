@@ -17,8 +17,8 @@ import { createUsageCapturingFetch } from "../tokenDevtool/usageTap";
 import { fetchSse, type SseFrame } from "./sseClient";
 import { TextReveal } from "./textReveal";
 import { applyEntry, type StreamEntry, type WireChunk } from "./turnConverter";
-import { seedTurnLog } from "./turnLog";
-import { diffRows, sha256Hex } from "./turnShadow";
+import { appendErrorMarker, seedTurnLog } from "./turnLog";
+import { diffRows, formatDiffs, sha256Hex } from "./turnShadow";
 import {
   checkpointOf,
   closeBlocks,
@@ -33,6 +33,7 @@ import {
   newTurnSegment,
   persistedRows,
   promptFloor,
+  lastReplySequence,
   reconcileTurn,
   tailEndSequence,
   turnRows,
@@ -105,6 +106,8 @@ export interface RuntimeSnapshot {
   notice: RuntimeNotice;
   error: Error | null;
   stopped: boolean;
+  /** Checking for the end-of-turn reconcile or a continuation after it. */
+  probing: boolean;
 }
 
 export interface SessionView {
@@ -129,7 +132,9 @@ export interface RuntimeDeps {
 export interface RuntimeHandlers {
   /** A turn's error entry or a refused send, with the provider failure sent before it. */
   onError?: (error: Error, providerFailure: unknown) => void;
-  onTurnEnd?: () => void;
+  /** `expired`: the stream went away before the turn's finish or error, so
+   *  the stored view stood in for it. */
+  onTurnEnd?: (turn: { expired: boolean }) => void;
 }
 
 export type SendInput =
@@ -220,6 +225,7 @@ export class TurnRuntime {
   private handlers: RuntimeHandlers = {};
   private boundFetchSession: (() => Promise<SessionView | null>) | null = null;
   private disposed = false;
+  private probes = 0;
   private hiddenAt: number | null = null;
   private rereadTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -386,11 +392,20 @@ export class TurnRuntime {
 
   /** An answered approval starts the chat's next turn on the server; attach to it. */
   followBackendTurn() {
+    // Like a send, it asks for a turn, so an earlier Stop no longer holds. A
+    // stopped turn may still run; the approval's starts after it ends.
+    if (this.stopped) this.followPending = true;
+    this.stopped = false;
+    this.suppressAttach = false;
+    this.queueDeclined = false;
     if (this.runningTurn() || this.isPostPending()) {
       this.followPending = true;
       return;
     }
-    void this.probe(null, CONTINUATION_PROBES, true);
+    const last = this.segments.findLast(
+      (s): s is TurnSegment => s.kind === "turn",
+    );
+    void this.probe(last?.log.turnId ?? null, CONTINUATION_PROBES, true);
   }
 
   dispose() {
@@ -530,6 +545,11 @@ export class TurnRuntime {
     if (frame.kind === "entry") {
       conn.entries += 1;
       this.applyFrom(conn, frame.entry);
+    } else if (
+      frame.kind === "synthetic" &&
+      frame.chunk.type === "data-turn-error"
+    ) {
+      this.onRecoveredError(conn, frame.chunk.data);
     } else if (frame.kind === "synthetic" && frame.chunk.type === "error") {
       conn.syntheticError = str(frame.chunk.errorText);
     } else if (
@@ -539,6 +559,45 @@ export class TurnRuntime {
       conn.followUp = true;
     }
     this.emit();
+  }
+
+  private onRecoveredError(conn: Connection, data: unknown) {
+    if (
+      !data ||
+      typeof data !== "object" ||
+      !("turnId" in data) ||
+      !("errorText" in data) ||
+      typeof data.turnId !== "string" ||
+      !data.turnId ||
+      typeof data.errorText !== "string" ||
+      (conn.turnId !== null && conn.turnId !== data.turnId)
+    )
+      return;
+    let seg = this.turnFor(data.turnId);
+    if (!seg) {
+      if (conn.kind !== "post" || conn.turnId !== null) return;
+      seg = newTurnSegment(
+        data.turnId,
+        seedTurnLog({ turnId: data.turnId, rows: [], checkpoint: null }),
+      );
+      this.segments.push(seg);
+    }
+    conn.turnId = data.turnId;
+    if (seg.ended || seg.stopped || seg.frozen) return;
+    const { errorText, turnId } = data;
+    this.reveal.clear();
+    this.updateTurn(seg.key, (s) => {
+      const log = appendErrorMarker(s.log, `terminal:${turnId}`, errorText);
+      const marker = log.rows.at(-1);
+      return {
+        ...s,
+        log,
+        recoveredError:
+          marker?.key === `error:terminal:${turnId}` ? marker : null,
+      };
+    });
+    this.onChunk(seg.key, { type: "error", errorText });
+    this.endTurn(seg.key);
   }
 
   private applyFrom(conn: Connection, entry: StreamEntry) {
@@ -703,7 +762,10 @@ export class TurnRuntime {
   // The banner tells the user we were notified of these.
   private reportIfUnexpected(end: Extract<ConnectionEnd, { kind: "refused" }>) {
     if (!isUnexpectedRefusal(end.status)) return;
-    this.deps.report("refused", { status: end.status, body: end.body });
+    this.deps.report("refused", {
+      status: end.status,
+      body: reportableBody(end.body),
+    });
   }
 
   /** A refusal no retry can change: end the turn where it stands and say why. */
@@ -817,7 +879,7 @@ export class TurnRuntime {
     this.updateTurn(key, (seg) => ({ ...seg, ended: true }));
     this.resetFailures();
     this.emitNow();
-    this.handlers.onTurnEnd?.();
+    this.handlers.onTurnEnd?.({ expired: false });
     const seg = this.segmentByKey(key);
     if (seg?.kind !== "turn") return;
     const continuation =
@@ -839,15 +901,22 @@ export class TurnRuntime {
     attempts: number,
     awaitContinuation: boolean,
   ) {
-    for (let i = 0; i < attempts; i++) {
-      await sleep(FINISH_PROBE_MS);
-      if (this.disposed || this.stopped) return;
-      const view = await this.fetchView();
-      if (!view) continue;
-      this.observe(view);
-      const active = view.active_stream?.turn_id ?? null;
-      if (active && active !== turnId) return;
-      if (!active && !awaitContinuation) return;
+    this.probes += 1;
+    this.emitNow();
+    try {
+      for (let i = 0; i < attempts; i++) {
+        await sleep(FINISH_PROBE_MS);
+        if (this.disposed || this.stopped) return;
+        const view = await this.fetchView();
+        if (!view) continue;
+        this.observe(view);
+        const active = view.active_stream?.turn_id ?? null;
+        if (active && active !== turnId) return;
+        if (!active && !awaitContinuation) return;
+      }
+    } finally {
+      this.probes -= 1;
+      if (!this.disposed) this.emitNow();
     }
   }
 
@@ -990,7 +1059,7 @@ export class TurnRuntime {
     });
     this.resetFailures();
     this.emitNow();
-    this.handlers.onTurnEnd?.();
+    this.handlers.onTurnEnd?.({ expired: true });
     this.observe(view);
   }
 
@@ -1042,14 +1111,34 @@ export class TurnRuntime {
     if (!persisted) return;
     // The session GET returns a window; a turn starting before it waits.
     const windowStart = rows[0]?.sequence ?? Infinity;
-    if (view.has_more_messages !== false && windowStart > persisted.start)
+    if (view.has_more_messages !== false && windowStart > persisted.start) {
+      const ownUserTexts = new Set(
+        seg.log.rows.filter((r) => r.role === "user").map((r) => r.content),
+      );
+      const sequence = lastReplySequence(persisted.raw, ownUserTexts);
+      // A turn whose rows left the window keeps the id it already learned.
+      if (sequence !== null && sequence !== seg.lastReplySequence)
+        this.updateTurn(seg.key, (s) => ({
+          ...s,
+          lastReplySequence: sequence,
+        }));
       return;
-    const drift = diffRows(seg.log.rows, persisted.rows);
+    }
+    const drift = diffRows(seg.log.rows, persisted.rows).filter(
+      ({ index, fields }) =>
+        !(
+          seg.log.rows[index]?.key === seg.recoveredError?.key &&
+          index === seg.log.rows.length - 1 &&
+          index >= persisted.rows.length &&
+          fields.length === 1 &&
+          fields[0] === "missing"
+        ),
+    );
     if (drift.length > 0 && !seg.stopped && !seg.frozen) {
       this.deps.report("finish", {
         turnId: seg.log.turnId,
         cursor: seg.log.cursor,
-        diffs: drift,
+        diffs: formatDiffs(drift),
       });
     }
     this.updateTurn(seg.key, (s) => reconcileTurn(s, persisted));
@@ -1379,6 +1468,7 @@ export class TurnRuntime {
       notice: this.notice,
       error: this.error,
       stopped: this.stopped,
+      probing: this.probes > 0,
     };
   }
 
@@ -1507,6 +1597,20 @@ export class SendRefusedError extends Error {
     super(message);
     this.name = "SendRefusedError";
   }
+}
+
+// Sentry flattens a 422's error objects to "[Object]"; keep each one's place and
+// reason as a line, and leave out its `input`, which can hold the user's message.
+function reportableBody(body: unknown) {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  if (!Array.isArray(detail)) return body;
+  return {
+    ...(body as object),
+    detail: detail.map(
+      (item: { loc?: unknown; msg?: unknown } | null) =>
+        `${Array.isArray(item?.loc) ? item.loc.join(".") : ""}: ${String(item?.msg)}`,
+    ),
+  };
 }
 
 // FastAPI's 422 for a message over the request model's max_length; the composer has no cap.

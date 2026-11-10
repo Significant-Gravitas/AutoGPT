@@ -9,11 +9,14 @@ import {
 } from "@/tests/integrations/test-utils";
 import SignupPage from "../page";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { IMPERSONATION_COOKIE_NAME } from "@/lib/constants";
+import { ImpersonationState } from "@/lib/impersonation";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockSignupAction = vi.hoisted(() => vi.fn());
 const capture = vi.hoisted(() => vi.fn());
 const setMarketingOptOutFlag = vi.hoisted(() => vi.fn());
+const mockToast = vi.hoisted(() => vi.fn());
 const navigation = vi.hoisted(() => ({
   searchParams: new URLSearchParams(),
 }));
@@ -42,6 +45,11 @@ vi.mock("posthog-js", () => ({
 
 vi.mock("@/services/analytics/marketing-opt-out-cookie", () => ({
   setMarketingOptOutFlag,
+}));
+
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useToast: () => ({ toasts: [], toast: mockToast, dismiss: vi.fn() }),
 }));
 
 const PROVIDER_LOGIN_URL = "/api/auth/login/with-provider";
@@ -92,12 +100,15 @@ describe("SignupPage", () => {
     });
     capture.mockReset();
     setMarketingOptOutFlag.mockReset();
+    mockToast.mockReset();
     navigation.searchParams = new URLSearchParams();
   });
 
   afterEach(() => {
+    ImpersonationState.clear();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   test("shows existing user feedback from signup action", async () => {
@@ -130,6 +141,84 @@ describe("SignupPage", () => {
     expect(
       await screen.findByText("User with this email already exists"),
     ).toBeDefined();
+  });
+
+  test.each([
+    ["new@agpt.com", true],
+    ["new@agpt.co.uk", true],
+    ["NEW@AGPT.CO", false],
+  ])(
+    "only the exact @agpt.co domain is sent to Google SSO (%s)",
+    async (email, reachesSignupAction) => {
+      render(<SignupPage />);
+      fillValidForm();
+      fireEvent.change(screen.getByLabelText("Email"), {
+        target: { value: email },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+
+      if (reachesSignupAction) {
+        await waitFor(() => expect(mockSignupAction).toHaveBeenCalledTimes(1));
+      } else {
+        await waitFor(() =>
+          expect(mockToast).toHaveBeenCalledWith(
+            expect.objectContaining({
+              title:
+                "Please use Google SSO to create an account using an AutoGPT email.",
+            }),
+          ),
+        );
+        expect(mockSignupAction).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  test("drops leftover admin impersonation before a password sign-up", async () => {
+    ImpersonationState.set("someone-elses-user-id", "admin-1");
+    expect(document.cookie).toContain(`${IMPERSONATION_COOKIE_NAME}=`);
+    let impersonationAtSignup: string | null = "unset";
+    mockSignupAction.mockImplementation(async () => {
+      impersonationAtSignup = ImpersonationState.get();
+      return { success: false, error: "user_already_exists" };
+    });
+    render(<SignupPage />);
+
+    fillValidForm();
+    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+
+    await waitFor(() => expect(mockSignupAction).toHaveBeenCalledTimes(1));
+    expect(impersonationAtSignup).toBeNull();
+    expect(document.cookie).not.toContain(`${IMPERSONATION_COOKIE_NAME}=`);
+  });
+
+  test("drops leftover admin impersonation before a Google sign-up", async () => {
+    ImpersonationState.set("someone-elses-user-id", "admin-1");
+    expect(document.cookie).toContain(`${IMPERSONATION_COOKIE_NAME}=`);
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    let stateAtProviderRequest: { session: string | null; cookie: string } = {
+      session: "unset",
+      cookie: "unset",
+    };
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => {
+        stateAtProviderRequest = {
+          session: ImpersonationState.get(),
+          cookie: document.cookie,
+        };
+        return new Response(JSON.stringify({}));
+      });
+    render(<SignupPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue with google/i }),
+    );
+
+    await waitFor(() => expect(providerFetchCallOrder(fetchSpy)).toBeDefined());
+    expect(stateAtProviderRequest.session).toBeNull();
+    expect(stateAtProviderRequest.cookie).not.toContain(
+      `${IMPERSONATION_COOKIE_NAME}=`,
+    );
   });
 
   test("signs up without a terms checkbox", async () => {
@@ -201,14 +290,23 @@ describe("SignupPage", () => {
     expect(previous?.lastElementChild?.textContent).toBe("Sign up");
   });
 
-  test("renders the legal line right after the Google button in cloud", () => {
+  test("renders the legal line right after the social sign-in buttons in cloud", () => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED", "true");
 
     render(<SignupPage />);
 
-    expect(getLegalLine().previousElementSibling).toBe(
-      screen.getByRole("button", { name: /continue with google/i }),
-    );
+    const buttons = getLegalLine().previousElementSibling;
+    expect(
+      buttons?.contains(
+        screen.getByRole("button", { name: /continue with google/i }),
+      ),
+    ).toBe(true);
+    expect(
+      buttons?.contains(
+        screen.getByRole("button", { name: /continue with microsoft/i }),
+      ),
+    ).toBe(true);
   });
 
   test("opting out swaps the sentence, keeps focus on the toggle and submits the opt-out", async () => {
@@ -474,6 +572,70 @@ describe("SignupPage", () => {
     expect(capture.mock.calls).toEqual([
       ["marketing_opted_out", { surface: "signup" }],
     ]);
+  });
+
+  test("leaves no timer pending once it unmounts after a signup attempt", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { unmount } = render(<SignupPage />);
+
+    fillValidForm();
+    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+    await screen.findByText("User with this email already exists");
+    unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("leaves no timer pending when it unmounts before a signup attempt settles", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let settle: (result: unknown) => void = () => {};
+    mockSignupAction.mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+    const { unmount } = render(<SignupPage />);
+
+    fillValidForm();
+    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+    await waitFor(() => expect(mockSignupAction).toHaveBeenCalledTimes(1));
+    unmount();
+    settle({ success: false, error: "user_already_exists" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("keeps Google unavailable while a Microsoft sign-up is starting", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED", "true");
+    let finish = () => {};
+    const settled = new Promise<Response>((resolve) => {
+      finish = () => resolve(new Response(JSON.stringify({})));
+    });
+    const passThrough = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+      input === PROVIDER_LOGIN_URL ? settled : passThrough(input, init),
+    );
+
+    try {
+      render(<SignupPage />);
+      fireEvent.click(
+        screen.getByRole("button", { name: /continue with microsoft/i }),
+      );
+
+      // Two sign-ups at once would race their redirects.
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("button", { name: /continue with google/i })
+            .hasAttribute("disabled"),
+        ).toBe(true),
+      );
+    } finally {
+      finish();
+      await settled;
+    }
   });
 
   test("does not link to the demo tour", () => {

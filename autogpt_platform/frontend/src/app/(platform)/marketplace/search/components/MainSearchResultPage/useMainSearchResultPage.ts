@@ -3,19 +3,14 @@ import {
   useGetV2ListStoreAgents,
   useGetV2ListStoreCreators,
 } from "@/app/api/__generated__/endpoints/store/store";
-import { okData } from "@/app/api/helpers";
 import { CreatorsResponse } from "@/app/api/__generated__/models/creatorsResponse";
 import { GetV2ListStoreAgentsParams } from "@/app/api/__generated__/models/getV2ListStoreAgentsParams";
 import { GetV2ListStoreCreatorsParams } from "@/app/api/__generated__/models/getV2ListStoreCreatorsParams";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
-import {
-  Flag,
-  useFlagStatus,
-  useGetFlag,
-} from "@/services/feature-flags/use-get-flag";
+import { okData } from "@/app/api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useMemo, useState } from "react";
 import { useExpertsSection } from "../../../components/ExpertsSection/useExpertsSection";
-import { useState, useMemo } from "react";
 
 type MarketplaceSearchSort = GetV2ListStoreAgentsParams["sorted_by"];
 type CreatorSortBy = GetV2ListStoreCreatorsParams["sorted_by"];
@@ -33,13 +28,10 @@ export const useMainSearchResultPage = ({
   const [showCreators, setShowCreators] = useState(true);
   const [showSkills, setShowSkills] = useState(true);
   const [showExperts, setShowExperts] = useState(true);
-  const skillsHub = useFlagStatus(Flag.SKILLS_HUB);
-  const { isLoggedIn, isUserLoading } = useAuth();
-  const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  // Same gate as the marketplace shelf: expert pages are public, hiring is
-  // not, so a signed-in user outside the beta sees neither surface.
-  const isExpertsVisible =
-    !isUserLoading && (!isLoggedIn || isHireExpertsEnabled);
+
+  const { isUserLoading } = useAuth();
+
+  const isExpertsVisible = !isUserLoading;
   const [clientSortBy, setClientSortBy] = useState<string>(
     sort ?? "updated_at",
   );
@@ -95,7 +87,6 @@ export const useMainSearchResultPage = ({
       { search_query: searchTerm },
       {
         query: {
-          enabled: skillsHub.ready && skillsHub.enabled,
           select: (response) => okData(response)?.skills ?? [],
         },
       },
@@ -178,7 +169,6 @@ export const useMainSearchResultPage = ({
     showSkills,
     showExperts,
     isExpertsVisible,
-    isSkillsHubEnabled: skillsHub.ready && skillsHub.enabled,
     isAgentsLoading,
     isCreatorsLoading,
     isSkillsLoading,

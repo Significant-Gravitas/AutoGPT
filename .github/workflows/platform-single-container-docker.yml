@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - ".dockerignore"
+      - ".github/scripts/install-trivy.sh"
       - ".github/scripts/platform-single-container-publish.sh"
       - ".github/scripts/run_command_junit.py"
       - ".github/scripts/run_unittest_junit.py"
@@ -148,7 +149,7 @@ jobs:
       - name: Build image without publishing
         id: build-image
         background: true
-        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
         with:
           source: .
           files: autogpt_platform/single-container/docker-bake.hcl
@@ -201,11 +202,17 @@ jobs:
           --output "$REPORT_DIR/smoke.xml"
           -- bash .github/scripts/platform-single-container-smoke.sh
 
+      - name: Install Trivy
+        continue-on-error: true
+        shell: bash
+        run: bash .github/scripts/install-trivy.sh
+
       - name: Scan for fixable critical vulnerabilities
         id: vulnerability_scan
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          skip-setup-trivy: true
           image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
           scanners: vuln,secret
           format: json
@@ -221,6 +228,7 @@ jobs:
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          skip-setup-trivy: true
           image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
           scanners: secret
           format: json
@@ -339,7 +347,7 @@ jobs:
 
       - name: Build and push platform digest
         id: build
-        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
         with:
           source: .
           files: autogpt_platform/single-container/docker-bake.hcl
@@ -354,19 +362,21 @@ jobs:
             single-container.attest=type=sbom
             single-container.output=type=image,name=${{ env.DEPLOY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
 
+      # Pass only the digest. The bake metadata copies the release notes into
+      # every target's provenance, and an environment variable over 128 KiB
+      # stops bash from starting ("Argument list too long").
       - name: Capture pushed digest
         id: digest
         shell: bash
         env:
-          BUILD_METADATA: ${{ steps.build.outputs.metadata }}
+          DIGEST: ${{ fromJSON(steps.build.outputs.metadata)['single-container']['containerimage.digest'] }}
         run: |
           set -euo pipefail
-          digest="$(jq -er '."single-container"."containerimage.digest"' <<<"$BUILD_METADATA")"
-          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "build did not return a valid sha256 digest" >&2
             exit 1
           fi
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Pull the exact pushed digest
         shell: bash
@@ -381,11 +391,16 @@ jobs:
           SMOKE_PLATFORM: ${{ matrix.platform }}
         run: bash .github/scripts/platform-single-container-smoke.sh
 
+      - name: Install Trivy
+        shell: bash
+        run: bash .github/scripts/install-trivy.sh
+
       - name: Scan the exact pushed digest for fixable critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
+          skip-setup-trivy: true
           image-ref: ${{ env.DEPLOY_IMAGE }}@${{ steps.digest.outputs.digest }}
           format: table
           ignore-unfixed: true
@@ -399,6 +414,7 @@ jobs:
         env:
           TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
+          skip-setup-trivy: true
           image-ref: ${{ env.DEPLOY_IMAGE }}@${{ steps.digest.outputs.digest }}
           scanners: secret
           format: table
@@ -444,7 +460,7 @@ jobs:
           persist-credentials: false
 
       - name: Download verified digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: platform-single-container-publish-digest-*
           path: ${{ runner.temp }}/platform-single-container-publish-digests
@@ -477,5 +493,5 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
           repository: significantgravitas/autogpt
-          short-description: Run the AutoGPT Platform, including FalkorDB-backed memory, in one container.
+          short-description: Self-host your AI team. Hire experts, delegate work, and review results with AutoGPT.
           readme-filepath: ./autogpt_platform/single-container/README.md

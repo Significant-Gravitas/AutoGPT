@@ -1,13 +1,20 @@
+import { useNowSecond } from "@/hooks/useNowSecond";
+import { SHOW_TIME_AFTER_SECONDS } from "../../JobStatsBar/constants";
 import { formatElapsed } from "../../JobStatsBar/formatElapsed";
-import { PixelGridLoader } from "../../PixelGridLoader/PixelGridLoader";
+import { getElapsedSeconds } from "../../JobStatsBar/useElapsedTimer";
+import { DrawnLineLoader } from "../../DrawnLineLoader/DrawnLineLoader";
 import { SwapText } from "../../ToolChain/SwapText";
-
-/** Only show elapsed time after this many seconds. */
-const SHOW_TIME_AFTER_SECONDS = 20;
 
 interface Props {
   active: boolean;
-  elapsedSeconds: number;
+  /**
+   * Epoch ms the wait started. When set, the indicator runs its own clock
+   * (the shared `useNowSecond` ticker, only while `active`), so the parent
+   * does not re-render every second.
+   */
+  startedAtMs?: number | null;
+  /** Elapsed seconds from a parent that already owns a clock. */
+  elapsedSeconds?: number;
   /**
    * Plain-language label for a wait the UI itself narrates (e.g. "Uploading
    * 2 files…"). Defaults to "Thinking…". The backend's own `data-status`
@@ -19,26 +26,32 @@ interface Props {
 
 export function ThinkingIndicator({
   active,
-  elapsedSeconds,
+  startedAtMs,
+  elapsedSeconds = 0,
   statusMessage,
 }: Props) {
-  const showTime = active && elapsedSeconds >= SHOW_TIME_AFTER_SECONDS;
+  const hasClock = startedAtMs !== null && startedAtMs !== undefined;
+  const nowMs = useNowSecond(active && hasClock);
+  const seconds = hasClock
+    ? getElapsedSeconds(startedAtMs, nowMs)
+    : elapsedSeconds;
+  const showTime = active && seconds >= SHOW_TIME_AFTER_SECONDS;
 
   return (
     <span
+      className="inline-flex w-fit items-center gap-2.5 text-body text-foreground-secondary"
       role="status"
       aria-live="polite"
-      className="inline-flex w-fit items-center gap-2.5 text-sm text-zinc-600"
     >
-      <PixelGridLoader className="text-zinc-600" />
+      <DrawnLineLoader className="text-foreground-secondary" size={16} />
       <SwapText
         text={statusMessage ?? "Thinking…"}
         shimmer
-        className="text-sm"
+        className="text-body"
       />
       {showTime && (
-        <span className="font-mono text-xs tabular-nums text-zinc-400">
-          {formatElapsed(elapsedSeconds)}
+        <span className="font-mono text-caption text-foreground-subtle tabular-nums">
+          {formatElapsed(seconds)}
         </span>
       )}
     </span>

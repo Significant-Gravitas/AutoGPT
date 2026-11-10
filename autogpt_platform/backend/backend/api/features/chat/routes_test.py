@@ -8,21 +8,27 @@ from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
+import httpx
 import pytest
 import pytest_mock
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pydantic import SecretStr
 from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
+from backend.copilot import pending_messages as pending_messages_module
 from backend.copilot import transports as chat_transports
+from backend.copilot.at_reset import cancel_resume_at_reset_in_background
+from backend.copilot.background_task import BackgroundSessionState
 from backend.copilot.config import CopilotLlmAuthProvider
-from backend.copilot.model import ChatSession
+from backend.copilot.continuation import KEEP_GOING_NOTE
+from backend.copilot.model import AutopilotMode, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
-from backend.copilot.rate_limit import SubscriptionTier
+from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
-from backend.data.model import OAuth2Credentials
+from backend.data.model import HostScopedCredentials, OAuth2Credentials
 from backend.data.workspace_scope import WorkspaceScope
 from backend.integrations.codex.auth_bundle import (
     CodexAuthBundleV1,
@@ -33,7 +39,7 @@ from backend.integrations.oauth.microsoft_365_copilot import (
     Microsoft365CopilotDeviceAuthHandler,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.settings import BehaveAs
 
 app = fastapi.FastAPI()
@@ -71,7 +77,18 @@ def test_tool_response_union_exports_expert_soul_response() -> None:
 def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     """Setup auth overrides for all tests in this module"""
     from autogpt_libs.auth.dependencies import get_request_context
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+
+    mocker.patch.object(chat_routes, "cancel_background_subtasks", new=AsyncMock())
+    mocker.patch.object(
+        chat_routes,
+        "background_task_db",
+        return_value=MagicMock(
+            cancel_queued_background_followup=AsyncMock(return_value=False),
+            get_session_background_state=AsyncMock(
+                return_value=BackgroundSessionState()
+            ),
+        ),
+    )
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
@@ -331,6 +348,18 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
+    # Validation tests do not need a live entitlement snapshot or Redis.
+    # Gate-specific tests replace these boundary mocks with their verdict.
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(1_000_000, 5_000_000, SubscriptionTier.BASIC),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     # ``schedule_chat_turn`` owns acquire-slot + persist-message + dispatch
     # in one call. Patching it at the route boundary lets tests exercise
     # validation/enrichment (file_ids, message length, rate limits, etc.)
@@ -343,15 +372,29 @@ def _mock_stream_internals(
     )
     mocker.patch.object(
         chat_routes.stream_registry,
+        "publish_chunk",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch.object(
+        chat_routes.stream_registry,
         "subscribe_to_session",
         new_callable=AsyncMock,
         return_value=None,
     )
+    # A sent message cancels the chat's pending resume at the budget reset;
+    # keep that off the scheduler.
+    mock_cancel_resume = mocker.patch(
+        "backend.api.features.chat.routes.cancel_resume_at_reset_in_background"
+    )
+    claims = _mock_client_message_claims(mocker)
     return types.SimpleNamespace(
         enqueue=mock_schedule,
         paywall=mock_paywall,
         session=mock_session,
         owns_active_expert=mock_owns_active_expert,
+        cancel_resume=mock_cancel_resume,
+        claims=claims,
     )
 
 
@@ -427,6 +470,110 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
     assert response.status_code == 200
 
 
+def _mock_rate_limits_for_an_unseeded_user(mocker: pytest_mock.MockerFixture) -> None:
+    """The impersonated user has no row in the test database, so the tier
+    lookup behind the rate limit would fail before the turn is scheduled."""
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(0, 0, SubscriptionTier.BASIC),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit", new_callable=AsyncMock
+    )
+
+
+def test_stream_chat_turn_is_not_impersonated_by_default(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "hello"})
+
+    assert response.status_code == 200
+    assert mocks.enqueue.await_args.kwargs["impersonated"] is False
+
+
+def test_stream_chat_marks_a_turn_an_impersonating_admin_starts(
+    mocker: pytest_mock.MockerFixture,
+    mock_jwt_admin,
+    target_user_id: str,
+) -> None:
+    """The turn still runs and is still tracked, as the user, but its LLM
+    analytics say an admin sent it."""
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+    mocks = _mock_stream_internals(mocker)
+    _mock_rate_limits_for_an_unseeded_user(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+        headers={"X-Act-As-User-Id": target_user_id},
+    )
+
+    assert response.status_code == 200
+    kwargs = mocks.enqueue.await_args.kwargs
+    assert kwargs["user_id"] == target_user_id
+    assert kwargs["impersonated"] is True
+
+
+def test_stream_chat_queues_an_impersonated_turn_as_impersonated(
+    mocker: pytest_mock.MockerFixture,
+    mock_jwt_admin,
+    target_user_id: str,
+) -> None:
+    """A turn queued behind the running cap is promoted later, from the stored
+    row, so the row has to say an admin sent it."""
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+    mocks = _mock_stream_internals(mocker)
+    _mock_rate_limits_for_an_unseeded_user(mocker)
+    mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy")
+    queue = mocker.patch.object(
+        chat_routes.turn_queue, "try_enqueue_turn", new_callable=AsyncMock
+    )
+
+    client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+        headers={"X-Act-As-User-Id": target_user_id},
+    )
+
+    assert queue.await_args.kwargs["user_id"] == target_user_id
+    assert queue.await_args.kwargs["impersonated"] is True
+
+
+def test_stream_chat_a_turn_queued_behind_the_running_cap_is_sent_as_queued(
+    mocker: pytest_mock.MockerFixture,
+    chat_blocked_events: list[dict],
+    test_user_id: str,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    _mock_rate_limits_for_an_unseeded_user(mocker)
+    mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy", cap=5)
+    mocker.patch.object(
+        chat_routes.turn_queue, "try_enqueue_turn", new_callable=AsyncMock
+    )
+
+    assert (
+        client.post("/sessions/sess-1/stream", json={"message": "hello"}).status_code
+        == 200
+    )
+
+    assert chat_blocked_events == [
+        {
+            "distinct_id": test_user_id,
+            "reason": "rate_limit",
+            "limit": "concurrency",
+            "outcome": "queued",
+            "surface": "chat",
+            "tier": None,
+            "used": None,
+            "cap": 5,
+            "resets_at": None,
+        }
+    ]
+
+
 def test_stream_chat_allows_an_active_expert_session(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
@@ -479,6 +626,86 @@ def test_stream_chat_skips_the_expert_gate_for_a_non_expert_session(
     mocks.enqueue.assert_awaited_once()
 
 
+@pytest.mark.parametrize("is_user_message", [True, False])
+def test_stream_chat_records_card_decisions_only_from_the_users_message(
+    mocker: pytest_mock.MockerFixture, test_user_id: str, is_user_message: bool
+) -> None:
+    """The only writer of the approvals the gate trusts for a proposal's confirm."""
+    _mock_stream_internals(mocker)
+    record = mocker.patch(
+        "backend.api.features.chat.routes.record_card_decisions",
+        new_callable=AsyncMock,
+    )
+    line = "Approved: create Otto (confirmation_id: c-1)."
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": line, "is_user_message": is_user_message},
+    )
+
+    assert response.status_code == 200
+    if is_user_message:
+        record.assert_awaited_once_with(test_user_id, "sess-1", line)
+    else:
+        record.assert_not_awaited()
+
+
+# ─── A sent message cancels the pending resume at the budget reset ────
+
+
+def test_a_user_message_cancels_the_pending_resume(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "carry on"})
+
+    assert response.status_code == 200
+    mocks.cancel_resume.assert_called_once_with("sess-1", test_user_id)
+
+
+@pytest.mark.parametrize(
+    "payload, turn_id",
+    [
+        ({"message": KEEP_GOING_NOTE, "is_user_message": False}, "turn-id-mock"),
+        ({"message": "carry on"}, None),
+    ],
+    ids=["not-a-user-message", "duplicate-not-scheduled"],
+)
+def test_the_resume_stays_unless_a_user_turn_was_scheduled(
+    mocker: pytest_mock.MockerFixture, payload: dict, turn_id: str | None
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.return_value = turn_id
+
+    response = client.post("/sessions/sess-1/stream", json=payload)
+
+    assert response.status_code == 200
+    mocks.cancel_resume.assert_not_called()
+
+
+def test_a_failing_resume_cancel_never_fails_the_send(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch.object(
+        chat_routes,
+        "cancel_resume_at_reset_in_background",
+        cancel_resume_at_reset_in_background,
+    )
+    scheduler_down = MagicMock(
+        cancel_at_reset_turn=AsyncMock(side_effect=RuntimeError("scheduler down"))
+    )
+    mocker.patch(
+        "backend.copilot.at_reset.get_scheduler_client", return_value=scheduler_down
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "carry on"})
+
+    assert response.status_code == 200
+    mocks.enqueue.assert_awaited_once()
+
+
 # ─── Duplicate message dedup ──────────────────────────────────────────
 
 
@@ -502,6 +729,28 @@ def test_stream_chat_skips_enqueue_for_duplicate_message(
     # None, so no further dispatch happened (verified by the helper's own
     # contract — see schedule_chat_turn tests).
     mocks.enqueue.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("body", "dedupe_content"),
+    [
+        # A turn stopped before it streamed leaves "yes" as the last row; the
+        # resend carries a fresh id and must not be collapsed into it.
+        ({"message": "yes", "message_id": "client-send-2"}, False),
+        ({"message": "yes"}, True),
+    ],
+)
+def test_stream_chat_collapses_same_text_only_without_a_client_id(
+    mocker: pytest_mock.MockerFixture,
+    body: dict[str, str],
+    dedupe_content: bool,
+):
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post("/sessions/sess-1/stream", json=body)
+
+    assert response.status_code == 200
+    assert mocks.enqueue.await_args.kwargs["dedupe_content"] is dedupe_content
 
 
 def test_stream_chat_canonicalizes_expert_kickoff(
@@ -577,6 +826,7 @@ def test_stream_chat_redispatches_orphaned_expert_kickoff(
 
 def test_stream_chat_returns_retryable_limit_for_orphaned_expert_kickoff(
     mocker: pytest_mock.MockerFixture,
+    chat_blocked_events: list[dict],
 ) -> None:
     mocks = _mock_stream_internals(mocker)
     mocks.session.expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
@@ -594,6 +844,9 @@ def test_stream_chat_returns_retryable_limit_for_orphaned_expert_kickoff(
 
     assert response.status_code == 429
     assert response.json() == {"detail": "try again"}
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == [
+        ("concurrency", "refused")
+    ]
 
 
 def test_stream_chat_does_not_redispatch_running_persisted_kickoff(
@@ -739,6 +992,307 @@ def test_stream_chat_scopes_client_message_id_to_owner_and_session(
         "sess-1",
         "client-click-id",
     )
+
+
+# ─── Client message id idempotency (SECRT-2695) ───────────────────────
+
+
+class _ClaimRedis:
+    """The client-message claim's SET NX / GET / compare-and-set, plus the
+    LLEN a duplicate's response reads the buffer length with."""
+
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+
+    @property
+    def keys(self) -> set[str]:
+        return set(self.values)
+
+    async def set(
+        self, key: str, value: str, nx: bool = False, ex: int | None = None
+    ) -> bool | None:
+        if nx and key in self.values:
+            return None
+        self.values[key] = value
+        return True
+
+    async def get(self, key: str) -> str | None:
+        return self.values.get(key)
+
+    async def eval(
+        self,
+        script: str,
+        numkeys: int,
+        key: str,
+        expected: str,
+        new: str,
+        ttl_seconds: int,
+        or_missing: str,
+    ) -> int:
+        """``string_compare_and_set``, which settles a claim."""
+        current = self.values.get(key)
+        if current != expected and not (current is None and or_missing == "1"):
+            return 0
+        if new:
+            self.values[key] = new
+        else:
+            self.values.pop(key, None)
+        return 1
+
+    async def llen(self, key: str) -> int:
+        return 0
+
+
+def _mock_client_message_claims(mocker: pytest_mock.MockerFixture) -> _ClaimRedis:
+    redis = _ClaimRedis()
+    mocker.patch(
+        "backend.copilot.pending_messages.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=redis,
+    )
+    return redis
+
+
+def _mock_pending_push(mocker: pytest_mock.MockerFixture) -> AsyncMock:
+    """Run the real ``queue_pending_for_http`` down to the Redis push."""
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.incr_with_ttl",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    return mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+
+
+def test_stream_chat_retransmits_of_a_started_turn_queue_nothing(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The same send arriving three times starts one turn. The copies that
+    land once the turn is running used to be buffered as follow-ups, each
+    one becoming another user message and another turn."""
+    mocks = _mock_stream_internals(mocker)
+    push = _mock_pending_push(mocker)
+    in_flight = mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    body = {"message": "hello", "message_id": "client-click-id"}
+
+    assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+    in_flight.return_value = True
+    for _ in range(2):
+        assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+
+    mocks.enqueue.assert_awaited_once()
+    push.assert_not_awaited()
+
+
+def test_stream_chat_retransmits_of_a_queued_send_are_buffered_once(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A stale tab posts to /stream while another tab's turn runs, so the
+    send is queued. Its copies must neither queue again nor, once the turn
+    has drained it, start a turn of their own."""
+    mocks = _mock_stream_internals(mocker)
+    push = _mock_pending_push(mocker)
+    in_flight = mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    body = {"message": "hello", "message_id": "client-click-id"}
+
+    for _ in range(3):
+        assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+    in_flight.return_value = False
+    assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+
+    push.assert_awaited_once()
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_stream_chat_distinct_message_ids_are_each_queued(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Two clicks with the same text are two messages."""
+    _mock_stream_internals(mocker)
+    push = _mock_pending_push(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    for message_id in ("click-1", "click-2"):
+        response = client.post(
+            "/sessions/sess-1/stream",
+            json={"message": "hello", "message_id": message_id},
+        )
+        assert response.status_code == 200
+
+    assert push.await_count == 2
+
+
+def test_stream_chat_refused_send_can_be_retried_with_the_same_id(
+    mocker: pytest_mock.MockerFixture,
+    chat_blocked_events: list[dict],
+) -> None:
+    """A send the server turned away was never accepted, so its id must not
+    stay claimed: the retry would be dropped as a duplicate of nothing."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy")
+    mocker.patch.object(
+        chat_routes.turn_queue,
+        "try_enqueue_turn",
+        new_callable=AsyncMock,
+        side_effect=chat_routes.turn_queue.InflightCapExceeded(used=15, cap=15),
+    )
+    body = {"message": "hello", "message_id": "client-click-id"}
+
+    assert client.post("/sessions/sess-1/stream", json=body).status_code == 429
+    assert mocks.claims.keys == set()
+    (event,) = chat_blocked_events
+    assert (event["limit"], event["outcome"], event["surface"]) == (
+        "concurrency",
+        "refused",
+        "chat",
+    )
+    assert (event["used"], event["cap"]) == (15, 15)
+
+    mocks.enqueue.side_effect = None
+    assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+    assert mocks.enqueue.await_count == 2
+
+
+def test_stream_chat_failed_queue_fallback_can_be_retried_with_the_same_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The running cap sends the turn to the queue. If that fails too, the
+    send was never accepted and its id must be free for the retry."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy")
+    mocker.patch.object(
+        chat_routes.turn_queue,
+        "try_enqueue_turn",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("database unavailable"),
+    )
+    body = {"message": "hello", "message_id": "client-click-id"}
+    safe_client = fastapi.testclient.TestClient(app, raise_server_exceptions=False)
+
+    response = safe_client.post("/sessions/sess-1/stream", json=body)
+    assert response.status_code == 500
+    assert mocks.claims.keys == set()
+
+    mocks.enqueue.side_effect = None
+    assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+    assert mocks.enqueue.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_copy_carries_a_send_the_first_copy_had_refused(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A copy lands while the first copy is being scheduled, and the first is
+    then refused at the in-flight cap. The send was never taken, so the copy
+    must schedule it, not be answered as a duplicate of nothing."""
+    mocks = _mock_stream_internals(mocker)
+    first_scheduling = asyncio.Event()
+    let_first_finish = asyncio.Event()
+    scheduled: list[str] = []
+
+    async def schedule(**kwargs: object) -> str:
+        scheduled.append("call")
+        if len(scheduled) == 1:
+            first_scheduling.set()
+            await let_first_finish.wait()
+            raise chat_routes.ConcurrentTurnLimitError("busy")
+        return "turn-2"
+
+    mocks.enqueue.side_effect = schedule
+    mocker.patch.object(
+        chat_routes.turn_queue,
+        "try_enqueue_turn",
+        new_callable=AsyncMock,
+        side_effect=chat_routes.turn_queue.InflightCapExceeded(),
+    )
+    body = {"message": "hello", "message_id": "client-click-id"}
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as async_client:
+        first = asyncio.create_task(
+            async_client.post("/sessions/sess-1/stream", json=body)
+        )
+        await first_scheduling.wait()
+        copy = asyncio.create_task(
+            async_client.post("/sessions/sess-1/stream", json=body)
+        )
+        await asyncio.sleep(0.2)
+        let_first_finish.set()
+        first_response = await first
+        copy_response = await copy
+
+    assert first_response.status_code == 429
+    assert copy_response.status_code == 200
+    assert len(scheduled) == 2
+    assert list(mocks.claims.values.values()) == ["accepted"]
+
+
+def _reserve_client_message(claims: _ClaimRedis, user_id: str) -> None:
+    """Hold the id the way a first copy still being scheduled does."""
+    scoped_id = chat_routes.scoped_client_message_id(
+        user_id, "sess-1", "client-click-id"
+    )
+    key = pending_messages_module._client_message_key("sess-1", scoped_id)
+    claims.values[key] = "reserved:first-copy"
+
+
+def test_stream_chat_lost_slot_is_retryable_without_accepting_the_message(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.side_effect = chat_routes.turn_queue.SessionNotIdle("sess-1")
+    request = {"message": "hello", "message_id": "client-click-id"}
+
+    response = client.post("/sessions/sess-1/stream", json=request)
+
+    assert response.status_code == 409
+    assert "send this message again" in response.json()["detail"]
+    assert not mocks.claims.values
+    mocks.enqueue.side_effect = None
+    retry = client.post("/sessions/sess-1/stream", json=request)
+    assert retry.status_code == 200
+    assert list(mocks.claims.values.values()) == ["accepted"]
+
+
+def test_stream_chat_copy_is_told_to_retry_while_the_first_is_unsettled(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """The first copy is still being scheduled and may yet be refused, so
+    this one is told neither that the send was taken nor that it failed."""
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch.object(pending_messages_module, "_CLIENT_MESSAGE_WAIT_SECONDS", 0.05)
+    _reserve_client_message(mocks.claims, test_user_id)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello", "message_id": "client-click-id"},
+    )
+
+    assert response.status_code == 503
+    mocks.enqueue.assert_not_awaited()
+    assert list(mocks.claims.values.values()) == ["reserved:first-copy"]
 
 
 # ─── UUID format filtering ─────────────────────────────────────────────
@@ -970,8 +1524,11 @@ def test_stream_chat_platform_still_enforces_paywall(
 
 def test_stream_chat_returns_429_on_weekly_rate_limit(
     mocker: pytest_mock.MockerFixture,
+    chat_blocked_events: list[dict],
+    test_user_id: str,
 ):
     """When check_rate_limit raises RateLimitExceeded for weekly limit the endpoint returns 429."""
+    from backend.copilot.limit_tracking import LimitReading
     from backend.copilot.rate_limit import RateLimitExceeded
 
     _mock_stream_internals(mocker)
@@ -980,7 +1537,9 @@ def test_stream_chat_returns_429_on_weekly_rate_limit(
     resets_at = datetime.now(UTC) + timedelta(days=3)
     mocker.patch(
         "backend.api.features.chat.routes.check_rate_limit",
-        side_effect=RateLimitExceeded("weekly", resets_at),
+        side_effect=RateLimitExceeded(
+            "weekly", resets_at, reading=LimitReading(tier="PRO", used=0.06, cap=0.05)
+        ),
     )
 
     response = client.post(
@@ -992,6 +1551,19 @@ def test_stream_chat_returns_429_on_weekly_rate_limit(
     message = detail["message"].lower()
     assert "weekly" in message
     assert "resets in" in message
+    assert chat_blocked_events == [
+        {
+            "distinct_id": test_user_id,
+            "reason": "usage_limit",
+            "limit": "weekly",
+            "outcome": "refused",
+            "surface": "chat",
+            "tier": "PRO",
+            "used": 0.06,
+            "cap": 0.05,
+            "resets_at": resets_at.isoformat(),
+        }
+    ]
 
 
 def test_stream_chat_429_includes_reset_time(mocker: pytest_mock.MockerFixture):
@@ -1066,7 +1638,7 @@ def test_stream_chat_returns_503_with_retry_after_when_rate_limit_unavailable(
     mocker.patch.object(chat_routes.config, "daily_cost_limit_microdollars", 10000)
     mocker.patch.object(chat_routes.config, "weekly_cost_limit_microdollars", 50000)
     # Patch the limit-resolution helper so the test does not exercise the
-    # real LaunchDarkly / tier-lookup path — keeps the assertion focused on
+    # real PostHog / tier-lookup path — keeps the assertion focused on
     # the RateLimitUnavailable → 503 mapping.
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
@@ -1132,7 +1704,7 @@ def _mock_usage(
 
     Mocks both ``get_global_rate_limits`` (returns the given limits + tier) and
     ``get_usage_status`` so that tests exercise the endpoint without hitting
-    LaunchDarkly or Prisma.
+    PostHog or Prisma.
     """
     from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
 
@@ -1208,6 +1780,34 @@ def test_usage_uses_config_limits(
         weekly_cost_limit=77777,
         rate_limit_reset_cost=500,
         tier=SubscriptionTier.BASIC,
+    )
+
+
+def test_usage_reports_the_limit_that_blocks_the_next_turn(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Both windows used up: the client is told which one it waits for and
+    when that refills, computed server-side from the meters' own status."""
+    _mock_usage(mocker, daily_used=10000, weekly_used=50000)
+
+    response = client.get("/usage")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["state"] == "exhausted"
+    assert data["limiting_window"] == "weekly"
+    assert data["resets_at"] == data["weekly"]["resets_at"]
+
+
+def test_usage_state_is_ok_with_room_left(mocker: pytest_mock.MockerFixture) -> None:
+    _mock_usage(mocker, daily_used=500, weekly_used=2000)
+
+    data = client.get("/usage").json()
+
+    assert (data["state"], data["limiting_window"], data["resets_at"]) == (
+        "ok",
+        None,
+        None,
     )
 
 
@@ -1306,6 +1906,7 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
         llm_auth_provider: CopilotLlmAuthProvider = "platform",
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ):
         return ChatSession.new(
             user_id,
@@ -1313,6 +1914,7 @@ def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             expert_id=expert_id,
+            autopilot_mode=autopilot_mode,
         )
 
     return mocker.patch(
@@ -1475,7 +2077,11 @@ def test_list_chat_transports_hosted_omits_codex_without_required_plan(
         ]
     }
     access.assert_awaited_once_with(test_user_id)
-    lookup.assert_awaited_once_with(test_user_id, ProviderName.MICROSOFT_365_COPILOT)
+    # Only Microsoft connections are read; ChatGPT ones are never looked up.
+    assert [call.args for call in lookup.await_args_list] == [
+        (test_user_id, ProviderName.MICROSOFT),
+        (test_user_id, ProviderName.MICROSOFT_365_COPILOT),
+    ]
 
 
 def test_list_chat_transports_omits_invalid_codex_credentials(
@@ -2248,6 +2854,160 @@ def test_create_session_maps_raced_expert_validation_to_404(
     assert response.json() == {"detail": "Expert not found"}
 
 
+def test_create_session_looks_the_expert_up_alongside_the_connection(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Neither lookup waits for the other: read one after another, the first
+    would never finish."""
+    mock_create = _mock_create_chat_session(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+    barrier: dict = {"started": 0, "event": None}
+
+    async def both_started() -> None:
+        if barrier["event"] is None:
+            barrier["event"] = asyncio.Event()
+        barrier["started"] += 1
+        if barrier["started"] == 2:
+            barrier["event"].set()
+        await asyncio.wait_for(barrier["event"].wait(), timeout=5)
+
+    async def expert(*_args):
+        await both_started()
+        return _make_expert("expert-1")
+
+    async def route(*_args):
+        await both_started()
+        return ("platform", None)
+
+    mocker.patch(
+        "backend.api.features.chat.routes.experts_db.get_expert", side_effect=expert
+    )
+    mocker.patch.object(
+        chat_routes, "_resolve_new_session_llm_route", side_effect=route
+    )
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.parametrize(
+    "expert", [None, _make_expert(is_archived=True)], ids=["missing", "archived"]
+)
+def test_create_session_reports_a_missing_or_archived_expert_before_a_bad_connection(
+    mocker: pytest_mock.MockerFixture,
+    expert,
+) -> None:
+    """Both lookups fail: the expert's 404 wins, as when it was looked up
+    first."""
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, expert)
+    mocker.patch.object(
+        chat_routes,
+        "_resolve_new_session_llm_route",
+        side_effect=fastapi.HTTPException(
+            status_code=422, detail="codex_credential_required"
+        ),
+    )
+
+    response = client.post(
+        "/sessions", json={"expert_id": "expert-1", "llm_auth_provider": "codex"}
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Expert not found"}
+    mock_create.assert_not_called()
+
+
+def test_create_session_reports_a_failed_expert_lookup_before_a_bad_connection(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The expert lookup errors and the connection is bad: the lookup's error
+    surfaces, as when it ran first, rather than reading as a missing expert."""
+    mock_create = _mock_create_chat_session(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("expert lookup failed"),
+    )
+    mocker.patch.object(
+        chat_routes,
+        "_resolve_new_session_llm_route",
+        side_effect=fastapi.HTTPException(
+            status_code=422, detail="codex_credential_required"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="expert lookup failed"):
+        client.post(
+            "/sessions", json={"expert_id": "expert-1", "llm_auth_provider": "codex"}
+        )
+    mock_create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_session_abandoned_mid_lookup_leaves_no_lookup_running(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The client goes away while the expert and the connection are being
+    looked up: every lookup stops with the request, the connection's three
+    reads included, and nothing is created."""
+    mock_create = _mock_create_chat_session(mocker)
+    started: list[str] = []
+    stopped: list[str] = []
+    all_started = asyncio.Event()
+
+    async def lookup(name: str) -> None:
+        started.append(name)
+        if len(started) == 4:
+            all_started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            stopped.append(name)
+            raise
+
+    async def expert(*_args) -> None:
+        await lookup("expert")
+
+    async def connections(_user_id: str, provider: str) -> None:
+        await lookup("chatgpt" if provider == "codex" else "microsoft")
+
+    async def saved_default(_user_id: str) -> None:
+        await lookup("saved default")
+
+    mocker.patch(
+        "backend.api.features.chat.routes.experts_db.get_expert", side_effect=expert
+    )
+    chat_transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        connections
+    )
+    chat_transports.user_db().get_user_default_chat_route.side_effect = saved_default
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as async_client:
+        request = asyncio.create_task(
+            async_client.post("/sessions", json={"expert_id": "expert-1"})
+        )
+        try:
+            await asyncio.wait_for(all_started.wait(), timeout=5)
+            request.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await request
+        finally:
+            request.cancel()
+            await asyncio.gather(request, return_exceptions=True)
+
+    assert sorted(started) == ["chatgpt", "expert", "microsoft", "saved default"]
+    assert sorted(stopped) == sorted(started)
+    mock_create.assert_not_called()
+
+
 def test_create_session_maps_missing_personal_org_to_503(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -2377,6 +3137,76 @@ def test_queue_pending_message_returns_200_when_turn_in_flight(
     data = response.json()
     assert data["buffer_length"] == 1
     assert "turn_in_flight" in data
+
+
+def test_queue_pending_message_on_the_platform_route_needs_a_plan(
+    mocker: pytest_mock.MockerFixture, paywalled_user
+) -> None:
+    session = _mock_stream_queue_internals(mocker)
+    session.metadata.llm_auth_provider = "platform"
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+
+    with pytest.raises(UserPaywalledError):
+        client.post("/sessions/sess-1/messages/pending", json={"message": "more"})
+    push.assert_not_awaited()
+
+
+def test_queue_pending_message_same_message_id_is_buffered_once(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A retransmitted follow-up is queued once, and a copy that lands after
+    the turn ended is answered as accepted rather than 409 (which would send
+    the client to POST /stream with the message all over again)."""
+    _mock_stream_queue_internals(mocker)
+    _mock_client_message_claims(mocker)
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    body = {"message": "follow-up", "message_id": "client-click-id"}
+
+    for _ in range(2):
+        response = client.post("/sessions/sess-1/messages/pending", json=body)
+        assert response.status_code == 200
+        assert response.json()["turn_in_flight"] is True
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    response = client.post("/sessions/sess-1/messages/pending", json=body)
+
+    assert response.status_code == 200
+    assert response.json()["turn_in_flight"] is True
+    push.assert_awaited_once()
+
+
+def test_queue_pending_message_copy_is_told_to_retry_while_the_first_is_unsettled(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    _mock_stream_queue_internals(mocker)
+    claims = _mock_client_message_claims(mocker)
+    mocker.patch.object(pending_messages_module, "_CLIENT_MESSAGE_WAIT_SECONDS", 0.05)
+    _reserve_client_message(claims, test_user_id)
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "follow-up", "message_id": "client-click-id"},
+    )
+
+    assert response.status_code == 503
+    push.assert_not_awaited()
 
 
 def test_queue_pending_message_session_not_found_returns_404(
@@ -2781,21 +3611,6 @@ def test_stream_chat_accepts_exactly_max_length_message(
 ):
     """A message exactly at max_length=64_000 must be accepted."""
     _mock_stream_internals(mocker)
-    # Pass generous rate-limits so the rate-limit gate doesn't interfere
-    # with the message-length validation under test. Pre-PR convention
-    # used 0 for "unlimited"; we now treat 0 as "no spend allowed".
-    mocker.patch(
-        "backend.api.features.chat.routes.get_global_rate_limits",
-        new_callable=AsyncMock,
-        return_value=(1_000_000, 5_000_000, SubscriptionTier.BASIC),
-    )
-    # And mock the redis lookup so check_rate_limit sees zero usage.
-    mock_redis = mocker.AsyncMock()
-    mock_redis.get = mocker.AsyncMock(side_effect=["0", "0"])
-    mocker.patch(
-        "backend.copilot.rate_limit.get_redis_async",
-        return_value=mock_redis,
-    )
 
     response = client.post(
         "/sessions/sess-1/stream",
@@ -3066,9 +3881,63 @@ def test_delete_session_not_found(mocker: pytest_mock.MockerFixture) -> None:
         return_value=False,
     )
 
+    spawn = mocker.patch.object(chat_routes, "spawn_background_task")
+
     response = client.delete("/sessions/sess-missing")
 
     assert response.status_code == 404
+    spawn.assert_not_called()
+
+
+def test_delete_session_without_e2b_spawns_no_cleanup(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """With E2B inactive the delete starts no sandbox-kill task."""
+    mocker.patch(
+        "backend.api.features.chat.routes.delete_chat_session",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch.object(
+        chat_routes,
+        "ChatConfig",
+        return_value=SimpleNamespace(e2b_active=False, e2b_api_key=None),
+    )
+    kill = mocker.patch.object(chat_routes, "kill_sandbox", new_callable=AsyncMock)
+    spawn = mocker.patch.object(chat_routes, "spawn_background_task")
+
+    response = client.delete("/sessions/sess-1")
+
+    assert response.status_code == 204
+    kill.assert_not_called()
+    spawn.assert_not_called()
+
+
+def test_delete_session_kills_sandbox_in_background(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The E2B sandbox kill is handed to a background task, not awaited inline."""
+    mocker.patch(
+        "backend.api.features.chat.routes.delete_chat_session",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch.object(
+        chat_routes,
+        "ChatConfig",
+        return_value=SimpleNamespace(e2b_active=True, e2b_api_key="test-e2b-key"),
+    )
+    kill = mocker.patch.object(chat_routes, "kill_sandbox", new_callable=AsyncMock)
+    spawn = mocker.patch.object(chat_routes, "spawn_background_task")
+
+    response = client.delete("/sessions/sess-1")
+
+    assert response.status_code == 204
+    kill.assert_called_once_with("sess-1", "test-e2b-key")
+    kill.assert_not_awaited()
+    spawn.assert_called_once()
+    assert spawn.call_args.kwargs["name"] == "e2b-session-kill-sess-1"
+    spawn.call_args.args[0].close()
 
 
 # ─── cancel_session_task ──────────────────────────────────────────────
@@ -3160,9 +4029,9 @@ def test_cancel_session_releases_orphan_running(
             )
         ),
     )
-    mock_release = AsyncMock()
+    mock_release = AsyncMock(return_value=True)
     mocker.patch(
-        "backend.api.features.chat.routes.active_turns.release_turn_slot",
+        "backend.api.features.chat.routes.cancel_orphaned_background_subtasks",
         new=mock_release,
     )
 
@@ -3172,7 +4041,7 @@ def test_cancel_session_releases_orphan_running(
     data = response.json()
     assert data["cancelled"] is True
     assert data["reason"] == "orphan_released"
-    mock_release.assert_awaited_once()
+    mock_release.assert_awaited_once_with(TEST_USER_ID, "sess-1", stale)
 
 
 def test_cancel_session_skips_orphan_release_within_race_window(
@@ -3956,6 +4825,35 @@ def test_get_session_returns_backward_paginated(
     assert "newest_sequence" not in data
 
 
+def test_get_session_reports_background_state_from_the_durable_record(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A child's outcome and a parent's follow-up window come from the task
+    record, so they survive the marker rows paging out of the transcript."""
+    _make_paginated_messages(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+    mocker.patch.object(
+        chat_routes,
+        "background_task_db",
+        return_value=MagicMock(
+            get_session_background_state=AsyncMock(
+                return_value=BackgroundSessionState(outcome="completed", pending=True)
+            )
+        ),
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["background_outcome"] == "completed"
+    assert data["background_pending"] is True
+
+
 def test_get_session_serves_history_for_an_archived_expert_session(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -4051,11 +4949,13 @@ def test_create_session_with_builder_graph_id_uses_get_or_create(
         *,
         organization_id: str | None = None,
         team_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
     ) -> ChatSession:
         return ChatSession.new(
             user_id,
             dry_run=False,
             builder_graph_id=graph_id,
+            autopilot_mode=autopilot_mode,
         )
 
     mocker.patch(
@@ -4133,66 +5033,6 @@ def test_create_session_rejects_unknown_fields(
     """Extra request fields are rejected (422) to prevent silent mis-use."""
     response = client.post("/sessions", json={"unexpected": "x"})
     assert response.status_code == 422
-
-
-def test_health_check_returns_503_when_metadata_read_returns_none(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    # Round-trips create-then-read; if the read path returns None despite
-    # a successful create, the health endpoint must surface the failure.
-    from backend.copilot.model import ChatSession
-
-    mocker.patch(
-        "backend.data.user.get_or_create_user",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.create_chat_session",
-        new_callable=AsyncMock,
-        side_effect=lambda uid, *, dry_run: ChatSession.new(uid, dry_run=dry_run),
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session_metadata",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-
-    response = client.get("/health")
-    assert response.status_code == 503
-    assert "unhealthy" in response.json()["detail"].lower()
-
-
-def test_health_check_returns_healthy_on_round_trip_success(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    # Happy path: create + read both succeed → 200 with healthy body.
-    from backend.copilot.model import ChatSession, ChatSessionInfo
-
-    mocker.patch(
-        "backend.data.user.get_or_create_user",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    fake_session = ChatSession.new("health-check-user", dry_run=False)
-    mocker.patch(
-        "backend.api.features.chat.routes.create_chat_session",
-        new_callable=AsyncMock,
-        return_value=fake_session,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.get_chat_session_metadata",
-        new_callable=AsyncMock,
-        return_value=ChatSessionInfo(
-            **{**fake_session.model_dump(exclude={"messages"})}
-        ),
-    )
-
-    response = client.get("/health")
-    assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "healthy"
-    assert body["service"] == "chat"
 
 
 def test_resolve_session_permissions_blocks_out_of_scope_tools() -> None:
@@ -4642,3 +5482,470 @@ def test_credential_selection_rejects_a_provider_named_twice(
     assert response.status_code == 422
     assert response.json()["detail"] == "duplicate_provider"
     remember.assert_not_awaited()
+
+
+@pytest.mark.parametrize("host", ["api.linear.app", "api.github.com"])
+def test_credential_selection_keeps_host_scoped_picks(mocker, host):
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=MagicMock()),
+    )
+    store = MagicMock()
+    store.get_creds_by_id = AsyncMock(
+        return_value=HostScopedCredentials(
+            id="work-key",
+            provider="http",
+            host=host,
+        )
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    )
+    remember = mocker.patch(
+        "backend.api.features.chat.routes.remember_selection", new=AsyncMock()
+    )
+    response = client.put(
+        "/sessions/sess-1/credential-selection",
+        json={"selections": {f"http:{host}": "work-key"}},
+    )
+    assert response.status_code == 200
+    store.get_creds_by_id.assert_awaited_once_with(TEST_USER_ID, "work-key")
+    remember.assert_awaited_once_with("sess-1", {f"http:{host}": "work-key"})
+
+
+def test_credential_selection_rejects_a_pick_for_another_host(mocker):
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=MagicMock()),
+    )
+    store = MagicMock()
+    store.get_creds_by_id = AsyncMock(
+        return_value=HostScopedCredentials(
+            id="work-key",
+            provider="http",
+            host="api.github.com",
+        )
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    )
+    remember = mocker.patch(
+        "backend.api.features.chat.routes.remember_selection", new=AsyncMock()
+    )
+    response = client.put(
+        "/sessions/sess-1/credential-selection",
+        json={"selections": {"http:api.linear.app": "work-key"}},
+    )
+    assert response.status_code == 404
+    remember.assert_not_awaited()
+
+
+@pytest.mark.parametrize("missing", ["session", "credential"])
+def test_host_credential_selection_rejects_inaccessible_resources(mocker, missing):
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=None if missing == "session" else MagicMock()),
+    )
+    store = MagicMock()
+    store.get_creds_by_id = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.api.features.chat.routes.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    )
+    remember = mocker.patch(
+        "backend.api.features.chat.routes.remember_selection", new=AsyncMock()
+    )
+    response = client.put(
+        "/sessions/sess-1/credential-selection",
+        json={"selections": {"http:api.linear.app": "another-users-key"}},
+    )
+    assert response.status_code == 404
+    remember.assert_not_awaited()
+
+
+# ─── Create session: client-named session_id ────────────────────────────
+
+
+def _in_memory_session_store(mocker: pytest_mock.MockerFixture):
+    """Back the model's get/create with a dict so a replayed create sees the
+    session the first request persisted, and a second insert of the same id
+    fails the way the primary key would."""
+    store: dict[str, ChatSession] = {}
+
+    async def _get(session_id: str, user_id: str | None = None):
+        session = store.get(session_id)
+        if session is None or (user_id is not None and session.user_id != user_id):
+            return None
+        return session
+
+    async def _create(user_id: str, *, dry_run: bool, session_id=None, **kwargs):
+        if session_id in store:
+            raise DatabaseError(f"Failed to create chat session {session_id}")
+        session = ChatSession.new(
+            user_id,
+            dry_run=dry_run,
+            session_id=session_id,
+            organization_id=kwargs.get("organization_id"),
+            team_id=kwargs.get("team_id"),
+            expert_id=kwargs.get("expert_id"),
+        )
+        store[session.session_id] = session
+        return session
+
+    mocker.patch("backend.copilot.model.get_chat_session", side_effect=_get)
+    create = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=AsyncMock,
+        side_effect=_create,
+    )
+    return store, create
+
+
+def test_create_session_replayed_with_the_same_session_id_returns_one_session(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """A retry after the first response was lost (the phone saw "Load failed"
+    while the server had already committed) adopts that session instead of
+    leaving it empty behind a second one."""
+    store, create = _in_memory_session_store(mocker)
+    session_id = "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c2d"
+
+    first = client.post("/sessions", json={"session_id": session_id})
+    second = client.post("/sessions", json={"session_id": session_id})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["id"] == session_id
+    assert second.json()["id"] == session_id
+    assert list(store) == [session_id]
+    create.assert_awaited_once()
+
+
+def test_create_session_replay_keeps_the_expert_scope(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    _store, create = _in_memory_session_store(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+    session_id = "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c2e"
+    body = {"session_id": session_id, "expert_id": "expert-1"}
+
+    first = client.post("/sessions", json=body)
+    second = client.post("/sessions", json=body)
+
+    assert second.status_code == 200
+    assert second.json()["id"] == first.json()["id"] == session_id
+    assert second.json()["expert_id"] == "expert-1"
+    create.assert_awaited_once()
+
+
+def test_create_session_rejects_a_session_id_scoped_to_another_expert(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Replaying an id with a different expert must not hand back a session
+    that runs as someone else."""
+    store, _ = _in_memory_session_store(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+    session_id = "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c2f"
+    client.post("/sessions", json={"session_id": session_id})
+
+    response = client.post(
+        "/sessions", json={"session_id": session_id, "expert_id": "expert-1"}
+    )
+
+    assert response.status_code == 409
+    assert store[session_id].expert_id is None
+
+
+def test_create_session_rejects_another_users_session_id(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """An id already taken by someone else is a conflict, never an adoption."""
+    store, _ = _in_memory_session_store(mocker)
+    session_id = "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c30"
+    store[session_id] = ChatSession.new(
+        "someone-else", dry_run=False, session_id=session_id
+    )
+
+    response = client.post("/sessions", json={"session_id": session_id})
+
+    assert response.status_code == 409
+    assert "someone-else" not in response.text
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"session_id": "not-a-uuid"},
+        {
+            "session_id": "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c31",
+            "builder_graph_id": "graph-1",
+        },
+        {
+            "session_id": "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c31",
+            "expert_id": "expert-1",
+            "expert_kickoff": True,
+        },
+    ],
+)
+def test_create_session_rejects_session_id_it_cannot_honour(
+    mocker: pytest_mock.MockerFixture,
+    body: dict,
+) -> None:
+    """Builder and kickoff sessions pick their own ids, so a client id there
+    would be silently dropped; reject it instead."""
+    _, create = _in_memory_session_store(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post("/sessions", json=body)
+
+    assert response.status_code == 422
+    create.assert_not_awaited()
+
+
+def test_create_session_replay_keeps_the_mode_it_was_created_with(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """The first create starts on the expert's default approval mode. A replay
+    of the same id, even after the expert's default changed or with a pick
+    of its own, adopts that session and never resets its mode."""
+    store: dict[str, ChatSession] = {}
+
+    async def _get(session_id: str, user_id: str | None = None):
+        session = store.get(session_id)
+        if session is None or (user_id is not None and session.user_id != user_id):
+            return None
+        return session
+
+    async def _persist(**kwargs):
+        if kwargs["session_id"] in store:
+            raise DatabaseError("duplicate session id")
+        return SimpleNamespace(expert_id=kwargs["expert_id"])
+
+    mock_experts_db = MagicMock()
+    mock_experts_db.resolve_private_expert_tenancy = AsyncMock(
+        return_value=("personal-org", "personal-team")
+    )
+    mock_experts_db.get_autopilot_mode = AsyncMock(return_value="ask_first")
+    mock_chat_db = MagicMock()
+    mock_chat_db.create_chat_session = AsyncMock(side_effect=_persist)
+    mocker.patch("backend.copilot.model.experts_db", return_value=mock_experts_db)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_chat_db)
+    mocker.patch("backend.copilot.model.get_chat_session", side_effect=_get)
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session",
+        new_callable=AsyncMock,
+        side_effect=lambda session: store.setdefault(session.session_id, session),
+    )
+    mocker.patch(
+        "backend.copilot.model.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+    session_id = "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c32"
+    body = {"session_id": session_id, "expert_id": "expert-1"}
+
+    first = client.post("/sessions", json=body)
+    mock_experts_db.get_autopilot_mode.return_value = "unsupervised"
+    replay = client.post("/sessions", json=body)
+    picked_replay = client.post("/sessions", json={**body, "autopilot_mode": "auto"})
+
+    assert first.status_code == 200
+    assert first.json()["metadata"]["autopilot_mode"] == "ask_first"
+    for response in (replay, picked_replay):
+        assert response.status_code == 200
+        assert response.json()["id"] == session_id
+        assert response.json()["metadata"]["autopilot_mode"] == "ask_first"
+    assert list(store) == [session_id]
+    assert store[session_id].metadata.autopilot_mode == "ask_first"
+    mock_chat_db.create_chat_session.assert_awaited_once()
+
+
+def test_create_session_with_a_session_id_passes_a_picked_mode_through(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """A client-named create starts on the mode the user picked, like any
+    other create."""
+    _, create = _in_memory_session_store(mocker)
+
+    response = client.post(
+        "/sessions",
+        json={
+            "session_id": "0b8f3c1e-2d4a-4f6b-9c1d-3e5f7a9b1c33",
+            "autopilot_mode": "ask_first",
+        },
+    )
+
+    assert response.status_code == 200
+    assert create.await_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+def test_create_session_passes_a_picked_mode_through(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post(
+        "/sessions", json={"expert_id": "expert-1", "autopilot_mode": "ask_first"}
+    )
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+def test_create_session_without_a_pick_leaves_the_mode_to_the_server(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["autopilot_mode"] is None
+
+
+def test_create_session_rejects_an_unknown_mode(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+
+    response = client.post("/sessions", json={"autopilot_mode": "yolo"})
+
+    assert response.status_code == 422
+    mock_create.assert_not_awaited()
+
+
+def test_expert_kickoff_receives_the_picked_mode(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000002"
+    _mock_get_expert(mocker, _make_expert(expert_id))
+    existing = ChatSession.new(test_user_id, dry_run=False, expert_id=expert_id)
+    mock_get_or_create = mocker.patch.object(
+        chat_routes,
+        "get_or_create_expert_kickoff_session",
+        new=AsyncMock(return_value=existing),
+    )
+
+    response = client.post(
+        "/sessions",
+        json={
+            "expert_id": expert_id,
+            "expert_kickoff": True,
+            "autopilot_mode": "unsupervised",
+        },
+    )
+
+    assert response.status_code == 200
+    assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "unsupervised"
+
+
+def test_a_builder_session_keeps_the_picked_mode(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_get_or_create = mocker.patch(
+        "backend.api.features.chat.routes.get_or_create_builder_session",
+        new=AsyncMock(
+            return_value=ChatSession.new(
+                test_user_id, dry_run=False, builder_graph_id="graph-1"
+            )
+        ),
+    )
+
+    response = client.post(
+        "/sessions", json={"builder_graph_id": "graph-1", "autopilot_mode": "ask_first"}
+    )
+
+    assert response.status_code == 200
+    assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+# ─── A user message is stored as the engines will read it ─────────────
+
+
+@pytest.mark.parametrize("is_user_message", [True, False])
+def test_a_user_message_is_stored_without_server_only_blocks(
+    mocker: pytest_mock.MockerFixture, is_user_message: bool
+) -> None:
+    """The stored row is what later turns replay as history, after the
+    engines' own entry sanitising, so it gets the same normalisation first."""
+    mocks = _mock_stream_internals(mocker)
+    with_block = "<user_context>\nA note.\n</user_context>\n\nhello"
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": with_block, "is_user_message": is_user_message},
+    )
+
+    assert response.status_code == 200
+    sent = mocks.enqueue.await_args.kwargs["message"]
+    assert sent == ("hello" if is_user_message else with_block)
+
+
+def test_a_message_with_nothing_of_the_users_own_is_refused(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A message that is all server-only blocks would otherwise start a turn
+    with no message of the user's at all."""
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "<user_context>\nA note.\n</user_context>\n\n"},
+    )
+
+    assert response.status_code == 422
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_attachments_do_not_carry_a_message_of_only_server_only_blocks(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "<user_context>\nA note.\n</user_context>",
+            "file_ids": ["00000000-0000-0000-0000-000000000001"],
+        },
+    )
+
+    assert response.status_code == 422
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_a_refused_message_writes_nothing_first(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The refusal comes before the mode change and every other write."""
+    mocks = _mock_stream_internals(mocker)
+    apply_mode = mocker.patch.object(
+        chat_routes, "_apply_autopilot_mode", new=AsyncMock()
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "<user_context>\nA note.\n</user_context>",
+            "autopilot_mode": "unsupervised",
+        },
+    )
+
+    assert response.status_code == 422
+    apply_mode.assert_not_awaited()
+    mocks.enqueue.assert_not_awaited()

@@ -128,7 +128,7 @@ function settle(
   };
 }
 
-function isHeldReadId(reviewId: string | null) {
+export function isHeldReadId(reviewId: string | null) {
   return !!reviewId?.startsWith(`${COPILOT_GATE_NODE_PREFIX}read-`);
 }
 

@@ -5,6 +5,7 @@ import {
 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
 import { TrialCard } from "@/components/organisms/TrialCard/TrialCard";
 import { server } from "@/mocks/mock-server";
+import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 import {
   installGtagShim,
   removeGtagShim,
@@ -17,6 +18,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import {
+  findCancelConfirmation,
   deferredTrialResponse,
   setTrialUser,
   trialOffer,
@@ -46,9 +48,9 @@ describe("trial billing actions", () => {
     expect(screen.getByText(/Your trial ends.*\$20\.00/)).toBeDefined();
     fireEvent.click(button);
     fireEvent.click(
-      within(
-        await screen.findByRole("dialog", { name: "Cancel your trial?" }),
-      ).getByRole("button", { name: "Cancel trial" }),
+      within(await findCancelConfirmation()).getByRole("button", {
+        name: "Cancel trial",
+      }),
     );
     await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     expect(button.hasAttribute("disabled")).toBe(true);
@@ -71,9 +73,9 @@ describe("trial billing actions", () => {
       await screen.findByRole("button", { name: "Cancel trial" }),
     );
     fireEvent.click(
-      within(
-        await screen.findByRole("dialog", { name: "Cancel your trial?" }),
-      ).getByRole("button", { name: "Cancel trial" }),
+      within(await findCancelConfirmation()).getByRole("button", {
+        name: "Cancel trial",
+      }),
     );
     expect(await screen.findByRole("alert")).toBeDefined();
     expect(
@@ -89,9 +91,9 @@ describe("trial billing actions", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Cancel trial" }));
     fireEvent.click(
-      within(
-        await screen.findByRole("dialog", { name: "Cancel your trial?" }),
-      ).getByRole("button", { name: "Cancel trial" }),
+      within(await findCancelConfirmation()).getByRole("button", {
+        name: "Cancel trial",
+      }),
     );
     await screen.findByText("Cancellation pending");
     expect(screen.queryByRole("alert")).toBeNull();
@@ -226,6 +228,36 @@ describe("trial billing actions", () => {
       removeGtagShim();
       vi.unstubAllEnvs();
     }
+  });
+
+  it("stays busy while Stripe loads, and is usable again after Back restores the page", async () => {
+    const assign = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => {});
+    const checkout = vi.fn(() => ({
+      url: "https://checkout.stripe.com/c/pay/test_trial",
+    }));
+    server.use(
+      getGetTrialsGetTrialStatusMockHandler200(
+        trialResponse({ eligible: true, active: false, status: null }),
+      ),
+      getPostTrialsStartTrialCheckoutMockHandler200(checkout),
+    );
+    render(<TrialCard />);
+    const button = await screen.findByRole("button", {
+      name: /start 7-day trial/i,
+    });
+    fireEvent.click(button);
+    await waitFor(() => expect(assign).toHaveBeenCalledOnce());
+    expect(button.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(button);
+    expect(checkout).toHaveBeenCalledOnce();
+
+    restoreFromBackForwardCache();
+
+    expect(button.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(button);
+    await waitFor(() => expect(checkout).toHaveBeenCalledTimes(2));
   });
 
   it("reports no begin_checkout when the trial checkout fails", async () => {

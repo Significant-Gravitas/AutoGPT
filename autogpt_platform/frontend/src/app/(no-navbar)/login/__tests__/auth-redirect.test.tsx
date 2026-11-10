@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { render, waitFor } from "@/tests/integrations/test-utils";
 import { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import LoginPage from "../page";
@@ -61,4 +61,18 @@ describe("LoginPage auth-redirect useEffect", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(routerReplace).not.toHaveBeenCalled();
   });
+
+  // SECRT-3384: a default landing is not a deep link. OnboardingProvider routes
+  // the user (to /onboarding when unfinished), so this page must not jump to
+  // Home first.
+  test.each(["/home", "/", "/copilot"])(
+    "a default landing (?next=%s) is left to OnboardingProvider",
+    async (next) => {
+      mockSearchParams = new URLSearchParams({ next });
+      render(<LoginPage />);
+      await new Promise((r) => setTimeout(r, 20));
+      expect(routerReplace).not.toHaveBeenCalled();
+      expect(routerPush).not.toHaveBeenCalled();
+    },
+  );
 });

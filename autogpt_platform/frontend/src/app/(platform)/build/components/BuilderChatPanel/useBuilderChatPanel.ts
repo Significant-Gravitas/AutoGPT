@@ -161,14 +161,22 @@ export function useBuilderChatPanel({
     ).messages as UiMessages;
   }, [sessionQuery.data, sessionId, hasActiveStream]);
 
-  const { messages, setMessages, sendMessage, stop, status, error } =
-    useCopilotStream({
-      sessionId,
-      hydratedMessages,
-      hasActiveStream,
-      refetchSession: sessionQuery.refetch,
-      copilotModel: undefined,
-    });
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    stop,
+    status,
+    error,
+    isReconnecting,
+    isFinishProbing,
+  } = useCopilotStream({
+    sessionId,
+    hydratedMessages,
+    hasActiveStream,
+    refetchSession: sessionQuery.refetch,
+    copilotModel: undefined,
+  });
 
   const { queuedMessages, queueMessage } = useCopilotPendingChips({
     sessionId,
@@ -316,7 +324,7 @@ export function useBuilderChatPanel({
         const response = (await createNewGraph({
           data: {
             graph: {
-              name: `New Agent ${new Date().toISOString()}`,
+              name: `New Workflow ${new Date().toISOString()}`,
               description: "",
               nodes: [],
               links: [],
@@ -339,7 +347,7 @@ export function useBuilderChatPanel({
         setBootstrapError("failed_to_bootstrap_agent");
         toast({
           variant: "destructive",
-          title: "Could not create a blank agent",
+          title: "Could not create a blank workflow",
           description: "Please try again.",
         });
       } finally {
@@ -587,6 +595,7 @@ export function useBuilderChatPanel({
     stop,
     onSend,
     queuedMessages,
+    isTurnSettling: isReconnecting || isFinishProbing || hasActiveStream,
     isBootstrapping,
     hasNoModel,
     revertTargetVersion,

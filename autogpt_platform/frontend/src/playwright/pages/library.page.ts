@@ -64,13 +64,6 @@ export class LibraryPage extends BasePage {
     await assertRunOutputValue(this.page, outputName, expectedValue, timeout);
   }
 
-  async assertFirstRunOutputValue(
-    expectedValue: RegExp | string,
-    timeout = 15000,
-  ): Promise<void> {
-    await assertRunOutputContainsText(this.page, expectedValue, timeout);
-  }
-
   async clickExportAgent(): Promise<void> {
     await clickExportAgent(this.page);
   }
@@ -91,7 +84,7 @@ export class LibraryPage extends BasePage {
   async searchAgents(searchTerm: string): Promise<void> {
     console.log(`searching for agents with term: ${searchTerm}`);
     const { getId, getRole } = getSelectors(this.page);
-    const searchInput = getRole("textbox", "Search agents");
+    const searchInput = getRole("textbox", "Search workflows");
     // Cards render only after hydration; text typed before it never reaches onChange.
     await expect(getId("library-agent-card").first()).toBeVisible({
       timeout: 15000,
@@ -111,7 +104,7 @@ export class LibraryPage extends BasePage {
     // Look for the clear button (X icon)
     const clearButton = this.page.locator(".lucide.lucide-x");
     const searchInput = this.page.getByRole("textbox", {
-      name: "Search agents",
+      name: "Search workflows",
     });
     if (await clearButton.isVisible()) {
       await clearButton.click();
@@ -157,8 +150,8 @@ export class LibraryPage extends BasePage {
       await expect(dialog).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: 20_000 });
 
-    // Click the "AutoGPT agent" tab
-    await this.page.getByRole("tab", { name: "AutoGPT agent" }).click();
+    // Click the "AutoGPT workflow" tab
+    await this.page.getByRole("tab", { name: "AutoGPT workflow" }).click();
   }
 
   async closeUploadDialog(): Promise<void> {
@@ -187,12 +180,12 @@ export class LibraryPage extends BasePage {
 
     // Fill agent name
     await this.page
-      .getByRole("textbox", { name: "Agent name" })
+      .getByRole("textbox", { name: "Workflow name" })
       .fill(agentName);
 
     // Fill description
     await this.page
-      .getByRole("textbox", { name: "Agent description" })
+      .getByRole("textbox", { name: "Workflow description" })
       .fill(description);
   }
 
@@ -218,34 +211,8 @@ export class LibraryPage extends BasePage {
     const agentCards = await getId("library-agent-card").all();
 
     for (const card of agentCards) {
-      const name = await getId("library-agent-card-name", card).textContent();
-      const seeRunsLink = getId("library-agent-card-see-runs-link", card);
-      const openInBuilderLink = getId(
-        "library-agent-card-open-in-builder-link",
-        card,
-      );
-
-      const seeRunsUrl = await seeRunsLink.getAttribute("href");
-
-      // Check if the "Open in builder" link exists before getting its href
-      const openInBuilderLinkCount = await openInBuilderLink.count();
-      const openInBuilderUrl =
-        openInBuilderLinkCount > 0
-          ? await openInBuilderLink.getAttribute("href")
-          : null;
-
-      if (name && seeRunsUrl) {
-        const idMatch = seeRunsUrl.match(/\/library\/agents\/([^\/]+)/);
-        const id = idMatch ? idMatch[1] : "";
-
-        agents.push({
-          id,
-          name: name.trim(),
-          description: "", // Description is not currently rendered in the card
-          seeRunsUrl,
-          openInBuilderUrl: openInBuilderUrl || "",
-        });
-      }
+      const agent = await readAgentCard(card);
+      if (agent.name && agent.id) agents.push(agent);
     }
 
     console.log(`found ${agents.length} agents`);
@@ -278,7 +245,7 @@ export class LibraryPage extends BasePage {
       .getByTestId("library-agent-card")
       .filter({ hasText: agent.name });
 
-    // The "Edit agent" link is inside the three-dot dropdown menu.
+    // The "Edit workflow" link is inside the three-dot dropdown menu.
     // Open the menu first, then click the builder link.
     const menuTrigger = agentCard.getByRole("button", {
       name: "More actions",
@@ -317,7 +284,7 @@ export class LibraryPage extends BasePage {
     console.log(`getting search input value`);
     try {
       const searchInput = this.page.getByRole("textbox", {
-        name: "Search agents",
+        name: "Search workflows",
       });
       return await searchInput.inputValue();
     } catch {
@@ -456,6 +423,24 @@ export class LibraryPage extends BasePage {
   }
 }
 
+// "See tasks" and the menu's "Edit agent" are a button and a closed menu, so
+// the card has no hrefs to read; it carries its library agent id instead.
+// The builder link needs the graph id, which only the import flow knows.
+async function readAgentCard(
+  card: Locator,
+  openInBuilderUrl = "",
+): Promise<Agent> {
+  const id = (await card.getAttribute("data-agent-id")) ?? "";
+  const name = await card.getByTestId("library-agent-card-name").textContent();
+  return {
+    id,
+    name: name?.trim() ?? "",
+    description: "",
+    seeRunsUrl: id ? `/library/agents/${id}` : "",
+    openInBuilderUrl,
+  };
+}
+
 function isAgentListResponseFor(
   response: Response,
   searchTerm: string,
@@ -513,7 +498,9 @@ export async function clickRunButton(page: Page): Promise<void> {
   const setupTaskButton = page.getByRole("button", {
     name: /Setup your task/i,
   });
-  const newTaskButton = page.getByRole("button", { name: /^New agent task$/i });
+  const newTaskButton = page.getByRole("button", {
+    name: /^New workflow task$/i,
+  });
   const rerunTaskButton = page.getByRole("button", { name: /Rerun task/i });
   const runNowButton = page.getByRole("button", { name: /Run now/i });
   const actionButtons = [
@@ -827,7 +814,7 @@ async function getVisibleAgentDetailSurface(page: Page): Promise<string> {
   const visibleSurfaces: Array<[string, Locator]> = [
     [
       "about-agent",
-      page.getByText("About this agent", { exact: true }).first(),
+      page.getByText("About this workflow", { exact: true }).first(),
     ],
     [
       "setup-task",
@@ -835,7 +822,7 @@ async function getVisibleAgentDetailSurface(page: Page): Promise<string> {
     ],
     [
       "new-task",
-      page.getByRole("button", { name: /^New agent task$/i }).first(),
+      page.getByRole("button", { name: /^New workflow task$/i }).first(),
     ],
     ["scheduled-tab", page.getByRole("tab", { name: /^Scheduled$/i }).first()],
   ];
@@ -897,12 +884,10 @@ const RUN_ERROR_RECOVERY_ATTEMPTS = 2;
 /**
  * Assert that a completed run actually produced output.
  *
- * The Library run-detail Output panel renders "No output from this run." when
- * the run object has no `outputs` field. There's a brief window after the run
- * reaches "completed" status where the run object is loaded without outputs,
- * then outputs arrive and the panel re-renders. We poll for up to `timeout`
- * ms waiting for the "No output" placeholder to GO AWAY before concluding
- * the run genuinely produced nothing.
+ * Waits for the Output panel to render the run's outputs (their "Copy all
+ * text outputs" action). The "No output from this run." placeholder being
+ * absent proves nothing on its own: it is also absent while the panel is
+ * still loading or another tab is open.
  *
  * This catches the "agent runs but produces nothing" failure mode
  * (disconnected edges, broken graph, runtime crash before any output node
@@ -918,11 +903,13 @@ export async function assertRunProducedOutput(
   // page reload. Reloading to "rule out stale cache" would mask a real
   // user-visible regression where the frontend only shows output after a
   // manual refresh.
-  const noOutput = page.getByText("No output from this run.", { exact: true });
-  await expect(noOutput, {
-    message:
-      'run completed but produced no output ("No output from this run." still shown) — broken graph, missing output node, or stale React Query cache',
-  }).toBeHidden({ timeout });
+  await expect(
+    page.getByRole("button", { name: "Copy all text outputs" }),
+    "run completed but shows no output — broken graph, missing output node, or stale React Query cache",
+  ).toBeVisible({ timeout });
+  await expect(
+    page.getByText("No output from this run.", { exact: true }),
+  ).toBeHidden();
 }
 
 function escapeRegex(text: string): string {
@@ -972,45 +959,6 @@ export async function assertRunOutputValue(
     outputValue,
     `run output value for "${outputName}" should be "${expectedValue}"`,
   ).toHaveText(expectedValue, { timeout });
-}
-
-export async function assertFirstRunOutputValue(
-  page: Page,
-  expectedValue: RegExp | string,
-  timeout = 15000,
-): Promise<void> {
-  await assertRunOutputContainsText(page, expectedValue, timeout);
-}
-
-export async function assertRunOutputContainsText(
-  page: Page,
-  expectedValue: RegExp | string,
-  timeout = 15000,
-): Promise<void> {
-  await openRunOutputTab(page);
-
-  const outputCard = page
-    .locator("div")
-    .filter({
-      has: page.getByRole("button", { name: "Copy all text outputs" }),
-    })
-    .first();
-  await expect(outputCard, "run output card should be visible").toBeVisible({
-    timeout,
-  });
-
-  if (expectedValue instanceof RegExp) {
-    await expect(
-      outputCard.getByText(expectedValue).first(),
-      `run output should contain text matching ${expectedValue.toString()}`,
-    ).toBeVisible({ timeout });
-    return;
-  }
-
-  await expect(
-    outputCard.getByText(expectedValue, { exact: true }).first(),
-    `run output should contain "${expectedValue}"`,
-  ).toBeVisible({ timeout });
 }
 
 export async function waitForRunToComplete(
@@ -1086,7 +1034,11 @@ export async function importAgentFromFile(
   filePath: string,
   agentName: string,
   description: string = "PR E2E library coverage",
-): Promise<{ libraryPage: LibraryPage; importedAgent: Agent }> {
+): Promise<{
+  libraryPage: LibraryPage;
+  importedAgent: Agent;
+  graphID: string;
+}> {
   const libraryPage = new LibraryPage(page);
   const importDialog = page.getByRole("dialog", { name: "Import" });
 
@@ -1165,7 +1117,7 @@ export async function importAgentFromFile(
         }
 
         const uploadFailed = await page
-          .getByText("Error Uploading agent")
+          .getByText("Error Uploading workflow")
           .isVisible()
           .catch(() => false);
         if (uploadFailed) {
@@ -1181,7 +1133,10 @@ export async function importAgentFromFile(
       },
     )
     .toBe("build");
-  await expect(page).toHaveURL(/\/build/, { timeout: 15000 });
+  await expect(page).toHaveURL(/\/build\?.*flowID=/, { timeout: 15000 });
+  const builderURL = new URL(page.url());
+  const graphID = builderURL.searchParams.get("flowID") ?? "";
+  const openInBuilderUrl = `${builderURL.pathname}${builderURL.search}`;
 
   // Import should produce a real graph, not an empty canvas. Lazy-import
   // BuildPage locally to avoid a circular dependency between the two
@@ -1213,35 +1168,17 @@ export async function importAgentFromFile(
     `imported agent card "${agentName}" must appear in the library search results`,
   ).toBeVisible({ timeout: 15000 });
 
-  const seeRunsLink = getId("library-agent-card-see-runs-link", importedCard);
-  const seeRunsUrl = (await seeRunsLink.getAttribute("href")) ?? "";
-  const openInBuilderLink = getId(
-    "library-agent-card-open-in-builder-link",
-    importedCard,
-  );
-  const openInBuilderUrl =
-    (await openInBuilderLink.count()) > 0
-      ? ((await openInBuilderLink.getAttribute("href")) ?? "")
-      : "";
-
-  const idMatch = seeRunsUrl.match(/\/library\/agents\/([^/]+)/);
-  const importedAgent: Agent = {
-    id: idMatch ? idMatch[1] : "",
-    name:
-      (
-        await getId("library-agent-card-name", importedCard).textContent()
-      )?.trim() ?? agentName,
-    description: "",
-    seeRunsUrl,
-    openInBuilderUrl,
-  };
-
+  const importedAgent = await readAgentCard(importedCard, openInBuilderUrl);
   expect(
     importedAgent.name,
     "imported agent name should contain the requested name",
   ).toContain(agentName);
+  expect(
+    importedAgent.id,
+    "imported agent card should carry its library agent id",
+  ).not.toBe("");
 
-  return { libraryPage, importedAgent };
+  return { libraryPage, importedAgent, graphID };
 }
 
 export async function openSavedAgentInLibrary(
@@ -1264,7 +1201,11 @@ async function waitForExportActionSurface(
     .poll(
       async () => {
         if (
-          await getFirstVisibleLocator(page, "button", "Export agent to file")
+          await getFirstVisibleLocator(
+            page,
+            "button",
+            "Export workflow to file",
+          )
         ) {
           return "direct";
         }
@@ -1279,7 +1220,7 @@ async function waitForExportActionSurface(
     )
     .not.toBe("pending");
 
-  if (await getFirstVisibleLocator(page, "button", "Export agent to file")) {
+  if (await getFirstVisibleLocator(page, "button", "Export workflow to file")) {
     return "direct";
   }
 
@@ -1311,7 +1252,7 @@ export async function clickExportAgent(page: Page): Promise<void> {
     const directExportButton = await getFirstVisibleLocator(
       page,
       "button",
-      "Export agent to file",
+      "Export workflow to file",
     );
     if (!directExportButton) {
       throw new Error(
@@ -1338,7 +1279,7 @@ export async function clickExportAgent(page: Page): Promise<void> {
     const exportMenuItem = await getFirstVisibleLocator(
       page,
       "menuitem",
-      "Export agent to file",
+      "Export workflow to file",
     );
     if (exportMenuItem) {
       await exportMenuItem.click({ timeout: 15000 });

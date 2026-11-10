@@ -5,7 +5,6 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
-import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useState } from "react";
@@ -78,17 +77,12 @@ export const useRunGraph = () => {
   const { mutateAsync: executeGraph, isPending: isExecutingGraph } =
     usePostV1ExecuteGraphAgent({
       mutation: {
-        onSuccess: (response, variables) => {
+        onSuccess: (response) => {
           clearAllNodeErrors();
-          const { id, graph_id } = response.data as GraphExecutionMeta;
+          const { id } = response.data as GraphExecutionMeta;
           setQueryStates({
             flowExecutionID: id,
           });
-          // Simulate goes through the same mutation as Run; only a real run
-          // is an activation.
-          if (!variables.data.dry_run) {
-            trackAgentRunGoal({ id: graph_id }, "builder");
-          }
         },
         onError: (error: any) => {
           setIsGraphRunning(false);
@@ -114,7 +108,7 @@ export const useRunGraph = () => {
             }
 
             toast({
-              title: errorData?.message || "Graph validation failed",
+              title: errorData?.message || "Workflow validation failed",
               description:
                 "Please fix the validation errors on the highlighted nodes and try again.",
               variant: "destructive",

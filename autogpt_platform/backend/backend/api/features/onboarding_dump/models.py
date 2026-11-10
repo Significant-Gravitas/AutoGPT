@@ -1,5 +1,6 @@
 """Request / response models for the onboarding brain dump."""
 
+from datetime import datetime
 from typing import Annotated, Literal
 
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
@@ -16,6 +17,25 @@ RecordingId = Annotated[str, StringConstraints(pattern=RECORDING_ID_PATTERN)]
 # leaves three orders of magnitude of headroom while still rejecting a
 # client that tries to stream a movie through the endpoint.
 MAX_PART_BYTES = 2 * 1024 * 1024
+
+# The kinds of too-short take Otto has a fixed first line for on the
+# not-enough screen (``otto_reply`` picks one; the lines are in the
+# frontend's ``insufficient-copy.ts``).
+OttoReplyKind = Literal[
+    "mic_check",
+    "greeting",
+    "unsure",
+    "reluctant",
+    "what_to_say",
+    "wants_to_skip",
+    "about_otto",
+    "busy",
+    "annoyed",
+    "some_work",
+    "garbled",
+    "test",
+    "other",
+]
 
 # ~30 min of webm/opus voice is ~6 MB. 50 MB is the cumulative ceiling for
 # one recording — generous enough that no honest dump ever hits it.
@@ -44,6 +64,19 @@ ALLOWED_AUDIO_MIME_TYPES = frozenset(
     }
 )
 
+# Stored recordings are named ``brain-dump-{recording_id}.{ext}``. The
+# retention sweep finds them in the bucket by this name, so the two must
+# stay in step.
+RECORDING_FILENAME_PREFIX = "brain-dump-"
+AUDIO_FILE_EXTENSIONS = {
+    "audio/webm": "webm",
+    "audio/mp4": "m4a",
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/ogg": "ogg",
+}
+
 
 class UploadPartResponse(BaseModel):
     recording_id: str
@@ -71,7 +104,16 @@ class FinalizeResponse(BaseModel):
     status: BrainDumpStatus
     input_mode: BrainDumpInputMode
     transcript_preview: str | None = None
+    """The transcript's start, on success and on an ``insufficient_content``
+    reject; never on ``no_usable_speech``."""
+    otto_reply_kind: OttoReplyKind | None = None
+    """Which of Otto's fixed first lines fits what was said, on an
+    ``insufficient_content`` reject. ``None`` and ``"other"`` get the default."""
     error_code: str | None = None
+    error_reason: str | None = None
+    """What decided a quality-gate rejection (``quality.QualityRejection``)."""
+    transcript_words: int | None = None
+    """A rejected transcript's length as the gate counts words."""
 
 
 class DumpStatusResponse(BaseModel):
@@ -97,6 +139,59 @@ class SuggestedPrompt(BaseModel):
     title: str
     prompt: str
     icon: str = "sparkle"
+    expert_template_id: str | None = None
+    """The roster template whose expert takes this task; null means Otto
+    does it himself. Always a member of the plan's team (``plan.cap_team``)."""
+    why: str | None = None
+    """One short clause naming what the user said this task fixes, at most
+    ``MAX_WHY_CHARS``; null when they said nothing it ties to."""
+    expert_name: str | None = None
+    """The owner's name when the plan was written, so a task whose expert has
+    since left the team can still say whose it was; null for Otto's."""
+
+
+MAX_WHY_CHARS = 60
+
+SuggestedTaskState = Literal["open", "sent", "dismissed"]
+
+
+class SuggestedTask(SuggestedPrompt):
+    """One row of the Home checklist: a suggested prompt and what became of it.
+
+    Stored inside ``OnboardingBrainDump.suggestedPrompts``; a row written
+    before states existed reads as ``open``, with its list index as ``id``,
+    and one written before owners existed reads as Otto's.
+    """
+
+    id: str
+    state: SuggestedTaskState = "open"
+    session_id: str | None = None
+    """The chat a ``sent`` row started."""
+    updated_at: datetime | None = None
+    expert_id: str | None = None
+    """The user's active hire of ``expert_template_id``, filled at read time
+    and never stored: null while that expert is not hired, once it is
+    archived, and for Otto's tasks."""
+
+
+class SuggestedTasksResponse(BaseModel):
+    """The user's suggested first tasks, every state included.
+
+    ``stored`` is false when the user has no list of their own and these
+    are the generic starters: the greeting shows them, the regular Home
+    page does not, until a state change stores them.
+    """
+
+    tasks: list[SuggestedTask] = []
+    stored: bool = False
+
+
+class SuggestedTasksUpdate(BaseModel):
+    task_ids: list[str] = Field(min_length=1, max_length=20)
+    state: SuggestedTaskState
+    """``open`` is Undo: a hidden row goes back to where it was, which is
+    ``sent`` for one that had started a chat."""
+    session_id: str | None = Field(default=None, max_length=64)
 
 
 class RecommendedExpert(BaseModel):

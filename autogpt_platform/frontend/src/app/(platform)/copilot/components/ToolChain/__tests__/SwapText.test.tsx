@@ -27,7 +27,7 @@ describe("SwapText", () => {
   afterEach(cleanup);
 
   it("renders plain text when not shimmering", () => {
-    render(<SwapText text="Updated tasks" className="text-sm" />);
+    render(<SwapText text="Updated tasks" className="text-body" />);
 
     const label = screen.getByText("Updated tasks");
     expect(label).toBeDefined();

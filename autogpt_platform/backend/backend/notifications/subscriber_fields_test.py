@@ -46,16 +46,16 @@ def test_a_naive_datetime_is_read_as_utc():
     )
 
 
-def test_a_new_subscription_clears_the_last_ones_cancellation_and_end():
-    assert subscriber_fields.subscribed(1788305400) == {
-        SubscriberField.STATUS: "subscribed",
-        SubscriberField.SUBSCRIPTION_STARTED: "2026-09-01",
-        SubscriberField.SUBSCRIPTION_CANCELED: None,
-        SubscriberField.SUBSCRIPTION_ENDED: None,
-    }
-
-
-SIGNED = subscriber_fields.signed(datetime(2026, 9, 29, 10, 0, tzinfo=UTC))
+SIGNED = {
+    SubscriberField.STATUS: SubscriptionStatus.SIGNED.value,
+    SubscriberField.SIGNUP: "2026-09-29",
+}
+SUBSCRIBED = {
+    SubscriberField.STATUS: SubscriptionStatus.SUBSCRIBED.value,
+    SubscriberField.SUBSCRIPTION_STARTED: "2026-09-01",
+    SubscriberField.SUBSCRIPTION_CANCELED: None,
+    SubscriberField.SUBSCRIPTION_ENDED: None,
+}
 
 
 @pytest.mark.asyncio
@@ -433,7 +433,7 @@ def _checkout_event():
         AudienceAction.ENROLL_TOUR,
         EMAIL,
         "user-1",
-        subscriber_fields.subscribed(1788305400),
+        SUBSCRIBED,
     )
 
 
@@ -495,9 +495,7 @@ async def test_a_missing_required_group_is_dead_lettered_at_once(
     are written once and the problem is said once."""
     mailerlite_configured.config.mailerlite_onboarding_group_id = ""
     mailerlite_configured.config.mailerlite_changelog_group_id = ""
-    event = subscriber_fields.audience_event(
-        action, EMAIL, "user-1", subscriber_fields.subscribed(1788305400)
-    )
+    event = subscriber_fields.audience_event(action, EMAIL, "user-1", SUBSCRIBED)
     message = MagicMock(
         body=event.model_dump_json().encode(), ack=AsyncMock(), reject=AsyncMock()
     )

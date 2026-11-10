@@ -1,15 +1,17 @@
+import json
 import logging
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from ldclient import Context, LDClient
-from ldclient.config import Config
-from ldclient.integrations.test_data import TestData
+from posthog import Posthog
 from pydantic import ValidationError
 
 from backend.data import subscription_trial_config as trials
+from backend.util import platform_payment
+from backend.util.feature_flag import _UserContext
+from backend.util.feature_flag import posthog as ph
 
 
 @contextmanager
@@ -52,6 +54,36 @@ def test_offer_has_no_implicit_existing_user_eligibility():
     assert offer.allow_existing_beta_users is False
 
 
+def test_daily_limit_can_exceed_the_entire_trial_budget():
+    data = {
+        **offer_data(),
+        "daily_cost_limit": 100_000_000,
+        "weekly_cost_limit": 20_000_000,
+        "total_cost_limit": 20_000_000,
+    }
+    assert trials.TrialOffer.model_validate(data).model_dump() == {
+        **trials.TrialOffer.model_validate(offer_data()).model_dump(),
+        **{key: data[key] for key in data if key.endswith("cost_limit")},
+    }
+
+
+@pytest.mark.asyncio
+async def test_new_trial_offer_uses_fixed_usage_limits_and_preserves_other_terms():
+    raw = {**offer_data(), "max_active_trials": 500}
+    with patch.object(
+        platform_payment.settings.config, "enable_platform_payment", True
+    ), patch.object(trials, "get_feature_flag_value", AsyncMock(return_value=raw)):
+        offer = await trials.get_trial_offer("user-1")
+    assert offer is not None
+    assert offer.model_dump() == {
+        **trials.TrialOffer.model_validate(raw).model_dump(),
+        "daily_cost_limit": 100_000_000,
+        "weekly_cost_limit": 20_000_000,
+        "total_cost_limit": 20_000_000,
+    }
+    assert raw["daily_cost_limit"] == 250_000
+
+
 @pytest.mark.parametrize(
     "overrides",
     [
@@ -62,8 +94,6 @@ def test_offer_has_no_implicit_existing_user_eligibility():
         {"weekly_cost_limit": 0},
         {"total_cost_limit": "1000000"},
         {"total_cost_limit": True},
-        {"daily_cost_limit": 2_000_000},
-        {"weekly_cost_limit": 2_000_000},
         {"new_users_from": "2026-09-10T00:00:00"},
         {"tier": "TRIAL"},
         {"tier": "ENTERPRISE"},
@@ -152,7 +182,7 @@ def test_no_trial_entitlement_without_verified_card(status):
 @pytest.mark.asyncio
 async def test_platform_payment_disabled_hides_trial_offer():
     with patch.object(
-        trials, "is_feature_enabled", AsyncMock(return_value=False)
+        platform_payment.settings.config, "enable_platform_payment", False
     ), patch.object(
         trials,
         "get_feature_flag_value",
@@ -168,7 +198,7 @@ async def test_platform_payment_disabled_hides_trial_offer():
 @pytest.mark.asyncio
 async def test_invalid_remote_offer_fails_closed():
     with patch.object(
-        trials, "is_feature_enabled", AsyncMock(return_value=True)
+        platform_payment.settings.config, "enable_platform_payment", True
     ), patch.object(
         trials, "get_feature_flag_value", AsyncMock(return_value={"duration_days": "7"})
     ):
@@ -178,16 +208,15 @@ async def test_invalid_remote_offer_fails_closed():
 @pytest.mark.asyncio
 async def test_payment_enabled_and_valid_offer_is_available():
     with patch.object(
-        trials, "is_feature_enabled", AsyncMock(return_value=True)
-    ) as enabled, patch.object(
+        platform_payment.settings.config, "enable_platform_payment", True
+    ), patch.object(
         trials, "get_feature_flag_value", AsyncMock(return_value=offer_data())
     ):
         assert await trials.get_trial_offer(
             "user-1"
-        ) == trials.TrialOffer.model_validate(offer_data())
-    enabled.assert_awaited_once_with(
-        trials.Flag.ENABLE_PLATFORM_PAYMENT, "user-1", default=False
-    )
+        ) == trials.TrialOffer.model_validate(
+            {**offer_data(), **trials.FREE_TRIAL_COST_LIMITS}
+        )
 
 
 def test_offer_without_a_cap_keeps_its_old_meaning():
@@ -216,7 +245,7 @@ def test_zero_cap_is_expressible_and_distinct_from_absent():
 async def test_country_is_handed_to_the_flag_not_decided_here(country, attributes):
     """Who sees a trial is the flag's targeting; the code only supplies the fact."""
     with patch.object(
-        trials, "is_feature_enabled", AsyncMock(return_value=True)
+        platform_payment.settings.config, "enable_platform_payment", True
     ), patch.object(
         trials, "get_feature_flag_value", AsyncMock(return_value=offer_data())
     ) as flag:
@@ -232,7 +261,7 @@ async def test_country_is_handed_to_the_flag_not_decided_here(country, attribute
 )
 async def test_a_country_that_is_not_an_iso_code_never_reaches_the_flag(country):
     with patch.object(
-        trials, "is_feature_enabled", AsyncMock(return_value=True)
+        platform_payment.settings.config, "enable_platform_payment", True
     ), patch.object(
         trials, "get_feature_flag_value", AsyncMock(return_value=offer_data())
     ) as flag:
@@ -257,29 +286,65 @@ async def test_a_country_that_is_not_an_iso_code_never_reaches_the_flag(country)
 async def test_the_recommended_rule_fails_closed_through_the_real_evaluator(
     country, offered
 ):
-    """The production rule shape, evaluated by LaunchDarkly's own SDK."""
-    td = TestData.data_source()
-    td.update(
-        td.flag(trials.Flag.CARD_REQUIRED_TRIAL_OFFER.value)
-        .variations({"enabled": False}, offer_data())
-        .fallthrough_variation(0)
-        .if_not_match("country", "IN")
-        .then_return(1)
-    )
-    client = LDClient(Config("sdk-test", update_processor_class=td, send_events=False))
+    """The production rule shape, evaluated by PostHog's own SDK in-process.
+
+    Served when the country is set and is not one of the excluded list; a
+    person without a country cannot be decided locally, and with /flags
+    unreachable that read serves no offer either.
+    """
+    client = _posthog_serving_all_but_india()
     try:
         with patch.object(
-            trials, "is_feature_enabled", AsyncMock(return_value=True)
-        ), patch("backend.util.feature_flag.ldclient.get", return_value=client), patch(
+            platform_payment.settings.config, "enable_platform_payment", True
+        ), patch.object(ph, "get_flag_client", return_value=client), patch(
             "backend.util.feature_flag._fetch_user_context_status",
-            AsyncMock(
-                return_value=(Context.builder("user-1").kind("user").build(), True)
-            ),
+            AsyncMock(return_value=(_UserContext(key="user-1", anonymous=False), True)),
         ):
             offer = await trials.get_trial_offer("user-1", country=country)
     finally:
-        client.close()
+        client.shutdown()
     assert (offer is not None) is offered
+
+
+def _posthog_serving_all_but_india() -> Posthog:
+    client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
+    client.feature_flags = [
+        {
+            "id": 1,
+            "key": trials.Flag.CARD_REQUIRED_TRIAL_OFFER.value,
+            "active": True,
+            "filters": {
+                "groups": [
+                    {
+                        "properties": [
+                            {
+                                "key": "country",
+                                "type": "person",
+                                "operator": "is_set",
+                                "value": "is_set",
+                            },
+                            {
+                                "key": "country",
+                                "type": "person",
+                                "operator": "is_not",
+                                "value": ["IN"],
+                            },
+                        ],
+                        "rollout_percentage": 100,
+                    }
+                ],
+                "payloads": {"true": json.dumps(offer_data())},
+            },
+        }
+    ]
+    # A person without a country is inconclusive locally; keep the fallback offline.
+    client._get_flags_decision = _no_remote_flags
+    client.capture = lambda *args, **kwargs: None
+    return client
+
+
+def _no_remote_flags(*args, **kwargs):
+    raise ConnectionError("remote /flags is unavailable in tests")
 
 
 @pytest.mark.parametrize(
@@ -290,7 +355,7 @@ async def test_the_recommended_rule_fails_closed_through_the_real_evaluator(
 async def test_flag_value_that_is_not_an_offer_is_silent(flag_value):
     """The disabled variation is an object, and an absent offer is not a fault."""
     with patch.object(
-        trials, "is_feature_enabled", AsyncMock(return_value=True)
+        platform_payment.settings.config, "enable_platform_payment", True
     ), patch.object(
         trials, "get_feature_flag_value", AsyncMock(return_value=flag_value)
     ), captured_logs() as records:
@@ -305,7 +370,7 @@ async def test_flag_value_that_is_not_an_offer_is_silent(flag_value):
 @pytest.mark.asyncio
 async def test_offer_that_fails_validation_is_still_an_error():
     with patch.object(
-        trials, "is_feature_enabled", AsyncMock(return_value=True)
+        platform_payment.settings.config, "enable_platform_payment", True
     ), patch.object(
         trials,
         "get_feature_flag_value",
@@ -318,7 +383,7 @@ async def test_offer_that_fails_validation_is_still_an_error():
     assert "Invalid card-required-trial-offer" in errors[0].getMessage()
 
 
-# The live production offer variation, verbatim from LaunchDarkly, and the
+# The live production offer payload, verbatim from the flag, and the
 # token dev computes for it before the cap existed.
 LIVE_OFFER = {
     "allow_existing_beta_users": False,

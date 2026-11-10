@@ -95,6 +95,10 @@ EMBEDDING_BACKFILL_BATCH_SIZE = int(os.getenv("E2E_EMBEDDING_BATCH_SIZE", "100")
 EMBEDDING_BACKFILL_TIMEOUT_SECONDS = float(
     os.getenv("E2E_EMBEDDING_TIMEOUT_SECONDS", "900")
 )
+# Per request; the slowest of 13,509 in two passing CI seeds took 4.4 s.
+EMBEDDING_REQUEST_TIMEOUT_SECONDS = float(
+    os.getenv("E2E_EMBEDDING_REQUEST_TIMEOUT_SECONDS", "30")
+)
 
 SEEDED_TEST_EMAILS = [
     "test123@example.com",
@@ -106,6 +110,10 @@ SEEDED_TEST_EMAILS = [
     "e2e.qa.parallel.a@example.com",
     "e2e.qa.parallel.b@example.com",
 ]
+
+# Signed up with Microsoft, so its onboarding opens on the Microsoft 365 offer.
+# It also has a password, because Playwright cannot sign in to Microsoft.
+MICROSOFT_SIGN_IN_EMAIL = "e2e.qa.microsoft@example.com"
 
 
 def make_seed_credential(credential_id: str) -> APIKeyCredentials:
@@ -296,6 +304,26 @@ class TestDataCreator:
             }
         )
         return user_id
+
+    async def create_microsoft_sign_in_user(self) -> None:
+        """A fresh account that signed up with Microsoft, left out of the
+        generated data so it starts like a new sign-up."""
+        password = "testpassword123"  # pragma: allowlist secret
+        password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        user_id = await self._ensure_auth_user(MICROSOFT_SIGN_IN_EMAIL, password_hash)
+        signed_in_with_microsoft = await prisma.authaccount.find_first(
+            where={"userId": user_id, "providerId": "microsoft"}
+        )
+        if not signed_in_with_microsoft:
+            await prisma.authaccount.create(
+                data={
+                    "id": str(faker.uuid4()),
+                    "accountId": "e2e-object-id",
+                    "providerId": "microsoft",
+                    "userId": user_id,
+                }
+            )
+        await get_or_create_user({"sub": user_id, "email": MICROSOFT_SIGN_IN_EMAIL})
 
     async def get_available_blocks(self) -> List[Dict[str, Any]]:
         """Get available agent blocks from database."""
@@ -1271,6 +1299,7 @@ class TestDataCreator:
 
         # Create users first
         await self.create_test_users()
+        await self.create_microsoft_sign_in_user()
 
         # Backfill personal orgs/teams for the users we just inserted.
         # The app's lifespan-context migration already ran at backend
@@ -1411,6 +1440,10 @@ async def main():
         if args.refresh_credentials_only:
             await refresh_seeded_credentials()
         else:
+            # Bounds each embedding request. Not in the backfill itself: the admin route
+            # runs that inside the server, whose cached client other callers share.
+            if client := get_openai_client():
+                client.timeout = EMBEDDING_REQUEST_TIMEOUT_SECONDS
             creator = TestDataCreator()
             await creator.create_all_test_data()
     finally:

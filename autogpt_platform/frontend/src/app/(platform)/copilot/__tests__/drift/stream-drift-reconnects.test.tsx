@@ -8,12 +8,14 @@ import {
   sendPrompt,
   turnKeepsRunning,
   waitForConnections,
+  waitForDelivered,
 } from "./backend-sim";
 import {
   expectDrift,
   reportDrift,
   resetChatState,
   sampleTranscripts,
+  waitForStableTranscript,
 } from "./drift-report";
 
 vi.mock("@/services/environment", async (importActual) => {
@@ -139,19 +141,19 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         setTabVisibility("visible");
         vi.useRealTimers();
         await waitForConnections(sim, 2);
+        // Paint the resume's replay before the POST stream writes again, which
+        // would otherwise overwrite it inside one render on some runs.
+        await waitForDelivered(sim);
+        await waitForStableTranscript(500);
         sim.publish();
 
-        expectDrift(
-          await reportDrift({
-            sim,
-            turns: [toolTurn],
-            painted,
-            toast: toastMock,
-          }),
-          // AI SDK: the resume replays the turn into the list while the POST
-          // stream still writes it: both copies of the first block are on screen.
-          { today: path === "stream runtime" ? [] : ["paintedTwice"] },
-        );
+        const report = await reportDrift({
+          sim,
+          turns: [toolTurn],
+          painted,
+          toast: toastMock,
+        });
+        expectDrift(report, {});
       },
     );
 
@@ -170,6 +172,10 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 
         vi.useFakeTimers({ shouldAdvanceTime: true });
         sim.publish(TOOL_CALL_OPEN - FIRST_TEXT_BLOCK_DONE);
+        // The tool call is on screen before the silence starts. Under fake
+        // timers React renders only when a timer runs, so jumping the clock
+        // first would draw it at the first heartbeat, 10 s into the silence.
+        await screen.findAllByText(/Fetching/, undefined, { timeout: 5000 });
         // The route writes a heartbeat comment every 10 s; the parser drops them.
         await vi.advanceTimersByTimeAsync(70_000);
         sim.publish();
@@ -218,14 +224,8 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
           }),
           // AI SDK: two resumes attach to one running turn: the once-per-mount
           // resume, and the post-finish probe's reconnect with "Connection
-          // lost". Neither aborts the other, so the first block is painted
-          // three times.
-          {
-            today:
-              path === "stream runtime"
-                ? []
-                : ["connectionToast", "paintedTwice"],
-          },
+          // lost".
+          { today: path === "stream runtime" ? [] : ["connectionToast"] },
         );
       },
     );

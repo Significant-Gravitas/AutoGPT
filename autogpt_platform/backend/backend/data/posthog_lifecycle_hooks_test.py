@@ -1,5 +1,6 @@
 """Every write that can change a user's lifecycle snapshot schedules a sync,
-and a PostHog or Stripe failure in that sync never reaches the caller."""
+a tier write alone doesn't, and a PostHog or Stripe failure in that sync
+never reaches the caller."""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -34,27 +35,6 @@ async def test_subscription_sync_schedules_by_customer():
 
     inner.assert_awaited_once_with(TRIAL_SUB)
     schedule.assert_called_once_with(stripe_customer_id="cus_1")
-
-
-async def test_a_tier_change_honours_track_lifecycle_false():
-    """The tier sweep's opt-out must reach set_subscription_tier too, or a
-    tier change inside the sweep schedules a sync anyway."""
-    update = AsyncMock()
-    with (
-        patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(update=update),
-        ),
-        patch("backend.data.credit.invalidate_subscription_caches"),
-        patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
-    ):
-        await set_subscription_tier(
-            "user-1", SubscriptionTier.PRO, track_lifecycle=False
-        )
-        schedule.assert_not_called()
-        await set_subscription_tier("user-1", SubscriptionTier.PRO)
-        schedule.assert_called_once_with("user-1")
-    assert update.await_count == 2
 
 
 async def test_tier_sweep_does_not_schedule_lifecycle_syncs():
@@ -108,14 +88,23 @@ async def test_trial_transitions_schedule_through_the_webhook_choke_point():
     """Trial start, cancel, conversion and expiry are all written by
     ``reconcile_trial_subscription``, which only runs inside
     ``sync_subscription_from_stripe``; its early return still schedules."""
-    user = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.NO_TIER)
+    user = MagicMock(
+        id="user-1", stripeCustomerId="cus_1", subscriptionTier=SubscriptionTier.NO_TIER
+    )
     with (
         patch(
             "backend.data.credit.User.prisma",
             return_value=MagicMock(find_first=AsyncMock(return_value=user)),
         ),
         patch(
-            "backend.data.credit.reconcile_trial_subscription",
+            "backend.data.credit.stripe.Subscription.retrieve_async",
+            AsyncMock(return_value=TRIAL_SUB),
+        ),
+        patch(
+            "backend.data.credit.get_subscription_trial", AsyncMock(return_value=None)
+        ),
+        patch(
+            "backend.data.credit.subscription_trial_stripe.reconcile_trial_subscription",
             new_callable=AsyncMock,
             return_value=(TRIAL_SUB, SubscriptionTier.TRIAL),
         ) as reconcile,
@@ -173,7 +162,9 @@ async def test_webhook_survives_posthog_and_stripe_failures():
     client.capture.assert_not_called()
 
 
-async def test_tier_change_schedules_the_user():
+async def test_a_tier_change_alone_schedules_no_sync():
+    """SECRT-2795: the status doesn't read the tier, so a tier write can't
+    change it; the Stripe change that comes with one syncs via its webhook."""
     with (
         patch(
             "backend.data.credit.User.prisma",
@@ -183,10 +174,10 @@ async def test_tier_change_schedules_the_user():
         patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
     ):
         await set_subscription_tier("user-1", SubscriptionTier.PRO)
-    schedule.assert_called_once_with("user-1")
+    schedule.assert_not_called()
 
 
-async def test_admin_tier_override_schedules_the_user():
+async def test_an_admin_tier_override_schedules_no_sync():
     with (
         patch(
             "backend.copilot.rate_limit.PrismaUser.prisma",
@@ -196,10 +187,10 @@ async def test_admin_tier_override_schedules_the_user():
         patch("backend.copilot.rate_limit.get_user_tier", new=MagicMock()),
         patch("backend.copilot.rate_limit.get_user_by_id", new=MagicMock()),
         patch("backend.data.credit.get_pending_subscription_change", new=MagicMock()),
-        patch("backend.copilot.rate_limit.schedule_posthog_lifecycle_sync") as schedule,
+        patch.object(lifecycle, "schedule_posthog_lifecycle_sync") as schedule,
     ):
         await set_user_tier("user-1", SubscriptionTier.ENTERPRISE)
-    schedule.assert_called_once_with("user-1")
+    schedule.assert_not_called()
 
 
 @pytest.mark.parametrize("existing", [False, True])

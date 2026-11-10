@@ -1,5 +1,8 @@
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { cardArguments } from "../ApprovalQueue/helpers";
+import { cardArguments, fallbackAsk } from "../ApprovalQueue/helpers";
+import { heldAskText, heldToolName, isHeldReadId } from "../ToolChain/heldRow";
+import type { MessagePart } from "./helpers";
 
 // Rows the server writes for a held call: the one that starts the turn when a
 // card is answered, and the call's late result, which the reply narrates.
@@ -31,7 +34,74 @@ export function countHeldCalls(
   );
 }
 
+// What a wake row says: the cards its turn delivered, by their own headlines,
+// and what each answer sent on, from the result row's recorded outcome.
+export function answeredLabel(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+  wakeIndex: number,
+): string {
+  const asks = new Map<string, string>();
+  for (const message of messages.slice(0, wakeIndex)) {
+    for (const part of message.parts) {
+      if (!("output" in part)) continue;
+      const card = heldCardOutput(part.output);
+      const reviewId = card ? str(card.review_id) : null;
+      if (!card || !reviewId) continue;
+      asks.set(reviewId, heldAskText(card, heldToolName(card, partTool(part))));
+    }
+  }
+  const byOutcome = new Map<AnswerKind | null, string[]>();
+  for (const message of messages.slice(wakeIndex + 1)) {
+    if (getHeldCallRowKind(message.metadata) !== "result") break;
+    const held = (message.metadata as { held_call: Record<string, unknown> })
+      .held_call;
+    const tool = str(held?.tool_name);
+    const name =
+      asks.get(str(held?.review_id) ?? "") ?? (tool && fallbackAsk(tool));
+    if (!name) continue;
+    const outcome = str(held?.outcome);
+    const recorded =
+      outcome && OUTCOMES.has(outcome) ? (outcome as HeldOutcomeKind) : null;
+    // Only a read closes after an identical re-read already delivered it.
+    const kind =
+      recorded === "closed" && isHeldReadId(str(held?.review_id))
+        ? "closed-read"
+        : recorded;
+    byOutcome.set(kind, [...(byOutcome.get(kind) ?? []), name]);
+  }
+  if (!byOutcome.size) return "Approval answered";
+  const clauses = [...byOutcome].map(([outcome, names]) =>
+    [`${names.join(", ")}.`, outcome && sentOn(outcome, names.length > 1)]
+      .filter(Boolean)
+      .join(" "),
+  );
+  return `Approval answered: ${clauses.join(" ")}`;
+}
+
+// Every answer writes a result row, but only an approval's carries a result.
+function sentOn(outcome: AnswerKind, several: boolean): string {
+  switch (outcome) {
+    case "approved":
+      return `${several ? "Results" : "Result"} sent to ${AUTOPILOT_NAME}.`;
+    case "rejected":
+      return `Declined; nothing was sent to ${AUTOPILOT_NAME}.`;
+    case "expired":
+      return `Expired; nothing was sent to ${AUTOPILOT_NAME}.`;
+    case "closed":
+      return "Closed; nothing ran.";
+    case "closed-read":
+      return `Closed; nothing was released, or ${AUTOPILOT_NAME} already had it.`;
+    case "unknown":
+      return "Unclear; check before relying on it.";
+  }
+}
+
 function heldReviewId(output: unknown): string | null {
+  const reviewId = heldCardOutput(output)?.review_id;
+  return typeof reviewId === "string" ? reviewId : null;
+}
+
+function heldCardOutput(output: unknown): Record<string, unknown> | null {
   let value = output;
   if (typeof value === "string") {
     try {
@@ -46,8 +116,16 @@ function heldReviewId(output: unknown): string | null {
     (value as { type?: unknown }).type !== "approval_required"
   )
     return null;
-  const reviewId = (value as { review_id?: unknown }).review_id;
-  return typeof reviewId === "string" ? reviewId : null;
+  return value as Record<string, unknown>;
+}
+
+function partTool(part: { type: string; toolName?: unknown }): string {
+  if (part.type === "dynamic-tool") return str(part.toolName) ?? "";
+  return part.type.startsWith("tool-") ? part.type.slice(5) : "";
+}
+
+function str(value: unknown): string | null {
+  return typeof value === "string" && value ? value : null;
 }
 
 export type HeldOutcomeKind =
@@ -56,6 +134,8 @@ export type HeldOutcomeKind =
   | "expired"
   | "closed"
   | "unknown";
+
+type AnswerKind = HeldOutcomeKind | "closed-read";
 
 export interface HeldOutcome {
   outcome: HeldOutcomeKind;
@@ -122,6 +202,18 @@ export function getHeldOutcomes(
     waiting.splice(index, 1);
   }
   return outcomes;
+}
+
+// A part drawn outside the chain renders from what its held call returned, as
+// a chain row does through applyHeldOutcome.
+export function withHeldOutcome(
+  part: MessagePart,
+  outcomes: ReadonlyMap<string, HeldOutcome>,
+): MessagePart {
+  if (!("toolCallId" in part) || !("output" in part)) return part;
+  if (heldReviewId(part.output) === null) return part;
+  const outcome = outcomes.get(part.toolCallId);
+  return outcome ? ({ ...part, output: outcome.output } as MessagePart) : part;
 }
 
 function heldCallMetadata(metadata: unknown) {
