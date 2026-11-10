@@ -324,10 +324,19 @@ def execute_graph(
 ):
     """Execute graph using thread-local ExecutionProcessor instance"""
     processor: ExecutionProcessor = _tls.processor
-    return processor.on_graph_execution(graph_exec_entry, cancel_event, cluster_lock)
+    try:
+        return processor.on_graph_execution(
+            graph_exec_entry, cancel_event, cluster_lock
+        )
+    finally:
+        # Until this returns, the run holds this worker and its owner's share
+        processor.wait_for_nodes_to_end(cluster_lock)
 
 
 T = TypeVar("T")
+
+# How often a worker held for a stopped node that hasn't ended says so again
+STOPPED_NODE_WARNING_SECONDS = 600
 
 
 async def _finish_despite_cancel(work: Awaitable[T]) -> T:
@@ -1014,6 +1023,56 @@ class ExecutionProcessor:
     # Per-graph-execution state, populated by on_graph_execution.
     nodes_input_masks: Optional[NodesInputMasks] = None
 
+    def __init__(self):
+        # The nodes of the run this processor ran last, by node id
+        self.running_node_execution: dict[str, NodeExecutionProgress] = {}
+
+    def wait_for_nodes_to_end(self, cluster_lock: ClusterLock) -> None:
+        """Wait until every node of the last run has ended, block included.
+
+        A stop waits only NODE_UNWIND_GRACE_SECONDS for a block that ignores
+        the cancel, such as one in a synchronous call, so the stop answers
+        promptly. That block still runs on this worker's loop: a run handed
+        this worker now would wait behind it, and the stopped run's owner
+        could start another in its place, so the worker stays taken until
+        the block returns.
+        """
+        # Read from copies: a stopped Orchestrator can still add the tool nodes
+        # it runs, from the node loop's thread, while this one goes through them
+        running = [
+            node_id
+            for node_id, progress in list(self.running_node_execution.items())
+            if not progress.has_ended()
+        ]
+        if not running:
+            return
+        logger.warning(f"Holding this worker until stopped nodes {running} end")
+        started = warned = time.monotonic()
+        lock_kept = True
+        while not all(
+            progress.has_ended()
+            for progress in list(self.running_node_execution.values())
+        ):
+            # Without the lock another worker can take the run up meanwhile
+            if not cluster_lock.refresh() and lock_kept:
+                lock_kept = False
+                logger.warning(
+                    f"Couldn't keep the run's lock while holding this worker for "
+                    f"stopped nodes {running}"
+                )
+            time.sleep(1)
+            # A block that never returns keeps its worker for good: keep saying so
+            if time.monotonic() - warned >= STOPPED_NODE_WARNING_SECONDS:
+                warned = time.monotonic()
+                logger.warning(
+                    f"Still holding this worker for stopped nodes {running}, "
+                    f"{warned - started:.0f}s on"
+                )
+        logger.info(
+            f"Stopped nodes {running} ended after "
+            f"{time.monotonic() - started:.0f}s; the worker is free"
+        )
+
     @async_error_logged(swallow=True)
     async def on_node_execution(
         self,
@@ -1506,9 +1565,7 @@ class ExecutionProcessor:
         execution_stats_lock = threading.Lock()
 
         # State holders ----------------------------------------------------
-        self.running_node_execution: dict[str, NodeExecutionProgress] = defaultdict(
-            NodeExecutionProgress
-        )
+        self.running_node_execution = defaultdict(NodeExecutionProgress)
         self.running_node_evaluation: dict[str, Future] = {}
         self.execution_stats = execution_stats
         self.execution_stats_lock = execution_stats_lock
