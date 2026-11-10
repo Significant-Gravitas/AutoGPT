@@ -34,8 +34,8 @@ export function ResetConfirm({
           <>
             <ResetLine>Your edits to their soul and routines</ResetLine>
             <ResetLine>
-              Routines you switched on are switched off, and the ones{" "}
-              {expertName} came with come back, switched off
+              Routines you switched on are switched off. The ones {expertName}{" "}
+              came with come back, also off
             </ResetLine>
           </>
         ) : null}

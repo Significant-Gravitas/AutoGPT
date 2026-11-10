@@ -105,7 +105,8 @@ describe("Reset expert", () => {
     expect(text).toContain("can't be undone");
     expect(text).toContain("Everything Maria remembers");
     expect(text).toContain("Maria's computer and the notes on it");
-    expect(text).toContain("Routines you switched on are switched off");
+    expect(text).toContain("Routines you switched on are switched off.");
+    expect(text).toContain("The ones Maria came with come back, also off");
     expect(text).toContain("Removed");
     expect(text).toContain("can't be opened again");
     expect(text).toContain("Approvals from those chats waiting in Needs you");
