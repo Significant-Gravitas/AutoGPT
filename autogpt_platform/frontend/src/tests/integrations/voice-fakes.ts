@@ -209,14 +209,17 @@ export class FakeRemoteTrack {
 export class FakeRoom {
   url: string | null = null;
   token: string | null = null;
-  // The tracks the page published, and those it took back.
+  // The tracks the page published, with the options it published each
+  // with, and those it took back.
   readonly published: unknown[] = [];
+  readonly publishOptions: unknown[] = [];
   readonly unpublished: unknown[] = [];
   isLeft = false;
   readonly remoteParticipants = new Map<string, { identity: string }>();
   readonly localParticipant = {
-    publishTrack: async (track: unknown, _options?: unknown) => {
+    publishTrack: async (track: unknown, options?: unknown) => {
       this.published.push(track);
+      this.publishOptions.push(options);
       return {};
     },
     unpublishTrack: async (track: unknown, _stopOnUnpublish?: boolean) => {

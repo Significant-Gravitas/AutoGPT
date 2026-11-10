@@ -64,12 +64,13 @@ async function joined() {
 }
 
 describe("the call's LiveKit room", () => {
-  it("joins the room the start named, publishing the call's microphone", async () => {
+  it("joins the room the start named, publishing the call's microphone as a microphone", async () => {
     const { microphone, fake } = await joined();
 
     expect(fake.url).toBe(PASS.url);
     expect(fake.token).toBe(PASS.token);
     expect(fake.published).toEqual([microphone.getAudioTracks()[0]]);
+    expect(fake.publishOptions).toEqual([{ source: "microphone" }]);
   });
 
   it("plays only Otto's speech through the player", async () => {
@@ -142,6 +143,19 @@ describe("the call's LiveKit room", () => {
     room.mute();
 
     expect(fake.unpublished).toEqual([microphone.getAudioTracks()[0]]);
+  });
+
+  it("lets go quietly of a microphone the room can no longer take back", async () => {
+    const { room, fake } = await joined();
+    const unpublish = vi.fn(async () => {
+      throw new Error("The room is gone");
+    });
+    fake.localParticipant.unpublishTrack = unpublish;
+
+    room.mute();
+
+    await vi.waitFor(() => expect(unpublish).toHaveBeenCalledOnce());
+    await expect(unpublish.mock.results[0].value).rejects.toThrow();
   });
 
   it("hears nothing more from a room it has left", async () => {

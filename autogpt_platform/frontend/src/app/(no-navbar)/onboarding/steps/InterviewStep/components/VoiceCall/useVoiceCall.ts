@@ -8,7 +8,6 @@ import type { VoiceCallCaps } from "@/app/api/__generated__/models/voiceCallCaps
 import type { VoiceCallStartResponse } from "@/app/api/__generated__/models/voiceCallStartResponse";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
 import {
-  type CallRoomPass,
   type CallTicket,
   forgetCallTicket,
   isCallId,
@@ -26,7 +25,7 @@ import {
   openMicrophone,
   releasePlayer,
 } from "./audioGraph";
-import { type CallRoomEvents, joinCallRoom, loadLiveKit } from "./callRoom";
+import { loadLiveKit } from "./callRoom";
 import {
   clearTimers,
   closeContext,
@@ -34,7 +33,6 @@ import {
   type Connection,
   endCall,
   later,
-  leaveRoom,
   newConnection,
   type OpenCall,
   readStatus,
@@ -63,8 +61,7 @@ import {
   REATTACH_RETRY_MS,
   REATTACH_WINDOW_MS,
   RESUMED_NOTICE_MS,
-  ROOM_JOIN_TIMEOUT_MS,
-  ROOM_PLAYOUT_MS,
+  rejoinPassOf,
   roomPassOf,
   secondsBetween,
   START_RETRIES,
@@ -83,6 +80,7 @@ import {
   type ClientMessage,
   type RelayMessage,
 } from "./protocol";
+import { useCallRoom } from "./useCallRoom";
 
 type EndingAction =
   | "confirm"
@@ -113,6 +111,20 @@ export function useVoiceCall(args: Args) {
     argsRef.current = args;
   });
   const connRef = useRef<Connection>(newConnection());
+  const callRoom = useCallRoom({
+    connRef,
+    onReplaced(call) {
+      dropCall();
+      showHeld(call.callId, "show", { wentElsewhere: true });
+    },
+    onLost() {
+      lose();
+    },
+    onReconnected() {
+      setResumedAt(Date.now());
+      setNow(Date.now());
+    },
+  });
 
   const [phase, setPhase] = useState<CallPhase>(
     args.isOffered ? "checking" : "idle",
@@ -122,8 +134,6 @@ export function useVoiceCall(args: Args) {
   const [now, setNow] = useState(0);
   const [turnsLeft, setTurnsLeft] = useState<number | null>(null);
   const [resumedAt, setResumedAt] = useState<number | null>(null);
-  // LiveKit is getting the call's audio back after the network changed.
-  const [isAudioReconnecting, setIsAudioReconnecting] = useState(false);
   const [isWrappingUp, setIsWrappingUp] = useState(false);
   // The words have had no answer for the whole poll window: the person may
   // type instead while it goes on.
@@ -266,7 +276,9 @@ export function useVoiceCall(args: Args) {
     }
     let started: VoiceCallStartResponse;
     try {
-      const response = await startOnboardingVoiceCall();
+      const response = await startOnboardingVoiceCall({
+        supports_livekit: true,
+      });
       if (
         response.status !== 200 ||
         !isCallId(response.data.call_id) ||
@@ -307,8 +319,8 @@ export function useVoiceCall(args: Args) {
     // the call. A join LiveKit refuses, fails or takes too long over takes
     // the call's audio onto the socket, with nothing on the screen about it.
     if (room) {
-      await enterRoom(call, room, microphone, player, (error) => {
-        takeSocketAudio(call);
+      await callRoom.enterRoom(call, room, microphone, player, (error) => {
+        callRoom.takeSocketAudio(call);
         trackInterview("voice_interview_leg_fallback", {
           why: legFallbackWhyOf(error),
         });
@@ -318,76 +330,6 @@ export function useVoiceCall(args: Args) {
       releasePlayer(player);
     }
     openSocket({ type: "start", token: started.token, leg: call.leg });
-  }
-
-  // Joins the call's room and keeps it for the call. False, with nothing of
-  // the room left, when the call went meanwhile or the join failed, which
-  // *onFailure* hears.
-  async function enterRoom(
-    call: OpenCall,
-    pass: CallRoomPass,
-    microphone: MediaStream,
-    player: HTMLAudioElement,
-    onFailure?: (error: unknown) => void,
-  ) {
-    const conn = connRef.current;
-    try {
-      const room = await joinCallRoom({
-        pass,
-        microphone,
-        player,
-        timeoutMs: ROOM_JOIN_TIMEOUT_MS,
-        events: roomEventsFor(call),
-      });
-      if (conn.call !== call) {
-        room.leave();
-        return false;
-      }
-      conn.room = room;
-      return true;
-    } catch (error) {
-      if (conn.call === call) onFailure?.(error);
-      return false;
-    }
-  }
-
-  // What the call's room tells the call.
-  function roomEventsFor(call: OpenCall): CallRoomEvents {
-    const conn = connRef.current;
-    return {
-      onReconnecting() {
-        if (conn.call === call) setIsAudioReconnecting(true);
-      },
-      onReconnected() {
-        if (conn.call !== call) return;
-        setIsAudioReconnecting(false);
-        setResumedAt(Date.now());
-        setNow(Date.now());
-      },
-      onOttoTrack(track) {
-        if (conn.call === call) conn.audio?.listen(track);
-      },
-      onLost(why) {
-        if (conn.call !== call) return;
-        conn.room = null;
-        setIsAudioReconnecting(false);
-        // Another tab rejoined the call: it goes on there.
-        if (why === "replaced") {
-          dropCall();
-          showHeld(call.callId, "show", { wentElsewhere: true });
-          return;
-        }
-        lose();
-      },
-    };
-  }
-
-  // The call's audio takes the socket instead of the room.
-  function takeSocketAudio(call: OpenCall) {
-    call.leg = "websocket";
-    call.room = null;
-    leaveRoom(connRef.current);
-    setIsAudioReconnecting(false);
   }
 
   function refuseMicrophone(error: unknown) {
@@ -520,7 +462,7 @@ export function useVoiceCall(args: Args) {
     const call = conn.call;
     if (!call || conn.isReady || leg !== "websocket") return;
     if (call.leg !== "livekit") return;
-    takeSocketAudio(call);
+    callRoom.takeSocketAudio(call);
     trackInterview("voice_interview_leg_fallback", { why: "relay" });
   }
 
@@ -529,7 +471,9 @@ export function useVoiceCall(args: Args) {
     const call = conn.call;
     if (!call) return;
     // The relay's word on the leg is its last.
-    if (leg === "websocket" && call.leg === "livekit") takeSocketAudio(call);
+    if (leg === "websocket" && call.leg === "livekit") {
+      callRoom.takeSocketAudio(call);
+    }
     const startedAt = Date.now();
     call.ticket = ticket;
     call.caps = caps;
@@ -578,7 +522,10 @@ export function useVoiceCall(args: Args) {
     setResumedAt(Date.now());
     setNow(Date.now());
     setPhase("live");
-    trackInterview("voice_interview_reconnected", { gap_s: gapS });
+    trackInterview("voice_interview_reconnected", {
+      gap_s: gapS,
+      leg: "websocket",
+    });
   }
 
   function onEnded(reason: string, elapsedS: number) {
@@ -590,7 +537,7 @@ export function useVoiceCall(args: Args) {
     conn.dropDeadline = null;
     clearTimers(conn);
     finishAudio();
-    finishRoom();
+    callRoom.finishRoom();
     forgetTicket();
     setIsHangingUp(false);
     setIsWrappingUp(false);
@@ -716,12 +663,11 @@ export function useVoiceCall(args: Args) {
     conn.dropDeadline = null;
     clearTimers(conn);
     closeSocket(conn);
-    leaveRoom(conn);
+    callRoom.leave();
     finishAudio();
     forgetTicket();
     setIsHangingUp(false);
     setIsWrappingUp(false);
-    setIsAudioReconnecting(false);
     setPhase("saving");
     void awaitEnding(call.callId);
   }
@@ -1036,40 +982,55 @@ export function useVoiceCall(args: Args) {
       return;
     }
     const context = createCallContext();
-    void rejoinCall(context, createCallPlayer(context), kept);
+    void rejoinCall(context, createCallPlayer(context), kept, held);
   }
 
   async function rejoinCall(
     context: AudioContext,
     player: HTMLAudioElement,
     kept: CallTicket,
+    shown: HeldCall,
   ) {
     const conn = connRef.current;
     const attempt = beginAttempt();
     setPhase("reconnecting");
-    // The socket to rejoin on is the server's word, read now; the call may
-    // also have ended meanwhile.
-    const call = await readStatus(kept.callId);
+    // Where to rejoin is the server's word, read now: the relay's socket,
+    // the leg the call's audio takes, and on the LiveKit leg the project its
+    // room is on. The call may also have ended meanwhile.
+    const read = await readStatus(kept.callId);
     if (attempt !== conn.attempt) {
       releasePlayer(player);
       closeContext(context);
       return;
     }
-    const isLive =
-      call !== null &&
-      call !== "missing" &&
-      (call.status === "connecting" || call.status === "live");
-    const relayUrl = isLive ? relayUrlOf(call) : null;
-    if (!relayUrl) {
+    const call =
+      read !== null &&
+      read !== "missing" &&
+      (read.status === "connecting" || read.status === "live")
+        ? read
+        : null;
+    const relayUrl = call ? relayUrlOf(call) : null;
+    if (!call || !relayUrl) {
       releasePlayer(player);
       closeContext(context);
-      if (call === null) {
+      if (read === null) {
         setPhase("held");
         return;
       }
       setHeld(null);
       setPhase("wrapping_up");
       void awaitEnding(kept.callId);
+      return;
+    }
+    // A call whose audio is in its room cannot be rejoined from here without
+    // the room and this tab's token for it.
+    const room =
+      call.leg === "livekit" ? rejoinPassOf(call, kept.roomToken) : null;
+    if (call.leg === "livekit" && !room) {
+      releasePlayer(player);
+      closeContext(context);
+      setHeld({ ...shown, canRejoin: false });
+      setPhase("held");
       return;
     }
     let microphone: MediaStream;
@@ -1105,29 +1066,35 @@ export function useVoiceCall(args: Args) {
       startedAt: kept.startedAt,
       turnsLeft: kept.turnsLeft,
       turns: Math.max(0, kept.caps.max_agent_turns - kept.turnsLeft),
-      leg: kept.room ? "livekit" : "websocket",
-      room: kept.room,
+      leg: room ? "livekit" : "websocket",
+      room,
     };
     conn.call = rejoined;
     conn.shownCallId = kept.callId;
     setNow(Date.now());
     setEndsAt(kept.startedAt + kept.caps.max_call_s * 1000);
     setTurnsLeft(kept.turnsLeft);
-    if (kept.room) {
-      const isInRoom = await enterRoom(rejoined, kept.room, microphone, player);
-      if (attempt !== conn.attempt || conn.call !== rejoined) return;
-      // The call's audio is in its room: a call that cannot get back into
-      // it cannot be rejoined from here.
-      if (!isInRoom) {
-        dropCall();
-        setPhase("held");
-        return;
-      }
-    } else {
-      releasePlayer(player);
-    }
+    // The socket resumes the call while the browser gets back into its room.
     openDropWindow(rejoined);
     openSocket({ type: "resume", ticket: kept.ticket });
+    if (!room) {
+      releasePlayer(player);
+      return;
+    }
+    const isInRoom = await callRoom.enterRoom(
+      rejoined,
+      room,
+      microphone,
+      player,
+    );
+    if (attempt !== conn.attempt || conn.call !== rejoined) return;
+    // The call's audio is in its room: a call that cannot get back into it
+    // cannot be rejoined from here.
+    if (!isInRoom) {
+      dropCall();
+      setHeld(shown);
+      setPhase("held");
+    }
   }
 
   function endHeldCall() {
@@ -1188,7 +1155,7 @@ export function useVoiceCall(args: Args) {
     setEndsAt(null);
     setTurnsLeft(null);
     setResumedAt(null);
-    setIsAudioReconnecting(false);
+    callRoom.clearReconnecting();
     setIsWrappingUp(false);
     setIsPastWindow(false);
     setIsHangingUp(false);
@@ -1209,11 +1176,10 @@ export function useVoiceCall(args: Args) {
     conn.dropDeadline = null;
     clearTimers(conn);
     closeSocket(conn);
-    leaveRoom(conn);
+    callRoom.leave();
     conn.audio?.close();
     conn.audio = null;
     setLevels(null);
-    setIsAudioReconnecting(false);
   }
 
   // Otto's last words play out; the microphone stops now.
@@ -1222,17 +1188,6 @@ export function useVoiceCall(args: Args) {
     conn.audio?.finish();
     conn.audio = null;
     setLevels(null);
-  }
-
-  // On the LiveKit leg Otto's last words are still playing in the room: the
-  // microphone leaves it now, and the browser once Otto has.
-  function finishRoom() {
-    const conn = connRef.current;
-    const room = conn.room;
-    conn.room = null;
-    room?.mute();
-    room?.leaveAfterOtto(ROOM_PLAYOUT_MS);
-    setIsAudioReconnecting(false);
   }
 
   function keepTicket(call: OpenCall) {
@@ -1244,7 +1199,7 @@ export function useVoiceCall(args: Args) {
       caps: call.caps,
       startedAt: call.startedAt,
       turnsLeft: call.turnsLeft,
-      room: call.leg === "livekit" ? call.room : null,
+      roomToken: call.leg === "livekit" ? (call.room?.token ?? null) : null,
     });
   }
 
@@ -1267,7 +1222,7 @@ export function useVoiceCall(args: Args) {
       phase === "live" &&
       resumedAt !== null &&
       now - resumedAt < RESUMED_NOTICE_MS,
-    isAudioReconnecting,
+    isAudioReconnecting: callRoom.isAudioReconnecting,
     isHangingUp,
     startFailure,
     ending,

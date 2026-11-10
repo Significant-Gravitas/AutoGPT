@@ -29,7 +29,7 @@ function ticket(overrides: Partial<CallTicket> = {}): CallTicket {
     caps: CAPS,
     startedAt: Date.now(),
     turnsLeft: 9,
-    room: null,
+    roomToken: null,
     ...overrides,
   };
 }
@@ -49,25 +49,47 @@ describe("the call's ticket, kept for a reload", () => {
     );
   });
 
-  it("keeps no relay socket: the server names it when the call is rejoined", () => {
-    saveCallTicket(USER, ticket());
+  it("keeps no address to rejoin on: the server names the relay's socket and the room's project", () => {
+    saveCallTicket(USER, ticket({ roomToken: ROOM.token }));
 
     expect(
       Object.keys(JSON.parse(sessionStorage.getItem(KEY) ?? "{}")),
-    ).toEqual(["callId", "ticket", "caps", "startedAt", "turnsLeft", "room"]);
+    ).toEqual([
+      "callId",
+      "ticket",
+      "caps",
+      "startedAt",
+      "turnsLeft",
+      "roomToken",
+    ]);
   });
 
-  it("keeps the call's room on the LiveKit leg, so a reload joins it again", () => {
-    saveCallTicket(USER, ticket({ room: ROOM }));
+  it("keeps this browser's token for the call's room on the LiveKit leg, so a reload joins it again", () => {
+    saveCallTicket(USER, ticket({ roomToken: ROOM.token }));
 
-    expect(readCallTicket(USER, CALL_ID)?.room).toEqual(ROOM);
+    expect(readCallTicket(USER, CALL_ID)?.roomToken).toBe(ROOM.token);
   });
 
-  it("reads a ticket kept with no room as a call on the socket", () => {
-    const { room: _room, ...withoutRoom } = ticket();
+  it("reads a ticket kept with no room token as a call on the socket", () => {
+    const { roomToken: _roomToken, ...withoutRoom } = ticket();
     keep(withoutRoom);
 
-    expect(readCallTicket(USER, CALL_ID)?.room).toBeNull();
+    expect(readCallTicket(USER, CALL_ID)?.roomToken).toBeNull();
+  });
+
+  it("gives back no room address stored beside the ticket", () => {
+    keep({
+      ...ticket({ roomToken: ROOM.token }),
+      room: ROOM,
+      roomUrl: ROOM.url,
+    });
+
+    const kept = readCallTicket(USER, CALL_ID);
+
+    expect(kept).toEqual(
+      ticket({ roomToken: ROOM.token, startedAt: expect.any(Number) }),
+    );
+    expect(JSON.stringify(kept)).not.toContain(ROOM.url);
   });
 
   it("gives nothing for another call or another person, and keeps the ticket", () => {
@@ -93,11 +115,12 @@ describe("the call's ticket, kept for a reload", () => {
     ["an empty ticket", { ...ticket(), ticket: "" }],
     ["a start time that is not a time", { ...ticket(), startedAt: "now" }],
     // Its audio is in a room this tab could not join again.
+    ["an empty room token", { ...ticket(), roomToken: "" }],
+    ["a room token that is not text", { ...ticket(), roomToken: 42 }],
     [
-      "a room that is no LiveKit project's",
-      { ...ticket(), room: { ...ROOM, url: "https://agpt.livekit.cloud" } },
+      "a room token too long to be one",
+      { ...ticket(), roomToken: "t".repeat(4_097) },
     ],
-    ["a room with no token", { ...ticket(), room: { ...ROOM, token: "" } }],
   ])("forgets a ticket with %s, without throwing", (_case, value) => {
     if (typeof value === "string") sessionStorage.setItem(KEY, value);
     else keep(value);

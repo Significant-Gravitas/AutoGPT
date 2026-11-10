@@ -54,6 +54,17 @@ export function roomPassOf(leg: VoiceCallLeg): CallRoomPass | null {
   return isCallRoomPass(pass) ? pass : null;
 }
 
+// The room a rejoin joins again: the LiveKit project the server names for
+// the live call, with the token this tab kept for it; null when either is
+// missing.
+export function rejoinPassOf(
+  call: VoiceCallStatusResponse,
+  roomToken: string | null,
+): CallRoomPass | null {
+  const pass = { url: call.livekit_url, token: roomToken };
+  return isCallRoomPass(pass) ? pass : null;
+}
+
 export class RoomJoinTimeout extends Error {
   constructor() {
     super("The call's room did not let the browser in in time");

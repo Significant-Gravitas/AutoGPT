@@ -211,7 +211,8 @@ export const InterviewEvent = {
   // A call ended: `mode`, the relay's `reason`, `elapsed_s` and Otto's
   // `turns`. A call lost on the way is reported once its end is known.
   INTERVIEW_ENDED: "interview_ended",
-  // A dropped call's socket re-attached after `gap_s`.
+  // A call's connection came back after `gap_s`: its socket re-attached
+  // (`leg` `websocket`), or LiveKit got its room's audio back (`livekit`).
   VOICE_INTERVIEW_RECONNECTED: "voice_interview_reconnected",
   VOICE_INTERVIEW_MIC_DENIED: "voice_interview_mic_denied",
   // A call's audio fell from LiveKit to the control socket (`why`).
