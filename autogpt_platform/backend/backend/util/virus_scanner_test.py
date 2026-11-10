@@ -1,7 +1,9 @@
 import asyncio
 import contextlib
+import re
 import struct
 import time
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import aioclamd
@@ -9,6 +11,7 @@ import pytest
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.util import virus_scanner
+from backend.util.settings import Config
 from backend.util.virus_scanner import (
     VirusScannerService,
     VirusScannerSettings,
@@ -150,6 +153,19 @@ class TestVirusScannerService:
         scanner._client = mock_client
 
         with pytest.raises(aioclamd.ResponseError, match="no result"):
+            await scanner.scan_file(b"some upload", filename="upload.bin")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "closed", [BrokenPipeError, ConnectionAbortedError, ConnectionResetError]
+    )
+    async def test_a_connection_closed_mid_scan_fails_the_scan(self, scanner, closed):
+        mock_client = Mock()
+        mock_client.ping = AsyncMock(return_value=True)
+        mock_client.instream = AsyncMock(side_effect=closed())
+        scanner._client = mock_client
+
+        with pytest.raises(RuntimeError, match="upload.bin .* was not scanned"):
             await scanner.scan_file(b"some upload", filename="upload.bin")
 
     @pytest.mark.asyncio
@@ -339,27 +355,85 @@ class TestStreamingToClamd:
         assert longest_stall < 2.0
 
     @pytest.mark.asyncio
-    async def test_clamd_closing_mid_stream_falls_back_to_smaller_chunks(self):
-        refused: list[int] = []
-        async with _fake_clamd(stream_max=1024 * 1024, refused=refused) as port:
-            scanner = VirusScannerService(
-                VirusScannerSettings(clamav_service_port=port)
-            )
-            result = await scanner.scan_file(b"\x00" * (3 * 1024 * 1024))
-
-        assert result.is_clean
-        assert refused
-
-    @pytest.mark.asyncio
-    async def test_clamd_closing_at_every_chunk_size_fails_the_scan(self):
-        async with _fake_clamd(drop=True) as port:
+    @pytest.mark.parametrize(
+        ("read_past_limit", "error"),
+        [
+            # A refusal the client reads names the size.
+            (True, "too large to scan"),
+            # A real clamd closes the stream it refused, so the client may see
+            # the close before the reply.
+            (False, "too large to scan|was not scanned"),
+        ],
+        ids=["clamd-reads-on", "clamd-closes"],
+    )
+    async def test_a_file_over_clamds_stream_limit_is_refused_not_scanned_in_pieces(
+        self, monkeypatch, read_past_limit, error
+    ):
+        sessions: list[int] = []
+        async with _fake_clamd(
+            stream_max=_MiB,
+            read_past_limit=read_past_limit,
+            found_marker=_MARKER,
+            sessions=sessions,
+        ) as port:
             scanner = VirusScannerService(
                 VirusScannerSettings(
                     clamav_service_port=port, mark_failed_scans_as_clean=True
                 )
             )
-            with pytest.raises(RuntimeError, match="closed the connection"):
-                await scanner.scan_file(b"\x00" * (1024 * 1024))
+            monkeypatch.setattr(virus_scanner, "_scanner", scanner)
+            # Each half would fit under the limit, and neither holds the marker.
+            with pytest.raises(VirusScanError, match=error):
+                await scan_content_safe(_straddling(3 * _MiB // 2), filename="a.zip")
+
+        assert len(sessions) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_file_within_clamds_stream_limit_is_scanned_whole_in_one_stream(
+        self,
+    ):
+        sessions: list[int] = []
+        content = _straddling(3 * _MiB // 2)
+        async with _fake_clamd(
+            stream_max=2 * _MiB, found_marker=_MARKER, sessions=sessions
+        ) as port:
+            scanner = VirusScannerService(
+                VirusScannerSettings(clamav_service_port=port)
+            )
+            result = await scanner.scan_file(content)
+
+        assert result.threat_name == "Eicar-Test-Signature"
+        assert sessions == [len(content)]
+
+    @pytest.mark.asyncio
+    async def test_clamd_closing_the_connection_fails_the_scan(self):
+        sessions: list[int] = []
+        async with _fake_clamd(drop=True, sessions=sessions) as port:
+            scanner = VirusScannerService(
+                VirusScannerSettings(
+                    clamav_service_port=port, mark_failed_scans_as_clean=True
+                )
+            )
+            with pytest.raises(RuntimeError, match="was not scanned"):
+                await scanner.scan_file(b"\x00" * _MiB)
+
+        assert len(sessions) == 1
+
+    @pytest.mark.asyncio
+    async def test_with_scanning_disabled_a_file_of_any_size_is_accepted_unsent(
+        self, monkeypatch
+    ):
+        sessions: list[int] = []
+        async with _fake_clamd(stream_max=_MiB, sessions=sessions) as port:
+            scanner = VirusScannerService(
+                VirusScannerSettings(
+                    clamav_service_port=port, clamav_service_enabled=False
+                )
+            )
+            monkeypatch.setattr(virus_scanner, "_scanner", scanner)
+            await scan_content_safe(_straddling(2 * _MiB))
+
+        assert sessions == []
 
     @pytest.mark.asyncio
     async def test_a_clamd_that_never_answers_ping_fails_the_scan_at_the_timeout(
@@ -414,22 +488,6 @@ class TestStreamingToClamd:
                 await scan_content_safe(b"some upload")
 
     @pytest.mark.asyncio
-    async def test_a_found_chunk_closes_the_chunks_still_streaming(self):
-        held = asyncio.Queue()
-        async with _fake_clamd(
-            stream_max=1024 * 1024, found_if=b"X", held=held
-        ) as port:
-            scanner = VirusScannerService(
-                VirusScannerSettings(clamav_service_port=port)
-            )
-            content = b"X" + b"\x00" * (4 * 1024 * 1024 - 1)
-            result = await asyncio.wait_for(scanner.scan_file(content), timeout=10)
-            for _ in range(3):
-                await asyncio.wait_for(held.get(), timeout=10)
-
-        assert result.threat_name == "Eicar-Test-Signature"
-
-    @pytest.mark.asyncio
     async def test_a_clamd_that_stops_reading_fails_the_scan_at_the_timeout(self):
         async with _fake_clamd(stall=True) as port:
             scanner = VirusScannerService(
@@ -441,6 +499,37 @@ class TestStreamingToClamd:
                 )
 
 
+@pytest.mark.parametrize(
+    "compose_file", ["docker-compose.yml", "backend/docker-compose.test.yaml"]
+)
+def test_the_shipped_clamd_takes_the_largest_upload_whole(compose_file):
+    largest_upload_mb = max(
+        Config.model_fields[name].default
+        for name in ("upload_file_size_limit_mb", "max_file_size_mb")
+    )
+    limits = dict(
+        re.findall(
+            r"CLAMD_CONF_(StreamMaxLength|MaxFileSize|MaxScanSize)=(\d+)M",
+            (_PLATFORM_DIR / compose_file).read_text(encoding="utf-8"),
+        )
+    )
+
+    assert limits.keys() == {"StreamMaxLength", "MaxFileSize", "MaxScanSize"}
+    assert all(int(mb) >= largest_upload_mb for mb in limits.values())
+
+
+_PLATFORM_DIR = Path(__file__).parents[3]
+_MiB = 1024 * 1024
+_MARKER = b"synthetic-test-signature"
+
+
+def _straddling(size: int) -> bytes:
+    """`size` zero bytes with `_MARKER` across the middle, so scanning the file
+    in halves would cut it in two."""
+    start = size // 2 - len(_MARKER) // 2
+    return bytes(start) + _MARKER + bytes(size - start - len(_MARKER))
+
+
 @contextlib.asynccontextmanager
 async def _fake_clamd(
     stream_max: int | None = None,
@@ -448,10 +537,14 @@ async def _fake_clamd(
     stall: bool = False,
     stall_ping: bool = False,
     drop: bool = False,
-    refused: list[int] | None = None,
-    found_if: bytes | None = None,
-    held: asyncio.Queue | None = None,
+    read_past_limit: bool = False,
+    found_marker: bytes | None = None,
+    sessions: list[int] | None = None,
 ):
+    """A ClamAV stand-in. Past `stream_max` it refuses the stream and closes the
+    connection, as clamd does, or with `read_past_limit` reads the rest first;
+    it reports `found_marker` only where one stream holds the whole of it, and
+    logs the bytes each INSTREAM session sent into `sessions`."""
     released = asyncio.Event()
 
     async def serve(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -462,31 +555,30 @@ async def _fake_clamd(
         elif stall:
             await released.wait()
         elif drop:
+            if sessions is not None:
+                sessions.append(0)
             writer.transport.abort()
             return
         else:
             received = 0
-            first = b""
+            stream = bytearray()
+            refused = False
             while size := struct.unpack("!L", await reader.readexactly(4))[0]:
                 frame = await reader.readexactly(size)
-                first = first or frame[:1]
                 received += len(frame)
-                if stream_max is not None and received > stream_max:
-                    if refused is not None:
-                        refused.append(received)
+                if found_marker is not None:
+                    stream += frame
+                if stream_max is not None and received > stream_max and not refused:
+                    refused = True
                     writer.write(b"INSTREAM size limit exceeded. ERROR\n")
-                    break
-            else:
-                if found_if is not None and first != found_if:
-                    # Withhold the reply until the client gives up on this chunk.
-                    with contextlib.suppress(ConnectionError):
-                        await reader.read()
-                    assert held is not None
-                    held.put_nowait(True)
-                    writer.close()
-                    return
+                    if not read_past_limit:
+                        break
+            if sessions is not None:
+                sessions.append(received)
+            if not refused:
+                found = found_marker is not None and found_marker in stream
                 writer.write(
-                    b"stream: Eicar-Test-Signature FOUND\n" if found_if else reply
+                    b"stream: Eicar-Test-Signature FOUND\n" if found else reply
                 )
         await writer.drain()
         writer.close()

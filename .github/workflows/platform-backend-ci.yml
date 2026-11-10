@@ -270,9 +270,9 @@ jobs:
           - 3310:3310
         env:
           CLAMAV_NO_FRESHCLAMD: false
-          CLAMD_CONF_StreamMaxLength: 50M
-          CLAMD_CONF_MaxFileSize: 100M
-          CLAMD_CONF_MaxScanSize: 100M
+          CLAMD_CONF_StreamMaxLength: 256M
+          CLAMD_CONF_MaxFileSize: 256M
+          CLAMD_CONF_MaxScanSize: 256M
           CLAMD_CONF_MaxThreads: 4
           CLAMD_CONF_ReadTimeout: 300
         options: >-
