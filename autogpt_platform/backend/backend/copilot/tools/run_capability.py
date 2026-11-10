@@ -86,8 +86,7 @@ class RunCapabilityTool(BaseTool):
             "skills: {}). "
             "Never guess ids: take them from find_capability. An unconnected "
             "capability returns a sign-in card: show it and stop. review_required "
-            "means tell the user where its card is, as the result says, and "
-            "wait for approval, then resume_capability(review_id). "
+            "means wait for approval, then resume_capability(review_id). "
             "validate_only=true inspects without running."
         )
 
