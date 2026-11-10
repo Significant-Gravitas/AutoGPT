@@ -54,6 +54,8 @@ LIVEKIT_KEY = "APIroutes"
 LIVEKIT_SECRET = "q" * 48  # pragma: allowlist secret
 # The control socket's leg, which carries no room.
 SOCKET = {"kind": "websocket", "url": None, "token": None}
+# A start from a browser that can take a call's audio through a room.
+LIVEKIT_BROWSER = {"supports_livekit": True}
 
 
 @pytest.fixture(autouse=True)
@@ -115,11 +117,13 @@ def _interview(user_id: str, stage: str | None) -> ChatSession:
     return session
 
 
-async def start():
+async def start(body: dict | None = None):
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
-        return await client.post(URL)
+        if body is None:
+            return await client.post(URL)
+        return await client.post(URL, json=body)
 
 
 async def test_the_route_is_not_there_while_voice_is_off(voice_on):
@@ -203,16 +207,33 @@ async def test_the_edge_flag_picks_the_leg_the_start_token_names(
     voice_on, livekit_on, edge, leg
 ):
     voice_on.edge.return_value = edge
-    body = (await start()).json()
+    body = (await start(LIVEKIT_BROWSER)).json()
     assert body["leg"]["kind"] == leg
     assert tokens.verify_start(body["token"]).leg == leg
+
+
+@pytest.mark.parametrize(
+    "body",
+    [None, {}, {"supports_livekit": False}],
+    ids=["no-body", "empty", "says-no"],
+)
+async def test_a_browser_that_does_not_take_livekit_gets_the_socket_whatever_the_flag(
+    voice_on, livekit_on, body
+):
+    voice_on.edge.return_value = "livekit"
+
+    started = (await start(body)).json()
+
+    assert started["leg"] == SOCKET
+    assert tokens.verify_start(started["token"]).leg == "websocket"
+    voice_on.edge.assert_not_awaited()
 
 
 async def test_the_livekit_leg_names_the_project_and_the_browsers_token_for_the_room(
     voice_on, livekit_on, test_user_id
 ):
     voice_on.edge.return_value = "livekit"
-    body = (await start()).json()
+    body = (await start(LIVEKIT_BROWSER)).json()
 
     leg = body["leg"]
     assert leg["url"] == LIVEKIT_URL
@@ -234,7 +255,7 @@ async def test_the_livekit_leg_falls_back_to_the_socket_where_there_is_no_projec
 ):
     voice_on.edge.return_value = "livekit"
     monkeypatch.setattr(voice.settings.config, "livekit_url", "")
-    body = (await start()).json()
+    body = (await start(LIVEKIT_BROWSER)).json()
     assert body["leg"] == SOCKET
     assert tokens.verify_start(body["token"]).leg == "websocket"
 
@@ -243,7 +264,7 @@ async def test_an_edge_flag_that_cannot_be_read_falls_back_to_the_socket(
     voice_on, livekit_on
 ):
     voice_on.edge.side_effect = RuntimeError("flag service down")
-    assert (await start()).json()["leg"] == SOCKET
+    assert (await start(LIVEKIT_BROWSER)).json()["leg"] == SOCKET
 
 
 @pytest.mark.parametrize(
@@ -445,6 +466,39 @@ async def test_a_live_calls_state_names_the_socket_to_rejoin_it_on(
         await _record(redis, test_user_id, status=status)
         body = (await request("GET", f"/{CALL}")).json()
         assert (status, body["relay_url"]) == (status, relay_url)
+        assert body["livekit_url"] is None
+
+
+async def test_a_live_livekit_calls_state_names_the_project_to_rejoin_its_room_on(
+    voice_on, livekit_on, redis, test_user_id
+):
+    """A tab rejoining a call on the LiveKit leg joins its room on the
+    project the server names, never one it kept itself."""
+    for status, livekit_url in (
+        ("connecting", LIVEKIT_URL),
+        ("live", LIVEKIT_URL),
+        ("ended", None),
+        ("transcribing", None),
+    ):
+        await _record(redis, test_user_id, status=status, leg="livekit")
+        body = (await request("GET", f"/{CALL}")).json()
+        assert (status, body["leg"], body["livekit_url"]) == (
+            status,
+            "livekit",
+            livekit_url,
+        )
+
+
+async def test_a_live_livekit_call_names_no_project_once_the_deployment_has_none(
+    voice_on, monkeypatch, redis, test_user_id
+):
+    monkeypatch.setattr(voice.settings.config, "livekit_url", "")
+    await _record(redis, test_user_id, status="live", leg="livekit")
+
+    body = (await request("GET", f"/{CALL}")).json()
+
+    assert (body["leg"], body["livekit_url"]) == ("livekit", None)
+    assert body["relay_url"] == f"{RELAY}/call"
 
 
 async def test_someone_elses_call_is_not_found(redis):

@@ -1,6 +1,11 @@
 """A call's LiveKit room: who may join it, with which grants, for how long,
 and when a deployment has a LiveKit project at all."""
 
+import json
+import subprocess
+import sys
+from pathlib import Path
+
 import jwt
 import pytest
 from livekit import api
@@ -13,6 +18,9 @@ from backend.voice_relay.config import CAPS, RELAY_ROOM_GRACE_S
 CALL_ID = "c" * 32
 KEY = "APIkey"
 SECRET = "s" * 48  # pragma: allowlist secret
+PROJECT = rooms.LiveKitProject(
+    url="wss://agpt.livekit.cloud", api_key=KEY, api_secret=SECRET
+)
 
 
 def _claims(token: str) -> Claims:
@@ -26,9 +34,7 @@ def _lifetime_s(token: str) -> int:
 
 
 def test_the_browser_may_join_only_its_calls_room_publish_its_microphone_and_listen():
-    token = rooms.person_token(
-        user_id="user-1", call_id=CALL_ID, api_key=KEY, api_secret=SECRET
-    )
+    token = rooms.person_token(user_id="user-1", call_id=CALL_ID, project=PROJECT)
     claims = _claims(token)
     assert claims.identity == "user:user-1"
     video = claims.video
@@ -51,9 +57,7 @@ def test_the_browser_may_join_only_its_calls_room_publish_its_microphone_and_lis
 
 def test_the_relay_joins_the_same_room_as_otto_for_as_long_as_the_call_can_run():
     ttl_s = CAPS.max_call_s + RELAY_ROOM_GRACE_S
-    token = rooms.relay_token(
-        call_id=CALL_ID, api_key=KEY, api_secret=SECRET, ttl_s=ttl_s
-    )
+    token = rooms.relay_token(call_id=CALL_ID, project=PROJECT, ttl_s=ttl_s)
     claims = _claims(token)
     assert claims.identity == "otto"
     video = claims.video
@@ -70,13 +74,9 @@ def test_the_relay_joins_the_same_room_as_otto_for_as_long_as_the_call_can_run()
 @pytest.mark.parametrize("mint", ["person", "relay"])
 def test_whichever_join_makes_the_room_makes_it_for_two_and_short_lived(mint):
     if mint == "person":
-        token = rooms.person_token(
-            user_id="user-1", call_id=CALL_ID, api_key=KEY, api_secret=SECRET
-        )
+        token = rooms.person_token(user_id="user-1", call_id=CALL_ID, project=PROJECT)
     else:
-        token = rooms.relay_token(
-            call_id=CALL_ID, api_key=KEY, api_secret=SECRET, ttl_s=360
-        )
+        token = rooms.relay_token(call_id=CALL_ID, project=PROJECT, ttl_s=360)
     config = _claims(token).room_config
     assert config is not None
     assert config.max_participants == 2
@@ -85,9 +85,8 @@ def test_whichever_join_makes_the_room_makes_it_for_two_and_short_lived(mint):
 
 
 def test_a_token_signed_with_another_secret_is_not_the_projects():
-    token = rooms.person_token(
-        user_id="user-1", call_id=CALL_ID, api_key=KEY, api_secret="t" * 48
-    )
+    other = PROJECT.model_copy(update={"api_secret": "t" * 48})
+    token = rooms.person_token(user_id="user-1", call_id=CALL_ID, project=other)
     with pytest.raises(jwt.InvalidSignatureError):
         _claims(token)
 
@@ -138,3 +137,38 @@ def test_a_local_install_may_use_a_plain_socket(monkeypatch):
     )
     project = rooms.livekit_project(settings)
     assert project is not None and project.url == "ws://localhost:7880"
+
+
+LOAD_PROBE = """
+import json, sys
+import backend.api.features.onboarding_dump.routes
+from backend.voice_relay import rooms
+def livekit():
+    return sorted(m for m in sys.modules if m == "livekit" or m.startswith("livekit."))
+print("AT_LOAD=" + json.dumps(livekit()))
+rooms.relay_token(
+    call_id="c" * 32,
+    project=rooms.LiveKitProject(url="wss://x.livekit.cloud", api_key="k", api_secret="s" * 48),
+    ttl_s=60,
+)
+print("AFTER_MINT=" + json.dumps("livekit.api" in livekit()))
+"""
+
+
+def test_the_rest_api_loads_the_livekit_sdk_only_once_it_mints_a_room_token():
+    run = subprocess.run(
+        [sys.executable, "-c", LOAD_PROBE],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+        cwd=Path(__file__).resolve().parents[2],
+    )
+    assert run.returncode == 0, run.stderr[-2000:]
+    reported = dict(
+        line.split("=", 1)
+        for line in run.stdout.splitlines()
+        if line.startswith(("AT_LOAD=", "AFTER_MINT="))
+    )
+    assert json.loads(reported["AT_LOAD"]) == []
+    assert json.loads(reported["AFTER_MINT"]) is True

@@ -8,9 +8,16 @@ import asyncio
 from prometheus_client import REGISTRY
 
 from backend.voice_relay import locks
-from backend.voice_relay.conftest import FakeMedia, livekit_edge, silence, speech, until
+from backend.voice_relay.conftest import (
+    FakeMedia,
+    FakeSocket,
+    livekit_edge,
+    silence,
+    speech,
+    until,
+)
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
-from backend.voice_relay.session_test import FAST, USER, Call, open_call
+from backend.voice_relay.session_test import FAST, USER, Call, _session, open_call
 from backend.voice_relay.vendor import AgentAudio, Interrupted
 
 PERSON = f"user:{USER}"
@@ -108,6 +115,58 @@ async def test_a_relay_that_cannot_join_the_room_moves_the_calls_audio_to_the_so
     await _hang_up(call)
 
 
+async def test_a_room_join_past_its_deadline_moves_the_call_to_the_socket_and_the_room_is_left_once_it_lands(
+    redis,
+):
+    media = FakeMedia()
+    media.connect_gate = asyncio.Event()
+    room_edge = livekit_edge(media, join_timeout_s=0.2)
+    before = _fallbacks("relay_join")
+    vendor = FakeVendor([Reply(text="Hi, I'm Otto, an AI.", audio_s=0.2)])
+
+    call = await open_call(redis, vendor, leg="livekit", edge=room_edge)
+
+    assert call.ws.sent[0] == {"type": "leg", "leg": "websocket"}
+    assert call.ws.sent[1]["leg"] == "websocket"
+    assert _fallbacks("relay_join") - before == 1
+    [room] = media.rooms
+    assert room_edge.rooms == 1 and not room.connected
+    media.connect_gate.set()
+    await until(lambda: room.left)
+    assert room_edge.rooms == 0
+    # The call goes on over the socket.
+    await call.ws.wait_for("turn_complete")
+    assert len(b"".join(call.ws.audio)) == round(0.2 * 24_000) * 2
+    assert (await _hang_up(call))["reason"] == "user_hangup"
+
+
+async def test_a_call_whose_vendor_refuses_while_its_room_is_joined_leaves_the_room_once_the_join_lands(
+    redis,
+):
+    media = FakeMedia()
+    media.connect_gate = asyncio.Event()
+    room_edge = livekit_edge(media)
+    session = _session(
+        redis,
+        FakeVendor(connect_delay_s=0.1, refuse=ConnectionError("the vendor is down")),
+        FakeSocket(),
+        [],
+        leg="livekit",
+        edge=room_edge,
+    )
+    assert await locks.take_user_lock(redis, USER, session.call_id) is None
+
+    await asyncio.wait_for(session.run(), timeout=5)
+
+    assert session.end_reason == "vendor_error"
+    # The call is over; the room's connect goes on under it.
+    [room] = media.rooms
+    assert room_edge.rooms == 1 and not room.connected
+    media.connect_gate.set()
+    await until(lambda: room.left)
+    assert room_edge.rooms == 0
+
+
 async def test_a_relay_with_no_livekit_project_carries_a_livekit_call_on_the_socket(
     redis,
 ):
@@ -169,12 +228,38 @@ async def test_the_idle_clock_waits_while_the_persons_microphone_is_out_of_the_r
     await _hang_up(call)
 
 
+async def test_the_idle_clock_waits_while_the_persons_audio_stalls_in_the_room(
+    redis,
+):
+    media = FakeMedia()
+    call, _ = await _room_call(redis, media, audio_s=0.04)
+    room = media.rooms[0]
+    microphone = room.microphone(PERSON)
+    await until(lambda: call.session.quiet_s > 0)
+
+    room.mute(PERSON, microphone, True)
+    quiet = call.session.quiet_s
+    await asyncio.sleep(0.3)
+    assert call.session.quiet_s == quiet
+    room.mute(PERSON, microphone, False)
+    room.reconnecting()
+    await asyncio.sleep(0.3)
+    assert call.session.quiet_s == quiet
+
+    room.reconnected()
+    await until(lambda: call.session.quiet_s > quiet + 0.1)
+    assert not call.session.ended.is_set()
+    await _hang_up(call)
+
+
 async def test_a_dropped_socket_on_the_livekit_leg_leaves_the_audio_in_the_room(
     redis,
 ):
     media = FakeMedia()
     call, vendor = await _room_call(redis, media)
     source = media.sources[0]
+    # Otto's opening has reached the room.
+    await until(lambda: len(source.audio) == call.session.agent_out * 2)
     played = len(source.audio)
 
     call.ws.drop()
@@ -211,6 +296,22 @@ async def test_a_livekit_call_lets_ottos_last_words_play_out_before_leaving_its_
     source.playing.set()
     await asyncio.wait_for(call.task, timeout=5)
     assert media.rooms[0].left and room_edge.rooms == 0
+
+
+async def test_a_room_that_fails_to_close_still_lets_the_call_end(redis, monkeypatch):
+    media = FakeMedia()
+    call, _ = await _room_call(redis, media)
+    leg = call.session.audio
+    close = leg.close
+
+    async def broken(*, play_out: bool) -> None:
+        raise RuntimeError("the SDK went away")
+
+    monkeypatch.setattr(leg, "close", broken)
+
+    assert (await _hang_up(call))["reason"] == "user_hangup"
+    assert call.session.closed.is_set()
+    await close(play_out=False)
 
 
 async def test_a_call_ended_from_another_device_leaves_its_room_at_once(redis):

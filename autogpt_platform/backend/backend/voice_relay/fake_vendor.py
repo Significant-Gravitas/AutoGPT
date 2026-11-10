@@ -74,6 +74,7 @@ class FakeVendor:
         pace_s: float = 0.0,
         connect_delay_s: float = 0.0,
         stall_notes: bool = False,
+        refuse: Exception | None = None,
     ) -> None:
         self.replies = list(replies)
         # Sessions (counted from 1) that drop halfway through their first reply.
@@ -86,12 +87,16 @@ class FakeVendor:
         # Sending a server note never finishes, the way a send to a vendor
         # socket that has stopped reading never does.
         self.stall_notes = stall_notes
+        # Each connect is refused with this.
+        self.refuse = refuse
         self.sessions: list[FakeVendorSession] = []
         self._next = 0
 
     async def connect(self, *, opening: str) -> "FakeVendorSession":
         if self.connect_delay_s:
             await asyncio.sleep(self.connect_delay_s)
+        if self.refuse is not None:
+            raise self.refuse
         session = FakeVendorSession(
             self, number=len(self.sessions) + 1, opening=opening
         )

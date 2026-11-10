@@ -40,6 +40,7 @@ from backend.api.features.onboarding_dump.models import (
     SuggestedTasksUpdate,
     UploadPartResponse,
     VoiceCallFinishRequest,
+    VoiceCallStartRequest,
     VoiceCallStartResponse,
     VoiceCallStatusResponse,
     clients_recording_id,
@@ -283,15 +284,17 @@ def _with_wait_in_body(refusal: fastapi.HTTPException) -> fastapi.HTTPException:
 @router.post("/interview/voice", operation_id="start_onboarding_voice_call")
 async def start_onboarding_voice_call(
     user_id: Annotated[str, Security(get_user_id)],
+    request: VoiceCallStartRequest | None = None,
 ) -> VoiceCallStartResponse:
     """Start a voice call for the person's onboarding interview.
 
     Answers with the relay's call socket and a start token good for this one
     call within a minute: the browser opens the socket and sends the token as
-    its first message. On the ``livekit`` leg it also answers with the call's
-    room and the browser's token for it, and the browser joins the room
-    first; a browser that cannot join takes the call's audio onto the socket
-    instead, and says so in its start.
+    its first message. On the ``livekit`` leg, offered only to a browser that
+    says it supports it, it also answers with the call's room and the
+    browser's token for it, and the browser joins the room first; a browser
+    that cannot join takes the call's audio onto the socket instead, and says
+    so in its start.
 
     404 while voice is off for the person; 409 once their interview is over,
     or while a call of theirs is live (``call_id`` names it); 429 past their
@@ -300,7 +303,9 @@ async def start_onboarding_voice_call(
     in the body (``retry_after_seconds``) as well as in ``Retry-After``.
     """
     try:
-        return await voice.start_voice_call(user_id)
+        return await voice.start_voice_call(
+            user_id, supports_livekit=request is not None and request.supports_livekit
+        )
     except fastapi.HTTPException as e:
         if e.status_code in (429, 503):
             raise _with_wait_in_body(e) from e

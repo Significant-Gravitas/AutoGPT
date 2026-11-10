@@ -370,6 +370,15 @@ class VoiceCallLeg(BaseModel):
     microphone and hear Otto there; on the ``livekit`` leg only."""
 
 
+class VoiceCallStartRequest(BaseModel):
+    """What the browser starting a voice call can take."""
+
+    supports_livekit: bool = False
+    """Whether the browser can take the call's audio through a LiveKit room.
+    A start without it takes the control socket, whatever the edge flag
+    says."""
+
+
 class VoiceCallStartResponse(BaseModel):
     """A voice call the person can now open on the relay."""
 
@@ -432,6 +441,9 @@ class VoiceCallStatusResponse(BaseModel):
     relay_url: str | None = None
     """The relay's call socket, which a tab holding the call's resume ticket
     rejoins it on; set only while the call is live."""
+    livekit_url: str | None = None
+    """The LiveKit project a tab rejoining the call joins its room on; set
+    only while a call on the ``livekit`` leg is live."""
     hand_off: FinalizeResponse | None = None
     """What the onboarding pipeline answered the call's hand-off, read the
     way the typed interview's finish answer is read; None until it has

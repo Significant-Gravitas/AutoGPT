@@ -13,12 +13,13 @@ after the last leaves. Two participants join it and no one else can:
   the call can run.
 
 Both are signed with the LiveKit project's API secret, which only the REST
-API and the relay hold.
+API and the relay hold. The token helpers take the project itself, never its
+keys on their own. The LiveKit server SDK is loaded the first time a token is
+minted, so a process that mints none never loads it.
 """
 
 from datetime import timedelta
 
-from livekit import api
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.util.settings import AppEnvironment, Settings
@@ -53,11 +54,16 @@ def livekit_project(settings: Settings) -> LiveKitProject | None:
     url = settings.config.livekit_url.strip().rstrip("/")
     secure = url.startswith("wss://")
     local = url.startswith("ws://") and settings.config.app_env == AppEnvironment.LOCAL
-    api_key = settings.secrets.livekit_api_key
-    api_secret = settings.secrets.livekit_api_secret
-    if not (secure or local) or not api_key or not api_secret:
+    keyed = bool(
+        settings.secrets.livekit_api_key and settings.secrets.livekit_api_secret
+    )
+    if not (secure or local) or not keyed:
         return None
-    return LiveKitProject(url=url, api_key=api_key, api_secret=api_secret)
+    return LiveKitProject(
+        url=url,
+        api_key=settings.secrets.livekit_api_key,
+        api_secret=settings.secrets.livekit_api_secret,
+    )
 
 
 def room_name(call_id: str) -> str:
@@ -74,8 +80,7 @@ def person_token(
     *,
     user_id: str,
     call_id: str,
-    api_key: str,
-    api_secret: str,
+    project: LiveKitProject,
     ttl_s: float = ROOM_TOKEN_TTL_S,
 ) -> str:
     """The browser's token for call *call_id*'s room."""
@@ -83,20 +88,18 @@ def person_token(
         identity=person_identity(user_id),
         name="You",
         call_id=call_id,
-        api_key=api_key,
-        api_secret=api_secret,
+        project=project,
         ttl_s=ttl_s,
     )
 
 
-def relay_token(*, call_id: str, api_key: str, api_secret: str, ttl_s: float) -> str:
+def relay_token(*, call_id: str, project: LiveKitProject, ttl_s: float) -> str:
     """The relay's own token for call *call_id*'s room, as Otto."""
     return _token(
         identity=RELAY_IDENTITY,
         name="Otto",
         call_id=call_id,
-        api_key=api_key,
-        api_secret=api_secret,
+        project=project,
         ttl_s=ttl_s,
     )
 
@@ -106,10 +109,11 @@ def _token(
     identity: str,
     name: str,
     call_id: str,
-    api_key: str,
-    api_secret: str,
+    project: LiveKitProject,
     ttl_s: float,
 ) -> str:
+    from livekit import api
+
     grants = api.VideoGrants(
         room_join=True,
         room=room_name(call_id),
@@ -120,7 +124,7 @@ def _token(
         can_update_own_metadata=False,
     )
     return (
-        api.AccessToken(api_key, api_secret)
+        api.AccessToken(project.api_key, project.api_secret)
         .with_identity(identity)
         .with_name(name)
         .with_ttl(timedelta(seconds=ttl_s))

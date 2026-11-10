@@ -77,6 +77,7 @@ _SENTRY_SENSITIVE_FIELDS = sorted(
     | SENSITIVE_FIELD_NAMES
     | {
         "anthropic_auth_token",
+        "api_secret",
         "client_secret",
         "codex_access_token",
         "codex_api_key",

@@ -182,18 +182,21 @@ class AudioLeg(Protocol):
         ...
 
 
-# What a room hands the call: the person's audio, and whether their
-# microphone is in the room.
+# What a room hands the call: the person's audio, whether their microphone
+# is in the room, and whether their audio has stalled while it stays there.
 Hear = Callable[[bytes], Awaitable[None]]
 Presence = Callable[[bool], None]
+Stall = Callable[[bool], None]
 
 
 @runtime_checkable
 class RoomEdge(Protocol):
     """Joins a call's LiveKit room for the relay (``edge.LiveKitEdge``)."""
 
-    # Rooms joined, or being joined, and not yet left.
-    rooms: int
+    @property
+    def rooms(self) -> int:
+        """Rooms joined, or being joined, and not yet left."""
+        ...
 
     async def join(
         self,
@@ -203,6 +206,7 @@ class RoomEdge(Protocol):
         ttl_s: float,
         hear: Hear,
         presence: Presence,
+        stall: Stall,
     ) -> AudioLeg: ...
 
 
@@ -330,9 +334,11 @@ class Session:
         self.playout_end = 0.0
         self.quiet_s = 0.0
         # On the LiveKit leg: since when the person's microphone has been out
-        # of the room, or None while it is in. The room's audio reaches the
-        # call once the call is live.
+        # of the room, or None while it is in, and whether its audio has
+        # stalled while it stays there (muted, or a connection reconnecting).
+        # The room's audio reaches the call once the call is live.
         self.away_since: float | None = None
+        self.stalled = False
         self.hearing_room = False
         # The conversation.
         self.turns: list[AgentTurn] = []
@@ -536,6 +542,7 @@ class Session:
                 ttl_s=self.caps.max_call_s + RELAY_ROOM_GRACE_S,
                 hear=self.hear_room,
                 presence=self.on_presence,
+                stall=self.on_stall,
             )
         except Exception as error:
             logger.warning(
@@ -575,6 +582,12 @@ class Session:
                 self._vendor_call("stream end", lambda live: live.end_audio_stream()),
                 "stream_end",
             )
+
+    def on_stall(self, stalled: bool) -> None:
+        """The person's audio stopped, or came back, while they stayed in the
+        room: nothing they say can be heard meanwhile, so the idle clock
+        waits."""
+        self.stalled = stalled
 
     # --- the browser's socket ---------------------------------------------
 
@@ -1014,11 +1027,13 @@ class Session:
             ):
                 self.spawn(self._send_nudge("time"), "time_nudge")
             # Quiet counts only while the browser is attached, the person's
-            # microphone reaches the relay, and Otto's speech has played out.
+            # microphone reaches the relay with its audio flowing, and Otto's
+            # speech has played out.
             if (
                 now >= self.playout_end
                 and self.detached_at is None
                 and self.away_since is None
+                and not self.stalled
             ):
                 self.quiet_s += gap
             if self.quiet_s >= self.caps.idle_s:

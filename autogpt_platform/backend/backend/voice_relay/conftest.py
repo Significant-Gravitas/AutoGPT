@@ -90,10 +90,49 @@ class FakeTrack:
         self.kind = kind
 
 
+class FakePublication:
+    """A track someone published in the room. With auto-subscribe off, as
+    the relay joins, nothing reaches the relay until it subscribes, and the
+    track then comes a turn of the loop later, as the SDK's does."""
+
+    def __init__(
+        self,
+        room: "FakeRoom",
+        participant: "FakeParticipant",
+        sid: str,
+        *,
+        kind: int,
+        source: int,
+        subscribed: bool = False,
+    ) -> None:
+        self.room = room
+        self.participant = participant
+        self.sid = sid
+        self.kind = kind
+        self.source = source
+        self.track: FakeTrack | None = FakeTrack(sid, kind) if subscribed else None
+        # Every set_subscribed the relay made, in order.
+        self.subscribe_calls: list[bool] = []
+
+    def set_subscribed(self, subscribed: bool) -> None:
+        self.subscribe_calls.append(subscribed)
+        loop = asyncio.get_running_loop()
+        if subscribed and self.track is None:
+            self.track = FakeTrack(self.sid, self.kind)
+            loop.call_soon(
+                self.room.emit, "track_subscribed", self.track, self, self.participant
+            )
+        elif not subscribed and self.track is not None:
+            track, self.track = self.track, None
+            loop.call_soon(
+                self.room.emit, "track_unsubscribed", track, self, self.participant
+            )
+
+
 class FakeParticipant:
     def __init__(self, identity: str) -> None:
         self.identity = identity
-        self.track_publications: dict[str, SimpleNamespace] = {}
+        self.track_publications: dict[str, FakePublication] = {}
 
 
 class FakeAudioStream:
@@ -169,7 +208,8 @@ class FakeAudioSource:
 class FakeRoom:
     """A call's LiveKit room as the relay's SDK shows it. The person's
     browser joined first, so the room has them in it, their microphone
-    subscribed, when the relay connects."""
+    published, when the relay connects. Like the SDK's, it is connected only
+    once its connect has landed, and only a connected room can be left."""
 
     def __init__(self, media: "FakeMedia") -> None:
         self.media = media
@@ -180,6 +220,8 @@ class FakeRoom:
         )
         self.url: str | None = None
         self.token: str | None = None
+        self.options: object = None
+        self.connected = False
         self.left = False
         self._tracks = 0
 
@@ -192,15 +234,23 @@ class FakeRoom:
             callback(*args)
 
     async def connect(self, url: str, token: str, options: object = None) -> None:
-        self.url, self.token = url, token
-        if self.media.hang:
-            await asyncio.Event().wait()
+        self.url, self.token, self.options = url, token, options
+        if self.media.connect_gate is not None:
+            await self.media.connect_gate.wait()
         if self.media.refuse is not None:
             raise self.media.refuse
+        self.connected = True
         if self.media.person is not None:
-            self.add_microphone(self.media.person, announce=False)
+            self.publish(
+                self.media.person,
+                announce=False,
+                subscribed=self.media.subscribed_at_connect,
+            )
 
     async def disconnect(self) -> None:
+        if not self.connected:
+            return
+        self.connected = False
         self.left = True
         self.emit("disconnected", rtc.DisconnectReason.CLIENT_INITIATED)
 
@@ -215,34 +265,80 @@ class FakeRoom:
         assert self.token is not None
         return jwt.decode(self.token, options={"verify_signature": False})
 
-    def add_microphone(
-        self, identity: str, *, announce: bool = True, kind: int | None = None
-    ) -> FakeTrack:
-        """*identity* publishes a microphone, which the relay is subscribed
-        to; *announce* as the SDK does for a track that comes after the
-        join."""
+    def publish(
+        self,
+        identity: str,
+        *,
+        kind: int = rtc.TrackKind.KIND_AUDIO,
+        source: int = rtc.TrackSource.SOURCE_MICROPHONE,
+        announce: bool = True,
+        subscribed: bool = False,
+    ) -> FakePublication:
+        """*identity* publishes a track; *announce* as the SDK does for one
+        published after the relay joined."""
         self._tracks += 1
-        track = FakeTrack(f"TR_{self._tracks}", kind or rtc.TrackKind.KIND_AUDIO)
         participant = self.remote_participants.setdefault(
             identity, FakeParticipant(identity)
         )
-        publication = SimpleNamespace(track=track)
-        participant.track_publications[track.sid] = publication
+        publication = FakePublication(
+            self,
+            participant,
+            f"TR_{self._tracks}",
+            kind=kind,
+            source=source,
+            subscribed=subscribed,
+        )
+        participant.track_publications[publication.sid] = publication
         if announce:
-            self.emit("track_subscribed", track, publication, participant)
-        return track
+            self.emit("track_published", publication, participant)
+        return publication
+
+    def add_microphone(self, identity: str) -> FakePublication:
+        """*identity* publishes a microphone after the relay joined."""
+        return self.publish(identity)
 
     def drop_microphone(self, identity: str, track: FakeTrack) -> None:
         participant = self.remote_participants[identity]
         publication = participant.track_publications.pop(track.sid)
+        publication.track = None
         self.emit("track_unsubscribed", track, publication, participant)
+
+    def mute(self, identity: str, publication: FakePublication, muted: bool) -> None:
+        self.emit(
+            "track_muted" if muted else "track_unmuted",
+            self.remote_participants[identity],
+            publication,
+        )
+
+    def quality(self, identity: str, quality: rtc.ConnectionQuality) -> None:
+        self.emit(
+            "connection_quality_changed", self.remote_participants[identity], quality
+        )
 
     def participant_leaves(self, identity: str) -> None:
         self.emit("participant_disconnected", self.remote_participants.pop(identity))
 
+    def reconnecting(self) -> None:
+        """The relay's own connection to the room is getting back on its
+        feet."""
+        self.emit("reconnecting")
+
+    def reconnected(self) -> None:
+        self.emit("reconnected")
+
     def lost(self) -> None:
         """The relay's own connection to the room is gone."""
         self.emit("disconnected", rtc.DisconnectReason.SIGNAL_CLOSE)
+
+    def microphone(self, identity: str) -> FakePublication:
+        """*identity*'s latest microphone publication."""
+        return [
+            publication
+            for publication in self.remote_participants[
+                identity
+            ].track_publications.values()
+            if publication.source == rtc.TrackSource.SOURCE_MICROPHONE
+        ][-1]
 
 
 class FakeMedia:
@@ -254,13 +350,17 @@ class FakeMedia:
         *,
         person: str | None = "user:user-1",
         refuse: Exception | None = None,
-        hang: bool = False,
+        subscribed_at_connect: bool = False,
     ) -> None:
         # Who is in each room the relay joins, with their microphone.
         self.person = person
-        # A join that is refused with this, or never answers.
+        # A join that is refused with this.
         self.refuse = refuse
-        self.hang = hang
+        # The person's microphone already subscribed when the connect lands.
+        self.subscribed_at_connect = subscribed_at_connect
+        # While set and clear, each connect waits on it: a connect that lands
+        # only once the test lets it.
+        self.connect_gate: asyncio.Event | None = None
         self.rooms: list[FakeRoom] = []
         self.sources: list[FakeAudioSource] = []
         self.streams: dict[str, FakeAudioStream] = {}

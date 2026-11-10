@@ -13097,8 +13097,21 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Start Onboarding Voice Call",
-        "description": "Start a voice call for the person's onboarding interview.\n\nAnswers with the relay's call socket and a start token good for this one\ncall within a minute: the browser opens the socket and sends the token as\nits first message. On the ``livekit`` leg it also answers with the call's\nroom and the browser's token for it, and the browser joins the room\nfirst; a browser that cannot join takes the call's audio onto the socket\ninstead, and says so in its start.\n\n404 while voice is off for the person; 409 once their interview is over,\nor while a call of theirs is live (``call_id`` names it); 429 past their\ncall allowance; 503 past the platform's voice budget or live-call\nceiling, or while voice cannot be served. A 429 or 503 carries its wait\nin the body (``retry_after_seconds``) as well as in ``Retry-After``.",
+        "description": "Start a voice call for the person's onboarding interview.\n\nAnswers with the relay's call socket and a start token good for this one\ncall within a minute: the browser opens the socket and sends the token as\nits first message. On the ``livekit`` leg, offered only to a browser that\nsays it supports it, it also answers with the call's room and the\nbrowser's token for it, and the browser joins the room first; a browser\nthat cannot join takes the call's audio onto the socket instead, and says\nso in its start.\n\n404 while voice is off for the person; 409 once their interview is over,\nor while a call of theirs is live (``call_id`` names it); 429 past their\ncall allowance; 503 past the platform's voice budget or live-call\nceiling, or while voice cannot be served. A 429 or 503 carries its wait\nin the body (``retry_after_seconds``) as well as in ``Retry-After``.",
         "operationId": "start_onboarding_voice_call",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/VoiceCallStartRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -13112,6 +13125,14 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -39970,6 +39991,18 @@
         "title": "VoiceCallLeg",
         "description": "How the call's audio travels. The control socket always carries the\ncall's events. On the ``websocket`` leg it carries the audio too; on the\n``livekit`` leg the audio goes through the call's LiveKit room, which the\nbrowser joins before it opens the socket, and takes the socket instead\nwhen it cannot join within a few seconds."
       },
+      "VoiceCallStartRequest": {
+        "properties": {
+          "supports_livekit": {
+            "type": "boolean",
+            "title": "Supports Livekit",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "VoiceCallStartRequest",
+        "description": "What the browser starting a voice call can take."
+      },
       "VoiceCallStartResponse": {
         "properties": {
           "call_id": { "type": "string", "title": "Call Id" },
@@ -40027,6 +40060,10 @@
           "relay_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Relay Url"
+          },
+          "livekit_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Livekit Url"
           },
           "hand_off": {
             "anyOf": [

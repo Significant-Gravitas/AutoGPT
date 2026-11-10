@@ -59,14 +59,20 @@ ROOM_DEPARTURE_TIMEOUT_S = 20
 ROOM_TOKEN_TTL_S = 600
 # The relay's own room token outlives the call cap by this much.
 RELAY_ROOM_GRACE_S = 60
-# The relay's join, and its leave, are given up past these.
+# The relay's join, and its leave, are given up past these. Each of the
+# SDK's attempts at the connect ends inside the join's deadline.
 ROOM_JOIN_TIMEOUT_S = 5.0
+ROOM_CONNECT_TIMEOUT_S = 4.0
 ROOM_LEAVE_TIMEOUT_S = 3.0
 # Otto's speech is held for the room for at most this many seconds, the
 # oldest dropped past it; once the call ends, what is held plays out for at
 # most this long before the relay leaves.
 ROOM_QUEUE_S = 20.0
 ROOM_PLAYOUT_S = 15.0
+# The source counts its speech played once the last frame is handed to
+# WebRTC, with about 100-250 ms of it still on its way to the browser, which
+# stops Otto's track when the relay leaves: the relay stays this much longer.
+ROOM_PLAYOUT_TAIL_S = 0.5
 # The person's audio reaches the call in frames this long, on either leg: the
 # browser sends them so on the socket, and the relay cuts the room's into
 # them, so the voice-activity check reads the same frames on both.

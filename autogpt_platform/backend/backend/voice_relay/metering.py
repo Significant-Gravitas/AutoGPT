@@ -72,6 +72,10 @@ LIVEKIT_PARTICIPANT_SECONDS = Counter(
     "relay's own time in each call's room and the person's, which LiveKit "
     "bills as participant-minutes",
 )
+LIVEKIT_DROPPED_BYTES = Counter(
+    "voice_interview_livekit_dropped_bytes_total",
+    "Otto's speech the relay dropped past a room's queue, in bytes of 24 kHz " "PCM16",
+)
 FALLBACKS = Counter(
     "voice_interview_fallbacks_total",
     "Calls whose audio fell back from a leg to the control socket, by the leg "

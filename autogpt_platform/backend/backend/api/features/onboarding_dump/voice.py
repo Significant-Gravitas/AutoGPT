@@ -18,16 +18,17 @@ the relay trusts without a platform session. In order, it checks:
 - the person's own call allowance, on every tier: 429 with ``Retry-After``.
 
 Then it picks the leg the call's audio takes from the edge flag: the call's
-LiveKit room where the flag says so and this deployment has a LiveKit
-project, the control socket otherwise. On the LiveKit leg it mints the
-browser's token for the call's room (``rooms.person_token``). It reads the
-person's arm of the voice ending experiment, which stores it on first read
-(``experiments.assign``), and the start token carries the leg and the arm to
-the relay, which reads no flags. The relay records the call on the person's
-onboarding row once the call starts, and its record in Redis for a day,
-with the arm on it for the hand-off, and makes its transcript of record once
-it ends. Then the person's own routes read the call's state
-(:func:`call_status`, :func:`latest_call`), which also starts the call's
+LiveKit room where the flag says so, the browser says it can take it, and
+this deployment has a LiveKit project; the control socket otherwise. On the
+LiveKit leg it mints the browser's token for the call's room
+(``rooms.person_token``). It reads the person's arm of the voice ending
+experiment, which stores it on first read (``experiments.assign``), and the
+start token carries the leg and the arm to the relay, which reads no flags.
+The relay records the call on the person's onboarding row once the call
+starts, and its record in Redis for a day, with the arm on it for the
+hand-off, and makes its transcript of record once it ends. Then the person's
+own routes read the call's state (:func:`call_status`, :func:`latest_call`,
+which name where a live call is rejoined), which also starts the call's
 hand-off here once it is owed one (``voice_handoff``), confirm its hand-off
 or hand it off again (:func:`finish_call`), and end a call of theirs live
 elsewhere (:func:`end_call`). Another person's call is 404 on every one of
@@ -117,8 +118,11 @@ SOCKET_LEG = VoiceCallLeg(kind="websocket")
 LIVEKIT = "livekit"
 
 
-async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
-    """Start a voice call for *user_id*'s onboarding interview.
+async def start_voice_call(
+    user_id: str, *, supports_livekit: bool = False
+) -> VoiceCallStartResponse:
+    """Start a voice call for *user_id*'s onboarding interview, on the
+    LiveKit leg only for a browser that *supports_livekit*.
 
     Raises:
         HTTPException: 404, 409, 429 or 503, as the module describes.
@@ -140,7 +144,7 @@ async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
     await _refuse_past_platform_limits(redis)
     await enforce_voice_call_budget(user_id)
     call_id = tokens.new_call_id()
-    leg = await _choose_leg(user_id, call_id)
+    leg = await _choose_leg(user_id, call_id) if supports_livekit else SOCKET_LEG
     ending = _voice_arm(await assigned_ending(user_id, "voice"))
     return VoiceCallStartResponse(
         call_id=call_id,
@@ -238,12 +242,7 @@ async def _choose_leg(user_id: str, call_id: str) -> VoiceCallLeg:
     return VoiceCallLeg(
         kind="livekit",
         url=project.url,
-        token=rooms.person_token(
-            user_id=user_id,
-            call_id=call_id,
-            api_key=project.api_key,
-            api_secret=project.api_secret,
-        ),
+        token=rooms.person_token(user_id=user_id, call_id=call_id, project=project),
     )
 
 
@@ -465,17 +464,23 @@ def _status_of(record: CallRecord) -> VoiceCallStatusResponse:
     # Written with the call's first record, so a record without one is one
     # whose fields could not be read: nothing is known to be running.
     status = "handing_off" if owed(record) else record.status or locks.ENDED
+    running = status in (locks.CONNECTING, locks.LIVE)
+    leg = "livekit" if record.leg == LIVEKIT else "websocket"
     return VoiceCallStatusResponse(
         call_id=record.call_id,
         status=status,
         interview=record.interview,
         end_reason=record.end_reason,
-        leg="livekit" if record.leg == "livekit" else "websocket",
-        relay_url=(
-            relay_socket_url() if status in (locks.CONNECTING, locks.LIVE) else None
-        ),
+        leg=leg,
+        relay_url=relay_socket_url() if running else None,
+        livekit_url=_livekit_url() if running and leg == LIVEKIT else None,
         hand_off=record.hand_off,
     )
+
+
+def _livekit_url() -> str | None:
+    project = rooms.livekit_project(settings)
+    return project.url if project is not None else None
 
 
 async def _quietly(operation: Awaitable[object]) -> None:
