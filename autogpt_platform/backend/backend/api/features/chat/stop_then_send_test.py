@@ -127,6 +127,37 @@ async def test_the_turn_after_a_stopped_one_takes_follow_ups(
     ]
 
 
+async def test_a_stop_that_never_reaches_the_executor_leaves_the_turn_taking_follow_ups(
+    mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
+) -> None:
+    await stream_registry.create_session(
+        session_id, test_user_id, "", "", turn_id=f"running-{uuid.uuid4().hex}"
+    )
+    _stub_boundaries(mocker)
+    mocker.patch.object(
+        chat_routes,
+        "enqueue_cancel_task",
+        new=AsyncMock(side_effect=RuntimeError("broker down")),
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        cancelled = await client.post(f"/sessions/{session_id}/cancel")
+    queued = await queue_user_message(
+        session_id=session_id,
+        message="still for this turn",
+        require_turn_in_flight=True,
+    )
+
+    assert cancelled.status_code == 500
+    assert queued.turn_in_flight is True
+    assert [m.content for m in await peek_pending_messages(session_id)] == [
+        "still for this turn"
+    ]
+
+
 class _World:
     def __init__(self) -> None:
         self.cancel_published = asyncio.Event()

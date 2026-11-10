@@ -1,6 +1,7 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
@@ -1785,7 +1786,20 @@ async def cancel_session_task(
     # the next unrelated turn. The flag set first makes the pending-write gate
     # refuse every later send, which ``stream_chat_post`` starts as the next turn.
     discarded = await _stop_follow_ups_best_effort(session_id)
+    try:
+        response = await _cancel_turn(session_id, user_id)
+    except Exception:
+        # The turn may run on, so it takes follow-ups again instead of refusing
+        # every send until it ends.
+        with contextlib.suppress(Exception):
+            await stream_registry.clear_stop_requested(session_id)
+        raise
+    response.discarded_messages = discarded
+    return response
 
+
+async def _cancel_turn(session_id: str, user_id: str) -> CancelSessionResponse:
+    """Dequeue the session's turn, release an orphaned one, or stop it on its executor."""
     await cancel_background_subtasks(user_id, session_id)
 
     # Queued sessions: just flip back to idle.  The user clicked X
@@ -1793,13 +1807,9 @@ async def cancel_session_task(
     if await background_task_db().cancel_queued_background_followup(
         user_id, session_id
     ):
-        return CancelSessionResponse(
-            cancelled=True, reason="dequeued", discarded_messages=discarded
-        )
+        return CancelSessionResponse(cancelled=True, reason="dequeued")
     if await turn_queue.cancel_queued_turn(user_id=user_id, session_id=session_id):
-        return CancelSessionResponse(
-            cancelled=True, reason="dequeued", discarded_messages=discarded
-        )
+        return CancelSessionResponse(cancelled=True, reason="dequeued")
 
     active_session, _ = await stream_registry.get_active_session(session_id, user_id)
     if not active_session:
@@ -1817,16 +1827,8 @@ async def cancel_session_task(
         if await _try_release_orphan_running(
             session_id, user_id, cancel_background=True
         ):
-            return CancelSessionResponse(
-                cancelled=True,
-                reason="orphan_released",
-                discarded_messages=discarded,
-            )
-        return CancelSessionResponse(
-            cancelled=True,
-            reason="no_active_session",
-            discarded_messages=discarded,
-        )
+            return CancelSessionResponse(cancelled=True, reason="orphan_released")
+        return CancelSessionResponse(cancelled=True, reason="no_active_session")
 
     await cancel_background_subtasks(user_id, session_id, active_session.turn_id)
     await enqueue_cancel_task(session_id)
@@ -1841,7 +1843,7 @@ async def cancel_session_task(
         # A turn the cancelled one's end woke is not the one the user stopped,
         # and its queued follow-ups are its own.
         if session_state and session_state.turn_id != active_session.turn_id:
-            return CancelSessionResponse(cancelled=True, discarded_messages=discarded)
+            return CancelSessionResponse(cancelled=True)
         if session_state is None or session_state.status != "running":
             logger.info(
                 f"[CANCEL] Session ...{session_id[-8:]} confirmed stopped "
@@ -1850,7 +1852,7 @@ async def cancel_session_task(
             # Re-clear now the turn is no longer running, for what an internal
             # sender queued past the gate during the cancel window.
             await _clear_pending_best_effort(session_id)
-            return CancelSessionResponse(cancelled=True, discarded_messages=discarded)
+            return CancelSessionResponse(cancelled=True)
 
     logger.warning(
         f"[CANCEL] Session ...{session_id[-8:]} not confirmed after "
@@ -1868,9 +1870,7 @@ async def cancel_session_task(
     # internal sender queued during the poll window.
     await _clear_pending_best_effort(session_id)
     return CancelSessionResponse(
-        cancelled=True,
-        reason="cancel_published_not_confirmed",
-        discarded_messages=discarded,
+        cancelled=True, reason="cancel_published_not_confirmed"
     )
 
 

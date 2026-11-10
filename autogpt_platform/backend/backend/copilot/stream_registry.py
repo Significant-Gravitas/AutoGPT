@@ -1146,6 +1146,20 @@ async def mark_stop_requested(session_id: str) -> bool:
     )
 
 
+async def clear_stop_requested(session_id: str) -> bool:
+    """Undo :func:`mark_stop_requested` for a turn whose cancel failed, so it
+    takes follow-ups again while it runs on."""
+    redis = await get_redis_async()
+    return await hash_compare_and_set(
+        redis,
+        _get_session_meta_key(session_id),
+        "status",
+        expected="running",
+        new="running",
+        updates={STOP_REQUESTED_FIELD: ""},
+    )
+
+
 async def mark_session_completed(
     session_id: str,
     error_message: str | None = None,
