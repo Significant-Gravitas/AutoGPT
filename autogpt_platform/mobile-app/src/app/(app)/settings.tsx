@@ -12,8 +12,16 @@ import { useSettingsScreen } from "@/features/settings/useSettingsScreen";
 import { colors, radius, spacing, type } from "@/lib/theme";
 
 export default function SettingsScreen() {
-  const { settingsURL, cookie, script, isError, retry, handleNavigation } =
-    useSettingsScreen();
+  const {
+    settingsURL,
+    cookie,
+    script,
+    isError,
+    retry,
+    webViewRef,
+    handleNavigation,
+    handleStateChange,
+  } = useSettingsScreen();
 
   function renderBody() {
     if (isError) {
@@ -41,11 +49,13 @@ export default function SettingsScreen() {
     }
     return (
       <WebView
+        ref={webViewRef}
         source={{ uri: settingsURL, headers: { Cookie: cookie } }}
         injectedJavaScriptBeforeContentLoaded={script}
         sharedCookiesEnabled
         originWhitelist={["*"]}
         onShouldStartLoadWithRequest={handleNavigation}
+        onNavigationStateChange={handleStateChange}
         style={styles.webview}
       />
     );

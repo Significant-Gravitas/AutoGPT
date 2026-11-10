@@ -1,10 +1,5 @@
 import { FRONTEND_URL } from "@/lib/env";
 
-/**
- * JavaScript that copies the stored session cookies into the page before it
- * runs. Each assignment is a JSON string literal, so no cookie value can end
- * the string and run code of its own.
- */
 export function cookieScript(cookieHeader: string, isSecure: boolean) {
   const flags = `; path=/; SameSite=Lax${isSecure ? "; Secure" : ""}`;
   const assignments = cookieHeader

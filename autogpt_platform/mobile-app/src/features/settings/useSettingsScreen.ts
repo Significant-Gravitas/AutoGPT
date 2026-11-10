@@ -1,6 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
+import { useRef } from "react";
 import { Linking } from "react-native";
-import type { ShouldStartLoadRequest } from "react-native-webview/lib/WebViewTypes";
+import type { WebView } from "react-native-webview";
+import type {
+  ShouldStartLoadRequest,
+  WebViewNavigation,
+} from "react-native-webview/lib/WebViewTypes";
 
 import { authClient } from "@/lib/auth/client";
 import { FRONTEND_URL } from "@/lib/env";
@@ -21,6 +26,9 @@ export function useSettingsScreen() {
     staleTime: 0,
     gcTime: 0,
   });
+  const webViewRef = useRef<WebView<object>>(null);
+  // One page change can report several states; go back only once for it.
+  const isGoingBack = useRef(false);
 
   function handleNavigation(request: ShouldStartLoadRequest) {
     const { url } = request;
@@ -35,6 +43,18 @@ export function useSettingsScreen() {
     return false;
   }
 
+  // Next.js links change the page with pushState, which never reaches
+  // handleNavigation, so a page outside Settings is undone here instead.
+  function handleStateChange({ url, canGoBack }: WebViewNavigation) {
+    if (url === "about:blank" || isAllowedSettingsURL(url)) {
+      isGoingBack.current = false;
+      return;
+    }
+    if (!canGoBack || isGoingBack.current) return;
+    isGoingBack.current = true;
+    webViewRef.current?.goBack();
+  }
+
   function retry() {
     void cookie.refetch();
   }
@@ -46,6 +66,8 @@ export function useSettingsScreen() {
       cookie.data === undefined ? "" : cookieScript(cookie.data, isSecure),
     isError: cookie.isError,
     retry,
+    webViewRef,
     handleNavigation,
+    handleStateChange,
   };
 }
