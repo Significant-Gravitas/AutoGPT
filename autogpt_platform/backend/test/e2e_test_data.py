@@ -709,9 +709,7 @@ class TestDataCreator:
                         + str(random.randint(100, 999)),  # Ensure uniqueness
                         "description": faker.text(max_nb_chars=200),
                         "links": [faker.url() for _ in range(random.randint(1, 3))],
-                        # Empty (not None): the Creator view types avatar_url as
-                        # non-nullable, so null breaks /api/store/creators. Empty
-                        # string renders the frontend's fallback avatar.
+                        # Empty string renders the frontend's fallback avatar.
                         "avatarUrl": "",
                         "isFeatured": is_featured,
                     },

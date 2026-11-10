@@ -2737,7 +2737,7 @@ model Profile {
 view Creator {
   username    String @unique
   name        String
-  avatar_url  String
+  avatar_url  String?
   description String
 
   top_categories String[]
@@ -2842,7 +2842,7 @@ view StoreSubmission {
 view StoreCreator {
   username    String @unique
   name        String
-  avatar_url  String
+  avatar_url  String?
   description String
 
   top_categories String[]
