@@ -622,6 +622,48 @@ describe("buildChainSegments edge cases", () => {
     ]);
   });
 
+  // The live stream keeps text parts a reload drops: one that has started but
+  // has no words yet, and whitespace the model wrote between tool calls (the
+  // stored row's content is blank, so hydration makes no part of it). They
+  // must not split a chain or hide the tool ahead, or the same narration is
+  // prose live and a chain row after a reload.
+  it("segments a live turn the way its reload does, whatever blank text it holds", () => {
+    const answer = textPart("Answer. ".repeat(40));
+    const reload = [
+      toolPart("web_search"),
+      textPart("Now fetching the page."),
+      toolPart("web_fetch"),
+      answer,
+    ];
+    const live = [
+      reload[0],
+      textPart("\n\n"),
+      reload[1],
+      textPart(""),
+      { type: "step-start" } as MessagePart,
+      reload[2],
+      textPart(" \n"),
+      answer,
+    ];
+
+    expect(segmentShape(buildChainSegments(live, isChainableToolPart))).toEqual(
+      segmentShape(buildChainSegments(reload, isChainableToolPart)),
+    );
+    expect(
+      segmentShape(buildChainSegments(reload, isChainableToolPart)),
+    ).toEqual([
+      ["chain", [reload[0], reload[1], reload[2]]],
+      ["part", answer],
+    ]);
+  });
+
+  it("drops a blank text part that ends a streaming message", () => {
+    const parts = [toolPart("web_search"), textPart("")];
+    expect(buildChainSegments(parts, isChainableToolPart)).toEqual([
+      { kind: "chain", parts: [parts[0]], index: 0 },
+    ]);
+  });
+
   it("emits leading text before any chain as its own part", () => {
     const parts = [textPart("Intro."), toolPart("web_search")];
 
@@ -736,3 +778,11 @@ describe("isToolCallPending", () => {
     },
   );
 });
+
+function segmentShape(segments: ReturnType<typeof buildChainSegments>) {
+  return segments.map((segment) =>
+    segment.kind === "part"
+      ? ["part", segment.part]
+      : [segment.kind, segment.parts],
+  );
+}

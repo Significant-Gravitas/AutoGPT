@@ -12,6 +12,7 @@ import {
   setToolDisplayName,
   type TurnLog,
 } from "./turnLog";
+import { extendToolInput, failToolInput } from "./toolInputChunks";
 
 /** One JSON chunk as it arrives on the wire. */
 export interface WireChunk {
@@ -86,6 +87,25 @@ function applyChunk(log: TurnLog, entryId: string, chunk: WireChunk): TurnLog {
       return endBlock(log, entryId, chunk);
     case "tool-input-start":
       return startTool(log, chunk);
+    case "tool-input-delta":
+      return orProtocolError(
+        log,
+        entryId,
+        chunk.type,
+        extendToolInput(log, str(chunk.toolCallId), str(chunk.inputTextDelta)),
+      );
+    case "tool-input-error":
+      return orProtocolError(
+        log,
+        entryId,
+        chunk.type,
+        failToolInput(
+          log,
+          str(chunk.toolCallId),
+          str(chunk.toolName),
+          str(chunk.errorText),
+        ),
+      );
     case "tool-input-available":
       return receiveToolInput(log, entryId, chunk);
     case "tool-output-available":
@@ -280,6 +300,17 @@ function addOverlay(log: TurnLog, entryId: string, chunk: WireChunk): TurnLog {
     anchor: log.rows.length,
   };
   return { ...log, overlay: [...log.overlay, part] };
+}
+
+function orProtocolError(
+  log: TurnLog,
+  entryId: string,
+  chunkType: string,
+  next: TurnLog | string,
+): TurnLog {
+  return typeof next === "string"
+    ? protocolError(log, entryId, chunkType, next)
+    : next;
 }
 
 function protocolError(

@@ -75,7 +75,7 @@
         "type": "function",
         "function": {
           "name": "ask_question",
-          "arguments": "{\"questions\": [{\"question\": \"How should I spot new designs in your Drive folder?\", \"keyword\": \"Drive trigger\", \"example\": null, \"options\": [\"Check the folder every 15 min\", \"I pick the file each run\"], \"allow_multiple\": false}, {\"question\": \"How should I make the mockups?\", \"keyword\": \"Mockups\", \"example\": null, \"options\": [\"AI-generated mockups\", \"Printify draft products\"], \"allow_multiple\": false}]}"
+          "arguments": "{\"questions\": [{\"question\": \"How should I spot new designs in your Drive folder?\", \"keyword\": \"Drive trigger\", \"example\": null, \"options\": [\"Check the folder every 15 min\", \"I pick the file each run\"], \"allow_multiple\": false, \"reason\": null, \"default_guess\": null}, {\"question\": \"How should I make the mockups?\", \"keyword\": \"Mockups\", \"example\": null, \"options\": [\"AI-generated mockups\", \"Printify draft products\"], \"allow_multiple\": false, \"reason\": null, \"default_guess\": null}]}"
         }
       }
     ],
@@ -92,7 +92,7 @@
   {
     "id": "row-4",
     "role": "tool",
-    "content": "{\"type\":\"agent_builder_clarification_needed\",\"message\":\"How should I spot new designs in your Drive folder?; How should I make the mockups?\",\"session_id\":\"drift-session\",\"questions\":[{\"question\":\"How should I spot new designs in your Drive folder?\",\"keyword\":\"Drive trigger\",\"example\":null,\"options\":[\"Check the folder every 15 min\",\"I pick the file each run\"],\"allow_multiple\":false},{\"question\":\"How should I make the mockups?\",\"keyword\":\"Mockups\",\"example\":null,\"options\":[\"AI-generated mockups\",\"Printify draft products\"],\"allow_multiple\":false}]}",
+    "content": "{\"type\":\"agent_builder_clarification_needed\",\"message\":\"How should I spot new designs in your Drive folder?; How should I make the mockups?\",\"session_id\":\"drift-session\",\"questions\":[{\"question\":\"How should I spot new designs in your Drive folder?\",\"keyword\":\"Drive trigger\",\"example\":null,\"options\":[\"Check the folder every 15 min\",\"I pick the file each run\"],\"allow_multiple\":false,\"reason\":null,\"default_guess\":null},{\"question\":\"How should I make the mockups?\",\"keyword\":\"Mockups\",\"example\":null,\"options\":[\"AI-generated mockups\",\"Printify draft products\"],\"allow_multiple\":false,\"reason\":null,\"default_guess\":null}]}",
     "name": "ask_question",
     "tool_call_id": "ask-1",
     "refusal": null,

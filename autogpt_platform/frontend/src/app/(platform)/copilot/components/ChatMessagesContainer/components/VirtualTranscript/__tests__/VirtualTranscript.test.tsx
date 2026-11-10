@@ -57,7 +57,7 @@ function message(index: number, role?: "user" | "assistant"): ChatMessage {
 }
 
 function toRows(messages: ChatMessage[]): TranscriptRow[] {
-  return messages.map((m, rowIndex) => ({ message: m, rowIndex }));
+  return messages.map((m, rowIndex) => ({ message: m, rowIndex, key: m.id }));
 }
 
 function Counter({ id }: { id: string }) {

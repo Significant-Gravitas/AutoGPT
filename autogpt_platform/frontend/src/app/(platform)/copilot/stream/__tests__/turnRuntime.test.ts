@@ -28,9 +28,10 @@ import { loadRecordedTurn } from "./recordedTurns";
 
 const toolTurn = loadRecordedTurn("baseline-tool-turn");
 const PROMPT = String(toolTurn.rows[0].content);
-// 9-0 ends the first text block, 12-0 opens the tool call, 20-0 is the checkpoint.
-const FIRST_BLOCK_DONE = 9;
-const TOOL_CALL_OPEN = 12;
+// 9-0 starts the tool call, 10-0 ends the first text block, 13-0 gives the
+// call its input, 21-0 is the checkpoint.
+const FIRST_BLOCK_DONE = 10;
+const TOOL_CALL_OPEN = 13;
 const FIRST_TEXT = "Let me fetch that page.";
 const SECOND_TEXT = "It says Example Domain.";
 
@@ -81,7 +82,7 @@ describe("§1.7 — every disconnect cause is expected but one", () => {
     setVisibility("visible");
     await advance(0);
     expect(backend.connections).toHaveLength(2);
-    expect(backend.connections[1].url.searchParams.get("after")).toBe("9-0");
+    expect(backend.connections[1].url.searchParams.get("after")).toBe("10-0");
     backend.publish();
     await advance(1_000);
 
@@ -105,7 +106,7 @@ describe("§1.7 — every disconnect cause is expected but one", () => {
     backend.connections[0].cut();
     await advance(0);
     expect(backend.connections).toHaveLength(2);
-    expect(backend.connections[1].url.searchParams.get("after")).toBe("9-0");
+    expect(backend.connections[1].url.searchParams.get("after")).toBe("10-0");
     expect(snapshot().notice).toBeNull();
     expect(toast).not.toHaveBeenCalled();
   });
@@ -332,7 +333,7 @@ describe("recovery", () => {
     backend.publish();
     const checkpoint = backend.lastCheckpoint();
     backend.respond(({ url }) =>
-      url.searchParams.get("after") === "9-0"
+      url.searchParams.get("after") === "10-0"
         ? { status: 409, body: { reason: "trimmed", checkpoint } }
         : "stream",
     );
@@ -354,7 +355,7 @@ describe("recovery", () => {
 
     release();
     await advance(1_000);
-    expect(backend.requests.at(-1)?.url.searchParams.get("after")).toBe("20-0");
+    expect(backend.requests.at(-1)?.url.searchParams.get("after")).toBe("21-0");
     expect(turnSegment().frozen).toBe(false);
     expect(snapshot().phase).toBe("finished");
   });
@@ -1032,7 +1033,7 @@ describe("rotation", () => {
     backend.connections[0].fail();
     await advance(0);
     expect(backend.connections).toHaveLength(2);
-    expect(backend.connections[1].url.searchParams.get("after")).toBe("9-0");
+    expect(backend.connections[1].url.searchParams.get("after")).toBe("10-0");
     expect(toast).not.toHaveBeenCalled();
   });
 
@@ -1040,7 +1041,7 @@ describe("rotation", () => {
     await sendAndPublish(FIRST_BLOCK_DONE);
     await advance(ROTATE_AFTER_MS + 5_000 - 1);
     const [first, second] = backend.connections;
-    expect(second.url.searchParams.get("after")).toBe("9-0");
+    expect(second.url.searchParams.get("after")).toBe("10-0");
     expect(first.closed).toBe(false);
     await advance(10_000);
     expect(first.aborted).toBe(true);
@@ -1055,16 +1056,16 @@ describe("resync", () => {
     backend.connections[0].fail();
     backend.publish();
     const checkpoint = backend.lastCheckpoint();
-    expect(checkpoint?.entry_id).toBe("20-0");
+    expect(checkpoint?.entry_id).toBe("21-0");
     backend.respond(({ url }) =>
-      url.searchParams.get("after") === "9-0"
+      url.searchParams.get("after") === "10-0"
         ? { status: 409, body: { reason: "trimmed", checkpoint } }
         : "stream",
     );
     await advance(2_000);
 
     const tail = backend.connections.at(-1)!;
-    expect(tail.url.searchParams.get("after")).toBe("20-0");
+    expect(tail.url.searchParams.get("after")).toBe("21-0");
     expect(snapshot().phase).toBe("finished");
     expect(turnSegment().log.rows.map((r) => r.content)).toEqual(
       toolTurn.rows.slice(1).map((r) => r.content),
@@ -1086,10 +1087,10 @@ describe("resync", () => {
 
   it("a fresh mount seeds the running turn from its checkpoint and tails from there", async () => {
     backend.beginRunning();
-    backend.publish(20);
+    backend.publish(21);
     runtime.observe(backend.view());
     await advance(0);
-    expect(backend.connections[0].url.searchParams.get("after")).toBe("20-0");
+    expect(backend.connections[0].url.searchParams.get("after")).toBe("21-0");
     expect(snapshot().ownedFrom).toBe(1);
     backend.publish();
     await advance(1_000);
@@ -1247,7 +1248,7 @@ describe("recovered terminal errors", () => {
       await advance(3_000);
       const connection = backend.connections.at(-1)!;
       expect(connection.method).toBe("GET");
-      expect(connection.url.searchParams.get("after")).toBe("9-0");
+      expect(connection.url.searchParams.get("after")).toBe("10-0");
       backend.stopWithoutFinish();
       connection.send(
         recovered() +
@@ -1261,7 +1262,7 @@ describe("recovered terminal errors", () => {
       connection.cut();
       await advance(1_000);
       expect(snapshot().phase).toBe("failed");
-      expect(turnSegment().log.cursor).toBe("9-0");
+      expect(turnSegment().log.cursor).toBe("10-0");
       expect(
         turnSegment().log.rows.filter((row) =>
           row.content.includes("provider unavailable"),
@@ -1332,7 +1333,7 @@ describe("recovered terminal errors", () => {
     await advance(100);
     expect(snapshot().phase).toBe("live");
     expect(onError).not.toHaveBeenCalled();
-    expect(turnSegment().log.cursor).toBe("9-0");
+    expect(turnSegment().log.cursor).toBe("10-0");
   });
 
   it("keeps untagged transport errors resumable", async () => {
@@ -1345,7 +1346,7 @@ describe("recovered terminal errors", () => {
     backend.connections[0].cut();
     await advance(1_000);
     expect(backend.connections).toHaveLength(2);
-    expect(backend.connections[1].url.searchParams.get("after")).toBe("9-0");
+    expect(backend.connections[1].url.searchParams.get("after")).toBe("10-0");
     expect(onError).not.toHaveBeenCalled();
     expect(snapshot().phase).toBe("resuming");
     backend.publish(1);

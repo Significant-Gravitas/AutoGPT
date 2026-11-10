@@ -68,16 +68,13 @@ export function useVirtualTranscript({
   const prependRef = useRef<Prepend | null>(null);
   const hasViewportRef = useRef(false);
   hasViewportRef.current = hasViewport === true;
-  const firstRowIDRef = useRef<string | undefined>(rows[0]?.message.id);
+  const firstRowIDRef = useRef<string | undefined>(rows[0]?.key);
   const gap = compact ? COMPACT_ROW_GAP_PX : ROW_GAP_PX;
 
   // Kept as a memo: the compiler skips this hook (TanStack Virtual's
   // `useVirtualizer` is an incompatible library), and the virtualizer redoes
   // every row's measurements whenever `getItemKey` changes identity.
-  const getItemKey = useCallback(
-    (index: number) => rows[index].message.id,
-    [rows],
-  );
+  const getItemKey = useCallback((index: number) => rows[index].key, [rows]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -122,7 +119,7 @@ export function useVirtualTranscript({
     return false;
   };
 
-  const firstRowID = rows[0]?.message.id;
+  const firstRowID = rows[0]?.key;
   if (firstRowID !== firstRowIDRef.current) {
     const previousFirstID = firstRowIDRef.current;
     firstRowIDRef.current = firstRowID;

@@ -229,6 +229,12 @@ export function isChainPart(part: MessagePart): boolean {
 // every sentence.
 const NARRATION_MAX_CHARS = 200;
 
+/** Text with nothing to show: one just started, or whitespace the model
+ *  wrote between tool calls, which hydration drops. */
+function isBlankText(part: MessagePart): boolean {
+  return part.type === "text" && !(part.text ?? "").trim();
+}
+
 function narrationText(part: MessagePart): string | null {
   if (part.type !== "text") return null;
   const text = typeof part.text === "string" ? part.text.trim() : "";
@@ -445,7 +451,7 @@ export function buildChainSegments(
   const hasChainableAhead = (from: number): boolean => {
     for (let i = from; i < parts.length; i++) {
       const part = parts[i];
-      if (part.type === "step-start") continue;
+      if (part.type === "step-start" || isBlankText(part)) continue;
       if (isChainable(part)) return true;
       if (narrationText(part) !== null) continue;
       return false;
@@ -454,7 +460,8 @@ export function buildChainSegments(
   };
 
   parts.forEach((part, index) => {
-    if (part.type === "step-start") return;
+    // A reload makes no part of blank text, so the live view skips it too.
+    if (part.type === "step-start" || isBlankText(part)) return;
     if (isExpertChangePart(part)) {
       chain = null;
       const last = segments[segments.length - 1];

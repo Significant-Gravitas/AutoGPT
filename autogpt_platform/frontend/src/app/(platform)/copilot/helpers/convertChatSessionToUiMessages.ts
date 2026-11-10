@@ -7,6 +7,7 @@ import {
   type TurnPause,
 } from "../turnPause";
 import { toolDisplayName } from "./toolDisplay";
+import { pendingToolPart, pendingTools } from "./pendingToolParts";
 import { backgroundNotice } from "./backgroundSubtasks";
 import { getStandaloneBubbleMetadata } from "./standaloneMessages";
 import {
@@ -689,10 +690,13 @@ export function createTurnLogRenderer(
       unanswered: turnOver ? "interrupted" : "input-available",
     };
 
-    const groups = groupTurnRows(log);
+    const pending = pendingTools(log);
+    const groups = groupTurnRows(log, pending.length > 0);
     const next = new Map<string, { deps: unknown[]; message: UiMessage }>();
     const messages = groups.map((group, index) => {
-      const trailingStep = stepIsEmpty && index === groups.length - 1;
+      const isLast = index === groups.length - 1;
+      const trailingStep = stepIsEmpty && isLast;
+      const ownPending = isLast ? pending : [];
       const rows = group.rows.map((i) => log.rows[i]);
       const deps: unknown[] = [
         ctx.unanswered,
@@ -700,6 +704,7 @@ export function createTurnLogRenderer(
         ...group.rows.flatMap((i) => [log.rows[i], streamingRows.has(i)]),
         ...rows.flatMap((row) => row.toolCalls.map((c) => outputs.get(c.id))),
         ...group.overlay,
+        ...ownPending.flatMap((p) => [p.tool, p.displayName]),
       ];
       const cached = memo.get(group.key);
       const message =
@@ -711,6 +716,7 @@ export function createTurnLogRenderer(
               streamingRows,
               trailingStep,
               ctx,
+              ownPending.map((p) => pendingToolPart(p, turnOver)),
             );
       next.set(group.key, { deps, message });
       return message;
@@ -753,7 +759,7 @@ interface TurnGroup {
  * keys never depend on sequences: the first assistant bubble is the turn's,
  * and a later one is keyed by the drained follow-up it answers.
  */
-function groupTurnRows(log: TurnLog): TurnGroup[] {
+function groupTurnRows(log: TurnLog, hasPendingTools = false): TurnGroup[] {
   const turn = log.turnId ?? "";
   const groups: TurnGroup[] = [];
   const groupOfRow: number[] = [];
@@ -797,6 +803,15 @@ function groupTurnRows(log: TurnLog): TurnGroup[] {
     }
     groups[target].overlay.push(part);
   }
+  // A call with no row yet joins the bubble its row will land in.
+  if (hasPendingTools && groups[groups.length - 1]?.role !== "assistant") {
+    groups.push({
+      key: assistantKey(),
+      role: "assistant",
+      rows: [],
+      overlay: [],
+    });
+  }
   return groups;
 }
 
@@ -806,6 +821,7 @@ function buildGroupMessage(
   streamingRows: Set<number | null>,
   trailingStep: boolean,
   ctx: RowPartsContext,
+  pendingParts: UiPart[],
 ): UiMessage {
   const parts: UiPart[] = [];
   let overlayIndex = 0;
@@ -828,6 +844,7 @@ function buildGroupMessage(
     );
   }
   flushOverlayBefore(Infinity);
+  parts.push(...pendingParts);
   if (trailingStep) parts.push({ type: "step-start" });
   const metadata = group.rows.length ? rows[group.rows[0]].metadata : null;
   return {

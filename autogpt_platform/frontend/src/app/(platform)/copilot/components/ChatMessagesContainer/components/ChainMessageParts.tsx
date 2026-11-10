@@ -47,12 +47,14 @@ export function ChainMessageParts({
   const lastChainSegmentIndex = segments.findLastIndex(
     (segment) => segment.kind === "chain",
   );
+  const ordinals = segmentOrdinals(segments);
 
   return segments.map((segment, segmentIndex) => {
+    const key = `${messageID}-${segmentKey(segment, ordinals[segmentIndex])}`;
     if (segment.kind === "chain") {
       return (
         <ToolChain
-          key={`${messageID}-chain-${segment.index}`}
+          key={key}
           parts={segment.parts}
           isStreaming={
             isCurrentlyStreaming && segmentIndex === lastChainSegmentIndex
@@ -66,7 +68,7 @@ export function ChainMessageParts({
     if (segment.kind === "experts") {
       return (
         <ExpertChangeGroup
-          key={`${messageID}-experts-${segment.index}`}
+          key={key}
           parts={
             segment.parts.map((part) =>
               withHeldOutcome(part, outcomes),
@@ -79,10 +81,10 @@ export function ChainMessageParts({
     }
     return (
       <MessagePartRenderer
-        key={`${messageID}-${segment.index}`}
+        key={key}
         part={withHeldOutcome(segment.part, outcomes)}
         messageID={messageID}
-        partIndex={segment.index}
+        partIndex={ordinals[segmentIndex]}
         onRetry={onRetry}
         fileUrlBuilder={fileUrlBuilder}
         readOnly={readOnly}
@@ -92,5 +94,30 @@ export function ChainMessageParts({
         isCurrentlyStreaming={isCurrentlyStreaming}
       />
     );
+  });
+}
+
+type ChainSegment = ReturnType<typeof buildChainSegments>[number];
+
+// Keyed by what a segment holds, never by its part index: the parts a live
+// message carries (step markers, bookkeeping, blank text) are not in the
+// stored rows a reload or the end-of-stream hydration builds, so the indexes
+// move while the segments stay the same, and a moved key remounts the chain.
+function segmentKey(segment: ChainSegment, ordinal: number) {
+  const first = segment.kind === "part" ? segment.part : segment.parts[0];
+  const callID =
+    first && "toolCallId" in first && typeof first.toolCallId === "string"
+      ? first.toolCallId
+      : null;
+  return callID ? `${segment.kind}-${callID}` : `${segment.kind}-${ordinal}`;
+}
+
+/** Each segment's position among the segments of its kind. */
+function segmentOrdinals(segments: ChainSegment[]) {
+  const seen = new Map<string, number>();
+  return segments.map((segment) => {
+    const ordinal = seen.get(segment.kind) ?? 0;
+    seen.set(segment.kind, ordinal + 1);
+    return ordinal;
   });
 }

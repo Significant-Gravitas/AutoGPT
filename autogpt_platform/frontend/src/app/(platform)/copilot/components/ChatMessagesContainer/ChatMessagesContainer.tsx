@@ -58,6 +58,9 @@ import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
+import { rowKeyOf, type RowKeys } from "./stableRowKeys";
+import { useStableRowKeys } from "./useStableRowKeys";
+import { useFollowAnimation } from "./useFollowAnimation";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
 
@@ -315,6 +318,9 @@ export function ChatMessagesContainer({
   }, [settled, messagesReady]);
   // opacity-0 only during the single frame between messages arriving and scroll settling
   const hideForScroll = messagesReady && !settled;
+  const { resize: followResize, widthRef: followWidthRef } = useFollowAnimation(
+    { settled, sessionID },
+  );
 
   // Rendered rows, not the array `useChat` owns: a turn whose pending buffer
   // was drained mid-stream renders as chain → follow-up bubble → chain, while
@@ -327,9 +333,10 @@ export function ChatMessagesContainer({
     [messages],
   );
   const messageIndexById = buildMessageIndexById(messages);
+  const rowKeys = useStableRowKeys(renderRows);
   const transcriptRows = useMemo(
-    () => toTranscriptRows(renderRows),
-    [renderRows],
+    () => toTranscriptRows(renderRows, rowKeys),
+    [renderRows, rowKeys],
   );
   // The minimap scrolls to rows by their DOM node; one the windowed
   // transcript has unmounted is reached through the transcript instead.
@@ -405,7 +412,7 @@ export function ChatMessagesContainer({
   }, [isRestoringActiveSession]);
   const restoreClock = useElapsedAnchor(showRestoreFallback);
 
-  function renderRow({ message, rowIndex }: TranscriptRow) {
+  function renderRow({ message, rowIndex, key }: TranscriptRow) {
     if (getRowHeldCallKind(message) === "answered") {
       return (
         <Text tone="muted" variant="small" className="py-1 text-center">
@@ -432,6 +439,7 @@ export function ChatMessagesContainer({
     return (
       <MessageRow
         message={message}
+        rowKey={key}
         isLastAssistant={isLastAssistant}
         isCurrentlyStreaming={isCurrentlyStreaming}
         isLastInTurn={isLastInTurn}
@@ -478,7 +486,7 @@ export function ChatMessagesContainer({
       )}
       <Conversation
         key={sessionID ?? "new"}
-        resize="instant"
+        resize={followResize}
         className={
           "min-h-0 flex-1 " +
           (hideForScroll
@@ -616,6 +624,11 @@ export function ChatMessagesContainer({
           />
         </ConversationContent>
         <ConversationScrollButton />
+        <div
+          ref={followWidthRef}
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-0"
+        />
       </Conversation>
     </>
   );
@@ -640,11 +653,14 @@ function getRowHeldCallKind(message: ChatMessage) {
 
 // A held call's result row renders nothing, so it stays out of the list: an
 // empty row would still take a gap.
-function toTranscriptRows(renderRows: ChatMessage[]): TranscriptRow[] {
+function toTranscriptRows(
+  renderRows: ChatMessage[],
+  rowKeys: RowKeys,
+): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   renderRows.forEach((message, rowIndex) => {
     if (getRowHeldCallKind(message) !== "result") {
-      rows.push({ message, rowIndex });
+      rows.push({ message, rowIndex, key: rowKeyOf(rowKeys, message.id) });
     }
   });
   return rows;

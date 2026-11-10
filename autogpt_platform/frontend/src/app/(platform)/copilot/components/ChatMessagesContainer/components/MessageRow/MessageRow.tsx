@@ -31,6 +31,9 @@ interface Props {
   /** The rendered row: a message, or one segment of a turn split at a
    *  mid-turn follow-up. */
   message: ChatMessage;
+  /** The row's React key, which outlives `message.id` (see
+   *  `useStableRowKeys`); the parts are keyed by it so none remount. */
+  rowKey: string;
   /** Last rendered row and an assistant one. Only this row gets `onRetry`
    *  and keeps its actions visible without hover. */
   isLastAssistant: boolean;
@@ -69,6 +72,7 @@ interface Props {
 // streaming row renders again.
 export const MessageRow = memo(function MessageRow({
   message,
+  rowKey,
   isLastAssistant,
   isCurrentlyStreaming,
   isLastInTurn,
@@ -160,7 +164,7 @@ export const MessageRow = memo(function MessageRow({
         {isAssistant ? (
           <ChainMessageParts
             parts={renderableParts}
-            messageID={message.id}
+            messageID={rowKey}
             isCurrentlyStreaming={isCurrentlyStreaming}
             onRetry={isLastAssistant ? onRetry : undefined}
             fileUrlBuilder={fileUrlBuilder}
@@ -175,9 +179,9 @@ export const MessageRow = memo(function MessageRow({
           >
             {renderableParts.map((part, i) => (
               <MessagePartRenderer
-                key={`${message.id}-${i}`}
+                key={`${rowKey}-${i}`}
                 part={part}
-                messageID={message.id}
+                messageID={rowKey}
                 partIndex={i}
                 fileUrlBuilder={fileUrlBuilder}
                 readOnly={readOnly}

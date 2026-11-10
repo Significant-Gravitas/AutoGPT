@@ -38,6 +38,7 @@ import { remarkAppLinks } from "./app-links";
 import { MessageLink } from "./components/MessageLink/MessageLink";
 import { rehypeLiteralTags } from "./literal-tags";
 import { rehypeStreamReveal, STREAMING_CLASS } from "./stream-reveal";
+import { useContentRevision } from "./content-revision";
 import {
   createComponentsMerger,
   type StreamdownComponents,
@@ -467,8 +468,12 @@ export const MessageResponse = memo(function MessageResponse({
     withDefaultComponents(components),
   );
   const from = useContext(MessageRoleContext);
+  const revision = useContentRevision(
+    typeof children === "string" ? children : "",
+  );
   return (
     <Streamdown
+      key={revision}
       className={cn(
         "size-full [&_pre]:!bg-surface [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         "[&_a]:text-info [&_a]:no-underline [&_a]:hover:underline",

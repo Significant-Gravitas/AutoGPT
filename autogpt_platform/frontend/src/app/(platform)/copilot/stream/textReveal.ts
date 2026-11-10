@@ -1,62 +1,95 @@
 import { findSegmentCutPoints } from "@/lib/text-segments";
-import type { LogRow, TurnLog } from "./turnLog";
+import {
+  createTextPacer,
+  defaultNow,
+  defaultTickMs,
+  isDocumentHidden,
+  type TextPacer,
+} from "../copilotStreamPacer";
+import type { BlockState, LogRow, TurnLog } from "./turnLog";
 import type { Segment } from "./turnTail";
 
-const REVEAL_TICK_MS = 30;
-// The share of the backlog shown per 10 ms step: a 25th, a whole word at least.
-const TICK_DELAY_MS = 10;
-const BACKLOG_DRAIN_TICKS = 25;
+export interface TextRevealOptions {
+  now?: () => number;
+  isHidden?: () => boolean;
+  tickMs?: number;
+}
+
+interface Revealing {
+  shown: number;
+  pacer: TextPacer;
+}
 
 /**
  * Paces the text the live POST stream writes: what is shown lags what is
- * applied, so the cursor and the turn log stay exact. It keeps the share-per-
- * tick pacing the AI SDK path used before `copilotStreamPacer.ts`.
+ * applied, so the cursor and the turn log stay exact. It reveals by elapsed
+ * time with the AI SDK path's rules (`copilotStreamPacer.ts`): a steady rate,
+ * at most `MAX_LAG_MS` behind, whole words (or dictionary words in unspaced
+ * scripts), all at once in a hidden tab. A block that ends keeps revealing
+ * at its pace and reads as still streaming until it is shown whole.
  */
 export class TextReveal {
-  // Characters shown so far of each row a live block is writing.
-  private shown = new Map<string, number>();
+  private revealing = new Map<string, Revealing>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private displayRows = new WeakMap<LogRow, { shown: number; row: LogRow }>();
+  private readonly now: () => number;
+  private readonly isHidden: () => boolean;
+  private readonly tickMs: number;
 
   constructor(
     private readonly segments: () => readonly Segment[],
     private readonly onTick: () => void,
-  ) {}
+    options: TextRevealOptions = {},
+  ) {
+    this.now = options.now ?? defaultNow;
+    this.isHidden = options.isHidden ?? isDocumentHidden;
+    this.tickMs = options.tickMs ?? defaultTickMs();
+  }
 
   /** Rows a live block writes into show from where they stood before this entry. */
   track(prev: TurnLog, next: TurnLog) {
+    const now = this.now();
     for (const block of Object.values(next.blocks)) {
       if (!block.open || block.row === null) continue;
       const row = next.rows[block.row];
-      if (!this.shown.has(row.key)) {
-        this.shown.set(row.key, prev.rows[block.row]?.content.length ?? 0);
+      const before = prev.rows[block.row]?.content.length ?? 0;
+      let entry = this.revealing.get(row.key);
+      if (!entry) {
+        entry = { shown: before, pacer: createTextPacer() };
+        entry.pacer.begin(now);
+        this.revealing.set(row.key, entry);
+      }
+      if (row.content.length > before) {
+        entry.pacer.arrive(row.content.length - before, now);
       }
     }
-    if (this.shown.size > 0 && !this.timer) {
-      this.timer = setInterval(() => this.tick(), REVEAL_TICK_MS);
+    if (this.revealing.size > 0 && !this.timer) {
+      this.timer = setInterval(() => this.tick(), this.tickMs);
     }
   }
 
   /** Show everything: a resumed stream or a stop does not pace. */
   clear() {
-    this.shown.clear();
+    this.revealing.clear();
   }
 
   /** The segment as shown: rows still revealing are cut where the reveal stands. */
   display(seg: Segment): Segment {
-    if (seg.kind !== "turn" || this.shown.size === 0) return seg;
-    let changed = false;
-    const rows = seg.log.rows.map((row) => {
-      const shown = this.shown.get(row.key);
+    if (seg.kind !== "turn" || this.revealing.size === 0) return seg;
+    const cutRows = new Set<number>();
+    const rows = seg.log.rows.map((row, index) => {
+      const shown = this.revealing.get(row.key)?.shown;
       if (shown === undefined || shown >= row.content.length) return row;
-      changed = true;
+      cutRows.add(index);
       const cached = this.displayRows.get(row);
       if (cached?.shown === shown) return cached.row;
       const display = { ...row, content: row.content.slice(0, shown) };
       this.displayRows.set(row, { shown, row: display });
       return display;
     });
-    return changed ? { ...seg, log: { ...seg.log, rows } } : seg;
+    if (cutRows.size === 0) return seg;
+    const blocks = stillWriting(seg.log.blocks, cutRows);
+    return { ...seg, log: { ...seg.log, rows, blocks } };
   }
 
   dispose() {
@@ -64,44 +97,61 @@ export class TextReveal {
     this.timer = null;
   }
 
-  // Each tick shows what the transform would have emitted over it: a share of
-  // the backlog per 10 ms, a whole word at least.
   private tick() {
-    const open = openRows(this.segments());
+    const rows = turnRows(this.segments());
+    const now = this.now();
     let moved = false;
-    for (const [key, shown] of this.shown) {
-      const row = open.get(key);
-      if (!row) {
-        this.shown.delete(key);
+    for (const [key, entry] of this.revealing) {
+      const found = rows.get(key);
+      const rest = found?.row.content.slice(entry.shown) ?? "";
+      const cuts = findSegmentCutPoints(rest);
+      // An ended block has no word still growing: its last one is due too.
+      if (found && !found.open && rest && cuts.at(-1) !== rest.length) {
+        cuts.push(rest.length);
+      }
+      const last = cuts.at(-1) ?? 0;
+      const cut = this.isHidden() ? last : entry.pacer.take(cuts, now);
+      if (cut > 0) {
+        entry.shown += cut;
         moved = true;
-        continue;
       }
-      let next = shown;
-      for (let t = 0; t < REVEAL_TICK_MS / TICK_DELAY_MS; t++) {
-        const cuts = findSegmentCutPoints(row.content.slice(next));
-        if (cuts.length === 0) break;
-        const words = Math.max(1, Math.ceil(cuts.length / BACKLOG_DRAIN_TICKS));
-        next += cuts[Math.min(words, cuts.length) - 1];
-      }
-      if (next !== shown) {
-        this.shown.set(key, next);
+      if (!found || (!found.open && entry.shown >= found.row.content.length)) {
+        this.revealing.delete(key);
         moved = true;
       }
     }
-    if (this.shown.size === 0) this.dispose();
+    if (this.revealing.size === 0) this.dispose();
     if (moved) this.onTick();
   }
 }
 
-function openRows(segments: readonly Segment[]) {
-  const rows = new Map<string, LogRow>();
+function turnRows(segments: readonly Segment[]) {
+  const rows = new Map<string, { row: LogRow; open: boolean }>();
   for (const seg of segments) {
     if (seg.kind !== "turn") continue;
-    for (const block of Object.values(seg.log.blocks)) {
-      if (!block.open || block.row === null) continue;
-      const row = seg.log.rows[block.row];
-      if (row) rows.set(row.key, row);
-    }
+    const open = new Set(
+      Object.values(seg.log.blocks)
+        .filter((block) => block.open)
+        .map((block) => block.row),
+    );
+    seg.log.rows.forEach((row, index) => {
+      rows.set(row.key, { row, open: open.has(index) });
+    });
   }
   return rows;
+}
+
+// A row still being revealed reads as streaming, whether or not its block ended.
+function stillWriting(
+  blocks: Readonly<Record<string, BlockState>>,
+  cutRows: ReadonlySet<number>,
+) {
+  let changed = false;
+  const next: Record<string, BlockState> = {};
+  for (const [id, block] of Object.entries(blocks)) {
+    const reopen = !block.open && block.row !== null && cutRows.has(block.row);
+    next[id] = reopen ? { ...block, open: true } : block;
+    changed ||= reopen;
+  }
+  return changed ? next : blocks;
 }

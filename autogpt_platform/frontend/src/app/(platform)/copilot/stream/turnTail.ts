@@ -327,11 +327,13 @@ export function closeBlocks(log: TurnLog): TurnLog {
   return { ...log, blocks };
 }
 
-/** A block still writing or a tool call still waiting on its output. */
+/** A block still writing or a tool call still waiting on its input or output. */
 export function hasOpenParts(log: TurnLog) {
   return (
     Object.values(log.blocks).some((b) => b.open) ||
-    Object.values(log.tools).some((t) => t.phase !== "output-available")
+    Object.values(log.tools).some(
+      (t) => t.phase !== "output-available" && t.phase !== "input-error",
+    )
   );
 }
 

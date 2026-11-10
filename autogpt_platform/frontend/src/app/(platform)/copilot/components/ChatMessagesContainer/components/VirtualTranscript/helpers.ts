@@ -5,6 +5,9 @@ type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
 
 export interface TranscriptRow {
   message: ChatMessage;
+  /** The row's React key. It outlives the message's id, which hydration
+   *  swaps for the stored row's (see `useStableRowKeys`). */
+  key: string;
   /** Position in the full list of rendered rows, which also holds the rows
    *  the transcript leaves out (a held call's result row). */
   rowIndex: number;
