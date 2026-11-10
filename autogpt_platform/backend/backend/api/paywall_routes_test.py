@@ -34,6 +34,12 @@ CHECKED_IN_HANDLER = {
 
 OPEN_WHILE_PAYWALLED = {
     # Signing in and managing the account, its organisations and its links.
+    # The paywall offers Delete account, so its routes stay open, and so do
+    # the screen and the button that keep a closed account.
+    "GET /api/account/deletion",
+    "POST /api/account/deletion",
+    "POST /api/account/deletion/feedback",
+    "POST /api/account/deletion/restore",
     "POST /api/analytics/attribution",
     "GET /api/api-keys",
     "POST /api/api-keys",

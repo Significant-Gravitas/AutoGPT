@@ -5,8 +5,9 @@ process is both cheaper and safer than one per module. Emitters send through
 :func:`capture`, which adds the base properties every event carries
 (``environment`` and ``source``, see ``docs/engineering/tracking-plan.md``),
 treats a missing client as "analytics disabled" and never lets tracking
-raise into the request or execution that produced the event. Every client
-built here also stamps ``revision`` on everything it sends (see
+raise into the request or execution that produced the event. An event that
+must not be linked to any person goes through :func:`capture_anonymous`.
+Every client built here also stamps ``revision`` on everything it sends (see
 :func:`revision_properties`).
 
 :func:`capture` also reads who the running work is for. An admin acting as
@@ -27,7 +28,7 @@ from datetime import datetime
 from functools import cache
 from threading import Lock
 from typing import Any
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from posthog import Posthog
 
@@ -234,6 +235,48 @@ def capture(
             exc_info=True,
         )
         return False
+
+
+def capture_anonymous(
+    event: PostHogEvent,
+    properties: Mapping[str, Any] | None = None,
+    *,
+    source: str = "platform",
+) -> None:
+    """Send one event that must not be linked to anyone, with the base properties.
+
+    :func:`capture` refuses a synthetic distinct id because it would create a
+    person nobody can merge. This is allowed because no person is created:
+    ``$process_person_profile`` is false, so the fresh random id only groups
+    this one event, and nothing ties that id to an account. It is for counts
+    that must stay anonymous (account deletion feedback), so callers must not
+    put a user id, email or name in *properties*.
+
+    ``$process_person_profile`` and the base properties are applied last, so a
+    caller cannot turn the person profile back on or overwrite ``environment``
+    or ``source``. Failures are logged by event name only, never with the
+    properties, which can hold free text the person typed.
+    """
+    event_name = "<unknown>"
+    try:
+        event_name = event.value
+        client = get_posthog_client()
+        if client is None:
+            return
+        client.capture(
+            distinct_id=str(uuid4()),
+            event=event_name,
+            properties={
+                **(properties or {}),
+                "$process_person_profile": False,
+                "environment": _environment(),
+                "source": source,
+            },
+        )
+    except Exception as e:
+        logger.warning(
+            f"Failed to send anonymous PostHog event {event_name}: {type(e).__name__}"
+        )
 
 
 def _shutdown() -> None:

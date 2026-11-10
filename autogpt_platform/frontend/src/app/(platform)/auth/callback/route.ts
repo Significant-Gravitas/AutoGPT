@@ -6,6 +6,10 @@ import {
   withAuthTracking,
 } from "@/lib/auth-redirect";
 import {
+  ACCOUNT_CLOSED_PATH,
+  isAccountClosedError,
+} from "@/lib/auth/closed-account";
+import {
   EMAIL_VERIFICATION_NOTICE_PARAM,
   type EmailVerificationNotice,
   hasMarketingOptOutParam,
@@ -124,6 +128,11 @@ export async function GET(request: Request) {
       // A cache tag is the path alone; a query would make this a no-op.
       revalidatePath(next.split(/[?#]/)[0], "layout");
     } catch (createUserError) {
+      // An account its owner deleted: signing in is how they keep it, so the
+      // session stays and they see when it will be erased.
+      if (isAccountClosedError(createUserError)) {
+        return NextResponse.redirect(`${publicOrigin}${ACCOUNT_CLOSED_PATH}`);
+      }
       console.error("Error creating user:", createUserError);
 
       // Better Auth already set the session cookie before redirecting here, so

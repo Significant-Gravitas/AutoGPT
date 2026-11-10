@@ -85,8 +85,9 @@ def graphs(monkeypatch: pytest.MonkeyPatch) -> FakeGraphs:
 
 @pytest.fixture
 def banned(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    check = AsyncMock(return_value=False)
-    monkeypatch.setattr(community_sweep, "is_user_banned", check)
+    """The owner's refusal: None, or "banned" or "closed" (account deletion)."""
+    check = AsyncMock(return_value=None)
+    monkeypatch.setattr(community_sweep, "account_refusal", check)
     return check
 
 
@@ -155,16 +156,23 @@ async def test_an_unchanged_graph_is_stamped_without_any_owner_check(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "is_banned, paused, outcome",
-    [(False, False, "built"), (True, False, "refused"), (False, True, "refused")],
+    "refusal, paused, outcome",
+    [
+        (None, False, "built"),
+        ("banned", False, "refused"),
+        ("closed", False, "refused"),
+        (None, True, "refused"),
+    ],
 )
 async def test_a_changed_graph_is_rebuilt_only_once_its_owner_checks_pass(
-    env, graphs, banned, monkeypatch, is_banned, paused, outcome
+    env, graphs, banned, monkeypatch, refusal, paused, outcome
 ):
+    """A closed account (its owner asked to delete it) is refused like a
+    banned one, for its 14 days and after."""
     scope = await scope_with(env, "user-1", LONG_AGO)
     graphs.episodes[scope.group_id] = 5
     due_listing(env, monkeypatch, [scope.scope_key])
-    banned.return_value = is_banned
+    banned.return_value = refusal
     if paused:
         # Paused between the listing and the rebuild: the row is read again.
         env.db.update(scope.scope_key, state=PAUSED)
