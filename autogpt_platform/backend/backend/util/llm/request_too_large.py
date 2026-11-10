@@ -10,6 +10,7 @@ time, so it is not retried and the user is told to make it smaller.
 import re
 
 import anthropic
+import groq
 import openai
 
 # OpenAI's and Groq's wording for one request over a per-minute token limit.
@@ -45,9 +46,6 @@ class RequestTooLargeError(ValueError):
 
 def is_request_too_large(error: BaseException) -> bool:
     """True when the provider refused the request for its size."""
-    # Local import: groq is a heavy SDK, and this only runs on a failure.
-    import groq
-
     if not isinstance(
         error, (openai.APIStatusError, anthropic.APIStatusError, groq.APIStatusError)
     ):
