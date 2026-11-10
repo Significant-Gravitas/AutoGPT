@@ -218,32 +218,33 @@ async def _reset_routines(user_id: str, expert_id: str, template_id: str) -> int
 
 
 async def _archive_chats(user_id: str, expert_id: str) -> int:
-    """Stop sharing, then archive, every chat with the expert, and drop each
-    from the session cache so no cached copy still reads as open.
+    """Archive every chat with the expert, then stop sharing every archived
+    one that is still shared, and drop each from the session cache so no
+    cached copy still reads as open.
 
-    Shares go first and a chat archived by an earlier, interrupted reset that
-    is still shared is picked up again, so a retry finishes what a failure
-    left: a chat is never left archived but still shared.
+    The unsharing reads after the archive stamp, so a chat shared while this
+    ran, or left shared by an earlier reset that was interrupted, is caught
+    in the same call: a chat is never left archived but still shared.
     """
-    chats = await prisma.models.ChatSession.prisma().find_many(
+    sessions = prisma.models.ChatSession.prisma()
+    archived = await sessions.update_many(
+        where={"userId": user_id, "expertId": expert_id, "archivedAt": None},
+        data={"archivedAt": datetime.now(UTC)},
+    )
+    still_shared = await sessions.find_many(
         where={
             "userId": user_id,
             "expertId": expert_id,
-            "OR": [{"archivedAt": None}, {"isShared": True}],
+            "archivedAt": {"not": None},
+            "isShared": True,
         }
     )
-    for chat in chats:
-        if chat.isShared:
-            # The cascade the owner's own "stop sharing" runs: it also revokes
-            # runs shared through this chat, and keeps runs shared on their own.
-            await disable_chat_session_share(chat.id, user_id)
-    open_ids = [chat.id for chat in chats if chat.archivedAt is None]
-    archived = 0
-    if open_ids:
-        archived = await prisma.models.ChatSession.prisma().update_many(
-            where={"id": {"in": open_ids}, "archivedAt": None},
-            data={"archivedAt": datetime.now(UTC)},
-        )
-    for chat in chats:
+    for chat in still_shared:
+        # The cascade the owner's own "stop sharing" runs: it also revokes
+        # runs shared through this chat, and keeps runs shared on their own.
+        await disable_chat_session_share(chat.id, user_id)
+    for chat in await sessions.find_many(
+        where={"userId": user_id, "expertId": expert_id}
+    ):
         await invalidate_session_cache(chat.id)
     return archived
