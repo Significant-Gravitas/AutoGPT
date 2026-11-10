@@ -80,6 +80,7 @@ describe("a chat link the user cannot open", () => {
         {
           detail: {
             type: "chat_removed",
+            expert_id: "expert-1",
             expert_name: "Remy",
             message: "This chat was removed when Remy was reset.",
           },
@@ -96,6 +97,39 @@ describe("a chat link the user cannot open", () => {
     expect(
       screen.queryByPlaceholderText("What else can I help with?"),
     ).toBeNull();
+    // A new chat would open Otto, so the way on is a chat with that expert.
+    const link = screen.getByRole("link", { name: "Chat with Remy" });
+    expect(link.getAttribute("href")).toBe(
+      "/copilot?expertId=expert-1&kickoff=1",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Start a new chat" }),
+    ).toBeNull();
+  });
+
+  it("offers a plain new chat when the reset expert is no longer on the team", async () => {
+    const handler = http.get(`*/api/chat/sessions/${TEST_SESSION_ID}`, () =>
+      HttpResponse.json(
+        {
+          detail: {
+            type: "chat_removed",
+            expert_id: null,
+            expert_name: "Remy",
+            message: "This chat was removed when Remy was reset.",
+          },
+        },
+        { status: 410 },
+      ),
+    );
+    renderHost({ sessionResponse: handler });
+
+    expect(
+      await screen.findByText("This chat was removed when Remy was reset"),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Start a new chat" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("link", { name: "Chat with Remy" })).toBeNull();
   });
 
   it("keeps a server error on the existing path rather than calling the chat unavailable", async () => {

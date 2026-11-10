@@ -4857,17 +4857,24 @@ def test_get_session_reports_background_state_from_the_durable_record(
 
 
 @pytest.mark.parametrize(
-    "expert_name, message",
+    "expert_name, is_fired, expert_id, message",
     [
-        ("Remy", "This chat was removed when Remy was reset."),
-        (None, "This chat was removed when its expert was reset."),
+        ("Remy", False, "expert-1", "This chat was removed when Remy was reset."),
+        # Fired since: still named, but there is no chat with them to offer.
+        ("Remy", True, None, "This chat was removed when Remy was reset."),
+        (None, False, None, "This chat was removed when its expert was reset."),
     ],
 )
 def test_get_session_of_a_reset_experts_chat_says_it_was_removed(
-    mocker: pytest_mock.MockerFixture, expert_name: str | None, message: str
+    mocker: pytest_mock.MockerFixture,
+    expert_name: str | None,
+    is_fired: bool,
+    expert_id: str | None,
+    message: str,
 ) -> None:
     """Resetting an expert archives its chats: an old link no longer opens
-    one, though the row is kept, and the page is told why."""
+    one, though the row is kept, and the page is told why and, while the
+    expert is still on the team, which expert to chat with instead."""
     page, _ = _make_paginated_messages(mocker)
     page.session.archived_at = datetime.now(UTC)
     page.session.expert_id = "expert-1"
@@ -4878,7 +4885,10 @@ def test_get_session_of_a_reset_experts_chat_says_it_was_removed(
         return_value=MagicMock(name="expert") if expert_name else None
     )
     if expert_name:
-        find.return_value.find_first.return_value.name = expert_name
+        expert = find.return_value.find_first.return_value
+        expert.name = expert_name
+        expert.id = "expert-1"
+        expert.isArchived = is_fired
 
     response = client.get("/sessions/sess-1")
 
@@ -4886,6 +4896,7 @@ def test_get_session_of_a_reset_experts_chat_says_it_was_removed(
     assert response.json() == {
         "detail": {
             "type": "chat_removed",
+            "expert_id": expert_id,
             "expert_name": expert_name,
             "message": message,
         }

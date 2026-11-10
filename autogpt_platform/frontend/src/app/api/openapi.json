@@ -22426,6 +22426,10 @@
             "title": "Type",
             "default": "chat_removed"
           },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "expert_name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Name"
