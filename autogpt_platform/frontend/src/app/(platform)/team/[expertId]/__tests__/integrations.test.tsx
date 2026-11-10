@@ -462,9 +462,7 @@ describe("managing an expert's integrations", () => {
     expect(
       within(dialog).getByRole("button", { name: /Google/ }),
     ).toBeDefined();
-    expect(
-      within(dialog).queryByRole("button", { name: /Notion/ }),
-    ).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: /Notion/ })).toBeNull();
   });
 
   it("shows an untitled account by its email when it is the only one for that provider", async () => {
