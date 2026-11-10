@@ -23,9 +23,11 @@ from backend.data.model import (
     CredentialsMetaInput,
     HostScopedCredentials,
     OAuth2Credentials,
+    is_refused_sdk_default,
 )
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.oauth.refresh_failure import reconnect_required
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 from backend.util.request import CREDENTIAL_REJECTED_STATUS_CODES
@@ -69,6 +71,7 @@ async def fetch_graph_from_store_slug(
         or (None, None) if not found.
 
     Raises:
+        NotFoundError: If the listing's version is unavailable or deleted.
         DatabaseError: If there's a database error during lookup.
     """
     sdb = store_db()
@@ -462,6 +465,9 @@ def find_matching_credential(
     """
     fits = [c for c in available_creds if _credential_fits(c, field_info)]
     if selected:
+        # A pick wins even after the provider refused its refresh: the run
+        # then asks for that account to be reconnected instead of quietly
+        # switching to another one.
         for cred in fits:
             provider = _provider_slug(cred)
             key = (
@@ -471,6 +477,11 @@ def find_matching_credential(
             )
             if selected.get(key, selected.get(provider)) == cred.id:
                 return cred
+    # A credential whose refresh the provider refused for good only yields a
+    # reconnect card; while any other fits, it must not be picked or counted
+    # as a choice. With nothing else, keep it so the card can say why.
+    healthy = [c for c in fits if reconnect_required(c) is None]
+    fits = healthy or fits
     if field_info.supported_types == {"host_scoped"} and _pinned_for(field_info):
         return None
     own = [c for c in fits if not is_system_credential(c.id)]
@@ -506,6 +517,12 @@ def _selection_key(provider: str, field_info: CredentialsFieldInfo) -> str:
 
 def _credential_fits(cred: Credentials, field_info: CredentialsFieldInfo) -> bool:
     if cred.provider not in field_info.provider:
+        return False
+    if is_refused_sdk_default(cred.id):
+        # The operator's own key for a provider whose SDK default can't run:
+        # ``creds_manager.get`` refuses it, so it fits no field. Counting it
+        # would pick it over the "Use Credits" system credential in a watched
+        # chat, or make it a second "own" account to choose between.
         return False
     if cred.type not in field_info.supported_types:
         return False

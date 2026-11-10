@@ -86,6 +86,8 @@ async function createAuth(requireVerification = false) {
   return { handler: auth.handler as Handler, api: auth.api, db };
 }
 
+type TestDB = Awaited<ReturnType<typeof createAuth>>["db"];
+
 afterEach(() => {
   vi.unstubAllEnvs();
 });
@@ -101,15 +103,19 @@ describe("OAuth sign-up", () => {
     async (provider, requireVerification) => {
       const { handler, db } = await createAuth(requireVerification);
       answerAs(provider, { email: "someone@example.com", verified: false });
+      const withAccount = await createAuth(requireVerification);
+      existingAccount(withAccount.db, "someone@example.com");
 
-      const response = await signInWith(handler, provider);
+      const landing = landingOf(await signInWith(handler, provider));
 
-      expect(refusal(response)).toEqual({
-        code: "EMAIL_NOT_VERIFIED_BY_PROVIDER",
-        message: expect.stringMatching(/verify your email address/),
-      });
+      // Better Auth's own answer when an account uses the address, to the byte.
+      expect(landing).toBe("/login?error=account_not_linked");
+      expect(landingOf(await signInWith(withAccount.handler, provider))).toBe(
+        landing,
+      );
       expect(db.UserAuthIdentity).toEqual([]);
       expect(db.UserAuthSession).toEqual([]);
+      expect(withAccount.db.UserAuthAccount).toEqual([]);
     },
   );
 
@@ -131,12 +137,17 @@ describe("OAuth sign-up", () => {
     expect(db.UserAuthSession).toHaveLength(1);
   });
 
-  it("sends an address off the allowlist to the error page with its reason", async () => {
+  it("sends an address off the allowlist back to /login with its reason", async () => {
     vi.stubEnv("AUTH_SIGNUP_ALLOWLIST", "invited@example.com");
     const { handler, db } = await createAuth();
     answerAs("github", { email: "someone@example.com", verified: true });
 
-    const { code, message } = refusal(await signInWith(handler, "github"));
+    const landing = new URL(
+      landingOf(await signInWith(handler, "github")),
+      baseURL,
+    );
+    const code = landing.searchParams.get("error");
+    const message = landing.searchParams.get("error_description");
 
     expect(code).toBe("SIGN_UP_NOT_ALLOWED");
     expect(isWaitlistError(code, message)).toBe(true);
@@ -170,7 +181,11 @@ async function signInWith(handler: Handler, provider: Provider) {
     new Request(`${baseURL}/api/auth/sign-in/social`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: baseURL },
-      body: JSON.stringify({ provider, callbackURL: "/auth/callback" }),
+      body: JSON.stringify({
+        provider,
+        callbackURL: "/auth/callback",
+        errorCallbackURL: "/login",
+      }),
     }),
   );
   const { url } = await start.json();
@@ -188,16 +203,25 @@ async function signInWith(handler: Handler, provider: Provider) {
   );
 }
 
-// A refused sign-up lands on Better Auth's error page, carrying the hook's code
-// and message.
-function refusal(response: Response) {
+// Where the callback sends the browser.
+function landingOf(response: Response) {
   expect(response.status).toBe(302);
-  const location = new URL(response.headers.get("location") ?? "");
-  expect(location.pathname).toBe("/api/auth/error");
-  return {
-    code: location.searchParams.get("error"),
-    message: location.searchParams.get("error_description"),
-  };
+  return response.headers.get("location") ?? "";
+}
+
+// An account that already uses the address, verified as a password sign-up
+// leaves it.
+function existingAccount(db: TestDB, email: string) {
+  const now = new Date();
+  db.UserAuthIdentity.push({
+    id: "existing-user",
+    name: "Someone",
+    email,
+    emailVerified: true,
+    image: null,
+    createdAt: now,
+    updatedAt: now,
+  });
 }
 
 // What each provider's token and profile endpoints answer for this person.

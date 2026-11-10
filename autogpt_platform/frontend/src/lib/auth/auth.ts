@@ -50,6 +50,8 @@ import {
   SIGN_UP_NOT_ALLOWED_CODE,
 } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
+import { getMicrosoftLoginProvider } from "./microsoft-login";
+import { assertMicrosoftSignUpAllowed } from "./microsoft-sign-up-policy";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
 
@@ -71,7 +73,8 @@ function getSocialProviders() {
     }
   }
 
-  return providers;
+  const microsoft = getMicrosoftLoginProvider();
+  return microsoft ? { ...providers, microsoft } : providers;
 }
 
 // Shared with the databaseHooks below so the verified-email mirror reuses the
@@ -113,6 +116,8 @@ function hasPlatformUser(userId: string) {
 // Better Auth hands database hooks the endpoint context, or null outside one.
 type HookContext = {
   path?: string;
+  params?: { id?: string };
+  body?: unknown;
   headers?: Headers;
   request?: Request;
   context?: { options: BetterAuthOptions };
@@ -228,8 +233,12 @@ export const auth = betterAuth({
           user: { email: string; emailVerified?: boolean | null },
           ctx: HookContext,
         ) => {
-          assertSignUpPolicy(user.email, ctx);
+          // First, so an unverified address is answered the same whether or
+          // not an account uses it, before any later check tells them apart.
           assertProviderVerifiedEmail(user, ctx);
+          // Microsoft's next: its refusals carry codes /login explains.
+          assertMicrosoftSignUpAllowed(user, ctx);
+          assertSignUpPolicy(user.email, ctx);
           // An email sign-up was already checked in hooks.before.
           if (
             ctx?.path === ADMIN_CREATE_USER_PATH ||
@@ -455,6 +464,7 @@ export const auth = betterAuth({
       updateEmailWithoutVerification: true,
       sendChangeEmailConfirmation: async ({
         user,
+        newEmail,
         url,
       }: {
         user: { email: string };
@@ -466,6 +476,7 @@ export const auth = betterAuth({
           to: user.email,
           type: "change_email",
           url,
+          newEmail,
         });
       },
     },

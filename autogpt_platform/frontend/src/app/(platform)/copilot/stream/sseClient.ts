@@ -4,8 +4,8 @@ import type { StreamEntry, WireChunk } from "./turnConverter";
 
 /**
  * One SSE frame. An `entry` carries a stored entry and its id; a `synthetic`
- * data frame has no id because the route wrote it itself, so it ends this
- * connection and never the turn. Comments are surfaced because they are the
+ * data frame has no cursor. A tagged terminal recovery can end its named
+ * turn; ordinary synthetic errors only end the connection. Comments are the
  * liveness signal: the route and the listener heartbeat through them.
  */
 export type SseFrame =

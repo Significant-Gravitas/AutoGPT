@@ -64,10 +64,13 @@ poetry run pytest path/to/test.py --snapshot-update
 - **Absolute imports** — use `from backend.module import ...` for cross-package imports. Single-dot relative (`from .sibling import ...`) is acceptable for sibling modules within the same package (e.g., blocks). Avoid double-dot relative imports (`from ..parent import ...`) — use the absolute path instead
 - **No duck typing** — no `hasattr`/`getattr`/`isinstance` for type dispatch; use typed interfaces/unions/protocols
 - **Pydantic models** over dataclass/namedtuple/dict for structured data
+- **Field descriptions** — one or two lines; anything longer belongs in a doc, not a schema
 - **No linter suppressors** — no `# type: ignore`, `# noqa`, `# pyright: ignore`; fix the type/code
 - **List comprehensions** over manual loop-and-append
 - **Early return** — guard clauses first, avoid deep nesting
+- **No functions that exist only to hold a block** — a helper whose only job is wrapping one statement (e.g. a `try` inside a `with`) adds a signature and a call site without removing complexity; inline it
 - **f-strings vs printf syntax in log statements** — Use `%s` for deferred interpolation in `debug` statements, f-strings elsewhere for readability: `logger.debug("Processing %s items", count)`, `logger.info(f"Processing {count} items")`
+- **Verify the alert path for new logs/metrics** — a log line or metric only alerts someone if something is listening; check the receiving integration's configured level rather than assuming, and for a metric, know which alert rule watches it or accept that nothing does
 - **Sanitize error paths** — `os.path.basename()` in error messages to avoid leaking directory structure
 - **TOCTOU awareness** — avoid check-then-act patterns for file access and credit charging
 - **`Security()` vs `Depends()`** — use `Security()` for auth deps to get proper OpenAPI security spec
@@ -85,6 +88,9 @@ poetry run pytest path/to/test.py --snapshot-update
 - Mock at boundaries — mock where the symbol is **used**, not where it's **defined**
 - After refactoring, update mock targets to match new module paths
 - Use `AsyncMock` for async functions (`from unittest.mock import AsyncMock`)
+- Parametrize near-identical tests — five tests asserting the same fact with different inputs are one `@pytest.mark.parametrize` test; a copy-pasted stack of near-identical tests is a fixture
+- An absence test must be able to fail — before keeping a test that asserts something does *not* happen, make the mutation it's meant to catch and confirm the test goes red first; a test that can't fail has no power to catch a regression
+- Run `backend/util/architecture*_test.py` and `backend/blocks/test/test_block.py` for every backend change, whatever you touched — each architecture file sweeps whole packages and `test_block.py` is parametrized over every block, so no diff points at them. `architecture_test.py` rejects a new file outside a `lib`/`libs` directory that imports from `dataclasses` (this repo requires pydantic for structured data); `test_block.py` is the only suite that runs every block's `test_mock` lambdas (bar those in `SKIP_BLOCK_TESTS`), which live in the block definitions rather than in test files
 
 ### Tests That Don't Flake
 

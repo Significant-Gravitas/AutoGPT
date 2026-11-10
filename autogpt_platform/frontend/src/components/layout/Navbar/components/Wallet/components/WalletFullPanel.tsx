@@ -45,7 +45,7 @@ export function WalletFullPanel({ groups, formattedCredits }: Props) {
             <Icon
               icon={Cancel01Icon}
               tone="emphasis"
-              className="ml-2 h-5 w-5 hover:text-foreground"
+              className="ml-2 h-5 w-5 hover:text-foreground-base"
             />
           </PopoverClose>
         </div>
