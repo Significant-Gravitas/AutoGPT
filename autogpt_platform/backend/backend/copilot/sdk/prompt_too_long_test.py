@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+from backend.copilot.constants import REQUEST_TOO_LARGE_MSG
 from backend.copilot.transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
@@ -655,3 +656,12 @@ class TestFriendlyErrorText:
     def test_unauthorized_error(self):
         result = _friendly_error_text("401 Unauthorized")
         assert "Authentication" in result
+
+    def test_request_too_large_says_what_to_do_without_the_provider_text(self):
+        result = _friendly_error_text(
+            "Error code: 429 - Request too large for gpt-4.1-mini in organization "
+            "org-private-canary on tokens per min (TPM): Limit 400000, "
+            "Requested 520131."
+        )
+        assert result == REQUEST_TOO_LARGE_MSG
+        assert "org-private-canary" not in result

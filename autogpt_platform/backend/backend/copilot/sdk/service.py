@@ -102,6 +102,7 @@ from backend.util.llm.provider_billing import (
     is_provider_out_of_credits,
     report_provider_out_of_credits,
 )
+from backend.util.llm.request_too_large import is_request_too_large_text
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
     estimate_token_count,
@@ -114,6 +115,8 @@ from ..constants import (
     COPILOT_RETRYABLE_ERROR_PREFIX,
     FRIENDLY_TRANSIENT_MSG,
     HUNG_TOOL_CAP_SECONDS,
+    REQUEST_TOO_LARGE_CODE,
+    REQUEST_TOO_LARGE_MSG,
     STREAM_ERROR_MARKER,
     STREAM_INCOMPLETE_MARKER,
     STREAM_LOCK_PREFIX,
@@ -595,6 +598,19 @@ async def _consume_sdk_until_done(
                     ctx.log_prefix,
                 )
                 raise RuntimeError("Prompt is too long")
+
+            # A request the provider refuses for its size fails the turn with
+            # advice instead: retrying sends the same request, and forwarding
+            # the CLI's text would show the provider's JSON as the reply.
+            if is_request_too_large_text(error_preview):
+                logger.warning(
+                    "%s Request too large for the provider — failing the turn",
+                    ctx.log_prefix,
+                )
+                loop_state.stream_error_msg = REQUEST_TOO_LARGE_MSG
+                loop_state.stream_error_code = REQUEST_TOO_LARGE_CODE
+                loop_state.ended_with_stream_error = True
+                break
 
             # Intercept transient API errors (5xx, overloaded, 429,
             # socket closed, ECONNRESET) — replace the raw message with
@@ -1297,7 +1313,12 @@ _EXPECTED_STOP_CODES: frozenset[str] = frozenset(
 # Handled-error codes whose StreamError the outer retry loop yields itself,
 # after it has persisted the history marker, rather than the attempt.
 _OUTER_LOOP_YIELDS_ERROR_CODES: frozenset[str] = frozenset(
-    {"transient_api_error", PROVIDER_UNAVAILABLE_CODE, GATEWAY_REFUSED_CODE}
+    {
+        "transient_api_error",
+        PROVIDER_UNAVAILABLE_CODE,
+        GATEWAY_REFUSED_CODE,
+        REQUEST_TOO_LARGE_CODE,
+    }
 )
 
 
@@ -1348,6 +1369,7 @@ _PROMPT_TOO_LONG_PATTERNS: tuple[str, ...] = (
 # Map raw SDK error patterns to user-friendly messages.
 # Matched case-insensitively; first match wins.
 _FRIENDLY_ERROR_MAP: tuple[tuple[str, str], ...] = (
+    ("request too large", REQUEST_TOO_LARGE_MSG),
     ("authentication", "Authentication failed. Please check your API key."),
     ("invalid api key", "Authentication failed. Please check your API key."),
     ("unauthorized", "Authentication failed. Please check your API key."),
@@ -4566,6 +4588,7 @@ async def _run_stream_attempt(
             "Stream error handled",
             error_msg=loop_state.stream_error_msg,
             code=loop_state.stream_error_code,
+            retryable=loop_state.stream_error_code != REQUEST_TOO_LARGE_CODE,
             already_yielded=(
                 loop_state.stream_error_code not in _OUTER_LOOP_YIELDS_ERROR_CODES
             ),
@@ -6672,7 +6695,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 logger.error("%s Error: %s", log_prefix, error_msg, exc_info=True)
 
         is_transient = is_transient_api_error(error_msg)
-        if is_transient:
+        if is_request_too_large_text(error_msg):
+            display_msg, code = REQUEST_TOO_LARGE_MSG, REQUEST_TOO_LARGE_CODE
+        elif is_transient:
             display_msg, code = FRIENDLY_TRANSIENT_MSG, "transient_api_error"
         else:
             display_msg, code = error_msg, "sdk_error"

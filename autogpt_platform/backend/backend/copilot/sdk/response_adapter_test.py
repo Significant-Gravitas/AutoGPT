@@ -15,6 +15,7 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
+from backend.copilot.constants import REQUEST_TOO_LARGE_CODE, REQUEST_TOO_LARGE_MSG
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -908,6 +909,32 @@ def test_result_error_emits_error_and_finish():
     assert len(results) == 2
     assert isinstance(results[0], StreamError)
     assert "Invalid API key provided" in results[0].errorText
+    assert isinstance(results[1], StreamFinish)
+
+
+def test_result_error_for_a_request_too_large_says_what_to_do():
+    """Not offered as a retry, and the provider's JSON, which names the
+    platform's account, is not shown."""
+    adapter = _adapter()
+    msg = ResultMessage(
+        subtype="error",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=True,
+        num_turns=0,
+        session_id="s1",
+        result=(
+            "API Error: 429 {'error': {'message': 'Request too large for "
+            "gpt-4.1-mini in organization org-private-canary on tokens per min "
+            "(TPM): Limit 400000, Requested 520131.', 'code': "
+            "'rate_limit_exceeded'}}"
+        ),
+    )
+    results = adapter.convert_message(msg)
+
+    assert isinstance(results[0], StreamError)
+    assert results[0].errorText == REQUEST_TOO_LARGE_MSG
+    assert results[0].code == REQUEST_TOO_LARGE_CODE
     assert isinstance(results[1], StreamFinish)
 
 
