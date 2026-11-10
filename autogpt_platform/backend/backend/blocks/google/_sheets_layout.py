@@ -7,8 +7,10 @@ from backend.data.model import SchemaField
 
 from .sheets import _column_letter_to_index
 
-# Sheets stops at column ZZZ, so a longer token can't be a real column.
-_RANGE_PATTERN = re.compile(r"([A-Z]{1,3})(\d*):([A-Z]{1,3})(\d*)")
+# Sheets stops at column ZZZ and at 10 million cells, so longer tokens can't
+# be real columns or rows.
+_RANGE_PATTERN = re.compile(r"([A-Z]{1,3})(\d{0,8}):([A-Z]{1,3})(\d{0,8})")
+_ECHO_LIMIT = 80
 MAX_COLUMN_WIDTHS = 200
 MAX_COLUMN_WIDTH_PX = 2000
 
@@ -36,24 +38,37 @@ def grid_range(sheet_id: int, a1_range: str) -> dict:
     The sheet prefix is not read here: the caller picks the target sheet.
     """
     _, cells = split_sheet_prefix(a1_range)
+    shown = a1_range[:_ECHO_LIMIT] + ("..." if len(a1_range) > _ECHO_LIMIT else "")
     match = _RANGE_PATTERN.fullmatch(cells.strip().replace("$", "").upper())
     if not match:
         raise ValueError(
-            f"Invalid range '{a1_range}': use A1 notation like 'A1:L200' or 'A:L'"
+            f"Invalid range '{shown}': use A1 notation like 'A1:L200' or 'A:L'"
         )
     start_col, start_row, end_col, end_row = match.groups()
     if bool(start_row) != bool(end_row):
         raise ValueError(
-            f"Invalid range '{a1_range}': give a row on both ends or on neither"
+            f"Invalid range '{shown}': give a row on both ends or on neither"
+        )
+    first_col = _column_letter_to_index(start_col)
+    last_col = _column_letter_to_index(end_col)
+    if first_col > last_col:
+        raise ValueError(
+            f"Invalid range '{shown}': the first column comes after the last"
         )
     grid: dict = {
         "sheetId": sheet_id,
-        "startColumnIndex": _column_letter_to_index(start_col),
-        "endColumnIndex": _column_letter_to_index(end_col) + 1,
+        "startColumnIndex": first_col,
+        "endColumnIndex": last_col + 1,
     }
     if start_row:
-        grid["startRowIndex"] = int(start_row) - 1
-        grid["endRowIndex"] = int(end_row)
+        first_row, last_row = int(start_row), int(end_row)
+        if first_row < 1 or first_row > last_row:
+            raise ValueError(
+                f"Invalid range '{shown}': rows start at 1 and the first row "
+                "can't come after the last"
+            )
+        grid["startRowIndex"] = first_row - 1
+        grid["endRowIndex"] = last_row
     return grid
 
 
@@ -74,7 +89,7 @@ def target_sheet_name(sheet_name: str, ranges: list[str]) -> str | None:
     return target
 
 
-def freeze_requests(sheet_id: int, frozen_rows: int, frozen_columns: int) -> list:
+def freeze_requests(sheet_id: int, frozen_rows: int, frozen_columns: int) -> list[dict]:
     grid_properties: dict = {}
     if frozen_rows >= 0:
         grid_properties["frozenRowCount"] = frozen_rows
@@ -93,7 +108,7 @@ def freeze_requests(sheet_id: int, frozen_rows: int, frozen_columns: int) -> lis
     ]
 
 
-def width_requests(sheet_id: int, column_widths: list[int]) -> list:
+def width_requests(sheet_id: int, column_widths: list[int]) -> list[dict]:
     if len(column_widths) > MAX_COLUMN_WIDTHS:
         raise ValueError(f"Give at most {MAX_COLUMN_WIDTHS} column widths")
     requests = []
@@ -122,7 +137,7 @@ def width_requests(sheet_id: int, column_widths: list[int]) -> list:
     return requests
 
 
-def wrap_requests(sheet_id: int, wrap_text_range: str) -> list:
+def wrap_requests(sheet_id: int, wrap_text_range: str) -> list[dict]:
     if not wrap_text_range:
         return []
     return [
@@ -141,7 +156,7 @@ def wrap_requests(sheet_id: int, wrap_text_range: str) -> list:
     ]
 
 
-def filter_requests(sheet_id: int, filter_range: str) -> list:
+def filter_requests(sheet_id: int, filter_range: str) -> list[dict]:
     if not filter_range:
         return []
     return [
@@ -168,13 +183,13 @@ def banding_requests(
     header_color: dict,
     band_color: dict,
     existing_bandings: list[dict],
-) -> list:
+) -> list[dict]:
     """Band a range, first removing only the bandings it overlaps: a cell can
     carry one banding, and bandings elsewhere on the sheet stay."""
     if not banding_range:
         return []
     target = grid_range(sheet_id, banding_range)
-    requests: list = [
+    requests: list[dict] = [
         {"deleteBanding": {"bandedRangeId": banding["bandedRangeId"]}}
         for banding in existing_bandings
         if _overlaps(target, banding.get("range", {}))

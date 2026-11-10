@@ -10,7 +10,9 @@ Lay out a Google Sheet: freeze header rows or columns, set column widths, wrap t
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block reads the spreadsheet's sheets once, then sends one Sheets API batchUpdate with only the options you set: frozen rows and columns, a pixel width per column from A onwards (up to 2000 px, at most 200 columns), wrapped and top-aligned text on a range, filter buttons on a range, and alternating row colours on a range. It works on `sheet_name`, or on the sheet the ranges name, or else the first sheet, and refuses a range that names a different sheet. New alternating colours replace only the existing ones they overlap, so running the block again does not fail.
+The block reads the spreadsheet's sheets once, then sends one Sheets API batchUpdate with only the options you set: frozen rows and columns, a pixel width per column from A onwards (up to 2000 px, at most 200 columns), wrapped and top-aligned text on a range, filter buttons on a range, and alternating row colours on a range. It works on `sheet_name`, or on the sheet the ranges name, or else the first sheet, and refuses a range that names a different sheet. Before adding alternating colours, the block removes every existing set of alternating colours that overlaps the new range. Each is removed in full, so if one reaches beyond the new range, that part loses its colours too. Sets that don't overlap stay, and running the block again does not fail.
+
+A spreadsheet must be picked: the field is optional in the schema only because the Drive picker fills it, and without one the block returns "No spreadsheet selected".
 <!-- END MANUAL -->
 
 ### Inputs
@@ -24,7 +26,7 @@ The block reads the spreadsheet's sheets once, then sends one Sheets API batchUp
 | column_widths | Widths in pixels for columns A, B, C and on, up to 2000. 0 leaves that column as is. | List[int] | No |
 | wrap_text_range | Range whose text wraps inside the cell, aligned to the top, e.g. 'A1:L1000' | str | No |
 | filter_range | Range to add filter buttons to, header row first, e.g. 'A1:L1000' | str | No |
-| banding_range | Range to give alternating row colours, header row first, e.g. 'A1:L1000'. Replaces alternating colours that overlap it. | str | No |
+| banding_range | Range to give alternating row colours, header row first, e.g. 'A1:L1000'. Any existing alternating colours that overlap it are removed in full, including their part outside this range. | str | No |
 | header_color | Header row colour for the alternating colours | SheetColor | No |
 | band_color | Colour of every second row | SheetColor | No |
 

@@ -1,6 +1,7 @@
 """Google Sheets Set Layout: freeze, size, wrap, filter and band a sheet."""
 
 import asyncio
+from typing import Any
 
 from backend.blocks._base import (
     Block,
@@ -24,6 +25,7 @@ from ._sheets_layout import (
 from .sheets import (
     GOOGLE_SHEETS_DISABLED,
     _build_sheets_service,
+    _handle_sheets_api_error,
     _validate_spreadsheet_file,
 )
 
@@ -67,7 +69,7 @@ class GoogleSheetsSetLayoutBlock(Block):
             default="",
         )
         banding_range: str = SchemaField(
-            description="Range to give alternating row colours, header row first, e.g. 'A1:L1000'. Replaces alternating colours that overlap it.",
+            description="Range to give alternating row colours, header row first, e.g. 'A1:L1000'. Any existing alternating colours that overlap it are removed in full, including their part outside this range.",
             default="",
         )
         header_color: SheetColor = SchemaField(
@@ -155,8 +157,11 @@ class GoogleSheetsSetLayoutBlock(Block):
                 isFolder=False,
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
-        except Exception as e:
+        except ValueError as e:
+            # The block's own input checks: their message is already the answer.
             yield "error", f"Failed to lay out sheet: {e!s}"
+        except Exception as e:
+            yield "error", _handle_sheets_api_error(str(e), "update")
 
     def _set_layout(self, service, spreadsheet_id: str, input_data: Input) -> dict:
         wanted = target_sheet_name(
@@ -167,6 +172,20 @@ class GoogleSheetsSetLayoutBlock(Block):
                 input_data.banding_range,
             ],
         )
+        options: dict[str, Any] = dict(
+            frozen_rows=input_data.frozen_rows,
+            frozen_columns=input_data.frozen_columns,
+            column_widths=input_data.column_widths,
+            wrap_text_range=input_data.wrap_text_range,
+            filter_range=input_data.filter_range,
+            banding_range=input_data.banding_range,
+            header_color=input_data.header_color.model_dump(),
+            band_color=input_data.band_color.model_dump(),
+        )
+        # Check the inputs before spending a read on the spreadsheet.
+        if not layout_requests(0, **options, existing_bandings=[]):
+            raise ValueError("Nothing to change: set at least one layout option")
+
         # One read gives the sheet ids, titles and bandings.
         meta = (
             service.spreadsheets()
@@ -192,19 +211,9 @@ class GoogleSheetsSetLayoutBlock(Block):
 
         requests = layout_requests(
             sheet["properties"]["sheetId"],
-            frozen_rows=input_data.frozen_rows,
-            frozen_columns=input_data.frozen_columns,
-            column_widths=input_data.column_widths,
-            wrap_text_range=input_data.wrap_text_range,
-            filter_range=input_data.filter_range,
-            banding_range=input_data.banding_range,
-            header_color=input_data.header_color.model_dump(),
-            band_color=input_data.band_color.model_dump(),
+            **options,
             existing_bandings=sheet.get("bandedRanges", []),
         )
-        if not requests:
-            raise ValueError("Nothing to change: set at least one layout option")
-
         service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id, body={"requests": requests}
         ).execute()
