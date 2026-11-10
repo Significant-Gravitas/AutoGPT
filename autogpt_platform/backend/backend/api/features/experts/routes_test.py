@@ -44,6 +44,7 @@ from backend.api.features.store.skill_model import MarketplaceSkill
 from backend.api.rest_api import app as rest_app
 from backend.copilot.tools.skills import SkillWriteLockError
 from backend.util.exceptions import ConflictError, NotFoundError
+from backend.util.sandbox_limits import SandboxLimitError
 
 app = fastapi.FastAPI()
 app.include_router(public_router)
@@ -2125,6 +2126,26 @@ def test_start_expert_desktop_failure_is_a_502_with_a_fixed_message(
     assert response.status_code == 502
     # The provider's words stay in the log, never in the response.
     assert response.json()["detail"] == "Failed to start the desktop."
+
+
+def test_start_expert_desktop_refused_under_a_sandbox_limit_is_a_429_saying_so(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    config = mocker.patch("backend.api.features.experts.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = "e2b-key"
+    mocker.patch(
+        "backend.api.features.experts.routes.open_desktop",
+        new_callable=AsyncMock,
+        side_effect=SandboxLimitError("Too many sandboxes are running right now."),
+    )
+    response = client.post("/experts/expert-1/computer/desktop")
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Too many sandboxes are running right now."
 
 
 def test_start_expert_desktop_without_e2b_is_503(
