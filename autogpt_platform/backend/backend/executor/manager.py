@@ -1043,24 +1043,29 @@ class ExecutionProcessor:
         ]
         if not running:
             return
-        logger.warning(
-            f"[GraphExecutor] Holding this worker until stopped nodes {running} end"
-        )
+        logger.warning(f"Holding this worker until stopped nodes {running} end")
         started = warned = time.monotonic()
+        lock_kept = True
         while not all(
             progress.has_ended() for progress in self.running_node_execution.values()
         ):
-            cluster_lock.refresh()
+            # Without the lock another worker can take the run up meanwhile
+            if not cluster_lock.refresh() and lock_kept:
+                lock_kept = False
+                logger.warning(
+                    f"Couldn't keep the run's lock while holding this worker for "
+                    f"stopped nodes {running}"
+                )
             time.sleep(1)
             # A block that never returns keeps its worker for good: keep saying so
             if time.monotonic() - warned >= STOPPED_NODE_WARNING_SECONDS:
                 warned = time.monotonic()
                 logger.warning(
-                    f"[GraphExecutor] Still holding this worker for stopped nodes "
-                    f"{running}, {warned - started:.0f}s on"
+                    f"Still holding this worker for stopped nodes {running}, "
+                    f"{warned - started:.0f}s on"
                 )
         logger.info(
-            f"[GraphExecutor] Stopped nodes {running} ended after "
+            f"Stopped nodes {running} ended after "
             f"{time.monotonic() - started:.0f}s; the worker is free"
         )
 

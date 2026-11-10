@@ -212,6 +212,8 @@ def add_narration_to_video(
 ) -> None:
     """Add the narration audio to the video."""
     video_path, audio_path = inputs
+    # Its own copy: the strip `check_input_video` did was on another one
+    strip_chapters_inplace(video_path)
     video = None
     final = None
     narration_original = None

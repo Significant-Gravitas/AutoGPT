@@ -3,6 +3,7 @@ other nodes stays free while it encodes, and the block's time limit, or a
 stop, ends the encode itself rather than leaving it to run on."""
 
 import asyncio
+import contextlib
 import threading
 import time
 from collections.abc import Callable, Iterable
@@ -14,7 +15,7 @@ import pytest
 from moviepy import ColorClip
 
 from backend.blocks.video._render import clip_video
-from backend.blocks.video._utils import run_edit
+from backend.blocks.video._utils import _EDIT_SCRIPT, run_edit
 from backend.blocks.video.clip import VideoClipBlock
 from backend.blocks.video.loop import LoopVideoBlock
 from backend.data.execution import ExecutionContext
@@ -39,7 +40,7 @@ async def test_a_long_encode_leaves_the_loop_free_and_the_time_limit_ends_it(
     ticks = [0]
     started: dict[int, psutil.Process] = {}
     another_node = asyncio.ensure_future(_tick(ticks))
-    watcher = asyncio.ensure_future(_note_child_processes(started))
+    watcher = asyncio.ensure_future(_note_edit_processes(started))
     encode = asyncio.ensure_future(_loop_to_an_hour(LoopVideoBlock(), one_second_clip))
     try:
         await _until(lambda: any(_is_ffmpeg(p) for p in started.values()))
@@ -63,7 +64,7 @@ async def test_the_blocks_own_time_limit_ends_an_encode_nothing_else_limits(
     block = LoopVideoBlock()
     block.execution_timeout_seconds = 2
     started: dict[int, psutil.Process] = {}
-    watcher = asyncio.ensure_future(_note_child_processes(started))
+    watcher = asyncio.ensure_future(_note_edit_processes(started))
     began = time.monotonic()
     try:
         with pytest.raises(TimeoutError, match="did not finish within 2 seconds"):
@@ -93,35 +94,37 @@ async def test_an_edit_gets_its_arguments_and_returns_its_result(
     assert output.stat().st_size > 0
 
 
-async def test_an_edit_works_on_its_own_copy_of_its_inputs(one_second_clip: Path):
+async def test_an_edit_works_on_its_own_copy_of_its_inputs(
+    chaptered_video: Path, ffmpeg_on_path: None
+):
     # Two nodes of a run that take the same video store it at the same path,
     # and the second writes it over again while the first one's edit runs
-    original = one_second_clip.read_bytes()
+    original = chaptered_video.read_bytes()
     edit = asyncio.ensure_future(
         run_edit(
             VideoClipBlock(),
             clip_video,
-            [str(one_second_clip)],
-            str(one_second_clip.with_name("first_half.mp4")),
+            [str(chaptered_video)],
+            str(chaptered_video.with_name("first_half.mp4")),
             0.0,
             0.5,
         )
     )
     await asyncio.sleep(0)
-    one_second_clip.write_bytes(b"")
+    chaptered_video.write_bytes(b"")
 
     assert await edit == pytest.approx(0.5)
-    one_second_clip.write_bytes(original)
+    chaptered_video.write_bytes(original)
     await run_edit(
         VideoClipBlock(),
         clip_video,
-        [str(one_second_clip)],
-        str(one_second_clip.with_name("again.mp4")),
+        [str(chaptered_video)],
+        str(chaptered_video.with_name("again.mp4")),
         0.0,
         0.5,
     )
     # Its chapters are stripped from its copy, not from the stored file
-    assert one_second_clip.read_bytes() == original
+    assert chaptered_video.read_bytes() == original
 
 
 def test_an_edit_runs_from_an_event_loop_on_another_thread(one_second_clip: Path):
@@ -174,15 +177,17 @@ async def _tick(ticks: list[int]) -> None:
         ticks[0] += 1
 
 
-async def _note_child_processes(started: dict[int, psutil.Process]) -> None:
-    """Note every process this test's process starts, however indirectly."""
+async def _note_edit_processes(started: dict[int, psutil.Process]) -> None:
+    """Note the edit's child process and every process it starts, however
+    indirectly. Only those: this process has others that outlive the test,
+    such as the services an earlier test in the session started."""
     me = psutil.Process()
     while True:
-        try:
-            for process in me.children(recursive=True):
-                started.setdefault(process.pid, process)
-        except psutil.Error:
-            pass  # One ended mid-walk
+        for child in me.children():
+            with contextlib.suppress(psutil.Error):  # It ended mid-walk
+                if _EDIT_SCRIPT in child.cmdline():
+                    for process in [child, *child.children(recursive=True)]:
+                        started.setdefault(process.pid, process)
         await asyncio.sleep(0.02)
 
 

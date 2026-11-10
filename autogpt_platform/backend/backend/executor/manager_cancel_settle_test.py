@@ -369,6 +369,38 @@ def test_a_stopped_run_keeps_its_worker_until_its_blocked_node_ends():
         run.update_graph.assert_awaited_once()
 
 
+def test_a_held_worker_that_cant_keep_the_runs_lock_says_so_once(caplog):
+    """Without the run's lock, another worker can take the run up while its
+    stopped node still runs here: the held worker says so, but only once,
+    though it tries to refresh the lock every second."""
+    node_ended = threading.Event()
+    progress = MagicMock(spec=NodeExecutionProgress)
+    progress.has_ended.side_effect = node_ended.is_set
+    processor = ExecutionProcessor()
+    processor.running_node_execution = {"node-1": progress}
+    refreshes: list[bool] = []
+
+    def lost_lock_refresh() -> bool:
+        refreshes.append(False)
+        if len(refreshes) == 2:
+            node_ended.set()
+        return False
+
+    cluster_lock = MagicMock()
+    cluster_lock.refresh.side_effect = lost_lock_refresh
+    with caplog.at_level(logging.WARNING, logger=manager_module.__name__):
+        processor.wait_for_nodes_to_end(cluster_lock)
+
+    assert len(refreshes) == 2
+    lock_warnings = [
+        record.getMessage()
+        for record in caplog.records
+        if "the run's lock" in record.getMessage()
+    ]
+    assert len(lock_warnings) == 1
+    assert "['node-1']" in lock_warnings[0]
+
+
 def test_a_tool_node_run_inline_holds_the_cleanup_only_for_itself():
     """The Orchestrator runs a tool node inline from its own long-lived task,
     tracked by a bare future. Once the tool node is done, a stop's cleanup
