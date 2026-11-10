@@ -54,6 +54,8 @@ def test_a_valid_token_unsubscribes_its_user(
     response = _unsubscribe(_token_for(user_id))
 
     assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+    assert response.json() == {"status": "ok"}
     update.assert_awaited_once()
     assert update.await_args.kwargs["where"] == {"id": user_id}
     assert (
