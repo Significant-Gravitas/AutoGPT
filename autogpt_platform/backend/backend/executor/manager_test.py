@@ -11,7 +11,7 @@ from backend.api.model import CreateGraph
 from backend.api.rest_api import AgentServer
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.data_manipulation import FindInDictionaryBlock
-from backend.blocks.io import AgentInputBlock
+from backend.blocks.io import AgentInputBlock, AgentTableInputBlock
 from backend.blocks.maths import CalculatorBlock, Operation
 from backend.data import execution, graph
 from backend.data.model import User
@@ -242,7 +242,10 @@ async def test_input_pin_always_waited(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_run_can_leave_an_optional_input_blank(server: SpinTestServer):
+@pytest.mark.parametrize("input_block", [AgentInputBlock, AgentTableInputBlock])
+async def test_a_run_can_leave_an_optional_input_blank(
+    server: SpinTestServer, input_block: type[AgentInputBlock]
+):
     """
     An input with Advanced on and no default is optional (#10614): a run that
     leaves it blank still runs the block it feeds, with that pin's default.
@@ -254,7 +257,7 @@ async def test_a_run_can_leave_an_optional_input_blank(server: SpinTestServer):
     nodes = [
         graph.Node(block_id=AgentInputBlock().id, input_default={"name": "topic"}),
         graph.Node(
-            block_id=AgentInputBlock().id,
+            block_id=input_block().id,
             input_default={"name": "data", "advanced": True},
         ),
         graph.Node(block_id=StoreValueBlock().id),

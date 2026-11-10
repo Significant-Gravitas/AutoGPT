@@ -5,7 +5,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.blocks.io import AgentFileInputBlock, AgentInputBlock, AgentOutputBlock
+from backend.blocks.io import (
+    AgentFileInputBlock,
+    AgentInputBlock,
+    AgentOutputBlock,
+    AgentTableInputBlock,
+)
 from backend.data.graph import BaseGraph, missing_inputs
 
 
@@ -57,3 +62,25 @@ async def test_a_blank_file_input_sends_none_only_when_optional(
     result = AgentFileInputBlock().run(input_data, execution_context=MagicMock())
 
     assert [o async for o in result] == outputs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "advanced,value,expected",
+    [
+        (True, None, None),
+        (True, [], []),
+        (False, None, []),
+        (True, [{"x": "a"}], [{"x": "a"}]),
+    ],
+)
+async def test_a_blank_optional_table_preserves_downstream_defaults(
+    advanced: bool,
+    value: list[dict[str, Any]] | None,
+    expected: list[dict[str, Any]] | None,
+) -> None:
+    input_data = AgentTableInputBlock.Input(name="x", advanced=advanced, value=value)
+
+    assert [o async for o in AgentTableInputBlock().run(input_data)] == [
+        ("result", expected)
+    ]

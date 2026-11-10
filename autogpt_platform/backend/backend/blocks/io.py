@@ -651,8 +651,10 @@ class AgentTableInputBlock(AgentInputBlock):
         """
         Yields the table data as a list of dictionaries.
         """
-        # Pass through the value, defaulting to empty list if None
-        yield "result", input_data.value if input_data.value is not None else []
+        if input_data.value is None and not input_data.advanced:
+            yield "result", []
+        else:
+            yield "result", input_data.value
 
 
 class AgentGoogleDriveFileInputBlock(AgentInputBlock):
