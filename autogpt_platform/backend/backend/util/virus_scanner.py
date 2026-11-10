@@ -97,7 +97,7 @@ class VirusScannerService:
         self, content: bytes, filename: str
     ) -> Tuple[bool, Optional[str]]:
         """Scan all of `content` in one stream, with concurrency control."""
-        size = f"{len(content) / _MiB:.1f} MB"
+        size = f"{len(content) / _MiB:.1f} MiB"
         timeout = self.settings.clamav_service_timeout or (
             _DEFAULT_TIMEOUT_S + _TIMEOUT_S_PER_MIB * len(content) / _MiB
         )
@@ -112,8 +112,8 @@ class VirusScannerService:
             ) as exc:
                 raise RuntimeError(
                     f"{filename} ({size}) was not scanned: ClamAV closed the "
-                    "connection before answering, which it does to a stream over "
-                    "its StreamMaxLength"
+                    "connection before answering (for example a stream over its "
+                    "StreamMaxLength, or the daemon restarting)"
                 ) from exc
             except Exception as exc:
                 if "INSTREAM size limit exceeded" in str(exc):

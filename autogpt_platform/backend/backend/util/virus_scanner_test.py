@@ -166,7 +166,9 @@ class TestVirusScannerService:
         mock_client.instream = AsyncMock(side_effect=closed())
         scanner._client = mock_client
 
-        with pytest.raises(RuntimeError, match="upload.bin .* was not scanned"):
+        with pytest.raises(
+            RuntimeError, match=r"upload\.bin \(0\.0 MiB\) was not scanned"
+        ):
             await scanner.scan_file(b"some upload", filename="upload.bin")
 
     @pytest.mark.asyncio
