@@ -27,10 +27,33 @@ class TestTranscribeYoutubeVideoBlock:
             ("https://www.youtube.com/embed/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
             ("https://www.youtube.com/shorts/dtUqwMu3e-g", "dtUqwMu3e-g"),
             ("https://www.youtube.com/shorts/dtUqwMu3e-g?feature=share", "dtUqwMu3e-g"),
+            ("https://m.youtube.com/watch?v=aqz-KE-bpKQ&pp=ygUF", "aqz-KE-bpKQ"),
+            ("https://www.youtube.com/live/aqz-KE-bpKQ?si=LiveNight", "aqz-KE-bpKQ"),
+            ("https://youtube.com/live/aqz-KE-bpKQ", "aqz-KE-bpKQ"),
+            ("https://music.youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+            ("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+            ("https://YouTube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+            ("  https://youtu.be/dQw4w9WgXcQ  ", "dQw4w9WgXcQ"),
+            ("https://youtu.be/dQw4w9WgXcQ/", "dQw4w9WgXcQ"),
         ],
     )
     def test_extract_video_id(self, url, video_id):
         assert self.youtube_block.extract_video_id(url) == video_id
+
+    @pytest.mark.parametrize(
+        "invalid_url",
+        [
+            "https://www.youtube.com/watch?list=PL12345",
+            "https://youtu.be/",
+            "https://youtu.be",
+            "https://www.youtube.com/live/",
+            "https://www.youtube.com/embed/",
+            "https://notyoutube.com/watch?v=123",
+        ],
+    )
+    def test_extract_video_id_invalid_urls(self, invalid_url):
+        with pytest.raises(ValueError, match="Invalid YouTube URL"):
+            self.youtube_block.extract_video_id(invalid_url)
 
     @patch("backend.blocks.youtube.YouTubeTranscriptApi")
     def test_get_transcript_english_available(self, mock_api_class):
