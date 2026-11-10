@@ -96,14 +96,10 @@ def test_a_check_that_runs_out_of_time_fails_the_execution(
     assert refused.value.moderation_type == stage
     assert refused.value.graph_exec_id == "exec-1"
     assert cancelled.wait(timeout=10), "the timed-out check kept running"
-    # A run stopped at its input check never fills its queue, so its nodes are
-    # failed as a refusal fails them; by the output check every node has run.
-    if stage == "input":
-        automod.update_failed_nodes_for_moderation.assert_awaited_once_with(
-            db_client, "exec-1", "input"
-        )
-    else:
-        automod.update_failed_nodes_for_moderation.assert_not_called()
+    # Its nodes are failed as a refused check of the same kind fails them
+    automod.update_failed_nodes_for_moderation.assert_awaited_once_with(
+        db_client, "exec-1", stage
+    )
 
 
 def test_with_automod_off_a_run_never_waits_on_a_check(

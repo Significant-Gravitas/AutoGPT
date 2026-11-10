@@ -350,7 +350,7 @@ async def _finish_despite_cancel(work: Awaitable[T]) -> T:
 
 # How long a run waits on an AutoMod check before giving up on it.
 MODERATION_WAIT_SECONDS = 30.0
-# How long a run that input moderation stopped waits for its nodes to be failed.
+# How long a run that moderation stopped waits for its nodes to be failed.
 MODERATION_NODE_UPDATE_SECONDS = 30.0
 
 
@@ -366,7 +366,7 @@ def _await_moderation(
 
     A check that outlasts its wait is cancelled and counts as AutoMod failing,
     so the run only goes on without it when ``automod_fail_open`` is set. A run
-    failed this way at its input check has its nodes failed as a refused check
+    failed this way has its nodes failed as a refused check of the same kind
     fails them.
     With AutoMod off there is nothing to wait for, so the check is not run.
     """
@@ -386,8 +386,7 @@ def _await_moderation(
         )
         if fail_open:
             return
-        if moderation_type == "input":
-            _fail_unfinished_nodes(loop, graph_exec, log_metadata)
+        _fail_nodes_for_moderation(loop, graph_exec, moderation_type, log_metadata)
         raise ModerationError(
             message=(
                 f"Execution failed due to {moderation_type} content moderation error"
@@ -400,17 +399,19 @@ def _await_moderation(
         raise moderation_error
 
 
-def _fail_unfinished_nodes(
+def _fail_nodes_for_moderation(
     loop: asyncio.AbstractEventLoop,
     graph_exec: GraphExecutionEntry,
+    moderation_type: Literal["input", "output"],
     log_metadata: LogMetadata,
 ) -> None:
-    """Fail the run's unfinished nodes, as a refused input check fails them.
-    The run fails before its queue is filled, so nothing would ever run them,
-    and they would otherwise stay queued in a failed run."""
+    """Fail the run's nodes as a refused check of this kind fails them. At the
+    input check the run fails before its queue is filled, so nothing would ever
+    run its nodes, and they would otherwise stay queued in a failed run; at the
+    output check, the nodes whose outputs went unchecked."""
     update = asyncio.run_coroutine_threadsafe(
         automod_manager.update_failed_nodes_for_moderation(
-            get_db_async_client(), graph_exec.graph_exec_id, "input"
+            get_db_async_client(), graph_exec.graph_exec_id, moderation_type
         ),
         loop,
     )
@@ -420,7 +421,7 @@ def _fail_unfinished_nodes(
         update.cancel()
         log_metadata.error(
             f"Could not fail the nodes of graph execution {graph_exec.graph_exec_id} "
-            f"after its input moderation timed out: {e!r}"
+            f"after its {moderation_type} moderation timed out: {e!r}"
         )
 
 
