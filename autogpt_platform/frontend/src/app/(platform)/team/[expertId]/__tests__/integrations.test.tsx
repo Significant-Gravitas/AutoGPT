@@ -467,37 +467,34 @@ describe("managing an expert's integrations", () => {
     ).toBeNull();
   });
 
-  it(
-    "shows an untitled account by its email when it is the only one for that provider",
-    async () => {
-      server.use(
-        getListExpertCredentialsMockHandler([linkedin]),
-        http.get("*/api/integrations/credentials", () =>
-          HttpResponse.json([
-            {
-              id: "cred-google-single",
-              provider: "google",
-              type: "oauth2",
-              title: null,
-              username: "solo@example.com",
-            },
-          ]),
-        ),
-      );
+  it("shows an untitled account by its email when it is the only one for that provider", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([linkedin]),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json([
+          {
+            id: "cred-google-single",
+            provider: "google",
+            type: "oauth2",
+            title: null,
+            username: "solo@example.com",
+          },
+        ]),
+      ),
+    );
 
-      render(<ExpertDetailPage />);
+    render(<ExpertDetailPage />);
 
-      await openIntegrationsTab();
-      await userEvent.click(
-        await screen.findByRole("button", { name: /Use existing/ }),
-      );
-      const dialog = await screen.findByRole("dialog");
+    await openIntegrationsTab();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Use existing/ }),
+    );
+    const dialog = await screen.findByRole("dialog");
 
-      expect(
-        within(dialog).getByText("solo@example.com", { exact: false }),
-      ).toBeDefined();
-    },
-  );
+    expect(
+      within(dialog).getByText("solo@example.com", { exact: false }),
+    ).toBeDefined();
+  });
 
   it("opens a separate dialog for each header button", async () => {
     server.use(
