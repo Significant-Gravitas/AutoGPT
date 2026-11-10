@@ -83,15 +83,32 @@ def test_sub_workflows_that_share_a_workflow_are_not_a_cycle():
     assert graph.validate_graph_get_errors(for_run=True) == {}
 
 
-def _runs(graph_id: str, node_id: str) -> Node:
-    """A sub-workflow node that runs the workflow `graph_id`."""
+def test_versions_that_run_each_other_only_across_versions_are_not_a_cycle():
+    # v1 of "a" runs v1 of "b", and v2 of "b" runs v2 of "a"; a run loads one
+    # version of each, yet no chain runs a workflow twice
+    graph = _workflow(
+        "top",
+        _runs("a", "top-runs-a", version=1),
+        _runs("b", "top-runs-b", version=2),
+        sub_graphs=[
+            _sub_graph("a", _runs("b", "a-runs-b", version=1), version=1),
+            _sub_graph("b", _runs("a", "b-runs-a", version=2), version=2),
+        ],
+    )
+
+    graph.validate_graph(for_run=False)
+    assert graph.validate_graph_get_errors(for_run=True) == {}
+
+
+def _runs(graph_id: str, node_id: str, version: int = 1) -> Node:
+    """A sub-workflow node that runs that version of the workflow `graph_id`."""
     return Node(
         id=node_id,
         block_id=AgentExecutorBlock().id,
         input_default={
             "user_id": "user-1",
             "graph_id": graph_id,
-            "graph_version": 1,
+            "graph_version": version,
             "inputs": {},
             "input_schema": {},
             "output_schema": {},
@@ -99,8 +116,10 @@ def _runs(graph_id: str, node_id: str) -> Node:
     )
 
 
-def _sub_graph(graph_id: str, *nodes: Node) -> BaseGraph:
-    return BaseGraph(id=graph_id, name=graph_id, description="", nodes=list(nodes))
+def _sub_graph(graph_id: str, *nodes: Node, version: int = 1) -> BaseGraph:
+    return BaseGraph(
+        id=graph_id, version=version, name=graph_id, description="", nodes=list(nodes)
+    )
 
 
 def _workflow(

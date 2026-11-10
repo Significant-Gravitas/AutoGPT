@@ -121,9 +121,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description=(
             "How many of an executor's graph workers one user's runs may hold "
             "at once; kept below `num_graph_workers` when that is 2 or more, "
-            "and 1 when it is 1. Each level of sub-workflow nesting may hold "
-            "one more, so a run waiting on a sub-workflow never keeps it from "
-            "starting."
+            "and 1 when it is 1. Sub-workflow runs may hold one more per level "
+            "of nesting, up to 4 more, so a run waiting on a sub-workflow never "
+            "keeps it from starting; keep this at most `num_graph_workers` "
+            "minus 5 for one user's runs never to hold every worker."
         ),
     )
 

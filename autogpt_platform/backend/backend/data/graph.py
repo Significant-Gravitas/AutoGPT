@@ -1020,26 +1020,30 @@ class GraphModel(Graph, GraphMeta):
         return errors
 
     def _sub_workflow_cycle_errors(self) -> dict[str, dict[str, str]]:
-        """Sub-workflow nodes that would start a workflow their run is part
-        of, so that it starts itself again without end. Only this graph and
-        the sub-graphs it was saved or loaded with are known here; the
-        executor refuses a run of any other workflow already in its chain
-        (see `backend.executor.nesting`)."""
+        """Sub-workflow nodes that would start a workflow already running in
+        their chain, so that it starts itself again without end.
+
+        Chains follow the version each node names, through this graph and the
+        sub-graphs it was saved or loaded with. A version not among them is
+        checked when its run starts (see `backend.executor.nesting`).
+        """
         agent_block_id = AgentExecutorBlock().id
-        calls: dict[str, list[tuple[str, str]]] = defaultdict(list)
-        for graph in (self, *self.sub_graphs):
-            calls[graph.id].extend(
-                (node.id, target)
+        calls: dict[tuple[str, int], list[tuple[str, str, Any]]] = {
+            (graph.id, graph.version): [
+                (node.id, target, node.input_default.get("graph_version"))
                 for node in graph.nodes
                 if node.block_id == agent_block_id
                 and isinstance(target := node.input_default.get("graph_id"), str)
                 and target
-            )
+            ]
+            for graph in (*self.sub_graphs, self)
+        }
+        above = _workflows_above(calls, (self.id, self.version))
         return {
             node_id: {"graph_id": SUB_WORKFLOW_RUNS_ITSELF}
-            for graph_id, targets in calls.items()
-            for node_id, target in targets
-            if _runs_into(calls, target, graph_id)
+            for graph_key, node_calls in calls.items()
+            for node_id, target, _ in node_calls
+            if target in above.get(graph_key, set())
         }
 
     @staticmethod
@@ -1474,21 +1478,45 @@ def _describe_node_errors(
     return problems[0]
 
 
-def _runs_into(
-    calls: Mapping[str, Sequence[tuple[str, str]]], start: str, goal: str
-) -> bool:
-    """Whether a run of graph `start` would come to run graph `goal`, by the
-    (node id, graph id) sub-workflow calls each known graph makes."""
-    seen: set[str] = set()
+def _workflows_above(
+    calls: Mapping[tuple[str, int], Sequence[tuple[str, str, Any]]],
+    top: tuple[str, int],
+) -> dict[tuple[str, int], set[str]]:
+    """For each (graph id, version) a run of `top` reaches, the ids of the
+    graphs some chain from `top` runs on the way to it, its own included.
+    `calls` holds each graph's (node id, graph id, version) sub-workflow
+    calls; a call to a version not in it reaches nothing further."""
+    callees = {
+        caller: {
+            (graph_id, version)
+            for _, graph_id, version in node_calls
+            if (graph_id, version) in calls
+        }
+        for caller, node_calls in calls.items()
+    }
+    reached = _reachable(callees, top)
+    callers: dict[tuple[str, int], set[tuple[str, int]]] = defaultdict(set)
+    for caller in reached:
+        for callee in callees[caller]:
+            callers[callee].add(caller)
+    return {
+        graph: {graph_id for graph_id, _ in _reachable(callers, graph)}
+        for graph in reached
+    }
+
+
+def _reachable(
+    edges: Mapping[tuple[str, int], Collection[tuple[str, int]]],
+    start: tuple[str, int],
+) -> set[tuple[str, int]]:
+    seen = {start}
     pending = [start]
     while pending:
-        graph_id = pending.pop()
-        if graph_id == goal:
-            return True
-        if graph_id not in seen:
-            seen.add(graph_id)
-            pending.extend(target for _, target in calls.get(graph_id, ()))
-    return False
+        for follower in edges.get(pending.pop(), ()):
+            if follower not in seen:
+                seen.add(follower)
+                pending.append(follower)
+    return seen
 
 
 def _is_blank_io_name(block: "AnyBlockSchema", field: str, value: Any) -> bool:

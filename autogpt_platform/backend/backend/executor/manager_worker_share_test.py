@@ -85,6 +85,17 @@ def test_a_sub_run_queued_without_its_chain_still_starts(manager):
     assert "a1-child" in manager.active_graph_runs
 
 
+def test_a_sub_run_queued_without_its_chain_takes_nothing_from_the_share(manager):
+    # Its depth isn't known, so it is held outside the share, as all sub-runs
+    # were before they carried their chain
+    for run in ("a1", "a2"):
+        _deliver(manager, user="alice", run=run)
+    _deliver(manager, user="alice", run="a1-earlier-child", root="a1")
+    _deliver(manager, user="alice", run="a2-child", root="a2", ancestors=["g"])
+
+    assert {"a1-earlier-child", "a2-child"} <= set(manager.active_graph_runs)
+
+
 def test_a_users_sub_runs_count_toward_their_share(manager):
     for run in ("a1", "a2"):
         _deliver(manager, user="alice", run=run)

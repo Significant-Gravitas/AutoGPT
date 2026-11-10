@@ -2045,6 +2045,8 @@ async def _add_graph_execution(
         )
         # A resumed sub-graph run keeps its place in its chain, by which the
         # executor admits it and refuses a run of a workflow already in it.
+        # A parent run that's gone leaves its level out, which only admits
+        # the run as if it were nested less deep: more strictly.
         execution_context = execution_context.model_copy(
             update={
                 "ancestor_graph_ids": [

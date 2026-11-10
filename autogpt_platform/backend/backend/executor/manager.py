@@ -2274,8 +2274,10 @@ class ExecutionManager(AppProcess):
             + (f", parent={parent_exec_id}" if parent_exec_id else "")
         )
 
+        # None for a sub-workflow run queued before runs carried their chain:
+        # its depth is unknown, so it is left out of the share, as all were
         depth = sub_workflow_depth(graph_exec_entry)
-        if not self._has_worker_share_for(user_id, depth):
+        if depth is not None and not self._has_worker_share_for(user_id, depth):
             logger.info(
                 f"[{self.service_name}] User {user_id} holds its share of workers; "
                 f"requeueing {graph_exec_id}"
@@ -2371,7 +2373,8 @@ class ExecutionManager(AppProcess):
                 execute_graph, graph_exec_entry, cancel_event, cluster_lock
             )
             self.active_graph_runs[graph_exec_id] = (future, cancel_event)
-            self._run_owners[graph_exec_id] = user_id
+            if depth is not None:
+                self._run_owners[graph_exec_id] = user_id
         except Exception as e:
             logger.warning(
                 f"[{self.service_name}] Failed to setup execution for {graph_exec_id}: {type(e).__name__}: {e}"

@@ -74,12 +74,12 @@ def test_sub_workflows_nest_at_most_the_maximum_depth():
 def test_a_queued_runs_depth_is_how_many_runs_it_is_nested_in():
     top = ExecutionContext(root_execution_id="run-1")
     nested = ExecutionContext(root_execution_id="run-0", ancestor_graph_ids=["a", "b"])
-    # Queued before runs carried their chain: admitted as generously as any
+    # Queued before runs carried their chain: its depth isn't known
     older_nested = ExecutionContext(root_execution_id="run-0")
 
     assert sub_workflow_depth(_queued("run-1", top)) == 0
     assert sub_workflow_depth(_queued("run-1", nested)) == 2
-    assert sub_workflow_depth(_queued("run-1", older_nested)) == MAX_SUB_WORKFLOW_DEPTH
+    assert sub_workflow_depth(_queued("run-1", older_nested)) is None
 
 
 @pytest.mark.asyncio
@@ -128,25 +128,51 @@ async def test_a_sub_workflow_run_is_queued_with_its_chain(
     assert context.parent_execution_id == "run-outer"
 
 
+def _stored(graph_id: str, parent: str | None = None) -> MagicMock:
+    """A stored run of `graph_id`, started by the run `parent` if one is named."""
+    return MagicMock(
+        id=f"run-{graph_id}",
+        graph_id=graph_id,
+        graph_version=1,
+        trigger_source=ExecutionTrigger.SUBGRAPH if parent else ExecutionTrigger.MANUAL,
+        trigger_ref=parent,
+    )
+
+
+@pytest.mark.parametrize(
+    "parent, stored, chain",
+    [
+        ("run-outer", {"run-outer": _stored("outer")}, ["outer"]),
+        (
+            "run-middle",
+            {
+                "run-middle": _stored("middle", parent="run-outer"),
+                "run-outer": _stored("outer"),
+            },
+            ["outer", "middle"],
+        ),
+        # The run the chain started in is gone: its level is left out
+        (
+            "run-middle",
+            {"run-middle": _stored("middle", parent="run-outer")},
+            ["middle"],
+        ),
+    ],
+    ids=["one-level", "two-levels", "top-run-gone"],
+)
 @pytest.mark.asyncio
 async def test_a_resumed_sub_workflow_run_gets_its_chain_back(
-    mocker: MockerFixture,
+    mocker: MockerFixture, parent: str, stored: dict, chain: list[str]
 ) -> None:
     # Resumed after a review, from a context that names no chain
     run = _created_run(mocker, graph_id="inner")
     run.trigger_source = ExecutionTrigger.SUBGRAPH
-    run.trigger_ref = "run-outer"
+    run.trigger_ref = parent
     run.nodes_input_masks = {}
     db = _database_manager(mocker, run)
     db.get_graph_execution = AsyncMock(return_value=run)
     db.get_graph_execution_meta = AsyncMock(
-        return_value=MagicMock(
-            id="run-outer",
-            graph_id="outer",
-            graph_version=1,
-            trigger_source=ExecutionTrigger.MANUAL,
-            trigger_ref=None,
-        )
+        side_effect=lambda user_id, execution_id: stored.get(execution_id)
     )
     now = datetime.now(UTC)
     db.get_user_by_id = AsyncMock(
@@ -168,7 +194,7 @@ async def test_a_resumed_sub_workflow_run_gets_its_chain_back(
     )
 
     context = run.to_graph_execution_entry.call_args.kwargs["execution_context"]
-    assert context.ancestor_graph_ids == ["outer"]
+    assert context.ancestor_graph_ids == chain
 
 
 def _levels(count: int) -> list[str]:

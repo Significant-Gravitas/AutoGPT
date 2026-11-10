@@ -37,12 +37,16 @@ def nested_context(parent: ExecutionContext, graph_id: str) -> ExecutionContext:
     return parent.model_copy(update={"ancestor_graph_ids": lineage})
 
 
-def sub_workflow_depth(run: GraphExecutionEntry) -> int:
-    """How many levels of sub-workflows a queued run sits below its top-level run."""
+def sub_workflow_depth(run: GraphExecutionEntry) -> int | None:
+    """How many levels of sub-workflows a queued run sits below its top-level
+    run, or None for a sub-workflow run queued before runs carried their
+    chain, whose depth isn't known.
+
+    Every sub-workflow run started since carries its chain, a resumed one
+    included, so None is only ever an earlier run still in the queue."""
     context = run.execution_context
     if context.ancestor_graph_ids:
         return min(len(context.ancestor_graph_ids), MAX_SUB_WORKFLOW_DEPTH)
     if context.root_execution_id not in (None, run.graph_exec_id):
-        # A sub-workflow run queued before runs carried their chain
-        return MAX_SUB_WORKFLOW_DEPTH
+        return None
     return 0
