@@ -487,6 +487,63 @@ async def test_refund_or_lost_dispute_without_a_payment_intent_raises(
     retrieve.assert_not_awaited()
 
 
+async def _erase_the_test_user() -> None:
+    """What account erasure leaves of the test user: its ledger, no User."""
+    await UserBalance.prisma().delete_many(where={"userId": REFUND_TEST_USER_ID})
+    await User.prisma().delete_many(where={"id": REFUND_TEST_USER_ID})
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_refund_of_an_erased_accounts_top_up_is_left_alone(
+    server: SpinTestServer,
+):
+    """The ledger outlives the account; a refund webhook must not fail on
+    every delivery trying to debit a User that is gone."""
+    topup_tx = await setup_test_user_with_topup()
+    await _erase_the_test_user()
+    try:
+        refund = MagicMock(spec=stripe.Refund)
+        refund.id = "re_test_erased"
+        refund.payment_intent = topup_tx.transactionKey
+        refund.amount = 500
+        refund.status = "succeeded"
+        refund.reason = "requested_by_customer"
+
+        await credit_system.deduct_credits(refund)
+
+        assert await CreditTransaction.prisma().find_many(
+            where={"userId": REFUND_TEST_USER_ID}
+        ) == [topup_tx]
+    finally:
+        await cleanup_test_user()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@patch("stripe.Dispute.modify_async")
+async def test_a_dispute_of_an_erased_accounts_top_up_is_left_alone(
+    mock_stripe_modify, server: SpinTestServer
+):
+    topup_tx = await setup_test_user_with_topup()
+    await _erase_the_test_user()
+    try:
+        dispute = MagicMock(spec=stripe.Dispute)
+        dispute.id = "du_test_erased"
+        dispute.payment_intent = topup_tx.transactionKey
+        dispute.amount = 500
+        dispute.status = "needs_response"
+        dispute.close = MagicMock()
+
+        await credit_system.handle_dispute(dispute)
+
+        dispute.close.assert_not_called()
+        mock_stripe_modify.assert_not_called()
+        assert await CreditTransaction.prisma().find_many(
+            where={"userId": REFUND_TEST_USER_ID}
+        ) == [topup_tx]
+    finally:
+        await cleanup_test_user()
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_concurrent_refunds(server: SpinTestServer):
     """Test that concurrent refunds are handled atomically."""

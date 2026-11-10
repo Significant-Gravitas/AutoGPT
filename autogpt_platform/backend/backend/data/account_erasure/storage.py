@@ -58,18 +58,21 @@ async def delete_files(subject: Subject, *, dry_run: bool) -> StepReport:
         bucket_label: await _sweep_bucket(bucket, _prefixes(subject), kept, dry_run)
         for bucket_label, bucket in _buckets().items()
     }
+    status = StepStatus.WOULD_DO if dry_run else StepStatus.DONE
+    note = ""
     # Workspace files are on disk whenever the private bucket is unset
     # (`workspace_storage.py`), even with a public media bucket configured.
     if not Settings().config.resolved_private_user_data_bucket:
         kept_files = {media_root() / path for path in kept}
         counts["local_files"] = _sweep_local(_local_dirs(subject), kept_files, dry_run)
+        # A cloud pod missing the bucket setting looks the same as a stack
+        # that keeps files on disk, so this counts as the buckets skipped: the
+        # erasure stops unless the stack lists "buckets" as unused.
+        status = StepStatus.SKIPPED
+        note = "no private bucket is configured; swept the local data directory"
     if kept:
         counts["kept_media"] = len(kept)
-    return StepReport(
-        name="files",
-        status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
-        counts=counts,
-    )
+    return StepReport(name="files", status=status, note=note, counts=counts)
 
 
 def _require_safe_ids(subject: Subject) -> None:

@@ -1061,6 +1061,26 @@ class FillEnvSecretsTest(unittest.TestCase):
             )
             self.assertEqual(runtime_config.fill_env_blanks(path), [])
 
+    def test_a_ban_record_key_absent_from_an_older_env_is_appended(self) -> None:
+        """A backend/.env copied before the key existed gets one, so erasing a
+        banned account and the sign-up check work after `make init-env`."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "backend"
+            root.mkdir()
+            (root / ".env.default").write_text(
+                "BAN_RECORD_HASH_KEY=\n", encoding="utf-8"
+            )
+            path = root / ".env"
+            path.write_text("OPENAI_API_KEY=sk-theirs\n", encoding="utf-8")
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["BAN_RECORD_HASH_KEY"])
+            values = _env_values(path)
+            self.assertEqual(values["OPENAI_API_KEY"], "sk-theirs")
+            self.assertGreaterEqual(len(values["BAN_RECORD_HASH_KEY"]), 32)
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
     def test_a_published_frontend_public_key_is_cleared(self) -> None:
         """The app takes NEXT_PUBLIC_VAPID_PUBLIC_KEY over the backend's key,
         so the published one left in frontend/.env would keep browsers

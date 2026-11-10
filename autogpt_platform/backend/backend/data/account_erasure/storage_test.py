@@ -179,6 +179,9 @@ async def test_a_self_hosted_stack_removes_the_accounts_folders(monkeypatch, tmp
 
     dry = await storage.delete_files(SUBJECT, dry_run=True)
     assert dry.counts == {"local_files": 3}
+    # Reported as the buckets skipped, so a cloud pod missing the setting
+    # stops the erasure (routine.py) unless "buckets" is listed as unused.
+    assert dry.status == StepStatus.SKIPPED
     assert all(path.exists() for path in mine)
 
     await storage.delete_files(SUBJECT, dry_run=False)
@@ -307,3 +310,4 @@ async def test_a_private_bucket_means_no_local_sweep(gcs, monkeypatch):
 
     sweep_local.assert_not_called()
     assert "local_files" not in report.counts
+    assert report.status == StepStatus.DONE

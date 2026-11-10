@@ -724,10 +724,10 @@ def _closing_brace(template: str) -> int:
 
 
 def _missing_credentials(path: Path, assigned: set[str]) -> list[str]:
-    """Credentials, and the Web Push key pair, the file's .env.default leaves
-    for setup to fill that the file has no line for, typically because it was
-    copied before they existed. Without them the services would fall back to a
-    blank .env.default value."""
+    """Credentials, the Web Push key pair and the ban-record key, the file's
+    .env.default leaves for setup to fill that the file has no line for,
+    typically because it was copied before they existed. Without them the
+    services would fall back to a blank .env.default value."""
     defaults = path.with_name(".env.default")
     if path.name == defaults.name or not defaults.is_file():
         return []
@@ -739,7 +739,12 @@ def _missing_credentials(path: Path, assigned: set[str]) -> list[str]:
     return [
         name
         for name in names
-        if (name in CREDENTIALS or name in VAPID_KEY_SETTINGS) and name not in assigned
+        if (
+            name in CREDENTIALS
+            or name in VAPID_KEY_SETTINGS
+            or name in KEYS_ADDED_WHEN_MISSING
+        )
+        and name not in assigned
     ]
 
 
@@ -1090,6 +1095,9 @@ PUBLISHED_CREDENTIAL_DIGESTS = frozenset(
 # is cleared when it is the published one and otherwise left alone: blank,
 # the app fetches the public key from the backend.
 VAPID_KEY_SETTINGS = ("VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY")
+# Keys an older .env gets appended when it has no line for them. Safe for the
+# ban-record key: no ban record can exist before the key does.
+KEYS_ADDED_WHEN_MISSING = ("BAN_RECORD_HASH_KEY",)
 FRONTEND_VAPID_PUBLIC_KEY = "NEXT_PUBLIC_VAPID_PUBLIC_KEY"
 
 # SHA-256 of the private and public key backend/.env.default shipped from

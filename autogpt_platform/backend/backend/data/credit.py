@@ -1019,7 +1019,7 @@ class UserCredit(UserCreditBase):
             return
 
         transaction = await self._find_top_up(request)
-        if not transaction:
+        if not transaction or await _top_up_of_an_erased_account(transaction, request):
             return
         # Stripe counts cents of the charge, which can differ from the credits granted.
         credits = _top_up_credits_for_cents(transaction, request.amount)
@@ -1079,7 +1079,7 @@ class UserCredit(UserCreditBase):
 
     async def handle_dispute(self, dispute: stripe.Dispute):
         transaction = await self._find_top_up(dispute)
-        if not transaction:
+        if not transaction or await _top_up_of_an_erased_account(transaction, dispute):
             return
         user_id = transaction.userId
         amount = dispute.amount
@@ -1644,6 +1644,23 @@ class UserCredit(UserCreditBase):
 def _refund_hold_key(payment_intent: str) -> str:
     """The credits of an auto-approved refund until Stripe names the refund."""
     return f"REFUND-HOLD-{payment_intent}"
+
+
+async def _top_up_of_an_erased_account(
+    transaction: CreditTransaction, request: stripe.Refund | stripe.Dispute
+) -> bool:
+    """The top-up's account was erased (SECRT-2854): its ledger stays for tax,
+    but there is no User row left to credit, debit or name in evidence, so the
+    refund or dispute is logged and left alone instead of failing every
+    delivery. A dispute still needs answering in Stripe, by hand."""
+    if await User.prisma().find_unique(where={"id": transaction.userId}):
+        return False
+    log = logger.error if isinstance(request, stripe.Dispute) else logger.warning
+    log(
+        f"Ignoring {request.id} (${request.amount / 100:.2f}): its top-up "
+        f"{transaction.transactionKey} belongs to an erased account"
+    )
+    return True
 
 
 def _top_up_credits_for_cents(top_up: CreditTransaction, cents: int) -> int:

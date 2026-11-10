@@ -381,7 +381,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "Run the job that erases closed accounts (every AccountDeletionRequest "
             "past its 14 days and not completed yet). Off by default. It runs in "
             "the database manager, which then needs the bucket, FalkorDB, PostHog "
-            "personal key, MailerLite and Stripe settings and ENCRYPTION_KEY "
+            "personal key, MailerLite and Stripe settings and BAN_RECORD_HASH_KEY "
             "(docs/engineering/account-deletion.md)."
         ),
     )
@@ -394,9 +394,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=[],
         description=(
             "Outside services this stack does not use, so the account erasure "
-            "may skip their step: any of buckets, falkordb, posthog, mailerlite, "
-            "stripe. A step skipped for a service not listed stops the erasure "
-            "before the account's rows go, and the request stays open."
+            "may skip their step: a JSON list of any of buckets, falkordb, "
+            'posthog, mailerlite, stripe, e.g. \'["posthog", "mailerlite"]\'. '
+            "A step skipped for a service not listed stops the erasure before "
+            "the account's rows go, and the request stays open."
         ),
     )
 

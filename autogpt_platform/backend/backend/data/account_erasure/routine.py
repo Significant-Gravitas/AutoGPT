@@ -217,8 +217,8 @@ def _stop_on_a_missing_service(result: StepReport) -> StepReport:
         update={
             "status": StepStatus.FAILED,
             "note": f"{result.note}. Set it up and run again, or delete this "
-            f'data by hand and run with "{service}" in '
-            "ACCOUNT_ERASURE_UNUSED_SERVICES.",
+            "data by hand and run once with "
+            f"ACCOUNT_ERASURE_UNUSED_SERVICES='[\"{service}\"]' (a JSON list).",
         }
     )
 
