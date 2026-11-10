@@ -39,11 +39,11 @@ def test_a_commands_own_stderr_is_left_alone():
     )
 
 
-# The test below runs only where bubblewrap can create namespaces. CI's runners
-# refuse them, so it skips there and its body is left out of coverage.
+# The test below runs two real sandboxes, and skips only where bubblewrap
+# cannot create namespaces at all.
 
 
-async def _sandbox_runs_here(cwd: str) -> bool:  # pragma: no cover
+async def _sandbox_runs_here(cwd: str) -> bool:
     """Whether this host can run the sandbox at all.
 
     Docker's default seccomp profile and Ubuntu's AppArmor userns restriction
@@ -60,9 +60,7 @@ async def _sandbox_runs_here(cwd: str) -> bool:  # pragma: no cover
 
 
 @pytest.mark.asyncio
-async def test_sandbox_cannot_read_another_sandboxes_command_line(
-    tmp_path,
-):  # pragma: no cover
+async def test_sandbox_cannot_read_another_sandboxes_command_line(tmp_path):
     other = tmp_path / "other"
     scanner = tmp_path / "scanner"
     other.mkdir()
