@@ -23,6 +23,7 @@ import {
   getConsentGatedConfig,
 } from "./posthog-consent";
 import { getPostHogClientHosts } from "./posthog-proxy";
+import { maskCapturedNetworkRequest } from "./posthog-replay";
 
 export function PostHogProvider({ children }: { children: ReactNode }) {
   const isPostHogEnabled = environment.isPostHogEnabled();
@@ -51,6 +52,9 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
           bootstrap: { distinctID: anonymousID, isIdentifiedID: false },
         }),
         ...getConsentGatedConfig(),
+        session_recording: {
+          maskCapturedNetworkRequestFn: maskCapturedNetworkRequest,
+        },
         before_send: [dropWithoutConsent, markImpersonatedEvent],
       });
       posthog.register(getPostHogBaseProperties());
