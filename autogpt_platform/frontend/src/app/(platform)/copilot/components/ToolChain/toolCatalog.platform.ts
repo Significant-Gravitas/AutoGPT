@@ -298,7 +298,6 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "info",
     running: "Flagging a mistake",
     done: "Flagged a mistake",
->>>>>>> origin/dev
   },
   ask_question: {
     category: "question",
