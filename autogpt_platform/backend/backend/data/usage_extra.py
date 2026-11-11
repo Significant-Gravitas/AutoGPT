@@ -117,7 +117,9 @@ async def buy_extra_week(
         return ExtraWeekPurchase(
             extra_week=bought, balance=await credits.get_credits(user_id), charged=False
         )
-    logger.info(f"User {user_id[:8]} bought an extra week")
+    # No user id: the code scanner counts it as private here. The purchase
+    # is on record as its credit transaction and its PostHog event.
+    logger.info("An extra week was bought")
     return ExtraWeekPurchase(
         extra_week=ExtraWeek.from_db(row), balance=balance, charged=True
     )

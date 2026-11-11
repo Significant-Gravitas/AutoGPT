@@ -92,8 +92,7 @@ async def save_billing_clock(
     period = billing_period(subscription)
     if period is None:
         logger.error(
-            f"A subscription of user {user_id[:8]} has no usable billing "
-            "period; keeping the stored clock"
+            "A subscription has no usable billing period; keeping the stored clock"
         )
         return False
     written = await execute_raw_with_schema(
@@ -127,13 +126,14 @@ async def save_billing_clock(
         period.created,
         client=client,
     )
-    # Truncated user id only: nothing read off the Stripe object is logged.
+    # No user id and nothing read off the Stripe object: the code scanner
+    # counts both as private here. Callers that know who it is for say so.
     if written:
-        logger.info(f"Billing clock of user {user_id[:8]} copied from Stripe")
+        logger.info("Billing clock copied from Stripe")
     else:
         logger.warning(
-            f"Billing clock of user {user_id[:8]} kept: Stripe's period is "
-            "older than the stored one, or belongs to an older plan"
+            "Billing clock kept: Stripe's period is older than the stored "
+            "one, or belongs to an older plan"
         )
     return bool(written)
 
