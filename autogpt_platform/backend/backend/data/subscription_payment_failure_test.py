@@ -10,6 +10,7 @@ basil on it has neither, and ``payments`` only when expanded.
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from contextlib import ExitStack, asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -261,6 +262,10 @@ class World:
         self.synced: list[dict] = []
         self.tier = SubscriptionTier.PRO
         self.tier_writes: list[SubscriptionTier] = []
+        self.pauses: list[str] = []
+        self.alerts: list[str] = []
+        # Late payments of paused bills: subscription id -> paidAt.
+        self.paid_after_pause: dict[str, datetime] = {}
         self.locks: dict[str, asyncio.Lock] = {}
         self._stack = ExitStack()
 
@@ -289,6 +294,19 @@ class World:
     async def _set_tier(self, user_id: str, tier: SubscriptionTier, **kwargs):
         self.tier = tier
         self.tier_writes.append(tier)
+
+    async def _record_pause(self, user_id: str, invoice: dict, subscription: dict):
+        self.pauses.append(invoice["id"])
+
+    async def _alert(self, message: str) -> bool:
+        self.alerts.append(message)
+        return True
+
+    async def _find_paid_pause(self, where):
+        paid_at = self.paid_after_pause.get(where["stripeSubscriptionId"])
+        if paid_at is None or paid_at < where["paidAt"]["gte"]:
+            return None
+        return MagicMock(stripeSubscriptionId=where["stripeSubscriptionId"])
 
     def subscription_updated(self, sub_id: str) -> Awaitable[None]:
         """Stripe's ``customer.subscription.updated`` for ``sub_id``."""
@@ -362,6 +380,18 @@ class World:
                 "backend.data.subscription_payment_failure.sync_subscription_from_stripe",
                 side_effect=self._sync,
             ),
+            patch(
+                "backend.data.subscription_payment_failure.record_plan_paused",
+                side_effect=self._record_pause,
+            ),
+            patch(
+                "backend.data.subscription_payment_failure.alert_tier_reconciliation_discrepancy",
+                side_effect=self._alert,
+            ),
+            patch(
+                "backend.data.subscription_payment_failure.SubscriptionBillingRestart.prisma",
+                return_value=MagicMock(find_first=self._find_paid_pause),
+            ),
             patch.object(stripe.Invoice, "retrieve_async", fs.retrieve_invoice),
             patch.object(stripe.Invoice, "pay_async", fs.pay),
             patch.object(stripe.Invoice, "list_async", fs.list_invoices),
@@ -399,6 +429,8 @@ async def test_unpaid_renewal_cuts_access_and_leaves_the_bill_payable():
     assert world.stripe.subscriptions["sub_1"]["status"] == "past_due"
     assert world.stripe.invoices["in_1"]["status"] == "open"
     assert world.ledger.transactions == {}
+    # Paying it later restarts the billing period from the payment.
+    assert world.pauses == ["in_1"]
 
 
 @pytest.mark.asyncio
@@ -575,6 +607,8 @@ async def test_old_plan_paid_after_a_newer_plan_replaced_it_is_ended(
     assert world.stripe.subscriptions["sub_new"]["status"] == "active"
     assert world.tier == tier
     assert world.tier_writes == []
+    # Its payment needs a refund; a person is told.
+    assert len(world.alerts) == 1 and "manual refund" in world.alerts[0]
 
 
 @pytest.mark.asyncio
@@ -590,6 +624,102 @@ async def test_a_newer_plans_own_update_still_ends_the_older_plan():
 
     assert world.stripe.cancelled == ["sub_old"]
     assert world.tier == SubscriptionTier.MAX
+
+
+@pytest.mark.asyncio
+async def test_a_failure_while_another_plan_gives_access_records_no_pause():
+    """Access was never cut, so paying the bill later moves no renewal."""
+    with World(balance=0) as world:
+        world.tier = SubscriptionTier.MAX
+        world.stripe.add_subscription(
+            "sub_other", "active", "in_other", price="price_max", created=1
+        )
+        event = _renewal_failed(world, sub_id="sub_new", invoice_id="in_new")
+        world.stripe.subscriptions["sub_new"]["created"] = 2
+        await handle_subscription_payment_failure(event)
+
+    assert world.tier == SubscriptionTier.MAX
+    assert world.pauses == []
+
+
+@pytest.mark.asyncio
+async def test_a_payment_still_processing_after_a_failure_records_the_pause():
+    with World(balance=0) as world:
+        event = _renewal_failed(world, payment_intent="pi_bank")
+        world.stripe.payment_intents["pi_bank"] = {
+            "id": "pi_bank",
+            "status": "processing",
+        }
+        await handle_subscription_payment_failure(event)
+
+    assert world.tier == SubscriptionTier.NO_TIER
+    assert world.pauses == ["in_1"]
+
+
+def _left_for_a_new_plan(world: World, old_status: str) -> datetime:
+    """A NO_TIER customer whose PRO renewal failed chose MAX through Checkout,
+    which created the new plan now."""
+    now = datetime(2026, 3, 9, 12, tzinfo=UTC)
+    world.tier = SubscriptionTier.NO_TIER
+    world.stripe.add_subscription(
+        "sub_old",
+        old_status,
+        "in_old",
+        created=int((now - timedelta(days=60)).timestamp()),
+    )
+    world.stripe.add_invoice(
+        "in_old", "sub_old", status="paid" if old_status == "active" else "open"
+    )
+    world.stripe.add_subscription(
+        "sub_new", "active", "in_new", price="price_max", created=int(now.timestamp())
+    )
+    world.stripe.add_invoice("in_new", "sub_new", status="paid")
+    return now
+
+
+@pytest.mark.asyncio
+async def test_a_new_plan_ends_the_failed_plan_and_voids_its_bill():
+    """Nothing else would: Stripe keeps retrying the old bill, and a retry
+    that succeeds charges for the plan the customer left."""
+    with World() as world:
+        _left_for_a_new_plan(world, "past_due")
+        await world.subscription_updated("sub_new")
+
+    assert world.tier == SubscriptionTier.MAX
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.subscriptions["sub_old"]["cancellation_details"] == {
+        "comment": REPLACED_PLAN_CANCELLATION_COMMENT
+    }
+    assert world.stripe.voided == ["in_old"]
+    assert world.stripe.subscriptions["sub_new"]["status"] == "active"
+    assert world.alerts == []
+
+
+@pytest.mark.asyncio
+async def test_a_failed_plan_revived_during_the_checkout_is_ended_and_reported():
+    """Stripe's retry paid the old bill while the customer was in Checkout
+    for the new plan. The old plan is cancelled as a duplicate, and the
+    payment that revived it needs a refund, so a person is told."""
+    with World() as world:
+        now = _left_for_a_new_plan(world, "active")
+        world.paid_after_pause["sub_old"] = now - timedelta(minutes=20)
+        await world.subscription_updated("sub_new")
+
+    assert world.tier == SubscriptionTier.MAX
+    assert world.stripe.cancelled == ["sub_old"]
+    assert len(world.alerts) == 1
+    assert "sub_old" in world.alerts[0] and "manual refund" in world.alerts[0]
+
+
+@pytest.mark.asyncio
+async def test_an_older_plan_paid_long_before_the_new_one_raises_no_alert():
+    with World() as world:
+        now = _left_for_a_new_plan(world, "active")
+        world.paid_after_pause["sub_old"] = now - timedelta(days=20)
+        await world.subscription_updated("sub_new")
+
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.alerts == []
 
 
 @pytest.mark.asyncio

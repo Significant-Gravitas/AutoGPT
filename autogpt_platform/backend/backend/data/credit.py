@@ -3062,7 +3062,8 @@ async def _create_subscription_checkout(
 
 
 async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> None:
-    """Best-effort cancel of any active subs for the customer other than new_sub_id.
+    """Best-effort cancel of any active subs for the customer other than new_sub_id,
+    and of older past-due or unpaid ones (``end_plans_replaced_by``).
 
     Called from the webhook handler after a new subscription becomes active. Failures
     are logged but not raised so a transient Stripe error doesn't crash the webhook —
@@ -3076,6 +3077,11 @@ async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> Non
     TODO(#stripe-reconcile-job): replace this best-effort cleanup with a periodic
     reconciliation job that queries Stripe for customers with >1 active sub.
     """
+    from backend.data.subscription_payment_failure import (  # local import avoids circular
+        end_plans_replaced_by,
+    )
+
+    await end_plans_replaced_by(customer_id, new_sub_id)
     try:
         await _cancel_customer_subscriptions(customer_id, exclude_sub_id=new_sub_id)
     except stripe.StripeError:

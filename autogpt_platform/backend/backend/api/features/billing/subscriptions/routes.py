@@ -63,6 +63,7 @@ from backend.data.subscription_payment_due import (
     UNPAID_BILL_BLOCKS_CHECKOUT,
     SubscriptionPaymentDue,
     get_subscription_payment_due,
+    unpaid_bill_blocks_checkout,
 )
 from backend.data.subscription_payment_failure import (
     PaymentFailureOutcome,
@@ -785,7 +786,10 @@ async def update_subscription_tier(
         )
     try:
         user = await get_user_by_id(user_id)
-        if await get_subscription_payment_due(user.stripe_customer_id, fresh=True):
+        price_id = await get_subscription_price_id(tier, request.billing_cycle)
+        if price_id and await unpaid_bill_blocks_checkout(
+            user.stripe_customer_id, price_id
+        ):
             raise HTTPException(status_code=409, detail=UNPAID_BILL_BLOCKS_CHECKOUT)
         url = await create_subscription_checkout(
             user_id=user_id,

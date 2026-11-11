@@ -17,17 +17,19 @@ cancel the newer one as a duplicate.
 """
 
 import logging
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
 import stripe
 from prisma.enums import SubscriptionTier
-from prisma.models import User
+from prisma.models import SubscriptionBillingRestart, User
 from pydantic import BaseModel
 
 from backend.data.credit import (
     REPLACED_PLAN_CANCELLATION_COMMENT,
     _invoice_subscription_id,
+    alert_tier_reconciliation_discrepancy,
     replaced_by_newer_plan,
     sync_subscription_from_stripe,
 )
@@ -55,6 +57,10 @@ _UNPAID_STATUSES = ("past_due", "unpaid")
 _PAYABLE_INVOICE_STATUSES = ("open", "uncollectible")
 # Tiers with no paid plan to keep: the wallet starts no payment for them.
 _UNPAID_TIERS = (SubscriptionTier.NO_TIER, SubscriptionTier.TRIAL)
+# Stripe expires a Checkout Session after a day at most, so a retry that
+# revived an old plan while its customer was in Checkout for a new one was
+# paid no earlier than this before the new plan was created.
+_CHECKOUT_LIFETIME = timedelta(hours=24)
 
 
 class FailedInvoice(BaseModel):
@@ -304,12 +310,76 @@ async def end_revived_plan(sub_id: str) -> None:
     its update event never cancels the newer one. The payment that revived it
     stays with Stripe and needs a manual refund.
     """
-    logger.error(
+    message = (
         f"Subscription {sub_id} was paid after a newer plan replaced it;"
         " cancelling it. Its last payment needs a manual refund"
     )
+    logger.error(message)
+    await alert_tier_reconciliation_discrepancy(message)
     await _cancel_subscription(sub_id)
     await _void_unpaid_invoices(sub_id)
+
+
+async def end_plans_replaced_by(customer_id: str, new_sub_id: str) -> None:
+    """End the customer's older failed plans once a new plan is live.
+
+    A customer whose renewal failed can choose a different plan through
+    Checkout, and nothing else ends the old one: Stripe keeps retrying its
+    bill, and a retry that succeeds charges for a plan the customer left.
+    So it is cancelled and its unpaid bills voided now, as a failed retry
+    would. An old plan a retry already revived during the Checkout is
+    cancelled by the stale-plan cleanup with the other active plans; its
+    payment needs a refund, so that raises an alert. Best effort: a failure
+    is logged, and the old plan's next failed retry ends it.
+    """
+    try:
+        new = dict(await stripe_call(stripe.Subscription.retrieve_async, new_sub_id))
+        for status in (*_UNPAID_STATUSES, "active"):
+            subscriptions = await stripe_call(
+                stripe.Subscription.list_async,
+                customer=customer_id,
+                status=status,
+                limit=10,
+            )
+            async for old in stripe_list_items(subscriptions):
+                old = dict(old)
+                if old["id"] == new_sub_id or (old.get("created") or 0) >= (
+                    new.get("created") or 0
+                ):
+                    continue
+                if status != "active":
+                    logger.info(
+                        f"Subscription {old['id']} of customer {customer_id} was"
+                        f" replaced by {new_sub_id} while unpaid; cancelling it"
+                        " and voiding its bills"
+                    )
+                    await _cancel_subscription(old["id"])
+                    await _void_unpaid_invoices(old["id"])
+                elif await _revived_during_checkout(old["id"], new):
+                    await alert_tier_reconciliation_discrepancy(
+                        f"Subscription {old['id']} was paid late just before its"
+                        f" customer's new plan {new_sub_id} started, and is"
+                        " cancelled as replaced. Its last payment needs a manual"
+                        " refund"
+                    )
+    except stripe.StripeError:
+        logger.exception(
+            f"Could not end the plans that subscription {new_sub_id} of customer"
+            f" {customer_id} replaced; their next failed retry ends them"
+        )
+
+
+async def _revived_during_checkout(sub_id: str, new: dict) -> bool:
+    """Whether a payment of a paused bill revived the plan while its customer
+    was buying the new one."""
+    created = new.get("created")
+    if not created:
+        return False
+    since = datetime.fromtimestamp(created, UTC) - _CHECKOUT_LIFETIME
+    revived = await SubscriptionBillingRestart.prisma().find_first(
+        where={"stripeSubscriptionId": sub_id, "paidAt": {"gte": since}}
+    )
+    return revived is not None
 
 
 async def _cancel_subscription(sub_id: str) -> dict:
