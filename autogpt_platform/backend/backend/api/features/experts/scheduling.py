@@ -435,7 +435,7 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
 async def pause_expert_schedules(user_id: str, expert_id: str, reason: str) -> bool:
     """Pause the expert's scheduled/triggered runs (chat is untouched) and
     log the pause. Returns False when already paused (no double events).
-    Its memory crons (nightly dream, weekly community rebuild) pause with
+    Its memory crons (nightly dream) and weekly community rebuild pause with
     them; that part is bounded by the registry deadline and fails soft.
 
     Refuses archived experts so a pause can't silently mutate a row the rest

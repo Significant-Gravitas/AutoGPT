@@ -9,6 +9,7 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
+from backend.data.account_deletion import is_account_closed
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.graph import (
     GraphModel,
@@ -413,6 +414,8 @@ async def get_available_graph(
         graph.clear_auto_credentials()
         return graph
 
+    except NotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
         raise DatabaseError("Failed to fetch workflow") from e
@@ -636,7 +639,7 @@ async def get_store_creator(
             where={"username": username}
         )
 
-        if not creator:
+        if not creator or await _is_creator_account_closed(username):
             logger.warning(f"Creator not found: {username}")
             raise store_exceptions.CreatorNotFoundError(f"Creator {username} not found")
 
@@ -647,6 +650,16 @@ async def get_store_creator(
     except Exception as e:
         logger.error(f"Error getting store creator details: {e}")
         raise DatabaseError("Failed to fetch creator details") from e
+
+
+async def _is_creator_account_closed(username: str) -> bool:
+    """A closed account's creator page answers as unknown, until the account
+    is reopened or erased. Its listings are already down, so the creators
+    list (creators with a live listing) leaves it out by itself."""
+    profile = await prisma.models.Profile.prisma().find_unique(
+        where={"username": username}
+    )
+    return profile is not None and await is_account_closed(profile.userId)
 
 
 async def _get_submission_stats(user_id: str) -> store_model.SubmissionStats:
@@ -1540,8 +1553,14 @@ async def review_store_submission(
     external_comments: str,
     internal_comments: str,
     reviewer_id: str,
+    *,
+    notify_creator: bool = True,
 ) -> store_model.StoreSubmissionAdminView:
-    """Review a store listing submission as an admin."""
+    """Review a store listing submission as an admin.
+
+    ``notify_creator=False`` records the verdict without queueing the creator's
+    verdict email, for listings whose creator is synthetic (the preview seed).
+    """
     try:
         submission = await prisma.models.StoreListingVersion.prisma().find_unique(
             where={"id": store_listing_version_id},
@@ -1685,16 +1704,17 @@ async def review_store_submission(
         if is_approved:
             reviewed_submission = await _publish_approved_media(reviewed_submission)
 
-        try:
-            await _send_submission_review_notification(
-                creator_user_id,
-                is_approved,
-                external_comments,
-                reviewed_submission,
-            )
-        except Exception as e:
-            logger.error(f"Failed to send email notification for agent review: {e}")
-            # Don't fail the review process if email sending fails
+        if notify_creator:
+            try:
+                await _send_submission_review_notification(
+                    creator_user_id,
+                    is_approved,
+                    external_comments,
+                    reviewed_submission,
+                )
+            except Exception as e:
+                logger.error(f"Failed to send email notification for agent review: {e}")
+                # Don't fail the review process if email sending fails
 
         return store_model.StoreSubmissionAdminView.from_listing_version(
             reviewed_submission

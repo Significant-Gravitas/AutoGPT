@@ -20,7 +20,7 @@ export function OnboardingReview({ steps, answers, labelId, onEdit }: Props) {
     <div className="flex flex-col gap-4">
       <span
         id={labelId}
-        className="text-base leading-snug font-medium text-foreground-strong sm:text-lg"
+        className="text-body-lg leading-snug font-medium text-foreground-strong sm:text-lead"
       >
         Check your answers
       </span>
@@ -37,7 +37,7 @@ export function OnboardingReview({ steps, answers, labelId, onEdit }: Props) {
                 <Text variant="body-tight" as="span" tone="muted">
                   {step.question}
                 </Text>
-                <span className="text-base break-words text-foreground-strong sm:text-body-md">
+                <span className="text-body-lg break-words text-foreground-strong sm:text-body-md">
                   {getAnswerSummary(answers[step.keyword]) || "No answer yet"}
                 </span>
               </span>

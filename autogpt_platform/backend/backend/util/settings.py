@@ -114,9 +114,33 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum number of workers to use for graph execution.",
     )
 
+    max_graph_workers_per_user: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+        description=(
+            "How many of an executor's graph workers one user's runs may hold "
+            "at once; kept below `num_graph_workers` when that is 2 or more, "
+            "and 1 when it is 1. Sub-workflow runs may hold one more per level "
+            "of nesting, up to 4 more, so a run waiting on a sub-workflow never "
+            "keeps it from starting; keep this at most `num_graph_workers` "
+            "minus 5 for one user's runs never to hold every worker."
+        ),
+    )
+
     requeue_by_republishing: bool = Field(
         default=True,
         description="Send rate-limited messages to back of queue by republishing instead of front requeue to prevent blocking other users.",
+    )
+
+    graph_run_requeue_delay_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=3600,
+        description=(
+            "How long a run refused for want of a worker waits in the delay "
+            "queue before it is offered to an executor again."
+        ),
     )
 
     # FastAPI Thread Pool Configuration
@@ -242,6 +266,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     enable_credit: bool = Field(
         default=False,
         description="If user credit system is enabled or not",
+    )
+    enable_platform_payment: bool = Field(
+        default=False,
+        description="Whether the platform is paid for: an account without a plan "
+        "is paywalled and the billing pages offer plans. Off for self-hosted "
+        "installs; the hosted platform sets it.",
     )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
@@ -542,6 +572,22 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "direct. Do not set it before the proxy exists: E2B fails closed, so a "
         "box pointed at nothing has no egress at all.",
     )
+    e2b_deployment_sandbox_limit: int = Field(
+        default=0,
+        ge=0,
+        description="Most E2B boxes this deployment (its APP_ENV) may have running "
+        "at once on the platform's E2B key; a start past it is refused. 0 sets no "
+        "ceiling of its own.",
+    )
+    e2b_account_sandbox_limit: int = Field(
+        # Twice the running-turn cap, so a user at that cap can still open
+        # desktops and run sandboxed blocks beside it.
+        default=10,
+        ge=0,
+        description="Most E2B boxes one account may have running at once in this "
+        "deployment on the platform's E2B key; a start past it is refused. 0 turns "
+        "the cap off.",
+    )
 
     frontend_base_url: str = Field(
         default="",
@@ -651,6 +697,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     scheduler_db_pool_size: int = Field(
         default=3,
         description="The pool size for the scheduler database connection pool",
+    )
+
+    max_schedules_per_user: int = Field(
+        default=200,
+        ge=1,
+        description="How many schedules one user may hold on the scheduler.",
     )
 
     schedule_read_timeout_seconds: float = Field(
@@ -995,6 +1047,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum file size in MB for workspace files (1-1024 MB)",
     )
 
+    max_total_file_size_mb: int = Field(
+        default=500,
+        ge=1,
+        le=10240,
+        description="Maximum combined size in MB of the files a block run loads (1-10240 MB)",
+    )
+
     max_request_body_mb: int = Field(
         default=10,
         ge=1,
@@ -1028,7 +1087,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
     automod_fail_open: bool = Field(
         default=False,
-        description="If True, allow execution to continue if AutoMod fails",
+        description="If True, allow execution to continue if AutoMod fails or "
+        "times out; if False, the execution fails",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")

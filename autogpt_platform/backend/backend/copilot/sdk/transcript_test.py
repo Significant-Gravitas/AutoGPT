@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import transcript
 from backend.util import json
 
 from .transcript import (
@@ -1018,6 +1019,70 @@ class TestRunCompression:
 
 class TestCleanupStaleProjectDirs:
     """Tests for cleanup_stale_project_dirs (disk leak prevention)."""
+
+    @pytest.fixture(autouse=True)
+    def legacy_workspace_prefix(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.copilot.transcript._SAFE_CWD_PREFIX", "/tmp/copilot-"
+        )
+
+    @pytest.mark.parametrize("scoped", [True, False])
+    def test_removes_relocated_projects_only(self, tmp_path, monkeypatch, scoped):
+        prefix = tmp_path / "relocated workspace" / "copilot-"
+        monkeypatch.setattr(transcript, "_SAFE_CWD_PREFIX", str(prefix))
+        projects = tmp_path / "projects"
+        projects.mkdir()
+        monkeypatch.setattr(transcript, "projects_base", lambda: str(projects))
+        target_name = os.path.basename(
+            os.path.dirname(transcript.cli_session_path(str(prefix) + "old", "abc"))
+        )
+        stale = projects / target_name
+        stale.mkdir()
+        stale.joinpath("transcript.jsonl").write_text("old transcript")
+        os.utime(stale, (1, 1))
+        other = projects / (target_name + "-other-session")
+        other.mkdir()
+        os.utime(other, (1, 1))
+        unrelated = projects / ("unrelated" + target_name)
+        unrelated.mkdir()
+        os.utime(unrelated, (1, 1))
+        legacy = projects / "-tmp-copilot-unrelated-profile"
+        legacy.mkdir()
+        os.utime(legacy, (1, 1))
+        fresh = projects / (target_name + "-fresh")
+        fresh.mkdir()
+
+        removed = transcript.cleanup_stale_project_dirs(target_name if scoped else None)
+
+        assert removed == (1 if scoped else 2)
+        assert not stale.exists()
+        assert other.exists() == scoped
+        assert unrelated.exists()
+        assert legacy.exists()
+        assert fresh.exists()
+
+    @pytest.mark.parametrize("target_kind", ["absolute", "parent", "nested"])
+    def test_scoped_cleanup_rejects_path_components(
+        self, tmp_path, monkeypatch, target_kind
+    ):
+        monkeypatch.setattr(transcript, "_SAFE_CWD_PREFIX", "/tmp/copilot-")
+        projects = tmp_path / "projects"
+        projects.mkdir()
+        monkeypatch.setattr(transcript, "projects_base", lambda: str(projects))
+        outside = tmp_path / "-tmp-copilot-other"
+        if target_kind == "nested":
+            outside = projects / "nested" / "-tmp-copilot-other"
+        outside.mkdir(parents=True)
+        outside.joinpath("keep.txt").write_text("preserve")
+        os.utime(outside, (1, 1))
+        candidate = {
+            "absolute": str(outside),
+            "parent": "../-tmp-copilot-other",
+            "nested": "nested/-tmp-copilot-other",
+        }[target_kind]
+
+        assert transcript.cleanup_stale_project_dirs(candidate) == 0
+        assert outside.joinpath("keep.txt").read_text() == "preserve"
 
     def test_removes_old_copilot_dirs(self, tmp_path, monkeypatch):
         """Directories matching copilot pattern older than threshold are removed."""

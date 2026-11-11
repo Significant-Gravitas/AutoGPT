@@ -113,12 +113,12 @@ export function MessageAttachments({
             className={`inline-block rounded-lg border p-1.5 ${
               isUser
                 ? "border-brand/70 bg-accent-surface"
-                : "border-border-base bg-background"
+                : "border-border-base bg-canvas"
             }`}
           >
             {rendered}
             <div
-              className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${
+              className={`mt-1 flex items-center gap-1 px-0.5 text-caption ${
                 isUser
                   ? "text-foreground-secondary"
                   : "text-foreground-tertiary"

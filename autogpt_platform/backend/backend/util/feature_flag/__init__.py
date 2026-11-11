@@ -43,9 +43,9 @@ class Flag(str, Enum):
     """
 
     AUTOMOD = "AutoMod"
-    ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
     CHAT_MODE_OPTION = "chat-mode-option"
     COPILOT_SDK = "copilot-sdk"
+    COPILOT_BACKGROUND_SUBTASKS = "copilot-background-subtasks"
     COPILOT_COST_LIMITS = "copilot-cost-limits"
     # AutoPilot auto mode: the permission gate in ``copilot/gate``.
     # A ROLLOUT control, not a safety control — off means today's
@@ -159,6 +159,13 @@ class Flag(str, Enum):
     # locked offer is never routable.  Off by default so the upsell reaches
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
+
+    # Mirror of the frontend `self-serve-account-deletion` flag. Gates
+    # deleting an account from Settings > Account and the paywall: the
+    # deletion and feedback routes 404 when off. Stays off until the data
+    # erasure routine (SECRT-2854) runs in production, since a closed
+    # account is only erased by it. Fail-closed (default False).
+    SELF_SERVE_ACCOUNT_DELETION = "self-serve-account-deletion"
 
 
 def initialize_feature_flags() -> None:

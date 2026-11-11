@@ -12,9 +12,8 @@ const meta: Meta = {
 
 export default meta;
 
-// The `--color-*` declarations of every :root rule the page has loaded,
-// as written in src/app/globals.css: an RGB triplet for a role, a
-// `var(--color-<role>)` for a shadcn name that aliases one.
+// The `--color-*` declarations of every :root rule the page has loaded: the
+// RGB triplet of each role, as written in src/app/tokens/theme.css.
 function readRootColors() {
   const declared = new Map<string, string>();
   function visit(rules: CSSRuleList) {
@@ -51,10 +50,6 @@ function toHex(triplet: string | undefined) {
     .toUpperCase()}`;
 }
 
-function aliasTarget(value: string) {
-  return /^var\(--color-([a-z-]+)\)$/.exec(value)?.[1] ?? null;
-}
-
 interface SwatchProps {
   name: string;
   detail: string;
@@ -86,10 +81,11 @@ export function Roles() {
       <div className="space-y-2">
         <Text variant="h1">Colour roles</Text>
         <Text variant="large" tone="secondary">
-          Name a colour by its job. Each role is a CSS variable in globals.css
-          and a Tailwind colour, so it works with every utility and opacity
-          modifier: bg-surface, text-foreground-tertiary, border-border-base,
-          bg-overlay/20. The values below are read from the stylesheet.
+          Name a colour by its job. Each role is a CSS variable in
+          tokens/theme.css and a Tailwind colour, so it works with every utility
+          and opacity modifier: bg-surface, text-foreground-tertiary,
+          border-border-base, bg-overlay/20. The values below are read from the
+          stylesheet.
         </Text>
       </div>
       {COLOR_ROLE_GROUPS.map((group) => (
@@ -111,30 +107,6 @@ export function Roles() {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-export function ShadcnAliases() {
-  const aliases = [...readRootColors()].flatMap(([name, value]) => {
-    const target = aliasTarget(value);
-    return target ? [{ name, target }] : [];
-  });
-  return (
-    <div className="space-y-6 p-8">
-      <div className="space-y-2">
-        <Text variant="h1">shadcn names</Text>
-        <Text variant="large" tone="secondary">
-          Older code still uses the shadcn colour names (text-muted-foreground,
-          bg-background, border-border). Each is an alias of a role and renders
-          that role&apos;s colour. Write the role class in new code.
-        </Text>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {aliases.map(({ name, target }) => (
-          <Swatch key={name} name={name} detail={`→ ${target}`} />
-        ))}
-      </div>
     </div>
   );
 }

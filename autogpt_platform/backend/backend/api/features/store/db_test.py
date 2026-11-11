@@ -182,6 +182,7 @@ async def test_get_store_creator(mocker):
     mock_creator.return_value.find_unique = AsyncMock()
     # Configure the mock to return values that will pass validation
     mock_creator.return_value.find_unique.return_value = mock_creator_data
+    mocker.patch.object(db, "_is_creator_account_closed", AsyncMock(return_value=False))
 
     # Call function
     result = await db.get_store_creator("creator")
@@ -196,6 +197,28 @@ async def test_get_store_creator(mocker):
     mock_creator.return_value.find_unique.assert_called_once_with(
         where={"username": "creator"}
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_closed_accounts_creator_page_is_not_found(mocker):
+    """Closing an account hides its creator page until it is reopened."""
+    creator = mocker.patch("prisma.models.Creator.prisma")
+    creator.return_value.find_unique = AsyncMock(return_value=MagicMock())
+    profile = mocker.patch("prisma.models.Profile.prisma")
+    profile.return_value.find_unique = AsyncMock(
+        return_value=MagicMock(userId="closed-user")
+    )
+    is_closed = mocker.patch.object(
+        db, "is_account_closed", AsyncMock(return_value=True)
+    )
+
+    with pytest.raises(db.store_exceptions.CreatorNotFoundError):
+        await db.get_store_creator("creator")
+
+    profile.return_value.find_unique.assert_awaited_once_with(
+        where={"username": "creator"}
+    )
+    is_closed.assert_awaited_once_with("closed-user")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1773,6 +1796,41 @@ async def test_approve_does_nothing_with_media_when_the_bucket_is_unset(
     publish.assert_not_awaited()
     assert review_mocks.slv.update.await_count == 1
     assert result.image_urls[0] == f"{PRIVATE_URL}/a.png"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_verdict_notifies_the_creator(mocker, review_mocks):
+    _publish_mock(mocker, return_value={})
+    notify = mocker.patch(
+        "backend.api.features.store.db._send_submission_review_notification",
+        new_callable=AsyncMock,
+    )
+
+    await _review(is_approved=True)
+
+    notify.assert_awaited_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_can_leave_the_creator_unnotified(mocker, review_mocks):
+    _publish_mock(mocker, return_value={})
+    notify = mocker.patch(
+        "backend.api.features.store.db._send_submission_review_notification",
+        new_callable=AsyncMock,
+    )
+
+    result = await db.review_store_submission(
+        store_listing_version_id="version-id",
+        is_approved=True,
+        external_comments="",
+        internal_comments="",
+        reviewer_id="reviewer-id",
+        notify_creator=False,
+    )
+
+    notify.assert_not_awaited()
+    assert result.status == prisma.enums.SubmissionStatus.APPROVED
+    review_mocks.listing.update.assert_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
