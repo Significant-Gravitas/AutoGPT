@@ -14,7 +14,11 @@ import {
   getChatMock,
   getGetV2ListTurnsAtBudgetResetMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
-import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credits.msw";
+import {
+  getCreditsMock,
+  getGetSubscriptionStatusMockHandler200,
+  getGetSubscriptionStatusResponseMock200,
+} from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
 import { getEmailMock } from "@/app/api/__generated__/endpoints/email/email.msw";
 import { getGetFeatureFlagsMockHandler } from "@/app/api/__generated__/endpoints/feature-flags/feature-flags.msw";
@@ -93,6 +97,10 @@ export const mockHandlers = [
   // jobs would put a scheduled-message chip above every chat's composer.
   getGetV2ListTurnsAtBudgetResetMockHandler200({ jobs: [] }),
   ...getChatMock(),
+  // No failed renewal's open bill unless a test provides one.
+  getGetSubscriptionStatusMockHandler200(() =>
+    getGetSubscriptionStatusResponseMock200({ payment_due: null }),
+  ),
   ...getCreditsMock(),
   ...getDefaultMock(),
   ...getEmailMock(),
