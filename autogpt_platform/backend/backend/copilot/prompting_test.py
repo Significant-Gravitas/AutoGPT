@@ -523,6 +523,13 @@ class TestPlainLanguageRules:
         assert "Don't guess one from a vague error" in notes
         assert "the cause isn't clear yet, and what you'll do next" in notes
 
+    def test_a_claimed_state_comes_from_a_tool_result(self):
+        """Otto called a PR "approved and ready to merge" while its GitHub
+        access was failing (SECRT-2680)."""
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "Every claim about what happened must come from a tool result" in notes
+        assert "Check platform state" in notes
+
     def test_blocking_inputs_are_asked_before_building(self):
         notes = prompting.SHARED_TOOL_NOTES
         assert "Use sensible defaults instead of asking" in notes

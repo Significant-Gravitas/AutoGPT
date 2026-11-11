@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from backend.api.features.admin.model import UserHistoryResponse
 from backend.data import subscription_activation, subscription_trial_stripe
 from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.credit_admin_lookup import search_history_keys, user_emails
 from backend.data.credit_history import get_credit_history
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
@@ -1021,7 +1022,7 @@ class UserCredit(UserCreditBase):
             return
 
         transaction = await self._find_top_up(request)
-        if not transaction:
+        if not transaction or await _top_up_of_an_erased_account(transaction, request):
             return
         # Stripe counts cents of the charge, which can differ from the credits granted.
         credits = _top_up_credits_for_cents(transaction, request.amount)
@@ -1081,7 +1082,7 @@ class UserCredit(UserCreditBase):
 
     async def handle_dispute(self, dispute: stripe.Dispute):
         transaction = await self._find_top_up(dispute)
-        if not transaction:
+        if not transaction or await _top_up_of_an_erased_account(transaction, dispute):
             return
         user_id = transaction.userId
         amount = dispute.amount
@@ -1646,6 +1647,23 @@ class UserCredit(UserCreditBase):
 def _refund_hold_key(payment_intent: str) -> str:
     """The credits of an auto-approved refund until Stripe names the refund."""
     return f"REFUND-HOLD-{payment_intent}"
+
+
+async def _top_up_of_an_erased_account(
+    transaction: CreditTransaction, request: stripe.Refund | stripe.Dispute
+) -> bool:
+    """The top-up's account was erased (SECRT-2854): its ledger stays for tax,
+    but there is no User row left to credit, debit or name in evidence, so the
+    refund or dispute is logged and left alone instead of failing every
+    delivery. A dispute still needs answering in Stripe, by hand."""
+    if await User.prisma().find_unique(where={"id": transaction.userId}):
+        return False
+    log = logger.error if isinstance(request, stripe.Dispute) else logger.warning
+    log(
+        f"Ignoring {request.id} (${request.amount / 100:.2f}): its top-up "
+        f"{transaction.transactionKey} belongs to an erased account"
+    )
+    return True
 
 
 def _top_up_credits_for_cents(top_up: CreditTransaction, cents: int) -> int:
@@ -3829,20 +3847,26 @@ async def admin_get_user_history(
     if transaction_filter:
         where_clause["type"] = transaction_filter
     if search:
-        where_clause["OR"] = [
-            {"userId": {"contains": search, "mode": "insensitive"}},
-            {"User": {"is": {"email": {"contains": search, "mode": "insensitive"}}}},
-            {"User": {"is": {"name": {"contains": search, "mode": "insensitive"}}}},
-        ]
-    transactions = await CreditTransaction.prisma().find_many(
-        where=where_clause,
-        skip=(page - 1) * page_size,
-        take=page_size,
-        include={"User": True},
-        order={"createdAt": "desc"},
-    )
-    total = await CreditTransaction.prisma().count(where=where_clause)
+        # Matched in SQL: the ledger has no relation to User to filter through.
+        keys, total = await search_history_keys(
+            search,
+            include_inactive=include_inactive,
+            transaction_filter=transaction_filter,
+            skip=(page - 1) * page_size,
+            take=page_size,
+        )
+        transactions = await _transactions_by_key(keys)
+    else:
+        transactions = await CreditTransaction.prisma().find_many(
+            where=where_clause,
+            skip=(page - 1) * page_size,
+            take=page_size,
+            order={"createdAt": "desc"},
+        )
+        total = await CreditTransaction.prisma().count(where=where_clause)
     total_pages = (total + page_size - 1) // page_size
+    # None for an account that was deleted: its ledger rows stay.
+    emails = await user_emails(tx.userId for tx in transactions)
 
     history = []
     for tx in transactions:
@@ -3878,11 +3902,7 @@ async def admin_get_user_history(
                 current_balance=balance,
                 running_balance=tx.runningBalance or 0,
                 user_id=tx.userId,
-                user_email=(
-                    tx.User.email
-                    if tx.User
-                    else (await get_user_by_id(tx.userId)).email
-                ),
+                user_email=emails.get(tx.userId),
                 reason=reason,
                 admin_email=admin_email,
                 extra_data=str(metadata),
@@ -3897,6 +3917,19 @@ async def admin_get_user_history(
             page_size=page_size,
         ),
     )
+
+
+async def _transactions_by_key(
+    keys: list[tuple[str, str]],
+) -> list[CreditTransaction]:
+    """The rows for (transaction key, user ID) pairs, in the pairs' order."""
+    if not keys:
+        return []
+    rows = await CreditTransaction.prisma().find_many(
+        where={"OR": [{"transactionKey": key, "userId": uid} for key, uid in keys]}
+    )
+    by_key = {(row.transactionKey, row.userId): row for row in rows}
+    return [by_key[key] for key in keys if key in by_key]
 
 
 # Limits for credit-transaction CSV export. Window cap matches a typical
@@ -3955,7 +3988,6 @@ async def admin_export_user_history(
     # count() + take=cap pair would have if rows land between the two queries.
     transactions = await CreditTransaction.prisma().find_many(
         where=where,
-        include={"User": True},
         order={"createdAt": "desc"},
         take=CREDIT_EXPORT_MAX_ROWS + 1,
     )
@@ -3965,6 +3997,8 @@ async def admin_export_user_history(
             "narrow the window or add filters."
         )
 
+    # None for an account that was deleted: its ledger rows stay.
+    emails = await user_emails(tx.userId for tx in transactions)
     admin_id_to_email: dict[str, str] = {}
 
     async def _resolve_admin_email(admin_id: str) -> str:
@@ -3993,7 +4027,7 @@ async def admin_export_user_history(
                 amount=tx.amount,
                 running_balance=tx.runningBalance or 0,
                 user_id=tx.userId,
-                user_email=tx.User.email if tx.User else None,
+                user_email=emails.get(tx.userId),
                 reason=reason,
                 admin_email=admin_email,
             )
