@@ -33,6 +33,15 @@ export function FileContent({ file }: Props) {
       </View>
     );
   }
+  if (viewer.isTooLarge) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.notice}>
+          This file is too large to preview here.
+        </Text>
+      </View>
+    );
+  }
   if (viewer.isError) {
     return (
       <View style={styles.center}>
@@ -71,8 +80,8 @@ export function FileContent({ file }: Props) {
         { paddingBottom: insets.bottom + spacing.xl },
       ]}
     >
-      {viewer.isCapped ? (
-        <Text style={styles.capped}>Showing the first 200 KB.</Text>
+      {viewer.cappedNotice ? (
+        <Text style={styles.capped}>{viewer.cappedNotice}</Text>
       ) : null}
       {viewer.kind === "markdown" ? (
         <Markdown text={viewer.text} />

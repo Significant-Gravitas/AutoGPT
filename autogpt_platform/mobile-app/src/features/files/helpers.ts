@@ -1,4 +1,4 @@
-import type { WorkspaceFile } from "@/lib/api/workspace";
+import type { FileText, WorkspaceFile } from "@/lib/api/workspace";
 
 export type FileKind = "markdown" | "text" | "image" | "other";
 
@@ -36,6 +36,8 @@ const KIND_LABELS: Record<FileKind, string> = {
 };
 
 export const TEXT_DISPLAY_LIMIT = 200 * 1024;
+// How much of a larger text file the preview route sends.
+export const PREVIEW_BYTES = 131072;
 
 export function visibleFiles(files: WorkspaceFile[]) {
   return files.filter(
@@ -92,8 +94,26 @@ export function fileDetailLine(file: WorkspaceFile) {
   return `${formatFileSize(file.size_bytes)} · ${kindLabel(fileKind(file))}`;
 }
 
-/** Caps very long text so a large log can't freeze the viewer. */
-export function capText(text: string) {
-  if (text.length <= TEXT_DISPLAY_LIMIT) return { text, isCapped: false };
-  return { text: text.slice(0, TEXT_DISPLAY_LIMIT), isCapped: true };
+/** A file bigger than the display limit is previewed, not downloaded whole. */
+export function isPreviewed(file: Pick<WorkspaceFile, "size_bytes">) {
+  return file.size_bytes > TEXT_DISPLAY_LIMIT;
+}
+
+/**
+ * Caps very long text so a large log can't freeze the viewer. A preview is
+ * cut by bytes, so its last character can be half a character, which decodes
+ * to U+FFFD.
+ */
+export function capText({ text, isPreview }: FileText) {
+  if (isPreview) {
+    return {
+      text: text.replace(/\uFFFD$/, ""),
+      cappedNotice: "Showing the first 128 KB.",
+    };
+  }
+  if (text.length <= TEXT_DISPLAY_LIMIT) return { text, cappedNotice: null };
+  return {
+    text: text.slice(0, TEXT_DISPLAY_LIMIT),
+    cappedNotice: "Showing the first 200 KB.",
+  };
 }

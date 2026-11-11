@@ -5,6 +5,7 @@ import { authHeaders } from "@/lib/api/client";
 import {
   downloadFileText,
   fileDownloadURL,
+  isPreviewUnavailable,
   workspaceKeys,
   type WorkspaceFile,
 } from "@/lib/api/workspace";
@@ -21,7 +22,7 @@ export function useFileViewer(file: WorkspaceFile) {
   const [imageFailed, setImageFailed] = useState(false);
   const text = useQuery({
     queryKey: workspaceKeys.fileText(file.id),
-    queryFn: () => downloadFileText(file.id),
+    queryFn: () => downloadFileText(file),
     enabled: kind === "markdown" || kind === "text",
     gcTime: CONTENT_GC_TIME,
     select: capText,
@@ -51,7 +52,8 @@ export function useFileViewer(file: WorkspaceFile) {
   return {
     kind,
     text: text.data?.text ?? null,
-    isCapped: text.data?.isCapped ?? false,
+    cappedNotice: text.data?.cappedNotice ?? null,
+    isTooLarge: isPreviewUnavailable(text.error),
     image: headers.data
       ? { uri: fileDownloadURL(file.id), headers: headers.data }
       : null,

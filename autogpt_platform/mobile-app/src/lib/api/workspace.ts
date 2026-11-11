@@ -1,3 +1,4 @@
+import { isPreviewed, PREVIEW_BYTES } from "@/features/files/helpers";
 import { clearAccessToken } from "@/lib/auth/token";
 
 import { ApiError, apiRequest, apiUrl, authHeaders } from "./client";
@@ -49,19 +50,41 @@ export function fileDownloadURL(fileID: string) {
   return apiUrl(`/api/workspace/files/${encodeURIComponent(fileID)}/download`);
 }
 
-export async function downloadFileText(fileID: string) {
-  let response = await fetchFile(fileID);
-  // Same as apiRequest: one retry with a fresh token before the session counts as gone.
-  if (response.status === 401) {
-    clearAccessToken();
-    response = await fetchFile(fileID);
-  }
+export interface FileText {
+  text: string;
+  isPreview: boolean;
+}
+
+/** A large file comes from the preview route, which sends only its first bytes. */
+export async function downloadFileText(
+  file: WorkspaceFile,
+): Promise<FileText> {
+  const isPreview = isPreviewed(file);
+  const url = isPreview
+    ? apiUrl(`/api/workspace/files/${encodeURIComponent(file.id)}/preview`, {
+        bytes: PREVIEW_BYTES,
+      })
+    : fileDownloadURL(file.id);
+  const response = await fetchWithFreshToken(url);
   if (!response.ok) {
     throw new ApiError(response.status, `Download failed (${response.status})`);
   }
-  return response.text();
+  return { text: await response.text(), isPreview };
 }
 
-async function fetchFile(fileID: string) {
-  return fetch(fileDownloadURL(fileID), { headers: await authHeaders() });
+/** The preview route can't cut this file: not a text type (415) or too big (413). */
+export function isPreviewUnavailable(error: unknown) {
+  return (
+    error instanceof ApiError && (error.status === 413 || error.status === 415)
+  );
+}
+
+async function fetchWithFreshToken(url: string) {
+  let response = await fetch(url, { headers: await authHeaders() });
+  // Same as apiRequest: one retry with a fresh token before the session counts as gone.
+  if (response.status === 401) {
+    clearAccessToken();
+    response = await fetch(url, { headers: await authHeaders() });
+  }
+  return response;
 }
