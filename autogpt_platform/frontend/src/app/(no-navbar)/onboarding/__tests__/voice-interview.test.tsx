@@ -346,6 +346,10 @@ function callRecord(overrides: Partial<CallRecord> = {}): CallRecord {
   };
 }
 
+// The call screen's line on a call where Otto's voice reaches the microphone.
+const HEARS_HIMSELF =
+  "Otto can hear himself through your speakers, so he'll finish speaking before he listens. Headphones fix that.";
+
 const ROOM_URL = "wss://agpt-test.livekit.cloud";
 const ROOM_TOKEN = "room-token";
 // A start: the relay's socket and the token for it, and the call's room and
@@ -1103,14 +1107,40 @@ describe("onboarding interview by voice: the call", () => {
     ]);
   });
 
-  it("reports the relay finding Otto's voice in the microphone, and shows nothing of it", async () => {
+  it("tells the person Otto can hear himself once the relay stops listening over him, for the rest of the call", async () => {
     render(<OnboardingPage />);
     const socket = await liveCall();
+    expect(screen.queryByText(HEARS_HIMSELF)).toBeNull();
 
     act(() => socket.relay({ type: "duplex", mode: "half", by: "probe" }));
 
+    const line = await screen.findByText(HEARS_HIMSELF);
+    expect(line.getAttribute("role")).toBe("status");
     expect(tracked("voice_interview_echo")).toEqual([{ by: "probe" }]);
-    expect(screen.getByText("You're on the call with Otto")).toBeDefined();
+    act(() => socket.relay({ type: "turn_complete", turn: 0, turns_left: 15 }));
+    expect(await screen.findByText("15 turns left")).toBeDefined();
+    expect(screen.getByText(HEARS_HIMSELF)).toBeDefined();
+
+    endCall(socket, "finished");
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Hang up" })).toBeNull(),
+    );
+    expect(screen.queryByText(HEARS_HIMSELF)).toBeNull();
+  });
+
+  it("says nothing of Otto hearing himself on a call the relay keeps listening on", async () => {
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    act(() => {
+      socket.relay({ type: "agent_text", text: "Hi, I'm Otto." });
+      socket.relay({ type: "turn_complete", turn: 0, turns_left: 15 });
+      socket.relay({ type: "user_text", text: "I run a bakery." });
+    });
+
+    expect(await screen.findByText("I run a bakery.")).toBeDefined();
+    expect(screen.queryByText(HEARS_HIMSELF)).toBeNull();
+    expect(tracked("voice_interview_echo")).toEqual([]);
   });
 
   it("reports how long the call took to reach Otto's first sound, once", async () => {

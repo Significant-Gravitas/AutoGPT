@@ -61,6 +61,14 @@ export function VoiceCall({ call }: Props) {
         </Text>
       )}
 
+      {isOnCall && call.isHalfDuplex && (
+        <Text variant="small" tone="muted" role="status" align="center">
+          {
+            "Otto can hear himself through your speakers, so he'll finish speaking before he listens. Headphones fix that."
+          }
+        </Text>
+      )}
+
       {isOnCall && call.timeLeft && call.turnsLeft !== null && (
         <div className="flex items-center gap-4">
           <Text variant="small" tone="muted" tabular>
