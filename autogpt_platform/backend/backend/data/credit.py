@@ -33,6 +33,7 @@ from backend.api.features.admin.model import UserHistoryResponse
 from backend.copilot.usage_mode import billing_clock_live
 from backend.data import subscription_activation, subscription_trial_stripe
 from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.credit_admin_lookup import search_history_keys, user_emails
 from backend.data.credit_history import get_credit_history
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
@@ -143,6 +144,9 @@ class InvoiceListItem(BaseModel):
 # client-controlled header, so we validate them to keep attribution strictly
 # best-effort: a malformed ID must never break Checkout.
 _STRIPE_METADATA_VALUE_MAX_LEN = 500
+
+# Stripe fills this in the URL it redirects to, never in the success_url we keep.
+CHECKOUT_SESSION_ID_PLACEHOLDER = "{CHECKOUT_SESSION_ID}"
 
 # Stripe caps a USD charge at 8 digits, $999,999.99 (https://stripe.com/docs/currencies).
 MAX_TOP_UP_AMOUNT = 99_999_900
@@ -1032,7 +1036,7 @@ class UserCredit(UserCreditBase):
             return
 
         transaction = await self._find_top_up(request)
-        if not transaction:
+        if not transaction or await _top_up_of_an_erased_account(transaction, request):
             return
         # Stripe counts cents of the charge, which can differ from the credits granted.
         credits = _top_up_credits_for_cents(transaction, request.amount)
@@ -1092,7 +1096,7 @@ class UserCredit(UserCreditBase):
 
     async def handle_dispute(self, dispute: stripe.Dispute):
         transaction = await self._find_top_up(dispute)
-        if not transaction:
+        if not transaction or await _top_up_of_an_erased_account(transaction, dispute):
             return
         user_id = transaction.userId
         amount = dispute.amount
@@ -1674,6 +1678,23 @@ def _refund_hold_key(payment_intent: str) -> str:
     return f"REFUND-HOLD-{payment_intent}"
 
 
+async def _top_up_of_an_erased_account(
+    transaction: CreditTransaction, request: stripe.Refund | stripe.Dispute
+) -> bool:
+    """The top-up's account was erased (SECRT-2854): its ledger stays for tax,
+    but there is no User row left to credit, debit or name in evidence, so the
+    refund or dispute is logged and left alone instead of failing every
+    delivery. A dispute still needs answering in Stripe, by hand."""
+    if await User.prisma().find_unique(where={"id": transaction.userId}):
+        return False
+    log = logger.error if isinstance(request, stripe.Dispute) else logger.warning
+    log(
+        f"Ignoring {request.id} (${request.amount / 100:.2f}): its top-up "
+        f"{transaction.transactionKey} belongs to an erased account"
+    )
+    return True
+
+
 def _top_up_credits_for_cents(top_up: CreditTransaction, cents: int) -> int:
     """Credits of a top-up that `cents` of its charge paid for, rounded up. The
     charge is the PaymentIntent stored on activation; without one, cents are credits."""
@@ -1826,10 +1847,13 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
     get_user_by_id.cache_delete(user_id)
 
 
-async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
-    """Set the user's subscription tier. No lifecycle sync: the subscription
-    status doesn't read the tier, and the Stripe change that comes with a
-    tier change syncs through its own webhook.
+async def set_subscription_tier(
+    user_id: str, tier: SubscriptionTier, *, track_lifecycle: bool = True
+) -> None:
+    """Set the user's subscription tier, then sync the PostHog person in the
+    background, since it carries the tier. ``track_lifecycle=False`` is for
+    ``sync_subscription_from_stripe``, which decides that itself, and for the
+    periodic tier sweep, whose users the daily lifecycle sweep covers.
 
     A drop from a plan or trial to NO_TIER stamps ``subscriptionEndedAt``, which
     keeps product mail going for the win-back window; any other tier clears it."""
@@ -1850,6 +1874,8 @@ async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
         data["subscriptionEndedAt"] = None
         await User.prisma().update(where={"id": user_id}, data=data)
     invalidate_subscription_caches(user_id)
+    if track_lifecycle:
+        schedule_posthog_lifecycle_sync(user_id)
 
 
 async def invalidate_billing_lookups(customer_id: str) -> None:
@@ -3150,6 +3176,7 @@ async def _create_subscription_checkout(
                 **(
                     {"pro_activation_return_to": return_to}
                     if len(return_to) <= 500
+                    and CHECKOUT_SESSION_ID_PLACEHOLDER not in return_to
                     else {}
                 ),
                 **datafast,
@@ -3250,8 +3277,9 @@ async def sync_subscription_from_stripe(
     refreshed (in the background, from the customer's current state).
     ``track_lifecycle=False`` is for the periodic tier sweep, which would
     otherwise fan out one Stripe call per trial; the daily lifecycle sweep
-    covers those users. Nor is it refreshed for a cancel made by an account
-    deletion: that would only update the PostHog person the erasure deletes.
+    covers those users, the tier included. Nor is it refreshed for a cancel
+    made by an account deletion: that would only update the PostHog person
+    the erasure deletes.
 
     The payload is Stripe's latest word on the subscription, so afterwards
     the cached lookups the billing page reads (the active subscription and
@@ -3526,7 +3554,7 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
         # A future improvement would be to write the new tier first, then
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
-    await set_subscription_tier(user.id, tier)
+    await set_subscription_tier(user.id, tier, track_lifecycle=False)
     if is_tier_upgrade(current_tier, tier):
         billing_cycle = (
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None
@@ -3887,20 +3915,26 @@ async def admin_get_user_history(
     if transaction_filter:
         where_clause["type"] = transaction_filter
     if search:
-        where_clause["OR"] = [
-            {"userId": {"contains": search, "mode": "insensitive"}},
-            {"User": {"is": {"email": {"contains": search, "mode": "insensitive"}}}},
-            {"User": {"is": {"name": {"contains": search, "mode": "insensitive"}}}},
-        ]
-    transactions = await CreditTransaction.prisma().find_many(
-        where=where_clause,
-        skip=(page - 1) * page_size,
-        take=page_size,
-        include={"User": True},
-        order={"createdAt": "desc"},
-    )
-    total = await CreditTransaction.prisma().count(where=where_clause)
+        # Matched in SQL: the ledger has no relation to User to filter through.
+        keys, total = await search_history_keys(
+            search,
+            include_inactive=include_inactive,
+            transaction_filter=transaction_filter,
+            skip=(page - 1) * page_size,
+            take=page_size,
+        )
+        transactions = await _transactions_by_key(keys)
+    else:
+        transactions = await CreditTransaction.prisma().find_many(
+            where=where_clause,
+            skip=(page - 1) * page_size,
+            take=page_size,
+            order={"createdAt": "desc"},
+        )
+        total = await CreditTransaction.prisma().count(where=where_clause)
     total_pages = (total + page_size - 1) // page_size
+    # None for an account that was deleted: its ledger rows stay.
+    emails = await user_emails(tx.userId for tx in transactions)
 
     history = []
     for tx in transactions:
@@ -3936,11 +3970,7 @@ async def admin_get_user_history(
                 current_balance=balance,
                 running_balance=tx.runningBalance or 0,
                 user_id=tx.userId,
-                user_email=(
-                    tx.User.email
-                    if tx.User
-                    else (await get_user_by_id(tx.userId)).email
-                ),
+                user_email=emails.get(tx.userId),
                 reason=reason,
                 admin_email=admin_email,
                 extra_data=str(metadata),
@@ -3955,6 +3985,19 @@ async def admin_get_user_history(
             page_size=page_size,
         ),
     )
+
+
+async def _transactions_by_key(
+    keys: list[tuple[str, str]],
+) -> list[CreditTransaction]:
+    """The rows for (transaction key, user ID) pairs, in the pairs' order."""
+    if not keys:
+        return []
+    rows = await CreditTransaction.prisma().find_many(
+        where={"OR": [{"transactionKey": key, "userId": uid} for key, uid in keys]}
+    )
+    by_key = {(row.transactionKey, row.userId): row for row in rows}
+    return [by_key[key] for key in keys if key in by_key]
 
 
 # Limits for credit-transaction CSV export. Window cap matches a typical
@@ -4013,7 +4056,6 @@ async def admin_export_user_history(
     # count() + take=cap pair would have if rows land between the two queries.
     transactions = await CreditTransaction.prisma().find_many(
         where=where,
-        include={"User": True},
         order={"createdAt": "desc"},
         take=CREDIT_EXPORT_MAX_ROWS + 1,
     )
@@ -4023,6 +4065,8 @@ async def admin_export_user_history(
             "narrow the window or add filters."
         )
 
+    # None for an account that was deleted: its ledger rows stay.
+    emails = await user_emails(tx.userId for tx in transactions)
     admin_id_to_email: dict[str, str] = {}
 
     async def _resolve_admin_email(admin_id: str) -> str:
@@ -4051,7 +4095,7 @@ async def admin_export_user_history(
                 amount=tx.amount,
                 running_balance=tx.runningBalance or 0,
                 user_id=tx.userId,
-                user_email=tx.User.email if tx.User else None,
+                user_email=emails.get(tx.userId),
                 reason=reason,
                 admin_email=admin_email,
             )

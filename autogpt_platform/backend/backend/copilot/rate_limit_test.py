@@ -1631,6 +1631,14 @@ class TestSetUserTier:
         """Clear the get_user_tier cache before each test."""
         get_user_tier.cache_clear()  # type: ignore[attr-defined]
 
+    @pytest.fixture(autouse=True)
+    def _no_person_sync(self):
+        """The PostHog person sync it schedules is tested on its own
+        (``posthog_lifecycle_hooks_test``); here it would only run in the
+        background against unmocked boundaries."""
+        with patch("backend.copilot.rate_limit.schedule_posthog_lifecycle_sync"):
+            yield
+
     @pytest.mark.asyncio
     async def test_updates_db_and_invalidates_cache(self):
         """set_user_tier should persist to DB and invalidate the tier cache."""

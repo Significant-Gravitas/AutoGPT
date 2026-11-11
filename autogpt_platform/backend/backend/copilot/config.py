@@ -363,7 +363,9 @@ class ChatConfig(BaseSettings):
     # Session TTL Configuration - 12 hours
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_agent_runs: int = Field(default=30, description="Maximum number of agent runs")
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_agent_schedules: int = Field(
         default=30, description="Maximum number of agent schedules"
     )
@@ -435,6 +437,7 @@ class ChatConfig(BaseSettings):
     # PostHog, every account resolves to NO_TIER → BASIC multiplier and
     # would otherwise inherit these cloud ceilings. The defaults here stay
     # positive so a PostHog outage on cloud never removes the cap.
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     daily_cost_limit_microdollars: int = Field(
         default=2_500_000,
         description="Base max cost per day in microdollars. The day resets at "
@@ -442,6 +445,7 @@ class ChatConfig(BaseSettings):
         "0 means no spend allowed (will block); a negative value disables the "
         "daily cap (the self-hosted default).",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     weekly_cost_limit_microdollars: int = Field(
         default=5_000_000,
         description="Base max cost per week in microdollars. The week resets "
@@ -453,12 +457,14 @@ class ChatConfig(BaseSettings):
     # Paying credits to reset the daily limit is switched off (SECRT-3441): it
     # let an account buy past its plan's limits. The two settings below are
     # read by nothing; they stay so an env var that still sets them is harmless.
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     rate_limit_reset_cost: int = Field(
         default=0,
         ge=0,
         description="Deprecated and ignored: paying credits to reset the daily "
         "limit is switched off (SECRT-3441). Kept so a set env var is harmless.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_daily_resets: int = Field(
         default=0,
         ge=0,

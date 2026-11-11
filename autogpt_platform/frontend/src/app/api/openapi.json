@@ -3563,6 +3563,54 @@
         }
       }
     },
+    "/api/auth/email/ban-record": {
+      "post": {
+        "tags": ["auth-email"],
+        "summary": "Check whether an address belongs to an erased, banned account",
+        "description": "Asked by sign-up before it creates an account: an address whose banned\naccount was erased can't sign up again while its ban record lasts\n(`account_erasure/ban_record.py`).",
+        "operationId": "checkAuthEmailBanRecord",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthEmailBanRecordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthEmailBanRecordResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Service token is missing the required scope"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "Service-token verification is not configured"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/auth/email/send": {
       "post": {
         "tags": ["auth-email"],
@@ -21099,6 +21147,25 @@
         "enum": ["IP", "EMAIL_DOMAIN"],
         "title": "AuthAccessBlockKind"
       },
+      "AuthEmailBanRecordRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "format": "email",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "AuthEmailBanRecordRequest"
+      },
+      "AuthEmailBanRecordResponse": {
+        "properties": { "banned": { "type": "boolean", "title": "Banned" } },
+        "type": "object",
+        "required": ["banned"],
+        "title": "AuthEmailBanRecordResponse"
+      },
       "AuthEmailRequest": {
         "properties": {
           "type": {
@@ -24201,6 +24268,12 @@
           "is_managed": {
             "type": "boolean",
             "title": "Is Managed",
+            "default": false
+          },
+          "is_system": {
+            "type": "boolean",
+            "title": "Is System",
+            "description": "One of the platform's own keys, billed in credits, rather than a credential the user connected",
             "default": false
           },
           "service": { "type": "string", "title": "Service", "default": "" },

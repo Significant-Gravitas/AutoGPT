@@ -134,7 +134,9 @@ async def test_a_subscription_that_is_not_live_never_moves_the_clock(
     await sync.run()
 
     sync.save_clock.assert_not_awaited()
-    sync.set_tier.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+    sync.set_tier.assert_awaited_once_with(
+        "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
+    )
 
 
 @pytest.mark.asyncio
