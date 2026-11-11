@@ -25,7 +25,9 @@ export function ScreenHeader({ title, center, right }: Props) {
 
   return (
     <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
-      <IconButton icon={Menu01Icon} label="Open menu" onPress={openMenu} />
+      <View style={styles.side}>
+        <IconButton icon={Menu01Icon} label="Open menu" onPress={openMenu} />
+      </View>
       {center ? (
         <View style={styles.center}>{center}</View>
       ) : (
@@ -33,7 +35,7 @@ export function ScreenHeader({ title, center, right }: Props) {
           {title}
         </Text>
       )}
-      <View style={styles.right}>{right}</View>
+      <View style={[styles.side, styles.right]}>{right}</View>
     </View>
   );
 }
@@ -49,10 +51,8 @@ const styles = StyleSheet.create({
   },
   title: { ...type.heading, flex: 1, color: colors.text, textAlign: "center" },
   center: { flex: 1, alignItems: "center" },
-  right: {
-    minWidth: 40,
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: spacing.xs,
-  },
+  // Both sides share one width so the title stays centred whatever sits on
+  // the right.
+  side: { width: 88, flexDirection: "row" },
+  right: { justifyContent: "flex-end", gap: spacing.xs },
 });
