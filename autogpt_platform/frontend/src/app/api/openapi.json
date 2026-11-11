@@ -5912,7 +5912,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "402": { "description": "Not enough credits; nothing was charged" },
-          "409": { "description": "This account can't buy an extra week" },
+          "409": {
+            "description": "This account can't buy an extra week, or its price is no longer the one shown; nothing was charged"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -27094,10 +27096,16 @@
             "pattern": "^[A-Za-z0-9_-]+$",
             "title": "Purchase Key",
             "description": "A key the client makes up for this purchase (a UUID). Sending it again returns the same purchase and charges nothing more."
+          },
+          "price_credits": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Price Credits",
+            "description": "The price the customer was shown and agreed to, from the usage read-out's extra_week_offer. Refused if it has changed."
           }
         },
         "type": "object",
-        "required": ["purchase_key"],
+        "required": ["purchase_key", "price_credits"],
         "title": "ExtraWeekPurchaseRequest"
       },
       "ExtraWeekPurchaseResponse": {
@@ -27118,15 +27126,16 @@
             "title": "Expires At",
             "description": "When this extra week expires."
           },
-          "usage": { "$ref": "#/components/schemas/CoPilotUsagePublic" }
+          "usage": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CoPilotUsagePublic" },
+              { "type": "null" }
+            ],
+            "description": "Usage after the purchase; null when it couldn't be read just now (the purchase still went through)."
+          }
         },
         "type": "object",
-        "required": [
-          "credits_charged",
-          "remaining_balance",
-          "expires_at",
-          "usage"
-        ],
+        "required": ["credits_charged", "remaining_balance", "expires_at"],
         "title": "ExtraWeekPurchaseResponse"
       },
       "ExtraWeeksPublic": {

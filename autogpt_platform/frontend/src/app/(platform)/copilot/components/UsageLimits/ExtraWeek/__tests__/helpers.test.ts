@@ -4,6 +4,7 @@ import {
   describePurchaseFailure,
   formatExtraWeekPrice,
   isOutOfCredits,
+  isPriceChanged,
   newPurchaseKey,
 } from "../helpers";
 
@@ -33,12 +34,29 @@ describe("a refused purchase", () => {
     expect(isOutOfCredits(new Error("offline"))).toBe(false);
   });
 
-  it("says the plan can't buy one, or that nothing was charged", () => {
+  it("says the plan can't buy one", () => {
     expect(describePurchaseFailure(new ApiError("no", 409, {}))).toBe(
-      "An extra week isn’t available on your plan right now.",
-    );
-    expect(describePurchaseFailure(new Error("offline"))).toBe(
-      "Nothing was charged. Please try again.",
+      "An extra week isn’t available on your plan right now. Nothing was charged.",
     );
   });
+
+  it("says the price changed, and only for that refusal", () => {
+    const changed = new ApiError("no", 409, { detail: "price_changed" });
+    expect(isPriceChanged(changed)).toBe(true);
+    expect(isPriceChanged(new ApiError("no", 409, { detail: "other" }))).toBe(
+      false,
+    );
+    expect(describePurchaseFailure(changed)).toBe(
+      "The price has changed. Check the new price, then add your extra week.",
+    );
+  });
+
+  it.each([new ApiError("down", 503, {}), new Error("offline")])(
+    "never claims nothing was charged when the outcome is unknown",
+    (error) => {
+      expect(describePurchaseFailure(error)).toBe(
+        "We couldn’t confirm the purchase. Try again: you won’t be charged twice.",
+      );
+    },
+  );
 });

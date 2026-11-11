@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from backend.data.credit import UsageTransactionMetadata, UserCredit
 from backend.data.db import query_raw_with_schema, transaction
+from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,7 @@ async def buy_extra_week(
     if amount <= 0 or price_credits <= 0:
         raise ValueError("An extra week needs an amount and a price")
     credits = UserCredit()
-    bought = await _find_purchase(user_id, purchase_key)
+    bought = await find_extra_week_purchase(user_id, purchase_key)
     if bought is not None:
         return ExtraWeekPurchase(
             extra_week=bought, balance=await credits.get_credits(user_id), charged=False
@@ -109,9 +110,11 @@ async def buy_extra_week(
                     "expiresAt": now + EXTRA_WEEK_SECONDS,
                 }
             )
-    except UniqueViolationError:
-        # The same key committed between the lookup and here: that purchase.
-        bought = await _find_purchase(user_id, purchase_key)
+    except (UniqueViolationError, InsufficientBalanceError):
+        # The same key may have committed between the lookup and here: then
+        # this is that purchase, whether this attempt met its unique key or,
+        # the first having spent the balance, found too few credits left.
+        bought = await find_extra_week_purchase(user_id, purchase_key)
         if bought is None:
             raise
         return ExtraWeekPurchase(
@@ -125,22 +128,36 @@ async def buy_extra_week(
     )
 
 
-async def consume_extra_allowance(user_id: str, amount: int, now: int) -> int:
+async def consume_extra_allowance(
+    user_id: str, amount: int, now: int, debit_key: str
+) -> int:
     """Take up to ``amount`` microdollars from the user's unexpired extra
     weeks, the one expiring first before the others. Returns what was taken.
 
-    One statement: the rows are locked before their balances are read, so two
-    costs recorded at once can't both spend the same remainder.
+    ``debit_key`` names the cost being drawn: the same key again takes
+    nothing, so a draw repeated after a reply lost in transit is safe.
+
+    One statement: the key is claimed and the rows are locked before their
+    balances are read, so neither a repeat nor two costs recorded at once can
+    spend the same remainder twice.
     """
     if amount <= 0:
         return 0
     rows = await query_raw_with_schema(
-        """WITH locked AS (
+        """WITH claim AS (
+            INSERT INTO {schema_prefix}"UsageExtraDebit"
+                ("key", "userId", "amountMicrodollars", "createdAt")
+            VALUES ($4, $1, $2::bigint, CURRENT_TIMESTAMP)
+            ON CONFLICT ("key") DO NOTHING
+            RETURNING "key"
+        ),
+        locked AS (
             SELECT "id", "amountMicrodollars" - "usedMicrodollars" AS remaining,
                 "expiresAt", "purchasedAt"
             FROM {schema_prefix}"UsageExtraAllowance"
             WHERE "userId" = $1 AND "expiresAt" > $3::bigint
                 AND "usedMicrodollars" < "amountMicrodollars"
+                AND EXISTS (SELECT 1 FROM claim)
             ORDER BY "expiresAt", "purchasedAt", "id"
             FOR UPDATE
         ),
@@ -164,6 +181,7 @@ async def consume_extra_allowance(user_id: str, amount: int, now: int) -> int:
         user_id,
         amount,
         now,
+        debit_key,
     )
     return int(rows[0]["absorbed"]) if rows else 0
 
@@ -177,7 +195,8 @@ async def list_extra_weeks(user_id: str, now: int) -> list[ExtraWeek]:
     return [ExtraWeek.from_db(row) for row in rows]
 
 
-async def _find_purchase(user_id: str, purchase_key: str) -> ExtraWeek | None:
+async def find_extra_week_purchase(user_id: str, purchase_key: str) -> ExtraWeek | None:
+    """The extra week this key already bought, if it did."""
     row = await UsageExtraAllowance.prisma().find_first(
         where={"userId": user_id, "purchaseKey": purchase_key}
     )

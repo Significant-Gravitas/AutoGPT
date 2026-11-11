@@ -27,7 +27,8 @@ from backend.util.posthog_events import PostHogEvent
 
 NOW = 1_793_824_256
 KEY = "0b0d6a52-6f0e-4a55-9d1f-2f6a2b1c9e11"
-REQUEST = ExtraWeekPurchaseRequest(purchase_key=KEY)
+REQUEST = ExtraWeekPurchaseRequest(purchase_key=KEY, price_credits=8_000)
+PRO_REQUEST = ExtraWeekPurchaseRequest(purchase_key=KEY, price_credits=1_250)
 
 
 def _purchase(charged: bool = True, tier: str = "MAX") -> ExtraWeekPurchase:
@@ -54,8 +55,12 @@ class Shop:
         )
         self.buy = AsyncMock(return_value=_purchase())
         self.status = AsyncMock(
-            return_value=CoPilotUsageStatus(daily=window, weekly=window)
+            return_value=CoPilotUsageStatus(
+                daily=window, weekly=window, on_billing_clock=True
+            )
         )
+        self.bought_before = AsyncMock(return_value=None)
+        monkeypatch.setattr(routes, "find_extra_week_purchase", self.bought_before)
         self.events = MagicMock()
         monkeypatch.setattr(routes, "billing_clock_live", self.live)
         monkeypatch.setattr(routes, "now_seconds", lambda: NOW)
@@ -105,7 +110,7 @@ async def test_a_pro_subscriber_pays_12_50_for_their_own_weekly_limit(shop: Shop
     shop.plan("PRO")
     shop.buy.return_value = _purchase(tier="PRO")
 
-    await buy_extra_week_of_usage(REQUEST, "user-1")
+    await buy_extra_week_of_usage(PRO_REQUEST, "user-1")
 
     assert shop.buy.await_args.kwargs["amount"] == 8_000_000
     assert shop.buy.await_args.kwargs["price_credits"] == 1_250
@@ -121,6 +126,69 @@ async def test_a_repeated_key_reports_nothing_charged_and_sends_no_second_event(
 
     assert response.credits_charged == 0
     shop.events.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_price_other_than_the_one_shown_is_refused_and_charges_nothing(
+    shop: Shop,
+):
+    """The offer on screen said $12.50; the plan's price is now $80. The
+    customer agreed to the first, so nothing is charged."""
+    with pytest.raises(HTTPException) as refused:
+        await buy_extra_week_of_usage(PRO_REQUEST, "user-1")
+
+    assert (refused.value.status_code, refused.value.detail) == (409, "price_changed")
+    shop.buy.assert_not_awaited()
+    assert shop.event()[1] == {"reason": "price_changed", "tier": "MAX"}
+
+
+@pytest.mark.asyncio
+async def test_a_key_that_already_bought_is_answered_whatever_has_changed_since(
+    shop: Shop,
+):
+    """A retry of a purchase that went through is never refused for a price
+    or a clock that changed after it: it charges nothing either way."""
+    shop.bought_before.return_value = _purchase().extra_week
+    shop.buy.return_value = _purchase(charged=False)
+    shop.status.return_value = shop.status.return_value.model_copy(
+        update={"on_billing_clock": False}
+    )
+
+    response = await buy_extra_week_of_usage(PRO_REQUEST, "user-1")
+
+    assert response.credits_charged == 0
+
+
+@pytest.mark.asyncio
+async def test_an_account_whose_limits_are_not_on_the_billing_clock_cannot_buy(
+    shop: Shop,
+):
+    """An extra week is only drawn on by the billing-clock limits. Where an
+    account's own limits still run on the calendar, it would be paid for and
+    never used."""
+    shop.status.return_value = shop.status.return_value.model_copy(
+        update={"on_billing_clock": False}
+    )
+
+    with pytest.raises(HTTPException) as refused:
+        await buy_extra_week_of_usage(REQUEST, "user-1")
+
+    assert refused.value.status_code == 409
+    shop.buy.assert_not_awaited()
+    assert shop.event()[1]["reason"] == "not_live"
+
+
+@pytest.mark.asyncio
+async def test_a_charged_purchase_is_never_answered_with_an_error(shop: Shop):
+    """The usage read-out can fail after the credits are taken. The purchase
+    stands, so the answer is the purchase, without the read-out."""
+    on_clock = shop.status.return_value
+    shop.status.side_effect = [on_clock, RateLimitUnavailable("redis down")]
+
+    response = await buy_extra_week_of_usage(REQUEST, "user-1")
+
+    assert response.credits_charged == 8_000
+    assert response.usage is None
 
 
 @pytest.mark.asyncio
@@ -211,4 +279,10 @@ async def test_an_unreadable_plan_is_a_503_and_sells_nothing(shop: Shop):
 )
 def test_a_purchase_key_must_look_like_an_id(key: str):
     with pytest.raises(ValueError):
-        ExtraWeekPurchaseRequest(purchase_key=key)
+        ExtraWeekPurchaseRequest(purchase_key=key, price_credits=8_000)
+
+
+@pytest.mark.parametrize("price", [0, -5])
+def test_a_purchase_names_a_real_price(price: int):
+    with pytest.raises(ValueError):
+        ExtraWeekPurchaseRequest(purchase_key=KEY, price_credits=price)

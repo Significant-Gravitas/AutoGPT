@@ -120,7 +120,7 @@ async def test_saving_reports_whether_the_row_was_written(
         START - 90 * 86_400,
     ]
     # Only forwards: an earlier period never replaces a later one.
-    assert 'c."periodStart" <= EXCLUDED."periodStart"' in statement
+    assert 'c."periodStart" < EXCLUDED."periodStart"' in statement
 
 
 class Stripe:
@@ -307,3 +307,19 @@ async def test_one_failed_save_does_not_stop_the_rest(listing: Listing):
     summary = await backfill_billing_clocks()
 
     assert (summary.saved, summary.failed) == (1, 1)
+
+
+@pytest.mark.asyncio
+async def test_the_command_connects_runs_and_disconnects(
+    listing: Listing, monkeypatch: pytest.MonkeyPatch
+):
+    connect, disconnect = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(usage_clock_backfill.db, "connect", connect)
+    monkeypatch.setattr(usage_clock_backfill.db, "disconnect", disconnect)
+
+    summary = await usage_clock_backfill._run(dry_run=True)
+
+    assert summary.saved == 2
+    connect.assert_awaited_once()
+    disconnect.assert_awaited_once()
+    listing.save.assert_not_awaited()

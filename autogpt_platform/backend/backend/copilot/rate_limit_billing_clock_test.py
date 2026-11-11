@@ -581,3 +581,46 @@ async def test_send_at_reset_waits_for_the_limit_that_stops_a_turn(
     assert await at_reset._blocking_reset(USER) == datetime.fromtimestamp(
         START + DAY, UTC
     )
+
+
+@pytest.mark.asyncio
+async def test_a_cost_for_a_state_without_a_clock_is_counted_on_the_calendar(
+    account: Account, recorded: AsyncMock, monkeypatch: pytest.MonkeyPatch
+):
+    """A database manager still on the previous release sends no clock: the
+    cost must still be counted somewhere, so it goes to the calendar keys."""
+    account.state = UsageActivationState(user_id=USER, tier=PrismaTier.MAX, ready=True)
+    calendar = AsyncMock()
+    monkeypatch.setattr(rate_limit, "_incr_counter_atomic", calendar)
+    account.calendar_redis.side_effect = None
+
+    await record_cost_usage(USER, 4_000_000)
+
+    recorded.assert_not_awaited()
+    assert calendar.await_count == 2  # the day's and the week's calendar counters
+
+
+@pytest.mark.asyncio
+async def test_a_trials_single_allowance_is_shown_as_before(
+    account: Account, monkeypatch: pytest.MonkeyPatch
+):
+    """A trial's lifetime allowance decides on its own, on either clock: the
+    status carries no reserve, no extra week and no billing-clock verdict."""
+    account.state = _state(
+        "TRIAL", trial_started_at=NOW - DAY, trial_ends_at=NOW + 6 * DAY
+    )
+    offer = MagicMock(total_cost_limit=20_000_000)
+    trial = MagicMock(active=True, cost_microdollars=5_000_000, offer=offer)
+    trial.ends_at = datetime.fromtimestamp(NOW + 6 * DAY, UTC)
+    monkeypatch.setattr(
+        rate_limit, "_subscription_trial", AsyncMock(return_value=trial)
+    )
+
+    status = await get_usage_status(
+        USER, 100_000_000, 20_000_000, tier=SubscriptionTier.TRIAL
+    )
+
+    assert status.weekly_is_trial_allowance and not status.on_billing_clock
+    assert (status.weekly.used, status.weekly.limit) == (5_000_000, 20_000_000)
+    assert status.weekly.resets_at == trial.ends_at
+    assert status.reserve is None and status.extra_week_price == 0

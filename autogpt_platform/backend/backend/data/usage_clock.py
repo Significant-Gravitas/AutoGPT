@@ -88,7 +88,8 @@ async def save_billing_clock(
     user_id: str, subscription: Mapping[str, Any], *, client: Prisma | None = None
 ) -> bool:
     """Copy the subscription's period for the user, unless a later one is
-    already stored. True when the row was written."""
+    already stored. True when the row changed: the same period again writes
+    nothing, so a re-read that finds nothing new says so."""
     period = billing_period(subscription)
     if period is None:
         logger.error(
@@ -109,7 +110,15 @@ async def save_billing_clock(
             "updatedAt" = CURRENT_TIMESTAMP
         WHERE (
             c."stripeSubscriptionId" = EXCLUDED."stripeSubscriptionId"
-            AND c."periodStart" <= EXCLUDED."periodStart"
+            AND (
+                c."periodStart" < EXCLUDED."periodStart"
+                OR (
+                    c."periodStart" = EXCLUDED."periodStart"
+                    AND (c."periodEnd", c."billingCycleAnchor")
+                        IS DISTINCT FROM
+                        (EXCLUDED."periodEnd", EXCLUDED."billingCycleAnchor")
+                )
+            )
         ) OR (
             c."stripeSubscriptionId" <> EXCLUDED."stripeSubscriptionId"
             AND (

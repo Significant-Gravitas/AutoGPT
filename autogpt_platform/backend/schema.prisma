@@ -207,6 +207,7 @@ model User {
   paidUsageActivation PaidUsageActivation?
   usageBillingClock UsageBillingClock?
   usageExtraAllowances UsageExtraAllowance[]
+  usageExtraDebits UsageExtraDebit[]
   proActivationAttempt ProActivationAttempt?
 
   // Relations
@@ -393,6 +394,18 @@ model UsageExtraAllowance {
 
   @@unique([userId, purchaseKey])
   @@index([userId, expiresAt])
+}
+
+// One draw on a user's extra weeks, by the key of the cost that made it, so
+// a draw repeated after a lost reply takes nothing more.
+model UsageExtraDebit {
+  key                String   @id
+  userId             String
+  user               User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amountMicrodollars BigInt
+  createdAt          DateTime @default(now())
+
+  @@index([userId])
 }
 
 // Cutover fence: old settled payments cannot become new activation resets on replay.

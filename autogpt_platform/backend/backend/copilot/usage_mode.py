@@ -106,10 +106,10 @@ def parse_launch_answer(value: Any, now: int) -> LaunchAnswer | None:
 
 
 async def _stored_answer() -> LaunchAnswer | None:
-    # Without PostHog nothing was ever stored, and there may be no Redis.
-    if posthog.get_flag_client() is None:
-        return None
     try:
+        # Without PostHog nothing was ever stored, and there may be no Redis.
+        if posthog.get_flag_client() is None:
+            return None
         raw = await (await get_redis_async()).get(LAST_ANSWER_KEY)
     except Exception:
         logger.warning("Could not read the stored launch second", exc_info=True)

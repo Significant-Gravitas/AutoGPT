@@ -2,6 +2,7 @@
 all, bought once per key, and drawn on oldest-expiry first."""
 
 import asyncio
+from uuid import uuid4
 
 import pytest
 from prisma.enums import SubscriptionTier
@@ -135,10 +136,12 @@ async def test_extra_weeks_stack_and_the_one_expiring_first_is_used_first(
     sooner = (await _buy(billing_user, "sooner", NOW)).extra_week
 
     assert (
-        await consume_extra_allowance(billing_user, 3_000_000, NOW + 600) == 3_000_000
+        await consume_extra_allowance(billing_user, 3_000_000, NOW + 600, uuid4().hex)
+        == 3_000_000
     )
     assert (
-        await consume_extra_allowance(billing_user, 7_000_000, NOW + 700) == 7_000_000
+        await consume_extra_allowance(billing_user, 7_000_000, NOW + 700, uuid4().hex)
+        == 7_000_000
     )
 
     weeks = {week.id: week for week in await list_extra_weeks(billing_user, NOW + 800)}
@@ -153,9 +156,12 @@ async def test_no_more_is_taken_than_is_left(billing_user):
     await UserCredit().grant_credits(billing_user, 5_000, "test balance")
     await _buy(billing_user)
 
-    assert await consume_extra_allowance(billing_user, 9_000_000, NOW + 5) == AMOUNT
-    assert await consume_extra_allowance(billing_user, 1, NOW + 6) == 0
-    assert await consume_extra_allowance(billing_user, 0, NOW + 6) == 0
+    assert (
+        await consume_extra_allowance(billing_user, 9_000_000, NOW + 5, uuid4().hex)
+        == AMOUNT
+    )
+    assert await consume_extra_allowance(billing_user, 1, NOW + 6, uuid4().hex) == 0
+    assert await consume_extra_allowance(billing_user, 0, NOW + 6, uuid4().hex) == 0
 
 
 @pytest.mark.asyncio
@@ -164,11 +170,66 @@ async def test_costs_recorded_at_once_never_spend_the_same_remainder(billing_use
     await _buy(billing_user)
 
     taken = await asyncio.gather(
-        *(consume_extra_allowance(billing_user, 3_000_000, NOW + 5) for _ in range(5))
+        *(
+            consume_extra_allowance(billing_user, 3_000_000, NOW + 5, uuid4().hex)
+            for _ in range(5)
+        )
     )
 
     assert sum(taken) == AMOUNT
     assert (await list_extra_weeks(billing_user, NOW + 5))[0].used == AMOUNT
+
+
+@pytest.mark.asyncio
+async def test_a_draw_repeated_with_its_key_takes_nothing_more(billing_user):
+    """The database client repeats a call whose reply was lost. The same
+    cost must not be drawn twice."""
+    await UserCredit().grant_credits(billing_user, 5_000, "test balance")
+    await _buy(billing_user)
+
+    assert (
+        await consume_extra_allowance(billing_user, 3_000_000, NOW + 5, "cost-1")
+        == 3_000_000
+    )
+    assert (
+        await consume_extra_allowance(billing_user, 3_000_000, NOW + 6, "cost-1") == 0
+    )
+    repeats = await asyncio.gather(
+        *(
+            consume_extra_allowance(billing_user, 1_000_000, NOW + 7, "cost-2")
+            for _ in range(4)
+        )
+    )
+
+    assert sum(repeats) == 1_000_000
+    assert (await list_extra_weeks(billing_user, NOW + 8))[0].used == 4_000_000
+
+
+@pytest.mark.asyncio
+async def test_a_replay_that_finds_the_balance_spent_by_its_own_purchase_is_that_purchase(
+    billing_user, monkeypatch: pytest.MonkeyPatch
+):
+    """Two requests with one key and credits for exactly one week: both look
+    before either commits. The second then finds too few credits, because the
+    first spent them. It is answered with the purchase, not with a request to
+    add credits."""
+    await UserCredit().grant_credits(billing_user, PRICE, "test balance")
+    first = await _buy(billing_user)
+    find = usage_extra.find_extra_week_purchase
+    looks = iter([None])  # the second request's first look came too early
+
+    async def looked_too_early(user_id: str, purchase_key: str):
+        missed = next(looks, "found")
+        return None if missed is None else await find(user_id, purchase_key)
+
+    monkeypatch.setattr(usage_extra, "find_extra_week_purchase", looked_too_early)
+
+    replay = await _buy(billing_user)
+
+    assert not replay.charged
+    assert replay.extra_week == first.extra_week
+    assert replay.balance == 0
+    assert len(await _charges(billing_user)) == 1
 
 
 @pytest.mark.asyncio
@@ -177,8 +238,11 @@ async def test_an_expired_week_is_neither_used_nor_counted(billing_user):
     await _buy(billing_user)
     expiry = NOW + EXTRA_WEEK_SECONDS
 
-    assert await consume_extra_allowance(billing_user, 1_000, expiry) == 0
-    assert await consume_extra_allowance(billing_user, 1_000, expiry - 1) == 1_000
+    assert await consume_extra_allowance(billing_user, 1_000, expiry, uuid4().hex) == 0
+    assert (
+        await consume_extra_allowance(billing_user, 1_000, expiry - 1, uuid4().hex)
+        == 1_000
+    )
     assert await list_extra_weeks(billing_user, expiry) == []
 
 
@@ -190,3 +254,21 @@ async def test_an_extra_week_goes_with_its_account(billing_user):
     await fixtures.remove_user(billing_user)
 
     assert await UsageExtraAllowance.prisma().count(where={"userId": billing_user}) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("amount,price", [(0, PRICE), (AMOUNT, 0), (-1, PRICE)])
+async def test_an_extra_week_without_an_amount_or_a_price_is_never_sold(
+    billing_user, amount: int, price: int
+):
+    with pytest.raises(ValueError):
+        await buy_extra_week(
+            billing_user,
+            "key-1",
+            tier=SubscriptionTier.PRO,
+            amount=amount,
+            price_credits=price,
+            now=NOW,
+        )
+
+    assert await list_extra_weeks(billing_user, NOW) == []

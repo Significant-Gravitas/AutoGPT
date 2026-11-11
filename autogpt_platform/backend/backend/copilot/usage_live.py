@@ -21,6 +21,7 @@ The rules, for the current weekly window (amounts in microdollars):
 
 import logging
 from typing import Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
 
@@ -32,7 +33,7 @@ from backend.copilot.usage_windows import (
     reserve_today,
     weekly_limit_for,
 )
-from backend.data.db_accessors import usage_clock_db
+from backend.data.db_accessors import credit_db
 from backend.data.pro_activation import UsageActivationState
 
 logger = logging.getLogger(__name__)
@@ -245,11 +246,10 @@ async def record_live(
 
 
 async def _debit_extra_weeks(user_id: str, amount: int, now: int) -> None:
-    # One attempt, on a client that doesn't retry: the debit isn't
-    # idempotent, and a reply lost after it committed would otherwise take it
-    # twice.
+    # Keyed, so the database client's own retries after a reply lost in
+    # transit can't take it twice.
     try:
-        await usage_clock_db().consume_extra_allowance(user_id, amount, now)
+        await credit_db().consume_extra_allowance(user_id, amount, now, uuid4().hex)
     except Exception:
         logger.error(
             f"Could not take {amount} microdollars from the extra weeks of "

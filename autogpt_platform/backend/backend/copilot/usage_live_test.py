@@ -190,7 +190,7 @@ def _recording(excess: int):
 def _database(consume: AsyncMock):
     return patch.object(
         usage_live,
-        "usage_clock_db",
+        "credit_db",
         return_value=MagicMock(consume_extra_allowance=consume),
     )
 
@@ -225,22 +225,6 @@ async def test_a_plan_that_sells_none_asks_only_when_it_holds_one():
         consume.assert_awaited_once()
 
 
-def test_the_debit_goes_through_a_client_that_never_retries():
-    """The debit isn't idempotent: repeated after a reply lost in transit, it
-    would be taken twice."""
-    client = MagicMock()
-    with (
-        patch("backend.data.db_accessors.db.is_connected", return_value=False),
-        patch(
-            "backend.util.clients.get_database_manager_async_client",
-            return_value=client,
-        ) as factory,
-    ):
-        assert usage_live.usage_clock_db() is client
-
-    factory.assert_called_once_with(should_retry=False)
-
-
 @pytest.mark.asyncio
 async def test_a_cost_beyond_the_pool_is_taken_from_the_extra_weeks():
     consume = AsyncMock(return_value=1_500_000)
@@ -249,7 +233,10 @@ async def test_a_cost_beyond_the_pool_is_taken_from_the_extra_weeks():
 
     assert spend.await_args.kwargs["pool"] == POOL
     assert spend.await_args.kwargs["reserve"] == RESERVE
-    consume.assert_awaited_once_with("u1", 1_500_000, START + 3600)
+    user_id, amount, now, debit_key = consume.await_args.args
+    assert (user_id, amount, now) == ("u1", 1_500_000, START + 3600)
+    # Keyed, so the database client's retries can't take it twice.
+    assert len(debit_key) == 32
 
 
 @pytest.mark.asyncio
@@ -290,10 +277,21 @@ async def test_a_trial_never_draws_on_an_extra_week():
 
 
 @pytest.mark.asyncio
-async def test_a_failed_debit_is_tried_once_and_does_not_fail_the_recording():
+async def test_each_cost_draws_under_its_own_key():
+    consume = AsyncMock(return_value=1)
+    with _recording(1_500_000), _database(consume):
+        await _record(_state(extra=30_000_000))
+        await _record(_state(extra=30_000_000))
+
+    first, second = (call.args[3] for call in consume.await_args_list)
+    assert first != second
+
+
+@pytest.mark.asyncio
+async def test_a_failed_debit_does_not_fail_the_recording():
     consume = AsyncMock(side_effect=RuntimeError("database down"))
     with _recording(1_500_000), _database(consume):
         await _record(_state(extra=30_000_000))
 
-    # Once: the debit isn't idempotent, and the cost is already counted.
+    # The cost is already counted against the plan's week.
     assert consume.await_count == 1

@@ -137,6 +137,17 @@ async def test_an_unreadable_store_in_an_outage_is_not_live_and_does_not_raise()
 
 
 @pytest.mark.asyncio
+async def test_a_posthog_client_that_cannot_start_is_no_answer_not_an_error():
+    with (
+        _posthog(None, answered=False),
+        patch.object(
+            usage_mode.posthog, "get_flag_client", side_effect=RuntimeError("thread")
+        ),
+    ):
+        assert not await billing_clock_live()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("off", [False, {}, {"live_from": None}])
 async def test_a_conclusive_off_rolls_back_and_clears_the_stored_answer(off: Any):
     redis = _redis()
@@ -182,3 +193,21 @@ async def test_the_config_default_applies_only_where_posthog_gave_no_answer(
     usage_mode.launch_second.cache_clear()
     with _posthog(False), _with_redis(_redis()):
         assert not await billing_clock_live()
+
+
+@pytest.mark.asyncio
+async def test_an_outage_with_nothing_stored_is_not_live():
+    with (
+        _posthog(None, answered=False),
+        _posthog_configured(),
+        _with_redis(_redis(None)),
+    ):
+        assert not await billing_clock_live()
+
+
+@pytest.mark.asyncio
+async def test_an_answer_that_cannot_be_stored_still_applies():
+    redis = _redis()
+    redis.set.side_effect = ConnectionError()
+    with _posthog({"live_from": NOW - 10}), _with_redis(redis):
+        assert await billing_clock_live()

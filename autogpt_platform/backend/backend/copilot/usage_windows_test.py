@@ -332,3 +332,24 @@ def test_local_time_and_daylight_saving_cannot_move_a_reset():
     }
 
     assert len(outputs) == 1
+
+
+def test_a_period_far_longer_than_any_plan_gets_seven_day_windows():
+    start = ts(2026, 1, 1)
+
+    assert billing_month(start, ts(2032, 1, 1), None, start) is None
+
+
+def test_whole_months_that_do_not_sit_on_the_calendar_are_split_evenly():
+    """Three 31-day months from 1 January: on the calendar the last would run
+    from 1 March for 34 days, so the period is cut in three equal parts."""
+    start = ts(2027, 1, 1, 9, 0, 0)
+    end = start + 93 * DAY
+
+    months = [billing_month(start, end, None, start + i * 31 * DAY) for i in range(3)]
+
+    assert months == [
+        (start, start + 31 * DAY),
+        (start + 31 * DAY, start + 62 * DAY),
+        (start + 62 * DAY, end),
+    ]

@@ -97,6 +97,75 @@ async def test_confirming_minutes_later_matches_the_review(setup, live):
     assert setup.preview.await_count == 2
 
 
+async def test_a_confirmation_that_would_renew_on_another_day_needs_a_new_review(
+    setup, live, monkeypatch
+):
+    preview = await billing.preview_subscription_upgrade("user-1", REQUEST)
+    monkeypatch.setattr(billing, "_renewal_moved", lambda *_: True)
+
+    with pytest.raises(UpgradePreviewUnavailable, match="renewal date changed"):
+        await billing.validate_subscription_upgrade_preview(
+            "user-1", REQUEST, preview.preview_id, preview.proration_date
+        )
+
+
+async def test_the_renewal_moves_only_when_minutes_cross_a_months_end(setup, live):
+    """Reviewed at 23:55 on 30 January the plan renews at 23:55 on 28
+    February (February has no 30th); confirmed at 00:02 on 31 January it
+    would renew at 00:02 on 28 February, almost a day earlier. Anywhere else
+    the minutes between review and confirmation move it by those minutes."""
+    reviewed = 1801353300  # Sat 30 Jan 2027 23:55:00 UTC
+    preview = await billing.preview_subscription_upgrade("user-1", REQUEST)
+    month_end = preview.model_copy(
+        update={"period_end": 1803858900}  # Sun 28 Feb 2027 23:55:00 UTC
+    )
+
+    assert not billing._renewal_moved(preview, NOW + 14 * 60)
+    assert not billing._renewal_moved(month_end, reviewed + 4 * 60)
+    assert billing._renewal_moved(month_end, reviewed + 7 * 60)
+
+
+async def test_a_review_without_a_charge_line_is_refused_not_left_unconfirmable(
+    setup, live
+):
+    """With no line to date, the review and its re-check could never match:
+    the customer would be told their details changed, forever."""
+    credit_only = {
+        "description": "Unused time on Pro",
+        "amount": -4677,
+        "proration": True,
+        "period": {"start": NOW, "end": NOW + 2500000},
+    }
+    setup.preview.side_effect = lambda **_: {
+        **setup.invoice,
+        "lines": {"data": [credit_only]},
+    }
+
+    with pytest.raises(UpgradePreviewUnavailable, match="next billing date"):
+        await billing.preview_subscription_upgrade("user-1", REQUEST)
+
+
+async def test_the_charge_line_is_dated_whatever_shape_its_price_takes(setup, live):
+    """Stripe has reported a line's price in more than one place; the new
+    plan's charge is recognised as the invoice's charge, not by its price id."""
+    charge = {
+        "description": "1 x Max",
+        "amount": 32000,
+        "period": {"start": NOW + 99, "end": NOW + 99 + 2678400},
+    }
+    setup.preview.side_effect = lambda **_: {
+        **setup.invoice,
+        "lines": {"data": [charge]},
+    }
+
+    preview = await billing.preview_subscription_upgrade("user-1", REQUEST)
+
+    assert (preview.lines[0].period_start, preview.lines[0].period_end) == (
+        NOW,
+        MONTH_LATER,
+    )
+
+
 async def test_a_changed_charge_still_needs_a_new_review(setup, live):
     preview = await billing.preview_subscription_upgrade("user-1", REQUEST)
     setup.invoice["amount_due"] += 100

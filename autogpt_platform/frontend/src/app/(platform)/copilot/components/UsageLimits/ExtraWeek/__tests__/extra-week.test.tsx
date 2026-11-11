@@ -19,11 +19,18 @@ const BOUGHT = {
   usage: { tier: "MAX", daily: null, weekly: null, state: "ok" },
 };
 
+const prices: number[] = [];
+
 function onPurchase(answer: (key: string) => Response | Promise<Response>) {
   const keys: string[] = [];
+  prices.length = 0;
   server.use(
     http.post("*/api/chat/usage/extra-week", async ({ request }) => {
-      const body = (await request.json()) as { purchase_key: string };
+      const body = (await request.json()) as {
+        purchase_key: string;
+        price_credits: number;
+      };
+      prices.push(body.price_credits);
       keys.push(body.purchase_key);
       return answer(body.purchase_key);
     }),
@@ -82,6 +89,8 @@ describe("buying an extra week", () => {
 
     await waitFor(() => expect(onBought).toHaveBeenCalledTimes(1));
     expect(keys).toHaveLength(1);
+    // The price on the button is the price agreed to.
+    expect(prices).toEqual([8000]);
     expect(openTopUp).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Pay $80" })).toBeNull(),
@@ -102,6 +111,22 @@ describe("buying an extra week", () => {
     await waitFor(() => expect(openTopUp).toHaveBeenCalledTimes(1));
     expect(onBought).not.toHaveBeenCalled();
     expect(keys).toHaveLength(1);
+  });
+
+  it("closes without buying when the price is no longer the one shown", async () => {
+    const keys = onPurchase(() =>
+      HttpResponse.json({ detail: "price_changed" }, { status: 409 }),
+    );
+    const { onBought, openTopUp } = renderOffer();
+
+    await openAndPay();
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Pay $80" })).toBeNull(),
+    );
+    expect(keys).toHaveLength(1);
+    expect(onBought).not.toHaveBeenCalled();
+    expect(openTopUp).not.toHaveBeenCalled();
   });
 
   it("repeats the same purchase after a failure, so a retry can't buy twice", async () => {

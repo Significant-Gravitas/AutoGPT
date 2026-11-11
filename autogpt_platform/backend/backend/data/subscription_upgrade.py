@@ -65,7 +65,32 @@ async def validate_subscription_upgrade_preview(
         raise UpgradePreviewUnavailable(
             "Your billing details changed. Review the updated charge before paying."
         )
+    if saved.preview.resets_billing_date and _renewal_moved(
+        saved.preview, int(time.time())
+    ):
+        raise UpgradePreviewUnavailable(
+            "The renewal date changed. Review the charge again."
+        )
     return saved
+
+
+def _renewal_moved(preview: SubscriptionUpgradePreview, now: int) -> bool:
+    """Whether a plan confirmed at ``now`` would renew on another day than
+    reviewed.
+
+    The new period starts when the upgrade is confirmed, minutes after it was
+    reviewed. That moves the renewal by the same minutes, except where a
+    short month clamps it: reviewed at 23:55 on 30 January it renews at 23:55
+    on 28 February, confirmed at 00:02 on 31 January it would renew at 00:02
+    on 28 February, almost a day earlier than reviewed.
+    """
+    months = 12 if preview.billing_cycle == "yearly" else 1
+    confirmed_end = _period_end(now, months)
+    return abs(confirmed_end - preview.period_end) > PREVIEW_TTL
+
+
+def _period_end(start: int, months: int) -> int:
+    return month_after(start, months, datetime.fromtimestamp(start, UTC).day)
 
 
 async def _owned_subscription(user_id: str) -> UpgradeSubscription:
@@ -165,12 +190,15 @@ def _pin_new_period(
     unused time is already fixed by ``proration_date``.
     """
     months = 12 if price.recurring.interval == "year" else 1
-    day = datetime.fromtimestamp(proration_date, UTC).day
-    period_end = month_after(proration_date, months, day)
-    for line in invoice.lines.data:
-        if line.amount >= 0 and line.price_id == price.id:
-            line.period.start = proration_date
-            line.period.end = period_end
+    period_end = _period_end(proration_date, months)
+    # Every charge on this invoice is the new plan's: the only other line is
+    # the credit for the old plan's unused time.
+    charges = [line for line in invoice.lines.data if line.amount >= 0]
+    if not charges:
+        raise UpgradePreviewUnavailable("The next billing date could not be verified.")
+    for line in charges:
+        line.period.start = proration_date
+        line.period.end = period_end
     return period_end
 
 

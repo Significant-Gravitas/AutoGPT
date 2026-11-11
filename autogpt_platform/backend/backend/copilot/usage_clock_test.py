@@ -306,3 +306,30 @@ def test_the_recent_states_are_bounded():
     assert len(usage_clock._recent_states) == RECENT_STATE_MAX_USERS
     assert recent_state("u0", NOW) is None  # the oldest went first
     assert recent_state(f"u{RECENT_STATE_MAX_USERS + 4}", NOW) is not None
+
+
+def test_the_stripe_re_read_goes_through_a_client_that_never_retries():
+    """A retrying client would hold a turn's limit check for minutes while
+    Stripe is down."""
+    client = MagicMock()
+    with (
+        patch("backend.data.db_accessors.db.is_connected", return_value=False),
+        patch(
+            "backend.util.clients.get_database_manager_async_client",
+            return_value=client,
+        ) as factory,
+    ):
+        assert usage_clock.usage_clock_db() is client
+
+    factory.assert_called_once_with(should_retry=False)
+
+
+@pytest.mark.asyncio
+async def test_a_gate_that_cannot_be_extended_still_answers(redis, stripe_read, events):
+    stripe_read.return_value = "no_subscription"
+    redis.expire.side_effect = ConnectionError()
+
+    _, clock = await resolve_clock(_state(), END + 5)
+
+    assert clock is not None and clock.source == "held"
+    assert events.call_count == 1

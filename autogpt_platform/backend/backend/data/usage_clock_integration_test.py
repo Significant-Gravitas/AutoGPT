@@ -165,8 +165,11 @@ async def test_the_same_period_again_is_harmless_and_takes_a_changed_end(billing
     await save_billing_clock(billing_user, NOVEMBER)
     shortened = {**NOVEMBER, "current_period_end": START + 20 * DAY}
 
-    assert await save_billing_clock(billing_user, NOVEMBER) is True
+    # Nothing new is nothing written: a re-read that finds the same period
+    # must be able to say so.
+    assert await save_billing_clock(billing_user, NOVEMBER) is False
     assert await save_billing_clock(billing_user, shortened) is True
+    assert await save_billing_clock(billing_user, shortened) is False
 
     assert await _stored(billing_user) == ("sub_new", START, START + 20 * DAY)
 

@@ -467,13 +467,10 @@ def pro_activation_db():
 
 
 def usage_clock_db():
-    """The billing clock's Stripe re-read and the extra-week debit, each asked
-    for once.
+    """The billing clock's Stripe re-read, asked for once.
 
-    The retrying client would repeat the debit after a reply lost in transit,
-    taking it twice, and would hold a turn's limit check for minutes while
-    Stripe is down. One attempt: a failed debit leaves the cost counted
-    against the plan, and a failed re-read holds the last window.
+    The retrying client would hold a turn's limit check for minutes while
+    Stripe is down. One attempt: a failed re-read holds the last window.
     """
     if db.is_connected():
         from backend.data import db_manager as _usage_clock_db

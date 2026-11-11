@@ -20,7 +20,10 @@ export function ExtraWeekOffer({
   variant = "secondary",
   onBought,
 }: Props) {
-  const purchase = useExtraWeekPurchase({ onBought });
+  const purchase = useExtraWeekPurchase({
+    priceCredits: offer.price_credits,
+    onBought,
+  });
   const price = formatExtraWeekPrice(offer.price_credits);
   return (
     <>

@@ -12,14 +12,17 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   describePurchaseFailure,
   isOutOfCredits,
+  isPriceChanged,
   newPurchaseKey,
 } from "./helpers";
 
 interface Args {
+  /** The price the customer is shown, which is the price they agree to. */
+  priceCredits: number;
   onBought?: () => void;
 }
 
-type Outcome = "bought" | "out_of_credits" | "failed";
+type Outcome = "bought" | "out_of_credits" | "price_changed" | "failed";
 
 /** One attempt at the purchase, told to the customer as it ends. */
 async function attemptPurchase(buy: () => Promise<{ status: number }>) {
@@ -39,7 +42,9 @@ async function attemptPurchase(buy: () => Promise<{ status: number }>) {
       description: describePurchaseFailure(error),
       variant: "destructive",
     });
-    return "failed" satisfies Outcome;
+    return (
+      isPriceChanged(error) ? "price_changed" : "failed"
+    ) satisfies Outcome;
   }
   toast({
     title: "Extra week added",
@@ -48,7 +53,7 @@ async function attemptPurchase(buy: () => Promise<{ status: number }>) {
   return "bought" satisfies Outcome;
 }
 
-export function useExtraWeekPurchase({ onBought }: Args = {}) {
+export function useExtraWeekPurchase({ priceCredits, onBought }: Args) {
   const queryClient = useQueryClient();
   const { openTopUp } = useTopUpPrompt();
   const buy = usePostV2BuyExtraWeekOfUsage();
@@ -59,7 +64,9 @@ export function useExtraWeekPurchase({ onBought }: Args = {}) {
 
   async function confirm() {
     const outcome = await attemptPurchase(() =>
-      buy.mutateAsync({ data: { purchase_key: purchaseKey } }),
+      buy.mutateAsync({
+        data: { purchase_key: purchaseKey, price_credits: priceCredits },
+      }),
     );
     if (outcome === "failed") return;
     setIsOpen(false);
@@ -67,10 +74,12 @@ export function useExtraWeekPurchase({ onBought }: Args = {}) {
       openTopUp();
       return;
     }
-    setPurchaseKey(newPurchaseKey());
+    // Bought, or the price moved: either way the offer on screen is stale.
     void queryClient.invalidateQueries({
       queryKey: getGetV2GetCopilotUsageQueryKey(),
     });
+    if (outcome === "price_changed") return;
+    setPurchaseKey(newPurchaseKey());
     if (onBought) onBought();
   }
 

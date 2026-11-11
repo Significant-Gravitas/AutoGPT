@@ -14,13 +14,14 @@ from typing import Annotated, Literal, NoReturn
 
 from autogpt_libs import auth
 from fastapi import APIRouter, Depends, HTTPException, Security
-from prisma.enums import SubscriptionTier
+from prisma.enums import SubscriptionTier as PrismaTier
 from pydantic import BaseModel, Field
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
     RateLimitUnavailable,
+    SubscriptionTier,
     enforce_payment_paywall,
     get_global_rate_limits,
     get_usage_status,
@@ -28,7 +29,7 @@ from backend.copilot.rate_limit import (
 from backend.copilot.trial_reads import forget_usage_state
 from backend.copilot.usage_limits import plan_limits_for
 from backend.copilot.usage_mode import billing_clock_live, now_seconds
-from backend.data.usage_extra import buy_extra_week
+from backend.data.usage_extra import buy_extra_week, find_extra_week_purchase
 from backend.util import posthog_client
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.posthog_events import PostHogEvent
@@ -40,7 +41,9 @@ router = APIRouter(tags=["chat"])
 config = ChatConfig()
 settings = Settings()
 
-RefusalReason = Literal["not_live", "not_eligible", "insufficient_credits"]
+RefusalReason = Literal[
+    "not_live", "not_eligible", "price_changed", "insufficient_credits"
+]
 
 
 class ExtraWeekPurchaseRequest(BaseModel):
@@ -51,6 +54,11 @@ class ExtraWeekPurchaseRequest(BaseModel):
         description="A key the client makes up for this purchase (a UUID). "
         "Sending it again returns the same purchase and charges nothing more.",
     )
+    price_credits: int = Field(
+        gt=0,
+        description="The price the customer was shown and agreed to, from "
+        "the usage read-out's extra_week_offer. Refused if it has changed.",
+    )
 
 
 class ExtraWeekPurchaseResponse(BaseModel):
@@ -60,7 +68,11 @@ class ExtraWeekPurchaseResponse(BaseModel):
     )
     remaining_balance: int = Field(description="Credit balance now (in cents).")
     expires_at: datetime = Field(description="When this extra week expires.")
-    usage: CoPilotUsagePublic
+    usage: CoPilotUsagePublic | None = Field(
+        default=None,
+        description="Usage after the purchase; null when it couldn't be read "
+        "just now (the purchase still went through).",
+    )
 
 
 @router.post(
@@ -69,7 +81,10 @@ class ExtraWeekPurchaseResponse(BaseModel):
     dependencies=[Depends(enforce_payment_paywall)],
     responses={
         402: {"description": "Not enough credits; nothing was charged"},
-        409: {"description": "This account can't buy an extra week"},
+        409: {
+            "description": "This account can't buy an extra week, or its "
+            "price is no longer the one shown; nothing was charged"
+        },
         503: {"description": "Usage limits can't be read right now"},
     },
 )
@@ -90,53 +105,96 @@ async def buy_extra_week_of_usage(
         plan = await plan_limits_for(tier.value)
         if plan is None or plan.extra_week_credits <= 0 or weekly <= 0:
             _refuse(user_id, "not_eligible", tier=tier.value)
-        try:
-            purchase = await buy_extra_week(
-                user_id,
-                request.purchase_key,
-                tier=SubscriptionTier(tier.value),
-                amount=weekly,
-                price_credits=plan.extra_week_credits,
-                now=now,
-            )
-        except InsufficientBalanceError as error:
-            _track_refusal(user_id, "insufficient_credits", tier.value)
-            raise HTTPException(
-                status_code=402,
-                detail={
-                    "message": "Not enough credits for an extra week.",
-                    "needed": plan.extra_week_credits,
-                    "balance": int(error.balance),
-                },
-            ) from error
-        if purchase.charged:
-            posthog_client.capture(
-                user_id,
-                PostHogEvent.USAGE_EXTRA_WEEK_PURCHASED,
-                {"tier": tier.value, "price_credits": plan.extra_week_credits},
-            )
-        # The purchase changed the usage state this request may have shared.
-        forget_usage_state(user_id)
-        status = await get_usage_status(user_id, daily, weekly, tier=tier)
+        await _refuse_a_new_purchase_that_differs(
+            user_id, request, tier, daily, weekly, plan.extra_week_credits
+        )
     except RateLimitUnavailable as error:
         raise HTTPException(
             status_code=503,
             detail="Usage limits can't be read right now. Please try again shortly.",
             headers={"Retry-After": "30"},
         ) from error
+    try:
+        purchase = await buy_extra_week(
+            user_id,
+            request.purchase_key,
+            tier=PrismaTier(tier.value),
+            amount=weekly,
+            price_credits=plan.extra_week_credits,
+            now=now,
+        )
+    except InsufficientBalanceError as error:
+        _track_refusal(user_id, "insufficient_credits", tier.value)
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": "Not enough credits for an extra week.",
+                "needed": plan.extra_week_credits,
+                "balance": int(error.balance),
+            },
+        ) from error
+    if purchase.charged:
+        posthog_client.capture(
+            user_id,
+            PostHogEvent.USAGE_EXTRA_WEEK_PURCHASED,
+            {"tier": tier.value, "price_credits": plan.extra_week_credits},
+        )
     return ExtraWeekPurchaseResponse(
         credits_charged=plan.extra_week_credits if purchase.charged else 0,
         remaining_balance=purchase.balance,
         expires_at=datetime.fromtimestamp(purchase.extra_week.expires_at, UTC),
-        usage=CoPilotUsagePublic.from_status(status),
+        usage=await _usage_after_purchase(user_id, daily, weekly, tier),
     )
+
+
+async def _refuse_a_new_purchase_that_differs(
+    user_id: str,
+    request: ExtraWeekPurchaseRequest,
+    tier: SubscriptionTier,
+    daily: int,
+    weekly: int,
+    price_credits: int,
+) -> None:
+    """Refuse a purchase the customer didn't agree to, or couldn't use.
+
+    The price charged must be the one they were shown, and the account's own
+    limits must be running on its billing clock, where an extra week is
+    drawn on. A key that already bought its week is let through: it is
+    answered with that purchase and charged nothing.
+    """
+    if await find_extra_week_purchase(user_id, request.purchase_key):
+        return
+    if request.price_credits != price_credits:
+        _refuse(user_id, "price_changed", tier=tier.value)
+    status = await get_usage_status(user_id, daily, weekly, tier=tier)
+    if not status.on_billing_clock:
+        _refuse(user_id, "not_live", tier=tier.value)
+
+
+async def _usage_after_purchase(
+    user_id: str, daily: int, weekly: int, tier: SubscriptionTier
+) -> CoPilotUsagePublic | None:
+    """The usage read-out with the new extra week in it, when it can be read.
+    The purchase is already made: failing to read it back must not turn a
+    charged purchase into an error."""
+    # The purchase changed the usage state this request may have shared.
+    forget_usage_state(user_id)
+    try:
+        status = await get_usage_status(user_id, daily, weekly, tier=tier)
+    except RateLimitUnavailable:
+        logger.warning("Could not read usage back after an extra-week purchase")
+        return None
+    return CoPilotUsagePublic.from_status(status)
 
 
 def _refuse(user_id: str, reason: RefusalReason, tier: str | None = None) -> NoReturn:
     _track_refusal(user_id, reason, tier)
-    raise HTTPException(
-        status_code=409, detail="An extra week isn't available for this account."
+    detail = (
+        "price_changed"
+        if reason == "price_changed"
+        else "An extra week isn't available for this account."
     )
+    raise HTTPException(status_code=409, detail=detail)
 
 
 def _track_refusal(user_id: str, reason: RefusalReason, tier: str | None) -> None:
