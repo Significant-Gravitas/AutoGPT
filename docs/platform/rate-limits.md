@@ -116,6 +116,24 @@ The Platform generates a picture for each workflow you add to your library, sub-
 - **What you see:** past the limit, a workflow you add has no picture, and generating one for a listing is refused with `429` and "Limit: 25 generated agent images per day."
 - Not configurable.
 
+### Emails to yourself
+
+The **Send Email To Me** block emails your own account address from the Platform, up to 20 times a day.
+
+- **Counted per:** account, from every workflow and chat that runs for it. The day starts at 00:00 UTC. A send the mail service refused doesn't count; one whose outcome it didn't confirm does, since it may have arrived.
+- **What you see:** past the limit, the block sends nothing, and its `error` output says "Already sent 20 emails to this account today, the most allowed in a day. Try again after midnight UTC."
+- **Self-hosting:** `OWNER_EMAIL_DAILY_LIMIT` (default `20`; `0` allows none).
+
+## Sandboxes
+
+### Sandboxes running at once
+
+Otto and your Experts run code and use a computer in sandboxes, and so do some blocks, such as code execution and Claude Code. Up to 10 of your sandboxes can run at once; a paused one doesn't count until it is woken.
+
+- **Counted per:** account. Only sandboxes on the Platform's own E2B account count: a block that uses an E2B key you added is neither counted nor refused.
+- **What you see:** a new sandbox past the limit isn't started, with "Too many sandboxes are running on your account: 10 at once is the most. Wait for one of your tasks to finish, then try again." In a chat, the reply ends with that message; starting a computer's desktop from a chat or an Expert's page is refused with `429` and the same message.
+- **Self-hosting:** `E2B_ACCOUNT_SANDBOX_LIMIT` (default `10`; `0` turns it off). `E2B_DEPLOYMENT_SANDBOX_LIMIT` caps the sandboxes of everyone together (default `0`, no cap); past it a start is refused with "Too many sandboxes are running right now. Please try again in a few minutes."
+
 ## Search
 
 ### Search across the Platform
@@ -239,7 +257,7 @@ Every call to [API v2](integrating/api-guide.md) shares one limit, on top of the
 | Without one                                                | 5 requests a minute   | IP address  |
 | Without one, reading the API's own docs and OpenAPI schema | 60 requests a minute  | IP address  |
 
-- Each minute starts on the clock minute. Responses carry their place in the window in `X-RateLimit-*` headers, and a `429` adds `Retry-After`.
+- Each minute starts on the clock minute. Responses carry their place in the window in `X-RateLimit-*` headers, and a `429` adds `Retry-After`; a refusal of a credential that keeps failing carries `Retry-After` alone.
 - A request that presents a credential is also counted before the credential is checked, per credential at each IP address, so repeated failures are refused without the cost of checking them.
 - **Self-hosting:** the per-IP counts read `X-Forwarded-For`, not the connection address. Set `TRUSTED_PROXY_COUNT` on the backend to the number of entries your own proxies add; see [Client IP Addresses](client-ip.md#limits-on-the-external-api).
 

@@ -188,6 +188,7 @@ def app_path(scope: Scope) -> str:
     return path[len(root) :] if root and path.startswith(root) else path
 
 
+# Documented in docs/platform/client-ip.md: update it with any change here.
 def client_ip(scope: Scope) -> str:
     """The caller's address, trusting only the proxies in front of us.
 

@@ -612,6 +612,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "direct. Do not set it before the proxy exists: E2B fails closed, so a "
         "box pointed at nothing has no egress at all.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     e2b_deployment_sandbox_limit: int = Field(
         default=0,
         ge=0,
@@ -619,6 +620,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "at once on the platform's E2B key; a start past it is refused. 0 sets no "
         "ceiling of its own.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     e2b_account_sandbox_limit: int = Field(
         # Twice the running-turn cap, so a user at that cap can still open
         # desktops and run sandboxed blocks beside it.
@@ -826,6 +828,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "canary run with team inboxes."
         ),
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     owner_email_daily_limit: int = Field(
         default=20,
         description=(
