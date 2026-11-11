@@ -221,8 +221,9 @@ export const InterviewEvent = {
   // A call's control socket re-attached after `gap_s`.
   VOICE_INTERVIEW_RESUMED: "voice_interview_resumed",
   // The relay found Otto's voice coming back through the person's
-  // microphone, by its probe of his first turn or in their captions (`by`):
-  // the call stops listening while he is audible.
+  // microphone (`by`): its probe of his first turn, or speech it overheard
+  // while he played that was his own words. The call stops listening while
+  // he is audible.
   VOICE_INTERVIEW_ECHO: "voice_interview_echo",
   VOICE_INTERVIEW_MIC_DENIED: "voice_interview_mic_denied",
   // A call that never went live: the browser could not join its room

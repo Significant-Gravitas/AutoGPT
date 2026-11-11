@@ -4,15 +4,14 @@ The live model's captions are what it heard as it went; the transcript of
 record is made after the call from the person's own recording, and it is
 what the onboarding pipeline reads. A call's transcript job:
 
-1. cuts the recording into speech (``vad.segments``) and groups it into the
-   person's turns by where it falls between Otto's turns, which the call
-   marked on its record as they ended (:func:`user_turn_clips`);
+1. silences the spans of the recording the call judged Otto's own voice
+   coming back through the person's speakers (``echo``), then cuts it into
+   speech (``vad.segments``) and groups that into the person's turns by where
+   it falls between Otto's turns, which the call marked on its record as they
+   ended (:func:`user_turn_clips`);
 2. transcribes each turn, four at a time, naming the speaker
    (:class:`GeminiTranscriber`). A response with no candidates or no text is
    an empty turn, never an error: a near-silent clip comes back that way;
-   a turn whose words are mostly Otto's own from his turns either side is his
-   voice come back through the person's speakers, and is dropped
-   (:func:`without_echo`);
 3. joins the turns one per line without the server's tags
    (:func:`transcript_of_record`) and stores the transcript on the call's
    record, ``transcribed``, in the same write that forgets the recording,
@@ -77,8 +76,8 @@ from backend.voice_relay.config import (
     TRANSCRIBE_MODEL,
     transcribe_timeout_s,
 )
-from backend.voice_relay.echo import echoed_clip
-from backend.voice_relay.locks import CallRecord, TurnMark
+from backend.voice_relay.echo import silenced
+from backend.voice_relay.locks import CallRecord
 from backend.voice_relay.metering import (
     POSTCALL_SECONDS,
     POSTCALLS,
@@ -187,9 +186,10 @@ def user_turn_clips(pcm: bytes, boundaries: Sequence[int]) -> list[bytes]:
     *boundaries* are where Otto's turns ended, in samples of the recording.
     Each segment of speech goes to the stretch its speech starts in, from the
     end of one of Otto's turns to the end of the next, so a turn of the
-    person's is what they said between two of Otto's. What they said before
-    Otto's first turn ended joins their answer to it, and what they said after
-    the last joins their answer to that. Each segment is padded on both sides
+    person's is what they said between two of Otto's. Before Otto's first turn
+    ended the recording is always silence, since every call starts with the
+    microphone closed (``echo``), and what they said after his last turn joins
+    their answer to it. Each segment is padded on both sides
     for the transcription, and a turn's segments are joined with a short
     silence; a turn with no speech is an empty clip.
     """
@@ -204,17 +204,6 @@ def user_turn_clips(pcm: bytes, boundaries: Sequence[int]) -> list[bytes]:
     return [
         gap.join(pcm[start * 2 : end * 2] for start, end in segments)
         for segments in grouped
-    ]
-
-
-def without_echo(texts: Sequence[str], marks: Sequence[TurnMark]) -> list[str]:
-    """The person's turns, with each that is Otto's own words dropped: turn
-    *i* falls between Otto's turns *i* and *i* + 1 (:func:`user_turn_clips`),
-    and is his when its words are mostly theirs (:func:`echo.echoed_clip`)."""
-    otto = [mark.text for mark in marks]
-    return [
-        "" if echoed_clip(text, *otto[index : index + 2]) else text
-        for index, text in enumerate(texts)
     ]
 
 
@@ -608,7 +597,10 @@ class PostCall:
         pcm: bytes,
         first_name: str | None,
     ) -> str:
-        clips = user_turn_clips(pcm, [mark.at for mark in record.turns])
+        spans = record.duplex.echo_spans if record.duplex is not None else []
+        clips = user_turn_clips(
+            silenced(pcm, spans), [mark.at for mark in record.turns]
+        )
         if not any(clips):
             return ""
         if first_name is None:
@@ -628,17 +620,7 @@ class PostCall:
             call_id=record.call_id,
         )
         await meter.flush()
-        kept = without_echo(texts, record.turns)
-        dropped = sum(
-            bool(text.strip()) and not left
-            for text, left in zip(texts, kept, strict=True)
-        )
-        if dropped:
-            logger.info(
-                f"Voice call {record.call_id}: {dropped} of the person's turns "
-                f"dropped as Otto's own words"
-            )
-        return transcript_of_record(kept)
+        return transcript_of_record(texts)
 
     async def _last_upload(self, record: CallRecord) -> bytes:
         """The call's recording as last uploaded; empty when it has none or

@@ -71,7 +71,7 @@ from backend.voice_relay.config import (
     RoomCloseWhy,
     Timing,
 )
-from backend.voice_relay.echo import ECHO_NOTE, Duplex, EchoBy, Probe, is_echo
+from backend.voice_relay.echo import ECHO_NOTE, Duplex, EchoBy, Overheard, Probe
 from backend.voice_relay.end_tool import (
     Answer,
     ToolCallLine,
@@ -417,6 +417,11 @@ class Session:
         self.probe_from: float | None = None
         self.probe_ends: float | None = None
         self.probe_share: float | None = None
+        # On a full-duplex call, speech heard while Otto is audible, kept until
+        # his next turn begins, and the spans of the recording, in samples,
+        # judged his voice.
+        self.overheard: Overheard | None = None
+        self.echo_spans: list[tuple[int, int]] = []
 
     # --- lifecycle --------------------------------------------------------
 
@@ -539,6 +544,8 @@ class Session:
     async def finish(self) -> None:
         reason: EndReason = self.end_reason or "vendor_error"
         elapsed = self.elapsed()
+        # A stretch still open when the call ends is the person's.
+        self._release_overheard()
         try:
             await self.meter.unreported(
                 sent_samples=self.forwarded,
@@ -561,7 +568,10 @@ class Session:
                 elapsed_s=round(elapsed, 1),
                 end_tool=self.end_tool.model_dump(),
                 duplex=DuplexStats(
-                    mode=self.duplex, by=self.echo_by, probe_share=self.probe_share
+                    mode=self.duplex,
+                    by=self.echo_by,
+                    probe_share=self.probe_share,
+                    echo_spans=self.echo_spans,
                 ).model_dump(),
                 agent_turns=len(self.turns),
                 usd=round(self.meter.usd, 6),
@@ -819,6 +829,7 @@ class Session:
             self.quiet_s = 0.0
             self.last_heard = now
             self.answer.hear(samples / IN_RATE, now)
+            self._overhear(samples, now)
         live = self.live
         if self.wrapping or self.reconnecting or live is None:
             return
@@ -853,12 +864,22 @@ class Session:
         if self.probe_ends is not None and now >= self.probe_ends:
             await self._decide_duplex()
         elif self.probe_from is not None and now >= self.probe_from:
-            self.probe.count(heard=vad.heard(pcm))
+            self.probe.count(heard=vad.heard(pcm), seconds=len(pcm) / 2 / IN_RATE)
 
     async def _decide_duplex(self) -> None:
         """The probe's verdict: the share of microphone frames heard as
-        speech while Otto's first turn played, logged on every call."""
+        speech while Otto's first turn played, logged on every call. Too
+        little microphone to judge by is no evidence of echo, and no share."""
         probe = self.probe
+        if not probe.judged:
+            self.probe_share = None
+            self.duplex = "full"
+            logger.info(
+                f"Voice call {self.call_id}: the echo probe counted only "
+                f"{probe.seconds:.1f}s of the microphone while Otto's first turn "
+                f"played, too little to judge: full-duplex"
+            )
+            return
         self.probe_share = round(probe.share, 3)
         mode: Duplex = "half" if probe.carries_otto else "full"
         logger.info(
@@ -878,28 +899,66 @@ class Session:
         ECHO.labels(by=by).inc()
         await self.send_json({"type": "duplex", "mode": "half", "by": by})
 
-    async def on_user_text(self, text: str, now: float) -> None:
-        """A caption of the person's. On a full-duplex call, a caption that is
-        Otto's own words is his voice coming back (``echo``)."""
-        self.user_buf += text
-        previous = self.turns[-1].text if self.turns else ""
-        if self.duplex == "full" and is_echo(self.user_buf, self.cur.text, previous):
-            await self._caught_echo()
+    def _overhear(self, samples: int, now: float) -> None:
+        """On a full-duplex call, keep speech the voice detector heard while
+        Otto was audible as an overheard stretch, with what is heard after it,
+        until his next turn begins (``echo``)."""
+        if self.duplex != "full":
             return
+        audible = now < self.playout_end + self.timing.echo_tail_s
+        stretch = self.overheard
+        if stretch is None:
+            if not audible:
+                return
+            # Where this frame starts in the recording.
+            stretch = self.overheard = Overheard(start=self.received - samples)
+        stretch.hear(samples / IN_RATE, otto_audible=audible)
+
+    async def on_user_text(self, text: str, now: float) -> None:
+        """A caption of the person's: kept in an overheard stretch while one
+        is open, until it is judged. Either way the browser shows it at once,
+        and it counts toward an answer."""
+        if self.overheard is not None:
+            self.overheard.text += text
+        else:
+            self.user_buf += text
         self.answer.caption(text, now)
         await self.send_json({"type": "user_text", "text": text})
+
+    async def _judge_overheard(self) -> None:
+        """Judge the overheard stretch, once, as Otto's next turn begins: by
+        then the vendor has closed the person's turn and its caption is
+        whole."""
+        stretch = self.overheard
+        if stretch is None:
+            return
+        self.overheard = None
+        if not stretch.is_otto(*(turn.text for turn in self.turns[-2:])):
+            self.user_buf += stretch.text
+            return
+        self.echo_spans.append((stretch.start, self.received))
+        await self._caught_echo()
+
+    def _release_overheard(self) -> None:
+        """A stretch the call will not judge is the person's."""
+        stretch = self.overheard
+        if stretch is not None:
+            self.overheard = None
+            self.user_buf += stretch.text
 
     async def _caught_echo(self) -> None:
         """Otto's words came back as the person's: the call is half-duplex
         for good, the caption is dropped with what it made count as an
-        answer, and the model is told, once."""
+        answer, and the model is told, once, unless the call is already
+        saying goodbye."""
         logger.info(
-            f"Voice call {self.call_id}: a caption of the person's was Otto's own "
-            f"words: half-duplex from here"
+            f"Voice call {self.call_id}: speech heard over Otto was his own words: "
+            f"half-duplex from here"
         )
-        self.user_buf = ""
         self.answer.forget()
         await self._go_half("captions")
+        if self.wrapping or self.finish_called:
+            return
         self.prompted = True
         await self._vendor_call(
             "echo note",
@@ -973,6 +1032,8 @@ class Session:
         """
         dropped_at = time.monotonic()
         self.reconnecting = True
+        # The replacement starts on the call so far, the person's words in it.
+        self._release_overheard()
         failure = self._vendor_failed("session", error)
         await self.meter.unreported(
             sent_samples=self.forwarded,
@@ -1075,7 +1136,7 @@ class Session:
                 await self.on_user_text(text, now)
             case AgentText(text=text):
                 if text.strip():
-                    self._turn_begins(now)
+                    await self._turn_begins(now)
                 self.cur.text += text
                 await self.send_json({"type": "agent_text", "text": text})
             case Interrupted():
@@ -1089,7 +1150,7 @@ class Session:
                 await self.on_turn_complete()
 
     async def on_agent_audio(self, pcm: bytes, now: float) -> None:
-        self._turn_begins(now)
+        await self._turn_begins(now)
         turn = self.cur
         if turn.first_audio is None:
             turn.first_audio = now
@@ -1125,14 +1186,16 @@ class Session:
         if self.audio is not None:
             self.audio.flush()
 
-    def _turn_begins(self, now: float) -> None:
-        """Note that Otto's turn has begun. One begun with nothing heard from
-        the person since his last, and nothing from the relay to prompt it,
-        is counted as unprompted."""
+    async def _turn_begins(self, now: float) -> None:
+        """Note that Otto's turn has begun, at its first audio, words or tool
+        call: an overheard stretch is judged now. One begun with nothing heard
+        from the person since his last, and nothing from the relay to prompt
+        it, is counted as unprompted."""
         turn = self.cur
         if turn.began:
             return
         turn.began = True
+        await self._judge_overheard()
         if not self.turns or self.prompted or not self.answer.silent:
             return
         UNPROMPTED_TURNS.inc()
@@ -1153,7 +1216,9 @@ class Session:
         call logs its line."""
         now = time.monotonic()
         speaking = self._otto_speaking()
-        self._turn_begins(now)
+        # An overheard stretch is judged before the call is: what an echo made
+        # count as an answer is not one.
+        await self._turn_begins(now)
         lines = [self._take_tool_call(call, now, speaking) for call in event.calls]
         results = [
             ToolResult(

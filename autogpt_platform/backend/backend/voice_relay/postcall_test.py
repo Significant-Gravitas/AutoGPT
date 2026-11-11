@@ -6,7 +6,6 @@ which the REST API hands off (``onboarding_dump.voice_handoff``).
 """
 
 import asyncio
-import logging
 import time
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,7 +15,7 @@ from google.genai import types
 from prisma.enums import BrainDumpInputMode
 from pytest_mock import MockerFixture
 
-from backend.voice_relay import locks, postcall, tokens
+from backend.voice_relay import locks, postcall, tokens, vad
 from backend.voice_relay.config import (
     CAPS,
     IN_RATE,
@@ -27,7 +26,7 @@ from backend.voice_relay.config import (
     transcribe_timeout_s,
 )
 from backend.voice_relay.conftest import MemoryRecordings, ScriptedTranscriber
-from backend.voice_relay.locks import TurnMark
+from backend.voice_relay.locks import DuplexStats, TurnMark
 from backend.voice_relay.metering import POSTCALLS, Row
 from backend.voice_relay.postcall import (
     GeminiTranscriber,
@@ -37,7 +36,7 @@ from backend.voice_relay.postcall import (
     transcription_text,
     user_turn_clips,
 )
-from backend.voice_relay.record import CallRecording, wav_of
+from backend.voice_relay.record import CallRecording, pcm_of, wav_of
 
 USER = "user-1"
 LIVE = "gemini-3.8-live"
@@ -115,11 +114,12 @@ class Rig:
         end_reason: str | None = "finished",
         uploaded: bool = True,
         started: float | None = None,
-        otto: list[str] | None = None,
+        echo_spans: list[tuple[int, int]] | None = None,
     ) -> str:
         """A call as the relay leaves it on its record: pending, its recording
         uploaded. It started an hour ago unless *started* says otherwise.
-        *otto* is what Otto said in each of his turns."""
+        *echo_spans* are the spans of its recording the call caught as Otto's
+        voice."""
         call_id = tokens.new_call_id()
         fields: dict[str, object] = {
             "status": status,
@@ -127,12 +127,14 @@ class Rig:
             "started": time.time() - 3600 if started is None else started,
             "end_reason": end_reason,
             "turns": [
-                TurnMark(
-                    index=index, at=at, text=otto[index] if otto else ""
-                ).model_dump()
+                TurnMark(index=index, at=at).model_dump()
                 for index, at in enumerate(marks)
             ],
         }
+        if echo_spans:
+            fields["duplex"] = DuplexStats(
+                mode="half", by="captions", echo_spans=echo_spans
+            ).model_dump()
         if uploaded and pcm:
             fields["audio_path"] = await self.recordings.store(
                 USER, wav_of(pcm), f"brain-dump-voice-{call_id}.wav"
@@ -788,31 +790,29 @@ def _outcomes(outcome: str) -> float:
     return POSTCALLS.labels(outcome=outcome)._value.get()
 
 
-async def test_a_turn_that_is_ottos_own_words_is_left_out_of_the_transcript(
-    rig: Rig, caplog
+async def test_a_caught_span_is_silent_in_the_transcribed_clip_while_an_answer_in_the_same_clip_survives(
+    rig: Rig,
 ):
-    """Otto's voice came back through the person's speakers before the call
-    caught it: the clip is his words from the turns either side of it, so the
-    transcript of record leaves it out, and keeps what the person said."""
-    caplog.set_level(logging.INFO, logger="backend.voice_relay.postcall")
-    pcm, marks = recording_of(answer(), answer())
-    call_id = await rig.call(
-        pcm,
-        marks,
-        otto=[
-            "Hi, I'm Otto. What do you do?",
-            "That's a unique bakery. What do you sell?",
-            "Lovely.",
-        ],
-    )
-    transcriber = ScriptedTranscriber(["I run a bakery.", "That's a unique bakery!"])
+    """The call caught Otto's voice coming back after the person's answer, in
+    the same turn of theirs: the transcription hears the answer and not the
+    echo."""
+    said, echo = tone(0.6), tone(0.6)
+    pcm = quiet(0.4) + said + quiet(0.8) + echo + quiet(0.8)
+    echo_starts = (len(quiet(0.4) + said + quiet(0.8))) // 2
+    span = (echo_starts, echo_starts + len(echo) // 2)
+    call_id = await rig.call(pcm, [0, len(pcm) // 2], echo_spans=[span])
+    transcriber = ScriptedTranscriber(["I run a bakery."])
 
     record = await rig.run(rig.postcall(transcriber), call_id, pcm=pcm)
 
     assert record.transcript_of_record == "I run a bakery."
-    [line] = [r.getMessage() for r in caplog.records if "Otto's own" in r.getMessage()]
-    assert "1 of the person's turns" in line
-    assert "bakery" not in line
+    [clip] = [pcm_of(wav) for wav in transcriber.wavs]
+    # One stretch of speech, the answer's: the echo is silence.
+    assert len(vad.segments(clip)) == 1
+    unsilenced = ScriptedTranscriber(["I run a bakery."])
+    plain = await rig.call(pcm, [0, len(pcm) // 2])
+    await rig.run(rig.postcall(unsilenced), plain, pcm=pcm)
+    assert len(vad.segments(pcm_of(unsilenced.wavs[0]))) == 2
 
 
 async def test_a_call_whose_recording_was_lost_says_so(rig: Rig):
