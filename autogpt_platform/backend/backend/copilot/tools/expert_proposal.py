@@ -396,6 +396,9 @@ async def _apply_hire(
     on_card: bool,
     handing_off: bool,
 ) -> ToolResponseBase:
+    """Hire the previewed template and say so, with whether the expert
+    already has a chat (a re-hire comes back with theirs). *handing_off*
+    skips that read: the hand-off's report replaces this message."""
     if preview.template_id is None:
         return _discarded_proposal_error(session_id, "template", "hire_expert")
     try:

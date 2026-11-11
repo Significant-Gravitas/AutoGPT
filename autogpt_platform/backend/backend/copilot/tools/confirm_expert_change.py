@@ -74,6 +74,8 @@ class ConfirmExpertChangeTool(BaseTool):
         confirmation_id: str = "",
         **kwargs,
     ) -> ToolResponseBase:
+        """Apply the proposal behind *confirmation_id*, then hand its task to
+        the new expert when the "and start" id was the one confirmed."""
         session_id = session.session_id
         if error := autopilot_session_guard(user_id, session):
             return error
