@@ -61,6 +61,15 @@ FIRST_AUDIO_SECONDS = Histogram(
     "From a call's start message to Otto's first audio, as the relay sees it",
     buckets=(0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0),
 )
+VENDOR_FAILURES = Counter(
+    "voice_interview_vendor_failures_total",
+    "Gemini Live failures, by stage (connect: a call's first session; "
+    "reconnect: a replacement's; session: a running session dropped) and "
+    "reason (quota: HTTP 429 or RESOURCE_EXHAUSTED; payment: 402; forbidden: "
+    "403; unavailable: 503; server_reset: dropped after the vendor's closing "
+    "notice; other)",
+    ["stage", "reason"],
+)
 REPLY_SECONDS = Histogram(
     "voice_interview_reply_seconds",
     "From the last frame the relay's voice detector heard the person in to "

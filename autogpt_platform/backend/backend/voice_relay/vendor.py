@@ -3,7 +3,8 @@
 A call talks to a :class:`VendorSession`: it sends the person's audio, the
 server's notes and tool results, and reads :data:`VendorEvent` objects back.
 :class:`GeminiLive` is the production adapter; ``fake_vendor`` is the test
-double. Nothing outside this module touches the vendor SDK's own types.
+double. Nothing outside this module touches the vendor SDK's own types, but
+``vendor_failure``, which reads its errors for why a session failed.
 """
 
 import asyncio

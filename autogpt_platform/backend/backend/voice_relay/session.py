@@ -81,6 +81,7 @@ from backend.voice_relay.metering import (
     CALLS,
     FIRST_AUDIO_SECONDS,
     REPLY_SECONDS,
+    VENDOR_FAILURES,
     CallMeter,
 )
 from backend.voice_relay.record import CallRecording
@@ -99,6 +100,8 @@ from backend.voice_relay.vendor import (
     VendorEvent,
     VendorSession,
 )
+from backend.voice_relay.vendor_failure import Stage as VendorStage
+from backend.voice_relay.vendor_failure import VendorFailure, vendor_failure
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +150,13 @@ CLOSE_NORMAL = 1000
 CLOSE_SERVICE_RESTART = 1012
 # The browser's old socket, replaced by a re-attach.
 CLOSE_REPLACED = 4000
+
+# How a failed Live connect or session reads in the log.
+_VENDOR_STAGES: dict[VendorStage, str] = {
+    "connect": "did not connect",
+    "reconnect": "did not reconnect",
+    "session": "session dropped",
+}
 
 
 class ClientSocket(Protocol):
@@ -325,6 +335,9 @@ class Session:
         self.live: VendorSession | None = None
         self.reconnecting = False
         self.vendor_reconnects = 0
+        # Whether the running session sent its closing notice (GoAway): a
+        # drop after it is the reset the vendor warned of.
+        self.vendor_notice = False
         # Audio, in samples.
         self.received = self.forwarded = self.dropped = self.agent_out = 0
         self.bad_frames = 0
@@ -434,7 +447,6 @@ class Session:
             self.end("server_restart")
             raise
         except _StartFailed as failed:
-            logger.warning(f"Voice call {self.call_id}: did not open ({failed.error})")
             self.error = failed.error
             self.end(failed.reason)
         finally:
@@ -461,13 +473,18 @@ class Session:
                 timeout=self.timing.vendor_connect_timeout_s,
             )
         except Exception as error:
+            failure = self._vendor_failed("connect", error)
             raise _StartFailed(
-                "vendor_error", f"connect: {type(error).__name__}"
+                "vendor_error", f"connect: {failure.summary()}"
             ) from error
         try:
             await joining
         except Exception as error:
             await live.close()
+            logger.warning(
+                f"Voice call {self.call_id}: the relay could not join its room "
+                f"({type(error).__name__})"
+            )
             raise _StartFailed("room_error", f"room: {type(error).__name__}") from error
         except asyncio.CancelledError:
             await live.close()
@@ -786,6 +803,20 @@ class Session:
             )
             return False
 
+    def _vendor_failed(self, stage: VendorStage, error: BaseException) -> VendorFailure:
+        """Log and count a failed Live connect or session with what the
+        vendor said about why: its HTTP status, or its close code and reason,
+        and never a key nor anything said on the call."""
+        failure = vendor_failure(
+            error, after_notice=stage == "session" and self.vendor_notice
+        )
+        VENDOR_FAILURES.labels(stage=stage, reason=failure.reason).inc()
+        logger.warning(
+            f"Voice call {self.call_id}: Gemini Live {_VENDOR_STAGES[stage]}: "
+            f"{failure.describe()}"
+        )
+        return failure
+
     async def downstream(self, live: VendorSession) -> None:
         try:
             async for event in live.events():
@@ -803,10 +834,7 @@ class Session:
         """
         dropped_at = time.monotonic()
         self.reconnecting = True
-        logger.warning(
-            f"Voice call {self.call_id}: vendor session dropped "
-            f"({type(error).__name__})"
-        )
+        failure = self._vendor_failed("session", error)
         await self.meter.unreported(
             sent_samples=self.forwarded,
             received_samples=self.agent_out,
@@ -823,7 +851,7 @@ class Session:
         if self.ended.is_set():
             return
         if self.vendor_reconnects >= self.timing.max_vendor_reconnects:
-            self.error = f"vendor: {type(error).__name__}"
+            self.error = f"vendor: {failure.summary()}"
             self.end("vendor_error")
             return
         self.vendor_reconnects += 1
@@ -833,10 +861,12 @@ class Session:
                 timeout=self.timing.vendor_connect_timeout_s,
             )
         except Exception as reconnect_error:
-            self.error = f"vendor reconnect: {type(reconnect_error).__name__}"
+            refused = self._vendor_failed("reconnect", reconnect_error)
+            self.error = f"vendor reconnect: {refused.summary()}"
             self.end("vendor_error")
             return
         self.live = live
+        self.vendor_notice = False
         self.reconnecting = False
         self.spawn(self.downstream(live), "downstream")
         logger.info(
@@ -892,8 +922,12 @@ class Session:
                 )
                 if self.meter.over_cap:
                     self.end("spend_cap")
-            case GoingAway():
-                logger.info(f"Voice call {self.call_id}: vendor going away soon")
+            case GoingAway(time_left=time_left):
+                self.vendor_notice = True
+                logger.info(
+                    f"Voice call {self.call_id}: vendor going away in "
+                    f"{time_left or 'an unknown time'}"
+                )
             case ToolCall():
                 await self.on_tool_call(event)
             case UserText(text=text):

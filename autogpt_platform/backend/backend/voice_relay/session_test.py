@@ -1,9 +1,14 @@
 import asyncio
 import json
+import logging
 import time
 
 import pytest
+from google.genai import errors
 from prometheus_client import REGISTRY
+from websockets.datastructures import Headers
+from websockets.exceptions import InvalidStatus
+from websockets.http11 import Response
 
 from backend.api.features.onboarding_dump import rate_limit
 from backend.copilot.onboarding_interview_scope import ScopeLabel
@@ -23,7 +28,7 @@ from backend.voice_relay.locks import CallStore
 from backend.voice_relay.metering import CallMeter, Row
 from backend.voice_relay.scope import ScopeJudgement
 from backend.voice_relay.session import GOODBYES, NUDGES, SERVER_NOTE, Session
-from backend.voice_relay.vendor import AgentText, Usage
+from backend.voice_relay.vendor import AgentText, GoingAway, Usage
 
 USER = "user-1"
 LIVE = "gemini-3.8-live"
@@ -1016,3 +1021,133 @@ async def test_ottos_reply_is_timed_from_the_last_speech_the_relay_heard(redis):
     assert sum_after - sum_before >= 0.3
     call.ws.send_json({"type": "hangup"})
     await call.ended()
+
+
+# --- why the vendor failed -------------------------------------------------------
+
+
+def _vendor_failures(stage: str, reason: str) -> float:
+    return (
+        REGISTRY.get_sample_value(
+            "voice_interview_vendor_failures_total", {"stage": stage, "reason": reason}
+        )
+        or 0.0
+    )
+
+
+def _vendor_warnings(caplog) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "backend.voice_relay.session"
+        and record.levelno >= logging.WARNING
+        and "Gemini Live" in record.getMessage()
+    ]
+
+
+def _refused(status: int) -> InvalidStatus:
+    return InvalidStatus(Response(status, "Refused", Headers()))
+
+
+async def test_a_refused_live_connect_is_logged_counted_and_recorded_with_its_status(
+    redis, caplog
+):
+    caplog.set_level(logging.WARNING, logger="backend.voice_relay.session")
+    before = _vendor_failures("connect", "quota")
+    ws = FakeSocket()
+    session = _session(redis, FakeVendor(refuse=_refused(429)), ws, [])
+
+    await asyncio.wait_for(session.run(), timeout=5)
+
+    assert ws.types() == ["ended"]
+    assert session.end_reason == "vendor_error"
+    assert _vendor_failures("connect", "quota") - before == 1
+    assert _vendor_warnings(caplog) == [
+        f"Voice call {session.call_id}: Gemini Live did not connect: "
+        "quota (InvalidStatus, HTTP 429)"
+    ]
+    record = await locks.read_call_record(redis, session.call_id)
+    assert record["error"] == "connect: quota (InvalidStatus)"
+
+
+async def test_a_session_dropped_after_its_closing_notice_counts_as_a_server_reset(
+    redis, caplog
+):
+    caplog.set_level(logging.WARNING, logger="backend.voice_relay.session")
+    before = _vendor_failures("session", "server_reset")
+    vendor = FakeVendor(
+        [Reply(text="Hi", audio_s=0.1), Reply(text="We're back.", audio_s=0.1)]
+    )
+    call = await open_call(redis, vendor)
+    await call.ws.wait_for("turn_complete")
+
+    vendor.sessions[0].emit(GoingAway(time_left="10s"))
+    vendor.sessions[0].drop()
+
+    await until(lambda: len(vendor.sessions) == 2 and not call.session.reconnecting)
+    assert _vendor_failures("session", "server_reset") - before == 1
+    assert _vendor_warnings(caplog) == [
+        f"Voice call {call.session.call_id}: Gemini Live session dropped: "
+        "server_reset (ConnectionError)"
+    ]
+    # The replacement has given no notice of its own.
+    assert not call.session.vendor_notice
+    call.ws.send_json({"type": "hangup"})
+    assert (await call.ended())["reason"] == "user_hangup"
+
+
+async def test_a_session_dropped_without_notice_is_no_server_reset(redis):
+    before = _vendor_failures("session", "other")
+    vendor = FakeVendor([Reply(text="Hi", audio_s=0.1)])
+    call = await open_call(redis, vendor)
+    await call.ws.wait_for("turn_complete")
+
+    vendor.sessions[0].drop()
+
+    await until(lambda: len(vendor.sessions) == 2 and not call.session.reconnecting)
+    assert _vendor_failures("session", "other") - before == 1
+    call.ws.send_json({"type": "hangup"})
+    await call.ended()
+
+
+async def test_a_replacement_session_refused_ends_the_call_saying_why(redis, caplog):
+    caplog.set_level(logging.WARNING, logger="backend.voice_relay.session")
+    before = _vendor_failures("reconnect", "forbidden")
+    vendor = FakeVendor([Reply(text="Hi", audio_s=0.1)])
+    call = await open_call(redis, vendor)
+    await call.ws.wait_for("turn_complete")
+    vendor.refuse = _refused(403)
+
+    vendor.sessions[0].drop()
+
+    assert (await call.ended())["reason"] == "vendor_error"
+    assert _vendor_failures("reconnect", "forbidden") - before == 1
+    assert (
+        f"Voice call {call.session.call_id}: Gemini Live did not reconnect: "
+        "forbidden (InvalidStatus, HTTP 403)"
+    ) in _vendor_warnings(caplog)
+    record = await locks.read_call_record(redis, call.session.call_id)
+    assert record["error"] == "vendor reconnect: forbidden (InvalidStatus)"
+
+
+async def test_a_vendor_failure_s_log_carries_no_key_and_nothing_said(redis, caplog):
+    caplog.set_level(logging.DEBUG)
+    key = "AIzaSyD-not-a-real-key-0123456789abcdefg"
+    said = "I run a bakery with five staff"
+    reason = f'Refused at wss://example.com/ws?key={key}: "{said}"'
+    ws = FakeSocket()
+    session = _session(redis, FakeVendor(refuse=errors.APIError(1008, reason)), ws, [])
+
+    await asyncio.wait_for(session.run(), timeout=5)
+
+    assert "close 1008" in caplog.text
+    assert key not in caplog.text
+    assert said not in caplog.text
+    # No traceback carries the vendor's own message either.
+    assert all(
+        record.exc_info is None
+        for record in caplog.records
+        if record.name.startswith("backend.voice_relay")
+    )
+    record = await locks.read_call_record(redis, session.call_id)
+    assert key not in json.dumps(record) and said not in json.dumps(record)
