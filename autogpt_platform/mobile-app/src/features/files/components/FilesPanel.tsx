@@ -1,6 +1,7 @@
-import { ScrollView, Text } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { ShareChatButton } from "@/features/share/components/ShareChatButton";
 import { createStyles, spacing, type } from "@/lib/theme";
 
 import { FileLibrary } from "./FileLibrary";
@@ -22,6 +23,9 @@ export function FilesPanel({ sessionID, isOpen }: Props) {
         { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xl },
       ]}
     >
+      <View style={styles.share}>
+        <ShareChatButton sessionID={sessionID} />
+      </View>
       <Text accessibilityRole="header" style={styles.title}>
         Files
       </Text>
@@ -37,5 +41,6 @@ export function FilesPanel({ sessionID, isOpen }: Props) {
 
 const useStyles = createStyles((colors) => ({
   content: { gap: spacing.xl, paddingHorizontal: spacing.sm },
+  share: { paddingHorizontal: spacing.md },
   title: { ...type.heading, color: colors.text, paddingHorizontal: spacing.md },
 }));

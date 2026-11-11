@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { IconButton } from "@/components/IconButton";
 import { FileLibrary } from "@/features/files/components/FileLibrary";
+import { ShareChatButton } from "@/features/share/components/ShareChatButton";
 import { createStyles, spacing } from "@/lib/theme";
 
 import { ActivityTab } from "./ActivityTab";
@@ -58,6 +59,9 @@ export function ExpertPanel({
           </Text>
         ) : null}
       </View>
+      <View style={styles.share}>
+        <ShareChatButton sessionID={sessionID} />
+      </View>
       <PanelTabs selected={tab} onSelect={setTab} />
       {tab === "activity" ? (
         <ActivityTab expertID={expertID} expertName={name} isOpen={isOpen} />
@@ -76,6 +80,7 @@ export function ExpertPanel({
 const useStyles = createStyles((colors) => ({
   content: { gap: spacing.xl, paddingHorizontal: spacing.sm },
   close: { flexDirection: "row" },
+  share: { alignItems: "center" },
   identity: { alignItems: "center", gap: spacing.xs, marginTop: -spacing.sm },
   name: {
     fontSize: 20,
