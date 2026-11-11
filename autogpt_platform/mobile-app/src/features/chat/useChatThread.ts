@@ -156,7 +156,7 @@ export function useChatThread({ sessionID, detail }: Args) {
   useMountEffect(() => {
     isMounted.current = true;
     const first = takePendingFirstMessage(sessionID);
-    if (first) void chat.sendMessage({ text: first });
+    if (first) send(first.text, first.files);
     else if (detail.active_stream) void resumeTurn().catch(() => undefined);
 
     let wasBackgrounded = false;

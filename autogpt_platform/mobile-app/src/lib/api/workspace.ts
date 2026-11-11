@@ -120,9 +120,11 @@ interface LocalFile {
   mimeType: string;
 }
 
-/** Uploads a local file into the chat's folder. Throws an ApiError holding the server's detail. */
-export async function uploadSessionFile(sessionID: string, file: LocalFile) {
-  const url = apiUrl("/api/workspace/files/upload", { session_id: sessionID });
+/** Uploads a local file into the chat's folder, or the workspace when there is no chat yet. Throws an ApiError holding the server's detail. */
+export async function uploadSessionFile(sessionID: string | null, file: LocalFile) {
+  const url = apiUrl("/api/workspace/files/upload", {
+    session_id: sessionID ?? undefined,
+  });
   // A fresh body per request: React Native reads the file as it sends.
   const response = await fetchWithFreshToken(url, () => {
     const body = new FormData();

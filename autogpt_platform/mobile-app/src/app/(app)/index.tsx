@@ -27,6 +27,10 @@ export default function HomeScreen() {
     void home.submit(text);
   }
 
+  function handleAttach() {
+    void home.files.attach();
+  }
+
   function handleRefresh() {
     void home.refresh();
   }
@@ -66,11 +70,15 @@ export default function HomeScreen() {
               onSend={home.submit}
               isDisabled={home.isStarting}
               placeholder={home.placeholder}
+              onAttach={handleAttach}
+              attachments={home.files.attachments}
+              onRemoveAttachment={home.files.remove}
+              onRetryAttachment={home.files.retry}
             />
           </View>
-          {home.error ? (
+          {home.error || home.files.message ? (
             <Text accessibilityLiveRegion="polite" style={styles.error}>
-              {home.error}
+              {home.error ?? home.files.message}
             </Text>
           ) : null}
           <PromptChips

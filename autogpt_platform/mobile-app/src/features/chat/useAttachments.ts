@@ -17,8 +17,8 @@ import { chooseAttachSource, pickFrom } from "./pickFiles";
 
 type Item = Attachment & PickedFile;
 
-/** Files picked for the next message; each uploads to the chat's folder at once. */
-export function useAttachments(sessionID: string) {
+/** Files picked for the next message; each uploads at once, into the chat's folder when there is a chat. */
+export function useAttachments(sessionID: string | null) {
   const [items, setItems] = useState<Item[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
 

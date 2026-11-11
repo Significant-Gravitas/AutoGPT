@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
 import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/chatErrors";
+import { useAttachments } from "@/features/chat/useAttachments";
 import { chatKeys, getSuggestedPrompts } from "@/lib/api/chat";
 import { ApiError } from "@/lib/api/client";
 import { expertKeys, listExperts } from "@/lib/api/experts";
@@ -41,6 +42,8 @@ export function useHomeScreen() {
   const home = useQuery({ queryKey: homeKeys.dashboard, queryFn: getHome });
   const experts = useQuery({ queryKey: expertKeys.list, queryFn: listExperts });
   const { data: session } = authClient.useSession();
+  // No chat exists until the first send, so files upload to the workspace.
+  const files = useAttachments(null);
 
   const suggested = (data ?? []).filter(Boolean).slice(0, 6).map(ottoWording);
   const team = experts.data ?? [];
@@ -80,7 +83,8 @@ export function useHomeScreen() {
     setIsStarting(true);
     setError(null);
     try {
-      await startChat(text, selected?.id);
+      await startChat(text, selected?.id, files.readyFiles);
+      files.clear();
       return true;
     } catch (caught) {
       if (isSessionGone(caught)) {
@@ -111,6 +115,7 @@ export function useHomeScreen() {
     placeholder: inputPlaceholder(selected, hasExistingWork(dashboard)),
     prompts,
     promptExpert,
+    files,
     isStarting,
     error,
     isRefreshing,
