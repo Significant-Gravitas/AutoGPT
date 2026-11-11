@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { Icon } from "@/components/Icon";
-import type { ChatGroup } from "@/features/drawer/helpers";
+import { chatCountLabel, type ChatGroup } from "@/features/drawer/helpers";
 import type { SessionSummary } from "@/lib/api/chat";
 import { colors, radius, spacing, type } from "@/lib/theme";
 
@@ -18,11 +18,17 @@ const AVATAR_SIZE = 32;
 
 interface Props {
   group: ChatGroup;
+  isTruncated: boolean;
   activeSessionID?: string;
   onOpenChat: (sessionID: string) => void;
 }
 
-export function ExpertChatGroup({ group, activeSessionID, onOpenChat }: Props) {
+export function ExpertChatGroup({
+  group,
+  isTruncated,
+  activeSessionID,
+  onOpenChat,
+}: Props) {
   const [isOpen, setIsOpen] = useState(group.isOtto);
   const [visibleCount, setVisibleCount] = useState(
     group.isOtto ? OTTO_PREVIEW_COUNT : EXPERT_PAGE_SIZE,
@@ -69,7 +75,9 @@ export function ExpertChatGroup({ group, activeSessionID, onOpenChat }: Props) {
             <Text numberOfLines={1} style={styles.name}>
               {group.label}
             </Text>
-            <Text style={styles.count}>{group.sessions.length}</Text>
+            <Text style={styles.count}>
+              {chatCountLabel(group.sessions.length, isTruncated)}
+            </Text>
           </View>
           {group.role ? (
             <Text numberOfLines={1} style={styles.role}>

@@ -15,6 +15,8 @@ export interface SessionDetail {
   messages: unknown[];
   active_stream: { turn_id: string; started_at?: string | null } | null;
   expert_id: string | null;
+  has_more_messages: boolean;
+  oldest_sequence: number | null;
 }
 
 interface SessionList {
@@ -47,21 +49,32 @@ interface ListSessionsOptions {
   pinnedFirst?: boolean;
 }
 
-export async function listSessions({
+export function listSessionsPage({
   expertID,
   limit = 50,
   pinnedFirst,
 }: ListSessionsOptions = {}) {
-  const data = await apiRequest<SessionList>("/api/chat/sessions", {
+  return apiRequest<SessionList>("/api/chat/sessions", {
     query: { limit, expert_id: expertID, pinned_first: pinnedFirst },
   });
+}
+
+export async function listSessions(options: ListSessionsOptions = {}) {
+  const data = await listSessionsPage(options);
   return data.sessions;
 }
 
-export function getSession(sessionID: string) {
+interface GetSessionOptions {
+  beforeSequence?: number;
+}
+
+export function getSession(
+  sessionID: string,
+  { beforeSequence }: GetSessionOptions = {},
+) {
   return apiRequest<SessionDetail>(
     `/api/chat/sessions/${encodeURIComponent(sessionID)}`,
-    { query: { limit: 200 } },
+    { query: { limit: 200, before_sequence: beforeSequence } },
   );
 }
 

@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { DRAWER_SESSION_LIMIT } from "@/features/drawer/helpers";
 import { colors, spacing, type } from "@/lib/theme";
 
 import { ExpertChatGroup } from "./components/ExpertChatGroup";
@@ -29,6 +30,7 @@ export function AppDrawerContent({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const {
     groups,
+    isTruncated,
     isLoading,
     isError,
     refetch,
@@ -75,11 +77,19 @@ export function AppDrawerContent({ navigation }: Props) {
         renderItem={({ item }) => (
           <ExpertChatGroup
             group={item}
+            isTruncated={isTruncated}
             activeSessionID={activeSessionID}
             onOpenChat={openChat}
           />
         )}
         ListEmptyComponent={renderEmpty}
+        ListFooterComponent={
+          isTruncated ? (
+            <Text style={styles.notice}>
+              Showing your {DRAWER_SESSION_LIMIT} most recent chats.
+            </Text>
+          ) : undefined
+        }
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}

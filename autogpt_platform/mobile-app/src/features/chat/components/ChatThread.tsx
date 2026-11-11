@@ -13,13 +13,24 @@ interface Props {
 }
 
 export function ChatThread({ sessionID, detail }: Props) {
-  const { messages, status, errorMessage, isBusy, send, stop } = useChatThread({
-    sessionID,
-    detail,
-  });
+  const {
+    messages,
+    status,
+    errorMessage,
+    isBusy,
+    send,
+    stop,
+    hasEarlier,
+    isLoadingEarlier,
+    loadEarlier,
+  } = useChatThread({ sessionID, detail });
 
   function handleStop() {
     void stop();
+  }
+
+  function handleLoadEarlier() {
+    void loadEarlier().catch(() => undefined);
   }
 
   return (
@@ -27,7 +38,13 @@ export function ChatThread({ sessionID, detail }: Props) {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={styles.thread}
     >
-      <MessageList messages={messages} status={status} />
+      <MessageList
+        messages={messages}
+        status={status}
+        hasEarlier={hasEarlier}
+        isLoadingEarlier={isLoadingEarlier}
+        onLoadEarlier={handleLoadEarlier}
+      />
       {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
       <Composer onSend={send} onStop={handleStop} isBusy={isBusy} />
     </KeyboardAvoidingView>

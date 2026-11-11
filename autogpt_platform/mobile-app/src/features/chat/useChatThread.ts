@@ -22,6 +22,7 @@ import {
   turnLanded,
 } from "./recovery";
 import { createChatTransport } from "./transport";
+import { useEarlierMessages } from "./useEarlierMessages";
 
 const RECOVERY_DELAY_MS = 1500;
 const MAX_RECOVERIES = 3;
@@ -60,17 +61,18 @@ export function useChatThread({ sessionID, detail }: Args) {
   const isMounted = useRef(true);
   const recoveries = useRef(0);
   const isBusy = status === "submitted" || status === "streaming";
+  const { hasEarlier, isLoadingEarlier, loadEarlier, showServerMessages } =
+    useEarlierMessages({
+      sessionID,
+      detail,
+      chat,
+      setMessages,
+      isSyncingRef: isSyncing,
+      isMountedRef: isMounted,
+    });
 
   function isChatBusy() {
     return chat.status === "submitted" || chat.status === "streaming";
-  }
-
-  function showServerMessages(fresh: SessionDetail) {
-    setMessages(
-      toUIMessages(sessionID, fresh.messages, {
-        activeTurnStartedAt: fresh.active_stream?.started_at,
-      }),
-    );
   }
 
   // The stream route replays a running turn from its first chunk, so the
@@ -108,7 +110,7 @@ export function useChatThread({ sessionID, detail }: Args) {
     try {
       const fresh = await getSession(sessionID);
       if (!isMounted.current || isChatBusy() || fresh.active_stream) return;
-      setMessages(toUIMessages(sessionID, fresh.messages));
+      showServerMessages(fresh);
     } finally {
       isSyncing.current = false;
     }
@@ -179,5 +181,8 @@ export function useChatThread({ sessionID, detail }: Args) {
     isBusy,
     send,
     stop,
+    hasEarlier,
+    isLoadingEarlier,
+    loadEarlier,
   };
 }

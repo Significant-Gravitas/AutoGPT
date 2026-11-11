@@ -3,6 +3,9 @@ import type { Expert } from "@/lib/api/experts";
 import { OTTO_AVATAR_URL, OTTO_NAME, OTTO_ROLE } from "@/lib/otto";
 import { avatarSource, roleLine } from "@/features/team/helpers";
 
+// The list route's maximum page size.
+export const DRAWER_SESSION_LIMIT = 100;
+
 export interface ChatGroup {
   key: string;
   label: string;
@@ -34,6 +37,11 @@ export function groupChatsByExpert(
     ...groups.filter((group) => group.isOtto),
     ...groups.filter((group) => !group.isOtto),
   ];
+}
+
+// Past the first page the drawer can't know a group's real count.
+export function chatCountLabel(count: number, isTruncated: boolean) {
+  return isTruncated ? `${count}+` : String(count);
 }
 
 function toGroup(

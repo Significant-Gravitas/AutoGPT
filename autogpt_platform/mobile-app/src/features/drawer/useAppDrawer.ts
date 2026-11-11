@@ -2,8 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { router, usePathname } from "expo-router";
 import type { DrawerContentComponentProps } from "expo-router/drawer";
 
-import { groupChatsByExpert } from "@/features/drawer/helpers";
-import { chatKeys, listSessions } from "@/lib/api/chat";
+import {
+  DRAWER_SESSION_LIMIT,
+  groupChatsByExpert,
+} from "@/features/drawer/helpers";
+import { chatKeys, listSessionsPage } from "@/lib/api/chat";
 import { expertKeys, listExperts } from "@/lib/api/experts";
 import { authClient } from "@/lib/auth/client";
 import { signOut } from "@/lib/session";
@@ -15,7 +18,7 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
   const { data: session } = authClient.useSession();
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: chatKeys.sessions,
-    queryFn: () => listSessions(),
+    queryFn: () => listSessionsPage({ limit: DRAWER_SESSION_LIMIT }),
   });
   const experts = useQuery({ queryKey: expertKeys.list, queryFn: listExperts });
 
@@ -51,8 +54,11 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
     void signOut();
   }
 
+  const sessions = data?.sessions ?? [];
+
   return {
-    groups: groupChatsByExpert(data ?? [], experts.data ?? []),
+    groups: groupChatsByExpert(sessions, experts.data ?? []),
+    isTruncated: (data?.total ?? 0) > sessions.length,
     isLoading,
     isError,
     refetch,

@@ -69,6 +69,42 @@ describe("toUIMessages", () => {
     ]);
   });
 
+  it("pairs a tool call in an older page with its output in the newer page", () => {
+    const olderPage = [
+      { role: "user", content: "Look it up", sequence: 1 },
+      {
+        role: "assistant",
+        content: null,
+        sequence: 2,
+        tool_calls: [
+          {
+            id: "c1",
+            function: { name: "web_search", arguments: '{"q":"x"}' },
+          },
+        ],
+      },
+    ];
+    const newerPage = [
+      { role: "tool", tool_call_id: "c1", content: '{"ok":true}', sequence: 3 },
+      { role: "assistant", content: "Found it", sequence: 4 },
+    ];
+
+    const messages = toUIMessages("s1", [...olderPage, ...newerPage]);
+
+    expect(messages.map((m) => m.id)).toEqual(["s1-1", "s1-4"]);
+    expect(messages[1].parts[0]).toMatchObject({
+      type: "tool-web_search",
+      toolCallId: "c1",
+      state: "output-available",
+      output: { ok: true },
+    });
+    expect(messages[1].parts[1]).toEqual({
+      type: "text",
+      text: "Found it",
+      state: "done",
+    });
+  });
+
   it("leaves out the rows of a running turn", () => {
     const messages = toUIMessages(
       "s1",
