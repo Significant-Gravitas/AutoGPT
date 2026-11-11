@@ -54,7 +54,9 @@ export default function useCredits({
     const requestIdentityKey = identityKey;
     const response = await api.getUserCredit();
     if (identityKeyRef.current !== requestIdentityKey) return;
-    setCredits(response.credits ?? null);
+    // A failed read keeps the last balance; the wallet hides itself on null.
+    if (response.credits == null) return;
+    setCredits(response.credits);
   }, [api, identityKey]);
 
   useEffect(() => {

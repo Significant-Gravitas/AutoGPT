@@ -1,4 +1,4 @@
-import { render, screen } from "@/tests/integrations/test-utils";
+import { act, render, screen } from "@/tests/integrations/test-utils";
 import BackendAPI, {
   type GraphExecution,
   type UserOnboarding,
@@ -139,6 +139,25 @@ describe("Wallet balance after spending", () => {
     expect(balanceReads).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
     expect(await screen.findByText("$9.54")).toBeDefined();
+  });
+
+  it("keeps showing the last balance when the re-read fails", async () => {
+    const balanceReads = await openWallet();
+
+    server.use(
+      http.get("*/api/credits", () => new HttpResponse(null, { status: 500 })),
+    );
+    emit("notification", chatTurnEnded);
+    vi.advanceTimersByTime(BALANCE_REFRESH_DELAY_MS);
+
+    expect(balanceReads).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      expect(await balanceReads.mock.results[0].value).toEqual({
+        credits: null,
+      });
+    });
+    vi.useRealTimers();
+    expect(screen.getByText("$9.79")).toBeDefined();
   });
 
   it("does not re-read the balance for a run still going or an unrelated notification", async () => {
