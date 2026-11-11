@@ -5,14 +5,18 @@ An Expo Router app for iOS and Android that talks to the same web app and backen
 ## What it does
 
 - **Login:** email and password, existing accounts only.
-- **Home:** a greeting, prompt chips and a composer. The first message starts a chat with Otto.
-- **Chats:** the list in the drawer; open one, send, stream, stop, and pick up a reply that is still running.
-- **Team:** the experts you have hired. Tap one to start a chat with that expert.
-- **Settings:** the web `/settings` page in a WebView.
+- **Home:** the web's new-chat screen: "Hey, <name>", a sentence with an inline picker for who you are talking to (Otto or one of your experts), and a composer card. Under it, what needs you and what is running or next, when there is anything.
+- **Chats:** the drawer lists one row per expert with their latest chat and has search; "All chats" lists every chat grouped by expert. In a chat you can send, stream, stop, load earlier messages, and pick up a reply that is still running or was dropped.
+- **Steps:** what the expert is doing shows as a live list and folds to one line when the reply lands.
+- **Attach and dictate:** in a chat, attach photos and files; anywhere the composer is, dictate into the field.
+- **Chat panel:** in an expert's chat, their profile with Activity (upcoming routines, recent runs, computer state) and Library (files) tabs; in a chat with Otto, the chat's files. Share the chat from its top bar.
+- **Team:** the experts you have hired; tap one to chat. Create a new expert from the header.
+- **Settings:** the web `/settings` page in a WebView, reached from the user row at the foot of the drawer.
+- **Themes:** light and dark, following the phone's setting.
 
 ## What it does not do
 
-Sign-up, onboarding, billing and paywalls, social login, connecting integrations, file attachments, voice, push notifications, choosing a model, hiring or editing experts, store builds, and CI.
+Sign-up, onboarding, billing and paywalls, social login, connecting integrations, push notifications, choosing a model, pausing a single routine, uploading or generating an expert's picture, deleting or downloading files, store builds, and CI.
 
 ## Run it
 
@@ -53,11 +57,15 @@ Set these in `.env.local` (see `.env.example`). Trailing slashes are dropped.
 
 ## Known limits
 
-- Settings shows the web page's own navigation.
+- Dictation uses the web app's `/api/transcribe` route, so the web server needs a transcription key; without one the app says dictation isn't available.
+- The microphone and photo permission texts in `app.json` only apply in a development or store build, not in Expo Go.
+- The drawer shows each expert's latest chat title, not their last message: the session list has no preview field.
+- A "Needs you" action that is not a chat or the team page opens on the web.
+- Attaching a file with a name already used in the same chat fails; the backend refuses it.
+- File chips under a sent message are kept only until the chat reloads from the server.
+- Settings shows the web page's own navigation, and is always light.
 - Credential and approval cards in a chat are not shown.
 - Images in Otto's replies show as their alt text only.
 - Only `http` and `https` links open.
-- No push notifications.
 - Plain HTTP only works in development; release builds need HTTPS.
 - The Settings WebView sets the session cookie with `document.cookie`, so inside the WebView it is not HttpOnly.
-- Nothing on this branch has been run on a device or simulator yet.
