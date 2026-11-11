@@ -102,6 +102,10 @@ const CAPS = {
   idle_s: 20,
 };
 
+// The longest the browser's join of a call's room may take: short, so a
+// join that never answers fails soon; long while a test holds a join.
+let roomJoinTimeoutMs = 150;
+
 // The call's waits, shortened so a test waits on what the step does, not on
 // the clock.
 vi.mock(
@@ -120,7 +124,9 @@ vi.mock(
     START_RETRY_MS: 20,
     HANGUP_FALLBACK_MS: 150,
     OPENING_READ_TIMEOUT_MS: 400,
-    ROOM_JOIN_TIMEOUT_MS: 150,
+    get ROOM_JOIN_TIMEOUT_MS() {
+      return roomJoinTimeoutMs;
+    },
     ROOM_PLAYOUT_MS: 300,
     OTTO_STATS_POLL_MS: 30,
   }),
@@ -373,6 +379,7 @@ const NO_INTERVIEW = {
   stage: null,
   is_over: false,
   voice_available: true,
+  livekit_url: ROOM_URL,
 };
 
 type SessionMessages = NonNullable<SessionDetailResponse["messages"]>;
@@ -588,6 +595,22 @@ async function relaySocketAfter(previous?: FakeWebSocket) {
   });
 }
 
+// The next joins of the call's room wait, without timing out, until the
+// function this returns lets them in.
+function holdRoomJoins() {
+  roomJoinTimeoutMs = 10_000;
+  return fakes.holdRoomJoins();
+}
+
+// The call's room, once the browser has asked to join it.
+async function joiningRoom() {
+  return waitFor(() => {
+    const [room] = fakes.joinedRooms();
+    if (!room) throw new Error("No room asked for yet");
+    return room;
+  });
+}
+
 async function talkToOtto() {
   await userEvent
     .setup()
@@ -724,6 +747,7 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   sdkFails = false;
+  roomJoinTimeoutMs = 150;
   vi.mocked(reportCallStart).mockClear();
 });
 
@@ -913,7 +937,7 @@ describe("onboarding interview by voice: opening", () => {
       ),
     ).toBeDefined();
     expect(mints).toBe(0);
-    expect(fakes.rooms()).toEqual([]);
+    expect(fakes.joinedRooms()).toEqual([]);
     expect(tracked("voice_interview_start_failed")).toEqual([
       { stage: "browser", why: "sdk" },
     ]);
@@ -933,7 +957,24 @@ describe("onboarding interview by voice: opening", () => {
     expect(fakes.contexts()[0].close).toHaveBeenCalled();
     const microphone = await fakes.getUserMedia.mock.results[0].value;
     expect(microphone.getTracks()[0].stop).toHaveBeenCalled();
-    expect(fakes.rooms()).toEqual([]);
+    expect(fakes.joinedRooms()).toEqual([]);
+  });
+
+  it("starts no call when the server's start names no relay socket", async () => {
+    mintAnswer = { ...STARTED, relay_url: "https://relay.example/call" };
+
+    render(<OnboardingPage />);
+    await talkToOtto();
+
+    expect(
+      await screen.findByText(
+        "We couldn't start the call. Try again, or type instead.",
+      ),
+    ).toBeDefined();
+    expect(fakes.sockets).toEqual([]);
+    expect(fakes.joinedRooms()).toEqual([]);
+    const microphone = await fakes.getUserMedia.mock.results[0].value;
+    expect(microphone.getTracks()[0].stop).toHaveBeenCalled();
   });
 
   it("shows the live call the relay names when it refuses a start for it", async () => {
@@ -1086,6 +1127,7 @@ describe("onboarding interview by voice: the call", () => {
     const [callId, marks] = vi.mocked(reportCallStart).mock.calls[0];
     expect(callId).toBe(CALL_ID);
     const steps = [
+      marks.clicked,
       marks.granted,
       marks.minted,
       marks.joined,
@@ -1124,6 +1166,31 @@ describe("onboarding interview by voice: the call", () => {
     expect(Number(marks.firstSound)).toBeLessThanOrEqual(Number(marks.ready));
   });
 
+  it("reports the start once the page is in the room, when the relay was ready and Otto heard first", async () => {
+    const letIn = holdRoomJoins();
+    render(<OnboardingPage />);
+    const socket = await callOtto();
+    const room = await joiningRoom();
+    ready(socket);
+    act(() => {
+      room.ottoJoins();
+      fakes.ottoSounds();
+    });
+    // Otto is heard while the page's join of the room has not settled.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    expect(reportCallStart).not.toHaveBeenCalled();
+
+    act(() => letIn());
+
+    await waitFor(() => expect(reportCallStart).toHaveBeenCalledTimes(1));
+    const [callId, marks] = vi.mocked(reportCallStart).mock.calls[0];
+    expect(callId).toBe(CALL_ID);
+    expect(Number(marks.joined)).toBeGreaterThanOrEqual(Number(marks.ready));
+    expect(Number(marks.joined)).toBeGreaterThanOrEqual(
+      Number(marks.firstSound),
+    );
+  });
+
   it("reports how Otto's speech fared in the room when the call ends", async () => {
     render(<OnboardingPage />);
     const { socket, room } = await liveRoomCall();
@@ -1144,6 +1211,37 @@ describe("onboarding interview by voice: the call", () => {
         ...OTTO_HEARD,
       },
     ]);
+  });
+
+  it("warms the call's room before the person asks for a call", async () => {
+    render(<OnboardingPage />);
+
+    expect(
+      await screen.findByRole("button", { name: "Talk to Otto" }),
+    ).toBeDefined();
+    await waitFor(() => expect(fakes.preparedUrls()).toEqual([ROOM_URL]));
+    // Nothing is minted or joined for someone who has not asked.
+    expect(mints).toBe(0);
+    expect(fakes.joinedRooms()).toEqual([]);
+  });
+
+  it("opens the call's socket while the browser still joins its room", async () => {
+    const letIn = holdRoomJoins();
+    render(<OnboardingPage />);
+    await talkToOtto();
+
+    const socket = await relaySocketAfter();
+    act(() => socket.accept());
+    expect(socket.messages()[0]).toEqual({ type: "start", token: TOKEN });
+    const room = await joiningRoom();
+    expect(room.published).toEqual([]);
+
+    act(() => letIn());
+    await waitFor(() => expect(room.published).toHaveLength(1));
+    ready(socket);
+    expect(
+      await screen.findByText("You're on the call with Otto"),
+    ).toBeDefined();
   });
 
   it("captions what Otto and the person say", async () => {
@@ -2463,8 +2561,11 @@ describe("onboarding interview by voice: the call's room", () => {
       await talkToOtto();
 
       expect(await screen.findByText(AUDIO_FAILED)).toBeDefined();
-      // The call never started on the relay; its room closes now.
-      expect(fakes.sockets).toEqual([]);
+      // The call never went live on the relay: its socket, opened beside the
+      // join, closes, and its room closes now.
+      expect(fakes.sockets.map((socket) => socket.readyState)).toEqual([
+        WebSocket.CLOSED,
+      ]);
       expect(fakes.room()?.isLeft).toBe(true);
       await waitFor(() => expect(ends).toEqual([CALL_ID]));
       expect(tracked("voice_interview_start_failed")).toEqual([
@@ -2481,9 +2582,11 @@ describe("onboarding interview by voice: the call's room", () => {
     await talkToOtto();
 
     expect(await screen.findByText(AUDIO_FAILED)).toBeDefined();
-    // The join that never answered is let go.
+    // The join that never answered is let go, and so is the call's socket.
     expect(fakes.room()?.isLeft).toBe(true);
-    expect(fakes.sockets).toEqual([]);
+    expect(fakes.sockets.map((socket) => socket.readyState)).toEqual([
+      WebSocket.CLOSED,
+    ]);
     await waitFor(() => expect(ends).toEqual([CALL_ID]));
     expect(tracked("voice_interview_start_failed")).toEqual([
       { stage: "room", why: "timeout" },
@@ -2546,7 +2649,7 @@ describe("onboarding interview by voice: the call's room", () => {
   );
 
   it("leaves the room a join lets the browser into after the person moved on to typing", async () => {
-    const letIn = fakes.holdRoomJoins();
+    const letIn = holdRoomJoins();
     render(<OnboardingPage />);
     await talkToOtto();
     await waitFor(() => expect(fakes.room()?.token).toBe(ROOM_TOKEN));
@@ -2558,8 +2661,11 @@ describe("onboarding interview by voice: the call's room", () => {
     act(() => letIn());
 
     await waitFor(() => expect(fakes.room()?.isLeft).toBe(true));
-    // The call never started on the relay.
-    expect(fakes.sockets).toEqual([]);
+    // The call never went live on the relay: its socket closed as the person
+    // moved on.
+    expect(fakes.sockets.map((socket) => socket.readyState)).toEqual([
+      WebSocket.CLOSED,
+    ]);
     expect(tracked("voice_interview_start_failed")).toEqual([]);
   });
 
@@ -2731,7 +2837,7 @@ describe("onboarding interview by voice: the call's room", () => {
     keepTicket(CALL_ID, ROOM_TOKEN);
     latestCall = liveRoomRecord();
     callStates[CALL_ID] = [latestCall];
-    const letIn = fakes.holdRoomJoins();
+    const letIn = holdRoomJoins();
 
     render(<OnboardingPage />);
     await userEvent
@@ -2837,7 +2943,7 @@ describe("onboarding interview by voice: the call's room", () => {
     keepTicket(CALL_ID, ROOM_TOKEN);
     latestCall = liveRoomRecord();
     callStates[CALL_ID] = [latestCall];
-    const letIn = fakes.holdRoomJoins();
+    const letIn = holdRoomJoins();
 
     render(<OnboardingPage />);
     await userEvent

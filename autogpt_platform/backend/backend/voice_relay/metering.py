@@ -98,8 +98,7 @@ VENDOR_CONNECT_SECONDS = Histogram(
 )
 ROOM_JOIN_SECONDS = Histogram(
     "voice_interview_room_join_seconds",
-    "How long the relay took to join a call's LiveKit room and publish Otto's "
-    "track",
+    "How long the relay took to join a call's LiveKit room and publish Otto's track",
     buckets=(0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0),
 )
 REPLY_SECONDS = Histogram(

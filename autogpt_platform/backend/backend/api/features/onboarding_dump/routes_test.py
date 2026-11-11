@@ -2370,9 +2370,14 @@ def interview_starts(mocker: MockerFixture) -> dict[str, AsyncMock]:
     }
 
 
+LIVEKIT_URL = "wss://agpt-test.livekit.cloud"
+
+
 @pytest.fixture
 def voice_offer(mocker: MockerFixture) -> AsyncMock:
-    """Whether voice can be offered here: not, unless a test says so."""
+    """Whether voice can be offered here: not, unless a test says so. Where
+    it can, the call's LiveKit project is ``LIVEKIT_URL``."""
+    mocker.patch.object(routes.voice, "livekit_url", return_value=LIVEKIT_URL)
     return mocker.patch.object(
         routes.voice, "voice_available", new=AsyncMock(return_value=False)
     )
@@ -2418,6 +2423,7 @@ def test_reading_a_finished_interview_answers_it_over_and_starts_nothing(
         "stage": INTERVIEW_STAGE_HANDED_OFF,
         "is_over": True,
         "voice_available": False,
+        "livekit_url": None,
     }
     found.assert_awaited_once_with(test_user_id)
     for start in interview_starts.values():
@@ -2445,6 +2451,7 @@ def test_reading_with_no_interview_answers_none_open_and_creates_none(
         "stage": None,
         "is_over": False,
         "voice_available": True,
+        "livekit_url": LIVEKIT_URL,
     }
     for start in interview_starts.values():
         start.assert_not_awaited()
@@ -2501,6 +2508,7 @@ def test_reading_an_interview_over_by_its_cap_hands_it_off_as_the_start_does(
         "stage": None,
         "is_over": True,
         "voice_available": False,
+        "livekit_url": None,
     }
     hand_off.assert_called_once_with(test_user_id, INTERVIEW_SESSION_ID)
     assert spawn.call_args.args == ("hand-off",)
@@ -2527,6 +2535,7 @@ def test_reading_an_interview_under_way_answers_it_open(
         "stage": INTERVIEW_STAGE_WRAP_UP_ISSUED,
         "is_over": False,
         "voice_available": False,
+        "livekit_url": None,
     }
     background_hand_off[1].assert_not_called()
 

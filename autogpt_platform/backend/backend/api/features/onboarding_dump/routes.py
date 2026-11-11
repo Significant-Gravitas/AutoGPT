@@ -261,15 +261,20 @@ async def get_onboarding_interview(
     """
     read = await interview.read_onboarding_interview(user_id)
     voice_available = await voice.voice_available(user_id)
+    livekit_url = voice.livekit_url() if voice_available else None
     if read is None:
         return InterviewStateResponse(
-            session_id=None, is_over=False, voice_available=voice_available
+            session_id=None,
+            is_over=False,
+            voice_available=voice_available,
+            livekit_url=livekit_url,
         )
     return InterviewStateResponse(
         session_id=read.session.session_id,
         stage=read.session.metadata.onboarding_interview_stage,
         is_over=read.is_over,
         voice_available=voice_available,
+        livekit_url=livekit_url,
     )
 
 

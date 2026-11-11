@@ -125,6 +125,35 @@ async def start():
         return await client.post(URL)
 
 
+async def test_a_starts_checks_read_side_by_side(voice_on, mocker: MockerFixture):
+    """The rooms' heartbeat is read while the interview's read still waits."""
+    held = asyncio.Event()
+
+    async def interview_read(user_id: str) -> None:
+        await held.wait()
+
+    voice_on.interview.side_effect = interview_read
+    swept = mocker.spy(voice.locks, "rooms_swept")
+    starting = asyncio.create_task(start())
+
+    async def heartbeat_read() -> None:
+        while not swept.called:
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(heartbeat_read(), timeout=5)
+    assert not starting.done()
+    held.set()
+    assert (await starting).status_code == 200
+
+
+async def test_a_start_is_one_span_of_the_trace(mocker: MockerFixture):
+    span = mocker.patch.object(voice.sentry_sdk, "start_span")
+
+    assert (await start()).status_code == 200
+
+    span.assert_called_once_with(op="voice.call.start", name="Start a voice call")
+
+
 async def test_the_route_is_not_there_while_voice_is_off(voice_on):
     voice_on.flag.return_value = (False, True)
     response = await start()

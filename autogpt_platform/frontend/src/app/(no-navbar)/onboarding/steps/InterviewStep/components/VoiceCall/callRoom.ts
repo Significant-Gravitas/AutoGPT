@@ -51,6 +51,18 @@ export function loadLiveKit() {
   return import("livekit-client");
 }
 
+// Before the person asks for a call: fetches the room's SDK, and warms the
+// browser's connection to LiveKit, so a call joins sooner. Nothing is joined
+// or spent, and a warm-up that fails is only a lost head start.
+export async function prepareCallRoom(url: string) {
+  try {
+    const { Room } = await loadLiveKit();
+    await new Room().prepareConnection(url);
+  } catch {
+    // A call joins the room the usual way.
+  }
+}
+
 // Joins a call's room and publishes the microphone in it, all within
 // *timeoutMs*; or throws what LiveKit refused or failed with, or
 // RoomJoinTimeout, having left the room and let the player go. The

@@ -26,6 +26,7 @@ import {
   microphoneRefusalOf,
   OPENING_READ_TIMEOUT_MS,
 } from "./components/VoiceCall/helpers";
+import { prepareCallRoom } from "./components/VoiceCall/callRoom";
 import { useVoiceCall } from "./components/VoiceCall/useVoiceCall";
 import {
   finishFailureOf,
@@ -265,6 +266,11 @@ export function useInterviewStep() {
       isTypingRemembered(userID)
     ) {
       openTyped({ remember: false });
+      return;
+    }
+    // The choice shows: a call's room is warmed before the person asks.
+    if (typed?.voice_available && typed.livekit_url) {
+      void prepareCallRoom(typed.livekit_url);
     }
   }
 

@@ -28953,7 +28953,11 @@
             "title": "Stage"
           },
           "is_over": { "type": "boolean", "title": "Is Over" },
-          "voice_available": { "type": "boolean", "title": "Voice Available" }
+          "voice_available": { "type": "boolean", "title": "Voice Available" },
+          "livekit_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Livekit Url"
+          }
         },
         "type": "object",
         "required": ["session_id", "is_over", "voice_available"],

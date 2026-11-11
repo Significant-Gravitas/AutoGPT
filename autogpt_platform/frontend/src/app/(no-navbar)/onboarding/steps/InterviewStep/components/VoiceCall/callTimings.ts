@@ -1,11 +1,12 @@
 import * as Sentry from "@sentry/nextjs";
 import { secondsBetween } from "./helpers";
 
-// How long a call took to start, from the microphone being granted to Otto's
-// first audible sound, in four steps: the start answered, the browser in the
-// call's room, the relay's `ready`, and Otto's track carrying sound. Each mark
-// is epoch ms, or null until the call gets there.
+// How long a call took to start, from the person's click to Otto's first
+// audible sound, in five steps: the microphone granted, the start answered,
+// the browser in the call's room, the relay's `ready`, and Otto's track
+// carrying sound. Each mark is epoch ms, or null until the call gets there.
 export interface CallMarks {
+  clicked: number;
   granted: number;
   minted: number | null;
   joined: number | null;
@@ -13,8 +14,10 @@ export interface CallMarks {
   firstSound: number | null;
 }
 
-export function newCallMarks(): CallMarks {
+// The marks of a call clicked at *clicked*, its microphone granted now.
+export function newCallMarks(clicked: number): CallMarks {
   return {
+    clicked,
     granted: Date.now(),
     minted: null,
     joined: null,
@@ -34,20 +37,23 @@ export function startSeconds(marks: CallMarks) {
 }
 
 // Sends call *callId*'s start to Sentry, the performance record: one span
-// from the microphone to the later of the relay's `ready` and Otto's first
-// sound, with a span for each step under it. Otto can be heard before the
-// `ready` reaches the page; his first-sound step then lasts no time.
+// from the person's click to the latest of the page in the room, the relay's
+// `ready` and Otto's first sound, with a span for each step under it. The relay can be ready,
+// and Otto heard, before the page's room join settles, and Otto can be heard
+// before the `ready` reaches the page; a step that came out of order lasts
+// no time.
 export function reportCallStart(callId: string, marks: CallMarks) {
-  const { granted, minted, joined, ready, firstSound } = marks;
+  const { clicked, granted, minted, joined, ready, firstSound } = marks;
   if (minted === null || joined === null || ready === null) return;
   if (firstSound === null) return;
   const start = Sentry.startInactiveSpan({
     name: "Voice call start",
     op: "voice.call.start",
-    startTime: granted,
+    startTime: clicked,
     parentSpan: null,
     attributes: {
       call_id: callId,
+      granted_s: secondsBetween(clicked, granted),
       mint_s: secondsBetween(granted, minted),
       room_s: secondsBetween(granted, joined),
       ready_s: secondsBetween(granted, ready),
@@ -55,6 +61,7 @@ export function reportCallStart(callId: string, marks: CallMarks) {
     },
   });
   const steps: [string, number, number][] = [
+    ["voice.call.grant", clicked, granted],
     ["voice.call.mint", granted, minted],
     ["voice.call.room", minted, joined],
     ["voice.call.ready", joined, ready],
@@ -68,7 +75,7 @@ export function reportCallStart(callId: string, marks: CallMarks) {
       parentSpan: start,
     }).end(Math.max(from, to));
   });
-  start.end(Math.max(ready, firstSound));
+  start.end(Math.max(joined, ready, firstSound));
 }
 
 function since(marks: CallMarks, mark: number | null) {

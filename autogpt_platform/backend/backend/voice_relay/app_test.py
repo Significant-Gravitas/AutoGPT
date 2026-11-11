@@ -224,6 +224,8 @@ async def test_otto_greets_the_person_by_the_name_on_their_account(redis):
         ws = await open_socket(running.url)
         await ws.send(json.dumps(start()))
         await read_until(ws, "ready")
+        # The opening goes to the model once the browser has heard ready.
+        await until(lambda: bool(vendor.sessions and vendor.sessions[0].opening))
         await ws.send(json.dumps({"type": "hangup"}))
         await read_until(ws, "ended")
     assert vendor.openings == [

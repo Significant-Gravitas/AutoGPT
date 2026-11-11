@@ -5,10 +5,8 @@ import {
   startOnboardingVoiceCall,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import type { VoiceCallCaps } from "@/app/api/__generated__/models/voiceCallCaps";
-import type { VoiceCallStartResponse } from "@/app/api/__generated__/models/voiceCallStartResponse";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
 import {
-  type CallRoomPass,
   type CallTicket,
   forgetCallTicket,
   isCallId,
@@ -131,7 +129,7 @@ export function useVoiceCall(args: Args) {
       const marks = call.marks;
       if (!marks || marks.firstSound !== null) return;
       marks.firstSound = Date.now();
-      if (marks.ready !== null) reportCallStart(call.callId, marks);
+      reportStartWhenMarked(call);
     },
   });
 
@@ -237,11 +235,16 @@ export function useVoiceCall(args: Args) {
   // --- Starting a call ------------------------------------------------------
 
   function talk() {
+    const clicked = Date.now();
     const context = createCallContext();
-    void startCall(context, createCallPlayer(context));
+    void startCall(context, createCallPlayer(context), clicked);
   }
 
-  async function startCall(context: AudioContext, player: HTMLAudioElement) {
+  async function startCall(
+    context: AudioContext,
+    player: HTMLAudioElement,
+    clicked: number,
+  ) {
     const conn = connRef.current;
     const attempt = beginAttempt();
     setHeld(null);
@@ -260,47 +263,20 @@ export function useVoiceCall(args: Args) {
       if (attempt === conn.attempt) refuseMicrophone(error);
       return;
     }
-    const marks = newCallMarks();
-    // The room's SDK is in, and the browser can join a room, before the call
-    // is started: a browser that cannot make the call never spends one. A
-    // later click that took over is the only start that may.
-    const livekit = await sdk;
-    if (attempt !== conn.attempt || !livekit?.isBrowserSupported()) {
+    const marks = newCallMarks(clicked);
+    // The call begins here, on the microphone's grant. Begun on the click
+    // instead, it would be minted while the browser's prompt is up: the
+    // relay is ready only once the microphone is in the call's room either
+    // way.
+    const begun = await beginCall(attempt, sdk);
+    if (!begun || attempt !== conn.attempt) {
       stopTracks(microphone);
       releasePlayer(player);
       closeContext(context);
-      if (attempt === conn.attempt)
-        cannotCall(livekit ? "unsupported" : "failed");
       return;
     }
+    const { started, room } = begun;
     const audio = createCallAudio(context, microphone);
-    let started: VoiceCallStartResponse;
-    let room: CallRoomPass;
-    try {
-      const response = await startOnboardingVoiceCall();
-      const named = response.status === 200 ? response.data : null;
-      const pass = named ? roomPassOf(named.room) : null;
-      if (
-        !named ||
-        !pass ||
-        !isCallId(named.call_id) ||
-        !isRelaySocketUrl(named.relay_url)
-      ) {
-        throw new Error("No call started");
-      }
-      started = named;
-      room = pass;
-    } catch (error) {
-      audio.close();
-      releasePlayer(player);
-      if (attempt === conn.attempt) refuseStart(error);
-      return;
-    }
-    if (attempt !== conn.attempt) {
-      audio.close();
-      releasePlayer(player);
-      return;
-    }
     marks.minted = Date.now();
     argsRef.current.onCallStarted();
     attachAudio(audio);
@@ -320,9 +296,11 @@ export function useVoiceCall(args: Args) {
     conn.call = call;
     conn.shownCallId = started.call_id;
     conn.startRetries = 0;
-    // The browser joins the call's room before it starts the call. A join
-    // LiveKit refuses, fails or takes too long over is a call that never
-    // starts.
+    // The browser joins the call's room while the relay opens the call: the
+    // relay is ready once this browser's microphone is in the room and it has
+    // taken Otto's track. A join LiveKit refuses, fails or takes too long over
+    // is a call that never starts.
+    openSocket({ type: "start", token: started.token });
     const isInRoom = await callRoom.enterRoom(
       call,
       room,
@@ -332,7 +310,50 @@ export function useVoiceCall(args: Args) {
     );
     if (!isInRoom || conn.call !== call) return;
     marks.joined = Date.now();
-    openSocket({ type: "start", token: started.token });
+    reportStartWhenMarked(call);
+  }
+
+  // A call's start goes to Sentry once its last step is marked: the page in
+  // the room, the relay's `ready` and Otto's first sound come in any order,
+  // each once.
+  function reportStartWhenMarked(call: OpenCall) {
+    const marks = call.marks;
+    if (!marks || marks.joined === null || marks.ready === null) return;
+    if (marks.firstSound !== null) reportCallStart(call.callId, marks);
+  }
+
+  // Asks the server for a call once this browser can make one: the call it
+  // started and its room, or null with the reason shown. A browser that
+  // cannot make the call never spends one, and a later click that took over
+  // is the only start that may.
+  async function beginCall(
+    attempt: number,
+    sdk: Promise<Awaited<ReturnType<typeof loadLiveKit>> | null>,
+  ) {
+    const conn = connRef.current;
+    const livekit = await sdk;
+    if (attempt !== conn.attempt) return null;
+    if (!livekit?.isBrowserSupported()) {
+      cannotCall(livekit ? "unsupported" : "failed");
+      return null;
+    }
+    try {
+      const response = await startOnboardingVoiceCall();
+      const named = response.status === 200 ? response.data : null;
+      const room = named ? roomPassOf(named.room) : null;
+      if (
+        !named ||
+        !room ||
+        !isCallId(named.call_id) ||
+        !isRelaySocketUrl(named.relay_url)
+      ) {
+        throw new Error("No call started");
+      }
+      return { started: named, room };
+    } catch (error) {
+      if (attempt === conn.attempt) refuseStart(error);
+      return null;
+    }
   }
 
   // This browser cannot join a call's room, or the room's SDK did not load.
@@ -476,8 +497,7 @@ export function useVoiceCall(args: Args) {
     const marks = call.marks;
     if (marks && marks.ready === null) {
       marks.ready = startedAt;
-      // Otto was heard before the `ready` reached the page.
-      if (marks.firstSound !== null) reportCallStart(call.callId, marks);
+      reportStartWhenMarked(call);
     }
     trackInterview("interview_started", {
       mode: "voice",
@@ -1122,7 +1142,8 @@ export function useVoiceCall(args: Args) {
     if (userId && readCallTicket(userId, current.callId)) forgetTicket();
     setHeld(null);
     if (current.then === "call" && context && player) {
-      void startCall(context, player);
+      // Timed from here: ending the held call is no part of this one's start.
+      void startCall(context, player, Date.now());
       return;
     }
     if (current.then === "type") {

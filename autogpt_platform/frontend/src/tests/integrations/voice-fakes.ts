@@ -179,6 +179,8 @@ let roomJoin: { refuse: unknown } | "hang" | null = null;
 // While set, joins wait on it before they answer.
 let roomJoinGate: Promise<void> | null = null;
 let isBrowserSupported = true;
+// The LiveKit URLs the page warmed a connection to, in order.
+let preparedUrls: string[] = [];
 // What WebRTC's stats say of Otto's speech, by stats id, and how often the
 // page has read them; no report until a test sets one.
 let ottoStatsReport: Map<string, Record<string, unknown>> | undefined;
@@ -235,6 +237,10 @@ export class FakeRoom {
   on(event: string, handler: (...args: never[]) => void) {
     this.handlers.set(event, [...(this.handlers.get(event) ?? []), handler]);
     return this;
+  }
+
+  async prepareConnection(url: string) {
+    preparedUrls.push(url);
   }
 
   async connect(url: string, token: string) {
@@ -326,6 +332,8 @@ export interface VoiceFakes {
   // The LiveKit rooms the page made, and the one it made last.
   rooms(): FakeRoom[];
   room(): FakeRoom | undefined;
+  // The rooms the page asked to join.
+  joinedRooms(): FakeRoom[];
   // The next joins of a call's room are refused with *error*, or never
   // answer; `joinRooms` lets them through again.
   refuseRoomJoins(error: unknown): void;
@@ -333,6 +341,8 @@ export interface VoiceFakes {
   joinRooms(): void;
   // The next joins wait until the function this returns lets them in.
   holdRoomJoins(): () => void;
+  // The LiveKit URLs the page warmed a connection to.
+  preparedUrls(): string[];
   uninstall(): void;
 }
 
@@ -347,6 +357,7 @@ export function installVoiceFakes(): VoiceFakes {
   roomJoin = null;
   roomJoinGate = null;
   isBrowserSupported = true;
+  preparedUrls = [];
   PassThroughWebSocket = globalThis.WebSocket;
   vi.stubGlobal("WebSocket", FakeWebSocket);
   vi.stubGlobal("AudioContext", FakeAudioContext);
@@ -406,6 +417,7 @@ export function installVoiceFakes(): VoiceFakes {
     },
     rooms: () => liveKitRooms,
     room: () => liveKitRooms.at(-1),
+    joinedRooms: () => liveKitRooms.filter((room) => room.url !== null),
     refuseRoomJoins(error) {
       roomJoin = { refuse: error };
     },
@@ -425,6 +437,7 @@ export function installVoiceFakes(): VoiceFakes {
         letIn();
       };
     },
+    preparedUrls: () => preparedUrls,
     uninstall() {
       vi.unstubAllGlobals();
       restore("mediaDevices", mediaDevices);

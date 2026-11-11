@@ -24,7 +24,9 @@ the browser's token for it. In order, it checks:
   Read, not written: the relay counts a call once its model session opens,
   so a start that never got that far costs the person nothing.
 
-None of them costs the person anything. Then it registers the call's room
+The checks' reads are independent and run side by side, under one span the
+start's trace shows; their refusals are still made in this order. None of
+them costs the person anything. Then it registers the call's room
 (``locks.register_room``), a 503 when it cannot, and mints the browser's
 token for it (``rooms.person_token``); the relay closes the room
 (``room_reaper``). It reads the person's arm of the voice ending experiment,
@@ -49,6 +51,7 @@ from collections.abc import Awaitable
 from datetime import UTC, datetime
 from typing import TypeVar
 
+import sentry_sdk
 from fastapi import BackgroundTasks, HTTPException
 from prisma.enums import BrainDumpInputMode
 from prometheus_client import Counter
@@ -131,7 +134,19 @@ async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
     Raises:
         HTTPException: 404, 409, 429 or 503, as the module describes.
     """
-    if not await _voice_enabled(user_id):
+    with sentry_sdk.start_span(op="voice.call.start", name="Start a voice call"):
+        return await _start_voice_call(user_id)
+
+
+async def _start_voice_call(user_id: str) -> VoiceCallStartResponse:
+    # Read side by side; refused in the module's order.
+    enabled, *refusals = await asyncio.gather(
+        _voice_enabled(user_id),
+        _refusal(_refuse_if_interview_over(user_id)),
+        _refusal(_refuse_on_calls(user_id)),
+        _refusal(enforce_voice_call_budget(user_id)),
+    )
+    if not enabled:
         raise HTTPException(status_code=404, detail="Feature not available")
     relay_url = relay_socket_url()
     project = rooms.livekit_project(settings)
@@ -139,26 +154,19 @@ async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
         raise _unavailable(
             "Voice calls are not available right now.", UNAVAILABLE_RETRY_AFTER_S
         )
-    await _refuse_if_interview_over(user_id)
+    for refusal in refusals:
+        if refusal is not None:
+            raise refusal
     redis = await _bounded(get_redis_async())
-    live_call = await _bounded(locks.live_call_holding(redis, user_id, time.time()))
-    if live_call:
-        raise HTTPException(
-            status_code=409, detail={"code": CALL_IN_PROGRESS, "call_id": live_call}
-        )
-    if not await _bounded(locks.rooms_swept(redis)):
-        logger.warning("No relay sweeps the voice call rooms, so no call starts")
-        raise _unavailable(
-            "Voice calls are temporarily unavailable. Please retry shortly.",
-            BUSY_RETRY_AFTER_S,
-        )
-    await _refuse_past_platform_limits(redis)
-    await enforce_voice_call_budget(user_id)
     call_id = tokens.new_call_id()
-    ending = _voice_arm(await assigned_ending(user_id, "voice"))
-    # Registered before its token is minted, so every room a token can open
-    # is closed in the end.
-    await _bounded(locks.register_room(redis, call_id, user_id, time.time()))
+    # The arm is read only for a start that is going ahead, since reading it
+    # enrols the person. The room is registered before its token is minted,
+    # so every room a token can open is closed in the end.
+    arm, _ = await asyncio.gather(
+        assigned_ending(user_id, "voice"),
+        _bounded(locks.register_room(redis, call_id, user_id, time.time())),
+    )
+    ending = _voice_arm(arm)
     return VoiceCallStartResponse(
         call_id=call_id,
         relay_url=relay_url,
@@ -243,15 +251,44 @@ async def _refuse_if_interview_over(user_id: str) -> None:
         )
 
 
-async def _refuse_past_platform_limits(redis: AsyncRedisClient) -> None:
+async def _refusal(check: Awaitable[None]) -> HTTPException | None:
+    """*check*'s refusal, or None once it passes: read beside the start's
+    other checks, and raised in the start's order."""
+    try:
+        await check
+    except HTTPException as refusal:
+        return refusal
+    return None
+
+
+async def _refuse_on_calls(user_id: str) -> None:
+    """Refuse a start the calls under way stand in the way of, in this
+    order: the person's own live call (409), no relay sweeping the rooms
+    (503), and the platform's daily budget or live-call ceiling (503). Its
+    reads run side by side."""
+    redis = await _bounded(get_redis_async())
     now = datetime.now(UTC)
-    spent = await _bounded(locks.daily_spend_usd(redis, now))
+    live_call, swept, spent, live = await asyncio.gather(
+        _bounded(locks.live_call_holding(redis, user_id, now.timestamp())),
+        _bounded(locks.rooms_swept(redis)),
+        _bounded(locks.daily_spend_usd(redis, now)),
+        _bounded(locks.live_call_count(redis, now.timestamp())),
+    )
+    if live_call:
+        raise HTTPException(
+            status_code=409, detail={"code": CALL_IN_PROGRESS, "call_id": live_call}
+        )
+    if not swept:
+        logger.warning("No relay sweeps the voice call rooms, so no call starts")
+        raise _unavailable(
+            "Voice calls are temporarily unavailable. Please retry shortly.",
+            BUSY_RETRY_AFTER_S,
+        )
     if spent >= settings.config.voice_interview_daily_budget_usd:
         raise _unavailable(
             "Voice calls are paused until tomorrow. You can type instead.",
             locks.seconds_until_tomorrow(now),
         )
-    live = await _bounded(locks.live_call_count(redis, now.timestamp()))
     if live >= settings.config.voice_interview_max_concurrent:
         raise _unavailable(
             "All voice lines are busy. Please try again shortly.", BUSY_RETRY_AFTER_S
@@ -513,12 +550,13 @@ def _status_of(record: CallRecord) -> VoiceCallStatusResponse:
         interview=record.interview,
         end_reason=record.end_reason,
         relay_url=relay_socket_url() if running else None,
-        livekit_url=_livekit_url() if running else None,
+        livekit_url=livekit_url() if running else None,
         hand_off=record.hand_off,
     )
 
 
-def _livekit_url() -> str | None:
+def livekit_url() -> str | None:
+    """The LiveKit project's URL a call joins, or None where there is none."""
     project = rooms.livekit_project(settings)
     return project.url if project is not None else None
 

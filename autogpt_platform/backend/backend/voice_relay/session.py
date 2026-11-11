@@ -461,6 +461,9 @@ class Session:
         task = asyncio.create_task(self._guard(coro, name), name=name)
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
+        # A task cancelled before its first step never ran *coro*: closing it
+        # then lets it go without a "never awaited" warning.
+        task.add_done_callback(lambda _: coro.close())
         return task
 
     async def _guard(self, coro: Coroutine[Any, Any, object], name: str) -> None:
@@ -623,6 +626,10 @@ class Session:
         self.spawn(self.watchdog(), "watchdog")
         if self.classifier is not None:
             self.spawn(self.scope_worker(self.classifier), "scope")
+        # Off the call's own wait, so a send that stalls holds up nothing.
+        self.spawn(self._send_opening(), "opening")
+
+    async def _send_opening(self) -> None:
         opening = voice_interview_kickoff(self.first_name)
         await self._vendor_call(
             "opening", lambda live: live.send_note(opening, turn_complete=True)

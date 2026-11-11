@@ -345,6 +345,10 @@ class InterviewStateResponse(BaseModel):
     voice_available: bool
     """Whether the step may offer a call: voice is on for the person, and
     this deployment can carry one."""
+    livekit_url: str | None = None
+    """The LiveKit project a call would join, while ``voice_available``: the
+    step warms its connection before the person asks for a call. Not a
+    secret: the start hands it over anyway."""
 
 
 class VoiceCallCaps(BaseModel):

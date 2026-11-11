@@ -112,6 +112,7 @@ def _session(
     edge=None,
     reaper=None,
     spool_dir: Path | None = None,
+    read_first_name=None,
 ) -> Session:
     """A call's session; with *spool_dir*, one that records the person."""
     call_id = tokens.new_call_id()
@@ -136,6 +137,7 @@ def _session(
         classifier=classifier,
         edge=edge or livekit_edge(FakeMedia()),
         first_name=first_name,
+        read_first_name=read_first_name,
         caps=caps,
         timing=timing,
         on_end=on_end,
@@ -210,6 +212,8 @@ async def test_a_call_ends_finished_once_otto_says_goodbye_after_the_end_tool(re
     assert ready["caps"] == CAPS.as_message()
     ticket = tokens.verify_resume(ready["resume"])
     assert (ticket.user_id, ticket.call_id) == (USER, call.session.call_id)
+    # The model is sent the call's opening once the browser has heard ready.
+    await until(lambda: bool(vendor.sessions[0].opening))
     assert vendor.openings == [
         "(The user just opened the voice onboarding call. Their first name is Dana.)"
     ]
