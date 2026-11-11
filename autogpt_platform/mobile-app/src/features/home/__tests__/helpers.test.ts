@@ -8,6 +8,7 @@ import {
   inputPlaceholder,
   introParts,
   nextRunLabel,
+  ottoWording,
   sentenceWords,
 } from "../helpers";
 
@@ -205,5 +206,17 @@ describe("nextRunLabel", () => {
 
   it("gives the date a week or more out", () => {
     expect(nextRunLabel(at(20, 9), now, "en-GB")).toBe("20 Nov 9:00");
+  });
+});
+
+describe("ottoWording", () => {
+  it("names Otto instead of the product", () => {
+    expect(ottoWording("What reporting features can AutoGPT enhance?")).toBe(
+      "What reporting features can Otto enhance?",
+    );
+  });
+
+  it("leaves other words alone", () => {
+    expect(ottoWording("Plan my AutoGPTish week")).toBe("Plan my AutoGPTish week");
   });
 });

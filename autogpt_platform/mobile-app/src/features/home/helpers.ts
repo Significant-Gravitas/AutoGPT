@@ -129,3 +129,9 @@ export function nextRunLabel(
   }
   return `${when.toLocaleDateString(locale, { day: "numeric", month: "short" })} ${time}`;
 }
+
+// The stored suggestions were written by a model asked about "AutoGPT
+// features", so they name the product where the person is talking to Otto.
+export function ottoWording(prompt: string) {
+  return prompt.replace(/\bAutoGPT\b/g, "Otto");
+}

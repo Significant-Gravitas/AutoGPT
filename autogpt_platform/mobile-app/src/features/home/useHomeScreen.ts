@@ -11,7 +11,12 @@ import { authClient } from "@/lib/auth/client";
 import { isSessionGone, signOut } from "@/lib/session";
 
 import { areaPrompts } from "./areaPrompts";
-import { firstName, hasExistingWork, inputPlaceholder } from "./helpers";
+import {
+  firstName,
+  hasExistingWork,
+  inputPlaceholder,
+  ottoWording,
+} from "./helpers";
 import { startChat } from "./startChat";
 
 const FALLBACK_PROMPTS = [
@@ -37,7 +42,7 @@ export function useHomeScreen() {
   const experts = useQuery({ queryKey: expertKeys.list, queryFn: listExperts });
   const { data: session } = authClient.useSession();
 
-  const suggested = (data ?? []).filter(Boolean).slice(0, 6);
+  const suggested = (data ?? []).filter(Boolean).slice(0, 6).map(ottoWording);
   const team = experts.data ?? [];
   const selected = team.find((expert) => expert.id === selectedID) ?? null;
   // The suggestions come from what Otto knows about the user's business; an
