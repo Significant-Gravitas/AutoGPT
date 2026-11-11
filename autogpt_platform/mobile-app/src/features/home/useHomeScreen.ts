@@ -40,7 +40,8 @@ export function useHomeScreen() {
   const prompts = suggested.length > 0 ? suggested : FALLBACK_PROMPTS;
   const team = experts.data ?? [];
   const selected = team.find((expert) => expert.id === selectedID) ?? null;
-  const dashboard = home.isError ? undefined : home.data;
+  // A failed refresh keeps the last good answer on screen.
+  const dashboard = home.data;
 
   async function refresh() {
     setIsRefreshing(true);

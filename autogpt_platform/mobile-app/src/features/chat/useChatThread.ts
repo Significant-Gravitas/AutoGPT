@@ -9,6 +9,7 @@ import {
   getSession,
   type SessionDetail,
 } from "@/lib/api/chat";
+import { homeKeys } from "@/lib/api/home";
 import { SignedOutError } from "@/lib/auth/errors";
 import { queryClient, signOut } from "@/lib/session";
 import { useMountEffect } from "@/lib/useMountEffect";
@@ -45,6 +46,8 @@ export function useChatThread({ sessionID, detail }: Args) {
         onFinish: ({ isError }) => {
           if (!isError) recoveries.current = 0;
           void queryClient.invalidateQueries({ queryKey: chatKeys.sessions });
+          // A finished turn can settle something Home lists as waiting.
+          void queryClient.invalidateQueries({ queryKey: homeKeys.dashboard });
         },
         // A dead session goes back to Login instead of a stuck error line.
         onError: (chatError) => {

@@ -73,6 +73,7 @@ export function MessageList({
     <FlatList
       ref={listRef}
       data={messages}
+      extraData={isBusy}
       keyExtractor={(message) => message.id}
       renderItem={({ item, index }) => (
         <MessageBubble
