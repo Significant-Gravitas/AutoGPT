@@ -27,6 +27,11 @@ const KNOWN_MESSAGES = new Set([
   new SignedOutError().message,
 ]);
 
+/** True for the sentence of a request the server refused on purpose. */
+export function isStatusMessage(message: string) {
+  return Object.values(STATUS_MESSAGES).includes(message);
+}
+
 /** The sentence to show for a chat error: ours as is, anything else generic. */
 export function chatErrorMessage(error: Error | undefined) {
   if (!error) return null;

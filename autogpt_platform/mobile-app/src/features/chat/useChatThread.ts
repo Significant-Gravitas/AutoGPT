@@ -15,7 +15,16 @@ import { useMountEffect } from "@/lib/useMountEffect";
 
 import { toUIMessages } from "./convertMessages";
 import { takePendingFirstMessage } from "./pendingFirstMessage";
+import {
+  isRecoverableChatError,
+  lastMessageIsUser,
+  lastUserText,
+  serverHasUserMessage,
+} from "./recovery";
 import { chatErrorMessage, createChatTransport } from "./transport";
+
+const RECOVERY_DELAY_MS = 1500;
+const MAX_RECOVERIES = 3;
 
 interface Args {
   sessionID: string;
@@ -31,11 +40,15 @@ export function useChatThread({ sessionID, detail }: Args) {
           activeTurnStartedAt: detail.active_stream?.started_at,
         }),
         transport: createChatTransport(sessionID),
-        onFinish: () =>
-          void queryClient.invalidateQueries({ queryKey: chatKeys.sessions }),
+        onFinish: ({ isError }) => {
+          if (!isError) recoveries.current = 0;
+          void queryClient.invalidateQueries({ queryKey: chatKeys.sessions });
+        },
         // A dead session goes back to Login instead of a stuck error line.
         onError: (chatError) => {
           if (chatError instanceof SignedOutError) void signOut();
+          else if (isRecoverableChatError(chatError))
+            void recover().catch(() => undefined);
         },
       }),
   );
@@ -44,10 +57,20 @@ export function useChatThread({ sessionID, detail }: Args) {
     throttle: 50,
   });
   const isSyncing = useRef(false);
+  const isMounted = useRef(true);
+  const recoveries = useRef(0);
   const isBusy = status === "submitted" || status === "streaming";
 
   function isChatBusy() {
     return chat.status === "submitted" || chat.status === "streaming";
+  }
+
+  function showServerMessages(fresh: SessionDetail) {
+    setMessages(
+      toUIMessages(sessionID, fresh.messages, {
+        activeTurnStartedAt: fresh.active_stream?.started_at,
+      }),
+    );
   }
 
   // The stream route replays a running turn from its first chunk, so the
@@ -60,23 +83,59 @@ export function useChatThread({ sessionID, detail }: Args) {
     let fresh: SessionDetail;
     try {
       fresh = await getSession(sessionID);
+      if (!isMounted.current) return;
       await chat.stop();
-      setMessages(
-        toUIMessages(sessionID, fresh.messages, {
-          activeTurnStartedAt: fresh.active_stream?.started_at,
-        }),
-      );
+      showServerMessages(fresh);
       chat.clearError();
     } finally {
       isSyncing.current = false;
     }
-    if (fresh.active_stream && !isChatBusy()) await chat.resumeStream();
+    if (fresh.active_stream && !isChatBusy()) await resumeTurn();
+  }
+
+  // resumeStream resolves once the replayed stream ends, or at once when the
+  // turn already finished (the server answers 204). In that second case the
+  // reply was left out of the hydrated messages, so load it.
+  async function resumeTurn() {
+    await chat.resumeStream();
+    if (!isMounted.current) return;
+    if (isChatBusy() || !lastMessageIsUser(chat.messages)) return;
+    const fresh = await getSession(sessionID);
+    if (!isMounted.current || fresh.active_stream) return;
+    setMessages(toUIMessages(sessionID, fresh.messages));
+  }
+
+  // A stream that drops in the foreground: if the turn reached the server,
+  // show what it has and pick the stream up again.
+  async function recover() {
+    if (recoveries.current >= MAX_RECOVERIES) return;
+    recoveries.current += 1;
+    await new Promise((resolve) => setTimeout(resolve, RECOVERY_DELAY_MS));
+    if (!isMounted.current || isSyncing.current || isChatBusy()) return;
+    isSyncing.current = true;
+    let fresh: SessionDetail;
+    try {
+      fresh = await getSession(sessionID); // throws offline: the error line stays
+      if (!isMounted.current || isChatBusy()) return;
+      const sent = lastUserText(chat.messages);
+      const landed =
+        fresh.active_stream !== null ||
+        (sent !== null && serverHasUserMessage(fresh.messages, sent));
+      // The send never reached the server: keep the message and the error.
+      if (!landed) return;
+      showServerMessages(fresh);
+      chat.clearError();
+    } finally {
+      isSyncing.current = false;
+    }
+    if (fresh.active_stream) await resumeTurn();
   }
 
   useMountEffect(() => {
+    isMounted.current = true;
     const first = takePendingFirstMessage(sessionID);
     if (first) void chat.sendMessage({ text: first });
-    else if (detail.active_stream) void chat.resumeStream();
+    else if (detail.active_stream) void resumeTurn().catch(() => undefined);
 
     let wasBackgrounded = false;
     const subscription = AppState.addEventListener("change", (state) => {
@@ -86,6 +145,7 @@ export function useChatThread({ sessionID, detail }: Args) {
       void syncWithServer().catch(() => undefined);
     });
     return () => {
+      isMounted.current = false;
       subscription.remove();
       // Only the local stream: the turn keeps running on the server.
       void chat.stop();
@@ -95,6 +155,7 @@ export function useChatThread({ sessionID, detail }: Args) {
   // True once the SDK has the message; it keeps it shown if the stream fails.
   function send(text: string) {
     if (isSyncing.current || isChatBusy()) return false;
+    recoveries.current = 0;
     void chat.sendMessage({ text });
     return true;
   }
