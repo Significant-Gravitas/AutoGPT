@@ -1,9 +1,4 @@
-import {
-  Logout01Icon,
-  PencilEdit02Icon,
-  Settings01Icon,
-  UserGroupIcon,
-} from "@hugeicons/core-free-icons";
+import { PencilEdit02Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import type { DrawerContentComponentProps } from "expo-router/drawer";
 import {
   ActivityIndicator,
@@ -21,6 +16,7 @@ import { DrawerSearchField } from "./components/DrawerSearchField";
 import { ExpertRecentRow } from "./components/ExpertRecentRow";
 import { RecentHeading } from "./components/RecentHeading";
 import { SearchResultRow } from "./components/SearchResultRow";
+import { UserMenu } from "./components/UserMenu";
 import { DrawerRow } from "./DrawerRow";
 import { useAppDrawer } from "./useAppDrawer";
 
@@ -41,6 +37,8 @@ export function AppDrawerContent({ navigation }: Props) {
     refetch,
     isRefetching,
     email,
+    userName,
+    userImage,
     activeSessionID,
     openChat,
     newChat,
@@ -123,14 +121,14 @@ export function AppDrawerContent({ navigation }: Props) {
           />
         </>
       )}
-      <View style={[styles.section, styles.footer]}>
-        {email ? (
-          <Text numberOfLines={1} style={styles.email}>
-            {email}
-          </Text>
-        ) : null}
-        <DrawerRow icon={Settings01Icon} label="Settings" onPress={openSettings} />
-        <DrawerRow icon={Logout01Icon} label="Sign out" onPress={handleSignOut} />
+      <View style={styles.footer}>
+        <UserMenu
+          name={userName ?? null}
+          email={email ?? null}
+          image={userImage ?? null}
+          onOpenSettings={openSettings}
+          onSignOut={handleSignOut}
+        />
       </View>
     </View>
   );
@@ -156,11 +154,5 @@ const useStyles = createStyles((colors) => ({
     paddingTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-  },
-  email: {
-    ...type.small,
-    color: colors.textTertiary,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xs,
   },
 }));

@@ -75,6 +75,8 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
     refetch,
     isRefetching,
     email: session?.user.email,
+    userName: session?.user.name,
+    userImage: session?.user.image,
     activeSessionID,
     openChat,
     newChat,
