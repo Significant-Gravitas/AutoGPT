@@ -5881,11 +5881,56 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/chat/usage/extra-week": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Buy Extra Week Of Usage",
+        "description": "Buy one extra week of usage from the credit balance.",
+        "operationId": "postV2BuyExtraWeekOfUsage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtraWeekPurchaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtraWeekPurchaseResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": { "description": "Not enough credits; nothing was charged" },
+          "409": { "description": "This account can't buy an extra week" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": { "description": "Usage limits can't be read right now" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/usage/reset": {
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Reset Copilot Usage",
-        "description": "Reset the daily CoPilot rate limit by spending credits.\n\nAllows users who have hit their daily cost limit to spend credits\nto reset their daily usage counter and continue working.\nReturns 400 if the feature is disabled or the user is not over the limit.\nReturns 402 if the user has insufficient credits.",
+        "description": "Switched off: paying credits to reset the daily limit is gone.\n\nIt let an account buy past its plan's limits (SECRT-3441). The route\nstays so a client that still calls it gets the answer it always got with\nthe feature configured off, and nothing is charged or reset.",
         "operationId": "postV2ResetCopilotUsage",
         "responses": {
           "200": {
@@ -5898,20 +5943,12 @@
               }
             }
           },
-          "400": {
-            "description": "Bad Request (feature disabled or daily limit not reached)"
-          },
+          "400": { "description": "Bad Request (the reset is switched off)" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "402": { "description": "Payment Required (insufficient credits)" },
-          "429": {
-            "description": "Too Many Requests (max daily resets exceeded or reset in progress)"
-          },
-          "503": {
-            "description": "Service Unavailable (Redis reset failed; credits refunded or support needed)"
           }
         },
+        "deprecated": true,
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
@@ -21288,6 +21325,54 @@
         "title": "BaseGraph",
         "description": "Graph with nodes, links, and computed I/O schema fields.\n\nUsed to represent sub-graphs within a `Graph`. Contains the full graph\nstructure including nodes and links, plus computed fields for schemas\nand trigger info. Does NOT include user_id or created_at (see GraphModel)."
       },
+      "BillingClockUsage": {
+        "properties": {
+          "source": { "type": "string", "title": "Source" },
+          "daily_resets_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Daily Resets At"
+          },
+          "weekly_resets_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Weekly Resets At"
+          },
+          "weekly_limit_microdollars": {
+            "type": "integer",
+            "title": "Weekly Limit Microdollars"
+          },
+          "reserve_today_microdollars": {
+            "type": "integer",
+            "title": "Reserve Today Microdollars"
+          },
+          "reserve_used_microdollars": {
+            "type": "integer",
+            "title": "Reserve Used Microdollars"
+          },
+          "blocked_by": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Blocked By"
+          },
+          "extra_weeks": {
+            "items": { "$ref": "#/components/schemas/ExtraWeek" },
+            "type": "array",
+            "title": "Extra Weeks",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "daily_resets_at",
+          "weekly_resets_at",
+          "weekly_limit_microdollars",
+          "reserve_today_microdollars",
+          "reserve_used_microdollars"
+        ],
+        "title": "BillingClockUsage",
+        "description": "What a user's limits look like on their billing clock (SECRT-3441)."
+      },
       "BlockCategoryResponse": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -22669,8 +22754,29 @@
           "reset_cost": {
             "type": "integer",
             "title": "Reset Cost",
-            "description": "Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
+            "description": "Always 0: paying credits to reset the daily limit is switched off.",
             "default": 0
+          },
+          "reserve": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/UsageWindowPublic" },
+              { "type": "null" }
+            ],
+            "description": "Today's daily reserve: a small part of the weekly limit kept back each day, usable after the rest of the week is gone. Null when the plan has none."
+          },
+          "extra": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ExtraWeeksPublic" },
+              { "type": "null" }
+            ],
+            "description": "Paid extra weeks that haven't expired or run out. They are used once the weekly limit runs out."
+          },
+          "extra_week_offer": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ExtraWeekOffer" },
+              { "type": "null" }
+            ],
+            "description": "Set when the account can buy an extra week now."
           },
           "state": {
             "type": "string",
@@ -26942,6 +27048,107 @@
           "description"
         ],
         "title": "ExpertWorkflowRef"
+      },
+      "ExtraWeek": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "tier": { "type": "string", "title": "Tier" },
+          "amount": { "type": "integer", "title": "Amount" },
+          "used": { "type": "integer", "title": "Used" },
+          "price_credits": { "type": "integer", "title": "Price Credits" },
+          "purchased_at": { "type": "integer", "title": "Purchased At" },
+          "expires_at": { "type": "integer", "title": "Expires At" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tier",
+          "amount",
+          "used",
+          "price_credits",
+          "purchased_at",
+          "expires_at"
+        ],
+        "title": "ExtraWeek",
+        "description": "One extra week. Amounts are microdollars, times Unix seconds."
+      },
+      "ExtraWeekOffer": {
+        "properties": {
+          "price_credits": {
+            "type": "integer",
+            "title": "Price Credits",
+            "description": "Its price in credits (cents)."
+          }
+        },
+        "type": "object",
+        "required": ["price_credits"],
+        "title": "ExtraWeekOffer",
+        "description": "An extra week this account can buy now."
+      },
+      "ExtraWeekPurchaseRequest": {
+        "properties": {
+          "purchase_key": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Purchase Key",
+            "description": "A key the client makes up for this purchase (a UUID). Sending it again returns the same purchase and charges nothing more."
+          }
+        },
+        "type": "object",
+        "required": ["purchase_key"],
+        "title": "ExtraWeekPurchaseRequest"
+      },
+      "ExtraWeekPurchaseResponse": {
+        "properties": {
+          "credits_charged": {
+            "type": "integer",
+            "title": "Credits Charged",
+            "description": "Credits taken by this request; 0 when the key had already bought it."
+          },
+          "remaining_balance": {
+            "type": "integer",
+            "title": "Remaining Balance",
+            "description": "Credit balance now (in cents)."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "When this extra week expires."
+          },
+          "usage": { "$ref": "#/components/schemas/CoPilotUsagePublic" }
+        },
+        "type": "object",
+        "required": [
+          "credits_charged",
+          "remaining_balance",
+          "expires_at",
+          "usage"
+        ],
+        "title": "ExtraWeekPurchaseResponse"
+      },
+      "ExtraWeeksPublic": {
+        "properties": {
+          "percent_used": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Percent Used"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "When the first of them expires."
+          },
+          "count": { "type": "integer", "title": "Count" }
+        },
+        "type": "object",
+        "required": ["percent_used", "expires_at", "count"],
+        "title": "ExtraWeeksPublic",
+        "description": "Paid extra weeks still usable, as a share used. No dollar figures."
       },
       "FactListResponse": {
         "properties": {
@@ -33801,7 +34008,7 @@
           "usage"
         ],
         "title": "RateLimitResetResponse",
-        "description": "Response from resetting the daily rate limit."
+        "description": "Response from resetting the daily rate limit. Kept for the schema of\nthe switched-off endpoint; it is never returned."
       },
       "RatificationResult": {
         "properties": {
@@ -36893,6 +37100,12 @@
             "title": "Current Period End",
             "description": "Unix timestamp of the active subscription's current_period_end. Used to show the date Stripe will issue the next invoice (with prorated upgrade charges, if any). None when no active sub."
           },
+          "upgrade_resets_billing_date": {
+            "type": "boolean",
+            "title": "Upgrade Resets Billing Date",
+            "description": "An upgrade made now starts a fresh billing month: the full new price is charged, less a credit for the unused part of the current plan, the plan renews a full period from today, and the usage limits start over. False while an upgrade is still prorated inside the current billing period.",
+            "default": false
+          },
           "paused_workflow_schedules": {
             "type": "integer",
             "title": "Paused Workflow Schedules",
@@ -37041,6 +37254,11 @@
             "items": { "$ref": "#/components/schemas/UpgradeProrationLine" },
             "type": "array",
             "title": "Lines"
+          },
+          "resets_billing_date": {
+            "type": "boolean",
+            "title": "Resets Billing Date",
+            "default": false
           }
         },
         "type": "object",
@@ -40098,6 +40316,12 @@
             "type": "object",
             "title": "Tier Multipliers",
             "default": {}
+          },
+          "billing_clock": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BillingClockUsage" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",

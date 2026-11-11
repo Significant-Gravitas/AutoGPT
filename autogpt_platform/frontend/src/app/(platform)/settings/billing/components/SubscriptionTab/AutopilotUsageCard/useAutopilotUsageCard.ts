@@ -4,6 +4,7 @@ import {
   getFeaturedUsagePercent,
   getUsageStatus,
 } from "@/services/usageExperience/helpers";
+import { formatExactReset } from "@/services/usageExperience/resetTime";
 import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
 import { formatRelativeReset, formatShortDate } from "../../../helpers";
 
@@ -49,6 +50,20 @@ export function useAutopilotUsageCard() {
       ? week
       : today;
   const secondary = showTrialWindow ? null : featured === week ? today : week;
+  // Sent only once limits run on the customer's own billing clock.
+  const reserve = usage?.reserve
+    ? {
+        percent: usage.reserve.percent_used,
+        refills: formatExactReset(usage.reserve.resets_at),
+      }
+    : null;
+  const extra = usage?.extra
+    ? {
+        percent: usage.extra.percent_used,
+        count: usage.extra.count,
+        expires: formatExactReset(usage.extra.expires_at),
+      }
+    : null;
   const status =
     USAGE_STATUS[getUsageStatus(getFeaturedUsagePercent(experience, usage))];
   return {
@@ -57,6 +72,9 @@ export function useAutopilotUsageCard() {
     secondary,
     today,
     week,
+    reserve: showTrialWindow ? null : reserve,
+    extra: showTrialWindow ? null : extra,
+    offer: showTrialWindow ? null : (usage?.extra_week_offer ?? null),
     isLoading,
     isError,
     retry,

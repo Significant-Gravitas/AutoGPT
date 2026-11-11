@@ -12,6 +12,7 @@ import {
   useAutopilotUsageCard,
   type UsageWindowView,
 } from "./useAutopilotUsageCard";
+import { UsageExtras } from "./UsageExtras";
 import { UsageUnavailable } from "./UsageUnavailable";
 
 interface Props {
@@ -65,6 +66,11 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
               <UsageBar window={state.secondary} />
             </div>
           )}
+          <UsageExtras
+            reserve={state.reserve}
+            extra={state.extra}
+            offer={state.offer}
+          />
           {state.lifetime && (
             <div className="mt-6 border-t border-separator pt-5">
               <Text variant="small-medium" className="mb-1">

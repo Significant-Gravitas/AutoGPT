@@ -15,6 +15,7 @@ import {
   budgetOutTitle,
   budgetResetSentence,
 } from "@/services/usageExperience/budget";
+import { WeeklyLimitExtras } from "../ExtraWeek/WeeklyLimitExtras";
 import type { UsageNoticeContext } from "./useUsageLimitReachedCard";
 import { useUsageLimitReachedCard } from "./useUsageLimitReachedCard";
 
@@ -78,11 +79,13 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
               : copy.description}
       </Text>
       {state.wait && (
-        <UsageMeters
-          className="mt-4"
-          daily={state.usage?.daily}
-          weekly={state.usage?.weekly}
-        />
+        <div className="mt-4 flex flex-col gap-4">
+          <UsageMeters
+            daily={state.usage?.daily}
+            weekly={state.usage?.weekly}
+          />
+          <WeeklyLimitExtras window={state.wait.window} usage={state.usage} />
+        </div>
       )}
       {isOffer && (
         <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
