@@ -222,6 +222,36 @@ async def test_missing_credentials_are_annotated_with_expert_grants(experts):
     assert untouched is missing
 
 
+async def test_platform_key_is_usable_and_never_offered_as_a_grant(experts):
+    """The platform's Firecrawl key is no one's account to share (SECRT-3207).
+
+    It must count as available to the expert, and never be listed as an
+    account the user could grant, which the grant dialog cannot do.
+    """
+    from backend.copilot.tools.expert_scope import (
+        _ungranted_credentials,
+        resolve_credential_scope,
+    )
+
+    store = MagicMock()
+    store.get_all_creds = AsyncMock(
+        return_value=[
+            MagicMock(id="firecrawl-default", provider="firecrawl", title="Key"),
+            MagicMock(id="own-firecrawl", provider="firecrawl", title="Mine"),
+        ]
+    )
+    with patch(
+        f"{_PATH}.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    ):
+        scope = await resolve_credential_scope("user-1", "expert-a")
+        offered = await _ungranted_credentials(
+            "user-1", "expert-a", {"firecrawl"}, scope
+        )
+    assert [c.id for c in scope.available] == ["firecrawl-default"]
+    assert [c.id for c in offered] == ["own-firecrawl"]
+
+
 async def test_grant_candidates_must_match_the_requested_mcp_server(experts):
     from backend.copilot.tools.expert_scope import annotate_expert_grants
     from backend.data.model import OAuth2Credentials

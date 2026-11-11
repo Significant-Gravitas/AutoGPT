@@ -297,7 +297,7 @@ def _to_model(
         is_archived=row.isArchived,
         workflows=[_to_workflow_ref(w) for w in row.Workflows or []],
         last_run_at=latest_run.createdAt if latest_run else None,
-        last_run_status=(str(latest_run.executionStatus) if latest_run else None),
+        last_run_status=run_status(latest_run) if latest_run else None,
         weekly_budget=scheduling.effective_weekly_budget(row),
         weekly_spend=weekly_spend,
         schedules_paused_at=row.schedulesPausedAt,
@@ -340,6 +340,23 @@ def _setup_status(row: prisma.models.Expert) -> ExpertSetupStatus:
     ):
         return "failed"
     return cast(ExpertSetupStatus, row.setupStatus.lower())
+
+
+def run_status(execution: prisma.models.AgentGraphExecution) -> str:
+    """The run's status as an expert surface reports it.
+
+    A step that fails without a typed reason (a bad credential, say) leaves
+    the run COMPLETED (executor/manager.py), but a run with a failed step
+    must never read as done, so it reports FAILED."""
+    status = str(execution.executionStatus)
+    stats = execution.stats if isinstance(execution.stats, dict) else {}
+    try:
+        failed_steps = int(stats.get("node_error_count") or 0)
+    except (TypeError, ValueError):
+        failed_steps = 0
+    if status == prisma.enums.AgentExecutionStatus.COMPLETED and failed_steps > 0:
+        return str(prisma.enums.AgentExecutionStatus.FAILED)
+    return status
 
 
 async def _latest_runs(
@@ -535,7 +552,8 @@ async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
                    WHEN "autopilotMode" IN ('ask_first', 'auto', 'unsupervised')
                    THEN "autopilotMode"
                    ELSE NULL
-               END AS "autopilot_mode"
+               END AS "autopilot_mode",
+               "createdAt" AS "created_at"
         FROM {schema_prefix}"Expert"
         WHERE "ownerUserId" = $1 AND "isTemplate" = false
         """,
@@ -898,7 +916,7 @@ def _to_expert_run(
         graph_id=execution.agentGraphId,
         agent_name=agent_name,
         library_agent_id=library_agent_id,
-        status=cast(ExpertRunStatus, str(execution.executionStatus).lower()),
+        status=cast(ExpertRunStatus, run_status(execution).lower()),
         output_type=output_type,
         output_key=output_key,
         needs_review=needs_review,

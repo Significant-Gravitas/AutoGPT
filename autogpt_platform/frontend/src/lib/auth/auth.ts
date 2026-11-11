@@ -11,6 +11,7 @@ import { compare, hash } from "bcryptjs";
 import { PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
+import { assertNotBannedAddress } from "./ban-record";
 import { getTrustedClientIP, trustedProxies } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
 import { assertNotDisposableEmail } from "./disposable-email";
@@ -49,6 +50,8 @@ import {
   SIGN_UP_NOT_ALLOWED_CODE,
 } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
+import { getMicrosoftLoginProvider } from "./microsoft-login";
+import { assertMicrosoftSignUpAllowed } from "./microsoft-sign-up-policy";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
 
@@ -70,7 +73,8 @@ function getSocialProviders() {
     }
   }
 
-  return providers;
+  const microsoft = getMicrosoftLoginProvider();
+  return microsoft ? { ...providers, microsoft } : providers;
 }
 
 // Shared with the databaseHooks below so the verified-email mirror reuses the
@@ -112,6 +116,8 @@ function hasPlatformUser(userId: string) {
 // Better Auth hands database hooks the endpoint context, or null outside one.
 type HookContext = {
   path?: string;
+  params?: { id?: string };
+  body?: unknown;
   headers?: Headers;
   request?: Request;
   context?: { options: BetterAuthOptions };
@@ -223,7 +229,12 @@ export const auth = betterAuth({
       create: {
         // Fires for both email/password signup AND a first OAuth sign-in,
         // since both create a user row. The SQL data-migration bypasses it.
-        before: async (user: { email: string }, ctx: HookContext) => {
+        before: async (
+          user: { email: string; emailVerified?: boolean | null },
+          ctx: HookContext,
+        ) => {
+          // Microsoft's first: its refusals carry codes /login explains.
+          assertMicrosoftSignUpAllowed(user, ctx);
           assertSignUpPolicy(user.email, ctx);
           // An email sign-up was already checked in hooks.before.
           if (
@@ -519,13 +530,15 @@ function assertSignUpPolicy(email: string, ctx: { path?: string } | null) {
   }
 }
 
-// IP and email-domain blocks from /admin/users (access-blocks.ts) answer
-// before the disposable list, so an admin's domain block keeps its message.
+// IP and email-domain blocks from /admin/users (access-blocks.ts) and the ban
+// record of an erased, banned account (ban-record.ts) answer before the
+// disposable list, so an admin's block keeps its message.
 async function assertEmailSignUpAllowed(
   email: string,
   ipAddress: string | null,
 ) {
   await assertSignUpAllowed(authDbPool, { email, ipAddress });
+  await assertNotBannedAddress(email);
   const dns = sharedLookups();
   await assertNotDisposableEmail(email, { dns });
   await assertEmailHasMailServer(email, { dns });
