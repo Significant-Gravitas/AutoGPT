@@ -15,7 +15,6 @@ export const PLAN_REQUIRED_MESSAGE =
   "Chat needs an active plan. You can manage your plan on the web.";
 
 const STATUS_MESSAGES: Record<number, string> = {
-  401: "You are signed out. Sign in again to continue.",
   402: PLAN_REQUIRED_MESSAGE,
   404: "This chat no longer exists.",
   429: "You have reached your usage limit. Try again later.",
@@ -81,22 +80,38 @@ async function streamHeaders() {
 // The SDK reports a refused request as a bare Error holding the body, so the
 // reason is put into words here.
 const fetchStream: typeof globalThis.fetch = async (input, init) => {
-  let response: Response;
+  let response = await send(input, init);
+  // A refused token is dropped and the request sent once more with a fresh
+  // one; the body keeps its message_id, so this cannot start a second turn.
+  if (response.status === 401) {
+    clearAccessToken();
+    response = await send(input, withHeaders(init, await streamHeaders()));
+    if (response.status === 401) throw new SignedOutError();
+  }
+  if (response.ok) return response;
+  throw new Error(STATUS_MESSAGES[response.status] ?? FALLBACK_MESSAGE);
+};
+
+async function send(input: RequestInfo | URL, init: RequestInit | undefined) {
   try {
-    response = await (expoFetch as unknown as typeof globalThis.fetch)(
-      input,
-      init,
-    );
+    return await (expoFetch as unknown as typeof globalThis.fetch)(input, init);
   } catch (error) {
     // `chat.stop()` aborts the request; the SDK must still see an abort.
     if (isAbort(error, init)) throw error;
     throw new Error(OFFLINE_MESSAGE);
   }
-  if (response.ok) return response;
-  // A refused token is dropped so the next send mints a fresh one.
-  if (response.status === 401) clearAccessToken();
-  throw new Error(STATUS_MESSAGES[response.status] ?? FALLBACK_MESSAGE);
-};
+}
+
+// The SDK lowercases header names, so a plain spread would send the old
+// `authorization` beside the new `Authorization`.
+function withHeaders(
+  init: RequestInit | undefined,
+  fresh: Record<string, string>,
+): RequestInit {
+  const headers = new Headers(init?.headers);
+  for (const [name, value] of Object.entries(fresh)) headers.set(name, value);
+  return { ...init, headers };
+}
 
 function isAbort(error: unknown, init: RequestInit | undefined) {
   if (init?.signal?.aborted) return true;
