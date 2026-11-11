@@ -5,10 +5,11 @@ import threading
 import time
 import uuid
 from collections import defaultdict
+from collections.abc import Coroutine
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Awaitable, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Literal, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
@@ -355,6 +356,83 @@ async def _finish_despite_cancel(work: Awaitable[T]) -> T:
                 continue
         task.result()
         raise
+
+
+# How long a run waits on an AutoMod check before giving up on it.
+MODERATION_WAIT_SECONDS = 30.0
+# How long a run that moderation stopped waits for its nodes to be failed.
+MODERATION_NODE_UPDATE_SECONDS = 30.0
+
+
+def _await_moderation(
+    moderation: Coroutine[Any, Any, Exception | None],
+    loop: asyncio.AbstractEventLoop,
+    *,
+    moderation_type: Literal["input", "output"],
+    graph_exec: GraphExecutionEntry,
+    log_metadata: LogMetadata,
+) -> None:
+    """Run an AutoMod check on *loop* and raise the error it returns, if any.
+
+    A check that outlasts its wait is cancelled and counts as AutoMod failing,
+    so the run only goes on without it when ``automod_fail_open`` is set. A run
+    failed this way has its nodes failed as a refused check of the same kind
+    fails them.
+    With AutoMod off there is nothing to wait for, so the check is not run.
+    """
+    if not automod_manager.config.enabled:
+        moderation.close()
+        return
+    future = asyncio.run_coroutine_threadsafe(moderation, loop)
+    try:
+        moderation_error = future.result(timeout=MODERATION_WAIT_SECONDS)
+    except TimeoutError:
+        future.cancel()
+        fail_open = automod_manager.config.fail_open
+        log_metadata.warning(
+            f"{moderation_type.capitalize()} moderation timed out for graph "
+            f"execution {graph_exec.graph_exec_id}; "
+            + ("continuing without it" if fail_open else "failing the execution")
+        )
+        if fail_open:
+            return
+        _fail_nodes_for_moderation(loop, graph_exec, moderation_type, log_metadata)
+        raise ModerationError(
+            message=(
+                f"Execution failed due to {moderation_type} content moderation error"
+            ),
+            user_id=graph_exec.user_id,
+            graph_exec_id=graph_exec.graph_exec_id,
+            moderation_type=moderation_type,
+        )
+    if moderation_error:
+        raise moderation_error
+
+
+def _fail_nodes_for_moderation(
+    loop: asyncio.AbstractEventLoop,
+    graph_exec: GraphExecutionEntry,
+    moderation_type: Literal["input", "output"],
+    log_metadata: LogMetadata,
+) -> None:
+    """Fail the run's nodes as a refused check of this kind fails them. At the
+    input check the run fails before its queue is filled, so nothing would ever
+    run its nodes, and they would otherwise stay queued in a failed run; at the
+    output check, the nodes whose outputs went unchecked."""
+    update = asyncio.run_coroutine_threadsafe(
+        automod_manager.update_failed_nodes_for_moderation(
+            get_db_async_client(), graph_exec.graph_exec_id, moderation_type
+        ),
+        loop,
+    )
+    try:
+        update.result(timeout=MODERATION_NODE_UPDATE_SECONDS)
+    except Exception as e:
+        update.cancel()
+        log_metadata.error(
+            f"Could not fail the nodes of graph execution {graph_exec.graph_exec_id} "
+            f"after its {moderation_type} moderation timed out: {e!r}"
+        )
 
 
 def _drop_unused_credentials(node: Node, inputs: BlockInput) -> BlockInput:
@@ -1600,20 +1678,16 @@ class ExecutionProcessor:
                     )
 
             # Input moderation
-            try:
-                if moderation_error := asyncio.run_coroutine_threadsafe(
-                    automod_manager.moderate_graph_execution_inputs(
-                        db_client=get_db_async_client(),
-                        graph_exec=graph_exec,
-                    ),
-                    self.node_evaluation_loop,
-                ).result(timeout=30.0):
-                    raise moderation_error
-            except asyncio.TimeoutError:
-                log_metadata.warning(
-                    f"Input moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution"
-                )
-                # Continue execution without moderation
+            _await_moderation(
+                automod_manager.moderate_graph_execution_inputs(
+                    db_client=get_db_async_client(),
+                    graph_exec=graph_exec,
+                ),
+                self.node_evaluation_loop,
+                moderation_type="input",
+                graph_exec=graph_exec,
+                log_metadata=log_metadata,
+            )
 
             # ------------------------------------------------------------
             # Pre‑populate queue ---------------------------------------
@@ -1833,22 +1907,18 @@ class ExecutionProcessor:
             # loop done --------------------------------------------------
 
             # Output moderation
-            try:
-                if moderation_error := asyncio.run_coroutine_threadsafe(
-                    automod_manager.moderate_graph_execution_outputs(
-                        db_client=get_db_async_client(),
-                        graph_exec_id=graph_exec.graph_exec_id,
-                        user_id=graph_exec.user_id,
-                        graph_id=graph_exec.graph_id,
-                    ),
-                    self.node_evaluation_loop,
-                ).result(timeout=30.0):
-                    raise moderation_error
-            except asyncio.TimeoutError:
-                log_metadata.warning(
-                    f"Output moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution"
-                )
-                # Continue execution without moderation
+            _await_moderation(
+                automod_manager.moderate_graph_execution_outputs(
+                    db_client=get_db_async_client(),
+                    graph_exec_id=graph_exec.graph_exec_id,
+                    user_id=graph_exec.user_id,
+                    graph_id=graph_exec.graph_id,
+                ),
+                self.node_evaluation_loop,
+                moderation_type="output",
+                graph_exec=graph_exec,
+                log_metadata=log_metadata,
+            )
 
             # Determine final execution status based on whether there was an error or termination
             if cancel.is_set():

@@ -59,11 +59,12 @@ async def upsert_message_feedback(
     score_name: str,
     score_value: int,
     comment: str | None,
+    reason: str | None = None,
 ) -> str:
     """Save *user_id*'s rating of a reply and return the rating's id.
 
     One row per user, message and score name: rating again overwrites the
-    value and comment and keeps the id.
+    value, comment and reason and keeps the id.
     The caller must already have checked that the message is in a session
     *user_id* owns (see ``get_rateable_message``).
     """
@@ -82,10 +83,12 @@ async def upsert_message_feedback(
         "scoreName": score_name,
         "scoreValue": score_value,
         "comment": comment,
+        "reason": reason,
     }
     update: ChatMessageFeedbackUpdateInput = {
         "scoreValue": score_value,
         "comment": comment,
+        "reason": reason,
     }
     data: ChatMessageFeedbackUpsertInput = {"create": create, "update": update}
     try:
