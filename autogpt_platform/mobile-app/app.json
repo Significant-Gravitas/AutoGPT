@@ -30,6 +30,14 @@
           "image": "./assets/images/icon.png",
           "imageWidth": 96
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Attach photos to your chats.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

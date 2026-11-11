@@ -1,10 +1,12 @@
-import { ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
 import { useRef, useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { IconButton } from "@/components/IconButton";
-import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
+import { createStyles, spacing } from "@/lib/theme";
+
+import { isUploading, type Attachment } from "../attachmentHelpers";
+import { AttachmentChips } from "./AttachmentChips";
+import { ComposerField } from "./ComposerField";
 
 interface Props {
   onSend: (text: string) => boolean | Promise<boolean>;
@@ -12,6 +14,10 @@ interface Props {
   isBusy?: boolean;
   isDisabled?: boolean;
   placeholder?: string;
+  onAttach?: () => void;
+  attachments?: Attachment[];
+  onRemoveAttachment?: (id: string) => void;
+  onRetryAttachment?: (id: string) => void;
 }
 
 export function Composer({
@@ -20,16 +26,24 @@ export function Composer({
   isBusy,
   isDisabled,
   placeholder = "Ask Otto anything",
+  onAttach,
+  attachments = [],
+  onRemoveAttachment,
+  onRetryAttachment,
 }: Props) {
   const styles = useStyles();
-  const colors = useColors();
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
   // State lands a render late; the ref stops a second press in the same frame.
   const isSendingRef = useRef(false);
   const insets = useSafeAreaInsets();
+  const hasReadyFile = attachments.some((item) => item.status === "ready");
   const canSend =
-    text.trim().length > 0 && !isBusy && !isDisabled && !isSending;
+    (text.trim().length > 0 || hasReadyFile) &&
+    !isUploading(attachments) &&
+    !isBusy &&
+    !isDisabled &&
+    !isSending;
 
   // The text stays until the send is accepted, so a failure keeps it.
   async function handleSend() {
@@ -46,30 +60,24 @@ export function Composer({
 
   return (
     <View style={[styles.wrap, { paddingBottom: insets.bottom + spacing.sm }]}>
-      <View style={styles.field}>
-        <TextInput
-          accessibilityLabel="Message"
-          multiline
-          value={text}
-          onChangeText={setText}
-          editable={!isDisabled}
-          placeholder={placeholder}
-          placeholderTextColor={colors.textTertiary}
-          selectionColor={colors.brand}
-          style={styles.input}
+      {attachments.length > 0 ? (
+        <AttachmentChips
+          attachments={attachments}
+          onRemove={onRemoveAttachment}
+          onRetry={onRetryAttachment}
         />
-        {isBusy && onStop ? (
-          <IconButton icon={StopIcon} label="Stop" onPress={onStop} variant="primary" />
-        ) : (
-          <IconButton
-            icon={ArrowUp02Icon}
-            label="Send"
-            onPress={handleSend}
-            disabled={!canSend}
-            variant="primary"
-          />
-        )}
-      </View>
+      ) : null}
+      <ComposerField
+        text={text}
+        onChangeText={setText}
+        placeholder={placeholder}
+        canSend={canSend}
+        onSend={handleSend}
+        onStop={onStop}
+        onAttach={onAttach}
+        isBusy={isBusy}
+        isDisabled={isDisabled}
+      />
     </View>
   );
 }
@@ -79,25 +87,5 @@ const useStyles = createStyles((colors) => ({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     backgroundColor: colors.background,
-  },
-  field: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing.sm,
-    paddingLeft: spacing.lg,
-    paddingRight: spacing.xs,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.lg + 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  input: {
-    ...type.body,
-    flex: 1,
-    maxHeight: 140,
-    paddingTop: 9,
-    paddingBottom: 9,
-    color: colors.text,
   },
 }));

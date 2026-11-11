@@ -175,10 +175,17 @@ export function useChatThread({ sessionID, detail }: Args) {
   });
 
   // True once the SDK has the message; it keeps it shown if the stream fails.
-  function send(text: string) {
+  function send(text: string, files: { id: string; name: string }[] = []) {
     if (isSyncing.current || isChatBusy()) return false;
     recoveries.current = 0;
-    void chat.sendMessage({ text });
+    // The ids ride to the server through the transport; the names stay for the bubble.
+    const metadata = files.length
+      ? {
+          fileIDs: files.map((file) => file.id),
+          fileNames: files.map((file) => file.name),
+        }
+      : undefined;
+    void chat.sendMessage({ text, metadata });
     return true;
   }
 

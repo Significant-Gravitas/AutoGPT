@@ -106,12 +106,59 @@ function ensureOk(response: Response) {
   }
 }
 
-async function fetchWithFreshToken(url: string) {
-  let response = await fetch(url, { headers: await authHeaders() });
+interface UploadedFile {
+  file_id: string;
+  name: string;
+  path: string;
+  mime_type: string;
+  size_bytes: number;
+}
+
+interface LocalFile {
+  uri: string;
+  name: string;
+  mimeType: string;
+}
+
+/** Uploads a local file into the chat's folder. Throws an ApiError holding the server's detail. */
+export async function uploadSessionFile(sessionID: string, file: LocalFile) {
+  const url = apiUrl("/api/workspace/files/upload", { session_id: sessionID });
+  // A fresh body per request: React Native reads the file as it sends.
+  const response = await fetchWithFreshToken(url, () => {
+    const body = new FormData();
+    // React Native's FormData takes a file by its URI.
+    body.append("file", {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType,
+    } as unknown as Blob);
+    return { method: "POST", body };
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, await readDetail(response));
+  }
+  return (await response.json()) as UploadedFile;
+}
+
+async function readDetail(response: Response) {
+  try {
+    const data = (await response.json()) as { detail?: unknown };
+    if (typeof data.detail === "string") return data.detail;
+  } catch {
+    // Not JSON: no detail to read.
+  }
+  return "";
+}
+
+async function fetchWithFreshToken(
+  url: string,
+  init: () => RequestInit = () => ({}),
+) {
+  let response = await fetch(url, { ...init(), headers: await authHeaders() });
   // Same as apiRequest: one retry with a fresh token before the session counts as gone.
   if (response.status === 401) {
     clearAccessToken();
-    response = await fetch(url, { headers: await authHeaders() });
+    response = await fetch(url, { ...init(), headers: await authHeaders() });
   }
   return response;
 }

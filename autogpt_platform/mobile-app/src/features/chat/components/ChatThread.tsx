@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Platform, Text } from "react-native";
 import type { SessionDetail } from "@/lib/api/chat";
 import { createStyles, spacing, type } from "@/lib/theme";
 
+import { useAttachments } from "../useAttachments";
 import { useChatThread } from "../useChatThread";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
@@ -24,7 +25,19 @@ export function ChatThread({ sessionID, detail }: Props) {
     isLoadingEarlier,
     loadEarlier,
   } = useChatThread({ sessionID, detail });
+  const files = useAttachments(sessionID);
   const styles = useStyles();
+  const line = files.message ?? errorMessage;
+
+  function handleSend(text: string) {
+    const isSent = send(text, files.readyFiles);
+    if (isSent) files.clear();
+    return isSent;
+  }
+
+  function handleAttach() {
+    void files.attach();
+  }
 
   function handleStop() {
     void stop();
@@ -46,8 +59,16 @@ export function ChatThread({ sessionID, detail }: Props) {
         isLoadingEarlier={isLoadingEarlier}
         onLoadEarlier={handleLoadEarlier}
       />
-      {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-      <Composer onSend={send} onStop={handleStop} isBusy={isBusy} />
+      {line ? <Text style={styles.error}>{line}</Text> : null}
+      <Composer
+        onSend={handleSend}
+        onStop={handleStop}
+        isBusy={isBusy}
+        onAttach={handleAttach}
+        attachments={files.attachments}
+        onRemoveAttachment={files.remove}
+        onRetryAttachment={files.retry}
+      />
     </KeyboardAvoidingView>
   );
 }

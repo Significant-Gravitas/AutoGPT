@@ -6,6 +6,7 @@ import { apiUrl, authHeaders } from "@/lib/api/client";
 import { SignedOutError } from "@/lib/auth/errors";
 import { clearAccessToken } from "@/lib/auth/token";
 
+import { messageFiles } from "./attachmentHelpers";
 import { OFFLINE_MESSAGE, statusMessage } from "./chatErrors";
 
 /** Points the AI SDK at the backend's stream route, like the web app does. */
@@ -33,11 +34,13 @@ function streamRequestBody(last: UIMessage | undefined) {
   const text = (last?.parts ?? [])
     .map((part) => (part.type === "text" ? part.text : ""))
     .join("");
+  const { fileIDs } = messageFiles(last?.metadata);
   return {
     message: text,
     is_user_message: true,
     // One id per send, so a retransmit never starts a second turn.
     message_id: Crypto.randomUUID(),
+    ...(fileIDs.length ? { file_ids: fileIDs } : {}),
   };
 }
 
