@@ -1,10 +1,12 @@
-"""One-click unsubscribe, answered through the app's own error handlers."""
+"""The unsubscribe link and the one-click unsubscribe, answered through the
+app's own error handlers."""
 
 import base64
 import uuid
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from unittest.mock import AsyncMock
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import fastapi
 import fastapi.testclient
@@ -52,6 +54,8 @@ def test_a_valid_token_unsubscribes_its_user(
     response = _unsubscribe(_token_for(user_id))
 
     assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+    assert response.json() == {"status": "ok"}
     update.assert_awaited_once()
     assert update.await_args.kwargs["where"] == {"id": user_id}
     assert (
@@ -115,6 +119,48 @@ def test_a_user_deleted_before_the_update_is_refused_like_a_forged_one(
     assert user_id not in response.text and token not in response.text
 
 
+def test_a_click_on_the_email_link_asks_before_unsubscribing(
+    lookup: AsyncMock, update: AsyncMock, user_id: str
+):
+    page = client.get(_link_path(user_id), headers=_BROWSER)
+
+    assert page.status_code == 200
+    assert page.headers["content-type"].startswith("text/html")
+    assert "form-action 'self'" in page.headers["content-security-policy"]
+    update.assert_not_awaited()
+
+    form = _form_on(page.text)
+    assert form.get("method") == "post"
+    done = client.post(
+        urljoin(str(page.url), form.get("action") or ""), headers=_BROWSER
+    )
+
+    assert done.status_code == 200
+    assert done.headers["content-type"].startswith("text/html")
+    assert "unsubscribed" in done.text
+    update.assert_awaited_once()
+    assert update.await_args.kwargs["where"] == {"id": user_id}
+
+
+_FORGED = base64.urlsafe_b64encode(b"user-1:not-its-signature").decode()
+
+
+@pytest.mark.parametrize(
+    "method,params",
+    [("GET", {"token": _FORGED}), ("POST", {"token": _FORGED}), ("GET", {})],
+    ids=["forged-get", "forged-post", "no-token-get"],
+)
+def test_a_broken_link_shows_a_page_that_says_so(
+    method: str, params: dict[str, str], lookup: AsyncMock, update: AsyncMock
+):
+    response = client.request(method, "/unsubscribe", params=params, headers=_BROWSER)
+
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("text/html")
+    assert _FORGED not in response.text
+    update.assert_not_awaited()
+
+
 def test_a_database_failure_stays_a_server_error(
     lookup: AsyncMock, update: AsyncMock, user_id: str
 ):
@@ -127,6 +173,26 @@ def test_a_database_failure_stays_a_server_error(
 
 def _unsubscribe(token: str):
     return client.post("/unsubscribe", params={"token": token})
+
+
+_BROWSER = {"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"}
+
+
+def _link_path(user_id: str) -> str:
+    return "/unsubscribe?" + urlparse(generate_unsubscribe_link(user_id)).query
+
+
+def _form_on(page: str) -> dict[str, str | None]:
+    forms: list[dict[str, str | None]] = []
+
+    class _Forms(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            if tag == "form":
+                forms.append(dict(attrs))
+
+    _Forms().feed(page)
+    assert len(forms) == 1, forms
+    return forms[0]
 
 
 def _token_for(user_id: str) -> str:
