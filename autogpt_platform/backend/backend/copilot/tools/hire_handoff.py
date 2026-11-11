@@ -1,10 +1,11 @@
 """Start the task a new hire was approved for, in the same confirm.
 
-A hire Otto proposes for a task the user already described carries that task
-(``hire_expert``'s ``handoff_title`` / ``handoff_task``), and its card asks
-Hire and start or Not now. Without this the approval only hired:
-the model then asked in prose whether to hand the task over, and the user had
-to type a second answer to something they had just approved (SECRT-3138).
+A hire or new expert Otto proposes for a task the user already described
+carries that task (``handoff_title`` / ``handoff_task`` on ``hire_expert`` and
+``raise_expert``), and its card asks Hire (or Create) and start, or Not now.
+Without this the approval only hired: the model then asked in prose whether
+to hand the task over, and the user had to type a second answer to something
+they had just approved (SECRT-3138, SECRT-3401 for created experts).
 
 Confirming the hand-off id hires and then runs the task as a normal
 ``delegate_to_expert`` from this chat (``open_delegation_thread`` and
@@ -35,8 +36,8 @@ from .delegate_to_expert import (
     paused_refusal,
     run_delegated_turn,
 )
-from .expert_delegation import chain_refusal, resolve_target_expert
-from .expert_proposal import hire_message
+from .expert_change_messages import joined_verb
+from .expert_delegation import chain_refusal, is_first_task, resolve_target_expert
 from .models import (
     ExpertChangeAppliedResponse,
     ExpertHandoffOutcome,
@@ -73,6 +74,8 @@ async def hand_off_to_new_hire(
     expert = applied.expert
     try:
         target = await _target(user_id, session, expert.id)
+        # A re-hire comes back with the chats it already had.
+        first_task = await is_first_task(user_id, target.id)
         thread = await open_delegation_thread(user_id, session, target)
     except _NotStarted as e:
         return _report(applied, task, "failed", None, e.reason, e.retry)
@@ -88,6 +91,7 @@ async def hand_off_to_new_hire(
             prompt=task.brief,
             opened_here=True,
             wait_for_result=0,
+            first_task=first_task,
         )
     except TurnNotDispatched:
         logger.warning("Hand-off to a new hire was not sent", exc_info=True)
@@ -106,18 +110,23 @@ async def hand_off_to_new_hire(
 def with_hire_only(
     applied: ExpertChangeAppliedResponse, task: ExpertHandoffTask
 ) -> ExpertChangeAppliedResponse:
-    """The plain hire id was confirmed for a hire proposed with a task: the
-    user asked in chat to hire without starting it (the card itself offers
-    only Hire and start or Not now)."""
+    """The plain id was confirmed for a hire or new expert proposed with a
+    task: the user asked in chat to add them without starting it (the card
+    itself offers only Hire/Create and start, or Not now)."""
+    only = "hire only" if _kind(applied) == "hire" else "create only"
     return applied.model_copy(
         update={
             "message": (
-                f"{hire_message(applied.expert.name)} The user chose hire only, "
-                f"without handing over {task.title}: don't hand it over, and "
-                "don't ask about it unless they bring it up."
+                f"{applied.message} The user chose {only}, without handing "
+                f"over {task.title}: don't hand it over, and don't ask about it "
+                "unless they bring it up."
             )
         }
     )
+
+
+def _kind(applied: ExpertChangeAppliedResponse) -> Literal["hire", "raise"]:
+    return "raise" if applied.kind == "raise" else "hire"
 
 
 async def _target(user_id: str, session: ChatSession, expert_id: str) -> Expert:
@@ -141,11 +150,12 @@ def _report(
     retry: bool = False,
 ) -> ExpertChangeAppliedResponse:
     expert = applied.expert
+    kind = _kind(applied)
     link = _sub_session_link(thread)
     if status == "failed":
-        message = _failed_message(expert.name, task, reason, retry)
+        message = _failed_message(kind, expert.name, task, reason, retry)
     else:
-        message = _sent_message(status, expert.name, task, thread or "", link)
+        message = _sent_message(status, kind, expert.name, task, thread or "", link)
     return applied.model_copy(
         update={
             "message": message,
@@ -162,15 +172,17 @@ def _report(
 
 def _sent_message(
     status: Literal["sent", "queued", "unconfirmed"],
+    kind: Literal["hire", "raise"],
     name: str,
     task: ExpertHandoffTask,
     thread: str,
     link: str | None,
 ) -> str:
     where = f"their own chat at {link}"
+    joined = joined_verb(kind)
     if status == "unconfirmed":
         return (
-            f"{name} is hired. {task.title} was sent to {where}, but whether it "
+            f"{name} is {joined}. {task.title} was sent to {where}, but whether it "
             "started could not be confirmed. Check it with "
             f"tool:get_sub_session_result (sub_session_id: {thread}) before "
             "anything else, and don't hand it over again: it may already be "
@@ -182,29 +194,42 @@ def _sent_message(
         else f"{task.title} is waiting in {where} for one of the user's task "
         "slots to free"
     )
+    installing = (
+        " Their workflows and skills finish installing in the background."
+        if kind == "hire"
+        else ""
+    )
     return (
-        f"{name} is hired and {state}. Tell the user in one short line that "
+        f"{name} is {joined} and {state}. Tell the user in one short line that "
         f"it is with {name} and where to follow along. Don't ask whether to hand "
         "it over: they chose that on the card. Nothing sends their result back "
         "to this chat: read it with tool:get_sub_session_result "
-        f"(sub_session_id: {thread}) when you need it. Their workflows and "
-        "skills finish installing in the background."
+        f"(sub_session_id: {thread}) when you need it.{installing}"
     )
 
 
 def _failed_message(
-    name: str, task: ExpertHandoffTask, reason: str, retry: bool
+    kind: Literal["hire", "raise"],
+    name: str,
+    task: ExpertHandoffTask,
+    reason: str,
+    retry: bool,
 ) -> str:
-    lead = f"{name} is hired and on the team, but {task.title} did not reach them: "
+    lead = (
+        f"{name} is {joined_verb(kind)} and on the team, but {task.title} did "
+        f"not reach them: {reason} "
+    )
+    # The card links no chat for a task that didn't start.
+    nowhere = f"Never tell the user to open or look for a chat with {name}."
     if not retry:
         return (
-            f"{lead}{reason} Tell the user why in one short line, and don't ask "
-            "them again whether to hand it over."
+            f"{lead}Tell the user why in one short line, and don't ask them "
+            f"again whether to hand it over. {nowhere}"
         )
     # One retry path: the card's Try again. Otto re-sending it too could
     # start the task twice.
     return (
-        f"{lead}{reason} Nothing reached them, so it can be sent again: tell "
-        "the user in one short line that it didn't start and that Try again on "
-        "the card sends it. Don't hand it over yourself, so it can't start twice."
+        f"{lead}Nothing reached them, so it can be sent again: tell the user "
+        "in one short line that it didn't start and that Try again on the card "
+        f"sends it. Don't hand it over yourself, so it can't start twice. {nowhere}"
     )
