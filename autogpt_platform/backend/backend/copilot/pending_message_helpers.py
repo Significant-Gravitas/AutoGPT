@@ -719,7 +719,7 @@ async def persist_pending_as_user_rows(
             )
         except Exception:
             logger.exception(
-                "%s Failed to recover interrupted pending persistence", log_prefix
+                f"{log_prefix} Failed to recover interrupted pending persistence"
             )
         if on_rollback is not None:
             on_rollback(session_anchor)

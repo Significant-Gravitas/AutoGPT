@@ -46,7 +46,7 @@ async def require_active_auth_session(payload: dict[str, Any]) -> None:
     except HTTPException:
         raise
     except Exception as exc:
-        logger.warning("Auth session lookup unavailable (%s)", type(exc).__name__)
+        logger.warning(f"Auth session lookup unavailable ({type(exc).__name__})")
         raise HTTPException(
             status_code=503,
             detail="Authentication service unavailable, retry shortly",

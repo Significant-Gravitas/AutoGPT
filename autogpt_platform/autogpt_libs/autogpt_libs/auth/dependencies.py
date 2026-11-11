@@ -254,11 +254,12 @@ async def get_user_id_allowing_closed(
     """``get_user_id`` that still resolves a closed or a banned account.
 
     Only for the account deletion routes: a repeat request for an account
-    already closed still answers, its owner can see when it will be erased and
-    reopen it, and a banned person can still delete their account (a legal
-    right; the ban stays, so they can never sign in to reopen it). A closed
-    account is never self-healed: that would re-create the User row its
-    erasure removes.
+    already closed still answers, and its owner can see when it will be erased
+    and reopen it. A closed account is never self-healed: that would re-create
+    the User row its erasure removes. A session-bound token for a banned
+    account never reaches this dependency: a ban ends every session, so the
+    session check answers it with 403 ``account_banned`` first, as on every
+    other authenticated route.
     """
     return await _resolve_user_id(request, jwt_payload, allow_closed=True)
 
