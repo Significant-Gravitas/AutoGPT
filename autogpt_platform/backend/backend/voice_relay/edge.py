@@ -1,20 +1,21 @@
-"""The LiveKit leg: a call's audio through a LiveKit Cloud room.
+"""A call's audio, through the call's LiveKit room.
 
 The person's browser joins the call's room before it starts the call, and the
 relay joins the same room as Otto once the call starts (``rooms``). The relay
 hears one track, the person's microphone: it subscribes to that publication
 alone, at 16 kHz mono, which the SDK resamples to, and hands it to the call in
-the frames the browser sends on the socket leg. It publishes Otto's speech
-from a 24 kHz source, which plays it out at real time, as it arrives; when the
-person talks over Otto, what has not played yet is dropped. The control
-socket stays open beside the room and carries everything else, so this leg
-changes only where the audio travels.
+frames of ``FRAME_S``. It publishes Otto's speech from a 24 kHz source, which
+plays it out at real time, as it arrives; when the person talks over Otto,
+what has not played yet is dropped. The control socket stays open beside the
+room and carries everything else.
 
 The person's microphone can leave the room and come back, as LiveKit's own
 reconnect does; the call is told each time (``presence``). While it is muted,
 or a connection is getting back on its feet, the call is told its audio has
-stalled (``stall``). When the call ends, what Otto still has to say plays out,
-and the relay leaves.
+stalled (``stall``). The relay's own connection to the room, lost past the
+SDK's reconnect, is the call's audio gone: the call is told at once
+(``lost``). When the call ends, what Otto still has to say plays out, and the
+relay leaves.
 
 The SDK's connect always runs to its end, even when the join gives up on it
 at its deadline or because the call ended first: the room it makes is left
@@ -49,7 +50,6 @@ from backend.voice_relay.metering import (
     LIVEKIT_DROPPED_BYTES,
     LIVEKIT_PARTICIPANT_SECONDS,
 )
-from backend.voice_relay.tokens import Leg
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,8 @@ Hear = Callable[[bytes], Awaitable[None]]
 Presence = Callable[[bool], None]
 # Whether the person's audio has stopped for now while they stay in the room.
 Stall = Callable[[bool], None]
+# The relay's own connection to the room is gone past the SDK's reconnect.
+Lost = Callable[[], None]
 
 _FRAME_BYTES = round(IN_RATE * FRAME_S) * 2
 _FRAME_MS = round(FRAME_S * 1000)
@@ -119,6 +121,7 @@ class LiveKitEdge:
         hear: Hear,
         presence: Presence,
         stall: Stall,
+        lost: Lost,
     ) -> "RoomLeg":
         """Join call *call_id*'s room as Otto, for at most *ttl_s*.
 
@@ -128,10 +131,11 @@ class LiveKitEdge:
         token = rooms.relay_token(call_id=call_id, project=self._project, ttl_s=ttl_s)
         leg = RoomLeg(
             media=self._media,
-            person=rooms.person_identity(user_id),
+            person=rooms.person_identity(user_id, call_id),
             hear=hear,
             presence=presence,
             stall=stall,
+            lost=lost,
             on_left=self._legs.discard,
             clock=self._clock,
         )
@@ -147,10 +151,7 @@ class LiveKitEdge:
 
 
 class RoomLeg:
-    """One call's audio through its room: the call's ``AudioLeg`` on the
-    LiveKit leg."""
-
-    kind: Leg = "livekit"
+    """One call's audio through its room: the call's ``AudioLeg``."""
 
     def __init__(
         self,
@@ -160,6 +161,7 @@ class RoomLeg:
         hear: Hear,
         presence: Presence,
         stall: Stall,
+        lost: Lost,
         on_left: Callable[["RoomLeg"], None],
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -168,6 +170,7 @@ class RoomLeg:
         self._hear = hear
         self._presence = presence
         self._stall = stall
+        self._lost = lost
         self._on_left = on_left
         self._clock = clock
         self._room: rtc.Room | None = None
@@ -393,6 +396,7 @@ class RoomLeg:
         if not self._leaving:
             logger.warning(f"Voice call: the relay lost its room ({reason})")
             self._person_left()
+            self._lost()
 
     def _is_the_microphone(self, publication: rtc.TrackPublication) -> bool:
         current = self._publication
@@ -506,8 +510,7 @@ class RoomLeg:
         if not usable or self._leaving or self._source is None:
             return
         # Past the queue's length the oldest speech waiting is dropped, so
-        # the room keeps to Otto's newest words, as the socket leg's player
-        # does.
+        # the room keeps to Otto's newest words.
         if len(usable) > self._max_queued_bytes:
             self._drop(len(usable) - self._max_queued_bytes)
             usable = usable[-self._max_queued_bytes :]

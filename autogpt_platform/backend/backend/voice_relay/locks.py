@@ -9,7 +9,7 @@ production Redis cluster unchanged:
   holds. It is honoured only while its call runs (:func:`call_is_live`), so a
   dead pod's call holds nobody back once its pod stops refreshing it.
 - ``voice:call:<call id>``, a hash, is the call's record for a day: its owner,
-  pod, leg and status, how it ended, where Otto's turns ended in the
+  pod and status, how it ended, where Otto's turns ended in the
   recording, the transcript of record, what the hand-off answered, and whether
   the call's words took the person's interview or their typing superseded
   them (:class:`CallRecord`, :func:`claim_interview`).
@@ -33,8 +33,11 @@ production Redis cluster unchanged:
   closed, when, and when the person's tokens were revoked again after that
   (:class:`RoomEntry`). ``voice:rooms:swept`` is the relay's heartbeat,
   written by each sweep of the registry that closed all it had to, and the
-  REST API puts a call on the LiveKit leg only while it is there
-  (``room_reaper``).
+  REST API starts a call only while it is there (``room_reaper``).
+
+The person's call allowance is counted on its own keys
+(``onboarding_dump.rate_limit``): the REST API reads it, and the call counts
+itself once its model session opens (:meth:`CallStore.count_call`).
 """
 
 import asyncio
@@ -54,6 +57,7 @@ from backend.api.features.onboarding_dump.models import (
     VoiceCallInterview,
     VoiceCallStatus,
 )
+from backend.api.features.onboarding_dump.rate_limit import count_voice_call
 from backend.data.redis_client import AsyncRedisClient
 from backend.data.redis_helpers import (
     SlotAdmission,
@@ -455,7 +459,6 @@ class CallRecord(BaseModel):
     call_id: str
     uid: str = ""
     status: CallStatus | None = None
-    leg: str = "websocket"
     # When the call started, in seconds since the epoch.
     started: float | None = None
     end_reason: str | None = None
@@ -731,6 +734,19 @@ async def register_room(
     )
 
 
+async def room_owner(redis: AsyncRedisClient, call_id: str) -> str | None:
+    """The person *call_id*'s room is registered to, or None when it has no
+    entry, or one that cannot be read."""
+    raw = as_str(await redis.hget(ROOMS_KEY, call_id))
+    if raw is None:
+        return None
+    try:
+        return str(json.loads(raw)["uid"]) or None
+    except (ValueError, KeyError, TypeError):
+        logger.warning(f"Voice room {call_id}: registry entry unreadable")
+        return None
+
+
 async def mark_room_closed(
     redis: AsyncRedisClient, call_id: str, user_id: str, closed_at: float
 ) -> None:
@@ -950,6 +966,11 @@ class CallStore:
         return bool(
             await self._bounded("end flag", end_requested(self.redis, self.call_id))
         )
+
+    async def count_call(self) -> None:
+        """Count the call against the person's call allowance, once its model
+        session has opened: the first moment it costs anything."""
+        await self._bounded("allowance", count_voice_call(self.redis, self.user_id))
 
     async def release(self) -> None:
         """Free the user's lock and stop counting the call as live. Idempotent."""

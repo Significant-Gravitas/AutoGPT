@@ -1,12 +1,11 @@
 """The voice relay's web app: the call socket and the probes.
 
-- ``WS /voice/call`` takes ``start {token, leg}`` or ``resume {ticket}`` as
-  its first message, within ``START_TIMEOUT_S``, then runs the call or
-  re-attaches to it (``session``). The token rides the first message, never
-  the URL, so it stays out of load balancer logs. The browser's origin must
-  be one the platform allows (``BACKEND_CORS_ALLOW_ORIGINS``). The token
-  names the call's leg; the start's ``leg`` may take a LiveKit call onto the
-  socket (the browser could not join the room), never the other way.
+- ``WS /voice/call`` takes ``start {token}`` or ``resume {ticket}`` as its
+  first message, within ``START_TIMEOUT_S``, then runs the call or re-attaches
+  to it (``session``). The token rides the first message, never the URL, so it
+  stays out of load balancer logs. The browser's origin must be one the
+  platform allows (``BACKEND_CORS_ALLOW_ORIGINS``). The socket carries the
+  call's control; its audio travels through the call's LiveKit room.
 - ``GET /healthz`` is liveness. ``GET /readyz`` is readiness, which fails
   while the process drains, so the load balancer sends it no new calls, and
   while it could not record a call: its spool directory takes no writes.
@@ -16,9 +15,9 @@ and the relay hold the key that signs it; it reads no platform session.
 
 Once a call ends, its transcript job runs here too (``postcall``), and the
 process sweeps for calls no pod is transcribing when it starts and every
-``POSTCALL_SWEEP_S``. The REST API hands each transcript off. With a LiveKit
-project, the process also sweeps the call rooms every ``ROOM_SWEEP_S`` and
-closes the ones no call needs (``room_reaper``). As it starts it deletes the
+``POSTCALL_SWEEP_S``. The REST API hands each transcript off. The process
+also sweeps the call rooms every ``ROOM_SWEEP_S`` and closes the ones no call
+needs (``room_reaper``). As it starts it deletes the
 spools a call of an earlier process left; as it stops, its post-call jobs
 settle before its services close, so each gives up its claim while Redis
 still answers.
@@ -50,7 +49,7 @@ from backend.voice_relay.config import (
     Caps,
     Timing,
 )
-from backend.voice_relay.metering import FALLBACKS, LIVE_CALLS, CallMeter, CostSink
+from backend.voice_relay.metering import LIVE_CALLS, CallMeter, CostSink
 from backend.voice_relay.postcall import PostCall
 from backend.voice_relay.record import (
     CallRecording,
@@ -103,13 +102,12 @@ class RelayDeps(BaseModel):
     spool_dir: str
     # A spool older than this is no live call's: the call cap and the drain.
     spool_stale_s: float = CAPS.max_call_s + DEFAULT_DRAIN_S
+    # Joins the calls' rooms, which carry their audio.
+    edge: RoomEdge
+    # Closes the calls' rooms, and sweeps for the ones left open.
+    reaper: RoomReaper
     # Where priced rows go; None logs them to PlatformCostLog.
     cost_sink: CostSink | None = None
-    # Joins the rooms of calls on the LiveKit leg, and closes and sweeps
-    # them; None where this relay has no LiveKit project, so such calls take
-    # the socket.
-    edge: RoomEdge | None = None
-    reaper: RoomReaper | None = None
     caps: Caps = CAPS
     timing: Timing = TIMING
 
@@ -185,9 +183,7 @@ class Relay:
         if deps is None:
             return False
         return (
-            bool(deps.postcall.jobs)
-            or (deps.edge is not None and deps.edge.rooms > 0)
-            or (deps.reaper is not None and deps.reaper.closing > 0)
+            bool(deps.postcall.jobs) or deps.edge.rooms > 0 or deps.reaper.closing > 0
         )
 
     def reserve_slot(self) -> CallSlot | None:
@@ -267,12 +263,9 @@ async def _sweeping(relay: Relay) -> AsyncIterator[None]:
         return
     await asyncio.to_thread(remove_stale_spools, deps.spool_dir, deps.spool_stale_s)
     sweeps = [
-        asyncio.create_task(deps.postcall.sweep_forever(), name="voice-postcall-sweep")
+        asyncio.create_task(deps.postcall.sweep_forever(), name="voice-postcall-sweep"),
+        asyncio.create_task(deps.reaper.sweep_forever(), name="voice-room-sweep"),
     ]
-    if deps.reaper is not None:
-        sweeps.append(
-            asyncio.create_task(deps.reaper.sweep_forever(), name="voice-room-sweep")
-        )
     try:
         yield
     finally:
@@ -363,10 +356,6 @@ async def _start_call(
     except tokens.TokenError as error:
         await _refuse(ws, str(error), CLOSE_POLICY)
         return
-    leg = leg_of(claims.leg, first.get("leg"))
-    if leg is None:
-        await _refuse(ws, "protocol", CLOSE_POLICY)
-        return
     try:
         redis = await asyncio.wait_for(deps.redis(), timeout=locks.REDIS_TIMEOUT_S)
         await asyncio.wait_for(
@@ -419,26 +408,23 @@ async def _start_call(
         session = Session(
             call_id=claims.call_id,
             user_id=claims.user_id,
-            leg=leg,
             ws=ws,
             vendor=deps.vendor,
             store=store,
             meter=CallMeter(
                 user_id=claims.user_id,
                 call_id=claims.call_id,
-                leg=leg,
                 model=deps.live_model,
                 redis=redis,
                 sink=deps.cost_sink,
             ),
             classifier=deps.classifier,
+            edge=deps.edge,
             first_name=await _first_name(deps, claims.user_id),
             caps=deps.caps,
             timing=deps.timing,
             started=started,
             on_end=lambda: _hand_over(deps, slot, session),
-            edge=deps.edge,
-            token_leg=claims.leg,
             reaper=deps.reaper,
         )
         if not slot.hold(session):
@@ -463,32 +449,13 @@ async def _start_call(
         await store.record(
             status="connecting",
             pod=relay.pod,
-            leg=leg,
             started=round(time.time(), 3),
             ending=claims.ending,
         )
-        if leg != claims.leg:
-            # The browser could not join the room, and said so in its start.
-            FALLBACKS.labels(claims.leg, "browser_join").inc()
-            logger.info(
-                f"Voice call {claims.call_id}: the browser's audio takes the socket"
-            )
         await session.run()
     finally:
         if owns_state:
             await store.release()
-
-
-def leg_of(token_leg: tokens.Leg, asked: object) -> tokens.Leg | None:
-    """The leg a start runs on: its token's, or the socket where the browser
-    takes a LiveKit call there. None for any other ask, a LiveKit leg the
-    token does not name included: the token, signed under the edge flag, is
-    the only way onto a room."""
-    if asked is None or asked == token_leg:
-        return token_leg
-    if asked == "websocket":
-        return "websocket"
-    return None
 
 
 async def _admit(

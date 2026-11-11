@@ -1,6 +1,6 @@
-"""The LiveKit leg's room, against fakes of the SDK's room, source and
-stream: what the relay joins and subscribes to, what it hears and plays, and
-how it leaves, including a room whose connect lands after the join gave up."""
+"""A call's room, against fakes of the SDK's room, source and stream: what
+the relay joins and subscribes to, what it hears and plays, and how it
+leaves, including a room whose connect lands after the join gave up."""
 
 import asyncio
 
@@ -8,7 +8,7 @@ import pytest
 from livekit import rtc
 from prometheus_client import REGISTRY
 
-from backend.voice_relay import edge
+from backend.voice_relay import edge, rooms
 from backend.voice_relay.config import (
     IN_RATE,
     OUT_RATE,
@@ -20,7 +20,7 @@ from backend.voice_relay.conftest import LIVEKIT, FakeMedia, livekit_edge, until
 from backend.voice_relay.edge import RoomLeg, RoomMedia
 
 CALL_ID = "e" * 32
-PERSON = "user:user-1"
+PERSON = rooms.person_identity("user-1", CALL_ID)
 # 10 ms of the person's audio, and the call's 40 ms frame.
 TEN_MS = bytes(range(256)) + bytes(64)
 FRAME_BYTES = 1280
@@ -33,9 +33,13 @@ class Listener:
         self.heard: list[bytes] = []
         self.presence: list[bool] = []
         self.stalls: list[bool] = []
+        self.losses = 0
 
     async def hear(self, pcm: bytes) -> None:
         self.heard.append(pcm)
+
+    def lost(self) -> None:
+        self.losses += 1
 
     def join(self, room_edge: edge.LiveKitEdge, *, user_id: str = "user-1"):
         return room_edge.join(
@@ -45,6 +49,7 @@ class Listener:
             hear=self.hear,
             presence=self.presence.append,
             stall=self.stalls.append,
+            lost=self.lost,
         )
 
 
@@ -59,6 +64,7 @@ class Joined:
         self.media = media
         self.leg = leg
         self.edge = room_edge
+        self.listener = listener
         self.heard = listener.heard
         self.presence = listener.presence
         self.stalls = listener.stalls
@@ -162,7 +168,7 @@ async def test_the_persons_audio_reaches_the_call_in_forty_millisecond_frames():
 
 
 async def test_the_persons_microphone_published_after_the_join_is_heard():
-    joined = await join(FakeMedia(person=None), hearing=False)
+    joined = await join(FakeMedia(user=None), hearing=False)
     assert joined.presence == []
 
     joined.room.add_microphone(PERSON)
@@ -196,6 +202,28 @@ async def test_the_call_is_told_when_the_persons_microphone_leaves_the_room(leav
     await until(lambda: joined.media.streams[track_sid].closed)
     await joined.leg.close(play_out=False)
     assert joined.presence == [True, False]
+    # Only the relay's own connection gone is the call's room lost.
+    assert joined.listener.losses == (1 if leaves == "room_lost" else 0)
+
+
+async def test_the_person_under_another_calls_identity_is_not_heard():
+    joined = await join(FakeMedia(user=None), hearing=False)
+
+    other = joined.room.publish(rooms.person_identity("user-1", "f" * 32))
+    await asyncio.sleep(0.05)
+
+    assert other.subscribe_calls == []
+    assert joined.presence == []
+    await joined.leg.close(play_out=False)
+
+
+async def test_leaving_the_room_is_never_the_room_lost():
+    joined = await join(FakeMedia())
+
+    await joined.leg.close(play_out=False)
+
+    assert joined.room.left
+    assert joined.listener.losses == 0
 
 
 async def test_a_microphone_that_can_no_longer_be_read_counts_as_the_person_gone():

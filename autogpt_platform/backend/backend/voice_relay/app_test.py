@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from prometheus_client import REGISTRY
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
@@ -20,9 +19,11 @@ from backend.voice_relay.config import CAPS, DEFAULT_DRAIN_S
 from backend.voice_relay.conftest import (
     ORIGIN,
     FakeMedia,
+    FakeRoomService,
     MemoryRecordings,
     ScriptedTranscriber,
     livekit_edge,
+    room_reaper,
     running_relay,
     silence,
     speech,
@@ -59,7 +60,7 @@ async def read_until(ws: ClientConnection, kind: str) -> dict:
 
 def start(user: str = USER, call_id: str | None = None) -> dict:
     call_id = call_id or tokens.new_call_id()
-    return {"type": "start", "token": tokens.mint_start(user, call_id, "websocket")}
+    return {"type": "start", "token": tokens.mint_start(user, call_id)}
 
 
 @pytest.mark.parametrize(
@@ -121,7 +122,7 @@ async def test_a_token_is_good_for_one_call_only(redis):
 async def test_a_forged_token_is_refused(redis):
     async with running_relay(redis, FakeVendor()) as running:
         ws = await open_socket(running.url)
-        token = tokens.mint_start(USER, tokens.new_call_id(), "websocket")
+        token = tokens.mint_start(USER, tokens.new_call_id())
         await ws.send(json.dumps({"type": "start", "token": token[:-2] + "AA"}))
         assert await refusal(ws) == ({"type": "error", "error": "token_invalid"}, 1008)
 
@@ -660,8 +661,7 @@ async def test_a_calls_transcript_is_made_from_its_recording_once_it_ends(redis)
         await ws.send(json.dumps(start()))
         ready = await read_until(ws, "ready")
         await read_until(ws, "turn_complete")
-        for frame in speech(0.4):
-            await ws.send(frame)
+        (await running.media.hearing()).say(speech(0.4))
         ended = await read_until(ws, "ended")
         await running.postcalls_done()
 
@@ -683,7 +683,7 @@ async def test_a_calls_transcript_is_made_from_its_recording_once_it_ends(redis)
 
 async def test_a_call_carries_the_arm_its_token_named_onto_its_record(redis):
     call_id = tokens.new_call_id()
-    token = tokens.mint_start(USER, call_id, "websocket", ending="09-first-task")
+    token = tokens.mint_start(USER, call_id, ending="09-first-task")
     async with running_relay(redis, FakeVendor([Reply(text="Hi")])) as running:
         ws = await open_socket(running.url)
         await ws.send(json.dumps({"type": "start", "token": token}))
@@ -755,6 +755,8 @@ def _deps(redis, spool_dir, postcall: PostCall | None = None) -> RelayDeps:
             pod="pod-a",
         ),
         spool_dir=str(spool_dir),
+        edge=livekit_edge(FakeMedia()),
+        reaper=room_reaper(redis, FakeRoomService()),
     )
 
 
@@ -879,38 +881,19 @@ async def test_a_lock_that_keeps_changing_hands_lets_the_same_token_retry(redis)
         await read_until(again, "ended")
 
 
-# --- the LiveKit leg ---------------------------------------------------------
+# --- the call's room --------------------------------------------------------
 
 
-def start_on(leg: str, *, asked: str | None, call_id: str | None = None) -> dict:
-    """A start whose token names *leg*, asking for *asked*."""
-    call_id = call_id or tokens.new_call_id()
-    message = {"type": "start", "token": tokens.mint_start(USER, call_id, leg)}
-    if asked is not None:
-        message["leg"] = asked
-    return message
-
-
-def _fallbacks(why: str) -> float:
-    return (
-        REGISTRY.get_sample_value(
-            "voice_interview_fallbacks_total", {"from": "livekit", "why": why}
-        )
-        or 0.0
-    )
-
-
-async def test_a_livekit_call_runs_its_audio_through_the_room_and_events_on_the_socket(
+async def test_a_call_runs_its_audio_through_its_room_and_its_events_on_the_socket(
     redis,
 ):
-    media = FakeMedia()
     vendor = FakeVendor([Reply(text="Hi, I'm Otto, an AI.", audio_s=0.2)])
-    async with running_relay(redis, vendor, edge=livekit_edge(media)) as running:
+    async with running_relay(redis, vendor) as running:
+        media = running.media
         call_id = tokens.new_call_id()
         ws = await open_socket(running.url)
-        await ws.send(json.dumps(start_on("livekit", asked="livekit", call_id=call_id)))
-        ready = await read_until(ws, "ready")
-        assert ready["leg"] == "livekit"
+        await ws.send(json.dumps(start(call_id=call_id)))
+        await read_until(ws, "ready")
         await read_until(ws, "turn_complete")
         assert media.rooms[0].claims["video"]["room"] == f"voice-{call_id}"
         await until(lambda: len(media.sources[0].audio) == round(0.2 * 24_000) * 2)
@@ -927,63 +910,32 @@ async def test_a_livekit_call_runs_its_audio_through_the_room_and_events_on_the_
         await running.postcalls_done()
 
 
-async def test_a_browser_that_could_not_join_the_room_takes_the_call_onto_the_socket(
+async def test_a_call_whose_room_the_relay_cannot_join_ends_before_it_goes_live(
     redis,
 ):
-    media = FakeMedia()
-    before = _fallbacks("browser_join")
     vendor = FakeVendor([Reply(text="Hi", audio_s=0.1)])
-    async with running_relay(redis, vendor, edge=livekit_edge(media)) as running:
+    media = FakeMedia(refuse=ConnectionError("the room is full"))
+    async with running_relay(redis, vendor, media=media) as running:
         call_id = tokens.new_call_id()
         ws = await open_socket(running.url)
-        await ws.send(
-            json.dumps(start_on("livekit", asked="websocket", call_id=call_id))
-        )
-        ready = await read_until(ws, "ready")
-        assert ready["leg"] == "websocket"
-        audio = await asyncio.wait_for(ws.recv(), timeout=5)
-        while isinstance(audio, str):
-            audio = await asyncio.wait_for(ws.recv(), timeout=5)
-        assert isinstance(audio, bytes)
-        assert media.rooms == []
-        assert _fallbacks("browser_join") - before == 1
-        record = await locks.read_call(redis, call_id)
-        assert record is not None and record.leg == "websocket"
-        await ws.send(json.dumps({"type": "hangup"}))
-        await read_until(ws, "ended")
-
-
-async def test_a_start_cannot_take_a_socket_call_into_a_room(redis):
-    media = FakeMedia()
-    async with running_relay(redis, FakeVendor(), edge=livekit_edge(media)) as running:
-        ws = await open_socket(running.url)
-        await ws.send(json.dumps(start_on("websocket", asked="livekit")))
-        assert await refusal(ws) == ({"type": "error", "error": "protocol"}, 1008)
-        assert media.rooms == []
-
-
-@pytest.mark.parametrize("asked", [None, "websocket"], ids=["unsaid", "socket"])
-async def test_a_socket_call_stays_on_the_socket_whatever_its_start_says(redis, asked):
-    media = FakeMedia()
-    async with running_relay(
-        redis, FakeVendor([Reply(text="Hi")]), edge=livekit_edge(media)
-    ) as running:
-        ws = await open_socket(running.url)
-        await ws.send(json.dumps(start_on("websocket", asked=asked)))
-        assert (await read_until(ws, "ready"))["leg"] == "websocket"
-        assert media.rooms == []
-        await ws.send(json.dumps({"type": "hangup"}))
-        await read_until(ws, "ended")
+        await ws.send(json.dumps(start(call_id=call_id)))
+        ended = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+        assert (ended["type"], ended["reason"]) == ("ended", "room_error")
+        await running.postcalls_done()
+    record = await locks.read_call(redis, call_id)
+    assert record is not None and record.end_reason == "room_error"
+    # The person is free to call again, or to type.
+    assert await locks.live_call_of(redis, USER) is None
 
 
 async def test_the_relay_stays_busy_until_ottos_last_words_have_played_in_the_room(
     redis,
 ):
-    media = FakeMedia()
     vendor = FakeVendor([Reply(text="Hi", audio_s=0.1)])
-    async with running_relay(redis, vendor, edge=livekit_edge(media)) as running:
+    async with running_relay(redis, vendor) as running:
+        media = running.media
         ws = await open_socket(running.url)
-        await ws.send(json.dumps(start_on("livekit", asked="livekit")))
+        await ws.send(json.dumps(start()))
         await read_until(ws, "turn_complete")
         media.sources[0].playing = asyncio.Event()
         await ws.send(json.dumps({"type": "hangup"}))

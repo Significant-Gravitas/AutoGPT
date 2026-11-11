@@ -114,7 +114,7 @@ class DrainingServer(uvicorn.Server):
 
 @asynccontextmanager
 async def production_deps() -> AsyncIterator[RelayDeps]:
-    """The relay's services: Gemini, the database and Redis."""
+    """The relay's services: Gemini, LiveKit, the database and Redis."""
     settings = Settings()
     model = settings.config.voice_interview_model
     # A call is priced as it runs, so a model with no price cannot take one.
@@ -128,6 +128,7 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
             f"VOICE_RELAY_SIGNING_KEY is not set, or shorter than "
             f"{tokens.MIN_KEY_CHARS} characters"
         )
+    edge, reaper = _livekit(settings)
     await db.connect()
     await redis_client.get_redis_async()
     drain_s = settings.config.voice_relay_drain_max_s
@@ -136,7 +137,6 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
     # for its own.
     holder = f"{socket.gethostname()}:{uuid.uuid4().hex[:8]}"
     client = Client(api_key=settings.secrets.gemini_api_key)
-    edge, reaper = _livekit(settings)
     deps = RelayDeps(
         vendor=GeminiLive(
             client,
@@ -176,11 +176,10 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
     finally:
         price_watch.cancel()
         await drain_pending_cost_logs()
-        if reaper is not None:
-            try:
-                await reaper.aclose()
-            except Exception:
-                logger.warning("The LiveKit room service did not close", exc_info=True)
+        try:
+            await reaper.aclose()
+        except Exception:
+            logger.warning("The LiveKit room service did not close", exc_info=True)
         try:
             await redis_client.disconnect_async()
         except Exception:
@@ -191,14 +190,17 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
             logger.warning("The database did not disconnect cleanly", exc_info=True)
 
 
-def _livekit(settings: Settings) -> tuple[LiveKitEdge | None, RoomReaper | None]:
-    """The relay's way into call rooms, and what closes and sweeps them; or
-    neither without a LiveKit project, where the REST API puts every call on
-    the socket for want of the sweep's heartbeat."""
+def _livekit(settings: Settings) -> tuple[LiveKitEdge, RoomReaper]:
+    """The relay's way into call rooms, and what closes and sweeps them.
+
+    Raises without a LiveKit project: a call's audio has no other way.
+    """
     project = rooms.livekit_project(settings)
     if project is None:
-        logger.warning("No LiveKit project: every voice call's audio takes the socket")
-        return None, None
+        raise RuntimeError(
+            "No LiveKit project for the voice calls' audio: set LIVEKIT_URL, "
+            "LIVEKIT_API_KEY and LIVEKIT_API_SECRET"
+        )
     exclusive = settings.config.voice_livekit_project_exclusive
     if exclusive:
         logger.info(
@@ -256,8 +258,8 @@ def keep_frame_locals_out_of_sentry() -> None:
 
 
 class VoiceRelay(AppProcess):
-    # The REST API reads every flag a call needs: who may call, the leg, and
-    # the voice ending arm, which the start token carries to the call's record.
+    # The REST API reads every flag a call needs: who may call, and the voice
+    # ending arm, which the start token carries to the call's record.
     reads_feature_flags = False
 
     def run(self) -> None:

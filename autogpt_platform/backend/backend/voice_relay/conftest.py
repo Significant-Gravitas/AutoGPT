@@ -16,11 +16,12 @@ from livekit import api, rtc
 
 from backend.api.utils.cors import build_cors_params
 from backend.util.settings import AppEnvironment
-from backend.voice_relay import tokens
+from backend.voice_relay import rooms, tokens
 from backend.voice_relay.app import Relay, RelayDeps, create_app
 from backend.voice_relay.config import (
     CAPS,
     IN_RATE,
+    ROOM_PREFIX,
     TIMING,
     WS_MAX_MESSAGE_BYTES,
     Caps,
@@ -225,7 +226,9 @@ class FakeRoom:
         self.options: object = None
         self.connected = False
         self.left = False
-        self._tracks = 0
+        # The identity the person joined this call's room under, once the
+        # relay's connect names the call.
+        self.person: str | None = None
 
     def on(self, event: str, callback: Callable) -> Callable:
         self.handlers.setdefault(event, []).append(callback)
@@ -237,14 +240,17 @@ class FakeRoom:
 
     async def connect(self, url: str, token: str, options: object = None) -> None:
         self.url, self.token, self.options = url, token, options
+        call_id = self.claims["video"]["room"].removeprefix(ROOM_PREFIX)
+        if self.media.user is not None:
+            self.person = rooms.person_identity(self.media.user, call_id)
         if self.media.connect_gate is not None:
             await self.media.connect_gate.wait()
         if self.media.refuse is not None:
             raise self.media.refuse
         self.connected = True
-        if self.media.person is not None:
+        if self.person is not None:
             self.publish(
-                self.media.person,
+                self.person,
                 announce=False,
                 subscribed=self.media.subscribed_at_connect,
             )
@@ -278,14 +284,13 @@ class FakeRoom:
     ) -> FakePublication:
         """*identity* publishes a track; *announce* as the SDK does for one
         published after the relay joined."""
-        self._tracks += 1
         participant = self.remote_participants.setdefault(
             identity, FakeParticipant(identity)
         )
         publication = FakePublication(
             self,
             participant,
-            f"TR_{self._tracks}",
+            self.media.track_sid(),
             kind=kind,
             source=source,
             subscribed=subscribed,
@@ -333,6 +338,13 @@ class FakeRoom:
         """The relay's own connection to the room is gone."""
         self.emit("disconnected", rtc.DisconnectReason.SIGNAL_CLOSE)
 
+    def say(self, frames: Sequence[bytes]) -> None:
+        """The person speaks into their microphone in this room."""
+        assert self.person is not None
+        publication = self.microphone(self.person)
+        for frame in frames:
+            self.media.streams[publication.sid].push(frame)
+
     def microphone(self, identity: str) -> FakePublication:
         """*identity*'s latest microphone publication."""
         return [
@@ -351,12 +363,13 @@ class FakeMedia:
     def __init__(
         self,
         *,
-        person: str | None = "user:user-1",
+        user: str | None = "user-1",
         refuse: Exception | None = None,
         subscribed_at_connect: bool = False,
     ) -> None:
-        # Who is in each room the relay joins, with their microphone.
-        self.person = person
+        # Who is in each room the relay joins, with their microphone, under
+        # the identity of that room's call; None for nobody.
+        self.user = user
         # A join that is refused with this.
         self.refuse = refuse
         # The person's microphone already subscribed when the connect lands.
@@ -367,6 +380,12 @@ class FakeMedia:
         self.rooms: list[FakeRoom] = []
         self.sources: list[FakeAudioSource] = []
         self.streams: dict[str, FakeAudioStream] = {}
+        self._tracks = 0
+
+    def track_sid(self) -> str:
+        """A sid no other track in any of these rooms has."""
+        self._tracks += 1
+        return f"TR_{self._tracks}"
 
     def room(self) -> FakeRoom:
         room = FakeRoom(self)
@@ -394,6 +413,24 @@ class FakeMedia:
         stream = list(self.streams.values())[-1]
         for frame in frames:
             stream.push(frame)
+
+    @property
+    def otto(self) -> bytes:
+        """Everything Otto said in the latest room."""
+        return self.sources[-1].audio if self.sources else b""
+
+    async def hearing(self) -> FakeRoom:
+        """The latest room, once the relay reads the person's microphone in
+        it."""
+
+        def heard() -> bool:
+            room = self.rooms[-1] if self.rooms else None
+            if room is None or room.person not in room.remote_participants:
+                return False
+            return room.microphone(room.person).sid in self.streams
+
+        await until(heard)
+        return self.rooms[-1]
 
 
 def livekit_edge(media: FakeMedia, **options) -> LiveKitEdge:
@@ -543,9 +580,8 @@ class FakeSocket:
     def __init__(self) -> None:
         self.inbox: asyncio.Queue[dict] = asyncio.Queue()
         self.sent: list[dict] = []
-        self.audio: list[bytes] = []
-        # Everything sent, in order: ("text", its type) or ("bytes", its size).
-        self.log: list[tuple[str, object]] = []
+        # The type of everything sent, in order.
+        self.log: list[str] = []
         self.closed_with: int | None = None
         self.broken = False
         self._changed = asyncio.Event()
@@ -559,13 +595,7 @@ class FakeSocket:
         self._check()
         message = json.loads(data)
         self.sent.append(message)
-        self.log.append(("text", message["type"]))
-        self._notify()
-
-    async def send_bytes(self, data: bytes) -> None:
-        self._check()
-        self.audio.append(data)
-        self.log.append(("bytes", len(data)))
+        self.log.append(message["type"])
         self._notify()
 
     async def close(self, code: int = 1000, reason: str | None = None) -> None:
@@ -583,7 +613,7 @@ class FakeSocket:
     def send_raw_text(self, text: str) -> None:
         self.inbox.put_nowait({"type": "websocket.receive", "text": text})
 
-    def send_audio(self, frames: list[bytes]) -> None:
+    def send_binary(self, frames: list[bytes]) -> None:
         for frame in frames:
             self.inbox.put_nowait({"type": "websocket.receive", "bytes": frame})
 
@@ -626,6 +656,7 @@ class RunningRelay:
         serving: asyncio.Task,
         port: int,
         *,
+        media: FakeMedia,
         rows: list[Row],
         recorded: dict[str, str],
         postcall: PostCall,
@@ -635,6 +666,8 @@ class RunningRelay:
         self.server = server
         self.serving = serving
         self.port = port
+        # The calls' rooms, and what the person says and hears in them.
+        self.media = media
         self.rows = rows
         # The calls recorded on onboarding rows: user id -> call id.
         self.recorded = recorded
@@ -676,12 +709,13 @@ async def running_relay(
     max_concurrent: int = 25,
     transcriber: ScriptedTranscriber | None = None,
     redis_delay_s: float = 0.0,
-    edge: LiveKitEdge | None = None,
+    media: FakeMedia | None = None,
     reaper: RoomReaper | None = None,
 ) -> AsyncIterator[RunningRelay]:
-    """The relay app under a real uvicorn server on a free local port; with
-    *edge*, it joins the rooms of calls on the LiveKit leg, and with *reaper*
-    closes and sweeps them."""
+    """The relay app under a real uvicorn server on a free local port. Its
+    calls' rooms are *media*'s, and *reaper*, on a fake room service unless
+    given, closes and sweeps them."""
+    media = media or FakeMedia()
     rows: list[Row] = []
     recorded: dict[str, str] = {}
     recordings = MemoryRecordings()
@@ -738,8 +772,8 @@ async def running_relay(
             cost_sink=sink,
             caps=caps,
             timing=timing,
-            edge=edge,
-            reaper=reaper,
+            edge=livekit_edge(media),
+            reaper=reaper or room_reaper(redis, FakeRoomService()),
         ),
     )
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -766,6 +800,7 @@ async def running_relay(
         server,
         serving,
         listener.getsockname()[1],
+        media=media,
         rows=rows,
         recorded=recorded,
         postcall=postcall,

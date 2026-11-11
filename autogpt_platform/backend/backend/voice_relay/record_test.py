@@ -9,7 +9,13 @@ import pytest
 from pytest_mock import MockerFixture
 
 from backend.voice_relay import locks, tokens
-from backend.voice_relay.conftest import FakeSocket, MemoryRecordings, speech
+from backend.voice_relay.conftest import (
+    FakeMedia,
+    FakeSocket,
+    MemoryRecordings,
+    livekit_edge,
+    speech,
+)
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
 from backend.voice_relay.locks import CallStore
 from backend.voice_relay.metering import CallMeter, Row
@@ -191,22 +197,22 @@ async def test_a_call_checkpoints_its_recording_while_it_runs(redis, tmp_path):
     async def sink(row: Row) -> None:
         rows.append(row)
 
+    media = FakeMedia()
     session = Session(
         call_id=call_id,
         user_id=USER,
-        leg="websocket",
         ws=ws,
         vendor=FakeVendor([Reply(text="Hi", audio_s=0.1)], end_of_speech_s=60.0),
         store=call_store,
         meter=CallMeter(
             user_id=USER,
             call_id=call_id,
-            leg="websocket",
             model="gemini-3.8-live",
             redis=redis,
             sink=sink,
         ),
         classifier=None,
+        edge=livekit_edge(media),
         caps=CAPS,
         timing=FAST.model_copy(update={"checkpoint_s": 0.15}),
         recording=CallRecording(
@@ -219,8 +225,9 @@ async def test_a_call_checkpoints_its_recording_while_it_runs(redis, tmp_path):
     )
     task = asyncio.create_task(session.run())
     await ws.wait_for("ready")
+    room = await media.hearing()
     for _ in range(4):
-        ws.send_audio(speech(0.08))
+        room.say(speech(0.08))
         await asyncio.sleep(0.12)
     while_live = len(store.stored)
     ws.send_json({"type": "hangup"})

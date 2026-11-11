@@ -3,6 +3,8 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fakeredis import FakeServer
+from fakeredis.aioredis import FakeRedis
 from fastapi import HTTPException
 from prisma.enums import SubscriptionTier
 from redis.cluster import key_slot
@@ -255,3 +257,58 @@ async def test_a_self_hosted_voice_call_is_never_counted(admission, mocker):
     mocker.patch.object(rate_limit.settings.config, "behave_as", BehaveAs.LOCAL)
     await rate_limit.enforce_voice_call_budget("user-1")
     connect.assert_not_awaited()
+
+
+@pytest.fixture
+async def voice_counters(admission, mocker):
+    """The voice call allowance's counters in a Redis of their own."""
+    redis = FakeRedis(server=FakeServer(), decode_responses=True)
+    mocker.patch.object(
+        rate_limit, "get_redis_async", new=AsyncMock(return_value=redis)
+    )
+    yield redis
+    await redis.aclose()
+
+
+@pytest.mark.asyncio
+async def test_reading_the_voice_call_allowance_counts_no_call(voice_counters):
+    for _ in range(rate_limit.VOICE_HOURLY_CALLS + 1):
+        await rate_limit.enforce_voice_call_budget("user-1")
+
+    assert await voice_counters.keys("onboarding:voice_interview:*") == []
+
+
+@pytest.mark.asyncio
+async def test_calls_the_relay_counts_spend_the_allowance_the_start_reads(
+    voice_counters,
+):
+    for _ in range(rate_limit.VOICE_HOURLY_CALLS):
+        await rate_limit.count_voice_call(voice_counters, "user-1")
+
+    with pytest.raises(HTTPException) as caught:
+        await rate_limit.enforce_voice_call_budget("user-1")
+
+    assert caught.value.status_code == 429
+    assert 0 < int(caught.value.headers["Retry-After"]) <= 3600
+    # Another person's allowance is their own.
+    await rate_limit.enforce_voice_call_budget("user-2")
+
+
+@pytest.mark.asyncio
+async def test_the_relay_counts_a_call_with_its_windows_ttls(voice_counters):
+    await rate_limit.count_voice_call(voice_counters, "user-1")
+
+    keys = sorted(await voice_counters.keys("onboarding:voice_interview:*"))
+    assert len(keys) == 2
+    for key in keys:
+        assert await voice_counters.get(key) == "1"
+        assert 0 < await voice_counters.ttl(key) <= 86_400
+
+
+@pytest.mark.asyncio
+async def test_a_self_hosted_call_is_never_counted_by_the_relay(voice_counters, mocker):
+    mocker.patch.object(rate_limit.settings.config, "behave_as", BehaveAs.LOCAL)
+
+    await rate_limit.count_voice_call(voice_counters, "user-1")
+
+    assert await voice_counters.keys("onboarding:voice_interview:*") == []

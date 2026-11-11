@@ -1,40 +1,44 @@
 """Starting a voice call for the onboarding interview, and the call after.
 
 The REST API decides who may call; the relay (``backend.voice_relay``) runs
-the call. A start answers with the relay's socket and a signed, single-use
-start token naming the person, the call and the leg its audio takes, which
-the relay trusts without a platform session. In order, it checks:
+the call. A start answers with the relay's socket, a signed, single-use start
+token naming the person and the call, which the relay trusts without a
+platform session, and the call's LiveKit room, which carries its audio, with
+the browser's token for it. In order, it checks:
 
 - the voice flag: 404 when it is off for the person or cannot be read;
-- that this deployment has a relay to call: 503 when it has none;
+- that this deployment can carry a call: a relay to call, the key its start
+  tokens are signed with, and a LiveKit project; 503 when it cannot;
 - that the person's interview is not over: 409. A person has one interview,
   typed or spoken, found on their onboarding row: it is over once the typed
   interview is, or once a call's words became its take (naming that call);
 - that the person has no call live already: 409 naming the live call. A
   call whose pod died, or that ended without freeing the person's lock,
   holds nobody back once it no longer runs (``locks.call_is_live``);
+- that a relay sweeps the call rooms lately (``locks.rooms_swept``), so the
+  room this start opens is closed in the end, even if its call never starts:
+  503 with ``Retry-After``;
 - the platform's daily voice budget and its live-call ceiling: 503 with
   ``Retry-After``;
 - the person's own call allowance, on every tier: 429 with ``Retry-After``.
+  Read, not written: the relay counts a call once its model session opens,
+  so a start that never got that far costs the person nothing.
 
-Then it picks the leg the call's audio takes from the edge flag: the call's
-LiveKit room where the flag says so, the browser says it can take it, this
-deployment has a LiveKit project and a relay sweeps its rooms; the control
-socket otherwise. On the LiveKit leg it registers the call's room
-(``locks.register_room``), then mints the browser's token for it
-(``rooms.person_token``); the relay closes the room (``room_reaper``). It
-reads the person's arm of the voice ending experiment, which stores it on
-first read (``experiments.assign``), and the start token carries the leg and
-the arm to the relay, which reads no flags. The relay records the call on the
-person's onboarding row once the call starts, and its record in Redis for a
-day, with the arm on it for the hand-off, and makes its transcript of record
-once it ends. Then the person's
-own routes read the call's state (:func:`call_status`, :func:`latest_call`,
-which name where a live call is rejoined), which also starts the call's
-hand-off here once it is owed one (``voice_handoff``), confirm its hand-off
-or hand it off again (:func:`finish_call`), and end a call of theirs live
-elsewhere (:func:`end_call`). Another person's call is 404 on every one of
-them.
+None of them costs the person anything. Then it registers the call's room
+(``locks.register_room``), a 503 when it cannot, and mints the browser's
+token for it (``rooms.person_token``); the relay closes the room
+(``room_reaper``). It reads the person's arm of the voice ending experiment,
+which stores it on first read (``experiments.assign``), and the start token
+carries the arm to the relay, which reads no flags. The relay records the
+call on the person's onboarding row once the call starts, and its record in
+Redis for a day, with the arm on it for the hand-off, and makes its
+transcript of record once it ends. Then the person's own routes read the
+call's state (:func:`call_status`, :func:`latest_call`, which name where a
+live call is rejoined), which also starts the call's hand-off here once it is
+owed one (``voice_handoff``), confirm its hand-off or hand it off again
+(:func:`finish_call`), and end a call of theirs live elsewhere, or one whose
+start they gave up on (:func:`end_call`). Another person's call is 404 on
+every one of them.
 """
 
 import asyncio
@@ -46,6 +50,7 @@ from datetime import UTC, datetime
 from typing import TypeVar
 
 from fastapi import BackgroundTasks, HTTPException
+from prometheus_client import Counter
 
 from backend.api.features.onboarding_dump import quality
 from backend.api.features.onboarding_dump.interview import (
@@ -61,7 +66,7 @@ from backend.api.features.onboarding_dump.interview_endings import (
 from backend.api.features.onboarding_dump.models import (
     FinalizeResponse,
     VoiceCallCaps,
-    VoiceCallLeg,
+    VoiceCallRoom,
     VoiceCallStartResponse,
     VoiceCallStatusResponse,
 )
@@ -83,11 +88,7 @@ from backend.copilot.onboarding_interview import (
 from backend.data.onboarding import get_onboarding_voice_call_id
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.util.background import spawn_background_task
-from backend.util.feature_flag import (
-    Flag,
-    evaluate_feature_flag,
-    get_feature_flag_value,
-)
+from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.settings import AppEnvironment, Settings
 from backend.voice_relay import locks, rooms, tokens
 from backend.voice_relay.config import CAPS, TOKEN_TTL_S
@@ -100,7 +101,8 @@ T = TypeVar("T")
 
 REDIS_TIMEOUT_S = 0.25
 # How long to wait before trying again: while the platform is at its live-call
-# ceiling, and while voice cannot be served at all.
+# ceiling or no relay sweeps the rooms, and while voice cannot be served at
+# all.
 BUSY_RETRY_AFTER_S = 30
 UNAVAILABLE_RETRY_AFTER_S = 300
 
@@ -114,17 +116,16 @@ NO_SUCH_CALL = "No such voice call"
 # repeat: the person calls again or types instead.
 _VERDICTS = frozenset({quality.NO_USABLE_SPEECH, quality.INSUFFICIENT_CONTENT})
 
-# The control socket, which every browser can use: the leg of a call whose
-# flag names any other leg, or LiveKit where this deployment has no project.
-SOCKET_LEG = VoiceCallLeg(kind="websocket")
-LIVEKIT = "livekit"
+ABANDONED_STARTS = Counter(
+    "voice_interview_abandoned_starts_total",
+    "Voice call starts the browser gave up on before the call started: its "
+    "join of the call's room failed or took too long, and it asked for the "
+    "call's end",
+)
 
 
-async def start_voice_call(
-    user_id: str, *, supports_livekit: bool = False
-) -> VoiceCallStartResponse:
-    """Start a voice call for *user_id*'s onboarding interview, on the
-    LiveKit leg only for a browser that *supports_livekit*.
+async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
+    """Start a voice call for *user_id*'s onboarding interview.
 
     Raises:
         HTTPException: 404, 409, 429 or 503, as the module describes.
@@ -132,7 +133,8 @@ async def start_voice_call(
     if not await _voice_enabled(user_id):
         raise HTTPException(status_code=404, detail="Feature not available")
     relay_url = relay_socket_url()
-    if relay_url is None or not tokens.is_configured():
+    project = rooms.livekit_project(settings)
+    if relay_url is None or project is None or not tokens.is_configured():
         raise _unavailable(
             "Voice calls are not available right now.", UNAVAILABLE_RETRY_AFTER_S
         )
@@ -143,19 +145,48 @@ async def start_voice_call(
         raise HTTPException(
             status_code=409, detail={"code": CALL_IN_PROGRESS, "call_id": live_call}
         )
+    if not await _bounded(locks.rooms_swept(redis)):
+        logger.warning("No relay sweeps the voice call rooms, so no call starts")
+        raise _unavailable(
+            "Voice calls are temporarily unavailable. Please retry shortly.",
+            BUSY_RETRY_AFTER_S,
+        )
     await _refuse_past_platform_limits(redis)
     await enforce_voice_call_budget(user_id)
     call_id = tokens.new_call_id()
-    leg = await _choose_leg(redis, user_id, call_id) if supports_livekit else SOCKET_LEG
     ending = _voice_arm(await assigned_ending(user_id, "voice"))
+    # Registered before its token is minted, so every room a token can open
+    # is closed in the end.
+    await _bounded(locks.register_room(redis, call_id, user_id, time.time()))
     return VoiceCallStartResponse(
         call_id=call_id,
         relay_url=relay_url,
-        token=tokens.mint_start(user_id, call_id, leg.kind, ending=ending),
+        token=tokens.mint_start(user_id, call_id, ending=ending),
         expires_in=TOKEN_TTL_S,
-        leg=leg,
+        room=VoiceCallRoom(
+            url=project.url,
+            token=rooms.person_token(user_id=user_id, call_id=call_id, project=project),
+        ),
         caps=VoiceCallCaps.model_validate(CAPS.as_message()),
     )
+
+
+def voice_configured() -> bool:
+    """Whether this deployment can carry a voice call: a relay to call, the
+    key its start tokens are signed with, and a LiveKit project."""
+    return (
+        relay_socket_url() is not None
+        and tokens.is_configured()
+        and rooms.livekit_project(settings) is not None
+    )
+
+
+async def voice_available(user_id: str) -> bool:
+    """Whether the step may offer *user_id* a call: this deployment can carry
+    one, with a Gemini key for its relay, and voice is on for them."""
+    if not voice_configured() or not settings.secrets.gemini_api_key:
+        return False
+    return await _voice_enabled(user_id)
 
 
 def _voice_arm(ending: str | None) -> str | None:
@@ -224,55 +255,6 @@ async def _refuse_past_platform_limits(redis: AsyncRedisClient) -> None:
         raise _unavailable(
             "All voice lines are busy. Please try again shortly.", BUSY_RETRY_AFTER_S
         )
-
-
-async def _choose_leg(
-    redis: AsyncRedisClient, user_id: str, call_id: str
-) -> VoiceCallLeg:
-    """The leg *user_id*'s call *call_id* takes, as the edge flag picks it,
-    with the browser's room token on the LiveKit leg.
-
-    The call's room is registered before its token is minted, and only while
-    a relay sweeps the registry, so every room a token can open is closed in
-    the end: a call whose room cannot be registered takes the socket.
-    """
-    try:
-        wanted = await get_feature_flag_value(
-            Flag.ONBOARDING_INTERVIEW_VOICE_EDGE.value, user_id, default=LIVEKIT
-        )
-    except Exception:
-        logger.warning("Voice interview edge flag could not be read", exc_info=True)
-        return SOCKET_LEG
-    if wanted != LIVEKIT:
-        return SOCKET_LEG
-    project = rooms.livekit_project(settings)
-    if project is None:
-        return SOCKET_LEG
-    try:
-        swept = await asyncio.wait_for(
-            locks.rooms_swept(redis), timeout=REDIS_TIMEOUT_S
-        )
-        if swept:
-            await asyncio.wait_for(
-                locks.register_room(redis, call_id, user_id, time.time()),
-                timeout=REDIS_TIMEOUT_S,
-            )
-    except Exception as exc:
-        logger.warning(
-            f"Voice call room not registered, so the call takes the socket: "
-            f"{type(exc).__name__}"
-        )
-        return SOCKET_LEG
-    if not swept:
-        logger.warning(
-            "No relay sweeps the voice call rooms: the call takes the socket"
-        )
-        return SOCKET_LEG
-    return VoiceCallLeg(
-        kind="livekit",
-        url=project.url,
-        token=rooms.person_token(user_id=user_id, call_id=call_id, project=project),
-    )
 
 
 async def _bounded(operation: Awaitable[T]) -> T:
@@ -434,7 +416,8 @@ async def end_call(user_id: str, call_id: str) -> None:
     ``superseded``: the person can no longer reach it from the device it is
     on. A call that has ended already is left as it is. A call that no longer
     runs (its pod died) frees the person's lock here, so they can call again
-    or type at once.
+    or type at once. A start the browser gave up on, whose call never began,
+    has its room closed by the next sweep, and is counted.
 
     Raises:
         HTTPException: 404 for a call that is not theirs, 503 while it cannot
@@ -447,9 +430,18 @@ async def end_call(user_id: str, call_id: str) -> None:
         # A call whose record was lost is still theirs while it holds their
         # live-call lock.
         theirs = await _bounded(locks.live_call_of(redis, user_id)) == call_id
+    abandoned = False
+    if not theirs and record is None:
+        # A call that never started is theirs while its room is registered
+        # to them.
+        abandoned = await _bounded(locks.room_owner(redis, call_id)) == user_id
+        theirs = abandoned
     if not theirs:
         raise HTTPException(status_code=404, detail=NO_SUCH_CALL)
     await _bounded(locks.request_end(redis, call_id))
+    if abandoned:
+        ABANDONED_STARTS.inc()
+        return
     if not await _bounded(locks.call_is_live(redis, call_id, time.time())):
         await _bounded(locks.release_user_lock(redis, user_id, call_id))
 
@@ -494,15 +486,13 @@ def _status_of(record: CallRecord) -> VoiceCallStatusResponse:
     # whose fields could not be read: nothing is known to be running.
     status = "handing_off" if owed(record) else record.status or locks.ENDED
     running = status in (locks.CONNECTING, locks.LIVE)
-    leg = "livekit" if record.leg == LIVEKIT else "websocket"
     return VoiceCallStatusResponse(
         call_id=record.call_id,
         status=status,
         interview=record.interview,
         end_reason=record.end_reason,
-        leg=leg,
         relay_url=relay_socket_url() if running else None,
-        livekit_url=_livekit_url() if running and leg == LIVEKIT else None,
+        livekit_url=_livekit_url() if running else None,
         hand_off=record.hand_off,
     )
 

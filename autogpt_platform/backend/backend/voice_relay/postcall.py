@@ -601,7 +601,6 @@ class PostCall:
         meter = CallMeter(
             user_id=record.uid,
             call_id=record.call_id,
-            leg=record.leg,
             model=self.live_model,
             redis=redis,
             sink=self.cost_sink,

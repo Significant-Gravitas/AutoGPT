@@ -41,7 +41,8 @@ def _lifetime_s(token: str) -> int:
 def test_the_browser_may_join_only_its_calls_room_publish_its_microphone_and_listen():
     token = rooms.person_token(user_id="user-1", call_id=CALL_ID, project=PROJECT)
     claims = _claims(token)
-    assert claims.identity == "user:user-1"
+    # The call's own identity: closing this room revokes no other call's.
+    assert claims.identity == f"user:user-1:{CALL_ID}"
     video = claims.video
     assert video is not None
     assert video.room == f"voice-{CALL_ID}"
@@ -189,3 +190,20 @@ def test_the_rest_api_loads_no_room_reaper_and_the_livekit_sdk_only_once_it_mint
     # The REST API only registers rooms: the relay alone closes them.
     assert json.loads(reported["REAPER"]) is False
     assert json.loads(reported["AFTER_MINT"]) is True
+
+
+@pytest.mark.parametrize(
+    "identity,person",
+    [
+        (f"user:user-1:{CALL_ID}", "user-1"),
+        (f"user:user-1:{'f' * 32}", None),
+        ("user:user-1", None),
+        (f"user::{CALL_ID}", None),
+        ("otto", None),
+    ],
+    ids=["this-call", "another-call", "no-call", "no-user", "otto"],
+)
+def test_the_person_in_a_calls_room_is_read_only_from_that_calls_identity(
+    identity, person
+):
+    assert rooms.person_of(identity, CALL_ID) == person

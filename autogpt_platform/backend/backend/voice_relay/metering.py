@@ -48,8 +48,8 @@ LIVE_CALLS = Gauge(
 )
 CALLS = Counter(
     "voice_interview_calls_total",
-    "Onboarding voice interviews, by how they ended and the leg they ran on",
-    ["reason", "leg"],
+    "Onboarding voice interviews, by how they ended",
+    ["reason"],
 )
 CALL_SECONDS = Histogram(
     "voice_interview_call_seconds",
@@ -61,6 +61,12 @@ FIRST_AUDIO_SECONDS = Histogram(
     "From a call's start message to Otto's first audio, as the relay sees it",
     buckets=(0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0),
 )
+REPLY_SECONDS = Histogram(
+    "voice_interview_reply_seconds",
+    "From the last frame the relay's voice detector heard the person in to "
+    "Otto's first audio of the next turn, as the relay sees it",
+    buckets=(0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.8, 2.5, 4.0, 8.0),
+)
 COST_USD = Counter(
     "voice_interview_cost_usd_total",
     "What onboarding voice interviews cost, by meter",
@@ -68,9 +74,8 @@ COST_USD = Counter(
 )
 LIVEKIT_PARTICIPANT_SECONDS = Counter(
     "voice_interview_livekit_participant_seconds_total",
-    "LiveKit participant-seconds the calls on the LiveKit leg used: the "
-    "relay's own time in each call's room and the person's, which LiveKit "
-    "bills as participant-minutes",
+    "LiveKit participant-seconds the calls used: the relay's own time in each "
+    "call's room and the person's, which LiveKit bills as participant-minutes",
 )
 LIVEKIT_DROPPED_BYTES = Counter(
     "voice_interview_livekit_dropped_bytes_total",
@@ -96,9 +101,9 @@ LIVEKIT_OLDEST_ROOM_SECONDS = Gauge(
 )
 LIVEKIT_ROOMS_CLOSED = Counter(
     "voice_interview_livekit_rooms_closed_total",
-    "Call rooms the relay closed, by why (call_end, downgrade, never_started, "
-    "orphaned, reopened, or unregistered: a room with no entry adopted where "
-    "the project is this deployment's alone; and revoke_again, the person's "
+    "Call rooms the relay closed, by why (call_end, never_started, orphaned, "
+    "reopened, or unregistered: a room with no entry adopted where the "
+    "project is this deployment's alone; and revoke_again, the person's "
     "tokens revoked once more after a close) and outcome (closed or failed)",
     ["why", "outcome"],
 )
@@ -107,13 +112,6 @@ LIVEKIT_SWEEPS = Counter(
     "Sweeps of the call rooms, by outcome: ok, or failed when the registry or "
     "the project's rooms could not be read, or a close or a revocation failed",
     ["outcome"],
-)
-FALLBACKS = Counter(
-    "voice_interview_fallbacks_total",
-    "Calls whose audio fell back from a leg to the control socket, by the leg "
-    "and why: browser_join (the browser could not join the room), relay_join "
-    "(the relay could not), or relay_unconfigured (this relay has no LiveKit)",
-    ["from", "why"],
 )
 POSTCALL_SECONDS = Histogram(
     "voice_interview_postcall_seconds",
@@ -232,14 +230,12 @@ class CallMeter:
         *,
         user_id: str,
         call_id: str,
-        leg: str,
         model: str,
         redis: AsyncRedisClient | None,
         sink: CostSink | None = None,
     ) -> None:
         self.user_id = user_id
         self.call_id = call_id
-        self.leg = leg
         self.model = model
         self.usd = 0.0
         self.rows: list[Row] = []
@@ -359,7 +355,6 @@ class CallMeter:
         metadata: dict[str, object] = {
             "call_id": self.call_id,
             "meter": row.meter,
-            "leg": self.leg,
             "source": COST_SOURCE,
         }
         if row.estimate:

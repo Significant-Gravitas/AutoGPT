@@ -18,6 +18,7 @@ from httpx import ASGITransport, AsyncClient
 from livekit import api
 from posthog import Posthog
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus, SubscriptionTier
+from prometheus_client import REGISTRY
 from pytest_mock import MockerFixture
 
 import backend.util.feature_flag as ff
@@ -52,10 +53,6 @@ RELAY = "wss://api.example.com/voice"
 LIVEKIT_URL = "wss://agpt-test.livekit.cloud"
 LIVEKIT_KEY = "APIroutes"
 LIVEKIT_SECRET = "q" * 48  # pragma: allowlist secret
-# The control socket's leg, which carries no room.
-SOCKET = {"kind": "websocket", "url": None, "token": None}
-# A start from a browser that can take a call's audio through a room.
-LIVEKIT_BROWSER = {"supports_livekit": True}
 
 
 @pytest.fixture(autouse=True)
@@ -77,17 +74,21 @@ async def redis():
 
 
 @pytest.fixture(autouse=True)
-def voice_on(mocker: MockerFixture, monkeypatch, redis) -> SimpleNamespace:
+async def voice_on(mocker: MockerFixture, monkeypatch, redis) -> SimpleNamespace:
+    """Voice on for the person, and a deployment that can carry a call: a
+    relay, its signing key, a LiveKit project, and a relay sweeping its call
+    rooms."""
     monkeypatch.setattr(voice.settings.config, "voice_relay_public_url", RELAY)
     monkeypatch.setattr(voice.settings.config, "voice_interview_max_concurrent", 25)
     monkeypatch.setattr(voice.settings.config, "voice_interview_daily_budget_usd", 25.0)
+    monkeypatch.setattr(voice.settings.config, "livekit_url", LIVEKIT_URL)
+    monkeypatch.setattr(voice.settings.secrets, "livekit_api_key", LIVEKIT_KEY)
+    monkeypatch.setattr(voice.settings.secrets, "livekit_api_secret", LIVEKIT_SECRET)
     monkeypatch.setattr(tokens.settings.secrets, "voice_relay_signing_key", "k" * 48)
+    await locks.mark_rooms_swept(redis, time.time())
     return SimpleNamespace(
         flag=mocker.patch.object(
             voice, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
-        ),
-        edge=mocker.patch.object(
-            voice, "get_feature_flag_value", AsyncMock(return_value="websocket")
         ),
         redis=mocker.patch.object(
             voice, "get_redis_async", AsyncMock(return_value=redis)
@@ -117,13 +118,11 @@ def _interview(user_id: str, stage: str | None) -> ChatSession:
     return session
 
 
-async def start(body: dict | None = None):
+async def start():
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
-        if body is None:
-            return await client.post(URL)
-        return await client.post(URL, json=body)
+        return await client.post(URL)
 
 
 async def test_the_route_is_not_there_while_voice_is_off(voice_on):
@@ -144,14 +143,61 @@ async def test_a_start_names_its_call_socket_caps_and_a_token_the_relay_trusts(
     assert response.status_code == 200
     body = response.json()
     assert body["relay_url"] == f"{RELAY}/call"
-    assert body["leg"] == SOCKET
     assert body["caps"] == CAPS.as_message()
     assert body["expires_in"] == 60
     claims = tokens.verify_start(body["token"])
     assert claims.user_id == test_user_id
     assert claims.call_id == body["call_id"]
-    assert claims.leg == "websocket"
     assert claims.ending is None
+
+
+async def test_a_start_names_the_calls_room_and_the_browsers_token_for_it(
+    test_user_id,
+):
+    body = (await start()).json()
+
+    room = body["room"]
+    assert room["url"] == LIVEKIT_URL
+    claims = api.TokenVerifier(LIVEKIT_KEY, LIVEKIT_SECRET).verify(room["token"])
+    # The call's own identity, so closing this room revokes no other call.
+    assert claims.identity == f"user:{test_user_id}:{body['call_id']}"
+    assert claims.video is not None
+    assert claims.video.room == f"voice-{body['call_id']}"
+    assert claims.video.can_publish_sources == ["microphone"]
+    assert claims.video.can_publish_data is False
+    assert not claims.video.room_admin
+    lifetime = jwt.decode(
+        room["token"], LIVEKIT_SECRET, algorithms=["HS256"], issuer=LIVEKIT_KEY
+    )
+    assert lifetime["exp"] - lifetime["nbf"] == 600
+
+
+async def test_a_start_registers_the_calls_room_before_minting_its_token(
+    redis, test_user_id, mocker: MockerFixture
+):
+    order: list[str] = []
+    register = locks.register_room
+    mint = voice.rooms.person_token
+
+    async def registering(*args, **kwargs):
+        order.append("register")
+        await register(*args, **kwargs)
+
+    def minting(**kwargs):
+        order.append("token")
+        return mint(**kwargs)
+
+    mocker.patch.object(voice.locks, "register_room", side_effect=registering)
+    mocker.patch.object(voice.rooms, "person_token", side_effect=minting)
+    started = time.time()
+
+    body = (await start()).json()
+
+    assert order == ["register", "token"]
+    entry = (await locks.registered_rooms(redis))[body["call_id"]]
+    assert entry.uid == test_user_id
+    assert started <= entry.minted_at <= time.time()
+    assert entry.closed_at is None
 
 
 async def test_a_second_start_while_a_call_is_live_is_refused_naming_it(
@@ -191,173 +237,28 @@ async def test_calls_whose_pods_died_do_not_hold_the_ceiling(redis, monkeypatch)
     assert (await start()).status_code == 200
 
 
-@pytest.fixture
-async def livekit_on(monkeypatch, redis) -> None:
-    """A LiveKit project, and a relay sweeping its call rooms."""
-    monkeypatch.setattr(voice.settings.config, "livekit_url", LIVEKIT_URL)
-    monkeypatch.setattr(voice.settings.secrets, "livekit_api_key", LIVEKIT_KEY)
-    monkeypatch.setattr(voice.settings.secrets, "livekit_api_secret", LIVEKIT_SECRET)
-    await locks.mark_rooms_swept(redis, time.time())
-
-
 @pytest.mark.parametrize(
-    "edge,leg",
-    [("livekit", "livekit"), ("websocket", "websocket"), ("pigeon", "websocket")],
-    ids=["livekit", "websocket", "unknown"],
-)
-async def test_the_edge_flag_picks_the_leg_the_start_token_names(
-    voice_on, livekit_on, edge, leg
-):
-    voice_on.edge.return_value = edge
-    body = (await start(LIVEKIT_BROWSER)).json()
-    assert body["leg"]["kind"] == leg
-    assert tokens.verify_start(body["token"]).leg == leg
-
-
-@pytest.mark.parametrize(
-    "body",
-    [None, {}, {"supports_livekit": False}],
-    ids=["no-body", "empty", "says-no"],
-)
-async def test_a_browser_that_does_not_take_livekit_gets_the_socket_whatever_the_flag(
-    voice_on, livekit_on, body
-):
-    voice_on.edge.return_value = "livekit"
-
-    started = (await start(body)).json()
-
-    assert started["leg"] == SOCKET
-    assert tokens.verify_start(started["token"]).leg == "websocket"
-    voice_on.edge.assert_not_awaited()
-
-
-async def test_the_livekit_leg_names_the_project_and_the_browsers_token_for_the_room(
-    voice_on, livekit_on, test_user_id
-):
-    voice_on.edge.return_value = "livekit"
-    body = (await start(LIVEKIT_BROWSER)).json()
-
-    leg = body["leg"]
-    assert leg["url"] == LIVEKIT_URL
-    claims = api.TokenVerifier(LIVEKIT_KEY, LIVEKIT_SECRET).verify(leg["token"])
-    assert claims.identity == f"user:{test_user_id}"
-    assert claims.video is not None
-    assert claims.video.room == f"voice-{body['call_id']}"
-    assert claims.video.can_publish_sources == ["microphone"]
-    assert claims.video.can_publish_data is False
-    assert not claims.video.room_admin
-    lifetime = jwt.decode(
-        leg["token"], LIVEKIT_SECRET, algorithms=["HS256"], issuer=LIVEKIT_KEY
-    )
-    assert lifetime["exp"] - lifetime["nbf"] == 600
-
-
-async def test_the_livekit_legs_start_registers_the_calls_room_before_minting_its_token(
-    voice_on, livekit_on, redis, test_user_id, mocker: MockerFixture
-):
-    voice_on.edge.return_value = "livekit"
-    order: list[str] = []
-    register = locks.register_room
-    mint = voice.rooms.person_token
-
-    async def registering(*args, **kwargs):
-        order.append("register")
-        await register(*args, **kwargs)
-
-    def minting(**kwargs):
-        order.append("token")
-        return mint(**kwargs)
-
-    mocker.patch.object(voice.locks, "register_room", side_effect=registering)
-    mocker.patch.object(voice.rooms, "person_token", side_effect=minting)
-    started = time.time()
-
-    body = (await start(LIVEKIT_BROWSER)).json()
-
-    assert body["leg"]["kind"] == "livekit"
-    assert order == ["register", "token"]
-    entry = (await locks.registered_rooms(redis))[body["call_id"]]
-    assert entry.uid == test_user_id
-    assert started <= entry.minted_at <= time.time()
-    assert entry.closed_at is None
-
-
-async def test_with_no_relay_sweeping_the_rooms_a_call_takes_the_socket_with_no_room(
-    voice_on, livekit_on, redis
-):
-    voice_on.edge.return_value = "livekit"
-    await redis.delete(locks.ROOMS_SWEPT_KEY)
-
-    body = (await start(LIVEKIT_BROWSER)).json()
-
-    assert body["leg"] == SOCKET
-    assert tokens.verify_start(body["token"]).leg == "websocket"
-    assert await locks.registered_rooms(redis) == {}
-
-
-async def test_a_room_that_cannot_be_registered_puts_the_call_on_the_socket_with_no_token(
-    voice_on, livekit_on, redis, mocker: MockerFixture
-):
-    voice_on.edge.return_value = "livekit"
-    mocker.patch.object(
-        voice.locks,
-        "register_room",
-        AsyncMock(side_effect=ConnectionError("redis is down")),
-    )
-    mint = mocker.spy(voice.rooms, "person_token")
-
-    body = (await start(LIVEKIT_BROWSER)).json()
-
-    assert body["leg"] == SOCKET
-    assert tokens.verify_start(body["token"]).leg == "websocket"
-    mint.assert_not_called()
-
-
-async def test_a_call_on_the_socket_registers_no_room(voice_on, livekit_on, redis):
-    voice_on.edge.return_value = "websocket"
-
-    await start(LIVEKIT_BROWSER)
-    await start()
-
-    assert await locks.registered_rooms(redis) == {}
-
-
-async def test_the_livekit_leg_falls_back_to_the_socket_where_there_is_no_project(
-    voice_on, monkeypatch
-):
-    voice_on.edge.return_value = "livekit"
-    monkeypatch.setattr(voice.settings.config, "livekit_url", "")
-    body = (await start(LIVEKIT_BROWSER)).json()
-    assert body["leg"] == SOCKET
-    assert tokens.verify_start(body["token"]).leg == "websocket"
-
-
-async def test_an_edge_flag_that_cannot_be_read_falls_back_to_the_socket(
-    voice_on, livekit_on
-):
-    voice_on.edge.side_effect = RuntimeError("flag service down")
-    assert (await start(LIVEKIT_BROWSER)).json()["leg"] == SOCKET
-
-
-@pytest.mark.parametrize(
-    "url,key,app_env",
+    "url,key,livekit,app_env",
     [
-        ("", "k" * 48, AppEnvironment.PRODUCTION),
-        (RELAY, "", AppEnvironment.PRODUCTION),
-        (RELAY, "short", AppEnvironment.PRODUCTION),
-        ("ws://relay.internal/voice", "k" * 48, AppEnvironment.PRODUCTION),
+        ("", "k" * 48, LIVEKIT_URL, AppEnvironment.PRODUCTION),
+        (RELAY, "", LIVEKIT_URL, AppEnvironment.PRODUCTION),
+        (RELAY, "short", LIVEKIT_URL, AppEnvironment.PRODUCTION),
+        ("ws://relay.internal/voice", "k" * 48, LIVEKIT_URL, AppEnvironment.PRODUCTION),
+        (RELAY, "k" * 48, "", AppEnvironment.PRODUCTION),
     ],
-    ids=["no-relay", "no-key", "short-key", "plain-ws-outside-local"],
+    ids=["no-relay", "no-key", "short-key", "plain-ws-outside-local", "no-livekit"],
 )
-async def test_voice_is_unavailable_until_a_relay_and_its_key_are_set(
-    monkeypatch, url, key, app_env
+async def test_voice_is_unavailable_until_a_relay_its_key_and_a_livekit_project_are_set(
+    monkeypatch, redis, url, key, livekit, app_env
 ):
     monkeypatch.setattr(voice.settings.config, "voice_relay_public_url", url)
     monkeypatch.setattr(voice.settings.config, "app_env", app_env)
+    monkeypatch.setattr(voice.settings.config, "livekit_url", livekit)
     monkeypatch.setattr(tokens.settings.secrets, "voice_relay_signing_key", key)
     response = await start()
     assert response.status_code == 503
     assert response.json()["detail"]["retry_after_seconds"] == 300
+    assert await locks.registered_rooms(redis) == {}
 
 
 async def test_a_local_install_may_reach_its_relay_over_plain_ws(monkeypatch):
@@ -367,6 +268,35 @@ async def test_a_local_install_may_reach_its_relay_over_plain_ws(monkeypatch):
     monkeypatch.setattr(voice.settings.config, "app_env", AppEnvironment.LOCAL)
     response = await start()
     assert response.json()["relay_url"] == "ws://localhost:8015/voice/call"
+
+
+async def test_with_no_relay_sweeping_the_rooms_a_start_waits_and_opens_no_room(
+    redis,
+):
+    await redis.delete(locks.ROOMS_SWEPT_KEY)
+
+    response = await start()
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"
+    assert await locks.registered_rooms(redis) == {}
+
+
+async def test_a_room_that_cannot_be_registered_starts_no_call(
+    mocker: MockerFixture,
+):
+    mocker.patch.object(
+        voice.locks,
+        "register_room",
+        AsyncMock(side_effect=ConnectionError("redis is down")),
+    )
+    mint = mocker.spy(voice.rooms, "person_token")
+
+    response = await start()
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["retry_after_seconds"] == 30
+    mint.assert_not_called()
 
 
 async def test_a_start_is_refused_while_its_limits_cannot_be_read(voice_on):
@@ -415,28 +345,49 @@ def paying_platform(mocker: MockerFixture, set_platform_payment, redis) -> Async
     )
 
 
-async def test_past_their_call_allowance_a_person_waits_with_the_wait_in_the_body(
-    paying_platform,
-):
-    for _ in range(rate_limit.VOICE_HOURLY_CALLS):
+async def _counted(redis) -> list[str]:
+    return sorted(await redis.keys("onboarding:voice_interview:*"))
+
+
+async def test_a_start_reads_the_allowance_and_counts_nothing(paying_platform, redis):
+    """The relay counts a call once its model session opens."""
+    for _ in range(rate_limit.VOICE_HOURLY_CALLS + 1):
         assert (await start()).status_code == 200
-    response = await start()
-    assert response.status_code == 429
-    wait = int(response.headers["Retry-After"])
-    assert 0 < wait <= 3600
-    assert response.json()["detail"]["retry_after_seconds"] == wait
+    assert await _counted(redis) == []
     # Counted whatever the plan: the tier is never asked.
     paying_platform.assert_not_awaited()
 
 
-async def test_a_refused_start_spends_none_of_the_allowance(
+async def test_past_their_call_allowance_a_person_waits_with_the_wait_in_the_body(
     paying_platform, redis, test_user_id
 ):
-    await locks.take_user_lock(redis, test_user_id, "a" * 32)
-    for _ in range(rate_limit.VOICE_HOURLY_CALLS + 1):
-        assert (await start()).status_code == 409
-    await locks.release_user_lock(redis, test_user_id, "a" * 32)
-    assert (await start()).status_code == 200
+    for _ in range(rate_limit.VOICE_HOURLY_CALLS):
+        await rate_limit.count_voice_call(redis, test_user_id)
+
+    response = await start()
+
+    assert response.status_code == 429
+    wait = int(response.headers["Retry-After"])
+    assert 0 < wait <= 3600
+    assert response.json()["detail"]["retry_after_seconds"] == wait
+    assert await locks.registered_rooms(redis) == {}
+
+
+@pytest.mark.parametrize("unavailable", ["no-livekit", "no-sweep"])
+async def test_a_start_voice_cannot_carry_leaves_the_allowance_untouched(
+    paying_platform, monkeypatch, redis, test_user_id, unavailable
+):
+    for _ in range(rate_limit.VOICE_HOURLY_CALLS - 1):
+        await rate_limit.count_voice_call(redis, test_user_id)
+    counted = {key: await redis.get(key) for key in await _counted(redis)}
+    if unavailable == "no-livekit":
+        monkeypatch.setattr(voice.settings.config, "livekit_url", "")
+    else:
+        await redis.delete(locks.ROOMS_SWEPT_KEY)
+
+    assert (await start()).status_code == 503
+
+    assert {key: await redis.get(key) for key in await _counted(redis)} == counted
 
 
 async def test_a_person_whose_call_took_the_interview_cannot_call_again(voice_on):
@@ -447,6 +398,46 @@ async def test_a_person_whose_call_took_the_interview_cannot_call_again(voice_on
         "code": "onboarding_interview_closed",
         "call_id": "a" * 32,
     }
+
+
+# ---------- whether a call may be offered ----------
+
+
+async def test_voice_is_offered_where_it_is_on_and_a_call_can_be_carried(
+    monkeypatch, test_user_id
+):
+    monkeypatch.setattr(voice.settings.secrets, "gemini_api_key", "g" * 39)
+
+    assert await voice.voice_available(test_user_id)
+
+
+@pytest.mark.parametrize(
+    "missing",
+    ["gemini_api_key", "livekit_url", "voice_relay_public_url", "signing_key"],
+)
+async def test_voice_is_not_offered_where_a_call_cannot_be_carried(
+    voice_on, monkeypatch, test_user_id, missing
+):
+    monkeypatch.setattr(voice.settings.secrets, "gemini_api_key", "g" * 39)
+    if missing == "signing_key":
+        monkeypatch.setattr(tokens.settings.secrets, "voice_relay_signing_key", "")
+    elif missing == "gemini_api_key":
+        monkeypatch.setattr(voice.settings.secrets, missing, "")
+    else:
+        monkeypatch.setattr(voice.settings.config, missing, "")
+
+    assert not await voice.voice_available(test_user_id)
+    # Configuration is read first: the flag is never asked.
+    voice_on.flag.assert_not_awaited()
+
+
+async def test_voice_is_not_offered_to_someone_it_is_off_for(
+    voice_on, monkeypatch, test_user_id
+):
+    monkeypatch.setattr(voice.settings.secrets, "gemini_api_key", "g" * 39)
+    voice_on.flag.return_value = (False, True)
+
+    assert not await voice.voice_available(test_user_id)
 
 
 # ---------- the call after it starts ----------
@@ -464,9 +455,7 @@ def _take(code: str | None = None) -> FinalizeResponse:
 
 
 async def _record(redis, uid: str, call_id: str = CALL, **fields: object) -> None:
-    await locks.write_call_record(
-        redis, call_id, {"uid": uid, "leg": "websocket", **fields}
-    )
+    await locks.write_call_record(redis, call_id, {"uid": uid, **fields})
 
 
 async def request(method: str, path: str, **kwargs):
@@ -521,55 +510,38 @@ async def test_a_calls_state_moves_as_its_record_does(redis, test_user_id):
     ]
     body = (await request("GET", f"/{CALL}")).json()
     assert body["call_id"] == CALL
-    assert body["leg"] == "websocket"
 
 
-async def test_a_live_calls_state_names_the_socket_to_rejoin_it_on(
+async def test_a_live_calls_state_names_the_socket_and_the_project_to_rejoin_it_on(
     voice_on, redis, test_user_id
 ):
-    """A tab holding the call's resume ticket rejoins on the socket the
-    server names, never one it kept itself; an ended call names none."""
-    for status, relay_url in (
-        ("connecting", f"{RELAY}/call"),
-        ("live", f"{RELAY}/call"),
-        ("ended", None),
-        ("transcribing", None),
+    """A tab holding the call's resume ticket rejoins on the socket and
+    joins its room on the project the server names, never ones it kept
+    itself; an ended call names neither."""
+    for status, relay_url, livekit_url in (
+        ("connecting", f"{RELAY}/call", LIVEKIT_URL),
+        ("live", f"{RELAY}/call", LIVEKIT_URL),
+        ("ended", None, None),
+        ("transcribing", None, None),
     ):
         await _record(redis, test_user_id, status=status)
         body = (await request("GET", f"/{CALL}")).json()
-        assert (status, body["relay_url"]) == (status, relay_url)
-        assert body["livekit_url"] is None
-
-
-async def test_a_live_livekit_calls_state_names_the_project_to_rejoin_its_room_on(
-    voice_on, livekit_on, redis, test_user_id
-):
-    """A tab rejoining a call on the LiveKit leg joins its room on the
-    project the server names, never one it kept itself."""
-    for status, livekit_url in (
-        ("connecting", LIVEKIT_URL),
-        ("live", LIVEKIT_URL),
-        ("ended", None),
-        ("transcribing", None),
-    ):
-        await _record(redis, test_user_id, status=status, leg="livekit")
-        body = (await request("GET", f"/{CALL}")).json()
-        assert (status, body["leg"], body["livekit_url"]) == (
+        assert (status, body["relay_url"], body["livekit_url"]) == (
             status,
-            "livekit",
+            relay_url,
             livekit_url,
         )
 
 
-async def test_a_live_livekit_call_names_no_project_once_the_deployment_has_none(
+async def test_a_live_call_names_no_project_once_the_deployment_has_none(
     voice_on, monkeypatch, redis, test_user_id
 ):
     monkeypatch.setattr(voice.settings.config, "livekit_url", "")
-    await _record(redis, test_user_id, status="live", leg="livekit")
+    await _record(redis, test_user_id, status="live")
 
     body = (await request("GET", f"/{CALL}")).json()
 
-    assert (body["leg"], body["livekit_url"]) == ("livekit", None)
+    assert body["livekit_url"] is None
     assert body["relay_url"] == f"{RELAY}/call"
 
 
@@ -788,6 +760,46 @@ async def test_a_live_call_whose_record_was_lost_can_still_be_ended(
 async def test_ending_a_call_that_is_not_there_is_not_found(redis):
     assert (await request("POST", f"/{CALL}/end")).status_code == 404
     assert not await locks.end_requested(redis, CALL)
+
+
+def _abandoned() -> float:
+    return REGISTRY.get_sample_value("voice_interview_abandoned_starts_total") or 0.0
+
+
+async def test_ending_a_start_the_person_gave_up_on_asks_for_its_end_and_counts_it(
+    redis, test_user_id
+):
+    """The browser could not get into the call's room: the call never
+    started, has no record and holds no lock, but its room is the person's."""
+    await locks.register_room(redis, CALL, test_user_id, time.time())
+    before = _abandoned()
+
+    response = await request("POST", f"/{CALL}/end")
+
+    assert response.status_code == 202
+    assert await locks.end_requested(redis, CALL)
+    assert _abandoned() - before == 1
+
+
+async def test_someone_elses_start_cannot_be_ended(redis):
+    await locks.register_room(redis, CALL, OTHER_USER, time.time())
+    before = _abandoned()
+
+    response = await request("POST", f"/{CALL}/end")
+
+    assert response.status_code == 404
+    assert not await locks.end_requested(redis, CALL)
+    assert _abandoned() == before
+
+
+async def test_ending_a_started_call_counts_no_abandoned_start(redis, test_user_id):
+    await locks.register_room(redis, CALL, test_user_id, time.time())
+    await _record(redis, test_user_id, status="live")
+    before = _abandoned()
+
+    assert (await request("POST", f"/{CALL}/end")).status_code == 202
+
+    assert _abandoned() == before
 
 
 # ---------- the arm a call carries ----------

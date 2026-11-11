@@ -1,6 +1,6 @@
-"""The rooms of calls on the LiveKit leg, against a fake of LiveKit's room
-service and a fake Redis: how a room is closed, by the call that is done with
-it and by the sweep, and what the sweep leaves alone."""
+"""The calls' LiveKit rooms, against a fake of LiveKit's room service and a
+fake Redis: how a room is closed, by the call that is done with it and by
+the sweep, and what the sweep leaves alone."""
 
 import asyncio
 import time
@@ -28,17 +28,19 @@ from backend.voice_relay.conftest import (
     LIVEKIT,
     FakeMedia,
     FakeRoomService,
+    FakeSocket,
     livekit_edge,
 )
 from backend.voice_relay.conftest import room_reaper as reaper_on
 from backend.voice_relay.conftest import running_relay, until
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
 from backend.voice_relay.room_reaper import RoomReaper
-from backend.voice_relay.session_test import USER, Call, open_call
+from backend.voice_relay.session_test import USER, Call, _session, open_call
 
 CALL = "a" * 32
 OTHER_CALL = "b" * 32
-PERSON = f"user:{USER}"
+# The person, as they join CALL's room.
+PERSON = rooms.person_identity(USER, CALL)
 NOW = 1_800_000_000.0
 # A close's cutoff: every token of the person's issued until a moment past
 # the close.
@@ -442,6 +444,7 @@ async def test_on_a_shared_project_a_listed_room_with_no_entry_is_counted_as_ano
 
 
 STRAY_CALL = "c" * 32
+STRAY_PERSON = rooms.person_identity("someone", STRAY_CALL)
 OLD = int(NOW) - int(ROOM_UNREGISTERED_GRACE_S) - 5
 
 
@@ -461,7 +464,7 @@ async def test_on_an_exclusive_project_a_room_with_no_entry_is_left_alone_while_
 ):
     service = FakeRoomService()
     young = int(NOW) - int(ROOM_UNREGISTERED_GRACE_S) + 5
-    service.open(rooms.room_name(STRAY_CALL), "user:someone", created=young)
+    service.open(rooms.room_name(STRAY_CALL), STRAY_PERSON, created=young)
 
     assert await reaper_on(redis, service, clock=Clock(), exclusive=True).sweep()
 
@@ -473,7 +476,7 @@ async def test_on_an_exclusive_project_an_old_room_with_no_entry_is_adopted_and_
     redis,
 ):
     service = FakeRoomService()
-    service.open(rooms.room_name(STRAY_CALL), "otto", "user:someone", created=OLD)
+    service.open(rooms.room_name(STRAY_CALL), "otto", STRAY_PERSON, created=OLD)
     clock = Clock()
     reaper = reaper_on(redis, service, clock=clock, exclusive=True)
     before = _closed("unregistered")
@@ -483,7 +486,7 @@ async def test_on_an_exclusive_project_an_old_room_with_no_entry_is_adopted_and_
     assert service.kinds() == ["list", "participants", "remove", "delete"]
     _, remove = service.requests[2]
     assert isinstance(remove, api.RoomParticipantIdentity)
-    assert remove.identity == "user:someone" and remove.revoke_token_ts == CUTOFF
+    assert remove.identity == STRAY_PERSON and remove.revoke_token_ts == CUTOFF
     assert service.rooms == {}
     entry = await _entry(redis, STRAY_CALL)
     assert entry is not None
@@ -495,10 +498,14 @@ async def test_on_an_exclusive_project_an_old_room_with_no_entry_is_adopted_and_
     assert await reaper.sweep()
     _, again = service.requests[-1]
     assert isinstance(again, api.RoomParticipantIdentity)
-    assert again.identity == "user:someone"
+    assert again.identity == STRAY_PERSON
 
 
-@pytest.mark.parametrize("inside", [(), ("otto",)], ids=["nobody", "only-otto"])
+@pytest.mark.parametrize(
+    "inside",
+    [(), ("otto",), (rooms.person_identity("someone", OTHER_CALL),)],
+    ids=["nobody", "only-otto", "another-calls-identity"],
+)
 async def test_on_an_exclusive_project_a_room_with_no_entry_and_no_person_is_deleted(
     redis, inside
 ):
@@ -516,7 +523,7 @@ async def test_on_an_exclusive_project_a_room_whose_people_cannot_be_listed_wait
     redis,
 ):
     service = FakeRoomService()
-    service.open(rooms.room_name(STRAY_CALL), "user:someone", created=OLD)
+    service.open(rooms.room_name(STRAY_CALL), STRAY_PERSON, created=OLD)
     service.fail["participants"] = api.TwirpError("unavailable", "busy", status=503)
     clock = Clock()
     reaper = reaper_on(redis, service, clock=clock, exclusive=True)
@@ -537,7 +544,7 @@ async def test_on_an_exclusive_project_a_room_gone_before_its_people_were_listed
     redis,
 ):
     service = FakeRoomService()
-    service.open(rooms.room_name(STRAY_CALL), "user:someone", created=OLD)
+    service.open(rooms.room_name(STRAY_CALL), STRAY_PERSON, created=OLD)
     service.fail["participants"] = api.TwirpError("not_found", "no room", status=404)
 
     assert await reaper_on(redis, service, clock=Clock(), exclusive=True).sweep()
@@ -550,7 +557,7 @@ async def test_on_an_exclusive_project_an_adopted_room_whose_close_failed_is_clo
     redis,
 ):
     service = FakeRoomService()
-    service.open(rooms.room_name(STRAY_CALL), "user:someone", created=OLD)
+    service.open(rooms.room_name(STRAY_CALL), STRAY_PERSON, created=OLD)
     service.fail["delete"] = api.TwirpError("unavailable", "busy", status=503)
     clock = Clock()
     reaper = reaper_on(redis, service, clock=clock, exclusive=True)
@@ -664,7 +671,7 @@ async def test_a_room_the_sweep_cannot_settle_leaves_the_rest_of_the_sweep_runni
     assert not await locks.rooms_swept(redis)
 
 
-async def test_while_closes_keep_failing_no_heartbeat_is_written_and_starts_take_the_socket(
+async def test_while_closes_keep_failing_no_heartbeat_is_written_and_no_call_starts(
     redis,
 ):
     service = FakeRoomService()
@@ -745,14 +752,12 @@ async def _room_call(redis, service: FakeRoomService, media: FakeMedia, **option
     call = await open_call(
         redis,
         vendor,
-        leg="livekit",
-        token_leg="livekit",
-        edge=livekit_edge(media),
+        media=media,
         reaper=reaper_on(redis, service, **options),
     )
     call_id = call.session.call_id
     await locks.register_room(redis, call_id, USER, time.time())
-    service.open(rooms.room_name(call_id), PERSON, "otto")
+    service.open(rooms.room_name(call_id), rooms.person_identity(USER, call_id), "otto")
     await call.ws.wait_for("turn_complete")
     return call
 
@@ -784,74 +789,30 @@ async def test_a_calls_end_closes_its_room_after_otto_played_out_and_the_relay_l
     assert seen == [("remove", True), ("delete", True)]
     [(_, remove), _] = service.requests
     assert isinstance(remove, api.RoomParticipantIdentity)
-    assert remove.identity == PERSON and remove.revoke_token_ts == CUTOFF
+    assert remove.identity == rooms.person_identity(USER, call.session.call_id)
+    assert remove.revoke_token_ts == CUTOFF
     entry = await _entry(redis, call.session.call_id)
     assert entry is not None and entry.closed_at == NOW
 
 
-async def test_a_call_whose_browser_could_not_join_its_room_closes_the_room_at_once(
+async def test_a_call_whose_room_the_relay_could_not_join_closes_it_as_it_ends(
     redis,
 ):
     service = FakeRoomService()
-    before = _closed("downgrade")
-    vendor = FakeVendor([Reply(text="Hi, I'm Otto, an AI.", audio_s=0.1)])
-
-    call = await open_call(
-        redis,
-        vendor,
-        leg="websocket",
-        token_leg="livekit",
-        reaper=reaper_on(redis, service),
-    )
-
-    await until(lambda: service.kinds() == ["remove", "delete"])
-    assert not call.session.ended.is_set()
-    assert _closed("downgrade") - before == 1
-    assert (await _hang_up(call))["reason"] == "user_hangup"
-    # The call's end has nothing left to close.
-    assert service.kinds() == ["remove", "delete"]
-
-
-async def test_a_relay_that_could_not_join_the_calls_room_closes_it_at_once(redis):
-    service = FakeRoomService()
     media = FakeMedia(refuse=ConnectionError("the plan's allowance is used up"))
-    vendor = FakeVendor([Reply(text="Hi, I'm Otto, an AI.", audio_s=0.1)])
-
-    call = await open_call(
+    session = _session(
         redis,
-        vendor,
-        leg="livekit",
-        token_leg="livekit",
+        FakeVendor([Reply(text="Hi, I'm Otto, an AI.", audio_s=0.1)]),
+        FakeSocket(),
+        [],
         edge=livekit_edge(media),
         reaper=reaper_on(redis, service),
     )
 
-    assert call.ws.sent[0] == {"type": "leg", "leg": "websocket"}
-    await until(lambda: service.kinds() == ["remove", "delete"])
-    assert not call.session.ended.is_set()
-    await _hang_up(call)
+    await asyncio.wait_for(session.run(), timeout=5)
+
+    assert session.end_reason == "room_error"
     assert service.kinds() == ["remove", "delete"]
-
-
-async def test_a_call_whose_downgrade_close_failed_closes_its_room_again_as_it_ends(
-    redis,
-):
-    service = FakeRoomService()
-    service.fail["delete"] = api.TwirpError("unavailable", "busy", status=503)
-    vendor = FakeVendor([Reply(text="Hi, I'm Otto, an AI.", audio_s=0.1)])
-    call = await open_call(
-        redis,
-        vendor,
-        leg="websocket",
-        token_leg="livekit",
-        reaper=reaper_on(redis, service),
-    )
-    await until(lambda: service.kinds() == ["remove", "delete"])
-
-    del service.fail["delete"]
-    await _hang_up(call)
-
-    assert service.kinds() == ["remove", "delete", "remove", "delete"]
 
 
 @pytest.mark.parametrize("fails", ["raises", "hangs"])
@@ -873,15 +834,42 @@ async def test_a_room_whose_close_fails_still_lets_the_call_end_normally(
     assert entry is not None and entry.closed_at is None
 
 
-async def test_a_call_on_the_socket_from_its_start_closes_no_room(redis):
+# --- a start the browser gave up on --------------------------------------------
+
+
+async def test_the_sweep_closes_at_once_a_room_whose_start_the_person_gave_up_on(
+    redis,
+):
     service = FakeRoomService()
-    vendor = FakeVendor([Reply(text="Hi, I'm Otto, an AI.", audio_s=0.1)])
-    call = await open_call(redis, vendor, reaper=reaper_on(redis, service))
-    await call.ws.wait_for("turn_complete")
+    service.open(rooms.room_name(CALL), PERSON)
+    # Well inside the start's grace: the call could still start, but its end
+    # was asked for.
+    await locks.register_room(redis, CALL, USER, NOW - 5)
+    await locks.request_end(redis, CALL)
+    before = _closed("never_started")
 
-    await _hang_up(call)
+    assert await reaper_on(redis, service, clock=Clock()).sweep()
 
-    assert service.requests == []
+    assert service.kinds() == ["list", "remove", "delete"]
+    assert _closed("never_started") - before == 1
+    entry = await _entry(redis)
+    assert entry is not None and entry.closed_at == NOW
+
+
+async def test_the_sweep_leaves_a_started_call_alone_whose_end_was_asked_for(
+    redis,
+):
+    """Its relay ends it within a second, and closes its room."""
+    service = FakeRoomService()
+    service.open(rooms.room_name(CALL), PERSON, "otto")
+    await locks.register_room(redis, CALL, USER, NOW - 5)
+    await locks.write_call_record(redis, CALL, {"uid": USER, "status": "live"})
+    await locks.register_live_call(redis, CALL, NOW)
+    await locks.request_end(redis, CALL)
+
+    assert await reaper_on(redis, service, clock=Clock()).sweep()
+
+    assert service.kinds() == ["list"]
 
 
 # --- the relay ---------------------------------------------------------------
@@ -928,10 +916,8 @@ class BrokenReaper:
 async def test_a_room_closer_that_raises_still_lets_the_call_run_and_end(redis):
     reaper = BrokenReaper()
     vendor = FakeVendor([Reply(text="Hi, I'm Otto, an AI.", audio_s=0.1)])
-    call = await open_call(
-        redis, vendor, leg="websocket", token_leg="livekit", reaper=reaper
-    )
+    call = await open_call(redis, vendor, reaper=reaper)
     await call.ws.wait_for("turn_complete")
 
     assert (await _hang_up(call))["reason"] == "user_hangup"
-    assert reaper.closes == ["downgrade", "call_end"]
+    assert reaper.closes == ["call_end"]

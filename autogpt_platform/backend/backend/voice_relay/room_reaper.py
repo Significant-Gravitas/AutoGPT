@@ -9,18 +9,17 @@ every room has an owner here from before it can exist to after it is gone:
   closed all it had to (``locks.rooms_swept``).
 - The relay that runs the call closes the room once the call is done with it
   (:meth:`RoomReaper.close`): as the call ends, after Otto's play-out and the
-  relay's own leave, and at once when the call's audio moves to the socket.
-  A close removes the person, revoking every token of theirs issued until a
+  relay's own leave. A close removes the person, revoking every token of theirs issued until a
   moment after it (``ROOM_REVOKE_AHEAD_S``), and deletes the room, even when
   the removal failed; only a close that did both is stamped on the room's
   entry.
-- Every relay with a LiveKit project sweeps the registry every
-  ``ROOM_SWEEP_S`` against one listing of the project's rooms
-  (:meth:`RoomReaper.sweep`). A room is left alone while it is in use: while
-  its call may still start, while the call runs, and for ``ROOM_END_GRACE_S``
-  after it ended. Any other room not yet closed is closed: a call that never
-  started, a call whose pod died, a close that failed. A closed room listed
-  again is closed again.
+- Every relay sweeps the registry every ``ROOM_SWEEP_S`` against one listing
+  of the project's rooms (:meth:`RoomReaper.sweep`). A room is left alone
+  while it is in use: while its call may still start, while the call runs,
+  and for ``ROOM_END_GRACE_S`` after it ended. Any other room not yet closed
+  is closed: a call that never started (at once when the person gave up on
+  its start, which asks for its end), a call whose pod died, a close that
+  failed. A closed room listed again is closed again.
 - A removal revokes the person's tokens for ``ROOM_REVOCATION_S``, but
   LiveKit still takes a token for ``ROOM_TOKEN_LEEWAY_S`` past its expiry,
   so one issued just before the close can outlast the revocation. The sweep
@@ -38,7 +37,7 @@ every room has an owner here from before it can exist to after it is gone:
 Closing is idempotent, so relays need no claim between them. A sweep writes
 the heartbeat only when it read the registry and the listing, and every
 close and revocation it made went through: while they keep failing, the REST
-API puts calls on the socket.
+API starts no call.
 """
 
 import asyncio
@@ -51,7 +50,6 @@ from backend.data.redis_client import AsyncRedisClient
 from backend.data.redis_helpers import as_str
 from backend.voice_relay import locks, rooms
 from backend.voice_relay.config import (
-    PERSON_IDENTITY_PREFIX,
     ROOM_END_GRACE_S,
     ROOM_FORGET_AFTER_REVOKED_S,
     ROOM_LEAVE_TIMEOUT_S,
@@ -178,14 +176,15 @@ class RoomReaper:
         from livekit import api
 
         service = self._rooms()
-        room = rooms.room_name(call_id)
         removal: Exception | None = None
         if user_id:
             try:
-                await self._revoke(service, room, user_id)
+                await self._revoke(service, call_id, user_id)
             except Exception as error:
                 removal = error
-        await _request(service.delete_room(api.DeleteRoomRequest(room=room)))
+        await _request(
+            service.delete_room(api.DeleteRoomRequest(room=rooms.room_name(call_id)))
+        )
         if removal is not None:
             raise removal
         redis = await self._redis()
@@ -198,7 +197,7 @@ class RoomReaper:
         self.closing += 1
         try:
             if user_id:
-                await self._revoke(self._rooms(), rooms.room_name(call_id), user_id)
+                await self._revoke(self._rooms(), call_id, user_id)
             redis = await self._redis()
             await _bounded(
                 locks.mark_room_revoked_again(
@@ -221,17 +220,17 @@ class RoomReaper:
         LIVEKIT_ROOMS_CLOSED.labels("revoke_again", "closed").inc()
         return True
 
-    async def _revoke(self, service: RoomService, room: str, user_id: str) -> None:
-        """Remove *user_id* from *room*, with every token of theirs issued
-        until a moment from now revoked: a little ahead of now, so a token
-        issued in this same second is caught too."""
+    async def _revoke(self, service: RoomService, call_id: str, user_id: str) -> None:
+        """Remove *user_id* from *call_id*'s room, with every token of theirs
+        for that call issued until a moment from now revoked: a little ahead
+        of now, so a token issued in this same second is caught too."""
         from livekit import api
 
         await _request(
             service.remove_participant(
                 api.RoomParticipantIdentity(
-                    room=room,
-                    identity=rooms.person_identity(user_id),
+                    room=rooms.room_name(call_id),
+                    identity=rooms.person_identity(user_id, call_id),
                     revoke_token_ts=int(self._clock()) + ROOM_REVOKE_AHEAD_S,
                 )
             )
@@ -358,9 +357,9 @@ class RoomReaper:
                 raise
             uid = next(
                 (
-                    participant.identity.removeprefix(PERSON_IDENTITY_PREFIX)
+                    person
                     for participant in listing.participants
-                    if participant.identity.startswith(PERSON_IDENTITY_PREFIX)
+                    if (person := rooms.person_of(participant.identity, call_id))
                 ),
                 "",
             )
@@ -384,12 +383,15 @@ async def _unused(
 ) -> RoomCloseWhy | None:
     """Why *entry*'s room is no longer in use, or None while it is: while
     its call may still start, while the call runs, and for a while after it
-    ended."""
+    ended. A call with no record whose end was asked for will never start:
+    the person gave up on its start."""
     status, ended_at = await redis.hmget(
         locks.call_record_key(entry.call_id), ["status", "ended_at"]
     )
     if status is None and ended_at is None:
-        if now - entry.minted_at < ROOM_START_GRACE_S:
+        if now - entry.minted_at < ROOM_START_GRACE_S and not (
+            await locks.end_requested(redis, entry.call_id)
+        ):
             return None
         return "never_started"
     if as_str(status) in locks.RUNNING and await locks.is_live(

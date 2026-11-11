@@ -6,8 +6,8 @@ key, so the relay trusts the user a token names without ever seeing the
 platform session:
 
 - a start token, minted by the REST API's start route, names one user, one
-  call, its audio leg and the person's arm of the voice ending experiment,
-  lives ``TOKEN_TTL_S``, and is spent by the first socket that presents it
+  call and the person's arm of the voice ending experiment, lives
+  ``TOKEN_TTL_S``, and is spent by the first socket that presents it
   (:func:`spend`). The relay reads no flags: the arm reaches the call's record
   this way;
 - a resume ticket, which the relay hands the browser in ``ready``, lets the
@@ -26,7 +26,6 @@ import json
 import re
 import time
 import uuid
-from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -35,11 +34,6 @@ from backend.util.settings import Settings
 from backend.voice_relay.config import TOKEN_SPENT_TTL_S, TOKEN_TTL_S
 
 settings = Settings()
-
-# The legs a call's audio can take: LiveKit in front of the relay, or the
-# control socket itself.
-Leg = Literal["livekit", "websocket"]
-LEGS: tuple[Leg, ...] = ("livekit", "websocket")
 
 # A shorter key is refused: it would not hold up as an HMAC key.
 MIN_KEY_CHARS = 32
@@ -63,7 +57,6 @@ class StartClaims(BaseModel):
 
     user_id: str
     call_id: str
-    leg: Leg
     expires_at: float
     # The person's arm of the voice ending experiment; None when not enrolled.
     ending: str | None = None
@@ -96,20 +89,18 @@ def new_call_id() -> str:
 def mint_start(
     user_id: str,
     call_id: str,
-    leg: Leg,
     *,
     ending: str | None = None,
     ttl_s: float = TOKEN_TTL_S,
     now: float | None = None,
 ) -> str:
-    """A start token for *user_id*'s call *call_id* on *leg*, carrying their
-    arm of the voice ending experiment, *ending*."""
+    """A start token for *user_id*'s call *call_id*, carrying their arm of
+    the voice ending experiment, *ending*."""
     issued = time.time() if now is None else now
     claims: dict[str, object] = {
         "kind": _START,
         "uid": user_id,
         "call_id": call_id,
-        "leg": leg,
         "exp": issued + ttl_s,
     }
     if ending is not None:
@@ -130,9 +121,6 @@ def mint_resume(
 def verify_start(token: object, *, now: float | None = None) -> StartClaims:
     """The claims of a valid, unexpired start token. Raises :class:`TokenError`."""
     claims = _verify(token, _START, now)
-    leg = claims.get("leg")
-    if leg not in LEGS:
-        raise TokenError("token_invalid")
     ending = claims.get("ending")
     if not (isinstance(ending, str) and ENDING.fullmatch(ending)):
         # An arm this relay cannot read ends the call as an unenrolled one.
@@ -140,7 +128,6 @@ def verify_start(token: object, *, now: float | None = None) -> StartClaims:
     return StartClaims(
         user_id=claims["uid"],
         call_id=claims["call_id"],
-        leg=cast(Leg, leg),
         expires_at=claims["exp"],
         ending=ending,
     )

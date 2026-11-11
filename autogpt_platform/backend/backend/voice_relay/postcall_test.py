@@ -120,7 +120,6 @@ class Rig:
         fields: dict[str, object] = {
             "status": status,
             "uid": USER,
-            "leg": "websocket",
             "started": time.time() - 3600 if started is None else started,
             "end_reason": end_reason,
             "turns": [

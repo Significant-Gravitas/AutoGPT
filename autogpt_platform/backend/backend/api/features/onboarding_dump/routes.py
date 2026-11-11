@@ -40,7 +40,6 @@ from backend.api.features.onboarding_dump.models import (
     SuggestedTasksUpdate,
     UploadPartResponse,
     VoiceCallFinishRequest,
-    VoiceCallStartRequest,
     VoiceCallStartResponse,
     VoiceCallStatusResponse,
     clients_recording_id,
@@ -250,21 +249,27 @@ async def start_onboarding_interview(
 async def get_onboarding_interview(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> InterviewStateResponse:
-    """The person's onboarding interview as it stands, without starting it.
+    """The person's onboarding interview as it stands, without starting it,
+    and whether the step may offer them a call.
 
     For the step's talk-or-type choice, which must know whether the
-    interview is over before it offers Skip. Nothing is created, greeted,
-    charged or refused. An interview that is over but not yet handed off is
-    handed off in the background, as the start does. 404 when the person has
-    no interview.
+    interview is over before it offers Skip, and shows "Talk to Otto" only
+    where voice can be offered. Nothing is created, greeted, charged or
+    refused. An interview that is over but not yet handed off is handed off
+    in the background, as the start does. A person who has not opened their
+    interview reads with no session.
     """
     read = await interview.read_onboarding_interview(user_id)
+    voice_available = await voice.voice_available(user_id)
     if read is None:
-        raise fastapi.HTTPException(status_code=404, detail="No onboarding interview")
+        return InterviewStateResponse(
+            session_id=None, is_over=False, voice_available=voice_available
+        )
     return InterviewStateResponse(
         session_id=read.session.session_id,
         stage=read.session.metadata.onboarding_interview_stage,
         is_over=read.is_over,
+        voice_available=voice_available,
     )
 
 
@@ -284,17 +289,15 @@ def _with_wait_in_body(refusal: fastapi.HTTPException) -> fastapi.HTTPException:
 @router.post("/interview/voice", operation_id="start_onboarding_voice_call")
 async def start_onboarding_voice_call(
     user_id: Annotated[str, Security(get_user_id)],
-    request: VoiceCallStartRequest | None = None,
 ) -> VoiceCallStartResponse:
     """Start a voice call for the person's onboarding interview.
 
-    Answers with the relay's call socket and a start token good for this one
-    call within a minute: the browser opens the socket and sends the token as
-    its first message. On the ``livekit`` leg, offered only to a browser that
-    says it supports it, it also answers with the call's room and the
-    browser's token for it, and the browser joins the room first; a browser
-    that cannot join takes the call's audio onto the socket instead, and says
-    so in its start.
+    Answers with the call's room, which carries its audio, and the browser's
+    token for it, and with the relay's call socket and a start token good for
+    this one call within a minute. The browser joins the room, then opens the
+    socket and sends the token as its first message; a browser that cannot
+    join the room ends the call (``/end``). The call counts against the
+    person's allowance once its model session opens on the relay.
 
     404 while voice is off for the person; 409 once their interview is over,
     or while a call of theirs is live (``call_id`` names it); 429 past their
@@ -303,9 +306,7 @@ async def start_onboarding_voice_call(
     in the body (``retry_after_seconds``) as well as in ``Retry-After``.
     """
     try:
-        return await voice.start_voice_call(
-            user_id, supports_livekit=request is not None and request.supports_livekit
-        )
+        return await voice.start_voice_call(user_id)
     except fastapi.HTTPException as e:
         if e.status_code in (429, 503):
             raise _with_wait_in_body(e) from e
@@ -395,9 +396,9 @@ async def end_onboarding_voice_call(
     call_id: VoiceCallId,
 ) -> None:
     """End a live voice call of the person's that they can no longer reach,
-    such as one on another device. The relay running it ends it within a
-    second or so, and the person can call again. 404 for a call that is not
-    theirs."""
+    such as one on another device, or one whose start they gave up on. The
+    relay running it ends it within a second or so, and the person can call
+    again. 404 for a call that is not theirs."""
     try:
         await voice.end_call(user_id, call_id)
     except fastapi.HTTPException as e:

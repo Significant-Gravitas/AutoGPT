@@ -32,7 +32,6 @@ def _meter(redis, rows: list[Row] | None = None) -> CallMeter:
     return CallMeter(
         user_id="user-1",
         call_id="c" * 32,
-        leg="websocket",
         model=LIVE,
         redis=redis,
         sink=sink,
@@ -152,9 +151,7 @@ async def test_a_row_reaches_the_cost_log_on_the_platforms_account(monkeypatch, 
     record_cost = AsyncMock()
     monkeypatch.setattr(token_tracking, "_schedule_cost_log", logged.append)
     monkeypatch.setattr(token_tracking, "record_cost_usage", record_cost)
-    meter = CallMeter(
-        user_id="user-1", call_id="c" * 32, leg="websocket", model=LIVE, redis=redis
-    )
+    meter = CallMeter(user_id="user-1", call_id="c" * 32, model=LIVE, redis=redis)
     before = (
         REGISTRY.get_sample_value(
             "voice_interview_cost_usd_total", {"meter": "live_audio_out"}
@@ -181,7 +178,7 @@ async def test_a_row_reaches_the_cost_log_on_the_platforms_account(monkeypatch, 
     assert reported.cost_microdollars == 12_000
     assert reported.metadata["call_id"] == "c" * 32
     assert reported.metadata["meter"] == "audio_out"
-    assert reported.metadata["leg"] == "websocket"
+    assert "leg" not in reported.metadata
     assert reported.metadata["source"] == "onboarding_voice_interview"
     assert "estimate" not in reported.metadata
     assert estimated.metadata["estimate"] == "tail"
@@ -199,7 +196,6 @@ async def test_a_cost_log_failure_never_reaches_the_call(redis):
     meter = CallMeter(
         user_id="user-1",
         call_id="c" * 32,
-        leg="websocket",
         model=LIVE,
         redis=redis,
         sink=broken,
@@ -230,7 +226,6 @@ async def test_a_slow_redis_does_not_hold_up_a_usage_report(monkeypatch):
     meter = CallMeter(
         user_id="user-1",
         call_id="c" * 32,
-        leg="websocket",
         model=LIVE,
         redis=SlowRedis(),  # type: ignore[arg-type]
         sink=AsyncMock(),

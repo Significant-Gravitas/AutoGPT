@@ -330,16 +330,20 @@ class InterviewStartResponse(BaseModel):
 
 class InterviewStateResponse(BaseModel):
     """The person's onboarding interview as it stands, read without starting
-    it."""
+    it, and whether the step may offer them a call."""
 
-    session_id: str
-    """The interview's chat session; each person has one."""
+    session_id: str | None
+    """The interview's chat session; each person has one. None while they
+    have not opened it."""
     stage: str | None = None
     """``ChatSessionMetadata.onboarding_interview_stage``; None while Otto is
     still asking."""
     is_over: bool
     """Whether it takes no more turns: closed, handed off, or its replies
     used up, which can be true before ``stage`` says so."""
+    voice_available: bool
+    """Whether the step may offer a call: voice is on for the person, and
+    this deployment can carry one."""
 
 
 class VoiceCallCaps(BaseModel):
@@ -355,28 +359,15 @@ class VoiceCallCaps(BaseModel):
     """The call ends after this long with nothing heard from the person."""
 
 
-class VoiceCallLeg(BaseModel):
-    """How the call's audio travels. The control socket always carries the
-    call's events. On the ``websocket`` leg it carries the audio too; on the
-    ``livekit`` leg the audio goes through the call's LiveKit room, which the
-    browser joins before it opens the socket, and takes the socket instead
-    when it cannot join within a few seconds."""
+class VoiceCallRoom(BaseModel):
+    """The call's LiveKit room, which carries its audio. The browser joins it
+    before it opens the relay's socket, which carries everything else."""
 
-    kind: Literal["websocket", "livekit"]
-    url: str | None = None
-    """The LiveKit project's ``wss://`` URL; on the ``livekit`` leg only."""
-    token: str | None = None
+    url: str
+    """The LiveKit project's ``wss://`` URL."""
+    token: str
     """The browser's token for the call's room, which lets it publish its
-    microphone and hear Otto there; on the ``livekit`` leg only."""
-
-
-class VoiceCallStartRequest(BaseModel):
-    """What the browser starting a voice call can take."""
-
-    supports_livekit: bool = False
-    """Whether the browser can take the call's audio through a LiveKit room.
-    A start without it takes the control socket, whatever the edge flag
-    says."""
+    microphone and hear Otto there."""
 
 
 class VoiceCallStartResponse(BaseModel):
@@ -386,10 +377,10 @@ class VoiceCallStartResponse(BaseModel):
     relay_url: str
     """The relay's call socket."""
     token: str
-    """The socket's first message carries it, ``{"type": "start", "token",
-    "leg"}``. Good for this one call, within ``expires_in`` seconds."""
+    """The socket's first message carries it, ``{"type": "start",
+    "token"}``. Good for this one call, within ``expires_in`` seconds."""
     expires_in: int
-    leg: VoiceCallLeg
+    room: VoiceCallRoom
     caps: VoiceCallCaps
 
 
@@ -435,15 +426,14 @@ class VoiceCallStatusResponse(BaseModel):
     """Why the call ended: ``finished`` once Otto said goodbye, the control
     that ended it (``wall_clock``, ``turn_cap``, ``idle``, ``scope``,
     ``spend_cap``, ``user_hangup``, ``superseded``, ``client_gone``,
-    ``vendor_error``, ``server_restart``), or ``crashed`` when the server
-    running it stopped."""
-    leg: Literal["livekit", "websocket"]
+    ``vendor_error``, ``room_error``, ``server_restart``), or ``crashed`` when
+    the server running it stopped."""
     relay_url: str | None = None
     """The relay's call socket, which a tab holding the call's resume ticket
     rejoins it on; set only while the call is live."""
     livekit_url: str | None = None
     """The LiveKit project a tab rejoining the call joins its room on; set
-    only while a call on the ``livekit`` leg is live."""
+    only while the call is live."""
     hand_off: FinalizeResponse | None = None
     """What the onboarding pipeline answered the call's hand-off, read the
     way the typed interview's finish answer is read; None until it has

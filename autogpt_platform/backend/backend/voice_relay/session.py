@@ -10,7 +10,7 @@ browser only displays them:
 - the spend cap, from every priced usage row;
 - the end tool: once Otto calls it, the call ends after its goodbye;
 - re-attach: a dropped browser socket comes back on its resume ticket within
-  ``reattach_s``, and what Otto said meanwhile is replayed;
+  ``reattach_s``, and what the call said on it meanwhile is replayed;
 - vendor reconnect: a dropped vendor session is replaced by one seeded with
   the conversation so far, at most ``max_vendor_reconnects`` times;
 - an end request from the person's other device, and the drain on deploys.
@@ -21,19 +21,19 @@ job cuts the recording into turns by. The call is pending a post-call job
 from its start, and the call claims that job before it stops counting as
 live (``postcall``).
 
-One control protocol, two audio paths (an ``AudioLeg``). The control socket
-always carries the call's events, its captions and the resume ticket. On the
-``websocket`` leg it carries the audio too; on the ``livekit`` leg the audio
-travels through the call's LiveKit room (``edge``), which the relay joins as
-the call connects. A relay that cannot join the room says ``leg`` once,
-before ``ready``, and the call's audio takes the socket instead.
+The call's audio travels through its LiveKit room (``edge``), which the
+relay joins while the vendor connects; the control socket carries the call's
+events, its captions and the resume ticket, and no audio. A call whose room
+the relay cannot join, or that loses it, ends ``room_error``: before
+``ready``, the browser reads that as a call that never started. The call
+counts against the person's allowance once it has both its room and its
+model session, the first moment it costs anything.
 
-Browser to relay, after ``start``: JSON ``hangup`` and ``ping {id}``, and on
-the socket leg binary frames of 16 kHz PCM16. Relay to browser: JSON
-``leg``, ``ready``, ``user_text``, ``agent_text``, ``interrupted``,
-``turn_complete``, ``wrap_up``, ``resumed``, ``ended`` and ``pong``, and on
-the socket leg binary frames of 24 kHz PCM16. The browser has no way to put
-text into the conversation: the server's notes are the server's alone.
+Browser to relay, after ``start``: JSON ``hangup`` and ``ping {id}``; a
+binary frame is counted and dropped. Relay to browser: JSON ``ready``,
+``user_text``, ``agent_text``, ``interrupted``, ``turn_complete``,
+``wrap_up``, ``resumed``, ``ended`` and ``pong``. The browser has no way to
+put text into the conversation: the server's notes are the server's alone.
 """
 
 import asyncio
@@ -79,13 +79,12 @@ from backend.voice_relay.locks import (
 from backend.voice_relay.metering import (
     CALL_SECONDS,
     CALLS,
-    FALLBACKS,
     FIRST_AUDIO_SECONDS,
+    REPLY_SECONDS,
     CallMeter,
 )
 from backend.voice_relay.record import CallRecording
 from backend.voice_relay.scope import ScopeClassifier
-from backend.voice_relay.tokens import Leg
 from backend.voice_relay.vendor import (
     AgentAudio,
     AgentText,
@@ -117,6 +116,8 @@ EndReason = Literal[
     # The browser's socket dropped and did not come back.
     "client_gone",
     "vendor_error",
+    # The relay could not join the call's room, or lost it.
+    "room_error",
     # The pod's drain ran past its limit.
     "server_restart",
 ]
@@ -153,21 +154,17 @@ class ClientSocket(Protocol):
 
     async def receive(self) -> Mapping[str, Any]: ...
 
-    async def send_bytes(self, data: bytes) -> None: ...
-
     async def send_text(self, data: str) -> None: ...
 
     async def close(self, code: int = 1000, reason: str | None = None) -> None: ...
 
 
 class AudioLeg(Protocol):
-    """Where a call's audio travels: the control socket, or the call's room.
+    """The call's audio in its room (``edge.RoomLeg``).
 
-    The person's audio reaches the call through ``Session.on_mic`` either
-    way; this is the rest of what the call does with its audio.
+    The person's audio reaches the call through ``Session.on_mic``; this is
+    the rest of what the call does with its audio.
     """
-
-    kind: Leg
 
     async def play(self, pcm: bytes) -> None:
         """Pass on Otto's speech, 24 kHz PCM16, as the vendor sends it."""
@@ -184,10 +181,12 @@ class AudioLeg(Protocol):
 
 
 # What a room hands the call: the person's audio, whether their microphone
-# is in the room, and whether their audio has stalled while it stays there.
+# is in the room, whether their audio has stalled while it stays there, and
+# that the relay's own connection to the room is gone.
 Hear = Callable[[bytes], Awaitable[None]]
 Presence = Callable[[bool], None]
 Stall = Callable[[bool], None]
+Lost = Callable[[], None]
 
 
 @runtime_checkable
@@ -208,6 +207,7 @@ class RoomEdge(Protocol):
         hear: Hear,
         presence: Presence,
         stall: Stall,
+        lost: Lost,
     ) -> AudioLeg: ...
 
 
@@ -224,29 +224,17 @@ class RoomCloser(Protocol):
 # Ends after which nobody is left to hear Otto's last words, or the server
 # must stop now: the call's room is left at once.
 _LEAVE_AT_ONCE: frozenset[str] = frozenset(
-    {"client_gone", "superseded", "server_restart"}
+    {"client_gone", "superseded", "server_restart", "room_error"}
 )
 
 
-class SocketLeg:
-    """The call's audio on its control socket: the ``websocket`` leg."""
+class _StartFailed(Exception):
+    """The call could not open: its room, or its model session."""
 
-    kind: Leg = "websocket"
-
-    def __init__(self, session: "Session") -> None:
-        self._session = session
-
-    async def play(self, pcm: bytes) -> None:
-        await self._session._send(data=pcm)
-
-    def flush(self) -> None:
-        # The browser drops what it has queued when it hears ``interrupted``.
-        return None
-
-    async def close(self, *, play_out: bool) -> None:
-        # The socket closes with the call, and the browser plays out what it
-        # has been sent.
-        return None
+    def __init__(self, reason: EndReason, error: str) -> None:
+        super().__init__(error)
+        self.reason: EndReason = reason
+        self.error = error
 
 
 class AgentTurn(BaseModel):
@@ -272,36 +260,29 @@ class Session:
         *,
         call_id: str,
         user_id: str,
-        leg: Leg,
         ws: ClientSocket,
         vendor: VendorConnector,
         store: CallStore,
         meter: CallMeter,
         classifier: ScopeClassifier | None,
+        edge: RoomEdge,
         first_name: str | None = None,
         caps: Caps = CAPS,
         timing: Timing = TIMING,
         started: float | None = None,
         on_end: Callable[[], None] | None = None,
         recording: CallRecording | None = None,
-        edge: RoomEdge | None = None,
-        token_leg: Leg | None = None,
         reaper: RoomCloser | None = None,
     ) -> None:
         self.call_id = call_id
         self.user_id = user_id
-        # The leg the call asked for, then the one its audio takes.
-        self.leg: Leg = leg
         self.edge = edge
-        # The leg the call's start token named: a room was registered and its
-        # token minted for a call on the LiveKit leg, whatever leg its audio
-        # took, and the call closes that room (``reaper``) once it is done
-        # with it.
-        self.token_leg: Leg = token_leg or leg
+        # The REST API registered the call's room before it minted its token,
+        # and the call closes it (``reaper``) once it is done with it.
         self.reaper = reaper
         self._room_closed = False
-        self._room_closing: asyncio.Task[None] | None = None
-        self.audio: AudioLeg = SocketLeg(self)
+        # The call's audio in its room, once the relay has joined it.
+        self.audio: AudioLeg | None = None
         self.ws = ws
         self.vendor = vendor
         self.store = store
@@ -337,9 +318,8 @@ class Session:
         self.upstream_task: asyncio.Task | None = None
         self.client_gone = False
         self.detached_at: float | None = None
-        self.outbox: list[tuple[str | None, bytes | None]] = []
+        self.outbox: list[str] = []
         self.outbox_bytes = 0
-        self._outbox_max = int(timing.outbox_s * OUT_RATE * 2)
         self.reattaches = 0
         # The vendor side.
         self.live: VendorSession | None = None
@@ -354,10 +334,13 @@ class Session:
         # which it is estimated to do until playout_end.
         self.playout_end = 0.0
         self.quiet_s = 0.0
-        # On the LiveKit leg: since when the person's microphone has been out
-        # of the room, or None while it is in, and whether its audio has
-        # stalled while it stays there (muted, or a connection reconnecting).
-        # The room's audio reaches the call once the call is live.
+        # When the voice detector last heard the person (monotonic), until
+        # Otto's next turn answers it: the reply's latency runs from there.
+        self.last_heard: float | None = None
+        # Since when the person's microphone has been out of the room, or
+        # None while it is in, and whether its audio has stalled while it
+        # stays there (muted, or a connection reconnecting). The room's audio
+        # reaches the call once the call is live.
         self.away_since: float | None = None
         self.stalled = False
         self.hearing_room = False
@@ -413,31 +396,20 @@ class Session:
         # Held from here, so no other process's sweep takes the job of a call
         # still running; the call's refresh holds it on.
         self.postcall_claimed = await self.store.claim_postcall()
-        if self.leg != self.token_leg:
-            # The browser could not join the room, so the call never needs it.
-            self.close_room_soon()
         try:
-            # Joined while the vendor connects, so the audio has its way by
-            # Otto's first words.
-            joining = (
-                self.spawn(self.join_room(), "room_join")
-                if self.leg == "livekit"
-                else None
-            )
-            live = await asyncio.wait_for(
-                self.vendor.connect(opening=voice_interview_kickoff(self.first_name)),
-                timeout=self.timing.vendor_connect_timeout_s,
-            )
-            if joining is not None:
-                await joining
+            live = await self._open()
+            self.live = live
+            if self.ended.is_set():
+                # The room was lost while the call opened.
+                return
             self.t0 = time.monotonic()
             self.bucket_at = self.t0
-            self.live = live
+            # The call costs us from here.
+            await self.store.count_call()
             await self.store.advance(
                 LIVE,
                 moves_from=(None, CONNECTING),
                 connect_s=round(self.t0 - self.started, 3),
-                leg=self.leg,
             )
             ticket = tokens.mint_resume(
                 self.user_id, self.call_id, self.caps.max_call_s + RESUME_GRACE_S
@@ -448,7 +420,6 @@ class Session:
                     "call_id": self.call_id,
                     "caps": self.caps.as_message(),
                     "resume": ticket,
-                    "leg": self.leg,
                 }
             )
             self.hearing_room = True
@@ -462,15 +433,46 @@ class Session:
             # The server is shutting down under the call.
             self.end("server_restart")
             raise
-        except Exception as error:
-            self.error = f"connect: {type(error).__name__}"
-            self.end("vendor_error")
+        except _StartFailed as failed:
+            logger.warning(f"Voice call {self.call_id}: did not open ({failed.error})")
+            self.error = failed.error
+            self.end(failed.reason)
         finally:
             for task in list(self.tasks):
                 task.cancel()
             await asyncio.gather(*self.tasks, return_exceptions=True)
             await self.close_vendor()
             await self.finish()
+
+    async def _open(self) -> VendorSession:
+        """The call's model session, with its room joined: the room is joined
+        while the vendor connects, so the audio has its way by Otto's first
+        words.
+
+        Raises ``_StartFailed`` naming the side that failed. A model session
+        opened for a room the relay could not join is closed.
+        """
+        joining = asyncio.create_task(self.join_room(), name="room_join")
+        self.tasks.add(joining)
+        joining.add_done_callback(self.tasks.discard)
+        try:
+            live = await asyncio.wait_for(
+                self.vendor.connect(opening=voice_interview_kickoff(self.first_name)),
+                timeout=self.timing.vendor_connect_timeout_s,
+            )
+        except Exception as error:
+            raise _StartFailed(
+                "vendor_error", f"connect: {type(error).__name__}"
+            ) from error
+        try:
+            await joining
+        except Exception as error:
+            await live.close()
+            raise _StartFailed("room_error", f"room: {type(error).__name__}") from error
+        except asyncio.CancelledError:
+            await live.close()
+            raise
+        return live
 
     async def finish(self) -> None:
         reason: EndReason = self.end_reason or "vendor_error"
@@ -508,7 +510,7 @@ class Session:
         finally:
             if self.on_end is not None:
                 self.on_end()
-        CALLS.labels(reason=reason, leg=self.leg).inc()
+        CALLS.labels(reason=reason).inc()
         CALL_SECONDS.observe(elapsed)
         try:
             async with self._attach_lock:
@@ -532,37 +534,23 @@ class Session:
                 self._socket_done.set()
 
     async def leave_room(self, reason: EndReason) -> None:
-        """Stop carrying the call's audio: on the LiveKit leg, Otto's last
-        words play out in the room first, unless nobody is left to hear them
-        or the server must stop. Then the call's room is closed, whatever leg
-        the call ended on."""
+        """Stop carrying the call's audio: Otto's last words play out in the
+        room first, unless nobody is left to hear them or the server must
+        stop. Then the call's room is closed, joined or not."""
+        audio = self.audio
         try:
-            await self.audio.close(play_out=reason not in _LEAVE_AT_ONCE)
+            if audio is not None:
+                await audio.close(play_out=reason not in _LEAVE_AT_ONCE)
         except Exception:
             logger.warning(
                 f"Voice call {self.call_id}: its audio did not close cleanly",
                 exc_info=True,
             )
-        closing = self._room_closing
-        if closing is not None:
-            await asyncio.gather(closing, return_exceptions=True)
         await self._close_room("call_end")
-
-    def close_room_soon(self) -> None:
-        """The call's audio left its room for the socket: close the room now,
-        without holding the call up."""
-        if self._room_closing is None and self._closes_room:
-            self._room_closing = asyncio.create_task(
-                self._close_room("downgrade"), name="room-close"
-            )
-
-    @property
-    def _closes_room(self) -> bool:
-        return self.reaper is not None and self.token_leg == "livekit"
 
     async def _close_room(self, why: RoomCloseWhy) -> None:
         reaper = self.reaper
-        if reaper is None or not self._closes_room or self._room_closed:
+        if reaper is None or self._room_closed:
             return
         try:
             self._room_closed = await reaper.close(self.call_id, self.user_id, why)
@@ -579,41 +567,27 @@ class Session:
     # --- the call's room --------------------------------------------------
 
     async def join_room(self) -> None:
-        """Take the call's audio into its LiveKit room; or, when the relay
-        cannot join it, onto the socket, telling the browser so before
-        ``ready``."""
-        if self.edge is None:
-            await self.fall_back("relay_unconfigured")
-            return
+        """Take the call's audio into its LiveKit room. Raises whatever the
+        join failed with."""
         # Away until the person's microphone is found in the room.
         self.away_since = time.monotonic()
-        try:
-            self.audio = await self.edge.join(
-                call_id=self.call_id,
-                user_id=self.user_id,
-                ttl_s=self.caps.max_call_s + RELAY_ROOM_GRACE_S,
-                hear=self.hear_room,
-                presence=self.on_presence,
-                stall=self.on_stall,
-            )
-        except Exception as error:
-            logger.warning(
-                f"Voice call {self.call_id}: the relay could not join its room "
-                f"({type(error).__name__})"
-            )
-            await self.fall_back("relay_join")
-
-    async def fall_back(self, why: str) -> None:
-        """The call's audio takes the socket instead of the room."""
-        self.leg = "websocket"
-        self.meter.leg = "websocket"
-        self.away_since = None
-        FALLBACKS.labels("livekit", why).inc()
-        logger.info(
-            f"Voice call {self.call_id}: audio falls back to the socket ({why})"
+        self.audio = await self.edge.join(
+            call_id=self.call_id,
+            user_id=self.user_id,
+            ttl_s=self.caps.max_call_s + RELAY_ROOM_GRACE_S,
+            hear=self.hear_room,
+            presence=self.on_presence,
+            stall=self.on_stall,
+            lost=self.on_room_lost,
         )
-        await self.send_json({"type": "leg", "leg": "websocket"})
-        self.close_room_soon()
+
+    def on_room_lost(self) -> None:
+        """The relay's own connection to the call's room is gone past the
+        SDK's reconnect: nothing the person says reaches the call any more,
+        so it ends at once."""
+        if not self.ended.is_set():
+            self.error = "room: lost"
+            self.end("room_error")
 
     async def hear_room(self, pcm: bytes) -> None:
         """The person's audio from the room, taken once the call is live."""
@@ -645,37 +619,26 @@ class Session:
     # --- the browser's socket ---------------------------------------------
 
     async def send_json(self, message: Mapping[str, object]) -> None:
-        await self._send(text=json.dumps(message))
-
-    async def _send(
-        self, *, text: str | None = None, data: bytes | None = None
-    ) -> None:
         if self.client_gone:
             return
         async with self._send_lock:
-            await self._send_locked(text, data)
+            await self._send_locked(json.dumps(message))
 
-    async def _send_locked(self, text: str | None, data: bytes | None) -> None:
+    async def _send_locked(self, text: str) -> None:
         """Send on the call's socket, or keep it for a re-attach while the
         browser is away. The send lock is held."""
         if self.client_gone:
             return
         if self.detached_at is not None:
-            size = len(data) if data is not None else len(text or "")
-            if self.outbox_bytes + size <= self._outbox_max:
-                self.outbox.append((text, data))
-                self.outbox_bytes += size
+            if self.outbox_bytes + len(text) <= self.timing.outbox_bytes:
+                self.outbox.append(text)
+                self.outbox_bytes += len(text)
             return
         ws = self.ws
         try:
-            if data is not None:
-                await asyncio.wait_for(
-                    ws.send_bytes(data), timeout=self.timing.socket_timeout_s
-                )
-            else:
-                await asyncio.wait_for(
-                    ws.send_text(text or ""), timeout=self.timing.socket_timeout_s
-                )
+            await asyncio.wait_for(
+                ws.send_text(text), timeout=self.timing.socket_timeout_s
+            )
         except Exception:
             # Failed or stalled: the browser is no longer reading.
             self.detach("send failed", ws)
@@ -696,15 +659,8 @@ class Session:
             return
         self.detached_at = time.monotonic()
         self._socket_done.set()
+        # The person's audio goes on through the room meanwhile.
         logger.info(f"Voice call {self.call_id}: browser detached ({why})")
-        # Close the person's open turn so a half-heard sentence does not hang
-        # the vendor's turn detection. On the LiveKit leg their audio goes on
-        # through the room meanwhile.
-        if self.audio.kind == "websocket":
-            self.spawn(
-                self._vendor_call("stream end", lambda live: live.end_audio_stream()),
-                "stream_end",
-            )
 
     async def attach(self, ws: ClientSocket) -> asyncio.Event:
         """Make *ws* the call's socket (a re-attach after a drop or a reload).
@@ -713,7 +669,7 @@ class Session:
         """
         async with self._attach_lock:
             old = self.ws
-            # From here on the old socket hears nothing: what Otto says is
+            # From here on the old socket hears nothing: what the call says is
             # kept for *ws*.
             if self.detached_at is None:
                 self.detached_at = time.monotonic()
@@ -723,28 +679,24 @@ class Session:
             if old is not ws:
                 await self._close(old, CLOSE_REPLACED)
             # Switched once the old socket is closed, under the send lock, so
-            # nothing Otto says lands ahead of ``resumed`` and what was kept.
+            # nothing the call says lands ahead of ``resumed`` and what was
+            # kept.
             async with self._send_lock:
                 self._socket_done.set()
                 self._socket_done = asyncio.Event()
                 self.ws = ws
-                now = time.monotonic()
-                gap = now - away_since
+                gap = time.monotonic() - away_since
                 outbox, self.outbox, self.outbox_bytes = self.outbox, [], 0
                 self.detached_at = None
                 self.reattaches += 1
-                # The browser plays what was kept from now on, so the idle
-                # clock waits for it.
-                replayed_s = sum(len(data) for _, data in outbox if data) / 2 / OUT_RATE
-                self.playout_end = max(self.playout_end, now + replayed_s)
                 logger.info(
                     f"Voice call {self.call_id}: browser re-attached after "
                     f"{gap:.1f}s, {len(outbox)} messages replayed"
                 )
                 resumed = {"type": "resumed", "gap_s": round(gap, 3)}
-                await self._send_locked(json.dumps(resumed), None)
-                for text, data in outbox:
-                    await self._send_locked(text, data)
+                await self._send_locked(json.dumps(resumed))
+                for text in outbox:
+                    await self._send_locked(text)
             self.upstream_task = self.spawn(self.upstream(ws), "upstream")
             return self._socket_done
 
@@ -758,13 +710,9 @@ class Session:
             if message.get("type") == "websocket.disconnect":
                 self.detach(f"disconnect {message.get('code')}", ws)
                 return
-            data = message.get("bytes")
-            if data is not None:
-                if self.audio.kind == "websocket":
-                    await self.on_mic(data)
-                else:
-                    # The person's audio takes the room on this leg.
-                    self.bad_frames += 1
+            if message.get("bytes") is not None:
+                # The person's audio takes the room, never the socket.
+                self.bad_frames += 1
                 continue
             text = message.get("text")
             if text:
@@ -791,6 +739,7 @@ class Session:
             self.recording.append(pcm)
         if vad.heard(pcm):
             self.quiet_s = 0.0
+            self.last_heard = now
         live = self.live
         if self.wrapping or self.reconnecting or live is None:
             return
@@ -867,7 +816,7 @@ class Session:
         if self.cur.first_audio is not None or self.cur.text:
             self.cur.interrupted = True
             self.playout_end = dropped_at
-            self.audio.flush()
+            self._flush()
             await self.send_json({"type": "interrupted"})
             await self.on_turn_complete()
         await self.close_vendor()
@@ -956,7 +905,7 @@ class Session:
             case Interrupted():
                 self.cur.interrupted = True
                 self.playout_end = now
-                self.audio.flush()
+                self._flush()
                 await self.send_json({"type": "interrupted"})
             case AgentAudio(pcm=pcm):
                 await self.on_agent_audio(pcm, now)
@@ -970,6 +919,9 @@ class Session:
             if self.first_audio_s is None:
                 self.first_audio_s = now - self.started
                 FIRST_AUDIO_SECONDS.observe(self.first_audio_s)
+            if self.last_heard is not None:
+                REPLY_SECONDS.observe(now - self.last_heard)
+                self.last_heard = None
             if (
                 self.turns
                 and self.classifier is not None
@@ -986,7 +938,13 @@ class Session:
         seconds = samples / OUT_RATE
         turn.audio_s += seconds
         self.playout_end = max(self.playout_end, now) + seconds
-        await self.audio.play(pcm)
+        if self.audio is not None:
+            await self.audio.play(pcm)
+
+    def _flush(self) -> None:
+        """Drop what Otto has not said yet in the room."""
+        if self.audio is not None:
+            self.audio.flush()
 
     async def on_tool_call(self, event: ToolCall) -> None:
         results: list[ToolResult] = []

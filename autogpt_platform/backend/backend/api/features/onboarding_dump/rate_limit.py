@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from prisma.enums import SubscriptionTier
 
 from backend.copilot.onboarding_interview import INTERVIEW_TURN_CAP
-from backend.data.redis_client import get_redis_async
+from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.user import get_user_subscription_tier
 from backend.monitoring.instrumentation import record_rate_limit_hit
 from backend.util.platform_payment import is_platform_payment_enabled
@@ -32,9 +32,10 @@ REDIS_TIMEOUT_SECONDS = 0.25
 INTERVIEW_HOURLY_TURNS = INTERVIEW_TURN_CAP + 4
 INTERVIEW_DAILY_TURNS = 2 * INTERVIEW_TURN_CAP
 
-# Onboarding voice calls a person may start: a call and a retry in an hour,
+# Onboarding voice calls a person may make: a call and a retry in an hour,
 # three in a day. The relay caps each call, so these bound how many calls,
-# not how long any one runs.
+# not how long any one runs. A call counts once its model session opens, the
+# first moment it costs anything; the start route only reads the count.
 VOICE_HOURLY_CALLS = 2
 VOICE_DAILY_CALLS = 3
 
@@ -54,6 +55,31 @@ if redis.call('INCR', KEYS[1]) == 1 then
 end
 if redis.call('INCR', KEYS[2]) == 1 then
     redis.call('EXPIRE', KEYS[2], ARGV[4])
+end
+return 0
+"""
+
+# The admission's check alone: the wait before another, or 0, counting
+# nothing.
+_CHECK = """
+local hourly = tonumber(redis.call('GET', KEYS[1]) or '0')
+local daily = tonumber(redis.call('GET', KEYS[2]) or '0')
+local retry_after = 0
+if hourly >= tonumber(ARGV[1]) then retry_after = tonumber(ARGV[3]) end
+if daily >= tonumber(ARGV[2]) then
+    retry_after = math.max(retry_after, tonumber(ARGV[4]))
+end
+return retry_after
+"""
+
+# The admission's count alone, past any limit. KEYS as above; ARGV[1] and
+# ARGV[2]: the windows' TTLs.
+_COUNT = """
+if redis.call('INCR', KEYS[1]) == 1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+if redis.call('INCR', KEYS[2]) == 1 then
+    redis.call('EXPIRE', KEYS[2], ARGV[2])
 end
 return 0
 """
@@ -116,19 +142,37 @@ async def enforce_interview_turn_budget(user_id: str) -> None:
 
 
 async def enforce_voice_call_budget(user_id: str) -> None:
-    """Admit one onboarding voice call, on the interview turn budget's rules
-    and its own counters: on every subscription tier where the platform takes
-    payment, a call past it is a 429 with Retry-After, and a budget that
+    """Refuse an onboarding voice call past the person's call allowance, on
+    the interview turn budget's rules and its own counters, counting nothing:
+    the relay counts a call once its model session opens
+    (:func:`count_voice_call`), so a start that never got that far costs the
+    person nothing. On every subscription tier where the platform takes
+    payment, a call past it is a 429 with Retry-After, and an allowance that
     cannot be read is a 503."""
-    await _enforce(user_id, _VOICE_INTERVIEW)
+    await _enforce(user_id, _VOICE_INTERVIEW, script=_CHECK)
 
 
-async def _enforce(user_id: str, budget: _Budget) -> None:
+async def count_voice_call(redis: AsyncRedisClient, user_id: str) -> None:
+    """Count one call against *user_id*'s voice call allowance, where the
+    allowance applies: on the counters :func:`enforce_voice_call_budget`
+    reads, with *redis*, the caller's client."""
+    if not await _requires_budget(user_id, _VOICE_INTERVIEW):
+        return
+    hourly_key, daily_key, hourly_ttl, daily_ttl = _budget_windows(
+        user_id, datetime.now(UTC), _VOICE_INTERVIEW.scope
+    )
+    await cast(
+        Awaitable[int],
+        redis.eval(_COUNT, 2, hourly_key, daily_key, str(hourly_ttl), str(daily_ttl)),
+    )
+
+
+async def _enforce(user_id: str, budget: _Budget, *, script: str = _ADMIT) -> None:
     try:
         if not await _requires_budget(user_id, budget):
             return
         retry_after = await asyncio.wait_for(
-            _admit(user_id, budget), timeout=REDIS_TIMEOUT_SECONDS
+            _admit(user_id, budget, script), timeout=REDIS_TIMEOUT_SECONDS
         )
     except Exception as exc:
         logger.warning(f"Onboarding {budget.scope} admission unavailable: {exc}")
@@ -160,7 +204,7 @@ async def _requires_budget(user_id: str, budget: _Budget) -> bool:
     return is_platform_payment_enabled()
 
 
-async def _admit(user_id: str, budget: _Budget) -> int:
+async def _admit(user_id: str, budget: _Budget, script: str) -> int:
     hourly_key, daily_key, hourly_ttl, daily_ttl = _budget_windows(
         user_id, datetime.now(UTC), budget.scope
     )
@@ -168,7 +212,7 @@ async def _admit(user_id: str, budget: _Budget) -> int:
     return await cast(
         Awaitable[int],
         redis.eval(
-            _ADMIT,
+            script,
             2,
             hourly_key,
             daily_key,

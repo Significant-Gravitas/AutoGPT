@@ -10,17 +10,19 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-# The browser's microphone and Gemini Live's speech, both mono PCM16.
+# The person's microphone, as the call hears it, and Gemini Live's speech,
+# both mono PCM16.
 IN_RATE = 16_000
 OUT_RATE = 24_000
 
-# An audio frame from the browser past this size is dropped, not buffered.
+# A frame of the person's audio past this size is dropped, not buffered.
 MAX_FRAME_BYTES = 16_000
 # Control messages from the browser are JSON text frames under this size.
 MAX_TEXT_BYTES = 4_096
-# The server's own frame limit, above MAX_FRAME_BYTES so an oversized frame
-# reaches the relay, which drops it, instead of closing the call.
-WS_MAX_MESSAGE_BYTES = 64 * 1024
+# The server's own frame limit. The control socket carries no audio: a frame
+# under this reaches the relay, which drops what it cannot read, instead of
+# closing the call.
+WS_MAX_MESSAGE_BYTES = 16 * 1024
 # How far ahead of real time a browser may push audio: a token bucket that
 # refills at real time and holds this many seconds.
 BURST_S = 2.0
@@ -45,8 +47,9 @@ LIVE_CALL_STALE_S = 120.0
 # How long an "end that call" request waits for the pod that owns the call.
 END_REQUEST_TTL_S = 600
 
-# The LiveKit leg. Each call has a room of its own, joined by the person's
-# browser and by the relay as Otto, and by no one else.
+# The call's room. Each call has a LiveKit room of its own, which carries its
+# audio, joined by the person's browser and by the relay as Otto, and by no
+# one else.
 ROOM_PREFIX = "voice-"
 RELAY_IDENTITY = "otto"
 PERSON_IDENTITY_PREFIX = "user:"
@@ -87,9 +90,9 @@ ROOM_PLAYOUT_TAIL_S = 0.5
 # A registered room is in use while its call may still start (no call record
 # yet, within this long of the mint: the start token's minute and the admit),
 # while its call runs, and for this long after the call ended, which covers
-# Otto's play-out. Every relay with a LiveKit project sweeps the registry this
-# often and closes what is no longer in use; each sweep's heartbeat lasts
-# this long, and without one the REST API puts calls on the socket.
+# Otto's play-out. Every relay sweeps the registry this often and closes what
+# is no longer in use; each sweep's heartbeat lasts this long, and without one
+# the REST API starts no call.
 ROOM_START_GRACE_S = 75.0
 ROOM_END_GRACE_S = 30.0
 ROOM_SWEEP_S = 30.0
@@ -108,16 +111,15 @@ ROOM_UNREGISTERED_GRACE_S = 600.0
 # A sweep's listing of the project's rooms is given up past this.
 ROOM_LIST_TIMEOUT_S = 10.0
 
-# Why a call's room was closed: the call ended, its audio moved to the
-# socket, or the sweep found it no longer in use (its call never started, or
-# it outlived its call), open again after it was closed, or open with no
-# entry in a project that is this deployment's alone.
+# Why a call's room was closed: the call ended, or the sweep found it no
+# longer in use (its call never started, or it outlived its call), open again
+# after it was closed, or open with no entry in a project that is this
+# deployment's alone.
 RoomCloseWhy = Literal[
-    "call_end", "downgrade", "never_started", "orphaned", "reopened", "unregistered"
+    "call_end", "never_started", "orphaned", "reopened", "unregistered"
 ]
-# The person's audio reaches the call in frames this long, on either leg: the
-# browser sends them so on the socket, and the relay cuts the room's into
-# them, so the voice-activity check reads the same frames on both.
+# The person's audio reaches the call in frames this long: the relay cuts the
+# room's audio into them, which the voice-activity check reads.
 FRAME_S = 0.04
 
 # What one call may spend, all meters together. Past it the call ends.
@@ -206,8 +208,9 @@ class Timing(BaseModel):
     finish_grace_s: float = 12.0
     # A dropped browser socket may re-attach within this.
     reattach_s: float = 15.0
-    # Otto's audio kept for a detached browser, in seconds of speech.
-    outbox_s: float = 20.0
+    # What the call says to a detached browser is kept for its re-attach, up
+    # to this much text.
+    outbox_bytes: int = 256 * 1024
     # After Otto's first audio, wait this long for the person's last caption
     # before their turn is labelled.
     scope_settle_s: float = 0.4

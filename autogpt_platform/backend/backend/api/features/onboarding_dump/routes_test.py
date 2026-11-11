@@ -2371,6 +2371,14 @@ def interview_starts(mocker: MockerFixture) -> dict[str, AsyncMock]:
 
 
 @pytest.fixture
+def voice_offer(mocker: MockerFixture) -> AsyncMock:
+    """Whether voice can be offered here: not, unless a test says so."""
+    return mocker.patch.object(
+        routes.voice, "voice_available", new=AsyncMock(return_value=False)
+    )
+
+
+@pytest.fixture
 def background_hand_off(mocker: MockerFixture) -> tuple[MagicMock, MagicMock]:
     """The hand-off an interview that is over gets behind the request, and
     the spawn that runs it."""
@@ -2394,6 +2402,7 @@ def test_reading_a_finished_interview_answers_it_over_and_starts_nothing(
     test_user_id: str,
     interview_starts: dict[str, AsyncMock],
     background_hand_off: tuple[MagicMock, MagicMock],
+    voice_offer: AsyncMock,
 ):
     """The talk-or-type choice learns the interview is over, so it offers
     no Skip, without the start's kickoff row or budget charge."""
@@ -2408,6 +2417,7 @@ def test_reading_a_finished_interview_answers_it_over_and_starts_nothing(
         "session_id": INTERVIEW_SESSION_ID,
         "stage": INTERVIEW_STAGE_HANDED_OFF,
         "is_over": True,
+        "voice_available": False,
     }
     found.assert_awaited_once_with(test_user_id)
     for start in interview_starts.values():
@@ -2416,20 +2426,50 @@ def test_reading_a_finished_interview_answers_it_over_and_starts_nothing(
     background_hand_off[1].assert_not_called()
 
 
-def test_reading_with_no_interview_is_a_404_and_creates_none(
+def test_reading_with_no_interview_answers_none_open_and_creates_none(
     mocker: MockerFixture,
     interview_starts: dict[str, AsyncMock],
     background_hand_off: tuple[MagicMock, MagicMock],
+    voice_offer: AsyncMock,
 ):
+    """The step's choice reads, for someone who has not opened their
+    interview yet, whether it may offer them a call."""
     _stored_interview(mocker, None)
+    voice_offer.return_value = True
 
     response = client.get(INTERVIEW_URL)
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "No onboarding interview"
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": None,
+        "stage": None,
+        "is_over": False,
+        "voice_available": True,
+    }
     for start in interview_starts.values():
         start.assert_not_awaited()
     background_hand_off[1].assert_not_called()
+
+
+def test_reading_says_whether_voice_can_be_offered_to_the_person(
+    mocker: MockerFixture,
+    test_user_id: str,
+    interview_starts: dict[str, AsyncMock],
+    background_hand_off: tuple[MagicMock, MagicMock],
+    voice_offer: AsyncMock,
+):
+    _stored_interview(mocker, _interview(test_user_id))
+
+    voice_offer.return_value = True
+    offered = client.get(INTERVIEW_URL).json()
+    voice_offer.return_value = False
+    not_offered = client.get(INTERVIEW_URL).json()
+
+    assert (offered["voice_available"], not_offered["voice_available"]) == (
+        True,
+        False,
+    )
+    voice_offer.assert_awaited_with(test_user_id)
 
 
 def test_reading_an_interview_over_by_its_cap_hands_it_off_as_the_start_does(
@@ -2437,6 +2477,7 @@ def test_reading_an_interview_over_by_its_cap_hands_it_off_as_the_start_does(
     test_user_id: str,
     interview_starts: dict[str, AsyncMock],
     background_hand_off: tuple[MagicMock, MagicMock],
+    voice_offer: AsyncMock,
 ):
     """Its replies are used up before its stage says so: it reads as over,
     and the hand-off the start would spawn runs behind the read."""
@@ -2459,6 +2500,7 @@ def test_reading_an_interview_over_by_its_cap_hands_it_off_as_the_start_does(
         "session_id": INTERVIEW_SESSION_ID,
         "stage": None,
         "is_over": True,
+        "voice_available": False,
     }
     hand_off.assert_called_once_with(test_user_id, INTERVIEW_SESSION_ID)
     assert spawn.call_args.args == ("hand-off",)
@@ -2471,6 +2513,7 @@ def test_reading_an_interview_under_way_answers_it_open(
     test_user_id: str,
     interview_starts: dict[str, AsyncMock],
     background_hand_off: tuple[MagicMock, MagicMock],
+    voice_offer: AsyncMock,
 ):
     _stored_interview(
         mocker, _interview(test_user_id, stage=INTERVIEW_STAGE_WRAP_UP_ISSUED)
@@ -2483,6 +2526,7 @@ def test_reading_an_interview_under_way_answers_it_open(
         "session_id": INTERVIEW_SESSION_ID,
         "stage": INTERVIEW_STAGE_WRAP_UP_ISSUED,
         "is_over": False,
+        "voice_available": False,
     }
     background_hand_off[1].assert_not_called()
 

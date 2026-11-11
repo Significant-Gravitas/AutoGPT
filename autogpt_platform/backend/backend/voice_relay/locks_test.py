@@ -540,3 +540,12 @@ async def test_the_transcript_is_stored_in_the_write_that_forgets_the_recording(
 
     record = await locks.read_call_record(redis, "call-a")
     assert record == {"transcript_of_record": "Hello."}
+
+
+async def test_a_registered_room_names_the_person_it_is_for(redis):
+    await locks.register_room(redis, "a" * 32, "user-1", 100.0)
+    await redis.hset(locks.ROOMS_KEY, "c" * 32, "{not json")
+
+    assert await locks.room_owner(redis, "a" * 32) == "user-1"
+    assert await locks.room_owner(redis, "b" * 32) is None
+    assert await locks.room_owner(redis, "c" * 32) is None

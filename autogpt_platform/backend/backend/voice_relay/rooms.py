@@ -1,16 +1,17 @@
 """A call's LiveKit room: its name, who may join it, and their tokens.
 
-Every call on the LiveKit leg has a room of its own, ``voice-{call_id}``,
-which LiveKit Cloud makes when the first participant joins. LiveKit keeps a
-room open while anyone is in it, so the relay closes it (``room_reaper``).
+Every call has a room of its own, ``voice-{call_id}``, which carries its
+audio and which LiveKit makes when the first participant joins. LiveKit keeps
+a room open while anyone is in it, so the relay closes it (``room_reaper``).
 Two participants join it and no one else can:
 
-- the person's browser, as ``user:{user_id}``, on a token the REST API mints
-  with the call's start, once the room is registered (:func:`person_token`).
-  It may join that one room, publish only sources declared as a microphone,
-  and subscribe; no data channel, no room admin. The token only has to let
-  the browser in, so it is short, and never outlives the revocation that
-  closing the room puts on the person's tokens.
+- the person's browser, as ``user:{user_id}:{call_id}``, on a token the REST
+  API mints with the call's start, once the room is registered
+  (:func:`person_token`). The identity is the call's, so the revocation that
+  closing the room puts on it reaches no other call of the person's. It may
+  join that one room, publish only sources declared as a microphone, and
+  subscribe; no data channel, no room admin. The token only has to let the
+  browser in, so it is short, and never outlives that revocation.
 - the relay, as Otto, on a token it mints for itself (:func:`relay_token`).
   It may publish Otto's speech and subscribe to the person's, for as long as
   the call can run.
@@ -74,16 +75,25 @@ def room_name(call_id: str) -> str:
     return f"{ROOM_PREFIX}{call_id}"
 
 
-def person_identity(user_id: str) -> str:
-    """The identity *user_id*'s browser joins their call's room under."""
-    return f"{PERSON_IDENTITY_PREFIX}{user_id}"
+def person_identity(user_id: str, call_id: str) -> str:
+    """The identity *user_id*'s browser joins call *call_id*'s room under."""
+    return f"{PERSON_IDENTITY_PREFIX}{user_id}:{call_id}"
+
+
+def person_of(identity: str, call_id: str) -> str | None:
+    """The user a participant of call *call_id*'s room is, from the identity
+    it joined under; None for anyone else, Otto included."""
+    suffix = f":{call_id}"
+    if not (identity.startswith(PERSON_IDENTITY_PREFIX) and identity.endswith(suffix)):
+        return None
+    return identity.removeprefix(PERSON_IDENTITY_PREFIX).removesuffix(suffix) or None
 
 
 def person_token(*, user_id: str, call_id: str, project: LiveKitProject) -> str:
     """The browser's token for call *call_id*'s room, for
     ``ROOM_TOKEN_TTL_S`` and never longer."""
     return _token(
-        identity=person_identity(user_id),
+        identity=person_identity(user_id, call_id),
         name="You",
         call_id=call_id,
         project=project,

@@ -39,8 +39,8 @@ from backend.voice_relay.serve import (
 async def start_call(url: str, user: str = "user-1") -> tuple[ClientConnection, str]:
     ws = await connect(url, origin=ORIGIN, max_size=2**20)  # type: ignore[arg-type]
     call_id = tokens.new_call_id()
-    token = tokens.mint_start(user, call_id, "websocket")
-    await ws.send(json.dumps({"type": "start", "token": token, "leg": "websocket"}))
+    token = tokens.mint_start(user, call_id)
+    await ws.send(json.dumps({"type": "start", "token": token}))
     return ws, call_id
 
 
@@ -81,8 +81,7 @@ async def test_sigterm_lets_a_live_call_finish_then_the_server_exits(redis):
             await late.recv()
         assert closed.value.rcvd is not None and closed.value.rcvd.code == 1013
 
-        for frame in speech(0.3):
-            await ws.send(frame)
+        (await running.media.hearing()).say(speech(0.3))
         ended = await read_until(ws, "ended")
         assert ended["reason"] == "finished"
         # The server exits on its own once its last call has ended.
@@ -177,8 +176,7 @@ async def test_sigterm_waits_for_a_calls_transcript_job_before_exiting(redis):
     async with running_relay(redis, vendor, transcriber=transcriber) as running:
         ws, call_id = await start_call(running.url)
         await read_until(ws, "turn_complete")
-        for frame in speech(0.3):
-            await ws.send(frame)
+        (await running.media.hearing()).say(speech(0.3))
         await read_until(ws, "ended")
 
         running.server.handle_exit(signal.SIGTERM, None)
@@ -346,7 +344,8 @@ from fakeredis.aioredis import FakeRedis
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.config import Caps, Timing
 from backend.voice_relay.conftest import (
-    FakeSocket, MemoryRecordings, ScriptedTranscriber, speech,
+    FakeMedia, FakeSocket, MemoryRecordings, ScriptedTranscriber, livekit_edge,
+    speech,
 )
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
 from backend.voice_relay.metering import CallMeter
@@ -375,10 +374,10 @@ async def call_and_transcribe(spool):
     call_id = tokens.new_call_id()
     store = locks.CallStore(redis, call_id=call_id, user_id=USER, holder="probe")
     ws = FakeSocket()
+    media = FakeMedia()
     session = Session(
         call_id=call_id,
         user_id=USER,
-        leg="websocket",
         ws=ws,
         vendor=FakeVendor([
             Reply(text="Hi, what do you do?", audio_s=0.1),
@@ -386,10 +385,11 @@ async def call_and_transcribe(spool):
         ]),
         store=store,
         meter=CallMeter(
-            user_id=USER, call_id=call_id, leg="websocket",
+            user_id=USER, call_id=call_id,
             model="gemini-3.8-live", redis=redis, sink=sink,
         ),
         classifier=None,
+        edge=livekit_edge(media),
         caps=Caps(max_call_s=20.0, soft_wrap_s=2.0, idle_s=5.0),
         timing=Timing(
             tick_s=0.02, end_flag_poll_s=0.05, wrap_grace_s=2.0,
@@ -405,7 +405,7 @@ async def call_and_transcribe(spool):
     await store.record(status="connecting", started=round(time.time(), 3))
     running = asyncio.create_task(session.run())
     await ws.wait_for("turn_complete")
-    ws.send_audio(speech(0.4))
+    (await media.hearing()).say(speech(0.4))
     await asyncio.wait_for(running, timeout=20)
     assert session.postcall_claimed
     postcall = PostCall(
@@ -504,8 +504,21 @@ def test_a_relay_with_a_livekit_project_joins_closes_and_sweeps_call_rooms(
     assert reaper.closing == 0
 
 
-def test_a_relay_with_no_livekit_project_takes_every_call_on_the_socket(monkeypatch):
-    assert _livekit(_settings(monkeypatch, url="")) == (None, None)
+@pytest.mark.parametrize(
+    "missing", ["livekit_url", "livekit_api_key", "livekit_api_secret"]
+)
+def test_a_relay_with_no_livekit_project_refuses_to_start_naming_its_settings(
+    monkeypatch, missing
+):
+    settings = _settings(monkeypatch, url="wss://agpt.livekit.cloud")
+    holder = settings.config if missing == "livekit_url" else settings.secrets
+    monkeypatch.setattr(holder, missing, "")
+
+    with pytest.raises(RuntimeError) as refused:
+        _livekit(settings)
+
+    for name in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"):
+        assert name in str(refused.value)
 
 
 @pytest.mark.parametrize("exclusive", [True, False])
