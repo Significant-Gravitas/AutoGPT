@@ -9,6 +9,7 @@ import {
   type CompactionStats,
 } from "../CompactionCard/helpers";
 import { COMPACTION_PART_TYPE, isExpertChangePart } from "../ToolChain/helpers";
+import { parseTruncatedOutput } from "../ToolChain/resultHelpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
 import { CHAT_IMAGE_TOKEN_PREFIXES } from "../../helpers/chatImageTokens";
 import { extractDbSequence } from "../../helpers/convertChatSessionToUiMessages";
@@ -445,12 +446,33 @@ function readToolOutput(part: MessagePart): object | null {
   if (typeof part.output !== "string") {
     return typeof part.output === "object" ? part.output : null;
   }
+  const truncated = parseTruncatedOutput(part.output);
+  if (!truncated) return parseObject(part.output);
+  return parseObject(truncated.preview) ?? reviewInPreview(truncated.preview);
+}
+
+function parseObject(text: string): object | null {
   try {
-    const parsed: unknown = JSON.parse(part.output);
+    const parsed: unknown = JSON.parse(text);
     return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     return null;
   }
+}
+
+// A digest's outline (`$: {type="review_required", …}`) or a preview cut in
+// the middle (`{"type":"review_required", …`) still opens with the output's
+// own top-level fields, which is enough to tell a review from anything else.
+const PREVIEW_TYPE_RE =
+  /^(?:\$: \{type=|\{"type": ?)"(review_required|approval_required)"/;
+const PREVIEW_REVIEW_ID_RE = /[{ ,]"?review_id"?(?:=|: ?)"([^"]+)"/;
+
+function reviewInPreview(preview: string): object | null {
+  const head = preview.split("\n", 1)[0];
+  const type = PREVIEW_TYPE_RE.exec(head)?.[1];
+  if (!type) return null;
+  const reviewID = PREVIEW_REVIEW_ID_RE.exec(head)?.[1];
+  return reviewID ? { type, review_id: reviewID } : { type };
 }
 
 // A block review, or an action the auto-mode gate parked for approval.

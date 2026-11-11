@@ -15,6 +15,9 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import type { UIDataTypes, UIMessage, UITools } from "ai";
+import { extractReviewTargets } from "../../ChatMessagesContainer/helpers";
+import { reviewRefetchKey } from "../../ChatMessagesContainer/reviewRefetchKey";
 import { CopilotPendingReviews } from "../CopilotPendingReviews";
 
 const onSend = vi.fn();
@@ -95,6 +98,69 @@ test("an agent run's queue is read from its execution", async () => {
 
   expect((await screen.findAllByText("Send Email")).length).toBeGreaterThan(0);
   expect(screen.queryByText("Not the run's review")).toBeNull();
+});
+
+type Message = UIMessage<unknown, UIDataTypes, UITools>;
+
+function toolCall(id: string, tool: string, output: string): Message {
+  return {
+    id,
+    role: "assistant",
+    parts: [
+      {
+        type: `tool-${tool}`,
+        toolCallId: `call-${id}`,
+        state: "output-available",
+        input: {},
+        output,
+      },
+    ],
+  } as Message;
+}
+
+// The chat's own list, wired from the turn's messages as the chat wires it.
+function ChatCards({ messages }: { messages: Message[] }) {
+  return (
+    <CopilotPendingReviews
+      chatSessionId="chat-1"
+      pollWhileEmpty={extractReviewTargets(messages).chat}
+      refetchKey={reviewRefetchKey(messages)}
+    />
+  );
+}
+
+test("a block review raised mid-turn shows its card without a remount, even when the chat can't read the output", async () => {
+  let waiting: PendingHumanReviewModel[] = [];
+  let requests = 0;
+  server.use(
+    http.get("*/api/internal/review/session/chat-1", () => {
+      requests++;
+      return HttpResponse.json(waiting);
+    }),
+  );
+  const turn = [toolCall("m1", "bash_exec", '{"stdout":"ok"}')];
+  const { rerender } = render(<ChatCards messages={turn} />);
+  // Mounting fetches the chat's cards exactly once; with no card to show and
+  // nothing readable to poll for, nothing fetches again until a block run.
+  await waitFor(() => expect(requests).toBe(1));
+  const settled = requests;
+
+  waiting = [
+    makeReview({
+      node_exec_id: "copilot-node-gmail:ab12",
+      node_id: "copilot-node-gmail",
+      instructions: "Gmail Send",
+      payload: { to: "ada@example.com" },
+    }),
+  ];
+  rerender(
+    <ChatCards
+      messages={[...turn, toolCall("m2", "run_block", "<unreadable output>")]}
+    />,
+  );
+
+  expect((await screen.findAllByText("Gmail Send")).length).toBeGreaterThan(0);
+  expect(requests).toBeGreaterThan(settled);
 });
 
 const RUNS = ["exec-1", "exec-2", "exec-3", "exec-4"];

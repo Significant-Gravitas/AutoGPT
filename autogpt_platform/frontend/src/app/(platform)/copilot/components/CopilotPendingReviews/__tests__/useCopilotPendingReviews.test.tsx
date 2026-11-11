@@ -169,6 +169,42 @@ describe("useCopilotPendingReviews", () => {
     15_000,
   );
 
+  // A fetch with nothing loaded yet is reused rather than restarted, so a key
+  // that changes while the first one is in flight must fetch once it lands.
+  test("a card raised while the first fetch is in flight is fetched once it lands", async () => {
+    const card = { node_exec_id: "copilot-node-gmail:ab12" };
+    let waiting: (typeof card)[] = [];
+    let requests = 0;
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get("*/api/internal/review/session/s1", async () => {
+        requests++;
+        const answer = waiting;
+        if (requests === 1) await held;
+        return HttpResponse.json(answer);
+      }),
+    );
+    const { result, rerender } = renderHook(
+      ({ key }) =>
+        useCopilotPendingReviews({
+          chatSessionId: "s1",
+          pollWhileEmpty: false,
+          refetchKey: key,
+        }),
+      { wrapper, initialProps: { key: 0 } },
+    );
+    await waitFor(() => expect(requests).toBe(1));
+
+    waiting = [card];
+    rerender({ key: 1 });
+    release();
+
+    await waitFor(() => expect(result.current.pendingReviews).toEqual([card]));
+  }, 10_000);
+
   test("a new held call on screen fetches the chat's cards again", async () => {
     let requests = 0;
     server.use(
