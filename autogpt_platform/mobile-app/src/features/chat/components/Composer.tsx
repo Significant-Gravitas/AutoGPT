@@ -59,14 +59,14 @@ export function Composer({
           style={styles.input}
         />
         {isBusy && onStop ? (
-          <IconButton icon={StopIcon} label="Stop" onPress={onStop} filled />
+          <IconButton icon={StopIcon} label="Stop" onPress={onStop} variant="primary" />
         ) : (
           <IconButton
             icon={ArrowUp02Icon}
             label="Send"
             onPress={handleSend}
             disabled={!canSend}
-            filled
+            variant="primary"
           />
         )}
       </View>

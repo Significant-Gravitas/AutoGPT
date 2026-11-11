@@ -1,15 +1,16 @@
 import { Folder01Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { useLocalSearchParams } from "expo-router";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 import { Drawer } from "react-native-drawer-layout";
 
+import { Button } from "@/components/Button";
 import { IconButton } from "@/components/IconButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { ChatIdentity } from "@/features/chat/components/ChatIdentity";
 import { ChatThread } from "@/features/chat/components/ChatThread";
 import { useChatScreen } from "@/features/chat/useChatScreen";
 import { FilesPanel } from "@/features/files/components/FilesPanel";
-import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
+import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 export default function ChatScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
@@ -49,13 +50,12 @@ export default function ChatScreen() {
       <View style={styles.center}>
         <Text style={styles.notice}>{"Couldn't open this chat."}</Text>
         {sessionID ? (
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            label="Try again"
             onPress={handleRetry}
-            style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
-          >
-            <Text style={styles.retryLabel}>Try again</Text>
-          </Pressable>
+            variant="secondary"
+            size="small"
+          />
         ) : null}
       </View>
     );
@@ -115,12 +115,4 @@ const useStyles = createStyles((colors) => ({
     padding: spacing.xl,
   },
   notice: { ...type.body, color: colors.textSecondary, textAlign: "center" },
-  retry: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceRaised,
-  },
-  pressed: { opacity: 0.6 },
-  retryLabel: { ...type.label, color: colors.text },
 }));

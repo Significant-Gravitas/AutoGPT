@@ -1,6 +1,7 @@
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
-import { createStyles, radius, spacing, type } from "@/lib/theme";
+import { Button } from "@/components/Button";
+import { createStyles, spacing, type } from "@/lib/theme";
 
 interface Props {
   message: string;
@@ -13,13 +14,7 @@ export function RetryNotice({ message, onRetry, centered }: Props) {
   return (
     <View style={[styles.notice, centered && styles.centered]}>
       <Text style={styles.message}>{message}</Text>
-      <Pressable
-        accessibilityRole="button"
-        onPress={onRetry}
-        style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
-      >
-        <Text style={styles.retryLabel}>Try again</Text>
-      </Pressable>
+      <Button label="Try again" onPress={onRetry} variant="secondary" size="small" />
     </View>
   );
 }
@@ -28,12 +23,4 @@ const useStyles = createStyles((colors) => ({
   notice: { alignItems: "flex-start", gap: spacing.sm, paddingHorizontal: spacing.md },
   centered: { alignItems: "center" },
   message: { ...type.small, color: colors.textSecondary },
-  retry: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceRaised,
-  },
-  pressed: { opacity: 0.6 },
-  retryLabel: { ...type.label, color: colors.text },
 }));

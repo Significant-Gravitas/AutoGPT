@@ -2,13 +2,13 @@ import { Image } from "expo-image";
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 
+import { Button } from "@/components/Button";
 import { useLoginScreen } from "@/features/auth/useLoginScreen";
 import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
@@ -73,21 +73,13 @@ export default function LoginScreen() {
             {error}
           </Text>
         ) : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !canSubmit, busy: isSubmitting }}
-          disabled={!canSubmit}
+        <Button
+          label={isSubmitting ? "Signing in…" : "Sign in"}
           onPress={submit}
-          style={({ pressed }) => [
-            styles.button,
-            pressed && styles.pressed,
-            !canSubmit && styles.disabled,
-          ]}
-        >
-          <Text style={styles.buttonText}>
-            {isSubmitting ? "Signing in…" : "Sign in"}
-          </Text>
-        </Pressable>
+          isLoading={isSubmitting}
+          disabled={!canSubmit && !isSubmitting}
+          fullWidth
+        />
         <Text style={styles.footer}>
           New here? Create your account at platform.agpt.co first.
         </Text>
@@ -135,17 +127,6 @@ const useStyles = createStyles((colors) => ({
     alignSelf: "stretch",
     color: colors.error,
   },
-  button: {
-    alignSelf: "stretch",
-    alignItems: "center",
-    paddingVertical: spacing.md + 2,
-    marginTop: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.brand,
-  },
-  pressed: { opacity: 0.8 },
-  disabled: { opacity: 0.4 },
-  buttonText: { ...type.label, color: colors.onBrand },
   footer: {
     ...type.small,
     color: colors.textSecondary,

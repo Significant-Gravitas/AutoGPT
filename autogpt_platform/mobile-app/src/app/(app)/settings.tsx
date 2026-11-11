@@ -1,9 +1,10 @@
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
 
+import { Button } from "@/components/Button";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useSettingsScreen } from "@/features/settings/useSettingsScreen";
-import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
+import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 export default function SettingsScreen() {
   const {
@@ -25,13 +26,7 @@ export default function SettingsScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.notice}>{message}</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={retry}
-          style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-        >
-          <Text style={styles.buttonText}>Try again</Text>
-        </Pressable>
+        <Button label="Try again" onPress={retry} variant="secondary" size="small" />
       </View>
     );
   }
@@ -86,12 +81,4 @@ const useStyles = createStyles((colors) => ({
     paddingHorizontal: spacing.xl,
   },
   notice: { ...type.body, color: colors.textSecondary, textAlign: "center" },
-  button: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceRaised,
-  },
-  pressed: { opacity: 0.8 },
-  buttonText: { ...type.label, color: colors.text },
 }));
