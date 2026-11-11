@@ -7,10 +7,9 @@ import { ApiError } from "@/lib/api/client";
 import { expertKeys, listExperts } from "@/lib/api/experts";
 import { getHome, homeKeys } from "@/lib/api/home";
 import { authClient } from "@/lib/auth/client";
-import { OTTO_NAME } from "@/lib/otto";
 import { isSessionGone, signOut } from "@/lib/session";
 
-import { briefingLine, greeting } from "./helpers";
+import { firstName, inputPlaceholder } from "./helpers";
 import { startChat } from "./startChat";
 
 const FALLBACK_PROMPTS = [
@@ -42,6 +41,9 @@ export function useHomeScreen() {
   const selected = team.find((expert) => expert.id === selectedID) ?? null;
   // A failed refresh keeps the last good answer on screen.
   const dashboard = home.data;
+  const attention = dashboard?.attention ?? [];
+  const activeTask = dashboard?.active_tasks[0] ?? null;
+  const upcomingTask = dashboard?.upcoming_tasks[0] ?? null;
 
   async function refresh() {
     setIsRefreshing(true);
@@ -78,15 +80,15 @@ export function useHomeScreen() {
   }
 
   return {
-    heading: greeting(session?.user?.name),
-    subline: briefingLine(dashboard?.briefing.completed_count),
-    attention: dashboard?.attention ?? [],
-    activeTask: dashboard?.active_tasks[0] ?? null,
-    upcomingTask: dashboard?.upcoming_tasks[0] ?? null,
+    name: firstName(session?.user?.name, session?.user?.email),
+    attention,
+    activeTask,
+    upcomingTask,
+    hasCards: attention.length > 0 || !!activeTask || !!upcomingTask,
     experts: team,
-    selectedID: selected?.id ?? null,
+    selected,
     select: setSelectedID,
-    placeholder: selected ? `Message ${selected.name}` : `Ask ${OTTO_NAME} anything`,
+    placeholder: inputPlaceholder(selected),
     prompts,
     isStarting,
     error,

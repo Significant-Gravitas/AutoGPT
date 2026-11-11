@@ -1,6 +1,8 @@
 import { isSessionID } from "@/lib/api/chat";
 import { FRONTEND_URL } from "@/lib/env";
 
+import { expertRoleLabel } from "./expertRoleLabel";
+
 export type HomeLinkTarget =
   | { kind: "chat"; sessionID: string }
   | { kind: "team" }
@@ -28,19 +30,58 @@ export function homeLinkTarget(href: string): HomeLinkTarget | null {
   return null;
 }
 
-export function greeting(name: string | null | undefined, now = new Date()) {
-  const hour = now.getHours();
-  const part = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
-  const first = name?.trim().split(/\s+/)[0];
-  return first ? `Good ${part}, ${first}` : `Good ${part}`;
+/**
+ * The first name to greet. Email sign-up stores the address's local part as
+ * the name; that one was never given, so it does not count.
+ */
+export function firstName(
+  name: string | null | undefined,
+  email?: string | null,
+) {
+  const given = name?.trim();
+  if (!given) return null;
+  const emailName = email?.split("@")[0].toLowerCase();
+  if (given.toLowerCase() === emailName) return null;
+  return given.split(/\s+/)[0];
 }
 
-export function briefingLine(completedCount: number | undefined) {
-  if (completedCount === 1) return "Your team finished 1 thing in the last day.";
-  if (completedCount && completedCount > 1) {
-    return `Your team finished ${completedCount} things in the last day.`;
+export function greetingLine(name: string | null) {
+  return name ? `Hey, ${name}` : "Hey there";
+}
+
+interface Recipient {
+  name: string;
+  role: string | null;
+}
+
+/** The hero sentence before and after the picker; `null` is Otto. */
+export function introParts(expert: Recipient | null) {
+  if (!expert) {
+    return {
+      before: "Tell",
+      after: " about your work, and it will find what to automate.",
+    };
   }
-  return "What should we work on?";
+  const role = expert.role?.trim();
+  return {
+    before: "I'm",
+    after: role
+      ? `, your ${expertRoleLabel(role)}. What should I take on?`
+      : ". What should I take on?",
+  };
+}
+
+/** A sentence part as words, with a leading comma or full stop kept apart to sit against the picker. */
+export function sentenceWords(part: string) {
+  const mark = /^[,.]/.exec(part)?.[0] ?? "";
+  const words = part.slice(mark.length).trim().split(/\s+/).filter(Boolean);
+  return { mark, words };
+}
+
+export function inputPlaceholder(expert: Pick<Recipient, "name"> | null) {
+  return expert
+    ? `What should ${expert.name} work on?`
+    : "I'm a chef and I hate...";
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;

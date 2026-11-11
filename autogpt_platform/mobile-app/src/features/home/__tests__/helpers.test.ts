@@ -1,6 +1,14 @@
 import { FRONTEND_URL } from "@/lib/env";
 
-import { briefingLine, greeting, homeLinkTarget, nextRunLabel } from "../helpers";
+import {
+  firstName,
+  greetingLine,
+  homeLinkTarget,
+  inputPlaceholder,
+  introParts,
+  nextRunLabel,
+  sentenceWords,
+} from "../helpers";
 
 const SESSION = "0b6f3c1e-5d2a-4c8b-9f1e-2a3b4c5d6e7f";
 
@@ -50,37 +58,94 @@ describe("homeLinkTarget", () => {
   });
 });
 
-describe("greeting", () => {
-  it("says morning before noon with the first name", () => {
-    expect(greeting("Sam Lee", new Date(2026, 10, 11, 11, 59))).toBe(
-      "Good morning, Sam",
-    );
+describe("firstName", () => {
+  it("takes the first word of the name", () => {
+    expect(firstName("  Sam Lee ", "sam@example.com")).toBe("Sam");
   });
 
-  it("says afternoon from noon", () => {
-    expect(greeting("Sam", new Date(2026, 10, 11, 12, 0))).toBe(
-      "Good afternoon, Sam",
-    );
+  it("ignores a name that is only the email's local part", () => {
+    expect(firstName("sam.lee", "Sam.Lee@example.com")).toBeNull();
   });
 
-  it("says evening from 18:00 and leaves out a missing name", () => {
-    expect(greeting(null, new Date(2026, 10, 11, 18, 0))).toBe("Good evening");
-    expect(greeting("  ", new Date(2026, 10, 11, 18, 0))).toBe("Good evening");
+  it("has nothing for a missing or blank name", () => {
+    expect(firstName(null)).toBeNull();
+    expect(firstName("   ")).toBeNull();
   });
 });
 
-describe("briefingLine", () => {
-  it("counts one thing", () => {
-    expect(briefingLine(1)).toBe("Your team finished 1 thing in the last day.");
+describe("greetingLine", () => {
+  it("greets by name", () => {
+    expect(greetingLine("Sam")).toBe("Hey, Sam");
   });
 
-  it("counts several things", () => {
-    expect(briefingLine(4)).toBe("Your team finished 4 things in the last day.");
+  it("falls back without a name", () => {
+    expect(greetingLine(null)).toBe("Hey there");
+  });
+});
+
+describe("introParts", () => {
+  it("asks about the work for Otto", () => {
+    expect(introParts(null)).toEqual({
+      before: "Tell",
+      after: " about your work, and it will find what to automate.",
+    });
   });
 
-  it("falls back when nothing finished or nothing loaded", () => {
-    expect(briefingLine(0)).toBe("What should we work on?");
-    expect(briefingLine(undefined)).toBe("What should we work on?");
+  it("uses a role that names a person as written", () => {
+    expect(introParts({ name: "Max", role: "Marketer" })).toEqual({
+      before: "I'm",
+      after: ", your Marketer. What should I take on?",
+    });
+  });
+
+  it("adds expert to a domain role", () => {
+    expect(introParts({ name: "Max", role: "Support" }).after).toBe(
+      ", your Support expert. What should I take on?",
+    );
+    expect(introParts({ name: "Max", role: "Customer Success" }).after).toBe(
+      ", your Customer Success expert. What should I take on?",
+    );
+  });
+
+  it("maps a preset role to its display label", () => {
+    expect(introParts({ name: "Max", role: "Sales" }).after).toBe(
+      ", your Sales Development Rep. What should I take on?",
+    );
+  });
+
+  it("leaves the role out when there is none", () => {
+    expect(introParts({ name: "Max", role: null }).after).toBe(
+      ". What should I take on?",
+    );
+    expect(introParts({ name: "Max", role: "  " }).after).toBe(
+      ". What should I take on?",
+    );
+  });
+});
+
+describe("sentenceWords", () => {
+  it("keeps a leading mark apart from the words", () => {
+    expect(sentenceWords(", your Marketer. What")).toEqual({
+      mark: ",",
+      words: ["your", "Marketer.", "What"],
+    });
+  });
+
+  it("has no mark for a part that starts with a space", () => {
+    expect(sentenceWords(" about your work.")).toEqual({
+      mark: "",
+      words: ["about", "your", "work."],
+    });
+  });
+});
+
+describe("inputPlaceholder", () => {
+  it("uses the web's narrow placeholder for Otto", () => {
+    expect(inputPlaceholder(null)).toBe("I'm a chef and I hate...");
+  });
+
+  it("names the expert", () => {
+    expect(inputPlaceholder({ name: "Max" })).toBe("What should Max work on?");
   });
 });
 

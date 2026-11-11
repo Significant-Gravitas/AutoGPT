@@ -4,7 +4,7 @@ import { Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { IconButton } from "@/components/IconButton";
-import { createStyles, spacing, type } from "@/lib/theme";
+import { createStyles, spacing, type, useScheme } from "@/lib/theme";
 
 import { isUploading, type Attachment } from "../attachmentHelpers";
 import { appendDictation } from "../dictationHelpers";
@@ -23,6 +23,8 @@ interface Props {
   attachments?: Attachment[];
   onRemoveAttachment?: (id: string) => void;
   onRetryAttachment?: (id: string) => void;
+  /** `bar` is one row for a chat; `card` stacks the text over its buttons, for Home. */
+  layout?: "bar" | "card";
 }
 
 export function Composer({
@@ -35,8 +37,11 @@ export function Composer({
   attachments = [],
   onRemoveAttachment,
   onRetryAttachment,
+  layout = "bar",
 }: Props) {
   const styles = useStyles();
+  const scheme = useScheme();
+  const isCard = layout === "card";
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
   // State lands a render late; the ref stops a second press in the same frame.
@@ -79,8 +84,45 @@ export function Composer({
     void dictation.confirm();
   }
 
+  const body = dictation.isActive ? (
+    <RecordingBar
+      recorder={dictation.recorder}
+      isTranscribing={dictation.isTranscribing}
+      onCancel={handleCancelDictation}
+      onConfirm={handleUseDictation}
+    />
+  ) : (
+    <ComposerField
+      layout={layout}
+      text={text}
+      onChangeText={setText}
+      placeholder={placeholder}
+      canSend={canSend}
+      onSend={handleSend}
+      onStop={onStop}
+      onAttach={onAttach}
+      isBusy={isBusy}
+      isDisabled={isDisabled}
+      trailing={
+        isBusy ? null : (
+          <IconButton
+            icon={Mic01Icon}
+            label="Dictate"
+            onPress={handleDictate}
+            disabled={isDisabled}
+          />
+        )
+      }
+    />
+  );
+
   return (
-    <View style={[styles.wrap, { paddingBottom: insets.bottom + spacing.sm }]}>
+    <View
+      style={[
+        styles.wrap,
+        isCard ? styles.cardWrap : { paddingBottom: insets.bottom + spacing.sm },
+      ]}
+    >
       {dictation.error ? <Text style={styles.error}>{dictation.error}</Text> : null}
       {attachments.length > 0 ? (
         <AttachmentChips
@@ -89,35 +131,12 @@ export function Composer({
           onRetry={onRetryAttachment}
         />
       ) : null}
-      {dictation.isActive ? (
-        <RecordingBar
-          recorder={dictation.recorder}
-          isTranscribing={dictation.isTranscribing}
-          onCancel={handleCancelDictation}
-          onConfirm={handleUseDictation}
-        />
+      {isCard ? (
+        <View style={[styles.card, scheme === "light" && styles.shadow]}>
+          {dictation.isActive ? <View style={styles.recording}>{body}</View> : body}
+        </View>
       ) : (
-        <ComposerField
-          text={text}
-          onChangeText={setText}
-          placeholder={placeholder}
-          canSend={canSend}
-          onSend={handleSend}
-          onStop={onStop}
-          onAttach={onAttach}
-          isBusy={isBusy}
-          isDisabled={isDisabled}
-          trailing={
-            isBusy ? null : (
-              <IconButton
-                icon={Mic01Icon}
-                label="Dictate"
-                onPress={handleDictate}
-                disabled={isDisabled}
-              />
-            )
-          }
-        />
+        body
       )}
     </View>
   );
@@ -129,6 +148,22 @@ const useStyles = createStyles((colors) => ({
     paddingTop: spacing.sm,
     backgroundColor: colors.background,
   },
+  cardWrap: { paddingHorizontal: 0, paddingTop: 0, backgroundColor: "transparent" },
+  card: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.borderBase,
+    backgroundColor: colors.background,
+  },
+  shadow: {
+    shadowColor: "#000000",
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  // The card keeps its height while the recording bar stands in for the text.
+  recording: { minHeight: 140, justifyContent: "flex-end", padding: spacing.sm },
   error: {
     ...type.small,
     color: colors.error,

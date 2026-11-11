@@ -17,6 +17,8 @@ interface Props {
   isDisabled?: boolean;
   /** Buttons between the field and the send button. */
   trailing?: ReactNode;
+  /** `card` puts the text above a row of buttons, with no outline of its own. */
+  layout?: "bar" | "card";
 }
 
 export function ComposerField({
@@ -30,43 +32,67 @@ export function ComposerField({
   isBusy,
   isDisabled,
   trailing,
+  layout = "bar",
 }: Props) {
   const styles = useStyles();
   const colors = useColors();
+  const isCard = layout === "card";
+
+  const attach = onAttach ? (
+    <IconButton
+      icon={Add01Icon}
+      label="Attach"
+      onPress={onAttach}
+      disabled={isDisabled}
+      variant="icon"
+    />
+  ) : null;
+  const input = (
+    <TextInput
+      accessibilityLabel="Message"
+      multiline
+      value={text}
+      onChangeText={onChangeText}
+      editable={!isDisabled}
+      placeholder={placeholder}
+      placeholderTextColor={colors.textTertiary}
+      selectionColor={colors.brand}
+      style={[styles.input, isCard && styles.cardInput]}
+    />
+  );
+  const send =
+    isBusy && onStop ? (
+      <IconButton icon={StopIcon} label="Stop" onPress={onStop} variant="primary" />
+    ) : (
+      <IconButton
+        icon={ArrowUp02Icon}
+        label="Send"
+        onPress={onSend}
+        disabled={!canSend}
+        variant="primary"
+      />
+    );
+
+  if (isCard) {
+    return (
+      <View>
+        {input}
+        <View style={styles.cardRow}>
+          {attach}
+          <View style={styles.spacer} />
+          {trailing}
+          {send}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.field, onAttach && styles.withAttach]}>
-      {onAttach ? (
-        <IconButton
-          icon={Add01Icon}
-          label="Attach"
-          onPress={onAttach}
-          disabled={isDisabled}
-          variant="icon"
-        />
-      ) : null}
-      <TextInput
-        accessibilityLabel="Message"
-        multiline
-        value={text}
-        onChangeText={onChangeText}
-        editable={!isDisabled}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textTertiary}
-        selectionColor={colors.brand}
-        style={styles.input}
-      />
+      {attach}
+      {input}
       {trailing}
-      {isBusy && onStop ? (
-        <IconButton icon={StopIcon} label="Stop" onPress={onStop} variant="primary" />
-      ) : (
-        <IconButton
-          icon={ArrowUp02Icon}
-          label="Send"
-          onPress={onSend}
-          disabled={!canSend}
-          variant="primary"
-        />
-      )}
+      {send}
     </View>
   );
 }
@@ -93,4 +119,22 @@ const useStyles = createStyles((colors) => ({
     paddingBottom: 9,
     color: colors.text,
   },
+  // About three lines tall, growing to about six.
+  cardInput: {
+    flex: 0,
+    minHeight: 84,
+    maxHeight: 156,
+    paddingTop: 14,
+    paddingBottom: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    textAlignVertical: "top",
+  },
+  cardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  spacer: { flex: 1 },
 }));
