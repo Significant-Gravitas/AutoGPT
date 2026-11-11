@@ -252,3 +252,20 @@ async def test_stripe_customers_of_its_sole_orgs_but_not_its_own(monkeypatch):
     )
 
     assert customers == ["cus_org", "cus_org_sub"]
+
+
+@pytest.mark.parametrize(
+    "erase_after, cut_short",
+    [
+        (NOW + timedelta(days=14), False),
+        # The 14 days ended early by --close --now, or never given.
+        (NOW + timedelta(days=3), True),
+        (NOW, True),
+        # Clock leeway: a few seconds early is still the full 14 days.
+        (NOW + timedelta(days=14) - timedelta(seconds=5), False),
+    ],
+)
+def test_a_request_knows_whether_its_14_days_were_cut_short(erase_after, cut_short):
+    request = SimpleNamespace(requestedAt=NOW, eraseAfter=erase_after)
+
+    assert preflight._cut_short(request) is cut_short

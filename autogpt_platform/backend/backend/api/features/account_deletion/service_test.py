@@ -110,7 +110,7 @@ async def test_every_step_runs_once_in_order(steps: MagicMock):
     steps.forget_refusal.assert_called_once_with(USER_ID)
     steps.forget_store_listings.assert_called_once_with()
     steps.send_account_deleted_email.assert_awaited_once_with(
-        EMAIL, AccountDeletionSource.SETTINGS, ERASE_AFTER
+        EMAIL, AccountDeletionSource.SETTINGS, ERASE_AFTER, erase_now=False
     )
     steps.mark_confirmation_sent.assert_awaited_once_with(USER_ID)
     steps.capture_anonymous.assert_called_once_with(
@@ -137,7 +137,7 @@ async def test_the_confirmation_email_is_told_the_source(
     await _delete(source)
 
     steps.send_account_deleted_email.assert_awaited_once_with(
-        EMAIL, source, ERASE_AFTER
+        EMAIL, source, ERASE_AFTER, erase_now=False
     )
 
 
@@ -344,3 +344,19 @@ async def test_a_stalled_confirmation_email_does_not_hold_the_request(
 
     assert _called(steps) == UNSENT
     assert "TimeoutError" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_close_with_no_days_to_keep_it_says_so_in_the_email(steps: MagicMock):
+    """`--close --now`: the owner asked to be erased at once, so the email
+    must not speak of 14 days."""
+    await delete_account(
+        user_id=USER_ID,
+        confirm_email=TYPED,
+        source=AccountDeletionSource.EMAIL,
+        grace=timedelta(0),
+    )
+
+    steps.send_account_deleted_email.assert_awaited_once_with(
+        EMAIL, AccountDeletionSource.EMAIL, ERASE_AFTER, erase_now=True
+    )

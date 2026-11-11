@@ -445,3 +445,22 @@ async def test_a_traced_step_logs_its_trace_as_text_without_frame_locals(
     assert not record.exc_info
     assert "Traceback" in record.getMessage()
     assert "RuntimeError" in record.getMessage()
+
+
+@pytest.mark.parametrize(
+    "status, step, unused, stops",
+    [
+        (StepStatus.WOULD_DO, "posthog", [], False),
+        (StepStatus.FAILED, "ban_record", [], True),
+        (StepStatus.SKIPPED, "posthog", [], True),
+        (StepStatus.SKIPPED, "posthog", ["posthog"], False),
+        # A skip with no service behind it is not a missing setting.
+        (StepStatus.SKIPPED, "ban_record", [], False),
+    ],
+)
+def test_a_dry_run_step_shows_whether_the_apply_would_stop_there(
+    unused_services, status, step, unused, stops
+):
+    unused_services.extend(unused)
+
+    assert routine.stops_an_apply(StepReport(name=step, status=status)) is stops

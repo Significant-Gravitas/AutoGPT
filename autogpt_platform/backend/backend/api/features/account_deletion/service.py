@@ -163,7 +163,9 @@ async def delete_account(
     request = await _close(user_id, source, grace)
     if request is None:
         return await _winners_erase_after(user_id)
-    await _send_confirmation(user_id, user.email, source, request.eraseAfter)
+    await _send_confirmation(
+        user_id, user.email, source, request.eraseAfter, erase_now=grace < GRACE_PERIOD
+    )
     capture_anonymous(
         PostHogEvent.ACCOUNT_DELETION_COMPLETED,
         {"plan_state": plan, "surface": _SURFACES[source]},
@@ -234,13 +236,18 @@ async def _winners_erase_after(user_id: str) -> datetime:
 
 
 async def _send_confirmation(
-    user_id: str, email: str, source: AccountDeletionSource, erase_after: datetime
+    user_id: str,
+    email: str,
+    source: AccountDeletionSource,
+    erase_after: datetime,
+    *,
+    erase_now: bool,
 ) -> None:
     """Best effort: the account is already closed. One that did not go out
     stays unmarked on the request row, for the erasure routine."""
     try:
         await asyncio.wait_for(
-            send_account_deleted_email(email, source, erase_after),
+            send_account_deleted_email(email, source, erase_after, erase_now=erase_now),
             timeout=CONFIRMATION_EMAIL_TIMEOUT_SECONDS,
         )
         await mark_confirmation_sent(user_id)

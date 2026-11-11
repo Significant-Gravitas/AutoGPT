@@ -287,3 +287,21 @@ def test_the_named_day_ends_before_the_erasure_even_at_utc_minus_12(hour):
     ).replace(tzinfo=timezone.utc)
 
     assert named + timedelta(days=1, hours=12) <= erase_after
+
+
+async def test_an_owner_who_asked_to_be_erased_at_once_is_told_so(send):
+    """`--close --now`: there were never 14 days, so the email says it is
+    being erased as they asked, with no date and no Keep."""
+    await auth_email.send_account_deleted_email(
+        "sam@example.com",
+        AccountDeletionSource.EMAIL,
+        SENT_AT,
+        erase_now=True,
+        now=SENT_AT,
+    )
+
+    _, _, html, text = send.call_args.args
+    assert auth_email.ACCOUNT_ERASED_AS_ASKED_PREHEADER in text
+    assert "14 days" not in html + text
+    assert "Sign in by" not in html + text
+    assert "Keep my account" not in html + text

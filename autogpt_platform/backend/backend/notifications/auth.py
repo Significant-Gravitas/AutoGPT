@@ -87,14 +87,19 @@ async def send_account_deleted_email(
     source: AccountDeletionSource,
     erase_after: datetime,
     *,
+    erase_now: bool = False,
     now: datetime | None = None,
 ) -> None:
     """Confirm a closed account to its owner, with the date until which they
     can still keep it and replies going to the shared inbox. Sent once that
     date is past (the erasure sends the confirmation closing could not), it
-    says the account is being erased instead. Raises when delivery fails; the
-    caller decides what that means."""
-    if erase_after <= (now or datetime.now(timezone.utc)):
+    says the account is being erased instead. With `erase_now` (the owner
+    asked to be erased at once, so there were never 14 days) it says it is
+    being erased as they asked. Raises when delivery fails; the caller decides
+    what that means."""
+    if erase_now:
+        preheader = ACCOUNT_ERASED_AS_ASKED_PREHEADER
+    elif erase_after <= (now or datetime.now(timezone.utc)):
         preheader = ACCOUNT_BEING_ERASED_PREHEADER
     else:
         preheader = account_closed_preheader(erase_after)
@@ -114,6 +119,10 @@ async def send_account_deleted_email(
         reply_to=settings.config.billing_reply_to_email,
     )
 
+
+ACCOUNT_ERASED_AS_ASKED_PREHEADER = (
+    "As you asked, everything in your account is being erased now."
+)
 
 ACCOUNT_BEING_ERASED_PREHEADER = (
     "The 14 days to keep it are over, so everything in your account is being "

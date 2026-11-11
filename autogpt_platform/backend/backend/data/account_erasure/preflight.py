@@ -4,7 +4,7 @@ Runs before anything is deleted, so a blocked erasure leaves the account
 exactly as it was.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from prisma.enums import OrgMemberStatus
 from prisma.models import (
@@ -19,6 +19,7 @@ from prisma.models import (
     UserWorkspace,
 )
 
+from backend.data.account_deletion import GRACE_PERIOD
 from backend.data.account_erasure.deleted_user import DELETED_USER_ID
 from backend.data.account_erasure.models import SAFE_ID, Blocker, Subject
 
@@ -45,11 +46,18 @@ async def load_subject(user_id: str, email: str | None = None) -> Subject:
         expert_ids=[expert.id for expert in experts],
         request_source=request.source if request else None,
         erase_after=request.eraseAfter if request else None,
+        erase_asked_now=bool(request and _cut_short(request)),
         confirmation_sent=bool(request and request.confirmationSentAt),
         request_completed=bool(request and request.completedAt),
         banned=bool(identity and identity.banned),
         ban_expires=identity.banExpires if identity else None,
     )
+
+
+def _cut_short(request: AccountDeletionRequest) -> bool:
+    """Its 14 days were ended early, or never given, at the owner's request;
+    an hour's leeway for the clocks the two dates were read from."""
+    return request.eraseAfter < request.requestedAt + GRACE_PERIOD - timedelta(hours=1)
 
 
 async def find_blockers(

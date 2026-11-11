@@ -249,6 +249,24 @@ def test_close_now_on_a_blocked_account_closes_nothing(run, apply):
     assert _dry_runs(run.erasing) == [True]
 
 
+@pytest.mark.parametrize("apply", [[], ["--apply", "--yes"]])
+def test_close_now_closes_nothing_when_the_erasure_would_stop(run, apply):
+    """A step the dry run shows failing (no ban key, FalkorDB down) or a
+    service not set up: closing first would leave the account closed and
+    half erased until it is fixed."""
+    run.closed.return_value = None
+    run.erasing.side_effect = lambda user_id, *, dry_run, **kw: _report(
+        dry_run=dry_run, failed=True
+    )
+
+    result = run.invoke(EMAIL, "--close", "--now", *apply)
+
+    assert result.exit_code == 1
+    assert "would stop at: mailerlite" in result.output
+    run.closing.assert_not_awaited()
+    run.ending.assert_not_awaited()
+
+
 def test_close_now_goes_ahead_while_only_closing_stands_in_the_way(run):
     """An open account is "not closed" and a closed one "not due": those are
     what --close --now clears."""

@@ -212,6 +212,12 @@ async def _claim(subject: Subject, report: ErasureReport) -> bool:
     return False
 
 
+def stops_an_apply(step: StepReport) -> bool:
+    """Whether a dry-run step shows the --apply would stop there: it failed,
+    or it was skipped for a service the stack uses."""
+    return _stop_on_a_missing_service(step).status == StepStatus.FAILED
+
+
 def _stop_on_a_missing_service(result: StepReport) -> StepReport:
     """A step skipped for want of its settings fails the apply, so the request
     is never marked done with that service's data left behind, unless the

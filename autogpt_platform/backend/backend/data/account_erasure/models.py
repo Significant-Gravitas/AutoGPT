@@ -92,6 +92,9 @@ class Subject(BaseModel):
     # When the owner's 14 days to keep the account end: the erasure may claim
     # the request only after it.
     erase_after: datetime | None = None
+    # The owner asked to be erased at once: the request's 14 days were cut
+    # short (`--close --now`). The late confirmation says so.
+    erase_asked_now: bool = False
     # Whether the account-deleted email went out (the request's
     # `confirmationSentAt`); the erasure sends it first when it did not.
     confirmation_sent: bool = False

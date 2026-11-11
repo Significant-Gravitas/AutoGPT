@@ -140,6 +140,7 @@ async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
                 subject.email,
                 subject.request_source,
                 subject.erase_after,
+                erase_now=subject.erase_asked_now,
                 # Claimed, so the 14 days are over whatever this pod's clock
                 # says: the email must not offer a Keep that is refused.
                 now=max(datetime.now(UTC), subject.erase_after),

@@ -153,15 +153,17 @@ async def _run_close(account: str, *, apply: bool, yes: bool):
 async def _run_close_now(account: str, *, apply: bool, yes: bool):
     """For an owner who asked to be erased at once: close the account if it
     is open, with no 14 days to keep it, then erase it in the same run. The
-    blockers are checked before anything is closed: closing first would leave
-    a blocked account closed, its owner unable to keep it, and not erased."""
+    dry run is checked before anything is closed, for blockers and for a step
+    that would stop the erasure (one that fails, or a service that is not set
+    up): closing first would leave the account closed, its owner unable to
+    keep it, and not (fully) erased."""
     from backend.api.features.account_deletion.service import PlanCancellationError
     from backend.data.account_deletion import get_deletion_request
     from backend.data.account_erasure.request import (
         close_for_email_request,
         end_grace_now,
     )
-    from backend.data.account_erasure.routine import erase_account
+    from backend.data.account_erasure.routine import erase_account, stops_an_apply
 
     user_id, email = await _resolve(account)
     _refuse_a_system_id(user_id)
@@ -184,6 +186,11 @@ async def _run_close_now(account: str, *, apply: bool, yes: bool):
         raise click.ClickException(
             "Blocked: resolve the blockers above first. Nothing was closed or "
             "erased."
+        )
+    if stopping := [step.name for step in plan.steps if stops_an_apply(step)]:
+        raise click.ClickException(
+            f"The erasure would stop at: {', '.join(stopping)}. Fix that first "
+            "(see the notes above). Nothing was closed or erased."
         )
     if not apply:
         click.echo("\nDry run: nothing was changed. Re-run with --apply.")
