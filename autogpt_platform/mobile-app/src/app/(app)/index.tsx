@@ -1,22 +1,17 @@
 import { Image } from "expo-image";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, Text, View } from "react-native";
 
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Composer } from "@/features/chat/components/Composer";
 import { PromptChips } from "@/features/chat/components/PromptChips";
 import { useHomeScreen } from "@/features/home/useHomeScreen";
-import { colors, spacing, type } from "@/lib/theme";
+import { createStyles, spacing, type } from "@/lib/theme";
 
 const appIcon = require("../../../assets/images/icon.png");
 
 export default function HomeScreen() {
   const { prompts, isStarting, error, submit } = useHomeScreen();
+  const styles = useStyles();
 
   function handleSend(text: string) {
     void submit(text);
@@ -49,7 +44,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.background },
   middle: {
     flex: 1,
@@ -66,4 +61,4 @@ const styles = StyleSheet.create({
     color: colors.error,
     paddingHorizontal: spacing.lg,
   },
-});
+}));

@@ -1,6 +1,6 @@
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react-native";
 
-import { colors } from "@/lib/theme";
+import { useColors } from "@/lib/theme";
 
 interface Props {
   icon: IconSvgElement;
@@ -8,6 +8,14 @@ interface Props {
   color?: string;
 }
 
-export function Icon({ icon, size = 22, color = colors.text }: Props) {
-  return <HugeiconsIcon icon={icon} size={size} color={color} strokeWidth={2} />;
+export function Icon({ icon, size = 22, color }: Props) {
+  const colors = useColors();
+  return (
+    <HugeiconsIcon
+      icon={icon}
+      size={size}
+      color={color ?? colors.text}
+      strokeWidth={2}
+    />
+  );
 }

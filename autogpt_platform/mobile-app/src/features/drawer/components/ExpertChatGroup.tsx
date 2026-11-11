@@ -6,7 +6,7 @@ import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { Icon } from "@/components/Icon";
 import { chatCountLabel, type ChatGroup } from "@/features/drawer/helpers";
 import type { SessionSummary } from "@/lib/api/chat";
-import { colors, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 import { DrawerRow } from "../DrawerRow";
 
@@ -29,6 +29,8 @@ export function ExpertChatGroup({
   activeSessionID,
   onOpenChat,
 }: Props) {
+  const styles = useStyles();
+  const colors = useColors();
   const [isOpen, setIsOpen] = useState(group.isOtto);
   const [visibleCount, setVisibleCount] = useState(
     group.isOtto ? OTTO_PREVIEW_COUNT : EXPERT_PAGE_SIZE,
@@ -109,7 +111,7 @@ export function ExpertChatGroup({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -148,4 +150,4 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   moreLabel: { ...type.small, color: colors.textTertiary },
-});
+}));

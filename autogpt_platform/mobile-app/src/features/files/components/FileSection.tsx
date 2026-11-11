@@ -1,7 +1,7 @@
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 
 import type { WorkspaceFile } from "@/lib/api/workspace";
-import { colors, spacing, type } from "@/lib/theme";
+import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 import { FileRow } from "./FileRow";
 import { RetryNotice } from "./RetryNotice";
@@ -25,6 +25,9 @@ export function FileSection({
   onRetry,
   onSelect,
 }: Props) {
+  const styles = useStyles();
+  const colors = useColors();
+
   function renderBody() {
     if (isError) {
       return <RetryNotice message="Couldn't load files. Try again." onRetry={onRetry} />;
@@ -46,7 +49,7 @@ export function FileSection({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   section: { gap: spacing.sm },
   title: {
     ...type.small,
@@ -61,4 +64,4 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     paddingHorizontal: spacing.md,
   },
-});
+}));

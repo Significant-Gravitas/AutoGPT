@@ -1,6 +1,6 @@
 import { Folder01Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { useLocalSearchParams } from "expo-router";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Drawer } from "react-native-drawer-layout";
 
 import { IconButton } from "@/components/IconButton";
@@ -9,7 +9,7 @@ import { ChatIdentity } from "@/features/chat/components/ChatIdentity";
 import { ChatThread } from "@/features/chat/components/ChatThread";
 import { useChatScreen } from "@/features/chat/useChatScreen";
 import { FilesPanel } from "@/features/files/components/FilesPanel";
-import { colors, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 export default function ChatScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
@@ -25,6 +25,8 @@ export default function ChatScreen() {
     openFiles,
     closeFiles,
   } = useChatScreen(sessionId);
+  const styles = useStyles();
+  const colors = useColors();
   const hasFiles = sessionID !== null && detail !== undefined;
 
   function handleRetry() {
@@ -102,7 +104,7 @@ export default function ChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.background },
   panel: { width: "84%", backgroundColor: colors.background },
   center: {
@@ -121,4 +123,4 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.6 },
   retryLabel: { ...type.label, color: colors.text },
-});
+}));

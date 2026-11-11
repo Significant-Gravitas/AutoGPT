@@ -8,15 +8,24 @@ import {
 } from "react-native";
 import { Renderer } from "react-native-marked";
 
-import { colors, type } from "@/lib/theme";
+import { palettes, type, type Colors, type Scheme } from "@/lib/theme";
 
 const WEB_URL_RE = /^https?:\/\//i;
+
+type SafeStyles = ReturnType<typeof buildSafeStyles>;
 
 /**
  * Replies may carry text planted by a web page, so images are never fetched
  * (their URL could carry data out) and only web links open on a tap.
  */
 class SafeRenderer extends Renderer {
+  private readonly safeStyles: SafeStyles;
+
+  constructor(safeStyles: SafeStyles) {
+    super();
+    this.safeStyles = safeStyles;
+  }
+
   override link(
     children: string | ReactNode[],
     href: string,
@@ -35,7 +44,7 @@ class SafeRenderer extends Renderer {
     const label = alt || title;
     if (!label) return null;
     return (
-      <Text key={this.getKey()} style={safeStyles.alt}>
+      <Text key={this.getKey()} style={this.safeStyles.alt}>
         {label}
       </Text>
     );
@@ -48,7 +57,7 @@ class SafeRenderer extends Renderer {
     _style?: ImageStyle,
     title?: string,
   ): ReactNode {
-    return this.safeLink(alt || title || href, href, safeStyles.link, title);
+    return this.safeLink(alt || title || href, href, this.safeStyles.link, title);
   }
 
   private safeLink(
@@ -59,7 +68,7 @@ class SafeRenderer extends Renderer {
   ) {
     if (!WEB_URL_RE.test(href)) {
       return (
-        <Text key={this.getKey()} style={[styles, safeStyles.plain]}>
+        <Text key={this.getKey()} style={[styles, this.safeStyles.plain]}>
           {children}
         </Text>
       );
@@ -70,7 +79,7 @@ class SafeRenderer extends Renderer {
         accessibilityRole="link"
         accessibilityLabel={title || undefined}
         onPress={() => openWebLink(href)}
-        style={[styles, safeStyles.link]}
+        style={[styles, this.safeStyles.link]}
       >
         {children}
       </Text>
@@ -82,10 +91,16 @@ function openWebLink(href: string) {
   Linking.openURL(href).catch(() => undefined);
 }
 
-export const safeRenderer = new SafeRenderer();
+function buildSafeStyles(colors: Colors) {
+  return StyleSheet.create({
+    alt: { ...type.body, color: colors.textSecondary },
+    link: { color: colors.accentText },
+    plain: { color: colors.text },
+  });
+}
 
-const safeStyles = StyleSheet.create({
-  alt: { ...type.body, color: colors.textSecondary },
-  link: { color: colors.brand },
-  plain: { color: colors.text },
-});
+// One per scheme, so the markdown hook keeps a stable renderer.
+export const safeRenderers: Record<Scheme, SafeRenderer> = {
+  dark: new SafeRenderer(buildSafeStyles(palettes.dark)),
+  light: new SafeRenderer(buildSafeStyles(palettes.light)),
+};

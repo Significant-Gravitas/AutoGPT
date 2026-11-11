@@ -2,7 +2,7 @@ import { Image, type ImageSource } from "expo-image";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { colors } from "@/lib/theme";
+import { createStyles } from "@/lib/theme";
 
 interface Props {
   name: string;
@@ -15,6 +15,7 @@ export function ExpertAvatar({ name, source, size }: Props) {
 }
 
 function AvatarImage({ name, source, size }: Props) {
+  const styles = useStyles();
   const [hasFailed, setHasFailed] = useState(false);
   const shape = { width: size, height: size, borderRadius: size / 2 };
 
@@ -44,7 +45,7 @@ function AvatarImage({ name, source, size }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   fallback: {
     alignItems: "center",
     justifyContent: "center",
@@ -56,4 +57,4 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
-});
+}));

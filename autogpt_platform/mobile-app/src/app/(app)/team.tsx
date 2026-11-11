@@ -1,4 +1,4 @@
-import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { FlatList, RefreshControl, Text, View } from "react-native";
 
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { ExpertCard, PlaceholderCard } from "@/features/team/components/ExpertCard";
@@ -6,7 +6,7 @@ import { avatarSource, roleLine, statusLine } from "@/features/team/helpers";
 import { useTeamScreen } from "@/features/team/useTeamScreen";
 import type { Expert } from "@/lib/api/experts";
 import { OTTO_AVATAR_URL, OTTO_NAME } from "@/lib/otto";
-import { colors, spacing, type } from "@/lib/theme";
+import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 export default function TeamScreen() {
   const {
@@ -20,6 +20,8 @@ export default function TeamScreen() {
     openExpert,
     openOtto,
   } = useTeamScreen();
+  const styles = useStyles();
+  const colors = useColors();
 
   function handleRefresh() {
     void refresh();
@@ -102,10 +104,11 @@ export default function TeamScreen() {
 }
 
 function Separator() {
+  const styles = useStyles();
   return <View style={styles.separator} />;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.background },
   content: { paddingTop: spacing.sm, paddingBottom: spacing.xxl },
   header: { gap: spacing.sm, marginBottom: spacing.lg },
@@ -123,4 +126,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.lg,
   },
-});
+}));

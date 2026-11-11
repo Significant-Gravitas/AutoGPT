@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { DRAWER_SESSION_LIMIT } from "@/features/drawer/helpers";
-import { colors, spacing, type } from "@/lib/theme";
+import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 import { ExpertChatGroup } from "./components/ExpertChatGroup";
 import { DrawerRow } from "./DrawerRow";
@@ -43,6 +43,8 @@ export function AppDrawerContent({ navigation }: Props) {
     openSettings,
     handleSignOut,
   } = useAppDrawer(navigation);
+  const styles = useStyles();
+  const colors = useColors();
 
   function handleRefresh() {
     void refetch();
@@ -113,7 +115,7 @@ export function AppDrawerContent({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   container: {
     flex: 1,
     paddingHorizontal: spacing.sm,
@@ -146,4 +148,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.xs,
   },
-});
+}));

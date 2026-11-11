@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Platform,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -11,7 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Markdown } from "@/features/chat/components/Markdown";
 import type { WorkspaceFile } from "@/lib/api/workspace";
-import { colors, spacing, type } from "@/lib/theme";
+import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 import { useFileViewer } from "../useFileViewer";
 import { RetryNotice } from "./RetryNotice";
@@ -23,6 +22,8 @@ interface Props {
 export function FileContent({ file }: Props) {
   const viewer = useFileViewer(file);
   const insets = useSafeAreaInsets();
+  const styles = useStyles();
+  const colors = useColors();
 
   if (viewer.kind === "other") {
     return (
@@ -94,7 +95,7 @@ export function FileContent({ file }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   center: {
     flex: 1,
     alignItems: "center",
@@ -110,4 +111,4 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
   },
-});
+}));

@@ -1,7 +1,7 @@
-import { Pressable, StyleSheet, Text } from "react-native";
+import { Pressable, Text } from "react-native";
 
 import type { WorkspaceFile } from "@/lib/api/workspace";
-import { colors, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type } from "@/lib/theme";
 
 import { fileDetailLine } from "../helpers";
 
@@ -11,6 +11,8 @@ interface Props {
 }
 
 export function FileRow({ file, onPress }: Props) {
+  const styles = useStyles();
+
   function handlePress() {
     onPress(file);
   }
@@ -31,7 +33,7 @@ export function FileRow({ file, onPress }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   row: {
     gap: 2,
     paddingHorizontal: spacing.md,
@@ -41,4 +43,4 @@ const styles = StyleSheet.create({
   pressed: { backgroundColor: colors.surfacePressed },
   name: { ...type.label, color: colors.text },
   detail: { ...type.small, color: colors.textTertiary },
-});
+}));

@@ -1,8 +1,8 @@
 import type { IconSvgElement } from "@hugeicons/react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import { Icon } from "@/components/Icon";
-import { colors, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 interface Props {
   label: string;
@@ -13,6 +13,8 @@ interface Props {
 }
 
 export function DrawerRow({ label, onPress, icon, isActive, isBusy }: Props) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <Pressable
       accessibilityRole="button"
@@ -33,7 +35,7 @@ export function DrawerRow({ label, onPress, icon, isActive, isBusy }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -51,4 +53,4 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: colors.brand,
   },
-});
+}));

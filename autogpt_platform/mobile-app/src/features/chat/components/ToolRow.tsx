@@ -1,15 +1,16 @@
 import { AlertCircleIcon, Tick02Icon } from "@hugeicons/core-free-icons";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 
 import { Icon } from "@/components/Icon";
-import { colors, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 interface Props {
   part: ToolUIPart | DynamicToolUIPart;
 }
 
 export function ToolRow({ part }: Props) {
+  const styles = useStyles();
   const title =
     typeof part.title === "string" && part.title.trim()
       ? part.title
@@ -32,6 +33,7 @@ interface StateMarkProps {
 }
 
 function StateMark({ state }: StateMarkProps) {
+  const colors = useColors();
   if (state === "input-streaming" || state === "input-available") {
     return <ActivityIndicator size="small" color={colors.textSecondary} />;
   }
@@ -44,7 +46,7 @@ function StateMark({ state }: StateMarkProps) {
   return null;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -57,4 +59,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   label: { ...type.small, flexShrink: 1, color: colors.textSecondary },
-});
+}));

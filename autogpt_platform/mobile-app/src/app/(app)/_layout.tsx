@@ -1,9 +1,10 @@
 import { Drawer } from "expo-router/drawer";
 
 import { AppDrawerContent } from "@/features/drawer/AppDrawerContent";
-import { colors } from "@/lib/theme";
+import { useColors } from "@/lib/theme";
 
 export default function AppLayout() {
+  const colors = useColors();
   return (
     <Drawer
       drawerContent={(props) => <AppDrawerContent {...props} />}

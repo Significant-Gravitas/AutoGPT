@@ -1,7 +1,7 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import { ExpertAvatar } from "@/components/ExpertAvatar";
-import { colors, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 const AVATAR_SIZE = 48;
 
@@ -22,6 +22,8 @@ export function ExpertCard({
   isOpening,
   onPress,
 }: Props) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <Pressable
       accessibilityRole="button"
@@ -52,6 +54,7 @@ export function ExpertCard({
 }
 
 export function PlaceholderCard() {
+  const styles = useStyles();
   return (
     <View style={styles.card}>
       <View style={[styles.avatar, styles.placeholder]} />
@@ -63,7 +66,7 @@ export function PlaceholderCard() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   card: {
     flexDirection: "row",
     alignItems: "center",
@@ -86,4 +89,4 @@ const styles = StyleSheet.create({
   placeholder: { backgroundColor: colors.surfaceRaised },
   bar: { height: 12, width: "40%", borderRadius: radius.sm },
   barWide: { width: "60%", height: 16 },
-});
+}));

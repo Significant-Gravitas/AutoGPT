@@ -1,7 +1,7 @@
 import type { IconSvgElement } from "@hugeicons/react-native";
-import { Pressable, StyleSheet } from "react-native";
+import { Pressable } from "react-native";
 
-import { colors, radius } from "@/lib/theme";
+import { createStyles, radius, useColors } from "@/lib/theme";
 
 import { Icon } from "./Icon";
 
@@ -14,6 +14,8 @@ interface Props {
 }
 
 export function IconButton({ icon, label, onPress, disabled, filled }: Props) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <Pressable
       accessibilityRole="button"
@@ -33,7 +35,7 @@ export function IconButton({ icon, label, onPress, disabled, filled }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   button: {
     width: 40,
     height: 40,
@@ -44,4 +46,4 @@ const styles = StyleSheet.create({
   filled: { backgroundColor: colors.brand },
   pressed: { opacity: 0.6 },
   disabled: { opacity: 0.35 },
-});
+}));

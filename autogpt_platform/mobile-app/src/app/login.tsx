@@ -10,7 +10,7 @@ import {
 } from "react-native";
 
 import { useLoginScreen } from "@/features/auth/useLoginScreen";
-import { colors, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 const appIcon = require("../../assets/images/icon.png");
 
@@ -25,6 +25,8 @@ export default function LoginScreen() {
     canSubmit,
     submit,
   } = useLoginScreen();
+  const styles = useStyles();
+  const colors = useColors();
 
   return (
     <KeyboardAvoidingView
@@ -94,7 +96,7 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   screen: {
     flex: 1,
     justifyContent: "center",
@@ -150,4 +152,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: spacing.lg,
   },
-});
+}));

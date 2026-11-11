@@ -4,7 +4,7 @@ import { StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { IconButton } from "@/components/IconButton";
-import { colors, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 interface Props {
   onSend: (text: string) => boolean | Promise<boolean>;
@@ -21,6 +21,8 @@ export function Composer({
   isDisabled,
   placeholder = "Ask Otto anything",
 }: Props) {
+  const styles = useStyles();
+  const colors = useColors();
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
   // State lands a render late; the ref stops a second press in the same frame.
@@ -72,7 +74,7 @@ export function Composer({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   wrap: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
@@ -98,4 +100,4 @@ const styles = StyleSheet.create({
     paddingBottom: 9,
     color: colors.text,
   },
-});
+}));

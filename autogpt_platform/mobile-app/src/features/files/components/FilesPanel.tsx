@@ -1,7 +1,7 @@
-import { ScrollView, StyleSheet, Text } from "react-native";
+import { ScrollView, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { colors, spacing, type } from "@/lib/theme";
+import { createStyles, spacing, type } from "@/lib/theme";
 
 import { useFilesPanel } from "../useFilesPanel";
 import { FileSection } from "./FileSection";
@@ -21,6 +21,7 @@ export function FilesPanel({ sessionID, expertID, expertName, isOpen }: Props) {
     isOpen,
   });
   const insets = useSafeAreaInsets();
+  const styles = useStyles();
 
   return (
     <>
@@ -59,7 +60,7 @@ export function FilesPanel({ sessionID, expertID, expertName, isOpen }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   content: { gap: spacing.xl, paddingHorizontal: spacing.sm },
   title: { ...type.heading, color: colors.text, paddingHorizontal: spacing.md },
-});
+}));

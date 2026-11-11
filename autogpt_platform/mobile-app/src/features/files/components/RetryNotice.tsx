@@ -1,6 +1,6 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
-import { colors, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type } from "@/lib/theme";
 
 interface Props {
   message: string;
@@ -9,6 +9,7 @@ interface Props {
 }
 
 export function RetryNotice({ message, onRetry, centered }: Props) {
+  const styles = useStyles();
   return (
     <View style={[styles.notice, centered && styles.centered]}>
       <Text style={styles.message}>{message}</Text>
@@ -23,7 +24,7 @@ export function RetryNotice({ message, onRetry, centered }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   notice: { alignItems: "flex-start", gap: spacing.sm, paddingHorizontal: spacing.md },
   centered: { alignItems: "center" },
   message: { ...type.small, color: colors.textSecondary },
@@ -35,4 +36,4 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.6 },
   retryLabel: { ...type.label, color: colors.text },
-});
+}));

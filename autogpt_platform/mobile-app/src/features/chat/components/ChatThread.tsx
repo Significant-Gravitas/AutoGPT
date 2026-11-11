@@ -1,7 +1,7 @@
-import { KeyboardAvoidingView, Platform, StyleSheet, Text } from "react-native";
+import { KeyboardAvoidingView, Platform, Text } from "react-native";
 
 import type { SessionDetail } from "@/lib/api/chat";
-import { colors, spacing, type } from "@/lib/theme";
+import { createStyles, spacing, type } from "@/lib/theme";
 
 import { useChatThread } from "../useChatThread";
 import { Composer } from "./Composer";
@@ -24,6 +24,7 @@ export function ChatThread({ sessionID, detail }: Props) {
     isLoadingEarlier,
     loadEarlier,
   } = useChatThread({ sessionID, detail });
+  const styles = useStyles();
 
   function handleStop() {
     void stop();
@@ -51,7 +52,7 @@ export function ChatThread({ sessionID, detail }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   thread: { flex: 1 },
   error: {
     ...type.small,
@@ -59,4 +60,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
   },
-});
+}));

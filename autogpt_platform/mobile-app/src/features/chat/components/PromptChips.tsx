@@ -1,6 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
 
-import { colors, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type } from "@/lib/theme";
 
 interface Props {
   prompts: string[];
@@ -8,6 +8,7 @@ interface Props {
 }
 
 export function PromptChips({ prompts, onPick }: Props) {
+  const styles = useStyles();
   return (
     <ScrollView
       horizontal
@@ -31,7 +32,7 @@ export function PromptChips({ prompts, onPick }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   row: { gap: spacing.sm, paddingHorizontal: spacing.md },
   chip: {
     maxWidth: 220,
@@ -45,4 +46,4 @@ const styles = StyleSheet.create({
   },
   pressed: { backgroundColor: colors.surfacePressed },
   label: { ...type.label, color: colors.textSecondary },
-});
+}));

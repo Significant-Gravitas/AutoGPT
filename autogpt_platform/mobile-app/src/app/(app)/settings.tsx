@@ -1,15 +1,9 @@
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
 
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useSettingsScreen } from "@/features/settings/useSettingsScreen";
-import { colors, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 export default function SettingsScreen() {
   const {
@@ -24,6 +18,8 @@ export default function SettingsScreen() {
     handleNavigation,
     handleStateChange,
   } = useSettingsScreen();
+  const styles = useStyles();
+  const colors = useColors();
 
   function renderNotice(message: string) {
     return (
@@ -79,7 +75,7 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.background },
   webview: { flex: 1, backgroundColor: colors.background },
   center: {
@@ -98,4 +94,4 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.8 },
   buttonText: { ...type.label, color: colors.text },
-});
+}));

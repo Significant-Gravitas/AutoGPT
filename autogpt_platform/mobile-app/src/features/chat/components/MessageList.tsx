@@ -4,13 +4,12 @@ import {
   ActivityIndicator,
   FlatList,
   Pressable,
-  StyleSheet,
   Text,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
 
-import { colors, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 import { MessageBubble } from "./MessageBubble";
 
@@ -31,6 +30,8 @@ export function MessageList({
   isLoadingEarlier,
   onLoadEarlier,
 }: Props) {
+  const styles = useStyles();
+  const colors = useColors();
   const listRef = useRef<FlatList<UIMessage>>(null);
   const isNearEnd = useRef(true);
   const isBusy = status === "submitted" || status === "streaming";
@@ -91,7 +92,7 @@ export function MessageList({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   list: { flex: 1 },
   content: {
     gap: spacing.lg,
@@ -109,4 +110,4 @@ const styles = StyleSheet.create({
   pressed: { backgroundColor: colors.surfacePressed },
   disabled: { opacity: 0.4 },
   earlierLabel: { ...type.small, color: colors.textSecondary },
-});
+}));

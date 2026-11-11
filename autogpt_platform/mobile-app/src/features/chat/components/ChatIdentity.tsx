@@ -1,7 +1,7 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { ExpertAvatar } from "@/components/ExpertAvatar";
-import { colors, spacing, type } from "@/lib/theme";
+import { createStyles, spacing, type } from "@/lib/theme";
 
 interface Props {
   name: string;
@@ -10,6 +10,7 @@ interface Props {
 }
 
 export function ChatIdentity({ name, role, avatar }: Props) {
+  const styles = useStyles();
   return (
     <View accessibilityRole="header" style={styles.row}>
       <ExpertAvatar name={name} source={avatar} size={32} />
@@ -27,9 +28,9 @@ export function ChatIdentity({ name, role, avatar }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, maxWidth: "100%" },
   text: { flexShrink: 1 },
   name: { ...type.label, color: colors.text },
   role: { ...type.small, fontSize: 12, lineHeight: 16, color: colors.textTertiary },
-});
+}));

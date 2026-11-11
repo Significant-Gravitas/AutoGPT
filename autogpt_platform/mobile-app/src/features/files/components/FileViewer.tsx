@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { IconButton } from "@/components/IconButton";
 import type { WorkspaceFile } from "@/lib/api/workspace";
-import { colors, spacing, type } from "@/lib/theme";
+import { createStyles, spacing, type } from "@/lib/theme";
 
 import { FileContent } from "./FileContent";
 
@@ -15,6 +15,7 @@ interface Props {
 
 export function FileViewer({ file, onClose }: Props) {
   const insets = useSafeAreaInsets();
+  const styles = useStyles();
   // A page sheet starts below the status bar on iOS; full screen elsewhere.
   const topInset = Platform.OS === "ios" ? 0 : insets.top;
 
@@ -38,7 +39,7 @@ export function FileViewer({ file, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: "row",
@@ -51,4 +52,4 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   title: { ...type.heading, flex: 1, color: colors.text },
-});
+}));

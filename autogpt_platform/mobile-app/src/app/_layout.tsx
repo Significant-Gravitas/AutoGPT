@@ -1,33 +1,47 @@
 import "@/polyfills";
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { DarkTheme, Stack, ThemeProvider, type Theme } from "expo-router";
+import {
+  DarkTheme,
+  DefaultTheme,
+  Stack,
+  ThemeProvider,
+  type Theme,
+} from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { authClient } from "@/lib/auth/client";
 import { queryClient } from "@/lib/session";
-import { colors } from "@/lib/theme";
+import { createStyles, useColors, useScheme, type Colors, type Scheme } from "@/lib/theme";
 
-const theme: Theme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    primary: colors.brand,
-    background: colors.background,
-    card: colors.surface,
-    text: colors.text,
-    border: colors.border,
-    notification: colors.error,
-  },
-};
+function navigationTheme(scheme: Scheme, colors: Colors): Theme {
+  const base = scheme === "light" ? DefaultTheme : DarkTheme;
+  return {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: colors.brand,
+      background: colors.background,
+      card: colors.surface,
+      text: colors.text,
+      border: colors.border,
+      notification: colors.error,
+    },
+  };
+}
 
 export default function RootLayout() {
+  const styles = useStyles();
+  const scheme = useScheme();
+  const colors = useColors();
   return (
     <GestureHandlerRootView style={styles.root}>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider value={theme}>
+        <ThemeProvider value={navigationTheme(scheme, colors)}>
+          <StatusBar style="auto" />
           <RootStack />
         </ThemeProvider>
       </QueryClientProvider>
@@ -36,6 +50,7 @@ export default function RootLayout() {
 }
 
 function RootStack() {
+  const styles = useStyles();
   const { data: session, isPending } = authClient.useSession();
   const [hasSettled, setHasSettled] = useState(false);
 
@@ -56,6 +71,6 @@ function RootStack() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.background },
-});
+}));

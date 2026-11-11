@@ -1,7 +1,7 @@
 import { isToolUIPart, type UIMessage } from "ai";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
-import { colors, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type } from "@/lib/theme";
 
 import { Markdown } from "./Markdown";
 import { ToolRow } from "./ToolRow";
@@ -11,6 +11,7 @@ interface Props {
 }
 
 export function MessageBubble({ message }: Props) {
+  const styles = useStyles();
   if (message.role === "user") {
     const text = message.parts
       .map((part) => (part.type === "text" ? part.text : ""))
@@ -42,7 +43,7 @@ export function MessageBubble({ message }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   userBubble: {
     alignSelf: "flex-end",
     maxWidth: "85%",
@@ -54,4 +55,4 @@ const styles = StyleSheet.create({
   userText: { ...type.body, color: colors.text },
   assistant: { gap: spacing.sm },
   thinking: { ...type.small, color: colors.textTertiary },
-});
+}));

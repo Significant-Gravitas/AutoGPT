@@ -2,10 +2,10 @@ import { Menu01Icon } from "@hugeicons/core-free-icons";
 import { useNavigation } from "expo-router";
 import { DrawerActions } from "expo-router/react-navigation";
 import type { ReactNode } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { colors, spacing, type } from "@/lib/theme";
+import { createStyles, spacing, type } from "@/lib/theme";
 
 import { IconButton } from "./IconButton";
 
@@ -18,6 +18,7 @@ interface Props {
 export function ScreenHeader({ title, center, right }: Props) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const styles = useStyles();
 
   function openMenu() {
     navigation.dispatch(DrawerActions.openDrawer());
@@ -40,7 +41,7 @@ export function ScreenHeader({ title, center, right }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createStyles((colors) => ({
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -55,4 +56,4 @@ const styles = StyleSheet.create({
   // the right.
   side: { width: 88, flexDirection: "row" },
   right: { justifyContent: "flex-end", gap: spacing.xs },
-});
+}));
