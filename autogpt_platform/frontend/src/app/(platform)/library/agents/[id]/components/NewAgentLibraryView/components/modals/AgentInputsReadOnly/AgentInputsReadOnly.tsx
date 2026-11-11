@@ -24,13 +24,13 @@ export function AgentInputsReadOnly({
     getAgentCredentialsFields(agent),
   );
 
+  // Legacy runs store flat trigger config as run inputs, which no graph input
+  // schema describes, so only declared inputs are shown.
   const inputEntries =
     inputs &&
-    Object.entries(inputs).map(([key, value]) => ({
-      key,
-      schema: inputFields[key],
-      value,
-    }));
+    Object.entries(inputs)
+      .map(([key, value]) => ({ key, schema: inputFields[key], value }))
+      .filter(({ schema }) => Boolean(schema));
 
   const hasInputs = inputEntries && inputEntries.length > 0;
   const hasCredentials = credentialInputs && credentialFieldEntries.length > 0;
@@ -49,8 +49,6 @@ export function AgentInputsReadOnly({
       {hasInputs && (
         <div className="flex flex-col gap-4">
           {inputEntries.map(({ key, schema, value }) => {
-            if (!schema) return null;
-
             return (
               <RunAgentInputs
                 key={key}

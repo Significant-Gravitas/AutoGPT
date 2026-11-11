@@ -187,7 +187,7 @@ def skill_folder(expert_id: str | None) -> str:
 SKILLS_INDEX_CACHE_TTL_S = 60
 # Versioned: an entry cached before origins were recorded would count every
 # installed skill as the owner's for a TTL after deploy.
-SKILLS_INDEX_CACHE_KEY = "copilot:skills_index:v2:{user_id}"
+SKILLS_INDEX_CACHE_KEY = "copilot:skills_index:v3:{user_id}"
 
 # A skill name on an expert's row that resolves to no folder in Otto's
 # library — a marketplace attachment, or a skill deleted after assignment —
@@ -220,6 +220,10 @@ _META_PACKAGE_SHA256 = "package_sha256"
 # both sides had changed and the owner's side was kept.
 _META_MERGED_FROM = "merged_from"
 _META_MERGE_CONFLICTS = "merge_conflicts"
+# The slash-command frontmatter the chat's "/" picker lists: see
+# :data:`INVOCATION_FRONTMATTER_KEYS`.
+_META_INVOCATION = "invocation"
+_META_ALIASES = "aliases"
 
 # What the index says about a marketplace copy relative to the marketplace.
 UPDATE_AVAILABLE = "available"
@@ -316,7 +320,33 @@ _CARRIED_FRONTMATTER_KEYS = (
     "metadata",
     "source",
     "source_url",
+    "arguments",
+    "argument-hint",
+    "user-invocable",
+    "disable-model-invocation",
 )
+
+# The frontmatter a skill index entry keeps so the chat can list slash
+# commands without reading every SKILL.md: the argument hint the "/" picker
+# shows, and whether the skill may be run as a command at all.
+INVOCATION_FRONTMATTER_KEYS = ("argument-hint", "user-invocable")
+
+
+def invocation_frontmatter(extra: Mapping[str, Any]) -> dict[str, Any]:
+    """The slash-command subset of a skill's frontmatter, normalised.
+
+    An unquoted ``argument-hint: [issue-number]`` parses as a YAML list, so a
+    list is rendered back into the bracketed form the author wrote.
+    """
+    subset: dict[str, Any] = {}
+    hint = extra.get("argument-hint")
+    if isinstance(hint, (list, tuple)):
+        hint = " ".join(f"[{item}]" for item in hint if str(item).strip())
+    if isinstance(hint, str) and hint.strip():
+        subset["argument-hint"] = hint.strip()
+    if extra.get("user-invocable") is False:
+        subset["user-invocable"] = False
+    return subset
 
 
 class SkillBaseline(NamedTuple):
@@ -355,6 +385,34 @@ class ParsedSkill:
     # Derived at index time, never stored: one of the ``UPDATE_*`` states, or
     # None when the copy is current or is not a marketplace copy.
     update: str | None = None
+    aliases: tuple[str, ...] = ()
+
+
+def skill_aliases(skill: ParsedSkill) -> set[str]:
+    """Other names a vendored skill answers to, from its ``metadata``.
+
+    A skill packaged from a Claude Code plugin keeps the name its own text
+    uses, e.g. ``original-name: incident-response``, and the plugin it came
+    from, e.g. ``source: .../commercial-legal/skills/amendment-history``. So
+    ``/incident-response`` and ``/commercial-legal:amendment-history`` reach
+    it without editing the published skill.
+    """
+    metadata = skill.extra.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return set()
+    original = metadata.get("original-name")
+    if not isinstance(original, str) or not original.strip():
+        return set()
+    original = original.strip().lower()
+    aliases = {original}
+    source = metadata.get("source")
+    if isinstance(source, str):
+        parts = [part for part in source.strip("/").lower().split("/") if part]
+        if "skills" in parts:
+            skills_at = len(parts) - 1 - parts[::-1].index("skills")
+            if skills_at >= 1:
+                aliases.add(f"{parts[skills_at - 1]}:{original}")
+    return aliases
 
 
 def budget_origin(skill: ParsedSkill) -> str:
@@ -1589,6 +1647,8 @@ async def _write_skill(
     }
     if skill.parsed.version:
         metadata[_META_VERSION] = skill.parsed.version
+    metadata[_META_INVOCATION] = invocation_frontmatter(skill.parsed.extra)
+    metadata[_META_ALIASES] = sorted(skill_aliases(skill.parsed))
     if baseline is not None:
         metadata.update(_baseline_metadata(baseline))
     folder = skill_folder(expert_id)
@@ -1682,10 +1742,11 @@ async def _parse_skill_from_workspace(
 
 
 def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
-    """Build a body-less :class:`ParsedSkill` from ``WorkspaceFile.metadata``
-    written at store time.  Returns ``None`` when the metadata is missing
-    a description (older SKILL.md predating the metadata-cache change) so
-    the caller falls back to reading the file.
+    """Build a body-less entry from skill metadata.
+
+    Return None when the skill kind or description is missing/invalid, or
+    invocation is absent or not a dict, or aliases is absent/invalid. The
+    caller then reads SKILL.md for legacy aliases and user-invocable: false.
     """
     if meta.get(_META_KIND) != _META_KIND_VALUE:
         return None
@@ -1697,12 +1758,22 @@ def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
         raw_triggers = ()
     triggers = tuple(str(t) for t in raw_triggers if isinstance(t, str) and t)
     version = meta.get(_META_VERSION)
+    invocation = meta.get(_META_INVOCATION)
+    aliases = meta.get(_META_ALIASES)
+    if (
+        not isinstance(invocation, dict)
+        or not isinstance(aliases, list)
+        or any(not isinstance(alias, str) for alias in aliases)
+    ):
+        return None
     return ParsedSkill(
         name=slug,
         description=description,
         body="",
         triggers=triggers,
         version=str(version) if version else None,
+        extra=invocation_frontmatter(invocation),
+        aliases=tuple(aliases),
         origin=_skill_origin(meta),
         baseline=_baseline_from_metadata(meta),
     )
@@ -1788,21 +1859,31 @@ async def _list_user_skills_from_workspace(
         parsed = await asyncio.gather(
             *(_parse_skill_from_workspace(manager, f.path) for f, _ in needs_read),
         )
-        for (_, meta), p in zip(needs_read, parsed):
+        for (file, meta), p in zip(needs_read, parsed):
             if p is None:
                 continue
             # Index never needs the body — drop it so the cache payload
             # stays small (defaults are already body-less, fast-path
             # entries are body-less, keep the contract uniform).  The
             # origin is the row's, whatever the file says.
+            invocation = invocation_frontmatter(p.extra)
+            aliases = sorted(skill_aliases(p))
+            entry = _index_entry_from_metadata(
+                file.path.rsplit("/", 2)[-2],
+                {**meta, _META_INVOCATION: invocation, _META_ALIASES: aliases},
+            )
             skills.append(
-                ParsedSkill(
+                entry
+                or ParsedSkill(
                     name=p.name,
                     description=p.description,
                     body="",
                     triggers=p.triggers,
                     version=p.version,
+                    extra=invocation,
+                    aliases=tuple(aliases),
                     origin=_skill_origin(meta),
+                    baseline=_baseline_from_metadata(meta),
                 )
             )
 
@@ -1828,7 +1909,12 @@ async def _read_skills_cache(
         return None
     try:
         payload = json.loads(raw)
-        if not isinstance(payload, list):
+        if not isinstance(payload, list) or any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("aliases"), list)
+            or any(not isinstance(alias, str) for alias in item["aliases"])
+            for item in payload
+        ):
             return None
         return [
             ParsedSkill(
@@ -1837,6 +1923,8 @@ async def _read_skills_cache(
                 body="",
                 triggers=tuple(str(t) for t in item.get("triggers", [])),
                 version=item.get("version"),
+                extra=invocation_frontmatter(item.get("invocation") or {}),
+                aliases=tuple(item["aliases"]),
                 origin=_normalize_origin(item.get("origin")),
                 baseline=_baseline_from_metadata(item.get("baseline") or {}),
                 update=_normalize_update(item.get("update")),
@@ -1861,6 +1949,8 @@ async def _write_skills_cache(
                     "description": s.description,
                     "triggers": list(s.triggers),
                     "version": s.version,
+                    "invocation": invocation_frontmatter(s.extra),
+                    "aliases": list(s.aliases),
                     "origin": s.origin,
                     "baseline": (
                         _baseline_metadata(s.baseline) if s.baseline else None
@@ -3311,6 +3401,102 @@ async def resolve_loaded_skill_version(
     )
 
 
+async def read_skill_for_load(
+    user_id: str, expert_id: str | None, name: str, scope: WorkspaceScope | None
+) -> tuple[WorkspaceManager, bytes]:
+    from backend.copilot.learning.publish import reconcile_skill_for_read
+
+    manager = await _get_user_skill_manager(user_id, scope)
+    await reconcile_skill_for_read(user_id, expert_id, name)
+    return manager, await manager.read_file(_skill_md_path(name, expert_id))
+
+
+class LoadedSkillPackage(BaseModel):
+    """A user skill's package files, as one load copied them into the turn's
+    working directory."""
+
+    files: list[SkillFileInfo]
+    # Where the copies are; None when the skill has no files or none copied.
+    package_dir: str | None
+    # What the model is told about the copy, ending with where the files are.
+    notes: list[str]
+
+
+class SkillPackageLoadError(Exception):
+    """The package cannot go with this load: ``error`` is the tool's error
+    code and ``message`` what the model is told."""
+
+    def __init__(self, error: str, message: str) -> None:
+        super().__init__(message)
+        self.error = error
+        self.message = message
+
+
+async def materialise_skill_package(
+    manager: WorkspaceManager,
+    *,
+    expert_id: str | None,
+    name: str,
+    session_id: str,
+    version_files: list[SkillVersionFile] | None,
+) -> LoadedSkillPackage:
+    """List a user skill's package, check it against the loaded version and
+    copy it into the turn's working directory: what ``read_skill`` and a
+    ``/name`` command both hand the model along with the skill's body."""
+    folder = skill_folder(expert_id)
+    listed = True
+    try:
+        package_files = await _list_package_files(manager, folder, name)
+    except Exception:
+        logger.warning(
+            "[skills] failed to list package files for %s", name, exc_info=True
+        )
+        if version_files is not None:
+            raise SkillPackageLoadError(
+                "skill_package_unavailable",
+                "The skill package is unavailable; retry tool:read_skill.",
+            )
+        package_files = []
+        listed = False
+
+    if version_files is not None and not _matches_version_files(
+        package_files, version_files, f"{folder}/{name}/"
+    ):
+        raise SkillPackageLoadError(
+            "skill_changed",
+            "The skill package changed while loading; retry tool:read_skill.",
+        )
+
+    notes: list[str] = []
+    # A listing that failed is not an empty package: treating it as one
+    # would prune every file the last activation wrote.
+    complete = listed and len(package_files) <= MAX_PACKAGE_FILES
+    if listed and not complete:
+        package_files = package_files[:MAX_PACKAGE_FILES]
+        notes.append(f"Only the first {MAX_PACKAGE_FILES} package files are listed.")
+
+    # Runs even for a skill with no files: a package deleted and re-stored
+    # under the same slug leaves its old files in the working directory.
+    package_dir, warning = await _sync_skill_package(
+        manager,
+        package_files,
+        folder=folder,
+        slug=name,
+        session_id=session_id,
+        complete=complete,
+        version_files=version_files,
+    )
+    if warning:
+        notes.append(warning)
+    if package_dir:
+        notes.append(
+            f"Package files are at {package_dir}; relative paths in the "
+            "body resolve there. Run scripts with bash_exec from that "
+            "directory."
+        )
+    return LoadedSkillPackage(files=package_files, package_dir=package_dir, notes=notes)
+
+
 class ReadSkillTool(BaseTool):
     """Load a skill by name: its body, its package listing, and a copy of
     that package in the working directory the model's shell runs in."""
@@ -3399,11 +3585,9 @@ class ReadSkillTool(BaseTool):
             )
 
         try:
-            from backend.copilot.learning.publish import reconcile_skill_for_read
-
-            manager = await _get_user_skill_manager(user_id, owner.scope)
-            await reconcile_skill_for_read(user_id, owner.expert_id, name)
-            raw = await manager.read_file(_skill_md_path(name, owner.expert_id))
+            manager, raw = await read_skill_for_load(
+                user_id, owner.expert_id, name, owner.scope
+            )
         except WorkspaceAccessDeniedError:
             return ErrorResponse(
                 message=EXPERT_SKILL_SCOPE_DENIED,
@@ -3468,62 +3652,19 @@ class ReadSkillTool(BaseTool):
                 error="skill_registry_unavailable",
                 session_id=session_id,
             )
-        # List the package files (references/, scripts/, assets/, ...) so
-        # the model knows what else lives in the bundle.
-        folder = skill_folder(owner.expert_id)
-        listed = True
+        # The package files (references/, scripts/, assets/, ...) go to the
+        # model as a listing and as copies in its working directory.
         try:
-            package_files = await _list_package_files(manager, folder, name)
-        except Exception:
-            logger.warning(
-                "[skills] failed to list package files for %s", name, exc_info=True
-            )
-            if loaded.files is not None:
-                return ErrorResponse(
-                    message="The skill package is unavailable; retry tool:read_skill.",
-                    error="skill_package_unavailable",
-                    session_id=session_id,
-                )
-            package_files = []
-            listed = False
-
-        if loaded.files is not None and not _matches_version_files(
-            package_files, loaded.files, f"{folder}/{name}/"
-        ):
-            return ErrorResponse(
-                message="The skill package changed while loading; retry tool:read_skill.",
-                error="skill_changed",
+            package = await materialise_skill_package(
+                manager,
+                expert_id=owner.expert_id,
+                name=name,
                 session_id=session_id,
+                version_files=loaded.files,
             )
-
-        notes: list[str] = []
-        # A listing that failed is not an empty package: treating it as one
-        # would prune every file the last activation wrote.
-        complete = listed and len(package_files) <= MAX_PACKAGE_FILES
-        if listed and not complete:
-            package_files = package_files[:MAX_PACKAGE_FILES]
-            notes.append(
-                f"Only the first {MAX_PACKAGE_FILES} package files are listed."
-            )
-
-        # Runs even for a skill with no files: a package deleted and re-stored
-        # under the same slug leaves its old files in the working directory.
-        package_dir, warning = await _sync_skill_package(
-            manager,
-            package_files,
-            folder=folder,
-            slug=name,
-            session_id=session_id,
-            complete=complete,
-            version_files=loaded.files,
-        )
-        if warning:
-            notes.append(warning)
-        if package_dir:
-            notes.append(
-                f"Package files are at {package_dir}; relative paths in the "
-                "body resolve there. Run scripts with bash_exec from that "
-                "directory."
+        except SkillPackageLoadError as exc:
+            return ErrorResponse(
+                message=exc.message, error=exc.error, session_id=session_id
             )
 
         await record_skill_loaded(
@@ -3538,16 +3679,16 @@ class ReadSkillTool(BaseTool):
             description=parsed.description,
             body=parsed.body,
             triggers=list(parsed.triggers),
-            sibling_files=[f.path for f in package_files],
-            files=package_files,
-            package_dir=package_dir,
+            sibling_files=[f.path for f in package.files],
+            files=package.files,
+            package_dir=package.package_dir,
             is_default=False,
             expert_id=owner.expert_id,
             version=loaded.version,
             version_id=loaded.version_id,
             origin=loaded.origin,
             origin_label=loaded.origin_label,
-            message=" ".join([loaded.message(name), *notes]),
+            message=" ".join([loaded.message(name), *package.notes]),
             session_id=session_id,
         )
 

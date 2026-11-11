@@ -14,6 +14,7 @@ from autogpt_libs.auth import verify_settings as verify_auth_settings
 from fastapi.routing import APIRoute
 from mcp.shared.auth import ProtectedResourceMetadata
 
+import backend.api.features.account_deletion.routes as account_deletion_routes
 import backend.api.features.admin.access_block_admin_routes
 import backend.api.features.admin.block_cost_admin_routes
 import backend.api.features.admin.bot_analytics_routes
@@ -45,6 +46,7 @@ import backend.api.features.desktop_preview
 import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
 import backend.api.features.feature_flags.routes as feature_flags_routes
+import backend.api.features.feedback_prompts.routes as feedback_prompt_routes
 import backend.api.features.graph_executions.review.routes
 import backend.api.features.graph_executions.routes as graph_executions_routes
 import backend.api.features.graphs.routes as graphs_routes
@@ -233,6 +235,17 @@ async def _run_data_migrations() -> None:
         ),
         ("org bootstrap", backend.data.org_migration.run_migration),
         (
+            # Bounded because this one loops: the first boot after the data
+            # migration walks whatever it could not reach, a graph load and a
+            # transaction each. Presets commit individually, so a timeout
+            # defers the rest to the next boot.
+            "triggered-preset inputs",
+            lambda: asyncio.wait_for(
+                backend.integrations.webhooks.utils.migrate_flat_triggered_preset_inputs(),
+                timeout=30,
+            ),
+        ),
+        (
             "Otto transport",
             lambda: asyncio.wait_for(
                 backend.data.autopilot_migrate.migrate_autopilot_transport(apply=True),
@@ -243,6 +256,9 @@ async def _run_data_migrations() -> None:
     for name, migrate in migrations:
         try:
             await migrate()
+        except asyncio.TimeoutError:
+            # A bounded migration resumes on the next start; not worth an alert.
+            logger.warning(f"Start-up data migration '{name}' timed out")
         except Exception:
             logger.error(f"Start-up data migration '{name}' failed", exc_info=True)
 
@@ -320,6 +336,8 @@ app.include_router(
     backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
 )
 app.include_router(subscription_trial_routes.router, prefix="/api")
+app.include_router(account_deletion_routes.router, prefix="/api")
+app.include_router(account_deletion_routes.status_router, prefix="/api")
 app.include_router(subscription_activation_routes.router, prefix="/api")
 app.include_router(
     api_keys_routes.router,
@@ -590,6 +608,11 @@ app.include_router(
     transfer_routes.router,
     tags=["v2", "transfers"],
     prefix="/api/transfers",
+)
+app.include_router(
+    feedback_prompt_routes.router,
+    tags=["v2", "feedback-prompts"],
+    prefix="/api/feedback-prompts",
 )
 app.include_router(
     push_routes.router,

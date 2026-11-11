@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from backend.copilot.graphiti.memory_model import MemoryForgetFailure
 from backend.copilot.tool_image import ImageCarrier
 from backend.copilot.tools.execution_utils import NodeFailureSummary
+from backend.data.feedback_prompts import FeedbackPromptKind
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.providers import ProviderName
@@ -150,6 +151,7 @@ class ResponseType(str, Enum):
     EXPERT_CHAT_LIST = "expert_chat_list"
     EXPERT_CHAT_TRANSCRIPT = "expert_chat_transcript"
     EXPERT_ONBOARDING = "expert_onboarding"
+    FEEDBACK_PROMPT = "feedback_prompt"
     TEAM_CONSULT = "team_consult"
     SESSION_LIST = "session_list"
     SESSION_MESSAGE = "session_message"
@@ -471,7 +473,6 @@ class SubSessionStatusResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
     background_task_id: str | None = None
-    background_expires_at: str | None = None
     status: Literal[
         "running",
         "completed",
@@ -663,7 +664,8 @@ class ExpertChangePreview(BaseModel):
 
 
 class ExpertHandoffTask(BaseModel):
-    """The task a hire was proposed for, handed over when the user approves.
+    """The task a hire or new expert was proposed for, handed over when the
+    user approves.
 
     ``title`` is how the user would name it and labels the card's primary
     button; ``brief`` is the task written for the expert, who cannot see the
@@ -675,7 +677,7 @@ class ExpertHandoffTask(BaseModel):
 
 
 class ExpertHandoffOutcome(BaseModel):
-    """Whether the task a hire was approved for reached the new expert.
+    """Whether the task a hire or new expert was approved for reached them.
 
     ``link`` opens the expert's thread, where the work is happening; it is
     unset when the task did not start.
@@ -853,10 +855,10 @@ class ExpertChangeProposedResponse(ToolResponseBase):
     applied: bool = False
     preview: ExpertChangePreview
     confirmation_id: str
-    # Set when the hire was proposed for a task already in the chat: the card
-    # then asks Hire and start (``handoff_confirmation_id``) or Not now; the
-    # plain ``confirmation_id`` is for a user who asks in chat to hire without
-    # starting the task.
+    # Set when the hire or new expert was proposed for a task already in the
+    # chat: the card then asks Hire (or Create) and start
+    # (``handoff_confirmation_id``) or Not now; the plain ``confirmation_id``
+    # is for a user who asks in chat to add them without starting the task.
     handoff: ExpertHandoffTask | None = None
     handoff_confirmation_id: str | None = None
 
@@ -869,7 +871,7 @@ class ExpertChangeAppliedResponse(ToolResponseBase):
     kind: ExpertChangeKind
     expert: ExpertSummary
     failed_workflows: list[str] = Field(default_factory=list)
-    # Only for a hire approved together with its task.
+    # Only for a hire or new expert approved together with its task.
     handoff: ExpertHandoffOutcome | None = None
 
 
@@ -936,6 +938,15 @@ class ExpertOnboardingResponse(ToolResponseBase):
     expert_id: str
     greeting: str
     steps: list[ExpertOnboardingStep] = Field(default_factory=list)
+
+
+class FeedbackPromptToolResponse(ToolResponseBase):
+    """A work check or mistake card, or the news that none will appear."""
+
+    type: ResponseType = ResponseType.FEEDBACK_PROMPT
+    kind: FeedbackPromptKind
+    prompt_id: str | None = None
+    is_first: bool = False
 
 
 class SuggestedGoalResponse(ToolResponseBase):

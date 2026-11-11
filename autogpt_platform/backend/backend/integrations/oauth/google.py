@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Optional
 
+from google.auth.exceptions import RefreshError
 from google.auth.external_account_authorized_user import (
     Credentials as ExternalAccountCredentials,
 )
@@ -11,12 +12,28 @@ from google_auth_oauthlib.flow import Flow
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
-from backend.integrations.providers import ProviderName
+from backend.integrations.providers import ProviderName, provider_key
 from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
+from .refresh_failure import OAuthTokenRequestError, describe_refresh_failure
 
 logger = logging.getLogger(__name__)
+
+
+class _StatusRecordingRequest(Request):
+    """google-auth's transport, remembering the last HTTP status it saw.
+
+    ``RefreshError`` carries Google's error body but not the status, and the
+    status is half of what a failed refresh has to report.
+    """
+
+    last_status: int | None = None
+
+    def __call__(self, *args, **kwargs):
+        response = super().__call__(*args, **kwargs)
+        self.last_status = response.status
+        return response
 
 
 # --8<-- [start:GoogleOAuthHandlerExample]
@@ -127,7 +144,11 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         # our Pydantic OAuth2Credentials (which isn't a google-auth
         # Credentials). Switching to the platform's async Requests helper
         # matches how the other providers (reddit/github/...) do it.
-        if not credentials.access_token:
+        # A refresh token revokes the whole grant. A stored access token has
+        # usually expired (they live 1h and refresh only on use), and Google
+        # answers 400 invalid_token for it without revoking anything.
+        token = credentials.refresh_token or credentials.access_token
+        if not token:
             return False
 
         # raise_for_status=False so a 400 (already-revoked token, malformed
@@ -144,7 +165,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         ).post(
             self.revoke_uri,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
-            data={"token": credentials.access_token.get_secret_value()},
+            data={"token": token.get_secret_value()},
         )
         return response.ok
 
@@ -178,7 +199,15 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         assert google_creds.refresh_token
         assert google_creds.scopes
 
-        await asyncio.to_thread(google_creds.refresh, Request())
+        request = _StatusRecordingRequest()
+        try:
+            await asyncio.to_thread(google_creds.refresh, request)
+        except RefreshError as e:
+            raise OAuthTokenRequestError(
+                provider_key(self.PROVIDER_NAME),
+                status_code=request.last_status,
+                error_code=describe_refresh_failure(e).error_code,
+            ) from e
         assert google_creds.expiry
 
         return OAuth2Credentials(
