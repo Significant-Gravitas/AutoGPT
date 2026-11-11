@@ -110,3 +110,13 @@ async def test_no_customer_reads_nothing_from_stripe():
     with patch("stripe.Subscription.list_async") as listing:
         assert await get_subscription_payment_due(None) is None
     listing.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_bill_for_a_price_no_longer_on_sale_is_not_offered():
+    """Paying it would leave the account on NO_TIER, since the tier sync
+    keeps the tier for an unknown price, so the plans are offered instead."""
+    retired = _subscription()
+    retired["items"] = {"data": [{"price": {"id": "price_retired"}}]}
+
+    assert await _due(retired) is None

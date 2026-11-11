@@ -92,10 +92,14 @@ async def _payment_due(
     items = (subscription.get("items") or {}).get("data") or []
     price_id = items[0].get("price", {}).get("id") if items else None
     tier = (await build_price_to_tier_map()).get(price_id or "")
+    if tier is None:
+        # A price no longer on sale: paying keeps the account on NO_TIER, so
+        # the customer is offered the plans instead.
+        return None
     return SubscriptionPaymentDue(
         amount_due=invoice["amount_due"],
         currency=invoice["currency"],
         payment_url=invoice["hosted_invoice_url"],
-        plan=tier.value if tier else None,
+        plan=tier.value,
         due_since=current_period_start(subscription),
     )
