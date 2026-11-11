@@ -1858,6 +1858,10 @@ async def test_list_expert_identities_is_lightweight_and_includes_archived(
         item for item in identities if item.id == active_hired.expert.id
     )
     assert active_identity.is_archived is False
+    # The sidebar lists an expert added in the last week before their first
+    # chat, so the join time has to come back, as an aware UTC time.
+    assert active_identity.created_at is not None
+    assert active_identity.created_at.utcoffset() is not None
     assert template.id not in identity_ids
     assert active_template.id not in identity_ids
     assert other_hired.expert.id not in identity_ids
@@ -1967,6 +1971,7 @@ def test_expert_identity_projection_columns_exist_in_schema():
         "jobTitle",
         "isArchived",
         "autopilotMode",
+        "createdAt",
     } <= fields
     assert {"ownerUserId", "isTemplate"} <= fields
 

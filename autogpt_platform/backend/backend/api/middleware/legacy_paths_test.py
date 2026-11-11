@@ -20,8 +20,9 @@ from backend.api.middleware.legacy_paths import (
         ("POST", "/api/credits/stripe_webhook"),
         ("POST", "/api/email/"),
         ("POST", "/api/email/mailerlite/webhook"),
-        # Every sent email's List-Unsubscribe header.
+        # Every sent email's List-Unsubscribe header, and the link in its body.
         ("POST", "/api/email/unsubscribe"),
+        ("GET", "/api/email/unsubscribe"),
         # Registered with each provider when the webhook was created.
         ("POST", "/api/integrations/github/webhooks/w-1/ingress"),
         # Third-party apps signed in through our OAuth provider.
