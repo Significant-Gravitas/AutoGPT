@@ -50,6 +50,7 @@ def test_rows_without_a_foreign_key_are_deleted_explicitly():
         "kv_data",
         "refund_requests",
         "private_embeddings",
+        "chat_sessions",
         "personal_credentials",
         "org_invitations",
         "team_invitations",
