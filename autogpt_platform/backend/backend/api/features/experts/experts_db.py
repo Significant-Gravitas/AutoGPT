@@ -535,7 +535,8 @@ async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
                    WHEN "autopilotMode" IN ('ask_first', 'auto', 'unsupervised')
                    THEN "autopilotMode"
                    ELSE NULL
-               END AS "autopilot_mode"
+               END AS "autopilot_mode",
+               "createdAt" AS "created_at"
         FROM {schema_prefix}"Expert"
         WHERE "ownerUserId" = $1 AND "isTemplate" = false
         """,
