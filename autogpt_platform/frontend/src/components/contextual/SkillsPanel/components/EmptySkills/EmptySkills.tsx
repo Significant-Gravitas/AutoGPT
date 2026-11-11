@@ -9,7 +9,7 @@ export function EmptySkills() {
       data-testid="skills-empty"
     >
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-surface">
-        <Icon icon={BookOpen01Icon} size={24} className="text-accent-strong" />
+        <Icon icon={BookOpen01Icon} size={24} tone="accent" />
       </div>
       <Text variant="h4" tone="primary">
         No skills yet

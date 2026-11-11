@@ -7,6 +7,7 @@ import pytest
 from backend.data.notifications import NotificationResult
 from backend.notifications import trial as notices
 from backend.notifications import trial_test as fixtures
+from backend.notifications.trial_audience_test import _stripe
 
 trial = fixtures.trial
 
@@ -335,3 +336,56 @@ async def test_a_cancel_pending_trial_reaching_its_end_sends_the_ended_notice(
     sent.queue.assert_awaited_once()
     assert sent.queue.await_args.args[0].data.kind == "ended"
     assert sent.track.call_args.args[0] == "trial_ended"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind,left", [("expiring", 3), ("last_call", 1)])
+@pytest.mark.parametrize(
+    "others,expected", [((), "current"), (("sub_max",), "obsolete")]
+)
+async def test_queued_not_renewing_notice_is_dropped_once_another_plan_is_live(
+    trial, kind, left, others, expected
+):
+    trial = trial.model_copy(
+        update={
+            "cancel_at_period_end": True,
+            "ends_at": datetime.now(UTC) + timedelta(days=left),
+        }
+    )
+    data = notices.trial_notice_data(trial, kind, "Sam")
+    data.notice_key = notices.trial_notice_key(trial, kind)
+    database = MagicMock(
+        get_subscription_trial=AsyncMock(return_value=trial),
+        sync_subscription_from_stripe=AsyncMock(),
+    )
+    raw = subscription(trial)
+    with (
+        patch.object(notices, "credit_db", return_value=database),
+        patch.object(notices, "stripe_call", _stripe(raw, others)),
+    ):
+        assert await notices.trial_notice_disposition(trial.user_id, data) == expected
+
+
+@pytest.mark.asyncio
+async def test_not_renewing_notice_stands_when_the_other_plan_ends_first(trial):
+    """A second plan set to end before the trial does not keep access past
+    it, so "your access ends" is still true."""
+    trial = trial.model_copy(
+        update={
+            "cancel_at_period_end": True,
+            "ends_at": datetime.now(UTC) + timedelta(days=1),
+        }
+    )
+    data = notices.trial_notice_data(trial, "last_call", "Sam")
+    data.notice_key = notices.trial_notice_key(trial, "last_call")
+    database = MagicMock(
+        get_subscription_trial=AsyncMock(return_value=trial),
+        sync_subscription_from_stripe=AsyncMock(),
+    )
+    raw = subscription(trial)
+    ends_first = raw["trial_end"] - 3600
+    with (
+        patch.object(notices, "credit_db", return_value=database),
+        patch.object(notices, "stripe_call", _stripe(raw, ("sub_max",), ends_first)),
+    ):
+        assert await notices.trial_notice_disposition(trial.user_id, data) == "current"

@@ -133,11 +133,11 @@ class TestEnableChatSharing:
         # backend can auto-link existing + future runs.
         assert captured["auto_share_executions"] is True
 
-    def test_enables_share_without_launchdarkly(self, client):
+    def test_enables_share_without_posthog(self, client):
         with (
             patch(
-                "backend.util.feature_flag.get_client",
-                side_effect=RuntimeError("LaunchDarkly unavailable"),
+                "backend.util.feature_flag.posthog.get_flag_client",
+                side_effect=RuntimeError("PostHog unavailable"),
             ),
             patch(
                 "backend.api.features.chat.share.share_db.enable_chat_session_share",

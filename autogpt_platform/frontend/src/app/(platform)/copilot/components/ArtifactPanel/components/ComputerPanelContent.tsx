@@ -13,6 +13,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCopilotUIStore } from "../../../store";
+import { desktopStartFailure } from "./desktopStartFailure";
 
 interface Props {
   sessionId: string;
@@ -27,7 +28,7 @@ function Pill({ tone, label }: PillProps) {
   return (
     <span
       className={cn(
-        "rounded-full px-2 py-0.5 text-xs font-medium",
+        "rounded-full px-2 py-0.5 text-caption font-medium",
         tone === "on"
           ? "bg-success-surface text-success-foreground"
           : tone === "off"
@@ -71,10 +72,10 @@ export function ComputerPanelContent({ sessionId }: Props) {
           queryKey: getGetV2GetSessionComputerQueryKey(sessionId),
         });
       },
-      onError: () => {
+      onError: (error) => {
         toast({
           title: "Could not open the desktop",
-          description: "The sandbox did not come up. Try again in a moment.",
+          description: desktopStartFailure(error),
           variant: "destructive",
         });
       },
@@ -99,7 +100,7 @@ export function ComputerPanelContent({ sessionId }: Props) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
       <div className="flex items-center justify-between gap-3 rounded-lg border border-border-base bg-surface px-3 py-2">
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex items-center gap-3 text-body">
           <span className="flex items-center gap-1.5">
             <span className="text-foreground-tertiary">Machine</span>
             <Pill tone={machineTone} label={machineLabel} />

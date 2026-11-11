@@ -9,6 +9,7 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
+from backend.data.account_deletion import is_account_closed
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.graph import (
     GraphModel,
@@ -212,13 +213,15 @@ async def _fallback_store_agent_search(
         elif sorted_by == StoreAgentsSortOptions.UPDATED_AT:
             order_by.append({"updated_at": "desc"})
 
-        db_agents = await prisma.models.StoreAgent.prisma().find_many(
-            where=where_clause,
-            order=order_by,
-            skip=(page - 1) * page_size,
-            take=page_size,
+        db_agents, total = await asyncio.gather(
+            prisma.models.StoreAgent.prisma().find_many(
+                where=where_clause,
+                order=order_by,
+                skip=(page - 1) * page_size,
+                take=page_size,
+            ),
+            prisma.models.StoreAgent.prisma().count(where=where_clause),
         )
-        total = await prisma.models.StoreAgent.prisma().count(where=where_clause)
         return [store_model.StoreAgent.from_db(a) for a in db_agents], total
 
     # Text search using ad-hoc tsvector on StoreAgent view fields
@@ -411,6 +414,8 @@ async def get_available_graph(
         graph.clear_auto_credentials()
         return graph
 
+    except NotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
         raise DatabaseError("Failed to fetch workflow") from e
@@ -571,12 +576,6 @@ async def get_store_creators(
         if not isinstance(page_size, int) or page_size < 1 or page_size > 100:
             raise DatabaseError("Invalid page size")
 
-        # Get total count for pagination using sanitized where clause
-        total = await prisma.models.Creator.prisma().count(
-            where=prisma.types.CreatorWhereInput(**where)
-        )
-        total_pages = (total + page_size - 1) // page_size
-
         # Add pagination with validated parameters
         skip = (page - 1) * page_size
         take = page_size
@@ -595,13 +594,19 @@ async def get_store_creators(
             )
         )
 
-        # Execute query with sanitized parameters
-        creators = await prisma.models.Creator.prisma().find_many(
-            where=prisma.types.CreatorWhereInput(**where),
-            skip=skip,
-            take=take,
-            order=order,
+        # The total for pagination and the page, both from the sanitized where
+        total, creators = await asyncio.gather(
+            prisma.models.Creator.prisma().count(
+                where=prisma.types.CreatorWhereInput(**where)
+            ),
+            prisma.models.Creator.prisma().find_many(
+                where=prisma.types.CreatorWhereInput(**where),
+                skip=skip,
+                take=take,
+                order=order,
+            ),
         )
+        total_pages = (total + page_size - 1) // page_size
 
         # Convert to response model
         creator_models = [
@@ -634,7 +639,7 @@ async def get_store_creator(
             where={"username": username}
         )
 
-        if not creator:
+        if not creator or await _is_creator_account_closed(username):
             logger.warning(f"Creator not found: {username}")
             raise store_exceptions.CreatorNotFoundError(f"Creator {username} not found")
 
@@ -645,6 +650,16 @@ async def get_store_creator(
     except Exception as e:
         logger.error(f"Error getting store creator details: {e}")
         raise DatabaseError("Failed to fetch creator details") from e
+
+
+async def _is_creator_account_closed(username: str) -> bool:
+    """A closed account's creator page answers as unknown, until the account
+    is reopened or erased. Its listings are already down, so the creators
+    list (creators with a live listing) leaves it out by itself."""
+    profile = await prisma.models.Profile.prisma().find_unique(
+        where={"username": username}
+    )
+    return profile is not None and await is_account_closed(profile.userId)
 
 
 async def _get_submission_stats(user_id: str) -> store_model.SubmissionStats:
@@ -843,14 +858,7 @@ async def delete_store_submission_or_raise(
     if not version or not version.StoreListing:
         raise store_exceptions.SubmissionNotFoundError("Submission not found")
 
-    listing = version.StoreListing
-    if organization_id is not None:
-        allowed = listing.owningOrgId == organization_id or (
-            listing.owningOrgId is None and listing.owningUserId == user_id
-        )
-    else:
-        allowed = listing.owningUserId == user_id
-    if not allowed:
+    if not _owns_listing(version.StoreListing, user_id, organization_id):
         raise store_exceptions.SubmissionNotFoundError("Submission not found")
 
     # Prevent deletion of approved submissions
@@ -985,6 +993,15 @@ async def create_store_submission(
                     }
                 },
             )
+            # A listing belongs to its creator: never withdraw or extend another's.
+            if existing_listing and not _owns_listing(
+                existing_listing, user_id, organization_id
+            ):
+                raise PreconditionFailed(
+                    f"Workflow #{graph_id} is already listed in the Marketplace "
+                    "by another creator"
+                )
+
             next_version = 1
             graph_has_pending_submissions = False
             if existing_listing and existing_listing.Versions:
@@ -1139,21 +1156,8 @@ async def edit_store_submission(
                 f"Store listing version not found: {store_listing_version_id}"
             )
 
-        # Verify ownership. With an active org: the listing must belong to
-        # that org, or be a tenant-less (pre-backfill) listing the caller
-        # owns personally. Without org context: personal ownership only.
         listing = current_version.StoreListing
-        if not listing:
-            raise store_exceptions.UnauthorizedError(
-                f"User {user_id} does not own submission {store_listing_version_id}"
-            )
-        if organization_id is not None:
-            allowed = listing.owningOrgId == organization_id or (
-                listing.owningOrgId is None and listing.owningUserId == user_id
-            )
-        else:
-            allowed = listing.owningUserId == user_id
-        if not allowed:
+        if not listing or not _owns_listing(listing, user_id, organization_id):
             raise store_exceptions.UnauthorizedError(
                 f"User {user_id} does not own submission {store_listing_version_id}"
             )
@@ -1466,15 +1470,16 @@ async def get_my_agents(
         else:
             order = [{"updatedAt": "desc"}]
 
-        library_agents = await prisma.models.LibraryAgent.prisma().find_many(
-            where=search_filter,
-            order=order,
-            skip=(page - 1) * page_size,
-            take=page_size,
-            include={"AgentGraph": True},
+        library_agents, total = await asyncio.gather(
+            prisma.models.LibraryAgent.prisma().find_many(
+                where=search_filter,
+                order=order,
+                skip=(page - 1) * page_size,
+                take=page_size,
+                include={"AgentGraph": True},
+            ),
+            prisma.models.LibraryAgent.prisma().count(where=search_filter),
         )
-
-        total = await prisma.models.LibraryAgent.prisma().count(where=search_filter)
         total_pages = (total + page_size - 1) // page_size
 
         my_agents = [
@@ -1548,8 +1553,14 @@ async def review_store_submission(
     external_comments: str,
     internal_comments: str,
     reviewer_id: str,
+    *,
+    notify_creator: bool = True,
 ) -> store_model.StoreSubmissionAdminView:
-    """Review a store listing submission as an admin."""
+    """Review a store listing submission as an admin.
+
+    ``notify_creator=False`` records the verdict without queueing the creator's
+    verdict email, for listings whose creator is synthetic (the preview seed).
+    """
     try:
         submission = await prisma.models.StoreListingVersion.prisma().find_unique(
             where={"id": store_listing_version_id},
@@ -1571,6 +1582,7 @@ async def review_store_submission(
 
         # If approving, update the listing to indicate it has an approved version
         if is_approved:
+            sub_graphs = await get_sub_graphs(submission.AgentGraph)
             async with transaction() as tx:
                 # Handle sub-agent approvals in transaction
                 await asyncio.gather(
@@ -1582,7 +1594,7 @@ async def review_store_submission(
                             submission.agentGraphVersion,
                             creator_user_id,
                         )
-                        for sub_graph in await get_sub_graphs(submission.AgentGraph)
+                        for sub_graph in sub_graphs
                     ]
                 )
 
@@ -1692,22 +1704,23 @@ async def review_store_submission(
         if is_approved:
             reviewed_submission = await _publish_approved_media(reviewed_submission)
 
-        try:
-            await _send_submission_review_notification(
-                creator_user_id,
-                is_approved,
-                external_comments,
-                reviewed_submission,
-            )
-        except Exception as e:
-            logger.error(f"Failed to send email notification for agent review: {e}")
-            # Don't fail the review process if email sending fails
+        if notify_creator:
+            try:
+                await _send_submission_review_notification(
+                    creator_user_id,
+                    is_approved,
+                    external_comments,
+                    reviewed_submission,
+                )
+            except Exception as e:
+                logger.error(f"Failed to send email notification for agent review: {e}")
+                # Don't fail the review process if email sending fails
 
         return store_model.StoreSubmissionAdminView.from_listing_version(
             reviewed_submission
         )
 
-    except NotFoundError:
+    except (NotFoundError, PreconditionFailed):
         raise
     except Exception as e:
         logger.error(f"Could not create store submission review: {e}")
@@ -1886,6 +1899,13 @@ async def _approve_sub_agent(
         include={"Versions": True},
     )
 
+    # A listing belongs to its creator: never withdraw or extend another's.
+    if listing and not _owns_listing(listing, main_agent_user_id, None):
+        raise PreconditionFailed(
+            f"Sub-workflow #{sub_graph.id} is listed in the Marketplace by "
+            "another creator; it cannot be approved as part of this workflow"
+        )
+
     # Early return: Create new listing if none exists
     if not listing:
         await prisma.models.StoreListing.prisma(tx).create(
@@ -1945,6 +1965,18 @@ async def _approve_sub_agent(
     await prisma.models.StoreListing.prisma(tx).update(
         where={"id": listing.id}, data={"hasApprovedVersion": True}
     )
+
+
+def _owns_listing(
+    listing: prisma.models.StoreListing, user_id: str, organization_id: str | None
+) -> bool:
+    """With an active org, the listing is that org's or a tenant-less one the
+    user owns personally; without one, the user's own."""
+    if organization_id is not None:
+        return listing.owningOrgId == organization_id or (
+            listing.owningOrgId is None and listing.owningUserId == user_id
+        )
+    return listing.owningUserId == user_id
 
 
 def _create_sub_agent_version_data(
