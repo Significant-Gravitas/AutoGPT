@@ -87,6 +87,8 @@ async def resolve_request_auth(
     scope: Scope,
     api_key: str | None,
     bearer: HTTPAuthorizationCredentials | None,
+    *,
+    before_api_key_verify: Callable[[], Awaitable[None]] | None = None,
 ) -> APIAuthorizationInfo | None:
     """`resolve_auth_info`, verified at most once per request.
 
@@ -107,7 +109,11 @@ async def resolve_request_auth(
         try:
             verified = VerifiedCredential(
                 credential=credential,
-                auth=await resolve_auth_info(api_key=api_key, bearer=bearer),
+                auth=await resolve_auth_info(
+                    api_key=api_key,
+                    bearer=bearer,
+                    before_api_key_verify=before_api_key_verify,
+                ),
             )
         except HTTPException as rejection:
             verified = VerifiedCredential(credential=credential, rejection=rejection)
@@ -134,9 +140,11 @@ async def require_auth(
         HTTPAuthorizationCredentials | None, Security(bearer_auth)
     ] = None,
 ) -> APIAuthorizationInfo:
-    """Reserve for v1 only when stored candidates need API-key verification.
+    """The request's verified caller; 401 when it sent no credentials.
 
-    v2 uses its own pre-verification limiter and request-scoped auth resolver.
+    Resolved once per request: v1's rate limiter and its routes ask for it under
+    different scopes, which FastAPI caches apart. Verifying an API key first
+    reserves from v1's pre-Scrypt budget, which a valid key gets back.
     """
     key = _plaintext_api_key(api_key, bearer)
     budget: APIKeyValidationBudget | None = None
@@ -146,8 +154,8 @@ async def require_auth(
         if key is not None:
             budget = await enforce_api_key_validate_rate_limit(request, key)
 
-    auth = await resolve_auth_info(
-        api_key=api_key, bearer=bearer, before_api_key_verify=reserve
+    auth = await resolve_request_auth(
+        request.scope, api_key=api_key, bearer=bearer, before_api_key_verify=reserve
     )
     if auth is None:
         raise HTTPException(

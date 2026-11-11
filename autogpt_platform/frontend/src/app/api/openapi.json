@@ -5193,6 +5193,7 @@
               }
             }
           },
+          "429": { "description": "Too many sandboxes are running" },
           "502": { "description": "The desktop could not be started" },
           "503": { "description": "E2B is not configured" }
         }
@@ -8345,6 +8346,7 @@
               }
             }
           },
+          "429": { "description": "Too many sandboxes are running" },
           "502": { "description": "The desktop could not be started" },
           "503": { "description": "E2B is not configured" }
         }
@@ -26343,6 +26345,13 @@
               { "type": "null" }
             ],
             "title": "Autopilot Mode"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
           }
         },
         "type": "object",
