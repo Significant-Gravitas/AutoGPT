@@ -87,6 +87,12 @@ class PostHogEvent(StrEnum):
     AI_TRACE = "$ai_trace"
     AI_SPAN = "$ai_span"
 
+    # In-app feedback prompts: backend/api/features/feedback_prompts/analytics.py
+    FEEDBACK_PROMPT_SHOWN = "feedback_prompt_shown"
+    FEEDBACK_PROMPT_ANSWERED = "feedback_prompt_answered"
+    # backend/copilot/tools/feedback_prompts.py
+    OTTO_MISTAKE_FLAGGED = "otto_mistake_flagged"
+
     # Key moments (SECRT-2723): backend/util/product_analytics.py
     SIGNUP_COMPLETED = "signup_completed"
     ONBOARDING_COMPLETED = "onboarding_completed"

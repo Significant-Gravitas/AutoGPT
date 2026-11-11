@@ -2870,3 +2870,21 @@ class _UnknownBlockBase(Block):
     async def run(self, input_data, **kwargs):
         """Always yield an error for missing blocks."""
         yield "error", f"Block {self.id} no longer exists"
+
+
+_HAND_OVER_GRAPHS = """
+    UPDATE {schema_prefix}"AgentGraph" SET "userId" = $1
+     WHERE "userId" = $2 AND "id" = ANY($3::text[])
+"""
+
+
+async def hand_over_graphs(
+    graph_ids: list[str], *, from_user_id: str, to_user_id: str, tx: Prisma
+) -> int:
+    """Give every version of these graphs to another account, in the caller's
+    transaction. Only rows `from_user_id` still owns move. Account erasure
+    hands the agents other accounts use to the "deleted user" placeholder
+    with this (`account_erasure/shared_agents.py`)."""
+    return await execute_raw_with_schema(
+        _HAND_OVER_GRAPHS, to_user_id, from_user_id, graph_ids, client=tx
+    )

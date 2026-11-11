@@ -96,7 +96,7 @@ def _gate_attention(
         priority=("high" if now - created_at > timedelta(hours=24) else "normal"),
         title=gate.headline.text,
         headline=HomeHeadline(ask=gate.headline.ask, object=gate.headline.object),
-        description=_gate_reason(gate),
+        description=_gate_reason(gate, review),
         why_it_matters="Nothing runs until you approve it.",
         expert=_review_expert(review),
         created_at=created_at,
@@ -133,12 +133,12 @@ def _gate_payload(review: PendingHumanReviewModel) -> GateReviewPayload | None:
         return None
 
 
-def _gate_reason(gate: GateReviewPayload) -> str:
+def _gate_reason(gate: GateReviewPayload, review: PendingHumanReviewModel) -> str:
     if gate.reason_kind == "supervisor" and gate.reason:
         return f"Not sure this is safe: {gate.reason}"
     if gate.reason_kind in ("subject", "rule", "content") and gate.reason:
         return gate.reason
-    return f"{AUTOPILOT_NAME} is waiting for your approval."
+    return f"{review.expert_name or AUTOPILOT_NAME} is waiting for your approval."
 
 
 def _named_value(gate: GateReviewPayload, key: str) -> str | None:
@@ -166,7 +166,7 @@ def _preview_value(value: object) -> str:
 
 def _waiting_on(review: PendingHumanReviewModel) -> str:
     if review.session_id:
-        return AUTOPILOT_NAME
+        return review.expert_name or AUTOPILOT_NAME
     if review.agent_name:
         return f"Workflow “{review.agent_name}”"
     return "A workflow"

@@ -167,6 +167,7 @@ from backend.copilot.tools.models import (
     ExecutionStartedResponse,
     ExpertOnboardingResponse,
     ExpertSoulUpdatedResponse,
+    FeedbackPromptToolResponse,
     InputValidationErrorResponse,
     MCPToolOutputResponse,
     MCPToolsDiscoveredResponse,
@@ -204,6 +205,7 @@ from backend.util import tracing
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.sandbox_limits import SandboxLimitError
 from backend.util.settings import Settings
 from backend.util.text_limits import MAX_TITLE_LENGTH, MAX_URL_LENGTH, IDText
 
@@ -1090,6 +1092,7 @@ async def get_session_computer(
     dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
     responses={
         404: {"description": "Session not found or access denied"},
+        429: {"description": "Too many sandboxes are running"},
         502: {"description": "The desktop could not be started"},
         503: {"description": "E2B is not configured"},
     },
@@ -1120,6 +1123,8 @@ async def start_session_desktop(
             user_id=user_id,
             session_id=session_id,
         )
+    except SandboxLimitError as refusal:
+        raise HTTPException(status_code=429, detail=str(refusal))
     except Exception as exc:
         logger.error(
             "[E2B] start_session_desktop failed for %s: %s",
@@ -2802,6 +2807,7 @@ ToolResponseUnion = (
     | TodoWriteResponse
     | ExpertSoulUpdatedResponse
     | ExpertOnboardingResponse
+    | FeedbackPromptToolResponse
 )
 
 

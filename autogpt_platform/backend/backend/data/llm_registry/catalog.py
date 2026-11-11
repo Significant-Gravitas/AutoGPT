@@ -411,6 +411,38 @@ def _build_catalog() -> CatalogPayload:
                     provider_cache_creation_usd_per_1m=12.50,
                 ),
             ),
+            CatalogModel(
+                slug="claude-fable-5-2",
+                display_name="Claude Fable 5.2",
+                provider="anthropic",
+                creator="anthropic",
+                # Same compaction-cap convention as the rest of the Claude
+                # 5 family: native window is 1M, capped at 200K here.
+                context_window=200000,
+                max_output_tokens=128000,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # $8/1M in, $40/1M out (Anthropic list price, 20% below
+                # Fable 5.1's $10/$50; checked 2026-11-10 against the
+                # models/fable-5-2 "What's new" pricing table) at the
+                # catalog's standard usd_per_1m x 150 factor -> 1200/6000
+                # credits. Cache reads keep Fable 5.1's 0.025x-of-input
+                # multiplier ($0.20/1M); cache writes (5m) keep the 1.25x
+                # convention ($10/1M).
+                cost=CatalogModelCost(
+                    run_credits=16,
+                    input_credits_per_1m=1200.0,
+                    output_credits_per_1m=6000.0,
+                    cache_read_credits_per_1m=30.0,
+                    cache_creation_credits_per_1m=1500.0,
+                    provider_input_usd_per_1m=8.00,
+                    provider_output_usd_per_1m=40.00,
+                    provider_cache_read_usd_per_1m=0.20,
+                    provider_cache_creation_usd_per_1m=10.00,
+                ),
+            ),
             # ----- Groq -----
             CatalogModel(
                 slug="llama-3.1-8b-instant",
