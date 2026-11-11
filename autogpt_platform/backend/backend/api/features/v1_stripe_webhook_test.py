@@ -29,6 +29,7 @@ from backend.util.test import SpinTestServer
 from .billing.subscriptions.routes import (
     _claim_stripe_event,
     _release_stripe_event,
+    _restart_period_if_paid_late,
     router,
 )
 
@@ -1251,3 +1252,35 @@ def test_a_late_payment_alert_that_was_not_delivered_is_sent_by_the_next_deliver
 
     assert restart.await_count == 3
     assert alert.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_an_undelivered_alert_leaves_a_claim_it_does_not_hold(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A delivery whose claim failed on Redis alerts without holding the
+    claim, so its failed send must not free another delivery's claim for an
+    alert that did go out."""
+    routes = "backend.api.features.billing.subscriptions.routes"
+    redis = _InMemoryRedis()
+    redis.keys["billing_restart_alert:in_late"] = "1"
+    mocker.patch(
+        f"{routes}.get_redis_async",
+        new_callable=AsyncMock,
+        side_effect=[RuntimeError("redis down"), redis, redis],
+    )
+    mocker.patch(
+        f"{routes}.restart_period_after_late_payment",
+        new_callable=AsyncMock,
+        return_value=RestartOutcome.NEEDS_MANUAL_FIX,
+    )
+    alert = mocker.patch(
+        f"{routes}.alert_tier_reconciliation_discrepancy",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+
+    await _restart_period_if_paid_late("in_late")
+
+    alert.assert_awaited_once()
+    assert "billing_restart_alert:in_late" in redis.keys

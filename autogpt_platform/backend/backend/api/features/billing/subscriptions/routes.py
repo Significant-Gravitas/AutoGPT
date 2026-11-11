@@ -859,15 +859,17 @@ async def _restart_period_if_paid_late(invoice_id: str | None) -> None:
     outcome = await restart_period_after_late_payment(invoice_id)
     if outcome != RestartOutcome.NEEDS_MANUAL_FIX:
         return
-    if not await _claim_restart_alert(invoice_id):
+    claim = await _claim_restart_alert(invoice_id)
+    if claim is False:
         return
     # The webhook still answers 200: the payment itself was handled, and the
     # failed alert is already logged at ERROR with its content. Releasing the
     # claim lets the payment's other events, or a redelivery, alert again.
-    if not await alert_tier_reconciliation_discrepancy(
+    delivered = await alert_tier_reconciliation_discrepancy(
         f"Invoice {invoice_id} was paid late but its subscription's billing"
         " period could not be restarted from the payment; see the logs"
-    ):
+    )
+    if not delivered and claim:
         await _release_restart_alert(invoice_id)
 
 
@@ -875,10 +877,12 @@ def _restart_alert_key(invoice_id: str) -> str:
     return f"billing_restart_alert:{invoice_id}"
 
 
-async def _claim_restart_alert(invoice_id: str) -> bool:
+async def _claim_restart_alert(invoice_id: str) -> bool | None:
     """Whether to send the manual-fix alert: once per invoice, though each
     payment arrives as three events and Stripe redelivers them for days, and
-    each delivery runs the restart again. On Redis failure, alert anyway."""
+    each delivery runs the restart again. True when this delivery now holds
+    the claim, False when another one does. None on Redis failure: alert
+    anyway, but there is no claim of this delivery's to release."""
     try:
         redis_client = await get_redis_async()
         claimed = await redis_client.set(
@@ -890,7 +894,7 @@ async def _claim_restart_alert(invoice_id: str) -> bool:
             f"Could not dedupe the billing restart alert for invoice {invoice_id}",
             exc_info=True,
         )
-        return True
+        return None
 
 
 async def _release_restart_alert(invoice_id: str) -> None:
