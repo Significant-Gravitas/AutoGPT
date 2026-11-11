@@ -25,7 +25,7 @@ export function ShareChatButton({ sessionID }: Props) {
       <Button
         label="Share chat"
         onPress={open}
-        variant="secondary"
+        variant="ghost"
         size="small"
         leadingIcon={Share08Icon}
       />

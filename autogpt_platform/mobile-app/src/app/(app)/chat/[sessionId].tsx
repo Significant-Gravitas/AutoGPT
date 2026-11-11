@@ -82,7 +82,9 @@ export default function ChatScreen() {
         />
       );
     }
-    return <FilesPanel sessionID={sessionID} isOpen={isFilesOpen} />;
+    return (
+      <FilesPanel sessionID={sessionID} isOpen={isFilesOpen} onClose={closeFiles} />
+    );
   }
 
   return (
@@ -122,7 +124,7 @@ export default function ChatScreen() {
 
 const useStyles = createStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.background },
-  panel: { width: "84%", backgroundColor: colors.background },
+  panel: { width: "100%", backgroundColor: colors.background },
   center: {
     flex: 1,
     alignItems: "center",

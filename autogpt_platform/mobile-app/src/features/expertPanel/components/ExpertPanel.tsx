@@ -1,15 +1,13 @@
-import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ExpertAvatar } from "@/components/ExpertAvatar";
-import { IconButton } from "@/components/IconButton";
 import { FileLibrary } from "@/features/files/components/FileLibrary";
-import { ShareChatButton } from "@/features/share/components/ShareChatButton";
 import { createStyles, spacing } from "@/lib/theme";
 
 import { ActivityTab } from "./ActivityTab";
+import { PanelTopBar } from "./PanelTopBar";
 import { PanelTabs, type PanelTab } from "./PanelTabs";
 
 interface Props {
@@ -45,9 +43,7 @@ export function ExpertPanel({
         { paddingTop: insets.top + spacing.xs, paddingBottom: insets.bottom + spacing.xl },
       ]}
     >
-      <View style={styles.close}>
-        <IconButton icon={Cancel01Icon} label="Close" onPress={onClose} />
-      </View>
+      <PanelTopBar sessionID={sessionID} onClose={onClose} />
       <View style={styles.identity}>
         <ExpertAvatar name={name} source={avatar} size={76} tint={tint} />
         <Text accessibilityRole="header" numberOfLines={1} style={styles.name}>
@@ -58,9 +54,6 @@ export function ExpertPanel({
             {role}
           </Text>
         ) : null}
-      </View>
-      <View style={styles.share}>
-        <ShareChatButton sessionID={sessionID} />
       </View>
       <PanelTabs selected={tab} onSelect={setTab} />
       {tab === "activity" ? (
@@ -78,8 +71,6 @@ export function ExpertPanel({
 
 const useStyles = createStyles((colors) => ({
   content: { gap: spacing.xl, paddingHorizontal: spacing.sm },
-  close: { flexDirection: "row" },
-  share: { alignItems: "center" },
   identity: { alignItems: "center", gap: spacing.xs, marginTop: -spacing.sm },
   name: {
     fontSize: 20,
