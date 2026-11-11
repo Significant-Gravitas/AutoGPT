@@ -1284,3 +1284,40 @@ async def test_an_undelivered_alert_leaves_a_claim_it_does_not_hold(
 
     alert.assert_awaited_once()
     assert "billing_restart_alert:in_late" in redis.keys
+
+
+def test_a_restart_stripe_refuses_alerts_instead_of_failing_the_webhook(
+    mocker: pytest_mock.MockFixture, late_payment_needing_a_person
+) -> None:
+    """Stripe answers each redelivery with the same refusal under the same
+    idempotency key, so a 500 would only replay it until Stripe gave up. The
+    webhook answers 200 and a person is told, once."""
+    deliveries, restart, alert = late_payment_needing_a_person
+    restart.return_value = None
+    restart.side_effect = stripe.InvalidRequestError("No such invoice", None)
+
+    for event in deliveries:
+        _post_event(mocker, event)
+
+    assert restart.await_count == 3
+    alert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_transient_stripe_error_in_the_restart_is_retried_by_stripe(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The reset may have landed; the retry finds it or makes it."""
+    routes = "backend.api.features.billing.subscriptions.routes"
+    mocker.patch(
+        f"{routes}.restart_period_after_late_payment",
+        new_callable=AsyncMock,
+        side_effect=stripe.APIConnectionError("timed out"),
+    )
+    alert = mocker.patch(
+        f"{routes}.alert_tier_reconciliation_discrepancy", new_callable=AsyncMock
+    )
+
+    with pytest.raises(stripe.APIConnectionError):
+        await _restart_period_if_paid_late("in_late")
+    alert.assert_not_awaited()

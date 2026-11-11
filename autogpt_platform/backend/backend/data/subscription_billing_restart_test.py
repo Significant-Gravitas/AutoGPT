@@ -24,8 +24,10 @@ from backend.data import subscription_payment_due as payment_due
 from backend.data import versioned_cache
 from backend.data.redis_client import get_redis_async
 from backend.data.subscription_billing_restart import (
+    CREDIT_TAKEN_BACK_KEY,
     RESTARTED_FROM_INVOICE_KEY,
     RestartOutcome,
+    record_plan_paused,
     restart_period_after_late_payment,
 )
 from backend.data.subscription_billing_restart_invoice import line_period_start
@@ -52,6 +54,8 @@ class FakeStripe:
         self.card_charges: list[int] = []
         self.idempotent: dict[str, object] = {}
         self.fail_next_modify = 0
+        self.modify_error: stripe.StripeError | None = None
+        self.balance_transactions: list[dict] = []
         self.card_declines = False
         self.modify_started = asyncio.Event()
         self.hold_modify: asyncio.Event | None = None
@@ -98,6 +102,7 @@ class FakeStripe:
             "billing_reason": billing_reason,
             "status": "paid" if paid_at else "open",
             "total": total,
+            "currency": "usd",
             "attempt_count": attempt_count,
             "status_transitions": {"paid_at": paid_at},
             "lines": {
@@ -119,6 +124,22 @@ class FakeStripe:
             self.card_charges.append(total)
         if sub_id in self.subscriptions:
             self.subscriptions[sub_id]["latest_invoice"] = invoice_id
+
+    def pause(self, invoice_id: str, at: int) -> None:
+        """The invoice's failed payment cut access at ``at``, as
+        ``record_plan_paused`` records it."""
+        sub = self.subscriptions[self.invoices[invoice_id]["subscription"]]
+        self.rows[invoice_id] = MagicMock(
+            stripeInvoiceId=invoice_id,
+            userId="user-1",
+            stripeSubscriptionId=sub["id"],
+            periodStart=datetime.fromtimestamp(sub["current_period_start"], UTC),
+            pausedAt=datetime.fromtimestamp(at, UTC),
+            paidAt=None,
+            stripeCreditNoteId=None,
+            restartedAt=None,
+            abandonedAt=None,
+        )
 
     def pay(self, invoice_id: str, paid_at: int) -> None:
         invoice = self.invoices[invoice_id]
@@ -153,6 +174,30 @@ class FakeStripe:
         page.has_more = False
         return page
 
+    async def modify_credit_note(self, note_id: str, **params):
+        note = next(n for n in self.credit_notes if n["id"] == note_id)
+        note["memo"] = params["memo"]
+        note["metadata"] = {**note["metadata"], **params["metadata"]}
+        return dict(note)
+
+    async def create_balance_transaction(
+        self, customer: str, idempotency_key=None, **params
+    ):
+        if (replayed := self._replay(idempotency_key)) is not None:
+            return replayed
+        transaction = {"id": f"cbtxn_{len(self.balance_transactions) + 1}", **params}
+        self.balance_transactions.append(transaction)
+        self.balance += params["amount"]
+        if idempotency_key:
+            self.idempotent[idempotency_key] = transaction
+        return transaction
+
+    async def list_balance_transactions(self, customer: str, limit: int):
+        page = MagicMock()
+        page.data = [dict(t) for t in self.balance_transactions]
+        page.has_more = False
+        return page
+
     async def create_credit_note(self, idempotency_key=None, **params):
         if (replayed := self._replay(idempotency_key)) is not None:
             return replayed
@@ -161,6 +206,7 @@ class FakeStripe:
             "invoice": params["invoice"],
             "status": "issued",
             "amount": params["amount"],
+            "memo": params["memo"],
             "metadata": params.get("metadata") or {},
         }
         assert params["credit_amount"] == params["amount"]
@@ -180,6 +226,8 @@ class FakeStripe:
         if self.fail_next_modify:
             self.fail_next_modify -= 1
             raise stripe.APIConnectionError("modify failed")
+        if self.modify_error is not None:
+            raise self.modify_error
         assert params == {
             "billing_cycle_anchor": "now",
             "proration_behavior": "none",
@@ -279,9 +327,16 @@ def fake():
         key = where["stripeInvoiceId"]
         if key not in rows:
             rows[key] = MagicMock(
-                **data["create"], stripeCreditNoteId=None, restartedAt=None
+                **data["create"],
+                paidAt=None,
+                stripeCreditNoteId=None,
+                restartedAt=None,
+                abandonedAt=None,
             )
         return rows[key]
+
+    async def find_unique(where):
+        return rows.get(where["stripeInvoiceId"])
 
     async def update(where, data):
         row = rows[where["stripeInvoiceId"]]
@@ -297,6 +352,7 @@ def fake():
                 return_value=MagicMock(
                     upsert=AsyncMock(side_effect=upsert),
                     update=AsyncMock(side_effect=update),
+                    find_unique=AsyncMock(side_effect=find_unique),
                 ),
             )
         )
@@ -318,6 +374,15 @@ def fake():
             ("stripe.CreditNote.list_async", fake.list_credit_notes),
             ("stripe.CreditNote.create_async", fake.create_credit_note),
             ("stripe.Invoice.create_preview_async", fake.preview_invoice),
+            ("stripe.CreditNote.modify_async", fake.modify_credit_note),
+            (
+                "stripe.Customer.create_balance_transaction_async",
+                fake.create_balance_transaction,
+            ),
+            (
+                "stripe.Customer.list_balance_transactions_async",
+                fake.list_balance_transactions,
+            ),
         ):
             stack.enter_context(patch(target, side_effect=method))
         fake.tier = tier
@@ -328,6 +393,7 @@ def fake():
 def _fail_on_3rd_pay_on_9th(fake: FakeStripe) -> None:
     fake.add_subscription(period_start=_ts(2026, 3, 3), status="active")
     fake.add_invoice("in_march", paid_at=_ts(2026, 3, 9))
+    fake.pause("in_march", at=_ts(2026, 3, 3) + HOUR)
 
 
 @pytest.mark.asyncio
@@ -371,6 +437,7 @@ async def test_a_retry_soon_after_a_failed_first_attempt_also_restarts(fake):
     fake.now = _ts(2026, 3, 3) + 2 * HOUR
     fake.add_subscription(period_start=_ts(2026, 3, 3))
     fake.add_invoice("in_march", paid_at=fake.now, attempt_count=2)
+    fake.pause("in_march", at=_ts(2026, 3, 3) + HOUR)
 
     assert await restart_period_after_late_payment("in_march") == (
         RestartOutcome.RESTARTED
@@ -399,18 +466,22 @@ async def test_a_recorded_restart_is_never_repeated(fake):
 
 
 @pytest.mark.asyncio
-async def test_pending_bank_approval_restarts_only_once_the_payment_is_confirmed(
+async def test_a_bank_payment_after_a_failed_renewal_restarts_once_it_settles(
     fake,
 ):
+    """The card failed on the 3rd and cut access; the customer then paid by
+    bank debit on the 9th. While the debit processes, the invoice stays open
+    and the subscription past due; the period runs from its confirmation."""
     fake.add_subscription(period_start=_ts(2026, 3, 3), status="past_due")
-    fake.add_invoice("in_march", paid_at=None)
+    fake.add_invoice("in_march", paid_at=None, attempt_count=2)
+    fake.pause("in_march", at=_ts(2026, 3, 3) + HOUR)
 
+    fake.now = _ts(2026, 3, 9)
     assert await restart_period_after_late_payment("in_march") == (
         RestartOutcome.NOT_APPLICABLE
     )
     assert fake.credit_notes == []
 
-    # The bank confirms on the 12th; the period runs from then.
     fake.now = _ts(2026, 3, 12)
     fake.pay("in_march", paid_at=_ts(2026, 3, 12))
     fake.subscriptions[SUB]["status"] = "active"
@@ -419,6 +490,58 @@ async def test_pending_bank_approval_restarts_only_once_the_payment_is_confirmed
     )
     assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 12)
     assert fake.card_charges == [PRICE]
+    assert fake.rows["in_march"].paidAt == datetime.fromtimestamp(
+        _ts(2026, 3, 12), UTC
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_bank_debit_renewal_that_settles_late_keeps_its_date(fake):
+    """A renewal paid by bank debit stays active while the debit processes:
+    no payment failed and access was never cut, so the days it took are not
+    given again when it settles."""
+    fake.add_subscription(period_start=_ts(2026, 3, 3), status="active")
+    fake.add_invoice("in_march", paid_at=None)
+
+    fake.now = _ts(2026, 3, 7)
+    fake.pay("in_march", paid_at=_ts(2026, 3, 7))
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NOT_LATE
+    )
+
+    assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 3)
+    assert fake.renewals(1) == ["2026-04-03"]
+    assert fake.credit_notes == []
+
+
+@pytest.mark.asyncio
+async def test_a_paused_plan_is_recorded_once_from_its_first_failure(fake):
+    fake.add_subscription(period_start=_ts(2026, 3, 3), status="past_due")
+    fake.add_invoice("in_march", paid_at=None)
+    invoice = fake.invoices["in_march"]
+    subscription = fake.subscriptions[SUB]
+
+    await record_plan_paused("user-1", invoice, subscription)
+    first = fake.rows["in_march"].pausedAt
+    await record_plan_paused("user-1", invoice, subscription)
+
+    assert fake.rows["in_march"].pausedAt == first
+    assert fake.rows["in_march"].periodStart == datetime.fromtimestamp(
+        _ts(2026, 3, 3), UTC
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason", ["subscription_update", "manual"])
+async def test_a_failed_invoice_that_opens_no_period_records_no_pause(fake, reason):
+    fake.add_subscription(period_start=_ts(2026, 3, 3), status="past_due")
+    fake.add_invoice("in_other", paid_at=None, billing_reason=reason)
+
+    await record_plan_paused(
+        "user-1", fake.invoices["in_other"], fake.subscriptions[SUB]
+    )
+
+    assert fake.rows == {}
 
 
 @pytest.mark.asyncio
@@ -499,22 +622,18 @@ async def test_a_failure_between_credit_and_reset_is_finished_by_the_retry(fake)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("saved_by_an_earlier_attempt", [False, True])
-async def test_a_reset_whose_record_was_rolled_back_is_recorded_by_the_retry(
-    fake, saved_by_an_earlier_attempt
-):
+async def test_a_reset_whose_record_was_rolled_back_is_recorded_by_the_retry(fake):
     """Stripe reset the period, then the transaction around it rolled back
     before restartedAt was saved. The retry finds the reset done and records
-    it, so the audit doesn't list a finished account for a person. The
-    rollback removes the row too, unless an earlier attempt saved it."""
+    it, so the audit doesn't list a finished account for a person."""
     _fail_on_3rd_pay_on_9th(fake)
     table = restart.SubscriptionBillingRestart.prisma()
     save = table.update.side_effect
 
     async def lose_restarted_at(where, data):
         if "restartedAt" in data:
-            if not saved_by_an_earlier_attempt:
-                fake.rows.pop(where["stripeInvoiceId"])
+            row = fake.rows[where["stripeInvoiceId"]]
+            row.paidAt = row.stripeCreditNoteId = None
             raise ConnectionError("database connection lost")
         return await save(where, data)
 
@@ -522,7 +641,7 @@ async def test_a_reset_whose_record_was_rolled_back_is_recorded_by_the_retry(
     with pytest.raises(ConnectionError):
         await restart_period_after_late_payment("in_march")
     assert fake.subscriptions[SUB]["current_period_start"] == fake.now
-    assert ("in_march" in fake.rows) is saved_by_an_earlier_attempt
+    assert fake.rows["in_march"].restartedAt is None
 
     table.update.side_effect = save
     fake.idempotent.clear()
@@ -531,6 +650,7 @@ async def test_a_reset_whose_record_was_rolled_back_is_recorded_by_the_retry(
     )
     assert fake.rows["in_march"].restartedAt is not None
     assert fake.rows["in_march"].stripeCreditNoteId == "cn_1"
+    assert fake.rows["in_march"].paidAt == datetime.fromtimestamp(_ts(2026, 3, 9), UTC)
     assert fake.rows["in_march"].periodStart == datetime.fromtimestamp(
         _ts(2026, 3, 3), UTC
     )
@@ -550,13 +670,17 @@ async def test_a_restart_clears_the_cached_open_bill_at_once(fake, monkeypatch):
     await PAYMENTS_DUE.invalidate(CUSTOMER)
     fake.add_subscription(period_start=_ts(2026, 3, 3), status="past_due")
     fake.add_invoice("in_march", paid_at=None, attempt_count=4)
+    fake.pause("in_march", at=_ts(2026, 3, 3) + HOUR)
     fake.invoices["in_march"].update(
         amount_due=PRICE,
         currency="usd",
         hosted_invoice_url="https://invoice.stripe.com/i/acct_1/test_bill",
     )
+    fake.subscriptions[SUB]["items"] = {"data": [{"price": {"id": "price_pro"}}]}
     monkeypatch.setattr(
-        payment_due, "build_price_to_tier_map", AsyncMock(return_value={})
+        payment_due,
+        "build_price_to_tier_map",
+        AsyncMock(return_value={"price_pro": SubscriptionTier.PRO}),
     )
     # The real invalidation, which the fixture otherwise stubs out.
     monkeypatch.setattr(
@@ -617,6 +741,7 @@ async def test_annual_plan_restarts_for_a_full_year_from_the_payment(fake):
     fake.now = _ts(2028, 2, 29)
     fake.add_subscription(period_start=_ts(2028, 2, 20), interval="year")
     fake.add_invoice("in_year", paid_at=_ts(2028, 2, 29), total=PRICE * 12)
+    fake.pause("in_year", at=_ts(2028, 2, 20) + HOUR)
 
     assert await restart_period_after_late_payment("in_year") == (
         RestartOutcome.RESTARTED
@@ -632,6 +757,7 @@ async def test_month_end_payment_keeps_the_last_day_rule(fake):
     fake.now = _ts(2026, 1, 31)
     fake.add_subscription(period_start=_ts(2026, 1, 20))
     fake.add_invoice("in_jan", paid_at=_ts(2026, 1, 31))
+    fake.pause("in_jan", at=_ts(2026, 1, 20) + HOUR)
 
     await restart_period_after_late_payment("in_jan")
 
@@ -642,6 +768,7 @@ async def test_month_end_payment_keeps_the_last_day_rule(fake):
 async def test_wallet_payment_restarts_the_period_like_a_card(fake):
     fake.add_subscription(period_start=_ts(2026, 3, 3))
     fake.add_invoice("in_march", paid_at=_ts(2026, 3, 9))
+    fake.pause("in_march", at=_ts(2026, 3, 3) + HOUR)
     fake.card_charges.clear()  # paid out of band from the wallet
 
     assert await restart_period_after_late_payment("in_march") == (
@@ -658,6 +785,7 @@ async def test_expired_trial_paid_later_starts_its_first_month_from_the_payment(
     trial_end = _ts(2026, 3, 3)
     fake.add_subscription(period_start=trial_end, trial_end=trial_end)
     fake.add_invoice("in_first", paid_at=_ts(2026, 3, 9))
+    fake.pause("in_first", at=trial_end + HOUR)
 
     assert await restart_period_after_late_payment("in_first") == (
         RestartOutcome.RESTARTED
@@ -696,6 +824,7 @@ async def test_enterprise_account_is_left_alone(fake):
 async def test_a_scheduled_change_is_left_for_a_person(fake):
     fake.add_subscription(period_start=_ts(2026, 3, 3), schedule="sub_sched_1")
     fake.add_invoice("in_march", paid_at=_ts(2026, 3, 9))
+    fake.pause("in_march", at=_ts(2026, 3, 3) + HOUR)
 
     assert await restart_period_after_late_payment("in_march") == (
         RestartOutcome.NEEDS_MANUAL_FIX
@@ -745,6 +874,9 @@ async def test_a_price_change_after_the_check_is_refused_not_charged(fake):
     )
     assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 3)
     assert fake.subscriptions[SUB]["status"] == "active"
+    # The credit is taken back, so the next renewal at the old date is paid.
+    assert fake.balance == 0
+    assert fake.rows["in_march"].abandonedAt is not None
 
 
 @pytest.mark.asyncio
@@ -806,6 +938,81 @@ async def test_a_plan_changed_after_the_credit_is_not_reset(fake):
     assert outcome == RestartOutcome.NEEDS_MANUAL_FIX
     assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 3)
     assert fake.card_charges == [PRICE]
+    assert fake.balance == 0
+
+
+@pytest.mark.asyncio
+async def test_a_reset_stripe_refuses_takes_its_credit_back_for_a_person(fake):
+    """The credit is on the balance when Stripe refuses the reset. Left
+    there, it would pay the next renewal at the old date, so it is taken
+    back, and the credit note no longer says the plan restarted."""
+    _fail_on_3rd_pay_on_9th(fake)
+    fake.modify_error = stripe.InvalidRequestError("cannot reset", None)
+
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NEEDS_MANUAL_FIX
+    )
+
+    assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 3)
+    assert fake.balance == 0
+    assert [t["amount"] for t in fake.balance_transactions] == [PRICE]
+    (note,) = fake.credit_notes
+    assert note["metadata"][CREDIT_TAKEN_BACK_KEY] == "true"
+    assert "renewal date is unchanged" in note["memo"]
+    assert fake.rows["in_march"].abandonedAt is not None
+
+    # Stripe redelivers the payment's events for days.
+    fake.idempotent.clear()
+    fake.modify_error = None
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NEEDS_MANUAL_FIX
+    )
+    assert len(fake.credit_notes) == 1
+    assert len(fake.balance_transactions) == 1
+    assert fake.balance == 0
+    assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 3)
+
+
+@pytest.mark.asyncio
+async def test_a_taken_back_credit_whose_record_rolled_back_is_not_made_again(fake):
+    _fail_on_3rd_pay_on_9th(fake)
+    fake.modify_error = stripe.InvalidRequestError("cannot reset", None)
+    await restart_period_after_late_payment("in_march")
+    row = fake.rows["in_march"]
+    row.abandonedAt = row.stripeCreditNoteId = None
+
+    fake.idempotent.clear()
+    fake.modify_error = None
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NEEDS_MANUAL_FIX
+    )
+    assert len(fake.credit_notes) == 1
+    assert len(fake.balance_transactions) == 1
+    assert fake.balance == 0
+    assert fake.rows["in_march"].abandonedAt is not None
+
+
+@pytest.mark.asyncio
+async def test_a_credit_left_by_a_crash_is_taken_back_once_when_the_retry_gives_up(
+    fake,
+):
+    """A crash after the debit that takes the credit back, before it was
+    recorded. The retry finds the balance no longer pays the new period and
+    gives up again, finding the debit instead of taking the credit twice."""
+    _fail_on_3rd_pay_on_9th(fake)
+    fake.modify_error = stripe.InvalidRequestError("cannot reset", None)
+    await restart_period_after_late_payment("in_march")
+    row = fake.rows["in_march"]
+    row.abandonedAt = row.stripeCreditNoteId = None
+    fake.credit_notes[0]["metadata"].pop(CREDIT_TAKEN_BACK_KEY)
+
+    fake.idempotent.clear()
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NEEDS_MANUAL_FIX
+    )
+    assert len(fake.balance_transactions) == 1
+    assert fake.balance == 0
+    assert fake.credit_notes[0]["metadata"][CREDIT_TAKEN_BACK_KEY] == "true"
 
 
 def test_the_period_start_is_read_from_the_recurring_plan_line_only():

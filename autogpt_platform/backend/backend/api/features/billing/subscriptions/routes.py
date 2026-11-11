@@ -54,6 +54,7 @@ from backend.data.stripe_authentication import requires_authentication
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_activation_events import recover_claimed_billing_event
 from backend.data.subscription_billing_restart import (
+    TRANSIENT_STRIPE_ERRORS,
     RestartOutcome,
     restart_period_after_late_payment,
 )
@@ -856,7 +857,17 @@ async def _restart_period_if_paid_late(invoice_id: str | None) -> None:
     paid invoice: the restart makes a newer invoice the subscription's latest."""
     if not invoice_id:
         return
-    outcome = await restart_period_after_late_payment(invoice_id)
+    try:
+        outcome = await restart_period_after_late_payment(invoice_id)
+    except TRANSIENT_STRIPE_ERRORS:
+        raise
+    except stripe.StripeError:
+        # Stripe answers a retry with the same error for the same idempotency
+        # key, so a 500 would only replay it until Stripe stops delivering.
+        logger.exception(
+            f"Stripe refused the billing restart of late invoice {invoice_id}"
+        )
+        outcome = RestartOutcome.NEEDS_MANUAL_FIX
     if outcome != RestartOutcome.NEEDS_MANUAL_FIX:
         return
     claim = await _claim_restart_alert(invoice_id)

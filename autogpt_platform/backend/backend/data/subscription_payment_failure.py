@@ -33,6 +33,7 @@ from backend.data.credit import (
 )
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.stripe_invoice_payments import payment_in_progress, stripe_id
+from backend.data.subscription_billing_restart import record_plan_paused
 from backend.data.subscription_trial import get_subscription_trial
 from backend.data.subscription_wallet_payment import (
     pay_invoice_from_wallet,
@@ -158,6 +159,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> PaymentFailureOu
         if payment.state == WalletPaymentState.REFUNDED and (
             failed.is_unpaid or await _uncollectible_awaits_customer(failed)
         ):
+            await _cut_access(failed)
             return PaymentFailureOutcome.NEEDS_ACTION
         return PaymentFailureOutcome.IGNORED
     if not failed.is_unpaid:
@@ -181,9 +183,19 @@ async def handle_subscription_payment_failure(invoice: dict) -> PaymentFailureOu
         f" {failed.user_id}; cutting access while Stripe retries subscription"
         f" {failed.sub_id}"
     )
-    await sync_subscription_from_stripe(failed.subscription)
+    await _cut_access(failed)
 
     return PaymentFailureOutcome.NEEDS_ACTION
+
+
+async def _cut_access(failed: FailedInvoice) -> None:
+    """Drop the tier while the invoice is unpaid, and record the pause when it
+    took the customer's access, so paying later restarts the billing period.
+    The tier is read back because another plan may still give access."""
+    await sync_subscription_from_stripe(failed.subscription)
+    user = await User.prisma().find_first(where={"id": failed.user_id})
+    if user is not None and user.subscriptionTier == SubscriptionTier.NO_TIER:
+        await record_plan_paused(failed.user_id, failed.invoice, failed.subscription)
 
 
 async def _left_to_settle(failed: FailedInvoice, payment: WalletPayment | None) -> bool:
@@ -204,7 +216,7 @@ async def _left_to_settle(failed: FailedInvoice, payment: WalletPayment | None) 
         f"A payment on invoice {failed.invoice_id} is still processing;"
         f" cutting access but leaving subscription {failed.sub_id} to settle"
     )
-    await sync_subscription_from_stripe(failed.subscription)
+    await _cut_access(failed)
     return True
 
 

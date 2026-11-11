@@ -7,10 +7,13 @@ Two lists, printed as CSV:
              ``NO_TIER`` account here is locked out of paid features until it
              pays.
 ``late``     paid renewal or first invoices (``subscription_cycle`` or
-             ``subscription_create``) whose payment landed more than
-             ``LATE_PAYMENT_AFTER`` after the period they opened had begun.
-             Before the billing-period restart shipped, such a customer kept
-             the old renewal date, so they paid for the days without access.
+             ``subscription_create``) paid after a failed attempt, or more
+             than ``LATE_PAYMENT_AFTER`` after the period they opened had
+             begun. Before the billing-period restart shipped, such a
+             customer kept the old renewal date, so they paid for the days
+             without access. Stripe does not say whether access was cut, so
+             this is a list of candidates to check: a bank debit that took
+             days but never failed kept its plan throughout.
              ``credited`` says whether the restart's credit note exists,
              ``restarted`` whether the renewal date was also moved; a
              credited row that was not restarted needs a person.
@@ -35,7 +38,7 @@ import asyncio
 import csv
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 _BLOCKED_COLUMNS = [
     "user_id",
@@ -132,15 +135,34 @@ async def _blocked() -> list[dict]:
     return rows
 
 
+# Stripe makes the first automatic attempt about an hour after the period
+# starts, so an on-time payment lands just after an hour.
+LATE_PAYMENT_AFTER = timedelta(hours=3)
+
+
+def _paid_late(invoice: dict) -> tuple[int, int] | None:
+    """The period start and payment time of a period-opening invoice that
+    looks paid late, from Stripe alone."""
+    from backend.data.subscription_billing_restart import PERIOD_OPENING_REASONS
+    from backend.data.subscription_billing_restart_invoice import line_period_start
+
+    if invoice.get("billing_reason") not in PERIOD_OPENING_REASONS:
+        return None
+    paid_at = (invoice.get("status_transitions") or {}).get("paid_at")
+    start = line_period_start(invoice)
+    if paid_at is None or start is None:
+        return None
+    if paid_at - start > LATE_PAYMENT_AFTER.total_seconds():
+        return start, paid_at
+    return (start, paid_at) if (invoice.get("attempt_count") or 0) > 1 else None
+
+
 async def _late(since: datetime) -> list[dict]:
     import stripe
 
     from backend.data.credit import _invoice_subscription_id
     from backend.data.stripe_client import stripe_call, stripe_list_items
-    from backend.data.subscription_billing_restart import (
-        RESTARTED_FROM_INVOICE_KEY,
-        late_payment,
-    )
+    from backend.data.subscription_billing_restart import RESTARTED_FROM_INVOICE_KEY
 
     rows = []
     page = await stripe_call(
@@ -150,9 +172,10 @@ async def _late(since: datetime) -> list[dict]:
         limit=100,
     )
     async for invoice in stripe_list_items(page):
-        late = late_payment(dict(invoice))
+        late = _paid_late(dict(invoice))
         if late is None or not _invoice_subscription_id(dict(invoice)):
             continue
+        period_start, paid_at = late
         notes = await stripe_call(
             stripe.CreditNote.list_async, invoice=invoice["id"], limit=100
         )
@@ -167,9 +190,9 @@ async def _late(since: datetime) -> list[dict]:
                 "subscription_id": _invoice_subscription_id(dict(invoice)),
                 "invoice_id": invoice["id"],
                 "billing_reason": invoice.get("billing_reason"),
-                "period_start": _iso(late.period_start),
-                "paid_at": _iso(late.paid_at),
-                "days_late": round(late.seconds_late / 86400, 1),
+                "period_start": _iso(period_start),
+                "paid_at": _iso(paid_at),
+                "days_late": round((paid_at - period_start) / 86400, 1),
                 "amount_paid": invoice.get("amount_paid"),
                 "currency": invoice.get("currency"),
                 "credited": credited,
