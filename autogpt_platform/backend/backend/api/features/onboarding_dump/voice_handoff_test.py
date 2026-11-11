@@ -76,6 +76,7 @@ __all__ = [
 
 USER = "user-1"
 SAID = ["I run a bakery with five staff.", "Answering order emails, mostly."]
+LIVEKIT_SECRET = "r" * 48  # pragma: allowlist secret
 
 
 @pytest.fixture
@@ -172,11 +173,13 @@ class Rig:
         ending: str | None = None,
         first_task: str | None = None,
         transcribed_at: float | None = None,
+        went_live: bool = True,
     ) -> str:
         """A call as the relay leaves it: ``transcribed`` with *said* as its
         transcript of record, pending its hand-off, the person's latest, and
         naming the call it replaced there. With *said* None, its transcript
-        is still being made."""
+        is still being made; with *went_live* False, its room or its model
+        session never opened."""
         call_id = tokens.new_call_id()
         await locks.write_call_record(
             self.redis,
@@ -184,8 +187,8 @@ class Rig:
             {
                 "uid": USER,
                 "status": locks.TRANSCRIBING,
-                "leg": "websocket",
                 "started": time.time() - 600,
+                "connect_s": 1.4 if went_live else None,
                 "end_reason": end_reason,
                 "ending": ending,
                 "first_task": first_task,
@@ -704,7 +707,6 @@ async def test_a_call_ended_on_the_relay_is_handed_off_by_a_status_read(
         {
             "uid": USER,
             "status": "ended",
-            "leg": "websocket",
             "end_reason": "finished",
             "turns": [
                 TurnMark(index=index, at=at).model_dump()
@@ -2080,11 +2082,14 @@ async def test_a_call_ended_from_another_device_leaves_room_for_a_new_call(
     monkeypatch.setattr(voice.settings.config, "voice_interview_max_concurrent", 25)
     monkeypatch.setattr(voice.settings.config, "voice_interview_daily_budget_usd", 25.0)
     monkeypatch.setattr(tokens.settings.secrets, "voice_relay_signing_key", "k" * 48)
+    monkeypatch.setattr(
+        voice.settings.config, "livekit_url", "wss://agpt-test.livekit.cloud"
+    )
+    monkeypatch.setattr(voice.settings.secrets, "livekit_api_key", "APItest")
+    monkeypatch.setattr(voice.settings.secrets, "livekit_api_secret", LIVEKIT_SECRET)
+    await locks.mark_rooms_swept(rig.redis, time.time())
     mocker.patch.object(
         voice, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
-    )
-    mocker.patch.object(
-        voice, "get_feature_flag_value", AsyncMock(return_value="websocket")
     )
     mocker.patch.object(
         voice, "find_onboarding_interview_session", AsyncMock(return_value=None)
@@ -2306,3 +2311,64 @@ async def test_a_reload_answers_a_no_words_call_with_nothing_behind_it(rig: Rig)
 
     assert reloaded.call_id == only
     assert reloaded.status == locks.FAILED
+
+
+async def test_a_reload_passes_over_a_call_that_never_went_live(rig: Rig):
+    """Even while its post-call work still runs: it has nothing of the
+    person's to settle."""
+    earlier = await rig.call(ending=InterviewEnding.PROFILE_CARD.value)
+    await rig.call(None, end_reason="room_error", went_live=False)
+
+    reloaded = await voice.latest_call(USER)
+
+    assert reloaded.call_id == earlier
+    assert reloaded.status == locks.TRANSCRIBED
+
+
+async def test_a_reload_finds_no_call_when_none_went_live(rig: Rig):
+    """A start that failed leaves nothing to come back to: the step opens
+    as if no call had been made, not on a call with no words."""
+    await rig.call("", end_reason="vendor_error", went_live=False)
+    await rig.call("", end_reason="room_error", went_live=False)
+
+    with pytest.raises(HTTPException) as missing:
+        await voice.latest_call(USER)
+
+    assert missing.value.status_code == 404
+    assert missing.value.detail == voice.NO_SUCH_CALL
+
+
+async def test_a_reload_answers_a_no_words_call_in_front_of_one_that_never_went_live(
+    rig: Rig,
+):
+    await rig.call("", end_reason="room_error", went_live=False)
+    no_words = await rig.call(None)
+    await rig.no_words(no_words, quality.NO_USABLE_SPEECH)
+
+    reloaded = await voice.latest_call(USER)
+
+    assert reloaded.call_id == no_words
+    assert reloaded.status == locks.FAILED
+
+
+async def test_a_reload_answers_a_call_still_starting(rig: Rig):
+    """A call that has not gone live yet may still: it is answered as it
+    stands."""
+    await rig.call(ending=InterviewEnding.PROFILE_CARD.value)
+    starting = tokens.new_call_id()
+    await locks.write_call_record(
+        rig.redis,
+        starting,
+        {
+            "uid": USER,
+            "status": locks.CONNECTING,
+            "started": time.time(),
+            "prev": rig.interviews.latest_call,
+        },
+    )
+    rig.interviews.latest_call = starting
+
+    reloaded = await voice.latest_call(USER)
+
+    assert reloaded.call_id == starting
+    assert reloaded.status == locks.CONNECTING

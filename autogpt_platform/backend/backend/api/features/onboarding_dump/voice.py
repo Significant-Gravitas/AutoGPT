@@ -118,9 +118,9 @@ _VERDICTS = frozenset({quality.NO_USABLE_SPEECH, quality.INSUFFICIENT_CONTENT})
 
 ABANDONED_STARTS = Counter(
     "voice_interview_abandoned_starts_total",
-    "Voice call starts the browser gave up on before the call started: its "
-    "join of the call's room failed or took too long, and it asked for the "
-    "call's end",
+    "Voice call starts ended by the browser before the call started: its "
+    "join of the call's room failed or took too long, or the person chose "
+    "to type instead while it joined",
 )
 
 
@@ -308,11 +308,13 @@ async def latest_call(user_id: str) -> VoiceCallStatusResponse:
     A call that settled without words of record is no take, so the read
     looks back past it along ``prev`` to the latest call that has words or
     is still to settle, and answers that one; with nothing behind it, the
-    no-words call itself.
+    no-words call itself. A call that never went live (its room or its model
+    session did not open) was never the person's, so the read passes over it
+    and never answers it.
 
     Raises:
-        HTTPException: 404 when they have none or its record has expired, 503
-            while it cannot be read.
+        HTTPException: 404 when they have none, or only calls that never went
+            live, or its record has expired; 503 while it cannot be read.
     """
     try:
         call_id = await get_onboarding_voice_call_id(user_id)
@@ -326,15 +328,32 @@ async def latest_call(user_id: str) -> VoiceCallStatusResponse:
         raise HTTPException(status_code=404, detail=NO_SUCH_CALL)
     redis = await _bounded(get_redis_async())
     record = await _their_call(redis, user_id, call_id)
+    answered = await _call_to_answer(redis, user_id, record)
+    if answered is None:
+        raise HTTPException(status_code=404, detail=NO_SUCH_CALL)
+    settle_if_owed(answered)
+    return _status_of(answered)
+
+
+async def _call_to_answer(
+    redis: AsyncRedisClient, user_id: str, record: CallRecord
+) -> CallRecord | None:
+    """The call a reload answers, read from *record* back along ``prev``:
+    the latest call that went live and has words or is still to settle, else
+    the last no-words call the read reached, else None."""
     seen = {record.call_id}
-    while call_words(record) == "no_words" and record.prev not in (None, *seen):
+    reached = None if record.never_went_live else record
+    while (
+        record.never_went_live or call_words(record) == "no_words"
+    ) and record.prev not in (None, *seen):
         earlier = await _bounded(locks.read_call(redis, record.prev or ""))
         if earlier is None or earlier.uid != user_id:
             break
         seen.add(earlier.call_id)
         record = earlier
-    settle_if_owed(record)
-    return _status_of(record)
+        if not record.never_went_live:
+            reached = record
+    return reached
 
 
 async def finish_call(
@@ -416,8 +435,9 @@ async def end_call(user_id: str, call_id: str) -> None:
     ``superseded``: the person can no longer reach it from the device it is
     on. A call that has ended already is left as it is. A call that no longer
     runs (its pod died) frees the person's lock here, so they can call again
-    or type at once. A start the browser gave up on, whose call never began,
-    has its room closed by the next sweep, and is counted.
+    or type at once. A start the browser ended before its call began (its
+    room join failed, or the person chose to type meanwhile) has its room
+    closed by the next sweep, and is counted.
 
     Raises:
         HTTPException: 404 for a call that is not theirs, 503 while it cannot

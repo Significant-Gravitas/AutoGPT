@@ -2,12 +2,14 @@ import type { CallRoomPass } from "@/services/onboarding/voice-call-ticket";
 import { type MutableRefObject, useEffect, useRef, useState } from "react";
 import { trackInterview } from "../../../../tracking";
 import { type CallRoomEvents, joinCallRoom } from "./callRoom";
-import { type Connection, leaveRoom, type OpenCall } from "./connection";
+import { type Connection, later, leaveRoom, type OpenCall } from "./connection";
 import {
+  OTTO_STATS_POLL_MS,
   ROOM_JOIN_TIMEOUT_MS,
   ROOM_PLAYOUT_MS,
   secondsBetween,
 } from "./helpers";
+import { addOttoStats } from "./ottoStats";
 
 interface Args {
   connRef: MutableRefObject<Connection>;
@@ -55,11 +57,30 @@ export function useCallRoom(args: Args) {
         return false;
       }
       conn.room = room;
+      watchOtto(call);
       return true;
     } catch (error) {
       if (conn.call === call) onFailure?.(error);
       return false;
     }
+  }
+
+  // Reads how Otto's speech fares in the room for as long as the call has
+  // it, into the call's `listening`.
+  function watchOtto(call: OpenCall) {
+    const conn = argsRef.current.connRef.current;
+    later(
+      conn,
+      () => {
+        const room = conn.room;
+        if (conn.call !== call || !room) return;
+        void room.ottoStats().then((report) => {
+          if (report) addOttoStats(call.listening, report);
+          if (conn.call === call) watchOtto(call);
+        });
+      },
+      OTTO_STATS_POLL_MS,
+    );
   }
 
   // What the call's room tells the call.

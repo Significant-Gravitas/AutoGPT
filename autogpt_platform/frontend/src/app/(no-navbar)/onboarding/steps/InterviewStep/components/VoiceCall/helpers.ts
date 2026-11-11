@@ -43,6 +43,8 @@ export const ROOM_JOIN_TIMEOUT_MS = 10_000;
 // Once the call ends, the browser stays in the room while Otto's last words
 // play, until the relay leaves it, for at most this long.
 export const ROOM_PLAYOUT_MS = 20_000;
+// How often the page reads how Otto's speech fares in the call's room.
+export const OTTO_STATS_POLL_MS = 5_000;
 
 // --- The call's room ------------------------------------------------------
 

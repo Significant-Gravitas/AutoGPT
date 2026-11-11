@@ -211,7 +211,9 @@ export const InterviewEvent = {
   // (`room_s`) and the relay's `ready` (`ready_s`).
   INTERVIEW_STARTED: "interview_started",
   // A call ended: `mode`, the relay's `reason`, `elapsed_s` and Otto's
-  // `turns`. A call lost on the way is reported once its end is known.
+  // `turns`, and how his speech fared in the call's room (`concealed_share`,
+  // `packets_lost`, `jitter_ms_max`, `rtt_ms_max`). A call lost on the way is
+  // reported once its end is known.
   INTERVIEW_ENDED: "interview_ended",
   // LiveKit got a call's audio back after `gap_s`.
   VOICE_INTERVIEW_RECONNECTED: "voice_interview_reconnected",
@@ -221,7 +223,8 @@ export const InterviewEvent = {
   // A call that never went live: the browser could not join its room
   // (`stage` `room`, `why` `timeout`, `refused` or `failed`), the relay ended
   // it before `ready` (`relay`, `why` its end reason), or the browser cannot
-  // make calls (`browser`, `why` `unsupported`).
+  // make calls (`browser`, `why` `unsupported`, or `sdk` when the room's SDK
+  // did not load).
   VOICE_INTERVIEW_START_FAILED: "voice_interview_start_failed",
   // A call's ending showed (`ending`), and what the person chose on it
   // (`action`).

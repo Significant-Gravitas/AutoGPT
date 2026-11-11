@@ -209,7 +209,7 @@ class Timing(BaseModel):
     # A dropped browser socket may re-attach within this.
     reattach_s: float = 15.0
     # What the call says to a detached browser is kept for its re-attach, up
-    # to this much text.
+    # to this much text; from the first message that does not fit, none is.
     outbox_bytes: int = 256 * 1024
     # After Otto's first audio, wait this long for the person's last caption
     # before their turn is labelled.

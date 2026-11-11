@@ -199,9 +199,10 @@ def test_the_rest_api_loads_no_room_reaper_and_the_livekit_sdk_only_once_it_mint
         (f"user:user-1:{'f' * 32}", None),
         ("user:user-1", None),
         (f"user::{CALL_ID}", None),
+        (f"user:{CALL_ID}", None),
         ("otto", None),
     ],
-    ids=["this-call", "another-call", "no-call", "no-user", "otto"],
+    ids=["this-call", "another-call", "no-call", "no-user", "call-only", "otto"],
 )
 def test_the_person_in_a_calls_room_is_read_only_from_that_calls_identity(
     identity, person

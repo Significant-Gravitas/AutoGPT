@@ -330,6 +330,9 @@ class Session:
         self.detached_at: float | None = None
         self.outbox: list[str] = []
         self.outbox_bytes = 0
+        # A message did not fit the outbox: nothing after it is kept either,
+        # so a replay never skips one.
+        self.outbox_full = False
         self.reattaches = 0
         # The vendor side.
         self.live: VendorSession | None = None
@@ -465,8 +468,9 @@ class Session:
         opened for a room the relay could not join is closed.
         """
         joining = asyncio.create_task(self.join_room(), name="room_join")
+        # Held to the call's end, which gathers it, so a join that failed
+        # while the vendor connect failed too still has its error read.
         self.tasks.add(joining)
-        joining.add_done_callback(self.tasks.discard)
         try:
             live = await asyncio.wait_for(
                 self.vendor.connect(opening=voice_interview_kickoff(self.first_name)),
@@ -647,9 +651,12 @@ class Session:
         if self.client_gone:
             return
         if self.detached_at is not None:
-            if self.outbox_bytes + len(text) <= self.timing.outbox_bytes:
-                self.outbox.append(text)
-                self.outbox_bytes += len(text)
+            fits = self.outbox_bytes + len(text) <= self.timing.outbox_bytes
+            if self.outbox_full or not fits:
+                self.outbox_full = True
+                return
+            self.outbox.append(text)
+            self.outbox_bytes += len(text)
             return
         ws = self.ws
         try:
@@ -704,6 +711,7 @@ class Session:
                 self.ws = ws
                 gap = time.monotonic() - away_since
                 outbox, self.outbox, self.outbox_bytes = self.outbox, [], 0
+                self.outbox_full = False
                 self.detached_at = None
                 self.reattaches += 1
                 logger.info(

@@ -10,14 +10,13 @@ from websockets.datastructures import Headers
 from websockets.exceptions import InvalidStatus
 from websockets.http11 import Response
 
-from backend.api.features.onboarding_dump import rate_limit
 from backend.copilot.onboarding_interview_scope import ScopeLabel
-from backend.util.settings import BehaveAs
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.config import IN_RATE, Caps, Timing
 from backend.voice_relay.conftest import (
     FakeMedia,
     FakeSocket,
+    counted_calls,
     livekit_edge,
     silence,
     speech,
@@ -748,6 +747,52 @@ async def test_a_reattached_browser_hears_resumed_first_and_every_word_once(redi
     assert (await call.ended(fresh))["reason"] == "user_hangup"
 
 
+async def test_a_replay_stops_at_the_first_message_the_outbox_could_not_keep(
+    redis,
+):
+    """A replay with a hole in it would read as whole: once a message does
+    not fit, the ones after it are dropped too, even those that would fit."""
+    first, too_big, small = " word 1", " " + "x" * 200, " word 3"
+    vendor = FakeVendor([Reply(text="Hi", audio_s=0.1)])
+    old = HeldClose()
+    call = await open_call(
+        redis,
+        vendor,
+        ws=old,
+        timing=FAST.model_copy(
+            update={
+                "reattach_s": 10.0,
+                "outbox_bytes": len(_agent_text(first)) + len(_agent_text(small)),
+            }
+        ),
+    )
+    await old.wait_for("turn_complete")
+
+    fresh = FakeSocket()
+    attaching = asyncio.create_task(call.session.attach(fresh))
+    await asyncio.wait_for(old.closing.wait(), timeout=5)
+    vendor.sessions[0].emit(*(AgentText(text=text) for text in (first, too_big, small)))
+    # All three are said while the old socket closes.
+    await until(lambda: call.session.cur.text.endswith(small))
+    assert call.session.outbox_full
+    old.let_close.set()
+    await asyncio.wait_for(attaching, timeout=5)
+
+    assert fresh.log[:2] == ["resumed", "agent_text"]
+    assert [m["text"] for m in fresh.sent if m["type"] == "agent_text"] == [first]
+    # What the call says after the re-attach reaches the browser again.
+    vendor.sessions[0].emit(AgentText(text=" word 4"))
+    await fresh.wait_for("agent_text", count=2)
+    assert not call.session.outbox_full
+    fresh.send_json({"type": "hangup"})
+    assert (await call.ended(fresh))["reason"] == "user_hangup"
+
+
+def _agent_text(text: str) -> str:
+    """*text* as the call sends Otto's words to the browser."""
+    return json.dumps({"type": "agent_text", "text": text})
+
+
 async def test_a_call_that_ends_while_a_browser_reattaches_tells_the_new_socket(
     redis,
 ):
@@ -931,32 +976,18 @@ async def test_a_call_ending_after_a_post_call_job_took_it_keeps_the_jobs_status
 # --- the person's allowance, and the reply's latency --------------------------
 
 
-@pytest.fixture
-def counted(mocker, set_platform_payment) -> None:
-    """Calls count against the person's allowance: the platform takes payment
-    and runs as the cloud."""
-    mocker.patch.object(rate_limit.settings.config, "behave_as", BehaveAs.CLOUD)
-    set_platform_payment(True)
-
-
-async def _counted(redis) -> list[int]:
-    """The person's calls counted, today's and this hour's."""
-    keys = sorted(await redis.keys("onboarding:voice_interview:*"))
-    return [int(await redis.get(key)) for key in keys]
-
-
 async def test_a_call_counts_against_the_persons_allowance_once_it_opens(
     redis, counted
 ):
     vendor = FakeVendor([Reply(text="Hi", audio_s=0.4)], drop_sessions={1})
     call = await open_call(redis, vendor)
 
-    assert await _counted(redis) == [1, 1]
+    assert await counted_calls(redis) == [1, 1]
     # A model session that drops and is replaced is the same call.
     await until(lambda: len(vendor.sessions) == 2)
     call.ws.send_json({"type": "hangup"})
     await call.ended()
-    assert await _counted(redis) == [1, 1]
+    assert await counted_calls(redis) == [1, 1]
 
 
 async def test_a_call_whose_room_could_not_be_joined_costs_the_person_nothing(
@@ -971,7 +1002,7 @@ async def test_a_call_whose_room_could_not_be_joined_costs_the_person_nothing(
     await asyncio.wait_for(session.run(), timeout=5)
 
     assert session.end_reason == "room_error"
-    assert await _counted(redis) == []
+    assert await counted_calls(redis) == []
 
 
 async def test_a_call_whose_model_never_connected_costs_the_person_nothing(
@@ -988,7 +1019,7 @@ async def test_a_call_whose_model_never_connected_costs_the_person_nothing(
     await asyncio.wait_for(session.run(), timeout=5)
 
     assert session.end_reason == "vendor_error"
-    assert await _counted(redis) == []
+    assert await counted_calls(redis) == []
 
 
 def _replies() -> tuple[float, float]:

@@ -14,8 +14,9 @@ from fakeredis import FakeServer
 from fakeredis.aioredis import FakeRedis
 from livekit import api, rtc
 
+from backend.api.features.onboarding_dump import rate_limit
 from backend.api.utils.cors import build_cors_params
-from backend.util.settings import AppEnvironment
+from backend.util.settings import AppEnvironment, BehaveAs
 from backend.voice_relay import rooms, tokens
 from backend.voice_relay.app import Relay, RelayDeps, create_app
 from backend.voice_relay.config import (
@@ -52,6 +53,21 @@ async def redis():
     client = FakeRedis(server=FakeServer(), decode_responses=True)
     yield client
     await client.aclose()
+
+
+@pytest.fixture
+def counted(mocker, set_platform_payment) -> None:
+    """Calls count against the person's allowance: the platform takes payment
+    and runs as the cloud."""
+    mocker.patch.object(rate_limit.settings.config, "behave_as", BehaveAs.CLOUD)
+    set_platform_payment(True)
+
+
+async def counted_calls(redis) -> list[int]:
+    """The person's calls counted against their allowance, today's and this
+    hour's."""
+    keys = sorted(await redis.keys("onboarding:voice_interview:*"))
+    return [int(await redis.get(key)) for key in keys]
 
 
 def speech(seconds: float) -> list[bytes]:

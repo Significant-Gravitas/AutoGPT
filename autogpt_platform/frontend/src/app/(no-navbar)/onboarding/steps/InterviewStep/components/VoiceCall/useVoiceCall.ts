@@ -42,6 +42,7 @@ import {
   sleep,
   stopTracks,
 } from "./connection";
+import { newOttoListening, ottoListeningSummary } from "./ottoStats";
 import {
   answerOf,
   type CallEnding,
@@ -127,9 +128,9 @@ export function useVoiceCall(args: Args) {
     },
     onOttoSound(call) {
       const marks = call.marks;
-      if (!marks || marks.ready === null || marks.firstSound !== null) return;
+      if (!marks || marks.firstSound !== null) return;
       marks.firstSound = Date.now();
-      reportCallStart(marks);
+      if (marks.ready !== null) reportCallStart(call.callId, marks);
     },
   });
 
@@ -312,6 +313,7 @@ export function useVoiceCall(args: Args) {
       turns: 0,
       room,
       marks,
+      listening: newOttoListening(),
     };
     conn.call = call;
     conn.shownCallId = started.call_id;
@@ -333,12 +335,10 @@ export function useVoiceCall(args: Args) {
 
   // This browser cannot join a call's room, or the room's SDK did not load.
   function cannotCall(kind: "unsupported" | "failed") {
-    if (kind === "unsupported") {
-      trackInterview("voice_interview_start_failed", {
-        stage: "browser",
-        why: "unsupported",
-      });
-    }
+    trackInterview("voice_interview_start_failed", {
+      stage: "browser",
+      why: kind === "unsupported" ? "unsupported" : "sdk",
+    });
     setStartFailure({ kind });
     setPhase("idle");
   }
@@ -468,10 +468,15 @@ export function useVoiceCall(args: Args) {
     setEndsAt(startedAt + caps.max_call_s * 1000);
     setTurnsLeft(caps.max_agent_turns);
     setPhase("live");
-    if (call.marks) call.marks.ready = startedAt;
+    const marks = call.marks;
+    if (marks && marks.ready === null) {
+      marks.ready = startedAt;
+      // Otto was heard before the `ready` reached the page.
+      if (marks.firstSound !== null) reportCallStart(call.callId, marks);
+    }
     trackInterview("interview_started", {
       mode: "voice",
-      ...(call.marks ? startSeconds(call.marks) : {}),
+      ...(marks ? startSeconds(marks) : {}),
     });
   }
 
@@ -543,6 +548,7 @@ export function useVoiceCall(args: Args) {
       reason,
       elapsed_s: elapsedS,
       turns: call?.turns ?? 0,
+      ...ottoListeningSummary(call?.listening),
     });
     if (call) void awaitEnding(call.callId);
   }
@@ -651,6 +657,7 @@ export function useVoiceCall(args: Args) {
       startedAt: call.startedAt,
       droppedAt: conn.droppedAt ?? Date.now(),
       reason: null,
+      listening: call.listening,
     };
     conn.call = null;
     conn.isReady = false;
@@ -726,6 +733,7 @@ export function useVoiceCall(args: Args) {
         ? secondsBetween(lost.startedAt, lost.droppedAt)
         : null,
       turns: lost.turns,
+      ...ottoListeningSummary(lost.listening),
     });
   }
 
@@ -794,6 +802,7 @@ export function useVoiceCall(args: Args) {
           ? secondsBetween(call.startedAt, Date.now())
           : null,
         turns: call.turns,
+        ...ottoListeningSummary(call.listening),
       });
       dropCall();
       forgetTicket();
@@ -1053,6 +1062,7 @@ export function useVoiceCall(args: Args) {
       turns: Math.max(0, kept.caps.max_agent_turns - kept.turnsLeft),
       room,
       marks: null,
+      listening: newOttoListening(),
     };
     conn.call = rejoined;
     conn.shownCallId = kept.callId;

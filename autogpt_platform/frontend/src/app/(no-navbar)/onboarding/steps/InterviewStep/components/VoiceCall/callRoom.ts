@@ -1,5 +1,5 @@
 import type { CallRoomPass } from "@/services/onboarding/voice-call-ticket";
-import type { Room as LiveKitRoom } from "livekit-client";
+import type { Room as LiveKitRoom, RemoteTrack } from "livekit-client";
 import { releasePlayer } from "./audioGraph";
 import { RoomJoinTimeout } from "./helpers";
 
@@ -33,6 +33,9 @@ export interface CallRoom {
   // Leaves once Otto has, so its last words play out; at most *ms* later.
   leaveAfterOtto(ms: number): void;
   leave(): void;
+  // WebRTC's stats for Otto's latest speech in the room; nothing before he
+  // spoke, once the room is left, or when the browser gives none.
+  ottoStats(): Promise<RTCStatsReport | undefined>;
 }
 
 interface JoinArgs {
@@ -61,6 +64,7 @@ export async function joinCallRoom({
 }: JoinArgs): Promise<CallRoom> {
   const [track] = microphone.getAudioTracks();
   let room: LiveKitRoom | null = null;
+  let ottoTrack: RemoteTrack | null = null;
   // Until the join is done, its own failure says what went wrong.
   let isJoined = false;
   let isLeaving = false;
@@ -91,6 +95,10 @@ export async function joinCallRoom({
       leaveTimer = setTimeout(leave, ms);
     },
     leave,
+    async ottoStats() {
+      if (isLeaving || !ottoTrack) return undefined;
+      return ottoTrack.getRTCStatsReport().catch(() => undefined);
+    },
   };
 
   async function join() {
@@ -104,6 +112,7 @@ export async function joinCallRoom({
         if (participant.identity !== OTTO || remote.kind !== Track.Kind.Audio) {
           return;
         }
+        ottoTrack = remote;
         remote.attach(player);
         events.onOttoTrack(remote.mediaStreamTrack);
       },

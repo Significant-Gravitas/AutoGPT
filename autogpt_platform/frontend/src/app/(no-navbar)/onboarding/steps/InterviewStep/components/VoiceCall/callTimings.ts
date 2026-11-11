@@ -33,9 +33,11 @@ export function startSeconds(marks: CallMarks) {
   };
 }
 
-// Sends the call's start to Sentry, the performance record: one span from the
-// microphone to Otto's first sound, with a span for each step under it.
-export function reportCallStart(marks: CallMarks) {
+// Sends call *callId*'s start to Sentry, the performance record: one span
+// from the microphone to the later of the relay's `ready` and Otto's first
+// sound, with a span for each step under it. Otto can be heard before the
+// `ready` reaches the page; his first-sound step then lasts no time.
+export function reportCallStart(callId: string, marks: CallMarks) {
   const { granted, minted, joined, ready, firstSound } = marks;
   if (minted === null || joined === null || ready === null) return;
   if (firstSound === null) return;
@@ -45,6 +47,7 @@ export function reportCallStart(marks: CallMarks) {
     startTime: granted,
     parentSpan: null,
     attributes: {
+      call_id: callId,
       mint_s: secondsBetween(granted, minted),
       room_s: secondsBetween(granted, joined),
       ready_s: secondsBetween(granted, ready),
@@ -63,9 +66,9 @@ export function reportCallStart(marks: CallMarks) {
       op,
       startTime: from,
       parentSpan: start,
-    }).end(to);
+    }).end(Math.max(from, to));
   });
-  start.end(firstSound);
+  start.end(Math.max(ready, firstSound));
 }
 
 function since(marks: CallMarks, mark: number | null) {

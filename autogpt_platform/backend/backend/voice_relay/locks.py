@@ -461,6 +461,8 @@ class CallRecord(BaseModel):
     status: CallStatus | None = None
     # When the call started, in seconds since the epoch.
     started: float | None = None
+    # How long the call took to go live, written only once it did.
+    connect_s: float | None = None
     end_reason: str | None = None
     # The person's arm of the voice ending experiment, read by the start route
     # and carried in the start token; None for anyone not enrolled.
@@ -494,6 +496,12 @@ class CallRecord(BaseModel):
     @property
     def took_interview(self) -> bool:
         return self.interview == INTERVIEW_TAKEN
+
+    @property
+    def never_went_live(self) -> bool:
+        """Whether the call ended without ever going live: its room or its
+        model session did not open, so nothing of it was the person's."""
+        return self.connect_s is None and self.status not in RUNNING
 
     @property
     def accepted(self) -> bool:

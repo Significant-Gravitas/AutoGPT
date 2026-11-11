@@ -4,6 +4,8 @@ socket carries the rest, ends the call ``room_error`` when it cannot join the
 room or loses it, and leaves the room once Otto's last words have played."""
 
 import asyncio
+import gc
+from typing import Any
 
 from prometheus_client import REGISTRY
 
@@ -11,12 +13,14 @@ from backend.voice_relay import locks
 from backend.voice_relay.conftest import (
     FakeMedia,
     FakeSocket,
+    counted_calls,
     livekit_edge,
     speech,
     until,
 )
+from backend.voice_relay.edge import LiveKitEdge
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
-from backend.voice_relay.session import Session
+from backend.voice_relay.session import AudioLeg, Session
 from backend.voice_relay.session_test import FAST, USER, Call, _session, open_call
 from backend.voice_relay.vendor import AgentAudio, Interrupted
 
@@ -135,6 +139,96 @@ async def test_a_relay_that_cannot_join_the_room_ends_the_call_before_it_goes_li
     assert (await locks.read_call_record(redis, session.call_id))["error"] == (
         "room: ConnectionError"
     )
+
+
+async def test_a_room_lost_while_the_model_connects_ends_the_call_before_it_goes_live(
+    redis, counted
+):
+    """The relay joins the room, and the room drops while the model session
+    is still connecting: the call never goes live, and costs nothing."""
+    media = FakeMedia()
+    vendor = FakeVendor([Reply(text="Hi, I'm Otto, an AI.", audio_s=0.2)])
+    # A slow model connect, which lands only once the room is gone.
+    vendor.connect_gate = asyncio.Event()
+    ws = FakeSocket()
+    session = _session(redis, vendor, ws, [], edge=livekit_edge(media))
+    assert await locks.take_user_lock(redis, USER, session.call_id) is None
+    before = _calls("room_error")
+    running = asyncio.create_task(session.run())
+
+    await until(lambda: session.audio is not None)
+    media.rooms[0].lost()
+    vendor.connect_gate.set()
+    await asyncio.wait_for(running, timeout=5)
+
+    # The browser hears the call ended, and never that it was ready.
+    assert ws.types() == ["ended"]
+    assert ws.sent[0]["reason"] == "room_error"
+    assert _calls("room_error") - before == 1
+    assert await counted_calls(redis) == []
+    # The model session that landed after the room was lost is closed.
+    assert [opened.closed for opened in vendor.sessions] == [True]
+    record = await locks.read_call(redis, session.call_id)
+    assert record is not None and record.never_went_live
+
+
+async def test_a_join_that_fails_before_the_model_refuses_leaves_no_error_unread(
+    redis,
+):
+    """Whichever side fails first, the call collects the join's error: one
+    left unread is logged at ERROR, as a fault in the relay, once the join is
+    collected."""
+    unread: list[str] = []
+    loop = asyncio.get_running_loop()
+    previous = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _, context: unread.append(context["message"]))
+    try:
+        assert await _refused_twice(redis) == "vendor_error"
+        gc.collect()
+    finally:
+        loop.set_exception_handler(previous)
+
+    assert unread == []
+
+
+class _TellingEdge:
+    """The relay's LiveKit edge, telling when a join has ended, however it
+    ended."""
+
+    def __init__(self, edge: LiveKitEdge) -> None:
+        self.edge = edge
+        self.joined = asyncio.Event()
+
+    @property
+    def rooms(self) -> int:
+        return self.edge.rooms
+
+    async def join(self, **options: Any) -> AudioLeg:
+        try:
+            return await self.edge.join(**options)
+        finally:
+            self.joined.set()
+
+
+async def _refused_twice(redis) -> str | None:
+    """A call whose room join fails, and whose model connect is then
+    refused, run to its end. Returns how it ended, and holds nothing of the
+    call after."""
+    vendor = FakeVendor(refuse=ConnectionError("the vendor is down"))
+    vendor.connect_gate = asyncio.Event()
+    edge = _TellingEdge(
+        livekit_edge(FakeMedia(refuse=ConnectionError("the room is full")))
+    )
+    session = _session(redis, vendor, FakeSocket(), [], edge=edge)
+    assert await locks.take_user_lock(redis, USER, session.call_id) is None
+    running = asyncio.create_task(session.run())
+
+    # The model answers only once the join has failed.
+    await asyncio.wait_for(edge.joined.wait(), timeout=5)
+    vendor.connect_gate.set()
+    await asyncio.wait_for(running, timeout=5)
+
+    return session.end_reason
 
 
 async def test_a_room_join_past_its_deadline_ends_the_call_and_the_room_is_left_once_it_lands(

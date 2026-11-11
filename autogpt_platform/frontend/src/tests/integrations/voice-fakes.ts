@@ -169,6 +169,10 @@ let roomJoin: { refuse: unknown } | "hang" | null = null;
 // While set, joins wait on it before they answer.
 let roomJoinGate: Promise<void> | null = null;
 let isBrowserSupported = true;
+// What WebRTC's stats say of Otto's speech, by stats id, and how often the
+// page has read them; no report until a test sets one.
+let ottoStatsReport: Map<string, Record<string, unknown>> | undefined;
+let ottoStatsReads = 0;
 
 // Otto's speech in a call's room.
 export class FakeRemoteTrack {
@@ -182,6 +186,11 @@ export class FakeRemoteTrack {
   attach(element: HTMLMediaElement) {
     this.attachedTo.push(element);
     return element;
+  }
+
+  async getRTCStatsReport() {
+    ottoStatsReads += 1;
+    return ottoStatsReport as RTCStatsReport | undefined;
   }
 }
 
@@ -293,6 +302,10 @@ export interface VoiceFakes {
   contexts(): FakeAudioContext[];
   // Otto's speech in the call's room carries sound from now on.
   ottoSounds(): void;
+  // WebRTC's stats for Otto's speech say *stats* from now on; how often the
+  // page has read them.
+  ottoStats(stats: Record<string, unknown>[]): void;
+  ottoStatsReads(): number;
   // The next ask for the microphone fails with this error name. A refusal
   // (NotAllowedError) leaves the permission denied, as a browser does.
   refuseMicrophone(name: string): void;
@@ -318,6 +331,8 @@ export function installVoiceFakes(): VoiceFakes {
   relaySockets = sockets;
   audioContexts = [];
   soundLevel = 0;
+  ottoStatsReport = undefined;
+  ottoStatsReads = 0;
   liveKitRooms = [];
   roomJoin = null;
   roomJoinGate = null;
@@ -361,6 +376,10 @@ export function installVoiceFakes(): VoiceFakes {
     ottoSounds() {
       soundLevel = 0.2;
     },
+    ottoStats(stats) {
+      ottoStatsReport = new Map(stats.map((stat) => [String(stat.id), stat]));
+    },
+    ottoStatsReads: () => ottoStatsReads,
     refuseMicrophone(name) {
       getUserMedia.mockImplementation(async () => {
         if (name === "NotAllowedError") permission = "denied";

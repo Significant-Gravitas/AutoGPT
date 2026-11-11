@@ -89,12 +89,17 @@ class FakeVendor:
         self.stall_notes = stall_notes
         # Each connect is refused with this.
         self.refuse = refuse
+        # While set and clear, each connect waits on it: a connect that lands
+        # only once the test lets it.
+        self.connect_gate: asyncio.Event | None = None
         self.sessions: list[FakeVendorSession] = []
         self._next = 0
 
     async def connect(self, *, opening: str) -> "FakeVendorSession":
         if self.connect_delay_s:
             await asyncio.sleep(self.connect_delay_s)
+        if self.connect_gate is not None:
+            await self.connect_gate.wait()
         if self.refuse is not None:
             raise self.refuse
         session = FakeVendorSession(

@@ -7,6 +7,7 @@ interface SentSpan {
     op?: string;
     startTime?: number;
     parentSpan?: unknown;
+    attributes?: Record<string, unknown>;
   };
   endedAt: number | undefined;
 }
@@ -34,6 +35,7 @@ vi.mock("@sentry/nextjs", () => ({
 }));
 
 const GRANTED = 1_700_000_000_000;
+const CALL_ID = "a".repeat(32);
 
 function marks(overrides: Partial<CallMarks> = {}): CallMarks {
   return {
@@ -63,7 +65,7 @@ describe("how long a call took to start", () => {
   it("sends Sentry one span from the microphone to Otto's first sound, with a span for each step", () => {
     sentry.spans.length = 0;
 
-    reportCallStart(marks());
+    reportCallStart(CALL_ID, marks());
 
     const [start, ...steps] = sentry.spans;
     expect(start.options).toMatchObject({
@@ -71,6 +73,13 @@ describe("how long a call took to start", () => {
       op: "voice.call.start",
       startTime: GRANTED,
       parentSpan: null,
+      attributes: {
+        call_id: CALL_ID,
+        mint_s: 0.4,
+        room_s: 1.2,
+        ready_s: 2,
+        first_sound_s: 2.9,
+      },
     });
     expect(start.endedAt).toBe(GRANTED + 2_900);
     expect(
@@ -88,12 +97,37 @@ describe("how long a call took to start", () => {
     ]);
   });
 
+  it("ends at the relay's ready when Otto was heard before it reached the page", () => {
+    sentry.spans.length = 0;
+
+    reportCallStart(CALL_ID, marks({ firstSound: GRANTED + 1_800 }));
+
+    const [start, ...steps] = sentry.spans;
+    expect(start.options.attributes).toMatchObject({
+      ready_s: 2,
+      first_sound_s: 1.8,
+    });
+    expect(start.endedAt).toBe(GRANTED + 2_000);
+    // No step lasts less than no time.
+    expect(
+      steps.map(({ options, endedAt }) => [
+        options.op,
+        (endedAt ?? 0) - (options.startTime ?? 0),
+      ]),
+    ).toEqual([
+      ["voice.call.mint", 400],
+      ["voice.call.room", 800],
+      ["voice.call.ready", 800],
+      ["voice.call.first_sound", 0],
+    ]);
+  });
+
   it.each([["minted"], ["joined"], ["ready"], ["firstSound"]] as const)(
     "sends nothing for a start that never reached %s",
     (step) => {
       sentry.spans.length = 0;
 
-      reportCallStart(marks({ [step]: null }));
+      reportCallStart(CALL_ID, marks({ [step]: null }));
 
       expect(sentry.spans).toEqual([]);
     },

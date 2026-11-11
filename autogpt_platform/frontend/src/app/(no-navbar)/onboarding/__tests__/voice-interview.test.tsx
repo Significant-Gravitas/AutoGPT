@@ -60,6 +60,37 @@ const INTRO_PATH_KEY = "autogpt:onboarding-intro-path";
 const TICKET_KEY = `autogpt:onboarding-voice-call:${USER_ID}`;
 const GREETING = "Hi, I'm Otto, an AI. What do you do?";
 const VOICE = "/api/proxy/api/onboarding/brain-dump/interview/voice";
+// What a call's `interview_ended` says of Otto's speech when no stats of it
+// were read.
+const NOT_LISTENED = {
+  concealed_share: null,
+  packets_lost: null,
+  jitter_ms_max: null,
+  rtt_ms_max: null,
+};
+// WebRTC's stats for Otto's speech in a call's room: 5% of his audio made
+// up for packets that never came, 18 ms of jitter, and a 142 ms round trip
+// on the candidate pair in use.
+const OTTO_STATS = [
+  {
+    id: "IT01A1",
+    type: "inbound-rtp",
+    kind: "audio",
+    concealedSamples: 4_800,
+    totalSamplesReceived: 96_000,
+    packetsLost: 12,
+    jitter: 0.018,
+  },
+  { id: "T01", type: "transport", selectedCandidatePairId: "CP01" },
+  { id: "CP01", type: "candidate-pair", currentRoundTripTime: 0.142 },
+  { id: "CP02", type: "candidate-pair", currentRoundTripTime: 0.9 },
+];
+const OTTO_HEARD = {
+  concealed_share: 0.05,
+  packets_lost: 12,
+  jitter_ms_max: 18,
+  rtt_ms_max: 142,
+};
 const CAPS = {
   max_call_s: 300,
   soft_wrap_s: 30,
@@ -88,6 +119,7 @@ vi.mock(
     OPENING_READ_TIMEOUT_MS: 400,
     ROOM_JOIN_TIMEOUT_MS: 150,
     ROOM_PLAYOUT_MS: 300,
+    OTTO_STATS_POLL_MS: 30,
   }),
 );
 
@@ -879,6 +911,9 @@ describe("onboarding interview by voice: opening", () => {
     ).toBeDefined();
     expect(mints).toBe(0);
     expect(fakes.rooms()).toEqual([]);
+    expect(tracked("voice_interview_start_failed")).toEqual([
+      { stage: "browser", why: "sdk" },
+    ]);
   });
 
   it("lets go of the call's audio when the start is refused", async () => {
@@ -1031,7 +1066,8 @@ describe("onboarding interview by voice: the call", () => {
     act(() => fakes.ottoSounds());
 
     await waitFor(() => expect(reportCallStart).toHaveBeenCalledTimes(1));
-    const [marks] = vi.mocked(reportCallStart).mock.calls[0];
+    const [callId, marks] = vi.mocked(reportCallStart).mock.calls[0];
+    expect(callId).toBe(CALL_ID);
     const steps = [
       marks.granted,
       marks.minted,
@@ -1049,6 +1085,48 @@ describe("onboarding interview by voice: the call", () => {
     });
     await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
     expect(reportCallStart).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the start once Otto is heard before the call's ready reaches the page", async () => {
+    render(<OnboardingPage />);
+    const socket = await callOtto();
+    act(() => {
+      fakes.room()!.ottoJoins();
+      fakes.ottoSounds();
+    });
+    // Otto's speech is heard while the page still waits for the ready.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    expect(reportCallStart).not.toHaveBeenCalled();
+
+    ready(socket);
+
+    await waitFor(() => expect(reportCallStart).toHaveBeenCalledTimes(1));
+    const [callId, marks] = vi.mocked(reportCallStart).mock.calls[0];
+    expect(callId).toBe(CALL_ID);
+    expect(marks.firstSound).not.toBeNull();
+    expect(Number(marks.firstSound)).toBeLessThanOrEqual(Number(marks.ready));
+  });
+
+  it("reports how Otto's speech fared in the room when the call ends", async () => {
+    render(<OnboardingPage />);
+    const { socket, room } = await liveRoomCall();
+    act(() => {
+      room.ottoJoins();
+      fakes.ottoStats(OTTO_STATS);
+    });
+    await waitFor(() => expect(fakes.ottoStatsReads()).toBeGreaterThan(0));
+
+    endCall(socket, "finished");
+
+    expect(tracked("interview_ended")).toEqual([
+      {
+        mode: "voice",
+        reason: "finished",
+        elapsed_s: 92.4,
+        turns: 0,
+        ...OTTO_HEARD,
+      },
+    ]);
   });
 
   it("captions what Otto and the person say", async () => {
@@ -1153,7 +1231,40 @@ describe("onboarding interview by voice: the call", () => {
     await screen.findByRole("button", { name: "Meet your team" });
     // The ticket kept 12 of 16 turns left: four were heard.
     expect(tracked("interview_ended")).toEqual([
-      { mode: "voice", reason: "finished", elapsed_s: 92.4, turns: 4 },
+      {
+        mode: "voice",
+        reason: "finished",
+        elapsed_s: 92.4,
+        turns: 4,
+        ...NOT_LISTENED,
+      },
+    ]);
+  });
+
+  it("reports how Otto's speech fared in the room of a rejoined call", async () => {
+    keepTicket();
+    latestCall = liveRoomRecord();
+    callStates[CALL_ID] = [latestCall];
+
+    render(<OnboardingPage />);
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Rejoin" }));
+    const socket = await relaySocketAfter();
+    act(() => socket.accept());
+    act(() => socket.relay({ type: "resumed", gap_s: 4.1 }));
+    await waitFor(() => expect(fakes.room()?.url).toBe(ROOM_URL));
+    act(() => {
+      fakes.room()!.ottoJoins();
+      fakes.ottoStats(OTTO_STATS);
+    });
+    await waitFor(() => expect(fakes.ottoStatsReads()).toBeGreaterThan(0));
+    callStates[CALL_ID] = [callRecord({ interview: "taken" })];
+    endCall(socket, "finished");
+
+    await screen.findByRole("button", { name: "Meet your team" });
+    expect(tracked("interview_ended")).toEqual([
+      expect.objectContaining({ reason: "finished", ...OTTO_HEARD }),
     ]);
   });
 
@@ -1199,6 +1310,7 @@ describe("onboarding interview by voice: the call", () => {
         reason: "type_instead",
         elapsed_s: expect.any(Number),
         turns: 0,
+        ...NOT_LISTENED,
       },
     ]);
   });
@@ -1364,7 +1476,13 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(screen.getByText("That's everything Otto needed.")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
     expect(tracked("interview_ended")).toEqual([
-      { mode: "voice", reason: "finished", elapsed_s: 92.4, turns: 0 },
+      {
+        mode: "voice",
+        reason: "finished",
+        elapsed_s: 92.4,
+        turns: 0,
+        ...NOT_LISTENED,
+      },
     ]);
 
     await userEvent.setup().click(meet);
@@ -1856,6 +1974,7 @@ describe("onboarding interview by voice: how a call ends", () => {
         reason: "client_gone",
         elapsed_s: expect.any(Number),
         turns: 0,
+        ...NOT_LISTENED,
       },
     ]);
   });

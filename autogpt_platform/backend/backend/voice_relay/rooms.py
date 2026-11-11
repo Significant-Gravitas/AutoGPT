@@ -83,10 +83,13 @@ def person_identity(user_id: str, call_id: str) -> str:
 def person_of(identity: str, call_id: str) -> str | None:
     """The user a participant of call *call_id*'s room is, from the identity
     it joined under; None for anyone else, Otto included."""
-    suffix = f":{call_id}"
-    if not (identity.startswith(PERSON_IDENTITY_PREFIX) and identity.endswith(suffix)):
+    if not identity.startswith(PERSON_IDENTITY_PREFIX):
         return None
-    return identity.removeprefix(PERSON_IDENTITY_PREFIX).removesuffix(suffix) or None
+    rest = identity.removeprefix(PERSON_IDENTITY_PREFIX)
+    suffix = f":{call_id}"
+    if len(rest) <= len(suffix) or not rest.endswith(suffix):
+        return None
+    return rest.removesuffix(suffix)
 
 
 def person_token(*, user_id: str, call_id: str, project: LiveKitProject) -> str:

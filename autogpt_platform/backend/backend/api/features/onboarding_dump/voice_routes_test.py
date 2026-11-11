@@ -373,6 +373,21 @@ async def test_past_their_call_allowance_a_person_waits_with_the_wait_in_the_bod
     assert await locks.registered_rooms(redis) == {}
 
 
+async def test_with_no_relay_sweeping_the_rooms_a_person_past_their_allowance_is_told_to_retry_soon(
+    paying_platform, redis, test_user_id
+):
+    """No call could start for anyone, so the wait is the outage's, not the
+    hour's left on their allowance."""
+    for _ in range(rate_limit.VOICE_HOURLY_CALLS):
+        await rate_limit.count_voice_call(redis, test_user_id)
+    await redis.delete(locks.ROOMS_SWEPT_KEY)
+
+    response = await start()
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"
+
+
 @pytest.mark.parametrize("unavailable", ["no-livekit", "no-sweep"])
 async def test_a_start_voice_cannot_carry_leaves_the_allowance_untouched(
     paying_platform, monkeypatch, redis, test_user_id, unavailable
@@ -561,11 +576,31 @@ async def test_a_reloaded_step_finds_the_persons_latest_call(
     assert (await request("GET", "")).status_code == 404
 
     voice_on.latest.return_value = CALL
-    await _record(redis, test_user_id, status="transcribed")
+    await _record(redis, test_user_id, status="transcribed", connect_s=1.2)
     body = (await request("GET", "")).json()
 
     assert (body["call_id"], body["status"]) == (CALL, "transcribed")
     voice_on.latest.assert_awaited_with(test_user_id)
+
+
+async def test_a_reload_after_a_start_that_failed_finds_no_call(
+    voice_on, redis, test_user_id
+):
+    """The call's room or model session never opened: the step opens as if
+    no call had been made, not on a call that heard nothing."""
+    voice_on.latest.return_value = CALL
+    await _record(
+        redis,
+        test_user_id,
+        status="transcribed",
+        end_reason="room_error",
+        transcript_of_record="",
+    )
+
+    response = await request("GET", "")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == voice.NO_SUCH_CALL
 
 
 async def test_finishing_a_call_that_took_the_interview_answers_its_take(

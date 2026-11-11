@@ -9,10 +9,10 @@ every room has an owner here from before it can exist to after it is gone:
   closed all it had to (``locks.rooms_swept``).
 - The relay that runs the call closes the room once the call is done with it
   (:meth:`RoomReaper.close`): as the call ends, after Otto's play-out and the
-  relay's own leave. A close removes the person, revoking every token of theirs issued until a
-  moment after it (``ROOM_REVOKE_AHEAD_S``), and deletes the room, even when
-  the removal failed; only a close that did both is stamped on the room's
-  entry.
+  relay's own leave. A close removes the person, revoking every token of
+  theirs issued until a moment after it (``ROOM_REVOKE_AHEAD_S``), and
+  deletes the room, even when the removal failed; only a close that did both
+  is stamped on the room's entry.
 - Every relay sweeps the registry every ``ROOM_SWEEP_S`` against one listing
   of the project's rooms (:meth:`RoomReaper.sweep`). A room is left alone
   while it is in use: while its call may still start, while the call runs,

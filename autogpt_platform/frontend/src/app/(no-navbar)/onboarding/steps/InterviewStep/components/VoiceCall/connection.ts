@@ -10,6 +10,7 @@ import type { CallAudio } from "./audioGraph";
 import type { CallRoom } from "./callRoom";
 import type { CallMarks } from "./callTimings";
 import { END_POLL_MS, END_WAIT_MS } from "./helpers";
+import type { OttoListening } from "./ottoStats";
 
 // The plumbing under useVoiceCall: what it keeps between renders without
 // rendering on it, and the reads and requests a call's lifecycle makes.
@@ -29,6 +30,8 @@ export interface OpenCall {
   room: CallRoomPass;
   // How far a call this page started has got; null on a rejoin.
   marks: CallMarks | null;
+  // How Otto's speech has fared in the call's room on this page.
+  listening: OttoListening;
 }
 
 // What the hook keeps between renders without rendering on it: the socket,
@@ -64,6 +67,7 @@ export interface Connection {
     droppedAt: number;
     // What ended it, once a read of the call says.
     reason: string | null;
+    listening: OttoListening;
   } | null;
   timers: Set<ReturnType<typeof setTimeout>>;
 }
