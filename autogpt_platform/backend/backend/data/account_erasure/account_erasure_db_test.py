@@ -43,6 +43,10 @@ import prisma.enums
 import prisma.models
 import pytest
 
+from backend.api.features.search.embeddings import (
+    EMBEDDING_DIM,
+    store_content_embedding,
+)
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data.account_deletion import ReopenOutcome, close_account, reopen_account
 from backend.data.account_erasure import ban_record, request, routine
@@ -389,12 +393,20 @@ async def _left_of(user_id: str) -> dict[str, int]:
 
 
 async def _chat(user_id: str) -> str:
-    """A titled chat with a message: what the search backfill indexes."""
+    """A titled chat with a message, and its title's search embedding."""
     session = await prisma.models.ChatSession.prisma().create(
         data={"userId": user_id, "title": "Plans for my startup"}
     )
     await prisma.models.ChatMessage.prisma().create(
         data={"sessionId": session.id, "role": "user", "sequence": 0, "content": "hi"}
+    )
+    await store_content_embedding(
+        content_type=prisma.enums.ContentType.CHAT_SESSION,
+        content_id=session.id,
+        embedding=[0.0] * EMBEDDING_DIM,
+        searchable_text="Plans for my startup",
+        metadata={"title": "Plans for my startup"},
+        user_id=user_id,
     )
     return session.id
 
@@ -419,6 +431,8 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
     await _uses(other_id, published, creator_id=user_id)
     left_behind = await _holdings(user_id)
     chat_id = await _chat(user_id)
+    seeded = await _left_of(user_id)
+    assert (seeded["chats"], seeded["chat_embeddings"]) == (1, 1)
     email = f"deletion-{user_id[:8]}@example.com"
     kept_verification = await _verifications(user_id, email)
 
@@ -447,6 +461,10 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
         prisma.enums.AccountDeletionSource.SETTINGS,
     )
     assert set((await _left_of(user_id)).values()) == {0}
+    # Deleted by the erasure itself, not by the account's cascade: a database
+    # can lack that foreign key, and then only this delete removes the chat.
+    database_step = next(s for s in report.steps if s.name == "database")
+    assert database_step.counts["chat_sessions"] == 1
     assert not await prisma.models.ChatMessage.prisma().count(
         where={"sessionId": chat_id}
     )
