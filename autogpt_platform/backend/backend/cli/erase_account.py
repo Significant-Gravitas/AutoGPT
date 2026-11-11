@@ -152,15 +152,18 @@ async def _run_close(account: str, *, apply: bool, yes: bool):
 
 async def _run_close_now(account: str, *, apply: bool, yes: bool):
     """For an owner who asked to be erased at once: close the account if it
-    is open, with no 14 days to keep it, then erase it in the same run."""
+    is open, with no 14 days to keep it, then erase it in the same run. The
+    blockers are checked before anything is closed: closing first would leave
+    a blocked account closed, its owner unable to keep it, and not erased."""
     from backend.api.features.account_deletion.service import PlanCancellationError
     from backend.data.account_deletion import get_deletion_request
     from backend.data.account_erasure.request import (
         close_for_email_request,
         end_grace_now,
     )
+    from backend.data.account_erasure.routine import erase_account
 
-    user_id, _ = await _resolve(account)
+    user_id, email = await _resolve(account)
     _refuse_a_system_id(user_id)
     request = await get_deletion_request(user_id)
     if request is None:
@@ -174,6 +177,13 @@ async def _run_close_now(account: str, *, apply: bool, yes: bool):
             f"Account {user_id} is closed; its 14 days end "
             f"{request.eraseAfter:%Y-%m-%d %H:%M} UTC. --close --now --apply "
             "ends them now and erases it."
+        )
+    plan = await erase_account(user_id, dry_run=True, email=email)
+    _report(plan)
+    if any(b.name not in _CLOSE_NOW_CLEARS for b in plan.blockers):
+        raise click.ClickException(
+            "Blocked: resolve the blockers above first. Nothing was closed or "
+            "erased."
         )
     if not apply:
         click.echo("\nDry run: nothing was changed. Re-run with --apply.")
@@ -191,6 +201,10 @@ async def _run_close_now(account: str, *, apply: bool, yes: bool):
         click.echo("\nClosed the account, with no 14 days to keep it.")
     await end_grace_now(user_id)
     await _run_one(account, apply=True, yes=True)
+
+
+# What --close --now itself clears: it closes the account and ends its 14 days.
+_CLOSE_NOW_CLEARS = ("not_closed", "not_due")
 
 
 def _refuse_a_system_id(user_id: str) -> None:

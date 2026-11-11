@@ -204,7 +204,9 @@ def test_close_now_closes_with_no_14_days_and_erases_in_the_same_run(run):
     assert result.exit_code == 0, result.output
     run.closing.assert_awaited_once_with(USER_ID, erase_now=True)
     run.ending.assert_awaited_once_with(USER_ID)
-    assert [c.kwargs["dry_run"] for c in run.erasing.await_args_list] == [True, False]
+    # A dry run for the blockers before closing, then the usual dry run and
+    # the erasure.
+    assert _dry_runs(run.erasing) == [True, True, False]
     assert EMAIL not in result.output
 
 
@@ -214,7 +216,7 @@ def test_close_now_on_a_closed_account_ends_its_14_days_and_erases(run):
     assert result.exit_code == 0, result.output
     run.closing.assert_not_awaited()
     run.ending.assert_awaited_once_with(USER_ID)
-    assert [c.kwargs["dry_run"] for c in run.erasing.await_args_list] == [True, False]
+    assert _dry_runs(run.erasing) == [True, True, False]
 
 
 def test_close_now_without_apply_changes_nothing(run):
@@ -225,8 +227,44 @@ def test_close_now_without_apply_changes_nothing(run):
     assert result.exit_code == 0, result.output
     run.closing.assert_not_awaited()
     run.ending.assert_not_awaited()
-    run.erasing.assert_not_awaited()
+    assert _dry_runs(run.erasing) == [True]
     assert "Dry run" in result.output
+
+
+@pytest.mark.parametrize("apply", [[], ["--apply", "--yes"]])
+def test_close_now_on_a_blocked_account_closes_nothing(run, apply):
+    """Closing first would leave the account closed, its owner unable to
+    keep it, and not erased."""
+    run.closed.return_value = None
+    run.erasing.side_effect = lambda user_id, *, dry_run, **kw: _report(
+        dry_run=dry_run, blocked=True
+    )
+
+    result = run.invoke(EMAIL, "--close", "--now", *apply)
+
+    assert result.exit_code == 1
+    assert "shared_orgs_without_another_owner" in result.output
+    run.closing.assert_not_awaited()
+    run.ending.assert_not_awaited()
+    assert _dry_runs(run.erasing) == [True]
+
+
+def test_close_now_goes_ahead_while_only_closing_stands_in_the_way(run):
+    """An open account is "not closed" and a closed one "not due": those are
+    what --close --now clears."""
+    run.closed.return_value = None
+    not_closed = Blocker(name="not_closed", count=0, resolution="r")
+    run.erasing.side_effect = lambda user_id, *, dry_run, **kw: (
+        _report(dry_run=True).model_copy(update={"blockers": [not_closed]})
+        if run.closing.await_count == 0
+        else _report(dry_run=dry_run)
+    )
+
+    result = run.invoke(EMAIL, "--close", "--now", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    run.closing.assert_awaited_once_with(USER_ID, erase_now=True)
+    assert _dry_runs(run.erasing) == [True, True, False]
 
 
 @pytest.mark.parametrize("now", [[], ["--now"]])
