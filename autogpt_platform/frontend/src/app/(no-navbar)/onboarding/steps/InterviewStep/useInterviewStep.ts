@@ -63,6 +63,8 @@ export function useInterviewStep() {
   // What the person, or a server's answer, put on the step: the typed chat
   // or the call. Until then the opening below decides.
   const [surface, setSurface] = useState<"type" | "voice" | null>(null);
+  // The server said this deployment cannot offer the person a call.
+  const [isVoiceUnavailable, setIsVoiceUnavailable] = useState(false);
   const [micRefusal, setMicRefusal] = useState<MicrophoneRefusal | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startFailure, setStartFailure] = useState<StartFailure | null>(null);
@@ -246,17 +248,19 @@ export function useInterviewStep() {
 
   // No call to pick up. Before the choice and its Skip can show, the typed
   // interview is read: one already over opens as its transcript with "Meet
-  // your team", since a Skip would record a take over it. A refused
-  // microphone, or a choice to type made earlier in this tab, opens the
-  // typed interview too; otherwise the choice. The permission is read now,
-  // not from the last render.
+  // your team", since a Skip would record a take over it. A deployment that
+  // cannot offer a call, a refused microphone, or a choice to type made
+  // earlier in this tab, opens the typed interview too; otherwise the
+  // choice. The permission is read now, not from the last render.
   async function openWithoutCall() {
     const [typed, permission] = await Promise.all([
       readTypedInterview(),
       microphone.refresh(),
     ]);
+    if (typed?.voice_available === false) setIsVoiceUnavailable(true);
     if (
       typed?.is_over ||
+      typed?.voice_available === false ||
       permission === "denied" ||
       isTypingRemembered(userID)
     ) {
@@ -411,6 +415,7 @@ export function useInterviewStep() {
     voice,
     isMicBlocked:
       voiceFlag.enabled &&
+      !isVoiceUnavailable &&
       (micRefusal === "blocked" || microphone.state === "denied"),
     isMicUnavailable: micRefusal === "unavailable",
     micPermission: microphone.state,
@@ -448,8 +453,9 @@ async function saveWizardAnswers() {
     .catch(() => undefined);
 }
 
-// The typed interview as it stands, read without starting it; null when the
-// person has none or it cannot be read, which leaves the choice to show.
+// The typed interview as it stands, read without starting it, with whether
+// a call may be offered; null when it cannot be read, which leaves the
+// choice to show.
 async function readTypedInterview() {
   const giveUp = new AbortController();
   const timer = setTimeout(() => giveUp.abort(), OPENING_READ_TIMEOUT_MS);

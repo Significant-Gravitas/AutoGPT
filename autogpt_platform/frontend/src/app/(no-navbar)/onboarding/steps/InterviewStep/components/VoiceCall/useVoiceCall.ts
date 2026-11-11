@@ -8,6 +8,7 @@ import type { VoiceCallCaps } from "@/app/api/__generated__/models/voiceCallCaps
 import type { VoiceCallStartResponse } from "@/app/api/__generated__/models/voiceCallStartResponse";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
 import {
+  type CallRoomPass,
   type CallTicket,
   forgetCallTicket,
   isCallId,
@@ -19,13 +20,14 @@ import { trackInterview } from "../../../../tracking";
 import { finishFailureOf, refusalOf, type StartFailure } from "../../helpers";
 import {
   type CallAudio,
-  connectCallAudio,
+  createCallAudio,
   createCallContext,
   createCallPlayer,
   openMicrophone,
   releasePlayer,
 } from "./audioGraph";
 import { loadLiveKit } from "./callRoom";
+import { newCallMarks, reportCallStart, startSeconds } from "./callTimings";
 import {
   clearTimers,
   closeContext,
@@ -54,7 +56,6 @@ import {
   type HeldCall,
   OPENING_READ_TIMEOUT_MS,
   isRelaySocketUrl,
-  legFallbackWhyOf,
   type MicrophoneRefusal,
   microphoneRefusalOf,
   parseRelayMessage,
@@ -62,6 +63,7 @@ import {
   REATTACH_WINDOW_MS,
   RESUMED_NOTICE_MS,
   rejoinPassOf,
+  roomJoinFailureOf,
   roomPassOf,
   secondsBetween,
   START_RETRIES,
@@ -72,7 +74,6 @@ import {
 } from "./helpers";
 import {
   CALL_IN_PROGRESS,
-  type CallLeg,
   CLOSE_NO_CALL,
   CLOSE_POLICY,
   CLOSE_REPLACED,
@@ -123,6 +124,12 @@ export function useVoiceCall(args: Args) {
     onReconnected() {
       setResumedAt(Date.now());
       setNow(Date.now());
+    },
+    onOttoSound(call) {
+      const marks = call.marks;
+      if (!marks || marks.ready === null || marks.firstSound !== null) return;
+      marks.firstSound = Date.now();
+      reportCallStart(marks);
     },
   });
 
@@ -237,8 +244,11 @@ export function useVoiceCall(args: Args) {
     const attempt = beginAttempt();
     setHeld(null);
     setPhase("starting");
-    // Most calls take the LiveKit leg: its SDK downloads meanwhile.
-    void loadLiveKit().catch(() => undefined);
+    // The room's SDK downloads while the microphone is asked for.
+    const sdk = loadLiveKit().then(
+      (livekit) => livekit,
+      () => null,
+    );
     let microphone: MediaStream;
     try {
       microphone = await openMicrophone();
@@ -248,45 +258,36 @@ export function useVoiceCall(args: Args) {
       if (attempt === conn.attempt) refuseMicrophone(error);
       return;
     }
-    // A later click took over: only one start may spend a call.
-    if (attempt !== conn.attempt) {
+    const marks = newCallMarks();
+    // The room's SDK is in, and the browser can join a room, before the call
+    // is started: a browser that cannot make the call never spends one. A
+    // later click that took over is the only start that may.
+    const livekit = await sdk;
+    if (attempt !== conn.attempt || !livekit?.isBrowserSupported()) {
       stopTracks(microphone);
       releasePlayer(player);
       closeContext(context);
+      if (attempt === conn.attempt)
+        cannotCall(livekit ? "unsupported" : "failed");
       return;
     }
-    // The audio graph is built before the call is started, so a browser
-    // that cannot run it never spends a call from the person's allowance.
-    let audio: CallAudio;
-    try {
-      audio = await connectCallAudio(context, microphone);
-    } catch {
-      stopTracks(microphone);
-      releasePlayer(player);
-      closeContext(context);
-      if (attempt !== conn.attempt) return;
-      setStartFailure({ kind: "failed" });
-      setPhase("idle");
-      return;
-    }
-    if (attempt !== conn.attempt) {
-      audio.close();
-      releasePlayer(player);
-      return;
-    }
+    const audio = createCallAudio(context, microphone);
     let started: VoiceCallStartResponse;
+    let room: CallRoomPass;
     try {
-      const response = await startOnboardingVoiceCall({
-        supports_livekit: true,
-      });
+      const response = await startOnboardingVoiceCall();
+      const named = response.status === 200 ? response.data : null;
+      const pass = named ? roomPassOf(named.room) : null;
       if (
-        response.status !== 200 ||
-        !isCallId(response.data.call_id) ||
-        !isRelaySocketUrl(response.data.relay_url)
+        !named ||
+        !pass ||
+        !isCallId(named.call_id) ||
+        !isRelaySocketUrl(named.relay_url)
       ) {
         throw new Error("No call started");
       }
-      started = response.data;
+      started = named;
+      room = pass;
     } catch (error) {
       audio.close();
       releasePlayer(player);
@@ -298,9 +299,9 @@ export function useVoiceCall(args: Args) {
       releasePlayer(player);
       return;
     }
+    marks.minted = Date.now();
     argsRef.current.onCallStarted();
     attachAudio(audio);
-    const room = roomPassOf(started.leg);
     const call: OpenCall = {
       callId: started.call_id,
       relayUrl: started.relay_url,
@@ -309,27 +310,47 @@ export function useVoiceCall(args: Args) {
       startedAt: null,
       turnsLeft: started.caps.max_agent_turns,
       turns: 0,
-      leg: room ? "livekit" : "websocket",
       room,
+      marks,
     };
     conn.call = call;
     conn.shownCallId = started.call_id;
     conn.startRetries = 0;
-    // On the LiveKit leg the browser joins the call's room before it starts
-    // the call. A join LiveKit refuses, fails or takes too long over takes
-    // the call's audio onto the socket, with nothing on the screen about it.
-    if (room) {
-      await callRoom.enterRoom(call, room, microphone, player, (error) => {
-        callRoom.takeSocketAudio(call);
-        trackInterview("voice_interview_leg_fallback", {
-          why: legFallbackWhyOf(error),
-        });
+    // The browser joins the call's room before it starts the call. A join
+    // LiveKit refuses, fails or takes too long over is a call that never
+    // starts.
+    const isInRoom = await callRoom.enterRoom(
+      call,
+      room,
+      microphone,
+      player,
+      (error) => abandonStart(call, roomJoinFailureOf(error)),
+    );
+    if (!isInRoom || conn.call !== call) return;
+    marks.joined = Date.now();
+    openSocket({ type: "start", token: started.token });
+  }
+
+  // This browser cannot join a call's room, or the room's SDK did not load.
+  function cannotCall(kind: "unsupported" | "failed") {
+    if (kind === "unsupported") {
+      trackInterview("voice_interview_start_failed", {
+        stage: "browser",
+        why: "unsupported",
       });
-      if (conn.call !== call) return;
-    } else {
-      releasePlayer(player);
     }
-    openSocket({ type: "start", token: started.token, leg: call.leg });
+    setStartFailure({ kind });
+    setPhase("idle");
+  }
+
+  // The browser could not get into the call's room: the call never started,
+  // and is ended so its room closes now; the choice shows again.
+  function abandonStart(call: OpenCall, why: string) {
+    trackInterview("voice_interview_start_failed", { stage: "room", why });
+    dropCall();
+    void endOnboardingVoiceCall(call.callId).catch(() => undefined);
+    setStartFailure({ kind: "audio" });
+    setPhase("idle");
   }
 
   function refuseMicrophone(error: unknown) {
@@ -362,21 +383,8 @@ export function useVoiceCall(args: Args) {
   }
 
   function attachAudio(audio: CallAudio) {
-    const conn = connRef.current;
-    conn.audio = audio;
+    connRef.current.audio = audio;
     setLevels(audio.levels);
-    // The person's audio goes to the relay only once the call is live, and
-    // on the socket only when the call's audio takes it.
-    audio.onFrame((frame) => {
-      const socket = conn.socket;
-      if (
-        conn.isReady &&
-        conn.call?.leg === "websocket" &&
-        socket?.readyState === WebSocket.OPEN
-      ) {
-        socket.send(frame);
-      }
-    });
   }
 
   // --- The call's socket ----------------------------------------------------
@@ -393,19 +401,14 @@ export function useVoiceCall(args: Args) {
       onSocketClosed(1006, first);
       return;
     }
-    socket.binaryType = "arraybuffer";
     conn.socket = socket;
     socket.onopen = () => {
       if (conn.socket === socket) socket.send(JSON.stringify(first));
     };
-    socket.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
-      if (conn.socket !== socket) return;
-      if (typeof event.data === "string") {
-        const message = parseRelayMessage(event.data);
-        if (message) onMessage(message);
-        return;
-      }
-      conn.audio?.play(event.data);
+    socket.onmessage = (event: MessageEvent<unknown>) => {
+      if (conn.socket !== socket || typeof event.data !== "string") return;
+      const message = parseRelayMessage(event.data);
+      if (message) onMessage(message);
     };
     socket.onclose = (event: CloseEvent) => {
       if (conn.socket !== socket) return;
@@ -417,20 +420,14 @@ export function useVoiceCall(args: Args) {
   function onMessage(message: RelayMessage) {
     const conn = connRef.current;
     switch (message.type) {
-      case "leg":
-        onLeg(message.leg);
-        return;
       case "ready":
-        onReady(message.caps, message.resume, message.leg);
+        onReady(message.caps, message.resume);
         return;
       case "agent_text":
         addCaption("otto", message.text);
         return;
       case "user_text":
         addCaption("you", message.text);
-        return;
-      case "interrupted":
-        conn.audio?.flush();
         return;
       case "turn_complete":
         onTurnComplete(message.turns_left);
@@ -455,25 +452,10 @@ export function useVoiceCall(args: Args) {
     }
   }
 
-  // The relay could not join the call's room: before the call goes live, its
-  // audio takes the socket instead.
-  function onLeg(leg: CallLeg) {
-    const conn = connRef.current;
-    const call = conn.call;
-    if (!call || conn.isReady || leg !== "websocket") return;
-    if (call.leg !== "livekit") return;
-    callRoom.takeSocketAudio(call);
-    trackInterview("voice_interview_leg_fallback", { why: "relay" });
-  }
-
-  function onReady(caps: VoiceCallCaps, ticket: string, leg: CallLeg) {
+  function onReady(caps: VoiceCallCaps, ticket: string) {
     const conn = connRef.current;
     const call = conn.call;
     if (!call) return;
-    // The relay's word on the leg is its last.
-    if (leg === "websocket" && call.leg === "livekit") {
-      callRoom.takeSocketAudio(call);
-    }
     const startedAt = Date.now();
     call.ticket = ticket;
     call.caps = caps;
@@ -486,7 +468,11 @@ export function useVoiceCall(args: Args) {
     setEndsAt(startedAt + caps.max_call_s * 1000);
     setTurnsLeft(caps.max_agent_turns);
     setPhase("live");
-    trackInterview("interview_started", { mode: "voice", leg });
+    if (call.marks) call.marks.ready = startedAt;
+    trackInterview("interview_started", {
+      mode: "voice",
+      ...(call.marks ? startSeconds(call.marks) : {}),
+    });
   }
 
   function addCaption(who: CaptionLine["who"], text: string) {
@@ -522,15 +508,24 @@ export function useVoiceCall(args: Args) {
     setResumedAt(Date.now());
     setNow(Date.now());
     setPhase("live");
-    trackInterview("voice_interview_reconnected", {
-      gap_s: gapS,
-      leg: "websocket",
-    });
+    trackInterview("voice_interview_resumed", { gap_s: gapS });
   }
 
   function onEnded(reason: string, elapsedS: number) {
     const conn = connRef.current;
     const call = conn.call;
+    // Ended before it went live: the relay could not open the call. Nothing
+    // was said, so the choice shows again, as for a room never joined.
+    if (call && !call.ticket) {
+      trackInterview("voice_interview_start_failed", {
+        stage: "relay",
+        why: reason,
+      });
+      dropCall();
+      setStartFailure({ kind: "audio" });
+      setPhase("idle");
+      return;
+    }
     conn.call = null;
     conn.isReady = false;
     conn.isHangingUp = false;
@@ -994,9 +989,9 @@ export function useVoiceCall(args: Args) {
     const conn = connRef.current;
     const attempt = beginAttempt();
     setPhase("reconnecting");
-    // Where to rejoin is the server's word, read now: the relay's socket,
-    // the leg the call's audio takes, and on the LiveKit leg the project its
-    // room is on. The call may also have ended meanwhile.
+    // Where to rejoin is the server's word, read now: the relay's socket, and
+    // the project the call's room is on. The call may also have ended
+    // meanwhile.
     const read = await readStatus(kept.callId);
     if (attempt !== conn.attempt) {
       releasePlayer(player);
@@ -1022,11 +1017,10 @@ export function useVoiceCall(args: Args) {
       void awaitEnding(kept.callId);
       return;
     }
-    // A call whose audio is in its room cannot be rejoined from here without
-    // the room and this tab's token for it.
-    const room =
-      call.leg === "livekit" ? rejoinPassOf(call, kept.roomToken) : null;
-    if (call.leg === "livekit" && !room) {
+    // The call's audio is in its room: it cannot be rejoined from here
+    // without the room and this tab's token for it.
+    const room = rejoinPassOf(call, kept.roomToken);
+    if (!room) {
       releasePlayer(player);
       closeContext(context);
       setHeld({ ...shown, canRejoin: false });
@@ -1042,22 +1036,13 @@ export function useVoiceCall(args: Args) {
       if (attempt === conn.attempt) refuseMicrophone(error);
       return;
     }
-    let audio: CallAudio;
-    try {
-      audio = await connectCallAudio(context, microphone);
-    } catch {
+    if (attempt !== conn.attempt) {
       stopTracks(microphone);
       releasePlayer(player);
       closeContext(context);
-      if (attempt === conn.attempt) setPhase("held");
       return;
     }
-    if (attempt !== conn.attempt) {
-      audio.close();
-      releasePlayer(player);
-      return;
-    }
-    attachAudio(audio);
+    attachAudio(createCallAudio(context, microphone));
     const rejoined: OpenCall = {
       callId: kept.callId,
       relayUrl,
@@ -1066,8 +1051,8 @@ export function useVoiceCall(args: Args) {
       startedAt: kept.startedAt,
       turnsLeft: kept.turnsLeft,
       turns: Math.max(0, kept.caps.max_agent_turns - kept.turnsLeft),
-      leg: room ? "livekit" : "websocket",
       room,
+      marks: null,
     };
     conn.call = rejoined;
     conn.shownCallId = kept.callId;
@@ -1077,10 +1062,6 @@ export function useVoiceCall(args: Args) {
     // The socket resumes the call while the browser gets back into its room.
     openDropWindow(rejoined);
     openSocket({ type: "resume", ticket: kept.ticket });
-    if (!room) {
-      releasePlayer(player);
-      return;
-    }
     const isInRoom = await callRoom.enterRoom(
       rejoined,
       room,
@@ -1182,10 +1163,10 @@ export function useVoiceCall(args: Args) {
     setLevels(null);
   }
 
-  // Otto's last words play out; the microphone stops now.
+  // The microphone stops now; Otto's last words play out in the room.
   function finishAudio() {
     const conn = connRef.current;
-    conn.audio?.finish();
+    conn.audio?.close();
     conn.audio = null;
     setLevels(null);
   }
@@ -1199,7 +1180,7 @@ export function useVoiceCall(args: Args) {
       caps: call.caps,
       startedAt: call.startedAt,
       turnsLeft: call.turnsLeft,
-      roomToken: call.leg === "livekit" ? (call.room?.token ?? null) : null,
+      roomToken: call.room.token,
     });
   }
 

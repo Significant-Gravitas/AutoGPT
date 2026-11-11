@@ -6,9 +6,11 @@ import {
 } from "@/tests/integrations/voice-fakes";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  connectCallAudio,
+  createCallAudio,
   createCallContext,
+  createCallPlayer,
   openMicrophone,
+  releasePlayer,
 } from "../audioGraph";
 
 let fakes: VoiceFakes;
@@ -22,16 +24,16 @@ afterEach(() => {
   fakes.uninstall();
 });
 
-async function connected() {
+const OTTO = { kind: "audio", id: "otto-track" } as unknown as MediaStreamTrack;
+
+function callAudio() {
   const context = createCallContext();
   const microphone = fakeMediaStream();
-  const audio = await connectCallAudio(context, microphone);
+  const audio = createCallAudio(context, microphone);
   return {
     audio,
     microphone,
     context: context as unknown as FakeAudioContext,
-    mic: fakes.micNode()!,
-    player: fakes.playerNode()!,
   };
 }
 
@@ -55,80 +57,70 @@ describe("the call's audio", () => {
     expect(context.resume).toHaveBeenCalledTimes(1);
   });
 
-  it("captures 40 ms frames at 16 kHz and plays 24 kHz audio, from the worklets the page serves", async () => {
-    const { context, mic, player } = await connected();
+  it("starts Otto's player on silence in the click, and lets it go", () => {
+    const context = createCallContext();
+    const player = createCallPlayer(context);
 
-    expect(context.audioWorklet.addModule.mock.calls).toEqual([
-      ["/voice/mic-worklet.js"],
-      ["/voice/player-worklet.js"],
-    ]);
-    expect(mic.options).toEqual({
-      processorOptions: { targetRate: 16_000, frameMs: 40 },
-    });
-    expect(player.options).toEqual({
-      numberOfInputs: 0,
-      outputChannelCount: [1],
-      processorOptions: { sourceRate: 24_000 },
-    });
+    expect(player.autoplay).toBe(true);
+    expect(player.srcObject).not.toBeNull();
+
+    releasePlayer(player);
+    expect(player.srcObject).toBeNull();
   });
 
-  it("hands each captured frame to its listener", async () => {
-    const { audio } = await connected();
-    const frames: ArrayBuffer[] = [];
-    audio.onFrame((frame) => frames.push(frame));
+  it("mixes the person's voice into the levels the aura moves with", () => {
+    const { audio } = callAudio();
 
-    fakes.speak();
-
-    expect(frames).toHaveLength(1);
+    expect(audio.levels).toBeInstanceOf(MediaStream);
   });
 
-  it("queues Otto's audio and drops it on a flush", async () => {
-    const { audio, player } = await connected();
-    const pcm = new ArrayBuffer(960);
-
-    audio.play(pcm);
-    audio.flush();
-
-    expect(player.port.postMessage.mock.calls).toEqual([
-      [pcm, [pcm]],
-      [{ type: "flush" }],
-    ]);
-  });
-
-  it("stops the microphone at once and closes the context once Otto has finished", async () => {
+  it("says once when Otto's speech first carries sound", async () => {
     vi.useFakeTimers();
-    const { audio, microphone, context, player } = await connected();
-    const frames: ArrayBuffer[] = [];
-    audio.onFrame((frame) => frames.push(frame));
-    player.port.onmessage?.({
-      data: { playedS: 1, bufferedS: 0.8 },
-    } as MessageEvent);
+    const { audio } = callAudio();
+    const onSound = vi.fn();
+    audio.listen(OTTO, onSound);
 
-    audio.finish();
-    fakes.speak();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(onSound).not.toHaveBeenCalled();
 
-    expect(microphone.getTracks()[0].stop).toHaveBeenCalled();
-    expect(frames).toEqual([]);
-    await vi.advanceTimersByTimeAsync(600);
-    expect(context.close).not.toHaveBeenCalled();
+    fakes.ottoSounds();
+    await vi.advanceTimersByTimeAsync(60);
+    await vi.advanceTimersByTimeAsync(500);
 
-    player.port.onmessage?.({
-      data: { playedS: 1.8, bufferedS: 0 },
-    } as MessageEvent);
-    await vi.advanceTimersByTimeAsync(300);
-
-    expect(context.close).toHaveBeenCalledTimes(1);
+    expect(onSound).toHaveBeenCalledTimes(1);
   });
 
-  it("closes everything at once, and plays nothing after", async () => {
-    const { audio, context, player } = await connected();
+  it("stops listening for Otto's sound once the call's audio is closed", async () => {
+    vi.useFakeTimers();
+    const { audio } = callAudio();
+    const onSound = vi.fn();
+    audio.listen(OTTO, onSound);
+
+    audio.close();
+    fakes.ottoSounds();
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(onSound).not.toHaveBeenCalled();
+  });
+
+  it("releases the microphone at once on mute, and keeps the context", () => {
+    const { audio, microphone, context } = callAudio();
+
+    audio.mute();
+    audio.mute();
+
+    expect(microphone.getTracks()[0].stop).toHaveBeenCalledTimes(1);
+    expect(context.close).not.toHaveBeenCalled();
+  });
+
+  it("closes everything once, and mixes nothing in after", () => {
+    const { audio, microphone, context } = callAudio();
 
     audio.close();
     audio.close();
-    audio.play(new ArrayBuffer(960));
-    audio.flush();
+    audio.listen(OTTO, vi.fn());
 
+    expect(microphone.getTracks()[0].stop).toHaveBeenCalledTimes(1);
     expect(context.close).toHaveBeenCalledTimes(1);
-    expect(player.port.postMessage).not.toHaveBeenCalled();
   });
 });

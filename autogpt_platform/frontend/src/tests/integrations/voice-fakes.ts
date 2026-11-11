@@ -1,8 +1,9 @@
 import { type Mock, vi } from "vitest";
 
 // The browser APIs the onboarding call screen runs on, as test doubles: the
-// relay's socket, the audio context and its worklets, and the microphone.
-// Sockets to anywhere but the relay keep going to the socket MSW serves.
+// relay's socket, the audio context, the microphone and the call's LiveKit
+// room. Sockets to anywhere but the relay keep going to the socket MSW
+// serves.
 
 export const RELAY_ORIGIN = "wss://relay.test";
 export const RELAY_URL = `${RELAY_ORIGIN}/voice/call`;
@@ -25,7 +26,7 @@ export class FakeWebSocket {
   onmessage: Handler<MessageEvent> = null;
   onclose: Handler<CloseEvent> = null;
   onerror: Handler<Event> = null;
-  readonly sent: (string | ArrayBuffer)[] = [];
+  readonly sent: unknown[] = [];
 
   constructor(url: string, protocols?: string | string[]) {
     if (!url.startsWith(RELAY_ORIGIN) && PassThroughWebSocket) {
@@ -38,7 +39,7 @@ export class FakeWebSocket {
     relaySockets?.push(this);
   }
 
-  send(data: string | ArrayBuffer) {
+  send(data: unknown) {
     if (this.readyState !== FakeWebSocket.OPEN) {
       throw new Error("The socket is not open");
     }
@@ -62,7 +63,8 @@ export class FakeWebSocket {
     this.onmessage?.({ data: JSON.stringify(message) } as MessageEvent);
   }
 
-  relayAudio(bytes = 960) {
+  // A binary frame, which the relay never sends.
+  relayBinary(bytes = 960) {
     this.onmessage?.({ data: new ArrayBuffer(bytes) } as MessageEvent);
   }
 
@@ -79,13 +81,6 @@ export class FakeWebSocket {
       .filter((data): data is string => typeof data === "string")
       .map((data) => JSON.parse(data) as Record<string, unknown>);
   }
-
-  // The audio frames the page sent.
-  frames() {
-    return this.sent.filter(
-      (data): data is ArrayBuffer => data instanceof ArrayBuffer,
-    );
-  }
 }
 
 class FakeAudioNode {
@@ -97,18 +92,14 @@ class FakeAudioNode {
 }
 
 let audioContexts: FakeAudioContext[] = [];
-let workletNodes: FakeAudioWorkletNode[] = [];
-let workletFailure: Error | null = null;
+// The level every analyser reads off the audio it is fed: silence, until a
+// test has Otto speak.
+let soundLevel = 0;
 
 export class FakeAudioContext {
   state: AudioContextState = "running";
   sampleRate = 48_000;
   destination = new FakeAudioNode();
-  audioWorklet = {
-    addModule: vi.fn(async (_url: string) => {
-      if (workletFailure) throw workletFailure;
-    }),
-  };
   resume = vi.fn(async () => {
     this.state = "running";
   });
@@ -139,23 +130,9 @@ export class FakeAudioContext {
       smoothingTimeConstant: 0.8,
       frequencyBinCount: 1024,
       getByteFrequencyData: (_samples: Uint8Array) => undefined,
+      getFloatTimeDomainData: (samples: Float32Array) =>
+        samples.fill(soundLevel),
     });
-  }
-}
-
-export class FakeAudioWorkletNode extends FakeAudioNode {
-  readonly port = {
-    onmessage: null as Handler<MessageEvent>,
-    postMessage: vi.fn(),
-  };
-
-  constructor(
-    readonly context: FakeAudioContext,
-    readonly name: string,
-    readonly options?: AudioWorkletNodeOptions,
-  ) {
-    super();
-    workletNodes.push(this);
   }
 }
 
@@ -191,6 +168,7 @@ let liveKitRooms: FakeRoom[] = [];
 let roomJoin: { refuse: unknown } | "hang" | null = null;
 // While set, joins wait on it before they answer.
 let roomJoinGate: Promise<void> | null = null;
+let isBrowserSupported = true;
 
 // Otto's speech in a call's room.
 export class FakeRemoteTrack {
@@ -304,6 +282,7 @@ export const fakeLiveKit = {
   RoomEvent: ROOM_EVENTS,
   DisconnectReason: DISCONNECT_REASON,
   Track: { Kind: { Audio: "audio" }, Source: { Microphone: "microphone" } },
+  isBrowserSupported: () => isBrowserSupported,
 };
 
 export interface VoiceFakes {
@@ -312,18 +291,15 @@ export interface VoiceFakes {
   // The relay socket the page opened last.
   socket(): FakeWebSocket | undefined;
   contexts(): FakeAudioContext[];
-  // The capture and playback worklets of the call last connected.
-  micNode(): FakeAudioWorkletNode | undefined;
-  playerNode(): FakeAudioWorkletNode | undefined;
-  // The microphone posts one 40 ms frame of 16 kHz PCM16.
-  speak(): void;
+  // Otto's speech in the call's room carries sound from now on.
+  ottoSounds(): void;
   // The next ask for the microphone fails with this error name. A refusal
   // (NotAllowedError) leaves the permission denied, as a browser does.
   refuseMicrophone(name: string): void;
   // The browser denied the microphone before the page asked.
   denyMicrophonePermission(): void;
-  // The audio worklets fail to load, as on a browser that cannot run them.
-  failWorklets(): void;
+  // LiveKit says this browser cannot join a room.
+  unsupportBrowser(): void;
   // The LiveKit rooms the page made, and the one it made last.
   rooms(): FakeRoom[];
   room(): FakeRoom | undefined;
@@ -341,15 +317,14 @@ export function installVoiceFakes(): VoiceFakes {
   const sockets: FakeWebSocket[] = [];
   relaySockets = sockets;
   audioContexts = [];
-  workletNodes = [];
-  workletFailure = null;
+  soundLevel = 0;
   liveKitRooms = [];
   roomJoin = null;
   roomJoinGate = null;
+  isBrowserSupported = true;
   PassThroughWebSocket = globalThis.WebSocket;
   vi.stubGlobal("WebSocket", FakeWebSocket);
   vi.stubGlobal("AudioContext", FakeAudioContext);
-  vi.stubGlobal("AudioWorkletNode", FakeAudioWorkletNode);
 
   // The microphone's permission, as the Permissions API answers it: asked
   // for on the first call, as in a browser that has not been asked yet.
@@ -378,21 +353,13 @@ export function installVoiceFakes(): VoiceFakes {
     },
   });
 
-  function lastNode(name: string) {
-    return workletNodes.filter((node) => node.name === name).at(-1);
-  }
-
   return {
     sockets,
     getUserMedia,
     socket: () => sockets.at(-1),
     contexts: () => audioContexts,
-    micNode: () => lastNode("mic-capture"),
-    playerNode: () => lastNode("pcm-player"),
-    speak() {
-      lastNode("mic-capture")?.port.onmessage?.({
-        data: new Int16Array(640).buffer,
-      } as MessageEvent);
+    ottoSounds() {
+      soundLevel = 0.2;
     },
     refuseMicrophone(name) {
       getUserMedia.mockImplementation(async () => {
@@ -405,8 +372,8 @@ export function installVoiceFakes(): VoiceFakes {
     denyMicrophonePermission() {
       permission = "denied";
     },
-    failWorklets() {
-      workletFailure = new Error("The audio worklet could not be loaded");
+    unsupportBrowser() {
+      isBrowserSupported = false;
     },
     rooms: () => liveKitRooms,
     room: () => liveKitRooms.at(-1),

@@ -9,13 +9,13 @@ import {
   ENDING_WINDOW_MS,
   endedCopy,
   isRelaySocketUrl,
-  legFallbackWhyOf,
   microphoneRefusalOf,
   parseRelayMessage,
   REATTACH_WINDOW_MS,
   ROOM_JOIN_TIMEOUT_MS,
   RoomJoinTimeout,
   ranToClose,
+  roomJoinFailureOf,
   roomPassOf,
   secondsBetween,
   timeLeftCopy,
@@ -34,7 +34,6 @@ function call(
     call_id: CALL_ID,
     status: "handed_off",
     end_reason: "finished",
-    leg: "websocket",
     hand_off: ACCEPTED,
     ...overrides,
   };
@@ -72,6 +71,23 @@ describe("the relay's messages", () => {
         }),
       ),
     ).toEqual({ type: "error", error: "call_in_progress", call_id: null });
+    expect(
+      parseRelayMessage(
+        JSON.stringify({
+          type: "ready",
+          call_id: "c",
+          caps: {
+            max_call_s: 300,
+            soft_wrap_s: 30,
+            max_agent_turns: 16,
+            soft_wrap_turns: 2,
+            idle_s: 20,
+          },
+          resume: "t",
+          leg: "websocket",
+        }),
+      ),
+    ).not.toHaveProperty("leg");
   });
 
   it.each([
@@ -79,17 +95,14 @@ describe("the relay's messages", () => {
     ["a JSON value that is not an object", "42"],
     ["a message type the relay never sends", '{"type":"note","text":"hi"}'],
     ["a message with no type", '{"text":"hi"}'],
-    [
-      "a ready with no caps",
-      '{"type":"ready","call_id":"c","resume":"t","leg":"websocket"}',
-    ],
+    ["a ready with no caps", '{"type":"ready","call_id":"c","resume":"t"}'],
     [
       "a ready whose caps are not numbers",
-      '{"type":"ready","call_id":"c","resume":"t","leg":"websocket","caps":{"max_call_s":"300"}}',
+      '{"type":"ready","call_id":"c","resume":"t","caps":{"max_call_s":"300"}}',
     ],
     [
-      "a ready on a leg the relay has none of",
-      '{"type":"ready","call_id":"c","resume":"t","leg":"carrier","caps":{}}',
+      "a leg message, which the relay no longer sends",
+      '{"type":"leg","leg":"websocket"}',
     ],
     ["a caption with no text", '{"type":"agent_text"}'],
     ["a caption whose text is not text", '{"type":"user_text","text":{"a":1}}'],
@@ -352,6 +365,8 @@ describe("the call's copy", () => {
       "The call ended before Otto could finish.",
     );
     expect(endedCopy(null)).toBe("The call ended.");
+    // The relay lost the call's room.
+    expect(endedCopy("room_error")).toBe("The call's audio dropped.");
   });
 
   it("says only that Otto wrapped up a finished call whose hand-off failed", () => {
@@ -472,6 +487,12 @@ describe("the call's copy", () => {
         }),
       ),
     ).toBe("We couldn't start the call. Try again, or type instead.");
+    expect(callStartFailureCopy({ kind: "audio" })).toBe(
+      "We couldn't connect the call's audio. Try again, or type instead.",
+    );
+    expect(callStartFailureCopy({ kind: "unsupported" })).toBe(
+      "This browser can't make calls. You can type instead, or call from another browser.",
+    );
   });
 });
 
@@ -508,60 +529,51 @@ describe("the call's waits", () => {
   });
 });
 
-describe("the LiveKit leg", () => {
+describe("the call's room", () => {
   const ROOM = "wss://agpt.livekit.cloud";
 
-  it("joins the room the start names on the LiveKit leg, and none on the socket", () => {
-    expect(roomPassOf({ kind: "livekit", url: ROOM, token: "jwt" })).toEqual({
+  it("joins the room the start names", () => {
+    expect(roomPassOf({ url: ROOM, token: "jwt" })).toEqual({
       url: ROOM,
       token: "jwt",
     });
-    expect(roomPassOf({ kind: "websocket", url: null, token: null })).toBe(
-      null,
-    );
   });
 
   it("joins no room a start names without a secure socket or a token", () => {
     expect(
-      roomPassOf({
-        kind: "livekit",
-        url: "https://agpt.livekit.cloud",
-        token: "jwt",
-      }),
+      roomPassOf({ url: "https://agpt.livekit.cloud", token: "jwt" }),
     ).toBeNull();
-    expect(roomPassOf({ kind: "livekit", url: ROOM, token: "" })).toBeNull();
-    expect(roomPassOf({ kind: "livekit", url: ROOM, token: null })).toBeNull();
-    expect(roomPassOf({ kind: "livekit" })).toBeNull();
+    expect(roomPassOf({ url: ROOM, token: "" })).toBeNull();
   });
 
-  it("gives the join four seconds", () => {
-    expect(ROOM_JOIN_TIMEOUT_MS).toBe(4_000);
+  it("gives the join ten seconds, for a network that is slow to let it through", () => {
+    expect(ROOM_JOIN_TIMEOUT_MS).toBe(10_000);
   });
 
-  it("says why the browser's audio fell back to the socket", () => {
-    expect(legFallbackWhyOf(new RoomJoinTimeout())).toBe("timeout");
+  it("says why the browser could not join the call's room", () => {
+    expect(roomJoinFailureOf(new RoomJoinTimeout())).toBe("timeout");
     // LiveKit refusing the join: a plan past its allowance, or a token it
     // would not take.
     expect(
-      legFallbackWhyOf({ name: "ConnectionError", reasonName: "NotAllowed" }),
+      roomJoinFailureOf({ name: "ConnectionError", reasonName: "NotAllowed" }),
     ).toBe("refused");
     expect(
-      legFallbackWhyOf({
+      roomJoinFailureOf({
         name: "ConnectionError",
         reasonName: "ServerUnreachable",
         status: 429,
       }),
     ).toBe("refused");
     expect(
-      legFallbackWhyOf({
+      roomJoinFailureOf({
         name: "ConnectionError",
         reasonName: "ServerUnreachable",
         status: 503,
       }),
     ).toBe("failed");
-    expect(legFallbackWhyOf(new Error("the SDK could not load"))).toBe(
+    expect(roomJoinFailureOf(new Error("the SDK could not load"))).toBe(
       "failed",
     );
-    expect(legFallbackWhyOf(null)).toBe("failed");
+    expect(roomJoinFailureOf(null)).toBe("failed");
   });
 });

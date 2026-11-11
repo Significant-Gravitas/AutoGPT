@@ -3,9 +3,9 @@ import type { Room as LiveKitRoom } from "livekit-client";
 import { releasePlayer } from "./audioGraph";
 import { RoomJoinTimeout } from "./helpers";
 
-// A call's LiveKit room, the LiveKit leg's way for its audio: the browser
-// publishes the microphone the call opened, and plays Otto, whom the relay
-// joins as, through the player the call's click started. LiveKit reconnects
+// A call's LiveKit room, which carries its audio: the browser publishes the
+// microphone the call opened, and plays Otto, whom the relay joins as,
+// through the player the call's click started. LiveKit reconnects
 // on its own when the network changes; the control socket carries the rest.
 // The relay closes the room once the call is done with it, removing the
 // browser: the socket says what became of the call.

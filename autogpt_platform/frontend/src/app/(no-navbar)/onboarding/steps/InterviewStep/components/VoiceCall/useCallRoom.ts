@@ -17,10 +17,12 @@ interface Args {
   onLost: () => void;
   // LiveKit got the call's audio back after the network changed.
   onReconnected: () => void;
+  // Otto's speech in the call's room first carried sound.
+  onOttoSound: (call: OpenCall) => void;
 }
 
-// The call's LiveKit room on the LiveKit leg: joining it, what it tells the
-// call, and leaving it.
+// The call's LiveKit room, which carries its audio: joining it, what it tells
+// the call, and leaving it.
 export function useCallRoom(args: Args) {
   const argsRef = useRef(args);
   useEffect(() => {
@@ -76,14 +78,14 @@ export function useCallRoom(args: Args) {
         if (reconnectingSince !== null) {
           trackInterview("voice_interview_reconnected", {
             gap_s: secondsBetween(reconnectingSince, Date.now()),
-            leg: "livekit",
           });
           reconnectingSince = null;
         }
         argsRef.current.onReconnected();
       },
       onOttoTrack(track) {
-        if (conn.call === call) conn.audio?.listen(track);
+        if (conn.call !== call) return;
+        conn.audio?.listen(track, () => argsRef.current.onOttoSound(call));
       },
       onLost(why) {
         if (conn.call !== call) return;
@@ -103,21 +105,14 @@ export function useCallRoom(args: Args) {
     };
   }
 
-  // The call's audio takes the socket instead of the room.
-  function takeSocketAudio(call: OpenCall) {
-    call.leg = "websocket";
-    call.room = null;
-    leave();
-  }
-
   // The browser leaves the call's room now.
   function leave() {
     leaveRoom(argsRef.current.connRef.current);
     setIsAudioReconnecting(false);
   }
 
-  // On the LiveKit leg Otto's last words are still playing in the room: the
-  // microphone leaves it now, and the browser once Otto has.
+  // Otto's last words are still playing in the room: the microphone leaves
+  // it now, and the browser once Otto has.
   function finishRoom() {
     const conn = argsRef.current.connRef.current;
     const room = conn.room;
@@ -134,7 +129,6 @@ export function useCallRoom(args: Args) {
   return {
     isAudioReconnecting,
     enterRoom,
-    takeSocketAudio,
     leave,
     finishRoom,
     clearReconnecting,

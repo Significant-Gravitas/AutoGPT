@@ -8,8 +8,8 @@ import type { CallRoomPass } from "@/services/onboarding/voice-call-ticket";
 import { refusalOf } from "../../helpers";
 import type { CallAudio } from "./audioGraph";
 import type { CallRoom } from "./callRoom";
+import type { CallMarks } from "./callTimings";
 import { END_POLL_MS, END_WAIT_MS } from "./helpers";
-import type { CallLeg } from "./protocol";
 
 // The plumbing under useVoiceCall: what it keeps between renders without
 // rendering on it, and the reads and requests a call's lifecycle makes.
@@ -24,10 +24,11 @@ export interface OpenCall {
   startedAt: number | null;
   turnsLeft: number;
   turns: number;
-  // Where the call's audio travels; the socket carries the rest either way.
-  leg: CallLeg;
-  // On the LiveKit leg, the call's room and this browser's token for it.
-  room: CallRoomPass | null;
+  // The call's room, which carries its audio, and this browser's token for
+  // it; the socket carries the rest.
+  room: CallRoomPass;
+  // How far a call this page started has got; null on a rejoin.
+  marks: CallMarks | null;
 }
 
 // What the hook keeps between renders without rendering on it: the socket,

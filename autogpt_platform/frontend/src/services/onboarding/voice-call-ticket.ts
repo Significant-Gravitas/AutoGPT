@@ -2,9 +2,9 @@ import type { VoiceCallCaps } from "@/app/api/__generated__/models/voiceCallCaps
 
 // The resume ticket of the onboarding voice call this tab holds, kept so a
 // reload of the step can rejoin the call with its clock and turns. It names
-// the call and how far it had got, and on the LiveKit leg this browser's
-// token for the call's room. Where a rejoin goes, the relay's socket and the
-// LiveKit project alike, always comes from the server.
+// the call and how far it had got, and this browser's token for the call's
+// room. Where a rejoin goes, the relay's socket and the LiveKit project
+// alike, always comes from the server.
 
 const KEY_PREFIX = "autogpt:onboarding-voice-call:";
 // A ticket outlives the call cap by a minute.
@@ -26,9 +26,8 @@ export interface CallTicket {
   // When the call went live (epoch ms): its clock runs from here.
   startedAt: number;
   turnsLeft: number;
-  // On the LiveKit leg, this browser's token for the call's room; null on
-  // the socket.
-  roomToken: string | null;
+  // This browser's token for the call's room.
+  roomToken: string;
 }
 
 export function isCallId(value: unknown): value is string {
@@ -142,21 +141,20 @@ function callTicketOf(value: unknown): CallTicket | null {
     kept.ticket.length > MAX_TICKET_CHARS ||
     !isVoiceCallCaps(kept.caps) ||
     !isCount(kept.startedAt) ||
-    !isCount(kept.turnsLeft)
+    !isCount(kept.turnsLeft) ||
+    // The call's audio is in its room: a call whose token for it cannot be
+    // read cannot be rejoined.
+    !isRoomToken(kept.roomToken)
   ) {
     return null;
   }
-  // A call kept with a room token is on the LiveKit leg: one whose token
-  // cannot be read cannot be rejoined, since its audio is in that room.
-  const roomToken = kept.roomToken ?? null;
-  if (roomToken !== null && !isRoomToken(roomToken)) return null;
   return {
     callId: kept.callId,
     ticket: kept.ticket,
     caps: kept.caps,
     startedAt: kept.startedAt,
     turnsLeft: kept.turnsLeft,
-    roomToken,
+    roomToken: kept.roomToken,
   };
 }
 

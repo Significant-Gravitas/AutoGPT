@@ -29,7 +29,7 @@ function ticket(overrides: Partial<CallTicket> = {}): CallTicket {
     caps: CAPS,
     startedAt: Date.now(),
     turnsLeft: 9,
-    roomToken: null,
+    roomToken: ROOM.token,
     ...overrides,
   };
 }
@@ -50,7 +50,7 @@ describe("the call's ticket, kept for a reload", () => {
   });
 
   it("keeps no address to rejoin on: the server names the relay's socket and the room's project", () => {
-    saveCallTicket(USER, ticket({ roomToken: ROOM.token }));
+    saveCallTicket(USER, ticket());
 
     expect(
       Object.keys(JSON.parse(sessionStorage.getItem(KEY) ?? "{}")),
@@ -64,31 +64,22 @@ describe("the call's ticket, kept for a reload", () => {
     ]);
   });
 
-  it("keeps this browser's token for the call's room on the LiveKit leg, so a reload joins it again", () => {
-    saveCallTicket(USER, ticket({ roomToken: ROOM.token }));
+  it("keeps this browser's token for the call's room, so a reload joins it again", () => {
+    saveCallTicket(USER, ticket());
 
     expect(readCallTicket(USER, CALL_ID)?.roomToken).toBe(ROOM.token);
   });
 
-  it("reads a ticket kept with no room token as a call on the socket", () => {
-    const { roomToken: _roomToken, ...withoutRoom } = ticket();
-    keep(withoutRoom);
-
-    expect(readCallTicket(USER, CALL_ID)?.roomToken).toBeNull();
-  });
-
   it("gives back no room address stored beside the ticket", () => {
     keep({
-      ...ticket({ roomToken: ROOM.token }),
+      ...ticket(),
       room: ROOM,
       roomUrl: ROOM.url,
     });
 
     const kept = readCallTicket(USER, CALL_ID);
 
-    expect(kept).toEqual(
-      ticket({ roomToken: ROOM.token, startedAt: expect.any(Number) }),
-    );
+    expect(kept).toEqual(ticket({ startedAt: expect.any(Number) }));
     expect(JSON.stringify(kept)).not.toContain(ROOM.url);
   });
 
@@ -115,6 +106,8 @@ describe("the call's ticket, kept for a reload", () => {
     ["an empty ticket", { ...ticket(), ticket: "" }],
     ["a start time that is not a time", { ...ticket(), startedAt: "now" }],
     // Its audio is in a room this tab could not join again.
+    ["no room token", { ...ticket(), roomToken: undefined }],
+    ["a room token kept as none", { ...ticket(), roomToken: null }],
     ["an empty room token", { ...ticket(), roomToken: "" }],
     ["a room token that is not text", { ...ticket(), roomToken: 42 }],
     [

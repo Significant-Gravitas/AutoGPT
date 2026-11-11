@@ -1,12 +1,11 @@
 import type { VoiceCallCaps } from "@/app/api/__generated__/models/voiceCallCaps";
 
 // The voice relay's control socket (backend/voice_relay/session.py). The
-// relay owns every control of a call; the browser only shows them.
-
-export type CallLeg = "websocket" | "livekit";
+// relay owns every control of a call; the browser only shows them. The call's
+// audio travels through its LiveKit room, never on this socket.
 
 export type ClientMessage =
-  | { type: "start"; token: string; leg: CallLeg }
+  | { type: "start"; token: string }
   | { type: "resume"; ticket: string }
   | { type: "hangup" }
   | { type: "ping"; id: number | string };
@@ -17,9 +16,7 @@ export type RelayMessage =
       call_id: string;
       caps: VoiceCallCaps;
       resume: string;
-      leg: CallLeg;
     }
-  | { type: "leg"; leg: CallLeg }
   | { type: "user_text"; text: string }
   | { type: "agent_text"; text: string }
   | { type: "interrupted" }
@@ -42,9 +39,3 @@ export const CLOSE_REPLACED = 4000;
 
 // The relay's own refusals, sent as `error` before it closes the socket.
 export const CALL_IN_PROGRESS = "call_in_progress";
-
-// The person's audio goes up as 16 kHz PCM16 in 40 ms frames, and Otto's
-// comes down as 24 kHz PCM16.
-export const MIC_RATE = 16_000;
-export const MIC_FRAME_MS = 40;
-export const PLAYBACK_RATE = 24_000;

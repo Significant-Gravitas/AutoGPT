@@ -1,5 +1,5 @@
 import type { FinalizeResponse } from "@/app/api/__generated__/models/finalizeResponse";
-import type { VoiceCallLeg } from "@/app/api/__generated__/models/voiceCallLeg";
+import type { VoiceCallRoom } from "@/app/api/__generated__/models/voiceCallRoom";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
 import type { VoiceCallStatusResponseStatus } from "@/app/api/__generated__/models/voiceCallStatusResponseStatus";
 import {
@@ -8,7 +8,7 @@ import {
   isVoiceCallCaps,
 } from "@/services/onboarding/voice-call-ticket";
 import { describeWait, type Refusal } from "../../helpers";
-import type { CallLeg, RelayMessage } from "./protocol";
+import type { RelayMessage } from "./protocol";
 
 // A dropped socket may re-attach to its call for this long, as the relay
 // holds the call for it, trying this often.
@@ -36,21 +36,20 @@ export const HANGUP_FALLBACK_MS = 5_000;
 // A read the step opens on that has not answered this soon is given up, and
 // the choice shows.
 export const OPENING_READ_TIMEOUT_MS = 8_000;
-// On the LiveKit leg the browser joins the call's room before it starts the
-// call; a join LiveKit has not let through this soon takes the call's audio
-// onto the socket instead.
-export const ROOM_JOIN_TIMEOUT_MS = 4_000;
+// The browser joins the call's room before it starts the call; a join
+// LiveKit has not let through this soon is a call that could not connect its
+// audio. A locked-down network can take a while to find a way through.
+export const ROOM_JOIN_TIMEOUT_MS = 10_000;
 // Once the call ends, the browser stays in the room while Otto's last words
 // play, until the relay leaves it, for at most this long.
 export const ROOM_PLAYOUT_MS = 20_000;
 
-// --- The LiveKit leg ------------------------------------------------------
+// --- The call's room ------------------------------------------------------
 
-// The room the start names for a call on the LiveKit leg, when it names one
-// the browser can join; null for the socket leg.
-export function roomPassOf(leg: VoiceCallLeg): CallRoomPass | null {
-  if (leg.kind !== "livekit") return null;
-  const pass = { url: leg.url, token: leg.token };
+// The room the start names for the call, when it names one the browser can
+// join.
+export function roomPassOf(room: VoiceCallRoom): CallRoomPass | null {
+  const pass = { url: room.url, token: room.token };
   return isCallRoomPass(pass) ? pass : null;
 }
 
@@ -72,11 +71,11 @@ export class RoomJoinTimeout extends Error {
   }
 }
 
-export type LegFallbackWhy = "timeout" | "refused" | "failed" | "relay";
+export type RoomJoinFailure = "timeout" | "refused" | "failed";
 
 // Why the browser could not join a call's room: it took too long, LiveKit
 // refused it (a full plan, a token it would not take), or it failed.
-export function legFallbackWhyOf(error: unknown): LegFallbackWhy {
+export function roomJoinFailureOf(error: unknown): RoomJoinFailure {
   if (error instanceof RoomJoinTimeout) return "timeout";
   if (!error || typeof error !== "object") return "failed";
   const failure = error as Record<string, unknown>;
@@ -102,18 +101,14 @@ export function parseRelayMessage(data: string): RelayMessage | null {
     case "ready":
       return typeof message.call_id === "string" &&
         isVoiceCallCaps(message.caps) &&
-        typeof message.resume === "string" &&
-        isLeg(message.leg)
+        typeof message.resume === "string"
         ? {
             type: "ready",
             call_id: message.call_id,
             caps: message.caps,
             resume: message.resume,
-            leg: message.leg,
           }
         : null;
-    case "leg":
-      return isLeg(message.leg) ? { type: "leg", leg: message.leg } : null;
     case "user_text":
     case "agent_text":
       return typeof message.text === "string"
@@ -165,10 +160,6 @@ export function parseRelayMessage(data: string): RelayMessage | null {
     default:
       return null;
   }
-}
-
-function isLeg(value: unknown): value is CallLeg {
-  return value === "websocket" || value === "livekit";
 }
 
 function isCount(value: unknown): value is number {
@@ -406,6 +397,7 @@ const ENDED_COPY: Record<string, string> = {
   client_gone: "The connection dropped.",
   idle: "We didn't hear anything for a while, so the call ended.",
   vendor_error: "Otto's line dropped.",
+  room_error: "The call's audio dropped.",
   server_restart: "Our server restarted during the call.",
   superseded: "The call ended before Otto could finish.",
   crashed: "Our server stopped during the call.",
@@ -429,6 +421,10 @@ export function endedCopy(
 export type CallStartFailure =
   | { kind: "busy"; retryAfterSeconds: number | null }
   | { kind: "unavailable"; retryAfterSeconds: number | null }
+  // The call started, and its audio never connected.
+  | { kind: "audio" }
+  // This browser cannot join a call's room.
+  | { kind: "unsupported" }
   | { kind: "failed" };
 
 export function callStartFailureOf(refusal: Refusal): CallStartFailure {
@@ -447,6 +443,12 @@ export function callStartFailureCopy(failure: CallStartFailure) {
   }
   if (failure.kind === "unavailable") {
     return "Otto can't take calls right now. You can type instead, or try again in a moment.";
+  }
+  if (failure.kind === "audio") {
+    return "We couldn't connect the call's audio. Try again, or type instead.";
+  }
+  if (failure.kind === "unsupported") {
+    return "This browser can't make calls. You can type instead, or call from another browser.";
   }
   return "We couldn't start the call. Try again, or type instead.";
 }

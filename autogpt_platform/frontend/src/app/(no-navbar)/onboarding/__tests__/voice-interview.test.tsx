@@ -45,6 +45,7 @@ import { http, HttpResponse, type JsonBodyType, ws } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OnboardingPage from "../page";
+import { reportCallStart } from "../steps/InterviewStep/components/VoiceCall/callTimings";
 import { useOnboardingWizardStore } from "../store";
 import { makeProgress } from "./progress-fixture";
 
@@ -93,6 +94,35 @@ vi.mock(
 vi.mock(
   "livekit-client",
   async () => (await import("@/tests/integrations/voice-fakes")).fakeLiveKit,
+);
+
+// The room's SDK fails to download while set.
+let sdkFails = false;
+vi.mock(
+  "../steps/InterviewStep/components/VoiceCall/callRoom",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../steps/InterviewStep/components/VoiceCall/callRoom")
+      >();
+    return {
+      ...actual,
+      loadLiveKit: () =>
+        sdkFails
+          ? Promise.reject(new Error("The chunk could not load"))
+          : actual.loadLiveKit(),
+    };
+  },
+);
+
+vi.mock(
+  "../steps/InterviewStep/components/VoiceCall/callTimings",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../steps/InterviewStep/components/VoiceCall/callTimings")
+    >()),
+    reportCallStart: vi.fn(),
+  }),
 );
 
 vi.mock("../steps/InterviewStep/helpers", async (importOriginal) => ({
@@ -270,42 +300,45 @@ function callRecord(overrides: Partial<CallRecord> = {}): CallRecord {
     call_id: CALL_ID,
     status: "handed_off",
     end_reason: "finished",
-    leg: "websocket",
     hand_off: ACCEPTED,
     ...overrides,
   };
 }
 
+const ROOM_URL = "wss://agpt-test.livekit.cloud";
+const ROOM_TOKEN = "room-token";
+// A start: the relay's socket and the token for it, and the call's room and
+// the browser's token for it.
 const STARTED: VoiceCallStartResponse = {
   call_id: CALL_ID,
   relay_url: RELAY_URL,
   token: TOKEN,
   expires_in: 60,
-  leg: { kind: "websocket" },
+  room: { url: ROOM_URL, token: ROOM_TOKEN },
   caps: CAPS,
 };
 
-const ROOM_URL = "wss://agpt-test.livekit.cloud";
-const ROOM_TOKEN = "room-token";
-// A start on the LiveKit leg: the call's room, and the browser's token.
-const STARTED_IN_ROOM: VoiceCallStartResponse = {
-  ...STARTED,
-  leg: { kind: "livekit", url: ROOM_URL, token: ROOM_TOKEN },
-};
-
-// A live call on the LiveKit leg as its reads answer: the relay's socket
-// and the LiveKit project to rejoin it on.
+// A live call as its reads answer: the relay's socket and the LiveKit
+// project to rejoin it on.
 function liveRoomRecord(overrides: Partial<CallRecord> = {}): CallRecord {
   return callRecord({
     status: "live",
     end_reason: null,
     hand_off: null,
-    leg: "livekit",
     relay_url: RELAY_URL,
     livekit_url: ROOM_URL,
     ...overrides,
   });
 }
+
+// The person's typed interview as the step reads it: not opened yet, with a
+// call on offer.
+const NO_INTERVIEW = {
+  session_id: null,
+  stage: null,
+  is_over: false,
+  voice_available: true,
+};
 
 type SessionMessages = NonNullable<SessionDetailResponse["messages"]>;
 
@@ -393,7 +426,7 @@ function handlers() {
     }),
     getStartOnboardingVoiceCallMockHandler200(async ({ request }) => {
       mints += 1;
-      mintBodies.push(await request.json());
+      mintBodies.push(await request.text());
       return mintAnswer;
     }),
     http.get(`${VOICE}/:callId`, ({ params }) => {
@@ -426,10 +459,7 @@ function handlers() {
     ),
     http.get("/api/proxy/api/onboarding/brain-dump/interview", () => {
       typedReads += 1;
-      return HttpResponse.json(
-        { detail: "No onboarding interview" },
-        { status: 404 },
-      );
+      return HttpResponse.json(NO_INTERVIEW);
     }),
     getStartOnboardingInterviewMockHandler200(() => {
       typedStartCount += 1;
@@ -492,11 +522,11 @@ function refuseTypedFinish(answer: Answer) {
   );
 }
 
-// A ticket this tab kept, with this browser's token for the call's room on
-// the LiveKit leg, and anything else *extra* puts beside it.
+// A ticket this tab kept, with this browser's token for the call's room, and
+// anything else *extra* puts beside it.
 function keepTicket(
   callId = CALL_ID,
-  roomToken: string | null = null,
+  roomToken: string | null = ROOM_TOKEN,
   extra: Record<string, unknown> = {},
 ) {
   sessionStorage.setItem(
@@ -523,48 +553,43 @@ async function relaySocketAfter(previous?: FakeWebSocket) {
   });
 }
 
-// "Talk to Otto", and the relay's socket opening.
-async function callOtto() {
+async function talkToOtto() {
   await userEvent
     .setup()
     .click(await screen.findByRole("button", { name: "Talk to Otto" }));
+}
+
+// "Talk to Otto": the browser joins the call's room, and the relay's socket
+// opens.
+async function callOtto() {
+  await talkToOtto();
   const socket = await relaySocketAfter();
   act(() => socket.accept());
   return socket;
 }
 
-async function liveCall() {
-  const socket = await callOtto();
+function ready(socket: FakeWebSocket) {
   act(() =>
     socket.relay({
       type: "ready",
       call_id: CALL_ID,
       caps: CAPS,
       resume: TICKET,
-      leg: "websocket",
     }),
   );
-  await screen.findByText("You're on the call with Otto");
-  return socket;
 }
 
-// "Talk to Otto" on the LiveKit leg: the browser joins the call's room, then
-// the relay's socket opens and the call goes live.
+// A call gone live, in its room.
 async function liveRoomCall() {
-  mintAnswer = STARTED_IN_ROOM;
   const socket = await callOtto();
   const room = fakes.room()!;
-  act(() =>
-    socket.relay({
-      type: "ready",
-      call_id: CALL_ID,
-      caps: CAPS,
-      resume: TICKET,
-      leg: "livekit",
-    }),
-  );
+  ready(socket);
   await screen.findByText("You're on the call with Otto");
   return { socket, room };
+}
+
+async function liveCall() {
+  return (await liveRoomCall()).socket;
 }
 
 function endCall(socket: FakeWebSocket, reason: string) {
@@ -663,6 +688,8 @@ beforeEach(() => {
   useCopilotUIStore.getState().setInitialPrompt(null);
   localStorage.clear();
   sessionStorage.clear();
+  sdkFails = false;
+  vi.mocked(reportCallStart).mockClear();
 });
 
 afterEach(() => {
@@ -816,13 +843,34 @@ describe("onboarding interview by voice: opening", () => {
     ).toBeDefined();
   });
 
-  it("starts no call when the browser cannot run the call's audio", async () => {
-    fakes.failWorklets();
+  it("starts no call on a browser that cannot join a call's room", async () => {
+    fakes.unsupportBrowser();
 
     render(<OnboardingPage />);
+    await talkToOtto();
+
+    expect(
+      await screen.findByText(
+        "This browser can't make calls. You can type instead, or call from another browser.",
+      ),
+    ).toBeDefined();
+    expect(mints).toBe(0);
+    expect(tracked("voice_interview_start_failed")).toEqual([
+      { stage: "browser", why: "unsupported" },
+    ]);
+    const microphone = await fakes.getUserMedia.mock.results[0].value;
+    expect(microphone.getTracks()[0].stop).toHaveBeenCalled();
     await userEvent
       .setup()
-      .click(await screen.findByRole("button", { name: "Talk to Otto" }));
+      .click(screen.getByRole("button", { name: "Type instead" }));
+    expect(await screen.findByText(GREETING)).toBeDefined();
+  });
+
+  it("starts no call when the room's SDK does not load", async () => {
+    sdkFails = true;
+
+    render(<OnboardingPage />);
+    await talkToOtto();
 
     expect(
       await screen.findByText(
@@ -830,6 +878,7 @@ describe("onboarding interview by voice: opening", () => {
       ),
     ).toBeDefined();
     expect(mints).toBe(0);
+    expect(fakes.rooms()).toEqual([]);
   });
 
   it("lets go of the call's audio when the start is refused", async () => {
@@ -839,17 +888,14 @@ describe("onboarding interview by voice: opening", () => {
     });
 
     render(<OnboardingPage />);
-    await userEvent
-      .setup()
-      .click(await screen.findByRole("button", { name: "Talk to Otto" }));
+    await talkToOtto();
     await screen.findByText(/You've made a few calls already/);
 
-    const context = fakes
-      .contexts()
-      .find((each) => each.audioWorklet.addModule.mock.calls.length > 0);
-    expect(context?.close).toHaveBeenCalled();
+    // The context the click made, beside the aura's own.
+    expect(fakes.contexts()[0].close).toHaveBeenCalled();
     const microphone = await fakes.getUserMedia.mock.results[0].value;
     expect(microphone.getTracks()[0].stop).toHaveBeenCalled();
+    expect(fakes.rooms()).toEqual([]);
   });
 
   it("shows the live call the relay names when it refuses a start for it", async () => {
@@ -881,11 +927,7 @@ describe("onboarding interview by voice: opening", () => {
     ).toBeDefined();
     expect(fakes.sockets).toHaveLength(4);
     expect(fakes.sockets.map((each) => each.messages()[0])).toEqual(
-      Array.from({ length: 4 }, () => ({
-        type: "start",
-        token: TOKEN,
-        leg: "websocket",
-      })),
+      Array.from({ length: 4 }, () => ({ type: "start", token: TOKEN })),
     );
     expect(mints).toBe(1);
   });
@@ -952,11 +994,7 @@ describe("onboarding interview by voice: opening", () => {
     act(() => socket.accept());
     expect(ends).toEqual([OTHER_CALL_ID]);
     expect(mints).toBe(2);
-    expect(socket.messages()[0]).toEqual({
-      type: "start",
-      token: TOKEN,
-      leg: "websocket",
-    });
+    expect(socket.messages()[0]).toEqual({ type: "start", token: TOKEN });
   });
 });
 
@@ -965,48 +1003,52 @@ describe("onboarding interview by voice: the call", () => {
     render(<OnboardingPage />);
     const socket = await callOtto();
     expect(socket.url).toBe(RELAY_URL);
-    expect(socket.messages()[0]).toEqual({
-      type: "start",
-      token: TOKEN,
-      leg: "websocket",
-    });
+    expect(socket.messages()[0]).toEqual({ type: "start", token: TOKEN });
 
-    act(() =>
-      socket.relay({
-        type: "ready",
-        call_id: CALL_ID,
-        caps: CAPS,
-        resume: TICKET,
-        leg: "websocket",
-      }),
-    );
+    ready(socket);
 
     expect(await screen.findByText("5:00 left")).toBeDefined();
     expect(screen.getByText("16 turns left")).toBeDefined();
+    // How long each step of the start took, from the microphone on.
     expect(tracked("interview_started")).toEqual([
-      { mode: "voice", leg: "websocket" },
+      {
+        mode: "voice",
+        mint_s: expect.any(Number),
+        room_s: expect.any(Number),
+        ready_s: expect.any(Number),
+      },
     ]);
   });
 
-  it("sends the microphone's audio only once the call is live", async () => {
+  it("reports how long the call took to reach Otto's first sound, once", async () => {
     render(<OnboardingPage />);
-    const socket = await callOtto();
+    const { room } = await liveRoomCall();
+    act(() => {
+      room.ottoJoins();
+    });
+    expect(reportCallStart).not.toHaveBeenCalled();
 
-    act(() => fakes.speak());
-    expect(socket.frames()).toHaveLength(0);
+    act(() => fakes.ottoSounds());
 
-    act(() =>
-      socket.relay({
-        type: "ready",
-        call_id: CALL_ID,
-        caps: CAPS,
-        resume: TICKET,
-        leg: "websocket",
-      }),
-    );
-    act(() => fakes.speak());
-
-    expect(socket.frames()).toHaveLength(1);
+    await waitFor(() => expect(reportCallStart).toHaveBeenCalledTimes(1));
+    const [marks] = vi.mocked(reportCallStart).mock.calls[0];
+    const steps = [
+      marks.granted,
+      marks.minted,
+      marks.joined,
+      marks.ready,
+      marks.firstSound,
+    ];
+    // Every step reached, each no sooner than the one before it.
+    expect(steps.every((step) => typeof step === "number")).toBe(true);
+    const times = steps.map(Number);
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
+    // Otto's speech arriving again in the room is no second start.
+    act(() => {
+      room.ottoJoins();
+    });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    expect(reportCallStart).toHaveBeenCalledTimes(1);
   });
 
   it("captions what Otto and the person say", async () => {
@@ -1035,23 +1077,6 @@ describe("onboarding interview by voice: the call", () => {
     expect(await screen.findByText("15 turns left")).toBeDefined();
   });
 
-  it("plays Otto's audio and drops what is queued when the person talks over it", async () => {
-    render(<OnboardingPage />);
-    const socket = await liveCall();
-    const player = fakes.playerNode()!;
-
-    act(() => socket.relayAudio());
-    expect(player.port.postMessage).toHaveBeenLastCalledWith(
-      expect.any(ArrayBuffer),
-      [expect.any(ArrayBuffer)],
-    );
-
-    act(() => socket.relay({ type: "interrupted" }));
-    expect(player.port.postMessage).toHaveBeenLastCalledWith({
-      type: "flush",
-    });
-  });
-
   it("re-attaches a dropped call with its ticket, showing Reconnecting then Reconnected", async () => {
     render(<OnboardingPage />);
     const socket = await liveCall();
@@ -1065,9 +1090,9 @@ describe("onboarding interview by voice: the call", () => {
     act(() => again.relay({ type: "resumed", gap_s: 1.2 }));
 
     expect(await screen.findByText("Reconnected")).toBeDefined();
-    expect(tracked("voice_interview_reconnected")).toEqual([
-      { gap_s: 1.2, leg: "websocket" },
-    ]);
+    // The control socket came back; the call's room never went.
+    expect(tracked("voice_interview_resumed")).toEqual([{ gap_s: 1.2 }]);
+    expect(tracked("voice_interview_reconnected")).toEqual([]);
   });
 
   it("hangs up only from Hang up, and sends nothing on pagehide", async () => {
@@ -1090,12 +1115,8 @@ describe("onboarding interview by voice: the call", () => {
 
   it("rejoins a call still live after a reload, with the ticket kept in this tab", async () => {
     keepTicket();
-    latestCall = callRecord({
-      status: "live",
-      end_reason: null,
-      hand_off: null,
-    });
-    callStates[CALL_ID] = [{ ...latestCall, relay_url: RELAY_URL }];
+    latestCall = liveRoomRecord();
+    callStates[CALL_ID] = [latestCall];
 
     render(<OnboardingPage />);
     await userEvent
@@ -1116,12 +1137,8 @@ describe("onboarding interview by voice: the call", () => {
 
   it("counts the turns heard before a rejoin when the call ends", async () => {
     keepTicket();
-    latestCall = callRecord({
-      status: "live",
-      end_reason: null,
-      hand_off: null,
-    });
-    callStates[CALL_ID] = [{ ...latestCall, relay_url: RELAY_URL }];
+    latestCall = liveRoomRecord();
+    callStates[CALL_ID] = [latestCall];
 
     render(<OnboardingPage />);
     await userEvent
@@ -1249,16 +1266,28 @@ describe("onboarding interview by voice: the call", () => {
 
   it("stops the microphone as soon as the person hangs up", async () => {
     render(<OnboardingPage />);
-    const socket = await liveCall();
+    await liveCall();
     const microphone = await fakes.getUserMedia.mock.results[0].value;
 
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "Hang up" }));
-    act(() => fakes.speak());
 
     expect(microphone.getTracks()[0].stop).toHaveBeenCalled();
-    expect(socket.frames()).toEqual([]);
+  });
+
+  it("puts no audio on the call's socket, and plays none it is sent", async () => {
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    act(() => {
+      socket.relayBinary();
+      socket.relay({ type: "interrupted" });
+      socket.relay({ type: "agent_text", text: "Still here." });
+    });
+
+    expect(await screen.findByText("Still here.")).toBeDefined();
+    expect(socket.sent.every((data) => typeof data === "string")).toBe(true);
   });
 
   it("says Hang up again on the socket a re-attach brings", async () => {
@@ -1309,6 +1338,7 @@ describe("onboarding interview by voice: the call", () => {
       socket.relay({ type: "agent_text" });
       socket.relay({ type: "turn_complete", turn: 0, turns_left: "many" });
       socket.relay({ type: "ready", call_id: CALL_ID });
+      socket.relay({ type: "leg", leg: "websocket" });
       socket.relay({ type: "agent_text", text: "Still here." });
     });
 
@@ -2128,7 +2158,12 @@ describe("onboarding interview by voice: one interview, typed or spoken", () => 
       getGetOnboardingInterviewMockHandler200(async () => {
         typedReads += 1;
         await typedReadAnswered;
-        return { session_id: SESSION_ID, stage: "handed_off", is_over: true };
+        return {
+          session_id: SESSION_ID,
+          stage: "handed_off",
+          is_over: true,
+          voice_available: true,
+        };
       }),
       getStartOnboardingInterviewMockHandler200(() => {
         typedStartCount += 1;
@@ -2156,13 +2191,13 @@ describe("onboarding interview by voice: one interview, typed or spoken", () => 
   });
 
   it.each([
-    ["has none", { status: 404, body: { detail: "No onboarding interview" } }],
+    ["has none", { status: 200, body: NO_INTERVIEW }],
     ["cannot be read", { status: 503, body: { detail: "Unavailable" } }],
     [
       "is under way",
       {
         status: 200,
-        body: { session_id: SESSION_ID, stage: null, is_over: false },
+        body: { ...NO_INTERVIEW, session_id: SESSION_ID },
       },
     ],
   ])(
@@ -2189,6 +2224,32 @@ describe("onboarding interview by voice: one interview, typed or spoken", () => 
       expect(typedStartCount).toBe(0);
     },
   );
+
+  it("opens the typed interview, with no choice and no word about the microphone, where a call cannot be offered", async () => {
+    fakes.denyMicrophonePermission();
+    server.use(
+      http.get("/api/proxy/api/onboarding/brain-dump/interview", () => {
+        typedReads += 1;
+        return HttpResponse.json({ ...NO_INTERVIEW, voice_available: false });
+      }),
+    );
+
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText(GREETING)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Talk to Otto" })).toBeNull();
+    expect(
+      screen.queryByText(
+        "Your browser blocked the microphone, so write here instead.",
+      ),
+    ).toBeNull();
+    expect(latestReads).toBe(1);
+    expect(mints).toBe(0);
+    // Not the person's choice: a later visit reads again.
+    expect(
+      sessionStorage.getItem(`autogpt:onboarding-interview-typing:${USER_ID}`),
+    ).toBeNull();
+  });
 
   it("keeps Skip as path B, with nothing handed off, while the interview is open", async () => {
     render(<OnboardingPage />);
@@ -2218,35 +2279,24 @@ describe("onboarding interview by voice: one interview, typed or spoken", () => 
   });
 });
 
-describe("onboarding interview by voice: the LiveKit leg", () => {
-  async function talk() {
-    await userEvent
-      .setup()
-      .click(await screen.findByRole("button", { name: "Talk to Otto" }));
-  }
+describe("onboarding interview by voice: the call's room", () => {
+  const AUDIO_FAILED =
+    "We couldn't connect the call's audio. Try again, or type instead.";
 
   it("joins the call's room before it starts the call, and sends no audio on the socket", async () => {
     render(<OnboardingPage />);
     const { socket, room } = await liveRoomCall();
 
-    expect(mintBodies).toEqual([{ supports_livekit: true }]);
+    // The start asks for nothing: every call takes its room.
+    expect(mintBodies).toEqual([""]);
     expect(room.url).toBe(ROOM_URL);
     expect(room.token).toBe(ROOM_TOKEN);
     // The microphone the call opened, published once, as a microphone.
     expect(room.published).toHaveLength(1);
     expect(room.publishOptions).toEqual([{ source: "microphone" }]);
     expect(fakes.getUserMedia).toHaveBeenCalledTimes(1);
-    expect(socket.messages()[0]).toEqual({
-      type: "start",
-      token: TOKEN,
-      leg: "livekit",
-    });
-    act(() => fakes.speak());
-    expect(socket.frames()).toHaveLength(0);
-    expect(tracked("interview_started")).toEqual([
-      { mode: "voice", leg: "livekit" },
-    ]);
-    expect(tracked("voice_interview_leg_fallback")).toEqual([]);
+    expect(socket.messages()[0]).toEqual({ type: "start", token: TOKEN });
+    expect(socket.sent.every((data) => typeof data === "string")).toBe(true);
   });
 
   it("plays Otto's speech from the room through the player the click started", async () => {
@@ -2262,71 +2312,107 @@ describe("onboarding interview by voice: the LiveKit leg", () => {
     expect(otto?.attachedTo[0]).toBeInstanceOf(HTMLAudioElement);
   });
 
-  it("takes the call's audio onto the socket when LiveKit refuses the join, telling only analytics", async () => {
-    mintAnswer = STARTED_IN_ROOM;
-    fakes.refuseRoomJoins({
-      name: "ConnectionError",
-      reasonName: "NotAllowed",
-      status: 403,
-    });
-    render(<OnboardingPage />);
-    await talk();
+  it.each([
+    [
+      "refuses",
+      { name: "ConnectionError", reasonName: "NotAllowed", status: 403 },
+      "refused",
+    ],
+    ["fails", new Error("the network is gone"), "failed"],
+  ])(
+    "says the call's audio could not connect, and ends the call, when LiveKit %s the join",
+    async (_case, error, why) => {
+      fakes.refuseRoomJoins(error);
+      render(<OnboardingPage />);
+      await talkToOtto();
 
-    const socket = await relaySocketAfter();
-    act(() => socket.accept());
-    expect(socket.messages()[0]).toEqual({
-      type: "start",
-      token: TOKEN,
-      leg: "websocket",
-    });
-    expect(fakes.room()?.isLeft).toBe(true);
-    act(() =>
-      socket.relay({
-        type: "ready",
-        call_id: CALL_ID,
-        caps: CAPS,
-        resume: TICKET,
-        leg: "websocket",
-      }),
-    );
-    await screen.findByText("You're on the call with Otto");
-    act(() => fakes.speak());
+      expect(await screen.findByText(AUDIO_FAILED)).toBeDefined();
+      // The call never started on the relay; its room closes now.
+      expect(fakes.sockets).toEqual([]);
+      expect(fakes.room()?.isLeft).toBe(true);
+      await waitFor(() => expect(ends).toEqual([CALL_ID]));
+      expect(tracked("voice_interview_start_failed")).toEqual([
+        { stage: "room", why },
+      ]);
+      expect(tracked("interview_started")).toEqual([]);
+      expect(screen.queryByText(DIDNT_HEAR_YOU)).toBeNull();
+    },
+  );
 
-    expect(socket.frames()).toHaveLength(1);
-    expect(tracked("voice_interview_leg_fallback")).toEqual([
-      { why: "refused" },
-    ]);
-    expect(tracked("interview_started")).toEqual([
-      { mode: "voice", leg: "websocket" },
-    ]);
-  });
-
-  it("takes the call's audio onto the socket when the join takes too long", async () => {
-    mintAnswer = STARTED_IN_ROOM;
+  it("says the call's audio could not connect when the join takes too long", async () => {
     fakes.hangRoomJoins();
     render(<OnboardingPage />);
-    await talk();
+    await talkToOtto();
 
-    const socket = await relaySocketAfter();
-    act(() => socket.accept());
-
-    expect(socket.messages()[0]).toEqual({
-      type: "start",
-      token: TOKEN,
-      leg: "websocket",
-    });
+    expect(await screen.findByText(AUDIO_FAILED)).toBeDefined();
     // The join that never answered is let go.
     expect(fakes.room()?.isLeft).toBe(true);
-    expect(tracked("voice_interview_leg_fallback")).toEqual([
-      { why: "timeout" },
+    expect(fakes.sockets).toEqual([]);
+    await waitFor(() => expect(ends).toEqual([CALL_ID]));
+    expect(tracked("voice_interview_start_failed")).toEqual([
+      { stage: "room", why: "timeout" },
     ]);
   });
 
+  it("starts a fresh call from Talk to Otto after the audio could not connect", async () => {
+    fakes.refuseRoomJoins(new Error("the network is gone"));
+    render(<OnboardingPage />);
+    await talkToOtto();
+    expect(await screen.findByText(AUDIO_FAILED)).toBeDefined();
+
+    fakes.joinRooms();
+    const socket = await callOtto();
+    ready(socket);
+
+    expect(
+      await screen.findByText("You're on the call with Otto"),
+    ).toBeDefined();
+    expect(mints).toBe(2);
+    expect(screen.queryByText(AUDIO_FAILED)).toBeNull();
+  });
+
+  it("types instead after the audio could not connect", async () => {
+    fakes.refuseRoomJoins(new Error("the network is gone"));
+    render(<OnboardingPage />);
+    await talkToOtto();
+    expect(await screen.findByText(AUDIO_FAILED)).toBeDefined();
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Type instead" }));
+
+    expect(await screen.findByText(GREETING)).toBeDefined();
+  });
+
+  it.each([["room_error"], ["vendor_error"]])(
+    "says the call's audio could not connect when the relay ends it %s before it went live",
+    async (reason) => {
+      callStates[CALL_ID] = [callRecord({ end_reason: reason })];
+      render(<OnboardingPage />);
+      const socket = await callOtto();
+
+      act(() => {
+        socket.relay({ type: "ended", reason, elapsed_s: 0 });
+        socket.close(1000);
+      });
+
+      expect(await screen.findByText(AUDIO_FAILED)).toBeDefined();
+      expect(fakes.room()?.isLeft).toBe(true);
+      // Never the ending of a call that ran, nor a wait for its words.
+      expect(screen.queryByText(DIDNT_HEAR_YOU)).toBeNull();
+      expect(screen.queryByText("Wrapping up…")).toBeNull();
+      expect(statusReads).toEqual([]);
+      expect(tracked("voice_interview_start_failed")).toEqual([
+        { stage: "relay", why: reason },
+      ]);
+      expect(tracked("interview_ended")).toEqual([]);
+    },
+  );
+
   it("leaves the room a join lets the browser into after the person moved on to typing", async () => {
-    mintAnswer = STARTED_IN_ROOM;
     const letIn = fakes.holdRoomJoins();
     render(<OnboardingPage />);
-    await talk();
+    await talkToOtto();
     await waitFor(() => expect(fakes.room()?.token).toBe(ROOM_TOKEN));
 
     await userEvent
@@ -2338,7 +2424,7 @@ describe("onboarding interview by voice: the LiveKit leg", () => {
     await waitFor(() => expect(fakes.room()?.isLeft).toBe(true));
     // The call never started on the relay.
     expect(fakes.sockets).toEqual([]);
-    expect(tracked("voice_interview_leg_fallback")).toEqual([]);
+    expect(tracked("voice_interview_start_failed")).toEqual([]);
   });
 
   it("shows Reconnecting while LiveKit gets the call's audio back, with captions still arriving", async () => {
@@ -2357,38 +2443,12 @@ describe("onboarding interview by voice: the LiveKit leg", () => {
 
     act(() => room.reconnected());
     expect(await screen.findByText("Reconnected")).toBeDefined();
-    // Reported as LiveKit's reconnect, not the call's socket re-attaching,
-    // after the two seconds it took.
+    // Reported as LiveKit's reconnect after the two seconds it took, not
+    // the call's socket re-attaching.
     expect(tracked("voice_interview_reconnected")).toEqual([
-      { gap_s: expect.closeTo(2, 0), leg: "livekit" },
+      { gap_s: expect.closeTo(2, 0) },
     ]);
-  });
-
-  it("takes the call's audio onto the socket when the relay goes live on it unannounced", async () => {
-    mintAnswer = STARTED_IN_ROOM;
-    render(<OnboardingPage />);
-    await talk();
-    const socket = await relaySocketAfter();
-    act(() => socket.accept());
-    const room = fakes.room()!;
-
-    act(() =>
-      socket.relay({
-        type: "ready",
-        call_id: CALL_ID,
-        caps: CAPS,
-        resume: TICKET,
-        leg: "websocket",
-      }),
-    );
-    await screen.findByText("You're on the call with Otto");
-
-    expect(room.isLeft).toBe(true);
-    act(() => fakes.speak());
-    expect(socket.frames()).toHaveLength(1);
-    expect(tracked("interview_started")).toEqual([
-      { mode: "voice", leg: "websocket" },
-    ]);
+    expect(tracked("voice_interview_resumed")).toEqual([]);
   });
 
   it("reports no reconnect for a room that never said it was reconnecting", async () => {
@@ -2399,40 +2459,6 @@ describe("onboarding interview by voice: the LiveKit leg", () => {
 
     expect(screen.queryByText("Reconnecting…")).toBeNull();
     expect(tracked("voice_interview_reconnected")).toEqual([]);
-  });
-
-  it("switches to the socket's audio when the relay could not join the room", async () => {
-    mintAnswer = STARTED_IN_ROOM;
-    render(<OnboardingPage />);
-    await talk();
-    const socket = await relaySocketAfter();
-    act(() => socket.accept());
-    const room = fakes.room()!;
-
-    act(() => {
-      socket.relay({ type: "leg", leg: "websocket" });
-      socket.relay({
-        type: "ready",
-        call_id: CALL_ID,
-        caps: CAPS,
-        resume: TICKET,
-        leg: "websocket",
-      });
-    });
-    await screen.findByText("You're on the call with Otto");
-
-    expect(room.isLeft).toBe(true);
-    act(() => fakes.speak());
-    expect(socket.frames()).toHaveLength(1);
-    act(() => socket.relayAudio());
-    expect(fakes.playerNode()!.port.postMessage).toHaveBeenLastCalledWith(
-      expect.any(ArrayBuffer),
-      [expect.any(ArrayBuffer)],
-    );
-    expect(tracked("voice_interview_leg_fallback")).toEqual([{ why: "relay" }]);
-    expect(tracked("interview_started")).toEqual([
-      { mode: "voice", leg: "websocket" },
-    ]);
   });
 
   it("stays in the room once the call ends, until Otto's last words have played", async () => {
@@ -2522,7 +2548,6 @@ describe("onboarding interview by voice: the LiveKit leg", () => {
       expect(
         screen.queryByText("We lost the call. Saving what you said…"),
       ).toBeNull();
-      expect(tracked("voice_interview_leg_fallback")).toEqual([]);
     },
   );
 
@@ -2552,7 +2577,6 @@ describe("onboarding interview by voice: the LiveKit leg", () => {
       expect(
         await screen.findByRole("button", { name: "Meet your team" }),
       ).toBeDefined();
-      expect(tracked("voice_interview_leg_fallback")).toEqual([]);
       expect(tracked("voice_interview_reconnected")).toEqual([]);
     },
   );
@@ -2594,8 +2618,6 @@ describe("onboarding interview by voice: the LiveKit leg", () => {
     await waitFor(() => expect(room.published).toHaveLength(1));
     act(() => socket.relay({ type: "resumed", gap_s: 4.1 }));
     expect(await screen.findByText("Reconnected")).toBeDefined();
-    act(() => fakes.speak());
-    expect(socket.frames()).toHaveLength(0);
     expect(mints).toBe(0);
   });
 
@@ -2618,35 +2640,41 @@ describe("onboarding interview by voice: the LiveKit leg", () => {
     expect(fakes.rooms().map((room) => room.url)).toEqual([ROOM_URL]);
   });
 
-  it.each([
-    ["the server names no project for its room", ROOM_TOKEN, null],
-    ["this tab kept no token for its room", null, ROOM_URL],
-  ])(
-    "cannot rejoin a call on the LiveKit leg when %s",
-    async (_case, roomToken, livekitUrl) => {
-      keepTicket(CALL_ID, roomToken);
-      latestCall = liveRoomRecord({ livekit_url: livekitUrl });
-      callStates[CALL_ID] = [latestCall];
+  it("cannot rejoin a call when the server names no project for its room", async () => {
+    keepTicket();
+    latestCall = liveRoomRecord({ livekit_url: null });
+    callStates[CALL_ID] = [latestCall];
 
-      render(<OnboardingPage />);
-      await userEvent
-        .setup()
-        .click(await screen.findByRole("button", { name: "Rejoin" }));
+    render(<OnboardingPage />);
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Rejoin" }));
 
-      expect(
-        await screen.findByText(
-          "Your call with Otto is still going in another tab or on another device.",
-        ),
-      ).toBeDefined();
-      expect(screen.queryByRole("button", { name: "Rejoin" })).toBeNull();
-      expect(
-        screen.getByRole("button", { name: "End that call" }),
-      ).toBeDefined();
-      expect(fakes.getUserMedia).not.toHaveBeenCalled();
-      expect(fakes.sockets).toEqual([]);
-      expect(fakes.rooms()).toEqual([]);
-    },
-  );
+    expect(
+      await screen.findByText(
+        "Your call with Otto is still going in another tab or on another device.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Rejoin" })).toBeNull();
+    expect(screen.getByRole("button", { name: "End that call" })).toBeDefined();
+    expect(fakes.getUserMedia).not.toHaveBeenCalled();
+    expect(fakes.sockets).toEqual([]);
+    expect(fakes.rooms()).toEqual([]);
+  });
+
+  it("offers no Rejoin for a call this tab kept no room token for", async () => {
+    keepTicket(CALL_ID, null);
+    latestCall = liveRoomRecord();
+    callStates[CALL_ID] = [latestCall];
+
+    render(<OnboardingPage />);
+
+    expect(
+      await screen.findByRole("button", { name: "End that call" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Rejoin" })).toBeNull();
+    expect(fakes.rooms()).toEqual([]);
+  });
 
   it("offers Rejoin again when the call's room cannot be joined after a reload", async () => {
     keepTicket(CALL_ID, ROOM_TOKEN);
@@ -2664,7 +2692,9 @@ describe("onboarding interview by voice: the LiveKit leg", () => {
     // The socket that opened alongside the join is let go with it.
     expect(fakes.sockets).toHaveLength(1);
     expect(fakes.sockets[0].readyState).toBe(FakeWebSocket.CLOSED);
-    expect(tracked("voice_interview_leg_fallback")).toEqual([]);
+    // A rejoin is no start: nothing was spent, and nothing ended.
+    expect(tracked("voice_interview_start_failed")).toEqual([]);
+    expect(ends).toEqual([]);
   });
 
   it("offers Rejoin again when the room fails after the socket resumed the call", async () => {

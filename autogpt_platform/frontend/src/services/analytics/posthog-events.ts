@@ -206,17 +206,23 @@ export const OnboardingEvent = {
 // is stored on the server, so analysis splits these by it whatever the
 // browser's consent.
 export const InterviewEvent = {
-  // A call went live: `mode` (`voice`) and `leg`.
+  // A call went live: `mode` (`voice`), and the seconds from the microphone
+  // to the call's start answering (`mint_s`), the browser in its room
+  // (`room_s`) and the relay's `ready` (`ready_s`).
   INTERVIEW_STARTED: "interview_started",
   // A call ended: `mode`, the relay's `reason`, `elapsed_s` and Otto's
   // `turns`. A call lost on the way is reported once its end is known.
   INTERVIEW_ENDED: "interview_ended",
-  // A call's connection came back after `gap_s`: its socket re-attached
-  // (`leg` `websocket`), or LiveKit got its room's audio back (`livekit`).
+  // LiveKit got a call's audio back after `gap_s`.
   VOICE_INTERVIEW_RECONNECTED: "voice_interview_reconnected",
+  // A call's control socket re-attached after `gap_s`.
+  VOICE_INTERVIEW_RESUMED: "voice_interview_resumed",
   VOICE_INTERVIEW_MIC_DENIED: "voice_interview_mic_denied",
-  // A call's audio fell from LiveKit to the control socket (`why`).
-  VOICE_INTERVIEW_LEG_FALLBACK: "voice_interview_leg_fallback",
+  // A call that never went live: the browser could not join its room
+  // (`stage` `room`, `why` `timeout`, `refused` or `failed`), the relay ended
+  // it before `ready` (`relay`, `why` its end reason), or the browser cannot
+  // make calls (`browser`, `why` `unsupported`).
+  VOICE_INTERVIEW_START_FAILED: "voice_interview_start_failed",
   // A call's ending showed (`ending`), and what the person chose on it
   // (`action`).
   ENDING_SHOWN: "ending_shown",
