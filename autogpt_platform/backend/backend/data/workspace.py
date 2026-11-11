@@ -25,6 +25,7 @@ from backend.data.workspace_scope import (
     resolve_expert_workspace_scope,
 )
 from backend.util.json import SafeJson
+from backend.util.sql import escape_like
 
 if TYPE_CHECKING:
     # Imported for typing only: workspace_folder imports this module.
@@ -473,13 +474,13 @@ async def list_workspace_files(
         # Normalize prefix
         if not path_prefix.startswith("/"):
             path_prefix = f"/{path_prefix}"
-        where_clause["path"] = {"startswith": path_prefix}
+        where_clause["path"] = {"startswith": escape_like(path_prefix)}
 
     not_clause: list[UserWorkspaceFileWhereInput] = []
     if path_not_starts_with:
         if not path_not_starts_with.startswith("/"):
             path_not_starts_with = f"/{path_not_starts_with}"
-        not_clause.append({"path": {"startswith": path_not_starts_with}})
+        not_clause.append({"path": {"startswith": escape_like(path_not_starts_with)}})
 
     if metadata_equals is not None:
         where_clause["metadata"] = {"equals": SafeJson(metadata_equals)}
@@ -491,7 +492,10 @@ async def list_workspace_files(
         where_clause["NOT"] = not_clause
 
     if name_contains:
-        where_clause["name"] = {"contains": name_contains, "mode": "insensitive"}
+        where_clause["name"] = {
+            "contains": escape_like(name_contains),
+            "mode": "insensitive",
+        }
 
     if created_after is not None and created_before is not None:
         where_clause["createdAt"] = {"gte": created_after, "lt": created_before}
@@ -526,13 +530,18 @@ def _scope_branches(
     if allowed_path_prefixes is None:
         return None
     branches: list[UserWorkspaceFileWhereInput] = [
-        {"path": {"startswith": prefix}} for prefix in allowed_path_prefixes
+        {"path": {"startswith": escape_like(prefix)}}
+        for prefix in allowed_path_prefixes
     ]
     if include_user_files:
         # The owner's own uploads: every path outside the managed roots, which
         # is the SQL form of ``workspace_scope.is_user_file_path``.
         branches.append(
-            {"NOT": [{"path": {"startswith": root}} for root in SHARED_ROOTS]}
+            {
+                "NOT": [
+                    {"path": {"startswith": escape_like(root)}} for root in SHARED_ROOTS
+                ]
+            }
         )
     return branches
 
@@ -587,7 +596,7 @@ async def count_workspace_files(
         # Normalize prefix
         if not path_prefix.startswith("/"):
             path_prefix = f"/{path_prefix}"
-        where_clause["path"] = {"startswith": path_prefix}
+        where_clause["path"] = {"startswith": escape_like(path_prefix)}
 
     if scope_branches:
         where_clause["AND"] = [{"OR": scope_branches}]

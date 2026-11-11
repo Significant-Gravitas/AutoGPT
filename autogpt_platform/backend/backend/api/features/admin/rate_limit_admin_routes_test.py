@@ -656,3 +656,51 @@ def test_search_users_requires_admin_role(mock_jwt_user) -> None:
 
     response = client.get("/admin/rate_limit/search_users", params={"query": "test"})
     assert response.status_code == 403
+
+
+def test_search_users_nul_query_is_400_without_db_error(
+    mocker: pytest_mock.MockerFixture,
+    admin_user_id: str,
+) -> None:
+    """A NUL in the query is rejected before the DB, with the production
+    ValueError mapping (400), and no Postgres/engine text in the body."""
+    from backend.api.rest_api import app as rest_app
+
+    find_many = AsyncMock(return_value=[])
+    mocker.patch("backend.data.user.prisma").user.find_many = find_many
+    prod_app = fastapi.FastAPI()
+    prod_app.include_router(rate_limit_admin_router)
+    prod_app.add_exception_handler(ValueError, rest_app.exception_handlers[ValueError])
+    prod_app.dependency_overrides = app.dependency_overrides
+    prod_client = fastapi.testclient.TestClient(prod_app, raise_server_exceptions=False)
+
+    response = prod_client.get(
+        "/admin/rate_limit/search_users", params={"query": "dan\x00a"}
+    )
+
+    assert response.status_code == 400
+    assert "NUL" in response.json()["detail"]
+    assert "22021" not in response.text
+    assert "ConnectorError" not in response.text
+    find_many.assert_not_called()
+
+
+def test_search_users_escapes_like_wildcards(
+    mocker: pytest_mock.MockerFixture,
+    admin_user_id: str,
+) -> None:
+    """`_` and `%` reach Prisma's `contains` escaped, so they match literally."""
+    find_many = AsyncMock(return_value=[])
+    mocker.patch("backend.data.user.prisma").user.find_many = find_many
+
+    response = client.get(
+        "/admin/rate_limit/search_users", params={"query": " first_last%"}
+    )
+
+    assert response.status_code == 200
+    assert find_many.await_args is not None
+    where = find_many.await_args.kwargs["where"]
+    assert where["OR"] == [
+        {"email": {"contains": r"first\_last\%", "mode": "insensitive"}},
+        {"name": {"contains": r"first\_last\%", "mode": "insensitive"}},
+    ]
