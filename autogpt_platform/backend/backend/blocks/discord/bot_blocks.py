@@ -140,9 +140,10 @@ class ReadDiscordMessagesBlock(Block):
             if message.attachments:
                 attachment = message.attachments[0]  # Process the first attachment
                 if attachment.filename.endswith((".txt", ".py")):
-                    response = await Requests().get(
-                        attachment.url, max_body_bytes=MAX_TEXT_ATTACHMENT_BYTES
-                    )
+                    # A response limit at or below the cap would refuse the file, not cut it.
+                    response = await Requests(
+                        max_response_bytes=MAX_TEXT_ATTACHMENT_BYTES + 1
+                    ).get(attachment.url, max_body_bytes=MAX_TEXT_ATTACHMENT_BYTES)
                     # A capped read keeps one byte past the cap when the file is longer.
                     truncated = len(response.content) > MAX_TEXT_ATTACHMENT_BYTES
                     response.content = response.content[:MAX_TEXT_ATTACHMENT_BYTES]

@@ -193,7 +193,14 @@ async def test_read_adds_a_text_attachment_within_the_cap_whole(mocker, body: by
 
 
 @pytest.mark.asyncio
-async def test_read_cuts_a_longer_text_attachment_at_the_cap(mocker):
+@pytest.mark.parametrize(
+    "configured_limit",
+    [None, MAX_TEXT_ATTACHMENT_BYTES],
+    ids=["default-file-size-limit", "file-size-limit-at-the-cap"],
+)
+async def test_read_cuts_a_longer_text_attachment_at_the_cap(
+    mocker, configured_limit: int | None
+):
     async def serve_long_file(request: web.Request) -> web.StreamResponse:
         response = web.StreamResponse(
             headers={"Content-Type": "text/plain; charset=utf-8"}
@@ -206,7 +213,9 @@ async def test_read_cuts_a_longer_text_attachment_at_the_cap(mocker):
         except ConnectionResetError:
             return response
 
-    content = await _read_message_with_attachment(mocker, serve_long_file)
+    content = await _read_message_with_attachment(
+        mocker, serve_long_file, configured_limit
+    )
 
     assert content == _with_file(
         "a" * MAX_TEXT_ATTACHMENT_BYTES
@@ -218,9 +227,14 @@ def _with_file(file_content: str) -> str:
     return f"see the file\n\nFile from user: notes.txt\nContent: {file_content}"
 
 
-async def _read_message_with_attachment(mocker, handler) -> str:
+async def _read_message_with_attachment(
+    mocker, handler, configured_limit: int | None = None
+) -> str:
     """Runs the block on one message whose notes.txt is served by ``handler``,
-    through the real HTTP client, and returns its message_content."""
+    through the real HTTP client, and returns its message_content.
+
+    ``configured_limit`` stands in for a ``max_file_size_mb`` setting, which a
+    limit the block passes itself overrides."""
     app = web.Application()
     app.router.add_get("/notes.txt", handler)
     runner = web.AppRunner(app)
@@ -244,9 +258,14 @@ async def _read_message_with_attachment(mocker, handler) -> str:
         side_effect=lambda **kw: _FakeReadClient(message=message, **kw),
     )
     # Only the loopback host is let through; the read itself is the real one.
+    configured = (
+        {} if configured_limit is None else {"max_response_bytes": configured_limit}
+    )
     mocker.patch(
         "backend.blocks.discord.bot_blocks.Requests",
-        side_effect=lambda: Requests(trusted_origins=["127.0.0.1"]),
+        side_effect=lambda **kw: Requests(
+            trusted_origins=["127.0.0.1"], **(configured | kw)
+        ),
     )
 
     block = ReadDiscordMessagesBlock()
