@@ -137,6 +137,11 @@ def _keep_window_open(subject: Subject, now: datetime) -> bool:
     return subject.erase_after > now
 
 
+# The blockers that refuse the ID itself: no step runs for them, not even
+# in a dry run.
+REFUSED_IDS = ("invalid_account_id", "system_account")
+
+
 def invalid_id(user_id: str) -> list[Blocker]:
     """An ID that cannot be an account's. Refused before any step runs, so
     nothing (Stripe, the scheduler, a storage prefix) is ever asked about it."""

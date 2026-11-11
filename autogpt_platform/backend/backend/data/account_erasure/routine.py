@@ -41,7 +41,11 @@ from backend.data.account_erasure.models import (
     StepStatus,
     Subject,
 )
-from backend.data.account_erasure.preflight import find_blockers, load_subject
+from backend.data.account_erasure.preflight import (
+    REFUSED_IDS,
+    find_blockers,
+    load_subject,
+)
 from backend.data.account_erasure.request import (
     claim_request,
     complete_request,
@@ -161,6 +165,10 @@ async def _run(
     )
     if report.blockers and not dry_run:
         raise AccountErasureBlocked(report)
+    if any(b.name in REFUSED_IDS for b in report.blockers):
+        # Not even a dry run asks a step about it: an empty ID lists every
+        # user's runs, and the placeholder's counts mean nothing.
+        return report
     if not dry_run and not await _claim(subject, report):
         return report
     for name, step in steps:

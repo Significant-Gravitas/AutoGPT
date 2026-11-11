@@ -7,7 +7,7 @@ Deleting an account has two halves:
 
 A request sent to privacy@agpt.co goes through the same two halves: `erase-account --close` closes the account exactly as the Settings button does (with source `EMAIL`), and the job erases it once its 14 days are over.
 
-We promise to delete within 30 days of the request: 14 days to keep the account, then the erasure, which the hourly job runs within the hour.
+We promise to delete within 30 days of the request: 14 days to keep the account, then the erasure. With the hourly job switched on (it is off by default, below), the erasure runs within the hour after the 14 days; while it is off, run `erase-account --pending --apply` by hand. An erasure that is blocked or fails stays open and is not erased until someone resolves it, so check for those well before the 30 days are up.
 
 ### `startedAt`: the claim
 

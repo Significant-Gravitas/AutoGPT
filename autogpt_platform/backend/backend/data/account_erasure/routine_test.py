@@ -10,6 +10,7 @@ import pytest
 from prisma.enums import AccountDeletionSource
 
 from backend.data.account_erasure import routine
+from backend.data.account_erasure.deleted_user import DELETED_USER_ID
 from backend.data.account_erasure.models import (
     AccountErasureBlocked,
     Blocker,
@@ -283,6 +284,29 @@ async def test_a_malformed_id_runs_no_step(monkeypatch):
 
     assert steps.calls == []
     assert [b.name for b in raised.value.report.blockers] == ["invalid_account_id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "user_id, blocker",
+    [("", "invalid_account_id"), (DELETED_USER_ID, "system_account")],
+)
+async def test_a_refused_id_runs_no_step_even_in_a_dry_run(
+    monkeypatch, user_id, blocker
+):
+    """An empty ID would list every user's runs, and the placeholder's
+    counts mean nothing, so the dry run stops at the blocker too."""
+    subject = Subject(user_id=user_id, request_source=AccountDeletionSource.SETTINGS)
+    monkeypatch.setattr(routine, "load_subject", AsyncMock(return_value=subject))
+    monkeypatch.setattr(
+        routine, "plan_transfer", AsyncMock(return_value=TransferPlan())
+    )
+    steps = Steps(monkeypatch)
+
+    report = await routine.erase_account(user_id)
+
+    assert steps.calls == []
+    assert [b.name for b in report.blockers] == [blocker]
 
 
 @pytest.mark.asyncio

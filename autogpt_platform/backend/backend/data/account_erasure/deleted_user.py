@@ -8,6 +8,7 @@ setting off. It is created on first use, with a fixed ID, the way
 """
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from prisma import Prisma
 from prisma.enums import BriefingFrequency
@@ -62,12 +63,21 @@ async def ensure_deleted_user(client: Prisma) -> str:
 
 
 async def _free_username(client: Prisma) -> str:
-    """`deleted-user`, unless an account already took that handle. Checked
-    first rather than caught: a unique violation would abort the transaction
-    this runs in."""
-    taken = await Profile.prisma(client).find_unique(
-        where={"username": DELETED_USER_USERNAME}
-    )
-    if taken is None:
-        return DELETED_USER_USERNAME
-    return f"{DELETED_USER_USERNAME}-{DELETED_USER_ID[:8]}"
+    """`deleted-user`, or the first of the fallbacks no account has taken:
+    anyone can pick these handles in their profile. Checked first rather than
+    caught: a unique violation would abort the transaction this runs in."""
+    candidates = [
+        DELETED_USER_USERNAME,
+        f"{DELETED_USER_USERNAME}-{DELETED_USER_ID[:8]}",
+        *(f"{DELETED_USER_USERNAME}-{n}" for n in range(2, 50)),
+    ]
+    taken = {
+        profile.username
+        for profile in await Profile.prisma(client).find_many(
+            where={"username": {"in": candidates}}
+        )
+    }
+    for username in candidates:
+        if username not in taken:
+            return username
+    return f"{DELETED_USER_USERNAME}-{uuid4().hex[:12]}"

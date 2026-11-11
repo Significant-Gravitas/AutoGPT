@@ -3233,7 +3233,7 @@ class Scheduler(AppService):
             # Account erasure: works through the closed accounts not erased
             # yet. Off by default (account_erasure_sweep_enabled).
             if config.account_erasure_sweep_enabled:
-                self.scheduler.add_job(
+                system_jobs.add_job(
                     erase_closed_accounts,
                     id="erase_closed_accounts",
                     trigger="interval",

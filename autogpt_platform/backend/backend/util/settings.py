@@ -1648,7 +1648,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_personal_api_key: str = Field(
         default="",
         description="PostHog personal API key with the person:write scope, used "
-        "only to delete a deleted account's person. Blank skips that step.",
+        "only to delete a deleted account's person. Blank stops the erasure "
+        "at that step, with the request left open, unless 'posthog' is in "
+        "ACCOUNT_ERASURE_UNUSED_SERVICES.",
     )
     posthog_project_id: str = Field(
         default="", description="PostHog project ID the persons live in"

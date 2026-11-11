@@ -249,3 +249,19 @@ async def test_an_email_request_to_be_erased_at_once_has_no_14_days(monkeypatch)
     close.assert_awaited_once_with(
         USER_ID, EMAIL, AccountDeletionSource.EMAIL, grace=timedelta(0)
     )
+
+
+@pytest.mark.asyncio
+async def test_ending_the_14_days_dates_them_a_minute_back(claim_query):
+    """On the database's clock, a minute back, so the CLI's dry run finds the
+    account due even on a host whose clock is a little behind; never later
+    than the date the request had, and never for an erasure under way."""
+    assert await request.end_grace_now(USER_ID) is True
+
+    sql, user_id = claim_query.await_args.args
+    assert user_id == USER_ID
+    assert (
+        'SET "eraseAfter" = LEAST("eraseAfter", '
+        "(now() - interval '1 minute') AT TIME ZONE 'UTC')" in sql
+    )
+    assert '"startedAt" IS NULL AND "completedAt" IS NULL' in sql

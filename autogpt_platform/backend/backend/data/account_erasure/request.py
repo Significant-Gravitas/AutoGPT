@@ -93,11 +93,14 @@ async def close_for_email_request(user_id: str, *, erase_now: bool = False) -> d
 async def end_grace_now(user_id: str) -> bool:
     """End the 14 days to keep a closed account now, for an owner who asked to
     be erased at once, so the erasure can claim it straight away. By the
-    database's clock, the one the claim reads. False when there is nothing to
-    shorten: no request, or an erasure already started or finished."""
+    database's clock, the one the claim reads, and a minute back: the CLI's
+    dry run checks the date on its own host's clock, which may be a little
+    behind. False when there is nothing to shorten: no request, or an erasure
+    already started or finished."""
     rows = await query_raw_with_schema(
         'UPDATE {schema_prefix}"AccountDeletionRequest" '
-        'SET "eraseAfter" = LEAST("eraseAfter", now() AT TIME ZONE \'UTC\') '
+        'SET "eraseAfter" = LEAST("eraseAfter", '
+        "(now() - interval '1 minute') AT TIME ZONE 'UTC') "
         'WHERE "userId" = $1 AND "startedAt" IS NULL AND "completedAt" IS NULL '
         'RETURNING "id"',
         user_id,

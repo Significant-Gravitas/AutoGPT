@@ -124,6 +124,7 @@ async def _run_close(account: str, *, apply: bool, yes: bool):
     from backend.data.account_erasure.request import close_for_email_request
 
     user_id, _ = await _resolve(account)
+    _refuse_a_system_id(user_id)
     if request := await get_deletion_request(user_id):
         click.echo(
             f"Account {user_id} is closed already; it is erased after "
@@ -160,6 +161,7 @@ async def _run_close_now(account: str, *, apply: bool, yes: bool):
     )
 
     user_id, _ = await _resolve(account)
+    _refuse_a_system_id(user_id)
     request = await get_deletion_request(user_id)
     if request is None:
         click.echo(
@@ -189,6 +191,15 @@ async def _run_close_now(account: str, *, apply: bool, yes: bool):
         click.echo("\nClosed the account, with no 14 days to keep it.")
     await end_grace_now(user_id)
     await _run_one(account, apply=True, yes=True)
+
+
+def _refuse_a_system_id(user_id: str) -> None:
+    """Closing runs no preflight, so it checks the ID itself: never close the
+    placeholder the shared agents go to, or an ID no account can have."""
+    from backend.data.account_erasure.preflight import invalid_id, system_account
+
+    if refused := invalid_id(user_id) or system_account(user_id):
+        raise click.ClickException(refused[0].resolution)
 
 
 _CLOSE_DOES = (

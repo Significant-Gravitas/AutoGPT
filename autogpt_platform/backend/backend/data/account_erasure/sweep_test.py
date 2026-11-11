@@ -137,11 +137,18 @@ def test_the_scheduler_job_starts_the_sweep_only_when_switched_on(monkeypatch, e
     client = MagicMock()
     client.start_account_erasure_sweep = AsyncMock(return_value=True)
     monkeypatch.setattr(scheduler, "get_database_manager_async_client", lambda: client)
-    monkeypatch.setattr(scheduler, "run_async", asyncio.run)
+    started: list = []
+
+    def run_async(coro, *args, **kwargs):
+        # Records the RPC without running an event loop of its own.
+        started.append(coro)
+        coro.close()
+
+    monkeypatch.setattr(scheduler, "run_async", run_async)
 
     scheduler.erase_closed_accounts()
 
-    assert client.start_account_erasure_sweep.await_count == int(enabled)
+    assert len(started) == int(enabled)
 
 
 @pytest.mark.asyncio

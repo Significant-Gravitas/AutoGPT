@@ -4,6 +4,7 @@ command, and nothing it prints carries the email. --close only closes an
 account the way Settings does (its owner then has 14 days to keep it), and
 --pending erases every closed account whose 14 days are over."""
 
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -16,6 +17,7 @@ from backend.api.features.account_deletion.service import PlanCancellationError
 from backend.cli import erase_account as cli
 from backend.data import account_deletion, db
 from backend.data.account_erasure import request, routine, sweep
+from backend.data.account_erasure.deleted_user import DELETED_USER_ID
 from backend.data.account_erasure.models import (
     AccountErasureBlocked,
     Blocker,
@@ -56,9 +58,20 @@ def _report(
     )
 
 
+def _run_on_a_private_loop(coro):
+    """What the command's `asyncio.run` does, without leaving the thread with
+    no event loop for the async tests after these."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 @pytest.fixture
 def run(monkeypatch):
     """The command against a fake routine and no database."""
+    monkeypatch.setattr(cli.asyncio, "run", _run_on_a_private_loop)
     monkeypatch.setattr(db, "connect", AsyncMock())
     monkeypatch.setattr(db, "disconnect", AsyncMock())
     monkeypatch.setattr(cli, "_resolve", AsyncMock(return_value=(USER_ID, EMAIL)))
@@ -214,6 +227,22 @@ def test_close_now_without_apply_changes_nothing(run):
     run.ending.assert_not_awaited()
     run.erasing.assert_not_awaited()
     assert "Dry run" in result.output
+
+
+@pytest.mark.parametrize("now", [[], ["--now"]])
+@pytest.mark.parametrize("user_id", [DELETED_USER_ID, "../everyone"])
+def test_close_refuses_the_placeholder_and_malformed_ids(
+    run, monkeypatch, now, user_id
+):
+    monkeypatch.setattr(cli, "_resolve", AsyncMock(return_value=(user_id, None)))
+    run.closed.return_value = None
+
+    result = run.invoke(user_id, "--close", *now, "--apply", "--yes")
+
+    assert result.exit_code == 1
+    run.closing.assert_not_awaited()
+    run.ending.assert_not_awaited()
+    run.erasing.assert_not_awaited()
 
 
 def test_a_stripe_refusal_on_close_leaves_the_account_open(run):
