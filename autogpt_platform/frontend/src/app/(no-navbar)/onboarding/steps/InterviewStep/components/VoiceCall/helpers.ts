@@ -36,9 +36,9 @@ export const HANGUP_FALLBACK_MS = 5_000;
 // A read the step opens on that has not answered this soon is given up, and
 // the choice shows.
 export const OPENING_READ_TIMEOUT_MS = 8_000;
-// The browser joins the call's room before it starts the call; a join
-// LiveKit has not let through this soon is a call that could not connect its
-// audio. A locked-down network can take a while to find a way through.
+// The browser joins the call's room while it opens the relay's socket; a
+// join LiveKit has not let through this soon is a call that could not connect
+// its audio. A locked-down network can take a while to find a way through.
 export const ROOM_JOIN_TIMEOUT_MS = 10_000;
 // Once the call ends, the browser stays in the room while Otto's last words
 // play, until the relay leaves it, for at most this long.

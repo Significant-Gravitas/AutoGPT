@@ -640,7 +640,7 @@ function ready(socket: FakeWebSocket) {
 // A call gone live, in its room.
 async function liveRoomCall() {
   const socket = await callOtto();
-  const room = fakes.room()!;
+  const room = await joiningRoom();
   ready(socket);
   await screen.findByText("You're on the call with Otto");
   return { socket, room };
@@ -2517,7 +2517,7 @@ describe("onboarding interview by voice: the call's room", () => {
   const AUDIO_FAILED =
     "We couldn't connect the call's audio. Try again, or type instead.";
 
-  it("joins the call's room before it starts the call, and sends no audio on the socket", async () => {
+  it("joins the call's room the start names, publishes the microphone there once, and sends no audio on the socket", async () => {
     render(<OnboardingPage />);
     const { socket, room } = await liveRoomCall();
 
@@ -2525,8 +2525,9 @@ describe("onboarding interview by voice: the call's room", () => {
     expect(mintBodies).toEqual([""]);
     expect(room.url).toBe(ROOM_URL);
     expect(room.token).toBe(ROOM_TOKEN);
-    // The microphone the call opened, published once, as a microphone.
-    expect(room.published).toHaveLength(1);
+    // The microphone the call opened, published once, as a microphone. The
+    // relay can be ready before the browser's own join settles.
+    await waitFor(() => expect(room.published).toHaveLength(1));
     expect(room.publishOptions).toEqual([{ source: "microphone" }]);
     expect(fakes.getUserMedia).toHaveBeenCalledTimes(1);
     expect(socket.messages()[0]).toEqual({ type: "start", token: TOKEN });

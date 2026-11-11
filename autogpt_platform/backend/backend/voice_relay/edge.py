@@ -1,13 +1,14 @@
 """A call's audio, through the call's LiveKit room.
 
-The person's browser joins the call's room before it starts the call, and the
-relay joins the same room as Otto once the call starts (``rooms``). The relay
-hears one track, the person's microphone: it subscribes to that publication
-alone, at 16 kHz mono, which the SDK resamples to, and hands it to the call in
-frames of ``FRAME_S``. It publishes Otto's speech from a 24 kHz source, which
-plays it out at real time, as it arrives; when the person talks over Otto,
-what has not played yet is dropped. The control socket stays open beside the
-room and carries everything else.
+The person's browser joins the call's room while it opens the call's socket,
+and the relay joins the same room as Otto while it opens the call, beside the
+model session's connect (``rooms``). The relay hears one track, the person's
+microphone: it subscribes to that publication alone, at 16 kHz mono, which the
+SDK resamples to, and hands it to the call in frames of ``FRAME_S``. It
+publishes Otto's speech from a 24 kHz source, which plays it out at real time,
+as it arrives; when the person talks over Otto, what has not played yet is
+dropped. The control socket stays open beside the room and carries everything
+else.
 
 The person's microphone can leave the room and come back, as LiveKit's own
 reconnect does; the call is told each time (``presence``). While it is muted,
