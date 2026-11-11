@@ -387,7 +387,7 @@ async def _counted(redis) -> list[str]:
 
 
 async def test_a_start_reads_the_allowance_and_counts_nothing(paying_platform, redis):
-    """The relay counts a call once its model session opens."""
+    """The relay counts a call once it is ready."""
     for _ in range(rate_limit.VOICE_HOURLY_CALLS + 1):
         assert (await start()).status_code == 200
     assert await _counted(redis) == []

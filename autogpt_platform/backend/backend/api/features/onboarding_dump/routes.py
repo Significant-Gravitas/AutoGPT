@@ -299,10 +299,11 @@ async def start_onboarding_voice_call(
 
     Answers with the call's room, which carries its audio, and the browser's
     token for it, and with the relay's call socket and a start token good for
-    this one call within a minute. The browser joins the room, then opens the
-    socket and sends the token as its first message; a browser that cannot
-    join the room ends the call (``/end``). The call counts against the
-    person's allowance once its model session opens on the relay.
+    this one call within a minute. The browser joins the room and opens the
+    socket at the same time, and sends the token as the socket's first
+    message; a browser that cannot join the room ends the call (``/end``).
+    The call counts against the person's allowance once it is ready on the
+    relay.
 
     404 while voice is off for the person; 409 once their interview is over,
     or while a call of theirs is live (``call_id`` names it); 429 past their

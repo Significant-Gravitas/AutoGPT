@@ -21,8 +21,8 @@ the browser's token for it. In order, it checks:
 - the platform's daily voice budget and its live-call ceiling: 503 with
   ``Retry-After``;
 - the person's own call allowance, on every tier: 429 with ``Retry-After``.
-  Read, not written: the relay counts a call once its model session opens,
-  so a start that never got that far costs the person nothing.
+  Read, not written: the relay counts a call once it is ready, so a start
+  that never got that far costs the person nothing.
 
 The checks' reads are independent and run side by side, each in a span of
 its own under the start's span in its trace; their refusals are still made in

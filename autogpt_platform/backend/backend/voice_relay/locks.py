@@ -37,7 +37,7 @@ production Redis cluster unchanged:
 
 The person's call allowance is counted on its own keys
 (``onboarding_dump.rate_limit``): the REST API reads it, and the call counts
-itself once its model session opens (:meth:`CallStore.count_call`).
+itself once it is ready (:meth:`CallStore.count_call`).
 """
 
 import asyncio

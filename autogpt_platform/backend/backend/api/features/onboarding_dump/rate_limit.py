@@ -34,8 +34,8 @@ INTERVIEW_DAILY_TURNS = 2 * INTERVIEW_TURN_CAP
 
 # Onboarding voice calls a person may make: a call and a retry in an hour,
 # three in a day. The relay caps each call, so these bound how many calls,
-# not how long any one runs. A call counts once its model session opens, the
-# first moment it costs anything; the start route only reads the count.
+# not how long any one runs. A call counts once the relay has it ready,
+# before the model is sent anything; the start route only reads the count.
 VOICE_HOURLY_CALLS = 2
 VOICE_DAILY_CALLS = 3
 
@@ -144,11 +144,10 @@ async def enforce_interview_turn_budget(user_id: str) -> None:
 async def enforce_voice_call_budget(user_id: str) -> None:
     """Refuse an onboarding voice call past the person's call allowance, on
     the interview turn budget's rules and its own counters, counting nothing:
-    the relay counts a call once its model session opens
-    (:func:`count_voice_call`), so a start that never got that far costs the
-    person nothing. On every subscription tier where the platform takes
-    payment, a call past it is a 429 with Retry-After, and an allowance that
-    cannot be read is a 503."""
+    the relay counts a call once it is ready (:func:`count_voice_call`), so a
+    start that never got that far costs the person nothing. On every
+    subscription tier where the platform takes payment, a call past it is a
+    429 with Retry-After, and an allowance that cannot be read is a 503."""
     await _enforce(user_id, _VOICE_INTERVIEW, script=_CHECK)
 
 
