@@ -87,16 +87,6 @@ _KILL_TIMEOUT_SECONDS = 10
 # stream setup. Capping this far below it lets the tool's own timeout land first.
 _HUNG_CAP_MARGIN_SECONDS = 120
 
-# `bash -c '<command>'` carries the whole command in its own argv, which is
-# what a `pkill -f` pattern taken from that command then matches.
-_SHELL_KILLED_MESSAGE = (
-    "The command's shell was killed by a signal before it finished, so later "
-    "steps in the command did not run. The usual cause is a `pkill -f` whose "
-    "pattern matches this command's own text. Use `pkill -x <name>`, or "
-    "`pkill -f '[n]pm install'` if the command does not also contain "
-    "`npm install`."
-)
-
 # envd's kill reaches only the shell it started, and at a timeout envd has
 # already killed and reaped that shell itself, leaving what it started (`npm
 # install && npm run build`) running under new parents. Those are found by the
@@ -161,41 +151,6 @@ class _E2BRun(BaseModel):
     # The command ended while we were not attached: no exit code.
     ended_unseen: bool = False
     reconnects: int = 0
-
-
-def _build_completion_response(
-    stdout: str | None,
-    stderr: str | None,
-    exit_code: int,
-    secret_values: list[str],
-    session_id: str | None,
-) -> BashExecResponse:
-    """The command's result, with any injected token replaced by [REDACTED].
-
-    Not a security control: a literal match on one command's output, beaten by
-    base64, ``rev`` or a newline, blind to files read back and to anything sent
-    over the network.  It only keeps an accidental ``env`` from printing a
-    token into the chat.  Behind the swap proxy there is no token in the box
-    and nothing to redact.
-    """
-    out = stdout or ""
-    err = stderr or ""
-    for secret in secret_values:
-        out = out.replace(secret, "[REDACTED]")
-        err = err.replace(secret, "[REDACTED]")
-    return BashExecResponse(
-        # envd reports Go's ExitCode(), which is -1 for a process a signal ended.
-        message=(
-            _SHELL_KILLED_MESSAGE
-            if exit_code == -1
-            else f"Command executed with status code {exit_code}"
-        ),
-        stdout=out,
-        stderr=err,
-        exit_code=exit_code,
-        timed_out=False,
-        session_id=session_id,
-    ).from_outside(out, err)
 
 
 class BashExecTool(BaseTool):
@@ -690,6 +645,52 @@ def _run_response(
     response.message = message
     response.timed_out = run.timed_out
     return response
+
+
+def _build_completion_response(
+    stdout: str | None,
+    stderr: str | None,
+    exit_code: int,
+    secret_values: list[str],
+    session_id: str | None,
+) -> BashExecResponse:
+    """The command's result, with any injected token replaced by [REDACTED].
+
+    Not a security control: a literal match on one command's output, beaten by
+    base64, ``rev`` or a newline, blind to files read back and to anything sent
+    over the network.  It only keeps an accidental ``env`` from printing a
+    token into the chat.  Behind the swap proxy there is no token in the box
+    and nothing to redact.
+    """
+    out = stdout or ""
+    err = stderr or ""
+    for secret in secret_values:
+        out = out.replace(secret, "[REDACTED]")
+        err = err.replace(secret, "[REDACTED]")
+    return BashExecResponse(
+        # envd reports Go's ExitCode(), which is -1 for a process a signal ended.
+        message=(
+            _SHELL_KILLED_MESSAGE
+            if exit_code == -1
+            else f"Command executed with status code {exit_code}"
+        ),
+        stdout=out,
+        stderr=err,
+        exit_code=exit_code,
+        timed_out=False,
+        session_id=session_id,
+    ).from_outside(out, err)
+
+
+# `bash -c '<command>'` carries the whole command in its own argv, which is
+# what a `pkill -f` pattern taken from that command then matches.
+_SHELL_KILLED_MESSAGE = (
+    "The command's shell was killed by a signal before it finished, so later "
+    "steps in the command did not run. The usual cause is a `pkill -f` whose "
+    "pattern matches this command's own text. Use `pkill -x <name>`, or "
+    "`pkill -f '[n]pm install'` if the command does not also contain "
+    "`npm install`."
+)
 
 
 async def _lands_on(path: str) -> bool:
