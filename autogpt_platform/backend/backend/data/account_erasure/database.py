@@ -96,7 +96,7 @@ _BEFORE_ORGS = [
     ("kv_data", "AgentNodeExecutionKeyValueData", '"userId" = $1'),
     ("refund_requests", "CreditRefundRequest", '"userId" = $1'),
     ("private_embeddings", "UnifiedContentEmbedding", '"userId" = $1'),
-    # Its chats, deleted by name, not left to the account's cascade: a
+    # Its chats, deleted here rather than left to the account's cascade: a
     # database can lack that foreign key (dev did, 11 Nov 2026), and then
     # chats outlive the account and the search backfill re-indexes their
     # titles. Messages, shared files, links and background tasks cascade
