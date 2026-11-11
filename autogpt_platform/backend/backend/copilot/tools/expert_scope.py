@@ -14,6 +14,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel, Field
 
+from backend.copilot.context import is_unattended_turn
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 from backend.data.model import Credentials, CredentialsFieldInfo, CredentialsType
@@ -224,7 +225,11 @@ async def settle_expert_grants(
     settle it before any other install lands; otherwise the new workflow's
     credentials would be granted by an action the owner did not take.
     """
-    if session.expert_id is None and session.metadata.origin == "interactive":
+    if (
+        session.expert_id is None
+        and session.metadata.origin == "interactive"
+        and not is_unattended_turn()
+    ):
         return
     await experts_db().settle_credential_seed(user_id, expert_id)
 

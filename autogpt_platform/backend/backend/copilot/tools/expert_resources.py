@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from backend.api.features.experts.models import ExpertCredentialRef, ExpertWorkflowRef
+from backend.copilot.context import is_unattended_turn
 from backend.copilot.model import ChatSession, PendingQuestion
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import chat_db, experts_db
@@ -382,6 +383,16 @@ async def _change_grant(
             message=(
                 "An expert cannot change credential grants. Use "
                 "tool:request_credential_grant to ask the user for access."
+            ),
+            error="access_denied",
+            session_id=session_id,
+        )
+    if is_unattended_turn():
+        return ErrorResponse(
+            message=(
+                "The user did not start this turn, so it cannot change an "
+                "expert's credentials. Tell them what the expert needs; they "
+                "change its access from the expert's Integrations page."
             ),
             error="access_denied",
             session_id=session_id,

@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.api.features.experts.models import ExpertCredentialRef, ExpertWorkflowRef
+from backend.copilot.context import set_turn_unattended
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.expert_resources import (
     CredentialGrantRequestedResponse,
@@ -60,6 +61,14 @@ def experts():
 
 def _session(expert_id: str | None) -> ChatSession:
     return ChatSession.new("user-1", dry_run=False, expert_id=expert_id)
+
+
+# Chats nobody is typing in: an automation's, a legacy one, and a scheduled
+# turn fired into the user's own chat.
+_NOBODY_TYPING = (
+    "origin, scheduled",
+    [("automation", False), (None, False), ("interactive", True)],
+)
 
 
 async def test_expert_installs_out_of_the_accounts_library_onto_itself(experts):
@@ -274,19 +283,19 @@ async def test_expert_cannot_grant_itself(experts):
     experts.grant_expert_credentials.assert_not_awaited()
 
 
-@pytest.mark.parametrize("origin", ["automation", None])
+@pytest.mark.parametrize(*_NOBODY_TYPING)
 @pytest.mark.parametrize(
     "tool",
     [GrantExpertCredentialTool(), RevokeExpertCredentialTool()],
     ids=["grant", "revoke"],
 )
 async def test_grants_change_only_in_a_chat_the_user_is_typing_in(
-    experts, tool, origin
+    experts, tool, origin, scheduled
 ):
-    """The origins ``autopilot_session_guard`` refuses;
-    ``test_autopilot_grants_and_revokes`` is the interactive arm."""
+    """``test_autopilot_grants_and_revokes`` is the arm the user types in."""
     session = _session(None)
     session.metadata.origin = origin
+    set_turn_unattended(session, scheduled=scheduled)
     result = await tool._execute(
         "user-1", session, expert_id="expert-a", credential_id="cred-1"
     )
@@ -319,11 +328,11 @@ async def test_autopilot_install_does_not_touch_the_experts_grants(experts):
     experts.settle_credential_seed.assert_not_awaited()
 
 
-@pytest.mark.parametrize("origin", ["automation", None])
+@pytest.mark.parametrize(*_NOBODY_TYPING)
 async def test_an_install_from_a_chat_nobody_types_in_settles_the_grants_first(
-    experts, origin
+    experts, origin, scheduled
 ):
-    """The interactive arm is the test above."""
+    """The arm the user types in is the test above."""
     order: list[str] = []
     experts.settle_credential_seed.side_effect = lambda *_: order.append("settle")
     experts.install_workflow.side_effect = lambda *_, **__: (
@@ -331,6 +340,7 @@ async def test_an_install_from_a_chat_nobody_types_in_settles_the_grants_first(
     )
     session = _session(None)
     session.metadata.origin = origin
+    set_turn_unattended(session, scheduled=scheduled)
     result = await InstallExpertWorkflowTool()._execute(
         "user-1", session, expert_id="expert-a", library_agent_id="lib-1"
     )
