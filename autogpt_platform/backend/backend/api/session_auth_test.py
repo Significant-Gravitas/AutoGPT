@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import jwt
 import pytest
@@ -99,6 +99,8 @@ async def test_signed_legacy_token_cutoff_applies_to_http_and_websocket(
         session_auth.settings.config, "auth_legacy_token_deadline", deadline
     )
     monkeypatch.setattr(ws_api, "is_user_banned", AsyncMock(return_value=False))
+    accounts = Mock(is_account_closed=AsyncMock(return_value=False))
+    monkeypatch.setattr(ws_api, "user_db", Mock(return_value=accounts))
     token = _sign(signing_key, {"sub": "user", "aud": "authenticated"})
 
     response = client.get("/user", headers={"Authorization": f"Bearer {token}"})

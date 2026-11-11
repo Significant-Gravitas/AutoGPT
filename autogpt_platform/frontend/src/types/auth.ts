@@ -3,7 +3,12 @@ import { AUTH_PASSWORD_MIN_LENGTH } from "@/lib/auth/password-policy";
 
 const MIN_LENGTH_MESSAGE = `Password must contain at least ${AUTH_PASSWORD_MIN_LENGTH} characters`;
 
-export type LoginProvider = "google" | "github" | "discord" | "apple";
+export type LoginProvider =
+  | "google"
+  | "github"
+  | "discord"
+  | "apple"
+  | "microsoft";
 
 export const loginFormSchema = z.object({
   email: z

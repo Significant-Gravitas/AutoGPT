@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 import pytest_asyncio
 import uvicorn
+from autogpt_libs.auth.closed_accounts import ACCOUNT_CLOSED_DETAIL
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 from fastapi import HTTPException, WebSocket
 from websockets.asyncio.client import connect
@@ -21,6 +22,7 @@ async def websocket_server(
 ) -> AsyncIterator[tuple[str, ConnectionManager]]:
     manager = ConnectionManager()
     monkeypatch.setattr(ws_api, "is_user_banned", AsyncMock(return_value=False))
+    _stub_account_closed(monkeypatch, closed=False)
     monkeypatch.setattr(manager, "_start_notification_subscription", AsyncMock())
     monkeypatch.setattr(ws_api, "_connection_manager", manager)
     server = uvicorn.Server(
@@ -51,12 +53,18 @@ async def websocket_server(
         await asyncio.wait_for(serving, timeout=5)
 
 
+def _stub_account_closed(monkeypatch: pytest.MonkeyPatch, *, closed: bool) -> None:
+    accounts = Mock(is_account_closed=AsyncMock(return_value=closed))
+    monkeypatch.setattr(ws_api, "user_db", Mock(return_value=accounts))
+
+
 @pytest.mark.parametrize(
     "failure,code,reason",
     [
         ("unavailable", 1013, "Authentication service unavailable"),
         ("revoked", 4003, "Session expired or revoked"),
         ("banned", 4004, "Banned"),
+        ("closed", 4003, ACCOUNT_CLOSED_DETAIL),
         ("invalid-token", 4003, "Invalid token"),
         ("missing-sub", 4002, "Invalid token"),
         ("missing-token", 4001, "Missing authentication token"),
@@ -78,6 +86,8 @@ async def test_auth_failure_reaches_the_client_as_a_close_frame(
         validate.side_effect = HTTPException(503 if failure == "unavailable" else 401)
     elif failure == "banned":
         validate.side_effect = HTTPException(403, detail=ACCOUNT_BANNED_DETAIL)
+    elif failure == "closed":
+        _stub_account_closed(monkeypatch, closed=True)
     monkeypatch.setattr(ws_api, "parse_jwt_token_async", parse)
     monkeypatch.setattr(ws_api, "require_active_auth_session", validate)
     track_connection = Mock()

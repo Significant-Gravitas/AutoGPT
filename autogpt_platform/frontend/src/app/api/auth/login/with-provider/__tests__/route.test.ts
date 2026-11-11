@@ -55,6 +55,7 @@ describe("POST /api/auth/login/with-provider", () => {
       body: {
         provider: "google",
         callbackURL: "/auth/callback?next=/marketplace",
+        errorCallbackURL: "/login?next=%2Fmarketplace",
       },
       headers: request.headers,
     });
@@ -71,7 +72,73 @@ describe("POST /api/auth/login/with-provider", () => {
     await POST(makeProviderRequest({ provider: "github" }));
 
     expect(signInSocialMock).toHaveBeenCalledWith({
-      body: { provider: "github", callbackURL: "/auth/callback" },
+      body: {
+        provider: "github",
+        callbackURL: "/auth/callback",
+        errorCallbackURL: "/login",
+      },
+      headers: expect.any(Headers),
+    });
+  });
+
+  it("sends a refused sign-in, such as a banned account, back to /login", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://discord.com/oauth2" });
+
+    await POST(makeProviderRequest({ provider: "discord" }));
+
+    expect(signInSocialMock.mock.calls[0][0].body.errorCallbackURL).toBe(
+      "/login",
+    );
+  });
+
+  it("tells /login that a refused sign-in was Microsoft's", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://login.example/x" });
+
+    await POST(makeProviderRequest({ provider: "microsoft" }));
+
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        provider: "microsoft",
+        errorCallbackURL: "/login?provider=microsoft",
+      }),
+      headers: expect.any(Headers),
+    });
+  });
+
+  it("keeps the deep link when it sends a refused Microsoft sign-in to /login", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://login.example/x" });
+
+    await POST(
+      makeProviderRequest({
+        provider: "microsoft",
+        redirectTo:
+          "http://localhost:3000/auth/callback?provider=microsoft&next=%2Flink%2Fabc",
+      }),
+    );
+
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        errorCallbackURL: "/login?provider=microsoft&next=%2Flink%2Fabc",
+      }),
+      headers: expect.any(Headers),
+    });
+  });
+
+  it("leaves out a next that would go off the site", async () => {
+    signInSocialMock.mockResolvedValue({ url: "https://login.example/x" });
+
+    await POST(
+      makeProviderRequest({
+        provider: "microsoft",
+        redirectTo:
+          "http://localhost:3000/auth/callback?provider=microsoft&next=https%3A%2F%2Fevil.example",
+      }),
+    );
+
+    expect(signInSocialMock).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        errorCallbackURL: "/login?provider=microsoft",
+      }),
       headers: expect.any(Headers),
     });
   });
@@ -83,7 +150,11 @@ describe("POST /api/auth/login/with-provider", () => {
     const request = makeProviderRequest({ provider: "apple" });
     const response = await POST(request);
     expect(signInSocialMock).toHaveBeenCalledWith({
-      body: { provider: "apple", callbackURL: "/auth/callback" },
+      body: {
+        provider: "apple",
+        callbackURL: "/auth/callback",
+        errorCallbackURL: "/login",
+      },
       headers: request.headers,
     });
     expect(response.status).toBe(200);
