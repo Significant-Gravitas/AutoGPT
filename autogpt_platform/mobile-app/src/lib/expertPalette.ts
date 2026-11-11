@@ -13,7 +13,7 @@ export const palette = {
   otto: { label: "Mineral lavender", hex: "#B6A4C8" },
 } as const;
 
-type Family = keyof typeof palette;
+export type Family = keyof typeof palette;
 
 export const identityFamilies: Record<string, Family> = {
   "expert-maria": "marketing",
@@ -68,16 +68,21 @@ interface TintArgs {
   role?: string | null;
 }
 
-/** Port of the web's `getExpertTopicHex` and `getExpertVisualCategory`. */
-export function expertTint({ avatarUrl, categories, role }: TintArgs): string {
-  if (/head of ai/i.test(role ?? "")) return OTTO_TINT;
+/** The expert's area, as the web's `getExpertVisualCategory` picks it. */
+export function expertFamily({ avatarUrl, categories, role }: TintArgs): Family {
+  if (/head of ai/i.test(role ?? "")) return "otto";
   const id = MANAGED_URL.exec(avatarUrl?.trim() ?? "")?.[1];
   const managed = id ? identityFamilies[id] : undefined;
-  if (managed && managed !== "general") return palette[managed].hex;
+  if (managed && managed !== "general") return managed;
   const stored = categories
     ?.map((category) => category.toLowerCase())
     .find((category) => isFamily(category) && category !== "otto");
-  return palette[(stored as Family | undefined) ?? "general"].hex;
+  return (stored as Family | undefined) ?? "general";
+}
+
+/** Port of the web's `getExpertTopicHex`. */
+export function expertTint(args: TintArgs): string {
+  return palette[expertFamily(args)].hex;
 }
 
 function channels(hex: string) {

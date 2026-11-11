@@ -5,10 +5,12 @@ import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/chatErrors";
 import { chatKeys, getSuggestedPrompts } from "@/lib/api/chat";
 import { ApiError } from "@/lib/api/client";
 import { expertKeys, listExperts } from "@/lib/api/experts";
+import { expertTint } from "@/lib/expertPalette";
 import { getHome, homeKeys } from "@/lib/api/home";
 import { authClient } from "@/lib/auth/client";
 import { isSessionGone, signOut } from "@/lib/session";
 
+import { areaPrompts } from "./areaPrompts";
 import { firstName, hasExistingWork, inputPlaceholder } from "./helpers";
 import { startChat } from "./startChat";
 
@@ -36,9 +38,22 @@ export function useHomeScreen() {
   const { data: session } = authClient.useSession();
 
   const suggested = (data ?? []).filter(Boolean).slice(0, 6);
-  const prompts = suggested.length > 0 ? suggested : FALLBACK_PROMPTS;
   const team = experts.data ?? [];
   const selected = team.find((expert) => expert.id === selectedID) ?? null;
+  // The suggestions come from what Otto knows about the user's business; an
+  // expert gets starters for their own area instead.
+  const ottoPrompts = suggested.length > 0 ? suggested : FALLBACK_PROMPTS;
+  const prompts = selected ? areaPrompts(selected) : ottoPrompts;
+  const promptExpert = selected
+    ? {
+        name: selected.name,
+        tint: expertTint({
+          avatarUrl: selected.avatar_url,
+          categories: selected.categories,
+          role: selected.role,
+        }),
+      }
+    : null;
   // A failed refresh keeps the last good answer on screen.
   const dashboard = home.data;
   const attention = dashboard?.attention ?? [];
@@ -90,6 +105,7 @@ export function useHomeScreen() {
     select: setSelectedID,
     placeholder: inputPlaceholder(selected, hasExistingWork(dashboard)),
     prompts,
+    promptExpert,
     isStarting,
     error,
     isRefreshing,

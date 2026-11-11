@@ -73,7 +73,12 @@ export default function HomeScreen() {
               {home.error}
             </Text>
           ) : null}
-          <PromptChips prompts={home.prompts} onPick={handleSend} />
+          <PromptChips
+            key={home.promptExpert?.name ?? "otto"}
+            prompts={home.prompts}
+            expert={home.promptExpert}
+            onPick={handleSend}
+          />
           {home.hasCards ? (
             <View style={styles.cards}>
               <NeedsYouCard items={home.attention} />
