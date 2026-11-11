@@ -173,8 +173,9 @@ To run the platform, follow these steps:
   This copies each `.env.default` to `.env` (for `autogpt_platform`, `backend`
   and `frontend`) and fills in the secrets that `.env.default` deliberately
   leaves blank — `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`,
-  `INTERNAL_API_KEY`, `BETTER_AUTH_SECRET`, and the passwords of the database,
-  RabbitMQ, Redis and FalkorDB — with values generated for your machine. Those
+  `INTERNAL_API_KEY`, `BAN_RECORD_HASH_KEY`, `BETTER_AUTH_SECRET`, and the
+  passwords of the database, RabbitMQ, Redis and FalkorDB — with values
+  generated for your machine. Those
   files are public, so shipping working values in them would mean every install
   in the world shared one publicly-readable key. It never overwrites an
   existing `.env` or a value you set yourself, and you can then edit the `.env`

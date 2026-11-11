@@ -1,7 +1,7 @@
 export const ACCOUNT_CREATED_COOKIE = "agpt_account_created";
 export const ACCOUNT_CREATED_COOKIE_MAX_AGE_SECONDS = 600;
 
-export const SIGNUP_METHODS = ["email", "google"] as const;
+export const SIGNUP_METHODS = ["email", "google", "microsoft"] as const;
 export type SignupMethod = (typeof SIGNUP_METHODS)[number];
 
 // The server sets this flag when it provisions a brand-new account (see

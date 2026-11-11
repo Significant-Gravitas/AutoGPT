@@ -107,6 +107,7 @@ from backend.util.prompt import (
     estimate_token_count,
     get_compression_target,
 )
+from backend.util.sandbox_limits import SandboxLimitError
 
 from ..config import ChatConfig, CopilotLLMModel
 from ..constants import (
@@ -4528,7 +4529,7 @@ async def _run_stream_attempt(
             state.governor.hangup_pause() if state.governor is not None else None
         )
         if hangup_pause is not None:
-            yield StreamTurnPaused(pause=hangup_pause.as_part())
+            yield StreamTurnPaused.of(hangup_pause)
         else:
             notice_block_id = str(uuid.uuid4())
             yield StreamTextStart(id=notice_block_id)
@@ -5308,10 +5309,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Captured outside the closure: `session` is narrowed to ChatSession
         # here, but that narrowing does not carry into nested functions.
         owner_expert_id = session.expert_id
+        e2b_refusal: SandboxLimitError | None = None
 
         async def _setup_e2b():
             """Set up E2B sandbox if configured, return sandbox or None."""
-            nonlocal e2b_sandbox
+            nonlocal e2b_sandbox, e2b_refusal
             if not (e2b_api_key := config.active_e2b_api_key):
                 if config.use_e2b_sandbox:
                     logger.warning(
@@ -5338,6 +5340,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # setup leg fails, the finally below still pauses it and
                 # releases the expert's turn slot instead of leaking both.
                 e2b_sandbox = sandbox
+            except SandboxLimitError as refusal:
+                e2b_refusal = refusal
+                await forget_turn_ceiling(session_id, owner_expert_id)
+                return None
             except Exception as e2b_err:
                 logger.error(
                     "[E2B] [%s] Setup failed: %s",
@@ -5406,6 +5412,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             raise
         graphiti_enabled = _graphiti_enabled(user_id)
         e2b_sandbox = await e2b_task
+        if e2b_refusal is not None:
+            # Refused under a running-box limit: the turn ends here rather
+            # than running its commands on the local fallback.  The finally
+            # below saves the marker, so a reloaded chat still shows why.
+            _append_error_marker(session, str(e2b_refusal), retryable=True)
+            yield StreamError(errorText=str(e2b_refusal), code=e2b_refusal.code)
+            return
 
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
@@ -7132,7 +7145,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session, user_id, platform_billed=not is_codex_transport
         )
         if auto_continue.pause is not None:
-            yield StreamTurnPaused(pause=auto_continue.pause.as_part())
+            yield StreamTurnPaused.of(auto_continue.pause)
         _auto_pending_messages = (
             await drain_pending_safe(session_id, log_prefix)
             if auto_continue.proceed

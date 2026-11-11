@@ -319,6 +319,12 @@ from ._test_data import make_session
 # render_ui's block schema adds its whole size. Only sessions with
 # copilot-visual-answers on declare it:
 #     dev + render_ui                 +4,402      82,606
+# Raised for request_work_check and flag_mistake, the two tools this PR adds:
+# both open a chat card, so they must be eager. Measured on this branch,
+# 2285c61736 plus this PR (91 tools):
+#     merged tree                                 78,567
+#     + headroom                       +300       78,867
+#     + flag_mistake's reason argument +150       79,017
 # On conflict keep the higher value: this line must cover every in-flight PR.
 _CHAR_BUDGET = 82_606
 
@@ -541,6 +547,27 @@ def test_total_schema_char_budget() -> None:
 #     + headroom                      +300        70,526
 # render_ui, in compact separators:
 #     dev + render_ui                 +4,028      74,554
+#
+# Raised for raise_expert's `handoff_title` and `handoff_task` (SECRT-3401),
+# the same two fields hire_expert carries, so a new expert created for a task
+# already in the chat is created and handed it in one click. raise_expert is
+# in the largest session. Measured on that branch merged with dev e6a3d35514
+# (2026-11-09); the registry total (77,971) still fits under _CHAR_BUDGET:
+#     dev e6a3d35514                              70,416
+#     + raise_expert's two fields     +240        70,656
+#     + headroom                      +300        70,956
+#
+# request_work_check and flag_mistake, the same two tools as ``_CHAR_BUDGET``
+# above, ride the largest session. Measured on this branch, 2285c61736 plus
+# this PR:
+#     merged tree                                 70,773
+#     + headroom                       +300       71,073
+#     + flag_mistake's reason argument +150       71,223
+#
+# Re-measured on the SECRT-3401 branch merged with dev 83f6ce57 (2026-11-10),
+# where raise_expert's two fields no longer fit under the line above:
+#     merged tree                                 71,391
+#     + headroom                       +300       71,691
 # On conflict keep the higher value: this line must cover every in-flight PR.
 _SESSION_WIRE_BUDGET = 74_554
 

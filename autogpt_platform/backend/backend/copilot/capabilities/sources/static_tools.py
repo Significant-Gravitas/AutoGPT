@@ -65,6 +65,10 @@ EAGER_CORE: frozenset[str] = frozenset(
         # the card it exists to open is unreachable, and so is the
         # ``run_capability`` that would reach it.
         "expert_onboarding",
+        # Both open a chat card, and a deferred tool renders as a generic
+        # tool row instead of its card.
+        "request_work_check",
+        "flag_mistake",
     }
 )
 

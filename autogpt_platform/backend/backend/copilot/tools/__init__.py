@@ -45,6 +45,7 @@ from .expert_resources import (
     RevokeExpertCredentialTool,
 )
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
+from .feedback_prompts import FlagMistakeTool, RequestWorkCheckTool
 from .find_agent import FindAgentTool
 from .find_capability import FindCapabilityTool
 from .find_library_agent import FindLibraryAgentTool
@@ -203,6 +204,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "delete_workspace_file": DeleteWorkspaceFileTool(),
     # The hire's first turn (expert sessions only): greeting + intake card.
     "expert_onboarding": ExpertOnboardingTool(),
+    # Feedback cards in the chat. In no TOOL_GROUPS group: both work in expert
+    # chats as well as Otto's.
+    "request_work_check": RequestWorkCheckTool(),
+    "flag_mistake": FlagMistakeTool(),
     # Expert Soul edits from chat (expert sessions only): preview + confirm
     "update_expert_soul": UpdateExpertSoulTool(),
     "confirm_expert_soul_update": ConfirmExpertSoulUpdateTool(),

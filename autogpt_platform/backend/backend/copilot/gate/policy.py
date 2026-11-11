@@ -64,6 +64,7 @@ _READ = frozenset(
         "find_capability",
         "find_library_agent",
         "find_session",
+        "flag_mistake",
         "get_agent_building_guide",
         "get_doc_page",
         "get_platform_info",
@@ -83,6 +84,7 @@ _READ = frozenset(
         "memory_forget_search",
         "memory_search",
         "read_expert_chat",
+        "request_work_check",
         "read_skill",
         "read_workspace_file",
         # Draws cards from what Otto wrote; touches nothing.
