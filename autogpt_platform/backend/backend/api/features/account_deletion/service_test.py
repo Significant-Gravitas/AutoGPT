@@ -333,7 +333,11 @@ async def test_a_stalled_confirmation_email_does_not_hold_the_request(
     mocker.patch(f"{MODULE}.CONFIRMATION_EMAIL_TIMEOUT_SECONDS", 0.05)
 
     async def stall(
-        email: str, source: AccountDeletionSource, erase_after: datetime
+        email: str,
+        source: AccountDeletionSource,
+        erase_after: datetime,
+        *,
+        erase_now: bool,
     ) -> None:
         await asyncio.Event().wait()
 
