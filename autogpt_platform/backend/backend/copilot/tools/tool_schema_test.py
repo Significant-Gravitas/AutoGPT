@@ -325,8 +325,13 @@ from ._test_data import make_session
 #     merged tree                                 78,567
 #     + headroom                       +300       78,867
 #     + flag_mistake's reason argument +150       79,017
+# Raised again after merging with dev ac4e888 (2026-11-11): other PRs
+# merged to dev added tool schema content, pushing the total higher.
+# Measured on PR #16677 merged with latest dev:
+#     merged tree                                 83,410
+#     + headroom                       +300       83,710
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 82_606
+_CHAR_BUDGET = 83_710
 
 
 @pytest.fixture(scope="module")
@@ -568,8 +573,13 @@ def test_total_schema_char_budget() -> None:
 # where raise_expert's two fields no longer fit under the line above:
 #     merged tree                                 71,391
 #     + headroom                       +300       71,691
+# Raised again after merging with dev ac4e888 (2026-11-11): other PRs
+# merged to dev added tool schema content, pushing the largest session higher.
+# Measured on PR #16677 merged with latest dev:
+#     merged tree                                 75,382
+#     + headroom                       +300       75,682
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 74_554
+_SESSION_WIRE_BUDGET = 75_682
 
 
 def test_largest_declared_session_wire_budget() -> None:
