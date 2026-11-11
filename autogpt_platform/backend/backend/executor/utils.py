@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import logging
 import math
 import threading
@@ -64,7 +63,6 @@ from backend.data.model import (
     CredentialsMetaInput,
     GraphInput,
     NodeExecutionStats,
-    is_credentials_field_name,
     is_refused_sdk_default,
     sdk_default_refused_message,
 )
@@ -261,20 +259,6 @@ def block_usage_cost(
             )
 
     return 0, {}
-
-
-def credentials_direct_execution_cannot_supply(block: Block) -> list[str]:
-    """The credentials arguments ``block.run`` requires.
-
-    Only the graph executor resolves a user's stored credentials into these, so
-    the direct block-execute routes refuse such a block rather than crash in it.
-    """
-    params = inspect.signature(block.run).parameters
-    return [
-        name
-        for name, param in params.items()
-        if is_credentials_field_name(name) and param.default is param.empty
-    ]
 
 
 async def charge_for_direct_block_execution(

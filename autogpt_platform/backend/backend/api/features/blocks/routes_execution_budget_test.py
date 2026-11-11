@@ -12,6 +12,7 @@ import pytest_mock
 from httpx import ASGITransport, AsyncClient
 
 from backend.api.features.blocks.routes import router
+from backend.blocks._base import BlockSchemaInput
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -36,6 +37,7 @@ def setup_app_auth(mock_jwt_user):
 def _serve_block(mocker: pytest_mock.MockFixture, execute: Callable) -> None:
     block = Mock()
     block.disabled = False
+    block.input_schema = BlockSchemaInput
     block.name = "TestBlock"
     block.execute = execute
     mocker.patch("backend.api.features.blocks.routes.get_block", return_value=block)

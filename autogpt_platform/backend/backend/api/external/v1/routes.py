@@ -23,6 +23,7 @@ from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext, ExecutionTrigger
+from backend.executor.block_credentials import acquire_direct_block_credentials
 from backend.executor.direct_block_execution import (
     DirectBlockExecutionBusyError,
     DirectBlockExecutionLimitError,
@@ -34,7 +35,6 @@ from backend.executor.direct_block_execution import (
 from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
-    credentials_direct_execution_cannot_supply,
 )
 from backend.integrations.webhooks.graph_lifecycle_hooks import before_graph_activate
 from backend.util.exceptions import InsufficientBalanceError
@@ -138,30 +138,59 @@ async def execute_graph_block(
             status_code=403,
             detail=f"Block #{block_id} can only run inside a workflow.",
         )
-    if needed := credentials_direct_execution_cannot_supply(obj):
+    if _names_a_stored_credential(obj, data) and (
+        missing := [p for p in _STORED_CREDENTIALS_SCOPES if p not in auth.scopes]
+    ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Block #{block_id} needs credentials ({', '.join(needed)}), "
-            "so it can only run inside a workflow.",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Running a block with stored credentials needs these API key "
+            f"permissions too: {', '.join(p.value for p in missing)}.",
         )
 
     user = await user_db.get_user_by_id(auth.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
+    credentials = await acquire_direct_block_credentials(obj, data, auth.user_id)
     try:
-        slot = claim_direct_block_execution_slot(auth.user_id)
-    except DirectBlockExecutionBusyError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
-        ) from e
-    except DirectBlockExecutionLimitError as e:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e)
-        ) from e
+        try:
+            slot = claim_direct_block_execution_slot(auth.user_id)
+        except DirectBlockExecutionBusyError as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+            ) from e
+        except DirectBlockExecutionLimitError as e:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e)
+            ) from e
 
-    with slot:
-        return await _run_direct_block(obj, data, auth, user.timezone, slot)
+        with slot:
+            return await _run_direct_block(
+                obj, data, auth, user.timezone, slot, credentials.exec_kwargs
+            )
+    finally:
+        await credentials.release()
+
+
+# What a key needs to build and run a graph holding this block and credential.
+_STORED_CREDENTIALS_SCOPES = (
+    APIKeyPermission.WRITE_GRAPH,
+    APIKeyPermission.WRITE_LIBRARY,
+    APIKeyPermission.EXECUTE_GRAPH,
+)
+
+
+def _names_a_stored_credential(block: AnyBlockSchema, data: BlockInput) -> bool:
+    schema = block.input_schema
+    fields = [
+        *schema.get_credentials_fields(),
+        *(info["field_name"] for info in schema.get_auto_credentials_fields().values()),
+    ]
+    return any(
+        isinstance(value := data.get(field), dict)
+        and (value.get("id") or value.get("_credentials_id"))
+        for field in fields
+    )
 
 
 async def _run_direct_block(
@@ -170,6 +199,7 @@ async def _run_direct_block(
     auth: APIAuthorizationInfo,
     user_timezone: str,
     slot: DirectBlockExecutionSlot,
+    credentials: dict[str, Any],
 ) -> CompletedBlockOutput:
     try:
         await charge_for_direct_block_execution(
@@ -192,7 +222,8 @@ async def _run_direct_block(
 
     try:
         return await run_block_off_loop(
-            obj.execute(data, execution_context=execution_context), slot
+            obj.execute(data, execution_context=execution_context, **credentials),
+            slot,
         )
     except DirectBlockExecutionTimeoutError as e:
         raise HTTPException(

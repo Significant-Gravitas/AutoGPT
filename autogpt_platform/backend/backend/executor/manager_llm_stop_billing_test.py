@@ -79,11 +79,11 @@ class _Run:
                 "backend.executor.manager.get_db_async_client", return_value=db_client
             ),
             patch(
-                "backend.executor.manager._get_node_credentials",
+                "backend.executor.block_credentials._get_node_credentials",
                 AsyncMock(return_value=(mock_key, None)),
             ),
             patch(
-                "backend.executor.manager.acquire_auto_credentials",
+                "backend.executor.block_credentials.acquire_auto_credentials",
                 AsyncMock(return_value=({}, [])),
             ),
             patch("backend.executor.manager.log_system_credential_cost", AsyncMock()),
@@ -202,7 +202,7 @@ async def test_a_second_cancel_while_the_node_unwinds_keeps_its_usage():
     node is still billed the usage its block recorded."""
     model, credentials = LLMModel.CLAUDE_4_5_HAIKU, anthropic_credentials
     second_cancel = patch(
-        "backend.executor.manager._release_credential_leases",
+        "backend.executor.block_credentials._release_credential_leases",
         AsyncMock(side_effect=asyncio.CancelledError),
     )
 
