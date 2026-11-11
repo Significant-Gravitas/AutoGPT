@@ -11,7 +11,7 @@ import {
 import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { IconButton } from "@/components/IconButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
-import { ColourPicker } from "@/features/createExpert/components/ColourPicker";
+import { AreaPicker } from "@/features/createExpert/components/AreaPicker";
 import { CreateExpertFooter } from "@/features/createExpert/components/CreateExpertFooter";
 import { JOB_TITLE_MAX_LENGTH, NAME_MAX_LENGTH } from "@/features/createExpert/helpers";
 import { useCreateExpert } from "@/features/createExpert/useCreateExpert";
@@ -76,7 +76,7 @@ export default function CreateExpertScreen() {
             style={styles.input}
           />
         </View>
-        <ColourPicker selected={form.family} onSelect={form.setFamily} />
+        <AreaPicker selected={form.family} onSelect={form.setFamily} />
       </ScrollView>
       <CreateExpertFooter
         error={form.error}

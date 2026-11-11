@@ -10,15 +10,15 @@ export type Family = (typeof managedAvatars)[number]["family"];
 
 // The web's raise flow (`raise/components/CategoryStep/helpers.ts`): picking
 // an area there sets the expert's `color` token and `role` together.
-const FAMILY_DETAILS: Record<Family, { color: string; role: string }> = {
-  marketing: { color: "orange-300", role: "Marketer" },
-  sales: { color: "amber-300", role: "Sales" },
-  finance: { color: "green-300", role: "Analyst" },
-  support: { color: "rose-300", role: "Support" },
-  operations: { color: "sky-300", role: "Operations" },
-  research: { color: "lime-300", role: "Researcher" },
-  development: { color: "blue-300", role: "Developer" },
-  general: { color: "amber-300", role: "Assistant" },
+const FAMILY_DETAILS: Record<Family, { label: string; color: string; role: string }> = {
+  marketing: { label: "Marketing", color: "orange-300", role: "Marketer" },
+  sales: { label: "Sales", color: "amber-300", role: "Sales" },
+  finance: { label: "Finance", color: "green-300", role: "Analyst" },
+  support: { label: "Support", color: "rose-300", role: "Support" },
+  operations: { label: "Operations", color: "sky-300", role: "Operations" },
+  research: { label: "Research", color: "lime-300", role: "Researcher" },
+  development: { label: "Development", color: "blue-300", role: "Developer" },
+  general: { label: "General", color: "amber-300", role: "Assistant" },
 };
 
 export const NAME_MAX_LENGTH = 100;
@@ -28,13 +28,18 @@ export const JOB_TITLE_MAX_LENGTH = 100;
 export const DEFAULT_FAMILY: Family = "general";
 
 /**
- * One swatch per family a new expert can wear, in the palette's order. An
- * expert's colour comes from its avatar, so a family with no avatar of its
- * own (content, and Otto's) is left out.
+ * The areas a new expert can work in, General first, then the palette's order.
+ * The area sets the expert's role as well as its colour, so it is offered by
+ * name, as on the web. An area with no avatar of its own (content) is left out.
  */
-export const colourFamilies = (Object.keys(palette) as (keyof typeof palette)[])
+export const areaOptions = (Object.keys(palette) as (keyof typeof palette)[])
   .filter((key): key is Family => managedAvatars.some((avatar) => avatar.family === key))
-  .map((family) => ({ family, label: palette[family].label, hex: palette[family].hex }));
+  .sort((a, b) => Number(b === DEFAULT_FAMILY) - Number(a === DEFAULT_FAMILY))
+  .map((family) => ({
+    family,
+    label: FAMILY_DETAILS[family].label,
+    hex: palette[family].hex,
+  }));
 
 /** Port of the web's `defaultAvatarUrl`: the family's avatar the name hashes to. */
 export function defaultAvatarPath(family: Family, name: string) {

@@ -2,7 +2,7 @@ import { PLAN_REQUIRED_MESSAGE } from "../../chat/chatErrors";
 import { managedAvatars } from "../catalog";
 import {
   canCreate,
-  colourFamilies,
+  areaOptions,
   createErrorMessage,
   createExpertBody,
   defaultAvatarPath,
@@ -27,9 +27,10 @@ describe("managedAvatars", () => {
   });
 });
 
-describe("colourFamilies", () => {
-  it("offers every family with an avatar of its own, never Otto's or content", () => {
-    expect(colourFamilies.map((option) => option.family)).toEqual([
+describe("areaOptions", () => {
+  it("offers every area with an avatar of its own, General first, never Otto's or content", () => {
+    expect(areaOptions.map((option) => option.family)).toEqual([
+      "general",
       "marketing",
       "sales",
       "finance",
@@ -37,7 +38,19 @@ describe("colourFamilies", () => {
       "operations",
       "research",
       "development",
-      "general",
+    ]);
+  });
+
+  it("names each area as the web does, not by its colour", () => {
+    expect(areaOptions.map((option) => option.label)).toEqual([
+      "General",
+      "Marketing",
+      "Sales",
+      "Finance",
+      "Support",
+      "Operations",
+      "Research",
+      "Development",
     ]);
   });
 });
