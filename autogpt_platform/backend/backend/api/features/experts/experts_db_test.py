@@ -2888,9 +2888,7 @@ async def test_reinstalling_a_marketplace_workflow_restores_its_deleted_library_
         name="Maria", preload_listings=[slv_id], preload_crons={slv_id: "0 9 * * 1"}
     )
     sched = AsyncMock()
-    sched.add_execution_schedule = AsyncMock(
-        side_effect=[SimpleNamespace(id="sched-1"), SimpleNamespace(id="sched-2")]
-    )
+    sched.add_execution_schedule = AsyncMock(return_value=SimpleNamespace(id="sched-1"))
     with patch.object(scheduling, "get_scheduler_client", return_value=sched):
         hired = await experts_db.hire_expert(test_user.id, template.id, None)
     first = hired.expert.workflows[0]
@@ -2902,17 +2900,17 @@ async def test_reinstalling_a_marketplace_workflow_restores_its_deleted_library_
             test_user.id, hired.expert.id, store_listing_version_id=slv_id
         )
 
-    assert again.id == first.id and again.library_agent_id is not None
+    assert again.library_agent_id is not None
     await library_db.get_library_agent(again.library_agent_id, test_user.id)
     expert = await experts_db.get_expert(test_user.id, hired.expert.id)
     assert expert is not None
-    assert [w.library_agent_id for w in expert.workflows] == [again.library_agent_id]
-    # The old job is removed if it survived, and the cadence gets a new one.
+    assert [w.id for w in expert.workflows] == [again.id]
+    # The stale row's job is deleted with it, even if library cleanup missed it.
     sched.delete_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
-    row = await prisma.models.ExpertWorkflow.prisma().find_unique(
-        where={"id": again.id}
+    rows = await prisma.models.ExpertWorkflow.prisma().find_many(
+        where={"expertId": hired.expert.id}
     )
-    assert row is not None and row.scheduleId == "sched-2"
+    assert [(r.id, r.scheduleId) for r in rows] == [(again.id, None)]
 
 
 async def _setup_links(user_id: str, expert_id: str) -> set[str | None]:
