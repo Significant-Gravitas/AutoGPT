@@ -13,6 +13,7 @@ from prisma.enums import AccountDeletionSource
 
 from backend.data.account_erasure import request
 from backend.data.account_erasure.models import StepStatus, Subject
+from backend.util.exceptions import EmailUndeliverableError
 
 USER_ID = "3f0b8c1e-4c2a-4f7e-9a51-0c6f2d8e1a77"
 EMAIL = "sam@example.com"
@@ -169,6 +170,39 @@ async def test_a_failed_send_is_not_recorded_and_fails_the_step(email):
     with pytest.raises(RuntimeError):
         await request.send_confirmation(PENDING, dry_run=False)
 
+    email.mark.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_address_the_mail_provider_refuses_does_not_stop_the_erasure(email):
+    """A bounced or suppressed address never becomes deliverable, so
+    retrying would hold the erasure forever: it goes on without the email,
+    which is not recorded as sent."""
+    email.send.side_effect = EmailUndeliverableError("refused (error 406)")
+
+    report = await request.send_confirmation(PENDING, dry_run=False)
+
+    assert report.status == StepStatus.DONE
+    assert report.counts == {"emails": 0}
+    assert "won't deliver" in report.note
+    email.mark.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dry_run", [True, False])
+async def test_a_stack_with_no_mail_provider_sends_nothing(email, monkeypatch, dry_run):
+    monkeypatch.setattr(
+        request,
+        "Settings",
+        lambda: SimpleNamespace(
+            config=SimpleNamespace(account_erasure_unused_services=["postmark"])
+        ),
+    )
+
+    report = await request.send_confirmation(PENDING, dry_run=dry_run)
+
+    assert report.counts == {"emails": 0}
+    email.send.assert_not_awaited()
     email.mark.assert_not_awaited()
 
 

@@ -23,6 +23,7 @@ start then, as for any other request.
 """
 
 import asyncio
+import logging
 from datetime import UTC, datetime, timedelta
 
 from prisma.enums import AccountDeletionSource
@@ -34,6 +35,10 @@ from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 from backend.data.db import query_raw_with_schema
 from backend.data.user import get_user_by_id
 from backend.notifications.auth import send_account_deleted_email
+from backend.util.exceptions import EmailUndeliverableError
+from backend.util.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 CONFIRMATION_TIMEOUT_SECONDS = 60.0
 
@@ -113,7 +118,10 @@ async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
     address still exists, worded for the request's source. By now the 14 days
     are over, so the email says the account is being erased rather than
     naming a last day to keep it. A failure fails the step, so the erasure
-    stops before the address goes and the next run tries again."""
+    stops before the address goes and the next run tries again; but an
+    address the mail provider won't deliver to (bounced, suppressed) never
+    will be, so the erasure goes on without the email. A stack with no mail
+    provider lists `postmark` in ACCOUNT_ERASURE_UNUSED_SERVICES."""
     if subject.confirmation_sent or subject.request_source is None:
         return StepReport(
             name="confirmation",
@@ -134,24 +142,50 @@ async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
             counts={"emails": 0},
             note="no address left to send it to; the account's rows are gone",
         )
-    if not dry_run:
-        await asyncio.wait_for(
-            send_account_deleted_email(
-                subject.email,
-                subject.request_source,
-                subject.erase_after,
-                erase_now=subject.erase_asked_now,
-                # Claimed, so the 14 days are over whatever this pod's clock
-                # says: the email must not offer a Keep that is refused.
-                now=max(datetime.now(UTC), subject.erase_after),
-            ),
-            timeout=CONFIRMATION_TIMEOUT_SECONDS,
+    if "postmark" in Settings().config.account_erasure_unused_services:
+        return StepReport(
+            name="confirmation",
+            status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
+            counts={"emails": 0},
+            note="this stack sends no email (postmark is an unused service)",
         )
+    if not dry_run:
+        try:
+            await _send_late_confirmation(subject)
+        except EmailUndeliverableError:
+            # The address is not logged: the error type says enough.
+            logger.warning(
+                f"Account erasure of {subject.user_id}: the mail provider won't "
+                "deliver to the address, so it goes on without the confirmation"
+            )
+            return StepReport(
+                name="confirmation",
+                status=StepStatus.DONE,
+                counts={"emails": 0},
+                note="the mail provider won't deliver to this address (bounced "
+                "or suppressed); erased without the email",
+            )
         await mark_confirmation_sent(subject.user_id)
     return StepReport(
         name="confirmation",
         status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
         counts={"emails": 1},
+    )
+
+
+async def _send_late_confirmation(subject: Subject) -> None:
+    assert subject.email and subject.request_source and subject.erase_after
+    await asyncio.wait_for(
+        send_account_deleted_email(
+            subject.email,
+            subject.request_source,
+            subject.erase_after,
+            erase_now=subject.erase_asked_now,
+            # Claimed, so the 14 days are over whatever this pod's clock
+            # says: the email must not offer a Keep that is refused.
+            now=max(datetime.now(UTC), subject.erase_after),
+        ),
+        timeout=CONFIRMATION_TIMEOUT_SECONDS,
     )
 
 
