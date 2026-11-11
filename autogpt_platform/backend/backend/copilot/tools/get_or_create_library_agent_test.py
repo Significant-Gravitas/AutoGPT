@@ -55,3 +55,4 @@ async def test_reusing_a_set_aside_entry_keeps_its_settings(state: str):
 
     assert GraphSettings.model_validate(row.settings) == chosen
     assert row.isArchived is (state == "isArchived")
+    assert row.isDeleted is False
