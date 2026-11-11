@@ -69,7 +69,8 @@ async def test_explicit_false_value_is_kept():
 @pytest.mark.parametrize(
     "value1,value2,expected",
     [
-        (" 3 ", " 5 ", 3.0),
+        (" 3 ", " 5 ", 3),
+        (" 3.5 ", " 5.5 ", 3.5),
         (" left ", "right", "left"),
         (False, True, False),
         (0, 1, 0),
@@ -159,3 +160,26 @@ def test_executor_rejects_invalid_inputs(fields: dict[str, object]):
 async def test_incomparable_values_raise_block_execution_error():
     with pytest.raises(BlockExecutionError, match="Comparison failed"):
         await _run(value1=[1], operator=">", value2=3)
+
+
+@pytest.mark.parametrize(
+    "value1,operator,value2,expected_result",
+    [
+        ("9007199254740993", "==", "9007199254740992", False),
+        ("9007199254740993", "!=", "9007199254740992", True),
+        ("9007199254740993", ">", "9007199254740992", True),
+        ("9007199254740993", "<", "9007199254740992", False),
+        ("9007199254740993", ">=", "9007199254740992", True),
+        ("9007199254740993", "<=", "9007199254740992", False),
+        ("9007199254740993", "==", 9007199254740993, True),
+        (9007199254740993, "==", "9007199254740993", True),
+    ],
+)
+async def test_condition_block_large_integer_precision(
+    value1: object, operator: str, value2: object, expected_result: bool
+):
+    outputs = await _run(value1=value1, operator=operator, value2=value2)
+    assert outputs["result"] is expected_result
+    output_name = "yes_output" if expected_result else "no_output"
+    expected_output = int(value1) if isinstance(value1, str) else value1
+    assert outputs[output_name] == expected_output
