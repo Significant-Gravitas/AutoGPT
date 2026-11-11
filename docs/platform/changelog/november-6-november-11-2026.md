@@ -20,13 +20,13 @@ Wix is now in **Connect a service**. Type **@wix** in the chat, or search for it
 
 When what you said in onboarding is too short to plan from, such as a quick "Is this working?", the screen no longer reads like an error. It shows what Otto heard, Otto's reply and one easy question, "What do you want off your plate?", with an example for your role. **Talk** stays the main button, **Write** sits next to it, and the question stays in view while you answer. [#16654](https://github.com/Significant-Gravitas/AutoGPT/pull/16654)
 
-<figure><img src="../.gitbook/assets/v0112-otto-replies-hero.png" alt="The onboarding screen on a laptop and a phone: your words, then Otto's reply asking What do you want off your plate?, with Talk and Write"><figcaption><p>Otto shows what it heard and asks one easy question</p></figcaption></figure>
+<figure><img src="../.gitbook/assets/v0112-otto-replies-hero.gif" alt="The onboarding screen showing Um, okay. Hi. Is this working?, then Otto's reply asking What do you want off your plate?, then the pointer on Talk and Write"><figcaption><p>Otto shows what it heard and asks one easy question</p></figcaption></figure>
 
 ## Start a new Expert's chat in one click
 
 When Otto suggests creating an Expert for something you asked for, the card now has **Create and start**. It creates the Expert and hands over the task in their own chat, the way **Hire and start** already does for hiring. Create or hire an Expert without a task and the card offers **Chat with** them, which opens their first chat with a short introduction. New Experts also show in **Recent chats** before you've talked to them, on desktop and in the phone menu. [#16689](https://github.com/Significant-Gravitas/AutoGPT/pull/16689)
 
-<figure><img src="../.gitbook/assets/v0112-expert-chat-hero.png" alt="Otto's card offering Create and start for Nadia, then Nadia working on the weekly SEO report with Open Nadia's chat, and Nadia in Recent chats"><figcaption><p>Create and start hands the task to the new Expert</p></figcaption></figure>
+<figure><img src="../.gitbook/assets/v0112-create-and-start-hero.gif" alt="Otto's card offering to create Nadia for the weekly SEO report, What Nadia will get opening, a click on Create and start, then Nadia working on the report with Open Nadia's chat"><figcaption><p>Create and start hands the task to the new Expert</p></figcaption></figure>
 
 <details>
 
