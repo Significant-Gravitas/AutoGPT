@@ -46,6 +46,7 @@ from backend.data.model import (
     OAuth2Credentials,
     OAuthState,
     UserPasswordCredentials,
+    is_refused_sdk_default,
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
@@ -309,6 +310,11 @@ class CredentialsMetaResponse(BaseModel):
         description="Manual authorization scheme for MCP credentials",
     )
     is_managed: bool = False
+    is_system: bool = Field(
+        default=False,
+        description="One of the platform's own keys, billed in credits, "
+        "rather than a credential the user connected",
+    )
     service: str = ""
     service_name: str | None = None
     service_icon: str | None = None
@@ -366,6 +372,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         scope=cred.scope if isinstance(cred, UserPasswordCredentials) else None,
         mcp_auth_scheme=mcp_auth_scheme,
         is_managed=cred.is_managed,
+        is_system=is_system_credential(cred.id),
         service=identity.service,
         service_name=identity.name,
         service_icon=identity.icon,
@@ -999,7 +1006,9 @@ async def list_credentials(
     credentials = await creds_manager.store.get_all_creds(user_id)
 
     return [
-        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
+        to_meta_response(cred)
+        for cred in credentials
+        if not is_refused_sdk_default(cred.id)
     ]
 
 
@@ -1014,7 +1023,9 @@ async def list_credentials_by_provider(
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
 
     return [
-        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
+        to_meta_response(cred)
+        for cred in credentials
+        if not is_refused_sdk_default(cred.id)
     ]
 
 
@@ -1028,7 +1039,7 @@ async def get_credential(
     cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> CredentialsMetaResponse:
-    if is_sdk_default(cred_id):
+    if is_refused_sdk_default(cred_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
@@ -1240,14 +1251,14 @@ async def delete_credentials(
         bool, Query(title="Whether to proceed if any linked webhooks are still in use")
     ] = False,
 ) -> CredentialsDeletionResponse | CredentialsDeletionNeedsConfirmationResponse:
-    if is_sdk_default(cred_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
-        )
     if is_system_credential(cred_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="System-managed credentials cannot be deleted",
+        )
+    if is_sdk_default(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
     creds = await creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
@@ -2277,9 +2288,9 @@ async def list_system_providers() -> List[str]:
 
     These providers can be used without the user providing their own API keys.
     """
-    from backend.integrations.credentials_store import SYSTEM_PROVIDERS
+    from backend.integrations.credentials_store import system_providers
 
-    return list(SYSTEM_PROVIDERS)
+    return sorted(system_providers())
 
 
 @router.get("/providers/names", response_model=ProviderNamesResponse)
