@@ -465,12 +465,15 @@ class EndToolStats(BaseModel):
 
 class DuplexStats(BaseModel):
     """Whether the call's microphone carried Otto (``echo``): its mode when
-    the call ended, what made it half-duplex, and the share of speech the
-    echo probe heard while Otto's first turn played."""
+    the call ended, what made it half-duplex, the share of speech the echo
+    probe heard while Otto's first turn played (None when it had too little
+    to judge by), and the spans of the recording, in samples, judged his
+    voice, which the post-call job silences."""
 
     mode: Literal["probing", "full", "half"] = "probing"
     by: Literal["probe", "captions"] | None = None
     probe_share: float | None = None
+    echo_spans: list[tuple[int, int]] = []
 
 
 class CallRecord(BaseModel):
