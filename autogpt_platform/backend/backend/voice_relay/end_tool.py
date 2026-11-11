@@ -8,10 +8,14 @@ question, and the tool's answer starts its next turn: a goodbye to someone
 who never answered. So the relay accepts the call only when, since Otto's
 last completed turn finished playing, its voice detector has heard at least
 ``MIN_ANSWER_SPEECH_S`` of the person's speech and a caption of theirs has
-arrived (:class:`Answer`). A call made while Otto's own turn is still open
-is refused as well: nothing can have been heard after a turn that has not
-ended. A refused call leaves the call as it was, and its answer tells Otto
-to wait for the person.
+arrived (:class:`Answer`). Otto's last completed turn is the latest whose
+end has arrived; the turn he is in never moves it. In that open turn he may
+have acknowledged the answer before calling the tool, and no more: at most
+``MAX_ACK_AUDIO_S`` of his audio and no question in his words, or what he
+said is a new proposal nobody has answered yet. A call refused in a turn
+leaves every later call in that turn refused too. A refused call leaves the
+call as it was, and its answer tells Otto to wait for the person and call
+again once they have answered.
 
 Each tool call logs one line of counts and names (:class:`ToolCallLine`):
 never the first task's text, which is Otto's wording of what the person
@@ -28,6 +32,9 @@ from backend.copilot.onboarding_interview_voice import VOICE_INTERVIEW_END_TOOL
 # Speech the person must have said since Otto's last turn played out, beside
 # a caption, for the end tool to be accepted.
 MIN_ANSWER_SPEECH_S = 0.3
+# What Otto may say in his turn before calling the end tool: an
+# acknowledgement ("Great!") is short; a proposal is not.
+MAX_ACK_AUDIO_S = 4.0
 
 Outcome = Literal["accepted", "refused_unanswered", "repeat", "unknown_tool"]
 
@@ -37,7 +44,8 @@ NOT_CONFIRMED: dict[str, object] = {
     "error": "not_confirmed",
     "message": (
         "The user has not answered yet. Do not say goodbye, and do not end the "
-        'call. Say at most "take your time", then wait for them to answer.'
+        'call. Say at most "take your time", then wait for them to answer. '
+        "Call this tool again only after they have answered out loud."
     ),
 }
 
@@ -81,20 +89,41 @@ class Answer(BaseModel):
 
     @property
     def silent(self) -> bool:
-        return self.speech_s == 0 and self.caption_chars == 0
+        """No caption, and less speech than an answer takes: a quiet room's
+        noise is not the person."""
+        return self.caption_chars == 0 and self.speech_s < MIN_ANSWER_SPEECH_S
 
 
 def judge(
-    name: str, *, finishing: bool, otto_speaking: bool, answer: Answer
+    name: str,
+    *,
+    finishing: bool,
+    answer: Answer,
+    turn_audio_s: float,
+    turn_text: str,
+    refused_this_turn: bool,
 ) -> Outcome:
     """What becomes of a call of tool *name*. *finishing*: the end tool was
-    accepted already. *otto_speaking*: Otto has spoken in a turn not yet
-    over."""
+    accepted already. *answer*: what the person said since Otto's last
+    completed turn played out. *turn_audio_s* and *turn_text*: what Otto has
+    said in the turn he is in. *refused_this_turn*: an end-tool call in that
+    turn was refused.
+
+    The end tool is accepted only when the person answered, and Otto has
+    said no more in this turn than an acknowledgement (at most
+    ``MAX_ACK_AUDIO_S`` of audio, and no question), and no call of it was
+    refused earlier in this turn. A call that starts a turn has no words in
+    it, so the answer alone decides."""
     if name != VOICE_INTERVIEW_END_TOOL:
         return "unknown_tool"
     if finishing:
         return "repeat"
-    if otto_speaking or not answer.answered:
+    if (
+        not answer.answered
+        or refused_this_turn
+        or turn_audio_s > MAX_ACK_AUDIO_S
+        or "?" in turn_text
+    ):
         return "refused_unanswered"
     return "accepted"
 
@@ -125,9 +154,11 @@ class ToolCallLine(BaseModel):
     name: str
     nth: int
     outcome: Outcome
-    # Otto's completed turns, and whether he had spoken in the turn under way.
+    # Otto's completed turns, whether he had spoken in the turn under way, and
+    # how many seconds of audio that turn held so far.
     turns: int
     otto_speaking: bool
+    turn_audio_s: float = 0.0
     # Since Otto's last turn finished playing: how long ago, or None before
     # one has; the person's speech; their captions' characters.
     since_played_s: float | None
@@ -146,7 +177,8 @@ class ToolCallLine(BaseModel):
             else f"{self.since_played_s:.1f}s since his last turn played"
         )
         said = [
-            f"turn {self.turns}{', speaking' if self.otto_speaking else ''}",
+            f"turn {self.turns}{', speaking' if self.otto_speaking else ''}, "
+            f"{self.turn_audio_s:.1f}s of his audio in it",
             since,
             f"{self.speech_s:.2f}s of speech and {self.caption_chars} caption "
             f"characters since",

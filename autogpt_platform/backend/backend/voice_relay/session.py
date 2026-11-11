@@ -261,11 +261,15 @@ class AgentTurn(BaseModel):
     index: int = 0
     text: str = ""
     audio_s: float = 0.0
-    # When its first audio arrived (monotonic), or None while silent.
+    # When its first and its latest audio arrived (monotonic), or None while
+    # silent.
     first_audio: float | None = None
+    last_audio: float | None = None
     interrupted: bool = False
     # Whether anything of it has arrived: words, audio or a tool call.
     began: bool = False
+    # Whether an end-tool call in it was refused: every later one in it is.
+    end_refused: bool = False
 
 
 class UserTurn(BaseModel):
@@ -1007,6 +1011,7 @@ class Session:
         self.agent_out += samples
         seconds = samples / OUT_RATE
         turn.audio_s += seconds
+        turn.last_audio = now
         self.playout_end = max(self.playout_end, now) + seconds
         if self.audio is not None:
             await self.audio.play(pcm)
@@ -1039,8 +1044,9 @@ class Session:
         return bool(self.cur.text.strip()) or self.cur.first_audio is not None
 
     async def on_tool_call(self, event: ToolCall) -> None:
-        """Answer Otto's tool calls. The end tool is accepted only once the
-        person has answered (``end_tool``); each call logs its line."""
+        """Answer Otto's tool calls, in the order he made them. The end tool
+        is accepted only once the person has answered (``end_tool``); each
+        call logs its line."""
         now = time.monotonic()
         speaking = self._otto_speaking()
         self._turn_begins(now)
@@ -1069,17 +1075,21 @@ class Session:
         call finishing, and nothing of a refused one is kept."""
         name = safe_name(call.name)
         nth = self.tool_calls[name] = self.tool_calls.get(name, 0) + 1
+        turn = self.cur
         outcome = judge(
             call.name,
             finishing=self.finish_called,
-            otto_speaking=speaking,
             answer=self.answer,
+            turn_audio_s=turn.audio_s,
+            turn_text=turn.text,
+            refused_this_turn=turn.end_refused,
         )
         first_task = " ".join(str(call.args.get(END_SIGNAL_FIRST_TASK, "")).split())
         if outcome != "unknown_tool":
             self.end_tool.calls += 1
         if outcome == "refused_unanswered":
             self.end_tool.refused += 1
+            turn.end_refused = True
         if outcome == "accepted":
             self.finish_called = True
             self.finish_at = now
@@ -1094,6 +1104,7 @@ class Session:
             outcome=outcome,
             turns=len(self.turns),
             otto_speaking=speaking,
+            turn_audio_s=round(turn.audio_s, 1),
             since_played_s=None if opened is None else round(now - opened, 1),
             speech_s=round(self.answer.speech_s, 2),
             caption_chars=self.answer.caption_chars,
@@ -1132,10 +1143,12 @@ class Session:
             if spoke_at is not None and spoke_at >= self.wrap_started:
                 self.end(self.wrapping)
             return
+        # The goodbye is what Otto says after the end tool, in the turn he
+        # called it in or the next.
         if (
             self.finish_called
-            and spoke_at is not None
-            and spoke_at >= self.finish_at
+            and turn.last_audio is not None
+            and turn.last_audio >= self.finish_at
             and not turn.interrupted
         ):
             self.end("finished")
