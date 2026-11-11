@@ -18,6 +18,7 @@ export default function AppLayout() {
       <Drawer.Screen name="chat/[sessionId]" />
       <Drawer.Screen name="chats" />
       <Drawer.Screen name="team" />
+      <Drawer.Screen name="create-expert" />
       <Drawer.Screen name="settings" />
     </Drawer>
   );

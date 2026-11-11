@@ -1,19 +1,22 @@
+import { Add01Icon } from "@hugeicons/core-free-icons";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { ExpertAvatar } from "@/components/ExpertAvatar";
+import { Icon } from "@/components/Icon";
 import { avatarSource, avatarTint } from "@/features/team/helpers";
 import type { Expert } from "@/lib/api/experts";
 import { OTTO_AVATAR_URL, OTTO_NAME, OTTO_TINT } from "@/lib/otto";
-import { createStyles, spacing } from "@/lib/theme";
+import { createStyles, spacing, useColors } from "@/lib/theme";
 
 interface Props {
   experts: Expert[];
   /** null is Otto. */
   selectedID: string | null;
   onSelect: (expertID: string | null) => void;
+  onAdd: () => void;
 }
 
-export function TeamRow({ experts, selectedID, onSelect }: Props) {
+export function TeamRow({ experts, selectedID, onSelect, onAdd }: Props) {
   const styles = useStyles();
   return (
     <ScrollView
@@ -39,7 +42,34 @@ export function TeamRow({ experts, selectedID, onSelect }: Props) {
           onPress={() => onSelect(expert.id)}
         />
       ))}
+      <AddTile onPress={onAdd} />
     </ScrollView>
+  );
+}
+
+interface AddTileProps {
+  onPress: () => void;
+}
+
+function AddTile({ onPress }: AddTileProps) {
+  const styles = useStyles();
+  const colors = useColors();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Create an expert"
+      onPress={onPress}
+      style={styles.tile}
+    >
+      <View style={styles.ring}>
+        <View style={styles.add}>
+          <Icon icon={Add01Icon} size={20} color={colors.textTertiary} />
+        </View>
+      </View>
+      <Text numberOfLines={1} style={styles.name}>
+        Add
+      </Text>
+    </Pressable>
   );
 }
 
@@ -85,6 +115,16 @@ const useStyles = createStyles((colors) => ({
     borderColor: "transparent",
   },
   ringSelected: { borderColor: colors.brand },
+  add: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: colors.surfacePressed,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   name: { fontSize: 12, lineHeight: 16, color: colors.textSecondary },
   nameSelected: { color: colors.text, fontWeight: "500" },
 }));

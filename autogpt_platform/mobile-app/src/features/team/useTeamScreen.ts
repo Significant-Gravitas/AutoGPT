@@ -65,6 +65,10 @@ export function useTeamScreen() {
     router.navigate("/");
   }
 
+  function createExpert() {
+    router.navigate("/create-expert");
+  }
+
   return {
     experts: experts.data ?? [],
     isLoading: experts.isPending,
@@ -75,5 +79,6 @@ export function useTeamScreen() {
     openError,
     openExpert,
     openOtto,
+    createExpert,
   };
 }

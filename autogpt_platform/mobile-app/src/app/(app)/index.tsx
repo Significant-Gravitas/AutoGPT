@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -30,6 +31,10 @@ export default function HomeScreen() {
     void home.refresh();
   }
 
+  function handleAdd() {
+    router.navigate("/create-expert");
+  }
+
   return (
     <View style={styles.screen}>
       <ScreenHeader />
@@ -54,6 +59,7 @@ export default function HomeScreen() {
           experts={home.experts}
           selectedID={home.selectedID}
           onSelect={home.select}
+          onAdd={handleAdd}
         />
       </ScrollView>
       <KeyboardAvoidingView

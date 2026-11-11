@@ -1,5 +1,7 @@
+import { Add01Icon } from "@hugeicons/core-free-icons";
 import { FlatList, RefreshControl, Text, View } from "react-native";
 
+import { IconButton } from "@/components/IconButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { ExpertCard, PlaceholderCard } from "@/features/team/components/ExpertCard";
 import {
@@ -24,6 +26,7 @@ export default function TeamScreen() {
     openError,
     openExpert,
     openOtto,
+    createExpert,
   } = useTeamScreen();
   const styles = useStyles();
   const colors = useColors();
@@ -89,7 +92,12 @@ export default function TeamScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Your team" />
+      <ScreenHeader
+        title="Your team"
+        right={
+          <IconButton icon={Add01Icon} label="Create an expert" onPress={createExpert} />
+        }
+      />
       <FlatList
         data={experts}
         keyExtractor={(expert) => expert.id}
