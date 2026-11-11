@@ -60,6 +60,7 @@ from backend.copilot.expert_kickoff import (
     scoped_client_message_id,
 )
 from backend.copilot.gate.card_approval import record_card_decisions
+from backend.copilot.limit_tracking import track_limit_exceeded, track_turn_cap
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
@@ -166,6 +167,7 @@ from backend.copilot.tools.models import (
     ExecutionStartedResponse,
     ExpertOnboardingResponse,
     ExpertSoulUpdatedResponse,
+    FeedbackPromptToolResponse,
     InputValidationErrorResponse,
     MCPToolOutputResponse,
     MCPToolsDiscoveredResponse,
@@ -203,6 +205,7 @@ from backend.util import tracing
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.sandbox_limits import SandboxLimitError
 from backend.util.settings import Settings
 from backend.util.text_limits import MAX_TITLE_LENGTH, MAX_URL_LENGTH, IDText
 
@@ -255,6 +258,7 @@ async def enforce_platform_allowance(user_id: str) -> None:
             expected_tier=usage_tier,
         )
     except RateLimitExceeded as e:
+        track_limit_exceeded(user_id, e, surface="chat")
         # Structured envelope (not a bare string) so the frontend can
         # offer "switch to another connection" (e.g. a connected
         # BYOSUB/Codex credential) instead of only "upgrade your plan" --
@@ -1088,6 +1092,7 @@ async def get_session_computer(
     dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
     responses={
         404: {"description": "Session not found or access denied"},
+        429: {"description": "Too many sandboxes are running"},
         502: {"description": "The desktop could not be started"},
         503: {"description": "E2B is not configured"},
     },
@@ -1118,6 +1123,8 @@ async def start_session_desktop(
             user_id=user_id,
             session_id=session_id,
         )
+    except SandboxLimitError as refusal:
+        raise HTTPException(status_code=429, detail=str(refusal))
     except Exception as exc:
         logger.error(
             "[E2B] start_session_desktop failed for %s: %s",
@@ -2197,6 +2204,7 @@ async def stream_chat_post(
         ) from exc
     except ConcurrentTurnLimitError as exc:
         if resume_persisted_kickoff:
+            track_turn_cap(user_id, exc, surface="chat", outcome="refused")
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         # Soft running cap (default 5) hit. Fall through to the queue:
         # if total in-flight (running + queued) is still under the hard
@@ -2226,7 +2234,8 @@ async def stream_chat_post(
                 request_arrival_at=request_arrival_at,
                 impersonated=is_impersonated_request(http_request),
             )
-        except turn_queue.InflightCapExceeded:
+        except turn_queue.InflightCapExceeded as cap_exc:
+            track_turn_cap(user_id, cap_exc, surface="chat", outcome="refused")
             await release_client_message_claim()
             raise HTTPException(
                 status_code=429,
@@ -2238,6 +2247,7 @@ async def stream_chat_post(
             await release_client_message_claim()
             raise
         await accept_client_message_claim()
+        track_turn_cap(user_id, exc, surface="chat", outcome="queued")
         logger.info(
             f"[STREAM] Queued turn for session={session_id} "
             f"(running cap reached; inflight cap={inflight_cap})"
@@ -2797,6 +2807,7 @@ ToolResponseUnion = (
     | TodoWriteResponse
     | ExpertSoulUpdatedResponse
     | ExpertOnboardingResponse
+    | FeedbackPromptToolResponse
 )
 
 

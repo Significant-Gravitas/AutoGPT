@@ -251,6 +251,7 @@ async def test_queue_pending_charges_rate_only_after_successful_push(
 @pytest.mark.asyncio
 async def test_queue_pending_429_after_push_when_limit_exceeded(
     monkeypatch: pytest.MonkeyPatch,
+    chat_blocked_events: list[dict],
 ) -> None:
     """When the post-push rate counter crosses the limit, the message stays
     in the buffer (next drain will pick it up) but the response is 429 so
@@ -285,6 +286,19 @@ async def test_queue_pending_429_after_push_when_limit_exceeded(
         )
     assert exc_info.value.status_code == 429
     queue_mock.assert_awaited_once()
+    assert chat_blocked_events == [
+        {
+            "distinct_id": "user-1",
+            "reason": "rate_limit",
+            "limit": "rate",
+            "outcome": "refused",
+            "surface": "chat",
+            "tier": None,
+            "used": PENDING_CALL_LIMIT + 1,
+            "cap": PENDING_CALL_LIMIT,
+            "resets_at": None,
+        }
+    ]
 
 
 # ── queue_pending_for_http: client message id (SECRT-2695) ──────────
