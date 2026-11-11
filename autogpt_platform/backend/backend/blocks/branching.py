@@ -86,17 +86,25 @@ class ConditionBlock(Block):
 
         value1 = input_data.value1
         if isinstance(value1, str):
+            val_str = value1.strip()
             try:
-                value1 = float(value1.strip())
+                value1 = int(val_str)
             except ValueError:
-                value1 = value1.strip()
+                try:
+                    value1 = float(val_str)
+                except ValueError:
+                    value1 = val_str
 
         value2 = input_data.value2
         if isinstance(value2, str):
+            val_str = value2.strip()
             try:
-                value2 = float(value2.strip())
+                value2 = int(val_str)
             except ValueError:
-                value2 = value2.strip()
+                try:
+                    value2 = float(val_str)
+                except ValueError:
+                    value2 = val_str
 
         yes_value = input_data.yes_value if input_data.yes_value is not None else value1
         no_value = input_data.no_value if input_data.no_value is not None else value1
