@@ -132,7 +132,7 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
         <Text variant="small-tight" tone="subtle">
           <span
             className={cn(
-              "inline-block rounded-full px-1.5 py-0.5 text-xs font-medium",
+              "inline-block rounded-full px-1.5 py-0.5 text-caption font-medium",
               artifact.origin === "user-upload"
                 ? "bg-info-surface text-info"
                 : "bg-accent-surface text-brand",

@@ -1002,6 +1002,27 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="meta/muse-ember",
+                display_name="Muse Ember",
+                provider="open_router",
+                creator="meta",
+                context_window=1048576,
+                max_output_tokens=943718,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Meta list price $0.10/$0.50 per Mtok, cache read
+                # $0.004/1M -- live OpenRouter listing 2026-11-10
+                # (meta/muse-ember).
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=15.0,
+                    output_credits_per_1m=75.0,
+                    cache_read_credits_per_1m=0.6,
+                ),
+            ),
+            CatalogModel(
                 slug="microsoft/phi-4",
                 display_name="Phi-4",
                 provider="open_router",
@@ -2271,6 +2292,28 @@ def _build_catalog() -> CatalogPayload:
                     cache_read_credits_per_1m=6.3,
                     provider_input_usd_per_1m=0.834,
                     provider_output_usd_per_1m=2.501,
+                ),
+            ),
+            CatalogModel(
+                slug="tencent/hy4",
+                display_name="Hy4",
+                provider="open_router",
+                creator="tencent",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=2,
+                supports_tools=True,
+                supports_reasoning=True,
+                # OpenRouter live pricing (Tencent fp4 endpoint): $0.417/$1.2505
+                # per Mtok, $0.021/Mtok cached input, credit rates at the
+                # standard 1.5x margin (verified live 2026-11-04).
+                cost=CatalogModelCost(
+                    run_credits=2,
+                    input_credits_per_1m=62.55,
+                    output_credits_per_1m=187.575,
+                    cache_read_credits_per_1m=3.15,
+                    provider_input_usd_per_1m=0.417,
+                    provider_output_usd_per_1m=1.2505,
                 ),
             ),
             # ----- Unbiased -----

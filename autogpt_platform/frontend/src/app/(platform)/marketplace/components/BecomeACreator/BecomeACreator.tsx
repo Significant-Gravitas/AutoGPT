@@ -27,12 +27,12 @@ export function BecomeACreator({
   return (
     <div className="relative mx-auto w-full max-w-[1360px] py-24">
       <div className="mx-auto w-full max-w-2xl px-4 text-center">
-        <h2 className="mb-4 text-3xl font-semibold tracking-heading text-foreground-strong md:text-4xl">
+        <h2 className="mb-4 text-heading font-semibold tracking-heading text-foreground-strong md:text-title">
           Build AI workflows and share <span className="text-brand">your</span>{" "}
           vision
         </h2>
 
-        <p className="mx-auto mb-8 max-w-xl text-body-md leading-relaxed text-foreground-tertiary md:text-lg">
+        <p className="mx-auto mb-8 max-w-xl text-body-md leading-relaxed text-foreground-tertiary md:text-lead">
           {description}
         </p>
 

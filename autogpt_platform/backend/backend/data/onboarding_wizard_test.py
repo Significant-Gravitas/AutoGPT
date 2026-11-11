@@ -39,6 +39,17 @@ def test_wizard_progress_survives_request_validation():
     assert update.model_dump()["wizardProgress"] == payload
 
 
+def test_wizard_progress_saves_on_the_sign_in_access_step():
+    payload = wizard_progress(
+        currentStep="access", completedSteps=["access", "team", "autopilot"]
+    )
+    update = UserOnboardingUpdate.model_validate(
+        {"wizardProgress": payload, "wizardRevision": 0, "wizardUserId": "user-one"}
+    )
+
+    assert update.model_dump()["wizardProgress"] == payload
+
+
 @pytest.mark.parametrize(
     "changes",
     [

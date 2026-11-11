@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { describe, expect, it, vi } from "vitest";
 
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
@@ -62,6 +63,32 @@ describe("ArtifactErrorBoundary", () => {
     ).toBeDefined();
 
     errorSpy.mockRestore();
+  });
+
+  it("reports a crash once when new text crashes the preview, and recovers on the next text", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const capture = vi.mocked(Sentry.captureException);
+    capture.mockClear();
+
+    const { rerender } = render(
+      <ArtifactErrorBoundary {...baseProps} content="good">
+        <Ok />
+      </ArtifactErrorBoundary>,
+    );
+    rerender(
+      <ArtifactErrorBoundary {...baseProps} content="bad">
+        <Boom />
+      </ArtifactErrorBoundary>,
+    );
+    expect(screen.getByText(/couldn.t be rendered/i)).toBeDefined();
+    expect(capture).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ArtifactErrorBoundary {...baseProps} content="fixed">
+        <Ok />
+      </ArtifactErrorBoundary>,
+    );
+    expect(screen.getByText("child-output")).toBeDefined();
   });
 
   it("copies a structured error report when the copy button is clicked", () => {

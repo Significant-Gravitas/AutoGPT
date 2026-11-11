@@ -35,7 +35,7 @@ export function RenewalDetails({ terms }: Props) {
       ))}
       <details
         data-slot="renewal-details-terms"
-        className="group text-sm text-foreground-tertiary"
+        className="group text-body text-foreground-tertiary"
       >
         <summary
           data-slot="renewal-details-terms-toggle"

@@ -32,7 +32,7 @@ export function HandoffRetry({ title, name, expertId, onSend }: Props) {
     return (
       <NextLink
         href={`/copilot?sessionId=${encodeURIComponent(threadId)}`}
-        className="inline-flex shrink-0 items-center gap-1 rounded text-sm font-medium text-foreground-emphasis underline-offset-2 hover:underline focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
+        className="inline-flex shrink-0 items-center gap-1 rounded text-body font-medium text-foreground-emphasis underline-offset-2 hover:underline focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
       >
         Open {possessive(name)} chat
         <Icon

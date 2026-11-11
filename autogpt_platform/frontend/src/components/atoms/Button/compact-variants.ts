@@ -15,7 +15,7 @@ export const compactButtonVariants = cva(
     variants: {
       variant: {
         "compact-primary": `${COMPACT_BASE} bg-action text-action-foreground shadow hover:bg-action-hover`,
-        "compact-destructive": `${COMPACT_BASE} bg-error text-destructive-foreground shadow-sm hover:bg-error/90`,
+        "compact-destructive": `${COMPACT_BASE} bg-error text-action-foreground shadow-sm hover:bg-error/90`,
         "compact-outline": `${COMPACT_BASE} border border-border-base bg-surface shadow-sm hover:bg-surface-hover hover:text-foreground-strong`,
         "compact-ghost": `${COMPACT_BASE} hover:bg-surface-hover hover:text-foreground-strong aria-pressed:bg-surface-hover`,
       },
