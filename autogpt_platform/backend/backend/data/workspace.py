@@ -369,16 +369,16 @@ async def get_workspace_file_by_path(
     return WorkspaceFile.from_db(file) if file else None
 
 
-async def list_internal_file_ids(user_id: str, file_ids: list[str]) -> set[str]:
-    """Which of these files, in the user's own workspace, are Otto's working
-    files (``isInternal``). Soft-deleted rows still answer."""
+async def list_hidden_file_ids(user_id: str, file_ids: list[str]) -> set[str]:
+    """Which of these files, in the user's own workspace, the user's file lists
+    leave out: deleted ones, and Otto's working files (``isInternal``)."""
     if not file_ids:
         return set()
     rows = await UserWorkspaceFile.prisma().find_many(
         where={
             "id": {"in": file_ids},
-            "isInternal": True,
             "Workspace": {"is": {"userId": user_id}},
+            "OR": [{"isDeleted": True}, {"isInternal": True}],
         }
     )
     return {row.id for row in rows}

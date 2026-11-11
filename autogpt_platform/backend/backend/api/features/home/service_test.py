@@ -484,7 +484,7 @@ async def test_recent_work_drops_files_marked_as_ottos_own(mocker: MockerFixture
         AsyncMock(return_value=[sticker, scratchpad]),
     )
     internal = mocker.patch(
-        "backend.api.features.home.service.workspace_db.list_internal_file_ids",
+        "backend.api.features.home.service.workspace_db.list_hidden_file_ids",
         AsyncMock(return_value={"file-state"}),
     )
 
@@ -508,7 +508,7 @@ async def test_recent_work_keeps_actions_when_the_file_check_fails(
         AsyncMock(return_value=[action, _file_event("e2", "sticker-01.png", "f1")]),
     )
     mocker.patch(
-        "backend.api.features.home.service.workspace_db.list_internal_file_ids",
+        "backend.api.features.home.service.workspace_db.list_hidden_file_ids",
         AsyncMock(side_effect=RuntimeError("database unavailable")),
     )
 
