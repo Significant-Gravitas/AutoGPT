@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 # Per-session cap; typing faster than the copilot drains is already unusual.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 MAX_PENDING_MESSAGES = 10
 
 # Ephemeral buffer: undrained messages are safe to drop at TTL expiry.
