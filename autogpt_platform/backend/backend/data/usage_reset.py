@@ -145,8 +145,10 @@ async def buy_reset_with_credits(
         raise ValueError("A usage reset needs a price and a window")
     credits = UserCredit()
     try:
+        # Read last, right before the charge: it runs on its own connection,
+        # so inside the transaction it would see nothing more.
+        await _still_in_window(user_id, tier, week_start, week_end, now)
         async with transaction() as tx:
-            await _still_in_window(user_id, tier, week_start, week_end, now)
             balance, _ = await credits._add_transaction(
                 user_id=user_id,
                 amount=-price_credits,
@@ -192,9 +194,9 @@ async def _still_in_window(
     user_id: str, tier: SubscriptionTier, week_start: int, week_end: int, now: int
 ) -> None:
     """Raise unless the stored clock still puts the buyer in this window on
-    this plan. Read last, as the charge begins: an upgrade or renewal that
-    landed after the eligibility check would otherwise be charged for a
-    reset of a window the limiter has already left."""
+    this plan. An upgrade or renewal that landed after the eligibility check
+    would otherwise be charged for a reset of a window the limiter has
+    already left."""
     state = await get_usage_activation_state(user_id)
     clock = clock_from_state(state, now)
     same_window = clock is not None and (
