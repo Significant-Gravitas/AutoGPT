@@ -85,4 +85,17 @@ describe("groupParts", () => {
       "steps",
     ]);
   });
+
+  it("gives the onboarding card a block of its own", () => {
+    const parts = [tool("a"), tool("b", "expert_onboarding"), tool("c")] as Parts;
+
+    const blocks = groupParts(parts);
+
+    expect(blocks.map((block) => block.kind)).toEqual([
+      "steps",
+      "onboarding",
+      "steps",
+    ]);
+    expect(blocks[1].key).toBe("b");
+  });
 });

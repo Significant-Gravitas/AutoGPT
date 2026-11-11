@@ -18,6 +18,8 @@ import {
   type UIMessage,
 } from "ai";
 
+import { ONBOARDING_TOOL } from "./components/OnboardingCard/helpers";
+
 export type StepPart = ToolUIPart | DynamicToolUIPart;
 
 export type StepKind =
@@ -47,7 +49,8 @@ export interface Step {
 export type Block =
   | { kind: "text"; key: string; text: string }
   | { kind: "thinking"; key: string }
-  | { kind: "steps"; key: string; steps: Step[] };
+  | { kind: "steps"; key: string; steps: Step[] }
+  | { kind: "onboarding"; key: string; part: StepPart };
 
 export const stepIcons: Record<VisibleStepKind, IconSvgElement> = {
   file: File01Icon,
@@ -119,7 +122,7 @@ export function stepState(part: StepPart): StepState {
 /**
  * Splits a message's parts into render blocks. Tool parts separated only by
  * parts that render nothing (step-start, finished reasoning, empty text)
- * share one steps block.
+ * share one steps block. The expert onboarding card stands on its own.
  */
 export function groupParts(parts: UIMessage["parts"]): Block[] {
   const blocks: Block[] = [];
@@ -133,6 +136,11 @@ export function groupParts(parts: UIMessage["parts"]): Block[] {
   }
 
   parts.forEach((part, index) => {
+    if (isToolUIPart(part) && stepToolName(part) === ONBOARDING_TOOL) {
+      closeRun();
+      blocks.push({ kind: "onboarding", key: part.toolCallId, part });
+      return;
+    }
     if (isToolUIPart(part)) {
       const kind = stepKind(stepToolName(part));
       run ??= [];

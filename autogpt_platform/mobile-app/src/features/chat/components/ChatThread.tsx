@@ -35,6 +35,11 @@ export function ChatThread({ sessionID, detail }: Props) {
     return isSent;
   }
 
+  // Card answers go out on their own, without the composer's attachments.
+  function handleAnswer(text: string) {
+    return send(text);
+  }
+
   function handleAttach() {
     void files.attach();
   }
@@ -58,6 +63,7 @@ export function ChatThread({ sessionID, detail }: Props) {
         hasEarlier={hasEarlier}
         isLoadingEarlier={isLoadingEarlier}
         onLoadEarlier={handleLoadEarlier}
+        onSend={handleAnswer}
       />
       {line ? <Text style={styles.error}>{line}</Text> : null}
       <Composer

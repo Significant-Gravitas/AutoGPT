@@ -8,14 +8,25 @@ import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 import { messageFiles } from "../attachmentHelpers";
 import { groupParts } from "../steps";
 import { Markdown } from "./Markdown";
+import { OnboardingCard } from "./OnboardingCard/OnboardingCard";
 import { StepsBlock } from "./StepsBlock";
 
 interface Props {
   message: UIMessage;
   isLive?: boolean;
+  /** Text of the next message, or null when this one is the last. */
+  replyText: string | null;
+  isBusy: boolean;
+  onSend: (text: string) => boolean;
 }
 
-export function MessageBubble({ message, isLive = false }: Props) {
+export function MessageBubble({
+  message,
+  isLive = false,
+  replyText,
+  isBusy,
+  onSend,
+}: Props) {
   const styles = useStyles();
   const colors = useColors();
   if (message.role === "user") {
@@ -54,6 +65,17 @@ export function MessageBubble({ message, isLive = false }: Props) {
             <Text key={block.key} style={styles.thinking}>
               Thinking…
             </Text>
+          );
+        }
+        if (block.kind === "onboarding") {
+          return (
+            <OnboardingCard
+              key={block.key}
+              part={block.part}
+              replyText={replyText}
+              isBusy={isBusy}
+              onSend={onSend}
+            />
           );
         }
         return (

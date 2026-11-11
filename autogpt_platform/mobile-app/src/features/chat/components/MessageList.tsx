@@ -21,6 +21,7 @@ interface Props {
   hasEarlier: boolean;
   isLoadingEarlier: boolean;
   onLoadEarlier: () => void;
+  onSend: (text: string) => boolean;
 }
 
 export function MessageList({
@@ -29,6 +30,7 @@ export function MessageList({
   hasEarlier,
   isLoadingEarlier,
   onLoadEarlier,
+  onSend,
 }: Props) {
   const styles = useStyles();
   const colors = useColors();
@@ -81,6 +83,9 @@ export function MessageList({
           isLive={
             isBusy && item.role === "assistant" && index === messages.length - 1
           }
+          replyText={replyText(messages[index + 1])}
+          isBusy={isBusy}
+          onSend={onSend}
         />
       )}
       ListHeaderComponent={renderHeader()}
@@ -98,6 +103,11 @@ export function MessageList({
       contentContainerStyle={styles.content}
     />
   );
+}
+
+function replyText(next: UIMessage | undefined) {
+  if (!next) return null;
+  return next.parts.map((part) => (part.type === "text" ? part.text : "")).join("");
 }
 
 const useStyles = createStyles((colors) => ({
