@@ -76,6 +76,7 @@ class FakeVendor:
         pace_s: float = 0.0,
         connect_delay_s: float = 0.0,
         stall_notes: bool = False,
+        stall_opening: bool = False,
         refuse: Exception | None = None,
     ) -> None:
         self.replies = list(replies)
@@ -89,6 +90,9 @@ class FakeVendor:
         # Sending a server note after a session's opening never finishes, the
         # way a send to a vendor socket that has stopped reading never does.
         self.stall_notes = stall_notes
+        # Sending the first session its first note, the call's opening, never
+        # finishes, while the session itself stays up.
+        self.stall_opening = stall_opening
         # Each connect is refused with this.
         self.refuse = refuse
         # While set and clear, each connect waits on it: a connect that lands
@@ -180,6 +184,8 @@ class FakeVendorSession:
         self._check_open()
         self.notes.append((text, turn_complete))
         if self.vendor.stall_notes and len(self.notes) > 1:
+            await asyncio.Event().wait()
+        if self.vendor.stall_opening and self.number == 1 and len(self.notes) == 1:
             await asyncio.Event().wait()
         if turn_complete:
             self._spawn(self._answer())

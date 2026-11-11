@@ -146,12 +146,20 @@ async def test_a_starts_checks_read_side_by_side(voice_on, mocker: MockerFixture
     assert (await starting).status_code == 200
 
 
-async def test_a_start_is_one_span_of_the_trace(mocker: MockerFixture):
+async def test_a_start_is_a_span_with_one_for_each_read_and_step(
+    mocker: MockerFixture,
+):
+    """The trace of a slow start names its slow read."""
     span = mocker.patch.object(voice.sentry_sdk, "start_span")
 
     assert (await start()).status_code == 200
 
-    span.assert_called_once_with(op="voice.call.start", name="Start a voice call")
+    route, *steps = [call.kwargs["op"] for call in span.call_args_list]
+    assert route == "voice.call.start"
+    assert sorted(steps) == [
+        f"voice.call.start.{step}"
+        for step in ("arm", "budget", "calls", "flag", "interview", "register")
+    ]
 
 
 async def test_the_route_is_not_there_while_voice_is_off(voice_on):

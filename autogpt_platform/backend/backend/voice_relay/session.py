@@ -35,9 +35,12 @@ name. It is ready once those have landed, the person's microphone is in the
 room and their browser has taken Otto's track. Only then is it counted against
 the person's allowance and goes live, the browser hears ``ready``, and the
 model is sent the call's opening, so the first token paid for comes after the
-count. A call that cannot get there ends before ``ready``, and the browser
-reads that as a call that never started: its room could not be joined or was
-lost (``room_error``), its model session did not open (``vendor_error``), the
+count. An opening the model session does not take, by failing or by not
+answering within ``VENDOR_SEND_TIMEOUT_S``, is that session dropped: it is
+replaced the usual way, and its replacement opens the call instead. A call
+that cannot get there ends before ``ready``, and the browser reads that as a
+call that never started: its room could not be joined or was lost
+(``room_error``), its model session did not open (``vendor_error``), the
 person ended it from another device (``superseded``), their socket closed, or
 no microphone came within ``Timing.ready_within_s`` (``client_gone``).
 
@@ -627,13 +630,26 @@ class Session:
         if self.classifier is not None:
             self.spawn(self.scope_worker(self.classifier), "scope")
         # Off the call's own wait, so a send that stalls holds up nothing.
-        self.spawn(self._send_opening(), "opening")
+        self.spawn(self._send_opening(live), "opening")
 
-    async def _send_opening(self) -> None:
+    async def _send_opening(self, live: VendorSession) -> None:
+        """Send *live* the call's opening. Every call starts with the
+        microphone closed until Otto's first turn has played, so a session that
+        stays up without it would never hear the person: one that does not
+        take it is dropped, and its replacement opens the call."""
+        if live is not self.live or self.reconnecting:
+            return
         opening = voice_interview_kickoff(self.first_name)
-        await self._vendor_call(
-            "opening", lambda live: live.send_note(opening, turn_complete=True)
-        )
+        try:
+            await asyncio.wait_for(
+                live.send_note(opening, turn_complete=True),
+                timeout=VENDOR_SEND_TIMEOUT_S,
+            )
+        except Exception as error:
+            logger.info(
+                f"Voice call {self.call_id}: opening not sent ({type(error).__name__})"
+            )
+            self._vendor_dropped(live, error)
 
     async def finish(self) -> None:
         reason: EndReason = self.end_reason or "vendor_error"
@@ -1126,8 +1142,17 @@ class Session:
                 await self.on_event(event)
             raise ConnectionError("the vendor's stream ended")
         except Exception as error:
-            if live is self.live and not self.ended.is_set() and not self.reconnecting:
-                self.spawn(self.reconnect_vendor(error), "vendor_reconnect")
+            self._vendor_dropped(live, error)
+
+    def _vendor_dropped(self, live: VendorSession, error: Exception) -> None:
+        """*live* failed with *error*: replace it, unless it is already
+        replaced, the call is over, or a replacement is under way. The call is
+        marked as reconnecting before the replacement is spawned, so a session
+        whose stream ends while a send to it fails is replaced once."""
+        if live is not self.live or self.ended.is_set() or self.reconnecting:
+            return
+        self.reconnecting = True
+        self.spawn(self.reconnect_vendor(error), "vendor_reconnect")
 
     async def reconnect_vendor(self, error: Exception) -> None:
         """Replace a dropped vendor session with one that knows the call so far.

@@ -197,6 +197,51 @@ async def test_a_start_the_model_refuses_at_once_leaves_no_coroutine_unawaited(
     assert [str(w.message) for w in recwarn if "never awaited" in str(w.message)] == []
 
 
+async def test_an_opening_the_model_does_not_take_replaces_its_session(
+    redis, monkeypatch
+):
+    """The microphone stays closed until Otto's first turn has played, so a
+    session that never took the opening would never hear the person: it is
+    replaced, and the replacement opens the call."""
+    monkeypatch.setattr("backend.voice_relay.session.VENDOR_SEND_TIMEOUT_S", 0.2)
+    vendor = FakeVendor(
+        [Reply(text="Hi, I'm Otto, an AI.", audio_s=0.1)], stall_opening=True
+    )
+    call = _starting(redis, vendor=vendor, read_first_name=_named("Dana"))
+    await call.run()
+
+    await call.ws.wait_for("turn_complete")
+
+    first, second = vendor.sessions
+    assert first.closed
+    assert second.notes[0] == (KICKOFF, True)
+    assert _said(call) == "Hi, I'm Otto, an AI."
+    assert call.session.vendor_reconnects == 1
+    call.ws.send_json({"type": "hangup"})
+    assert await call.ended() == "user_hangup"
+
+
+async def test_a_session_lost_while_the_call_got_ready_is_replaced_once(redis):
+    """Its stream has ended and a send to it fails: the stream's end and the
+    opening's failure start one replacement between them."""
+    vendor = FakeVendor([Reply(text="Hi, I'm Otto, an AI.", audio_s=0.1)])
+    media = FakeMedia()
+    media.otto_heard_gate = asyncio.Event()
+    call = _starting(redis, vendor=vendor, media=media, read_first_name=_named("Dana"))
+    await call.run()
+    await _waiting(call)
+    await vendor.sessions[0].close()
+
+    media.otto_heard_gate.set()
+    await call.ws.wait_for("turn_complete")
+
+    assert len(vendor.sessions) == 2
+    assert vendor.sessions[1].notes[0] == (KICKOFF, True)
+    assert call.session.vendor_reconnects == 1
+    call.ws.send_json({"type": "hangup"})
+    assert await call.ended() == "user_hangup"
+
+
 async def test_the_model_connect_the_room_join_and_the_name_read_run_side_by_side(
     redis,
 ):
@@ -247,6 +292,11 @@ async def test_each_side_of_a_calls_start_is_timed(redis, caplog):
     assert "the relay joined the room in" in line
     call.ws.send_json({"type": "hangup"})
     await call.ended()
+
+
+def _said(call: Starting) -> str:
+    """What the browser was shown of Otto's words."""
+    return "".join(m["text"] for m in call.ws.sent if m["type"] == "agent_text")
 
 
 def _named(name: str):

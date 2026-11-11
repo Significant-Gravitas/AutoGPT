@@ -24,11 +24,11 @@ the browser's token for it. In order, it checks:
   Read, not written: the relay counts a call once its model session opens,
   so a start that never got that far costs the person nothing.
 
-The checks' reads are independent and run side by side, under one span the
-start's trace shows; their refusals are still made in this order. None of
-them costs the person anything. Then it registers the call's room
-(``locks.register_room``), a 503 when it cannot, and mints the browser's
-token for it (``rooms.person_token``); the relay closes the room
+The checks' reads are independent and run side by side, each in a span of
+its own under the start's span in its trace; their refusals are still made in
+this order. None of them costs the person anything. Then it registers the
+call's room (``locks.register_room``), a 503 when it cannot, and mints the
+browser's token for it (``rooms.person_token``); the relay closes the room
 (``room_reaper``). It reads the person's arm of the voice ending experiment,
 which stores it on first read (``experiments.assign``), and the start token
 carries the arm to the relay, which reads no flags. The relay records the
@@ -141,10 +141,10 @@ async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
 async def _start_voice_call(user_id: str) -> VoiceCallStartResponse:
     # Read side by side; refused in the module's order.
     enabled, *refusals = await asyncio.gather(
-        _voice_enabled(user_id),
-        _refusal(_refuse_if_interview_over(user_id)),
-        _refusal(_refuse_on_calls(user_id)),
-        _refusal(enforce_voice_call_budget(user_id)),
+        _timed("flag", _voice_enabled(user_id)),
+        _timed("interview", _refusal(_refuse_if_interview_over(user_id))),
+        _timed("calls", _refusal(_refuse_on_calls(user_id))),
+        _timed("budget", _refusal(enforce_voice_call_budget(user_id))),
     )
     if not enabled:
         raise HTTPException(status_code=404, detail="Feature not available")
@@ -163,8 +163,11 @@ async def _start_voice_call(user_id: str) -> VoiceCallStartResponse:
     # enrols the person. The room is registered before its token is minted,
     # so every room a token can open is closed in the end.
     arm, _ = await asyncio.gather(
-        assigned_ending(user_id, "voice"),
-        _bounded(locks.register_room(redis, call_id, user_id, time.time())),
+        _timed("arm", assigned_ending(user_id, "voice")),
+        _timed(
+            "register",
+            _bounded(locks.register_room(redis, call_id, user_id, time.time())),
+        ),
     )
     ending = _voice_arm(arm)
     return VoiceCallStartResponse(
@@ -249,6 +252,15 @@ async def _refuse_if_interview_over(user_id: str) -> None:
         raise HTTPException(
             status_code=409, detail={"code": INTERVIEW_CLOSED, "call_id": taken_by}
         )
+
+
+async def _timed(step: str, operation: Awaitable[T]) -> T:
+    """*operation*, under a span of the start's trace named for *step*, so
+    the trace of a slow start names the slow read."""
+    with sentry_sdk.start_span(
+        op=f"voice.call.start.{step}", name=f"Start a voice call: {step}"
+    ):
+        return await operation
 
 
 async def _refusal(check: Awaitable[None]) -> HTTPException | None:
