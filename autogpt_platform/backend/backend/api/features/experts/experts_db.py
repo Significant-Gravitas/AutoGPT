@@ -2306,11 +2306,19 @@ async def _install_marketplace_workflow(
         store_listing_version_id, user_id, track_listing_added=False
     )
     if existing is not None:
-        # Its library copy was deleted; the add restored or recreated it.
-        rebound = await prisma.models.ExpertWorkflow.prisma().update(
+        # Deleting the library copy also deleted its schedule; restore both.
+        if existing.scheduleId:
+            await scheduling.delete_workflow_schedule(
+                existing.scheduleId, user_id, expert_id
+            )
+        await prisma.models.ExpertWorkflow.prisma().update(
             where={"id": existing.id},
-            data={"libraryAgentId": library_agent.id},
-            include=_WORKFLOW_ROW_INCLUDE,
+            data={"libraryAgentId": library_agent.id, "scheduleId": None},
+        )
+        if existing.scheduleCron:
+            await scheduling.create_pending_workflow_schedules(user_id, expert_id)
+        rebound = await prisma.models.ExpertWorkflow.prisma().find_unique(
+            where={"id": existing.id}, include=_WORKFLOW_ROW_INCLUDE
         )
         if rebound is None:
             raise NotFoundError(f"Workflow #{existing.id} not found on expert")

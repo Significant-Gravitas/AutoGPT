@@ -2884,23 +2884,35 @@ async def test_reinstalling_a_marketplace_workflow_restores_its_deleted_library_
     server: SpinTestServer, test_user
 ):
     slv_id = await _seed_store_listing(server)
-    template = await _seed_template(name="Maria", preload_listings=[])
-    hired = await experts_db.hire_expert(test_user.id, template.id, None)
-    first = await experts_db.install_workflow(
-        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    template = await _seed_template(
+        name="Maria", preload_listings=[slv_id], preload_crons={slv_id: "0 9 * * 1"}
     )
+    sched = AsyncMock()
+    sched.add_execution_schedule = AsyncMock(
+        side_effect=[SimpleNamespace(id="sched-1"), SimpleNamespace(id="sched-2")]
+    )
+    with patch.object(scheduling, "get_scheduler_client", return_value=sched):
+        hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    first = hired.expert.workflows[0]
     assert first.library_agent_id is not None
     await library_db.delete_library_agent(first.library_agent_id, test_user.id)
 
-    again = await experts_db.install_workflow(
-        test_user.id, hired.expert.id, store_listing_version_id=slv_id
-    )
+    with patch.object(scheduling, "get_scheduler_client", return_value=sched):
+        again = await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
 
     assert again.id == first.id and again.library_agent_id is not None
     await library_db.get_library_agent(again.library_agent_id, test_user.id)
     expert = await experts_db.get_expert(test_user.id, hired.expert.id)
     assert expert is not None
     assert [w.library_agent_id for w in expert.workflows] == [again.library_agent_id]
+    # The old job is removed if it survived, and the cadence gets a new one.
+    sched.delete_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
+    row = await prisma.models.ExpertWorkflow.prisma().find_unique(
+        where={"id": again.id}
+    )
+    assert row is not None and row.scheduleId == "sched-2"
 
 
 async def _setup_links(user_id: str, expert_id: str) -> set[str | None]:
