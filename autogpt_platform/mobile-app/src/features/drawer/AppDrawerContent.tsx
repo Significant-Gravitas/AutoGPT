@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, spacing, type } from "@/lib/theme";
 
+import { ExpertChatGroup } from "./components/ExpertChatGroup";
 import { DrawerRow } from "./DrawerRow";
 import { useAppDrawer } from "./useAppDrawer";
 
@@ -27,7 +28,7 @@ interface Props {
 export function AppDrawerContent({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const {
-    sessions,
+    groups,
     isLoading,
     isError,
     refetch,
@@ -67,16 +68,15 @@ export function AppDrawerContent({ navigation }: Props) {
         <DrawerRow icon={PencilEdit02Icon} label="New chat" onPress={newChat} />
         <DrawerRow icon={UserGroupIcon} label="Your team" onPress={openTeam} />
       </View>
-      <Text style={styles.heading}>Chats</Text>
+      <Text style={styles.heading}>Recent chats</Text>
       <FlatList
-        data={sessions}
-        keyExtractor={(session) => session.id}
+        data={groups}
+        keyExtractor={(group) => group.key}
         renderItem={({ item }) => (
-          <DrawerRow
-            label={item.title || "New chat"}
-            isActive={item.id === activeSessionID}
-            isBusy={item.is_processing}
-            onPress={() => openChat(item.id)}
+          <ExpertChatGroup
+            group={item}
+            activeSessionID={activeSessionID}
+            onOpenChat={openChat}
           />
         )}
         ListEmptyComponent={renderEmpty}
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   list: { flex: 1 },
-  listContent: { flexGrow: 1, gap: spacing.xs },
+  listContent: { flexGrow: 1, gap: spacing.sm },
   notice: {
     ...type.small,
     color: colors.textSecondary,

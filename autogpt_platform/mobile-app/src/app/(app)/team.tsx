@@ -5,9 +5,8 @@ import { ExpertCard, PlaceholderCard } from "@/features/team/components/ExpertCa
 import { avatarSource, roleLine, statusLine } from "@/features/team/helpers";
 import { useTeamScreen } from "@/features/team/useTeamScreen";
 import type { Expert } from "@/lib/api/experts";
+import { OTTO_AVATAR_URL, OTTO_NAME } from "@/lib/otto";
 import { colors, spacing, type } from "@/lib/theme";
-
-const appIcon = require("../../../assets/images/icon.png");
 
 export default function TeamScreen() {
   const {
@@ -30,8 +29,8 @@ export default function TeamScreen() {
     return (
       <View style={styles.header}>
         <ExpertCard
-          name="Otto"
-          avatar={appIcon}
+          name={OTTO_NAME}
+          avatar={OTTO_AVATAR_URL}
           detail="Ask anything, or hand off a task"
           onPress={openOtto}
         />

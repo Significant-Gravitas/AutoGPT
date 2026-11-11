@@ -1,7 +1,6 @@
-import { Image, type ImageSource } from "expo-image";
-import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { colors, radius, spacing, type } from "@/lib/theme";
 
 const AVATAR_SIZE = 48;
@@ -31,7 +30,7 @@ export function ExpertCard({
       onPress={onPress}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
-      <Avatar key={String(avatar)} name={name} source={avatar} />
+      <ExpertAvatar name={name} source={avatar} size={AVATAR_SIZE} />
       <View style={styles.text}>
         <Text numberOfLines={1} style={styles.name}>
           {name}
@@ -49,38 +48,6 @@ export function ExpertCard({
       </View>
       {isOpening ? <ActivityIndicator color={colors.textTertiary} /> : null}
     </Pressable>
-  );
-}
-
-interface AvatarProps {
-  name: string;
-  source: string | number | null;
-}
-
-function Avatar({ name, source }: AvatarProps) {
-  const [hasFailed, setHasFailed] = useState(false);
-
-  function handleError() {
-    setHasFailed(true);
-  }
-
-  if (source === null || hasFailed) {
-    return (
-      <View style={[styles.avatar, styles.fallback]}>
-        <Text style={styles.initial}>{name.trim().charAt(0).toUpperCase()}</Text>
-      </View>
-    );
-  }
-  const imageSource: ImageSource | number =
-    typeof source === "string" ? { uri: source } : source;
-  return (
-    <Image
-      source={imageSource}
-      onError={handleError}
-      contentFit="cover"
-      style={styles.avatar}
-      accessibilityIgnoresInvertColors
-    />
   );
 }
 
@@ -112,12 +79,6 @@ const styles = StyleSheet.create({
     height: AVATAR_SIZE,
     borderRadius: AVATAR_SIZE / 2,
   },
-  fallback: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.brandSoft,
-  },
-  initial: { ...type.heading, color: colors.text },
   text: { flex: 1, gap: 2 },
   name: { ...type.heading, color: colors.text },
   detail: { ...type.small, color: colors.textSecondary },

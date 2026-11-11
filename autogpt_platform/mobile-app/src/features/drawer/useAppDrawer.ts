@@ -2,7 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { router, usePathname } from "expo-router";
 import type { DrawerContentComponentProps } from "expo-router/drawer";
 
+import { groupChatsByExpert } from "@/features/drawer/helpers";
 import { chatKeys, listSessions } from "@/lib/api/chat";
+import { expertKeys, listExperts } from "@/lib/api/experts";
 import { authClient } from "@/lib/auth/client";
 import { signOut } from "@/lib/session";
 
@@ -15,6 +17,7 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
     queryKey: chatKeys.sessions,
     queryFn: () => listSessions(),
   });
+  const experts = useQuery({ queryKey: expertKeys.list, queryFn: listExperts });
 
   const activeSessionID = pathname.startsWith(CHAT_PATH_PREFIX)
     ? pathname.slice(CHAT_PATH_PREFIX.length)
@@ -49,7 +52,7 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
   }
 
   return {
-    sessions: data ?? [],
+    groups: groupChatsByExpert(data ?? [], experts.data ?? []),
     isLoading,
     isError,
     refetch,
