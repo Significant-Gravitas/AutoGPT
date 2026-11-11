@@ -1,4 +1,5 @@
 import { authClient } from "./client";
+import { SignedOutError } from "./errors";
 
 const REFRESH_MARGIN_MS = 60_000;
 const FALLBACK_LIFETIME_MS = 50 * 60_000;
@@ -13,13 +14,6 @@ let pending: Promise<string> | null = null;
 // Bumped on every clear, so a mint that started before a sign-out cannot
 // cache the old user's token for the next one.
 let generation = 0;
-
-export class SignedOutError extends Error {
-  constructor() {
-    super("You are signed out. Sign in again to continue.");
-    this.name = "SignedOutError";
-  }
-}
 
 /** The short-lived token the backend accepts, minted from the stored session. */
 export async function getAccessToken() {

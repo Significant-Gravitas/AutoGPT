@@ -2,7 +2,8 @@ import { QueryCache, QueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "@/lib/api/client";
 import { authClient } from "@/lib/auth/client";
-import { clearAccessToken, SignedOutError } from "@/lib/auth/token";
+import { SignedOutError } from "@/lib/auth/errors";
+import { clearAccessToken } from "@/lib/auth/token";
 
 const SIGN_OUT_TIMEOUT_MS = 8_000;
 

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
-import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/transport";
+import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/chatErrors";
 import { chatKeys, getSuggestedPrompts } from "@/lib/api/chat";
 import { ApiError } from "@/lib/api/client";
 import { isSessionGone, signOut } from "@/lib/session";

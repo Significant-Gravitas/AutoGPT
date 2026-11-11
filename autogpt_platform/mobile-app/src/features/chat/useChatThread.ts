@@ -9,19 +9,19 @@ import {
   getSession,
   type SessionDetail,
 } from "@/lib/api/chat";
-import { SignedOutError } from "@/lib/auth/token";
+import { SignedOutError } from "@/lib/auth/errors";
 import { queryClient, signOut } from "@/lib/session";
 import { useMountEffect } from "@/lib/useMountEffect";
 
 import { toUIMessages } from "./convertMessages";
 import { takePendingFirstMessage } from "./pendingFirstMessage";
+import { chatErrorMessage } from "./chatErrors";
 import {
   isRecoverableChatError,
   lastMessageIsUser,
-  lastUserText,
-  serverHasUserMessage,
+  turnLanded,
 } from "./recovery";
-import { chatErrorMessage, createChatTransport } from "./transport";
+import { createChatTransport } from "./transport";
 
 const RECOVERY_DELAY_MS = 1500;
 const MAX_RECOVERIES = 3;
@@ -85,6 +85,7 @@ export function useChatThread({ sessionID, detail }: Args) {
       fresh = await getSession(sessionID);
       if (!isMounted.current) return;
       await chat.stop();
+      if (!isMounted.current) return;
       showServerMessages(fresh);
       chat.clearError();
     } finally {
@@ -95,14 +96,22 @@ export function useChatThread({ sessionID, detail }: Args) {
 
   // resumeStream resolves once the replayed stream ends, or at once when the
   // turn already finished (the server answers 204). In that second case the
-  // reply was left out of the hydrated messages, so load it.
+  // reply was left out of the hydrated messages, so load it. Callers release
+  // `isSyncing` first; it is held here only for the fetch, so a send made
+  // meanwhile is refused instead of wiped.
   async function resumeTurn() {
-    await chat.resumeStream();
     if (!isMounted.current) return;
+    await chat.resumeStream();
+    if (!isMounted.current || isSyncing.current) return;
     if (isChatBusy() || !lastMessageIsUser(chat.messages)) return;
-    const fresh = await getSession(sessionID);
-    if (!isMounted.current || fresh.active_stream) return;
-    setMessages(toUIMessages(sessionID, fresh.messages));
+    isSyncing.current = true;
+    try {
+      const fresh = await getSession(sessionID);
+      if (!isMounted.current || isChatBusy() || fresh.active_stream) return;
+      setMessages(toUIMessages(sessionID, fresh.messages));
+    } finally {
+      isSyncing.current = false;
+    }
   }
 
   // A stream that drops in the foreground: if the turn reached the server,
@@ -117,12 +126,10 @@ export function useChatThread({ sessionID, detail }: Args) {
     try {
       fresh = await getSession(sessionID); // throws offline: the error line stays
       if (!isMounted.current || isChatBusy()) return;
-      const sent = lastUserText(chat.messages);
-      const landed =
-        fresh.active_stream !== null ||
-        (sent !== null && serverHasUserMessage(fresh.messages, sent));
-      // The send never reached the server: keep the message and the error.
-      if (!landed) return;
+      // Not taken, or taken but unanswered: keep the message and the error.
+      if (!turnLanded(fresh.messages, chat.messages, fresh.active_stream)) {
+        return;
+      }
       showServerMessages(fresh);
       chat.clearError();
     } finally {

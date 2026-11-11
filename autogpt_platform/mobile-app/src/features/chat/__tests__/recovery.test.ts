@@ -1,21 +1,20 @@
 import type { UIMessage } from "ai";
 
-import { SignedOutError } from "@/lib/auth/token";
-
+import { SignedOutError } from "../../../lib/auth/errors";
+import { PLAN_REQUIRED_MESSAGE } from "../chatErrors";
 import {
   isRecoverableChatError,
   lastMessageIsUser,
   lastUserText,
-  serverHasUserMessage,
+  turnLanded,
 } from "../recovery";
-import { PLAN_REQUIRED_MESSAGE } from "../transport";
+
+function message(id: string, role: "user" | "assistant", text: string) {
+  return { id, role, parts: [{ type: "text", text }] } satisfies UIMessage;
+}
 
 const messages: UIMessage[] = [
-  {
-    id: "m1",
-    role: "assistant",
-    parts: [{ type: "text", text: "Hello" }],
-  },
+  message("m1", "assistant", "Hello"),
   {
     id: "m2",
     role: "user",
@@ -48,8 +47,18 @@ describe("isRecoverableChatError", () => {
   });
 });
 
-describe("serverHasUserMessage", () => {
-  it("finds the last user row even with attached files after it", () => {
+describe("turnLanded", () => {
+  const local = [
+    message("l1", "user", "earlier"),
+    message("l2", "assistant", "ok"),
+    message("l3", "user", "hello"),
+  ];
+
+  it("is true while the turn still runs on the server", () => {
+    expect(turnLanded([], local, { turn_id: "t1" })).toBe(true);
+  });
+
+  it("is true for an answered message with attached files", () => {
     const rows = [
       { role: "user", content: "earlier" },
       { role: "assistant", content: "ok" },
@@ -57,27 +66,49 @@ describe("serverHasUserMessage", () => {
       { role: "assistant", content: "hi" },
     ];
 
-    expect(serverHasUserMessage(rows, "hello")).toBe(true);
+    expect(turnLanded(rows, local, null)).toBe(true);
   });
 
-  it("is false when the last user row says something else", () => {
+  it("is false for a repeat that never left the phone", () => {
+    const repeat = [
+      message("l1", "user", "yes"),
+      message("l2", "assistant", "Shall I go on?"),
+      message("l3", "user", "yes"),
+    ];
     const rows = [
-      { role: "user", content: "hello" },
-      { role: "assistant", content: "hi" },
-      { role: "user", content: "something else" },
+      { role: "user", content: "yes" },
+      { role: "assistant", content: "Shall I go on?" },
     ];
 
-    expect(serverHasUserMessage(rows, "hello")).toBe(false);
+    expect(turnLanded(rows, repeat, null)).toBe(false);
   });
 
-  it("is false for no rows", () => {
-    expect(serverHasUserMessage([], "hello")).toBe(false);
+  it("is false for a message stored without a reply", () => {
+    const rows = [
+      { role: "user", content: "earlier" },
+      { role: "assistant", content: "ok" },
+      { role: "user", content: "hello" },
+    ];
+
+    expect(turnLanded(rows, local, null)).toBe(false);
   });
 
-  it("is false for junk rows", () => {
-    const rows = [null, 42, "hello", { role: "user" }, { content: "hello" }];
+  it("is false when the last server message says something else", () => {
+    const rows = [
+      { role: "user", content: "earlier" },
+      { role: "assistant", content: "ok" },
+      { role: "user", content: "something else" },
+      { role: "assistant", content: "hi" },
+    ];
 
-    expect(serverHasUserMessage(rows, "hello")).toBe(false);
+    expect(turnLanded(rows, local, null)).toBe(false);
+  });
+
+  it("is false for no rows and for junk rows", () => {
+    expect(turnLanded([], local, null)).toBe(false);
+    expect(turnLanded([null, 42, "hello", { role: "user" }], local, null)).toBe(
+      false,
+    );
   });
 });
 

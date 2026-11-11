@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useRef, useState } from "react";
 
-import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/transport";
+import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/chatErrors";
 import { chatKeys, createSession, listSessions } from "@/lib/api/chat";
 import { ApiError } from "@/lib/api/client";
 import { type Expert, expertKeys, listExperts } from "@/lib/api/experts";
