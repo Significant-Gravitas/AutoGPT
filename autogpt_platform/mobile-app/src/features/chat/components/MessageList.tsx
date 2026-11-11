@@ -74,7 +74,14 @@ export function MessageList({
       ref={listRef}
       data={messages}
       keyExtractor={(message) => message.id}
-      renderItem={({ item }) => <MessageBubble message={item} />}
+      renderItem={({ item, index }) => (
+        <MessageBubble
+          message={item}
+          isLive={
+            isBusy && item.role === "assistant" && index === messages.length - 1
+          }
+        />
+      )}
       ListHeaderComponent={renderHeader()}
       maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
       ListFooterComponent={

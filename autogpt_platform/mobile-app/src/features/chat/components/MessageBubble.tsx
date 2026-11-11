@@ -1,16 +1,18 @@
-import { isToolUIPart, type UIMessage } from "ai";
+import type { UIMessage } from "ai";
 import { Text, View } from "react-native";
 
 import { createStyles, radius, spacing, type } from "@/lib/theme";
 
+import { groupParts } from "../steps";
 import { Markdown } from "./Markdown";
-import { ToolRow } from "./ToolRow";
+import { StepsBlock } from "./StepsBlock";
 
 interface Props {
   message: UIMessage;
+  isLive?: boolean;
 }
 
-export function MessageBubble({ message }: Props) {
+export function MessageBubble({ message, isLive = false }: Props) {
   const styles = useStyles();
   if (message.role === "user") {
     const text = message.parts
@@ -23,21 +25,27 @@ export function MessageBubble({ message }: Props) {
     );
   }
 
+  const blocks = groupParts(message.parts);
   return (
     <View style={styles.assistant}>
-      {message.parts.map((part, index) => {
-        if (part.type === "text") {
-          return <Markdown key={index} text={part.text} />;
+      {blocks.map((block, index) => {
+        if (block.kind === "text") {
+          return <Markdown key={block.key} text={block.text} />;
         }
-        if (isToolUIPart(part)) return <ToolRow key={index} part={part} />;
-        if (part.type === "reasoning" && part.state === "streaming") {
+        if (block.kind === "thinking") {
           return (
-            <Text key={index} style={styles.thinking}>
+            <Text key={block.key} style={styles.thinking}>
               Thinking…
             </Text>
           );
         }
-        return null;
+        return (
+          <StepsBlock
+            key={block.key}
+            steps={block.steps}
+            isLive={isLive && index === blocks.length - 1}
+          />
+        );
       })}
     </View>
   );
