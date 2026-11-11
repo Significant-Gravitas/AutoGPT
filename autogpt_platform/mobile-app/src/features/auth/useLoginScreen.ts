@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { authClient } from "@/lib/auth/client";
+import { whenSignedOut } from "@/lib/session";
 
 interface SignInError {
   code?: string;
@@ -22,6 +23,8 @@ export function useLoginScreen() {
     setError(null);
     setIsSubmitting(true);
     try {
+      // A late reply to the last sign-out would wipe this sign-in's cookie.
+      await whenSignedOut();
       const result = await authClient.signIn.email({
         email: email.trim(),
         password,

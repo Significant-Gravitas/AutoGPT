@@ -6,7 +6,7 @@ import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/transport";
 import { chatKeys, createSession, listSessions } from "@/lib/api/chat";
 import { ApiError } from "@/lib/api/client";
 import { type Expert, expertKeys, listExperts } from "@/lib/api/experts";
-import { queryClient } from "@/lib/session";
+import { isSessionGone, queryClient, signOut } from "@/lib/session";
 
 async function latestOrNewSession(expertID: string) {
   const [latest] = await listSessions({
@@ -46,6 +46,10 @@ export function useTeamScreen() {
       const sessionID = await latestOrNewSession(expert.id);
       router.push(`/chat/${sessionID}`);
     } catch (caught) {
+      if (isSessionGone(caught)) {
+        void signOut();
+        return;
+      }
       setOpenError(
         caught instanceof ApiError && caught.status === 402
           ? PLAN_REQUIRED_MESSAGE

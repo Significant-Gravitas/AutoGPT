@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/transport";
 import { chatKeys, getSuggestedPrompts } from "@/lib/api/chat";
 import { ApiError } from "@/lib/api/client";
+import { isSessionGone, signOut } from "@/lib/session";
 
 import { startChat } from "./startChat";
 
@@ -36,6 +37,10 @@ export function useHomeScreen() {
       await startChat(text);
       return true;
     } catch (caught) {
+      if (isSessionGone(caught)) {
+        void signOut();
+        return false;
+      }
       setError(
         caught instanceof ApiError && caught.status === 402
           ? PLAN_REQUIRED_MESSAGE

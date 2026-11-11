@@ -4,6 +4,8 @@ import { ApiError } from "@/lib/api/client";
 import { authClient } from "@/lib/auth/client";
 import { clearAccessToken, SignedOutError } from "@/lib/auth/token";
 
+const SIGN_OUT_TIMEOUT_MS = 8_000;
+
 let pendingSignOut: Promise<void> | null = null;
 
 export const queryClient = new QueryClient({
@@ -25,20 +27,33 @@ export function signOut() {
   return pendingSignOut;
 }
 
-async function clearSession() {
-  try {
-    await authClient.signOut();
-  } catch {
-    // Offline or the server refused: the local session must still go.
-  } finally {
-    clearAccessToken();
-    queryClient.clear();
-  }
+/** Resolves once no sign-out is in flight, so a new sign-in can't be undone by it. */
+export async function whenSignedOut() {
+  await pendingSignOut;
 }
 
 // apiRequest already retried once with a fresh token, so a 401 here means
 // the session itself is dead.
-function isSessionGone(error: unknown) {
+export function isSessionGone(error: unknown) {
   if (error instanceof SignedOutError) return true;
   return error instanceof ApiError && error.status === 401;
+}
+
+async function clearSession() {
+  // The local session goes first, so a slow network can't leave the old
+  // user's data on screen.
+  clearAccessToken();
+  queryClient.clear();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SIGN_OUT_TIMEOUT_MS);
+  try {
+    await authClient.signOut({ fetchOptions: { signal: controller.signal } });
+  } catch {
+    // Offline, timed out or refused: the local session is already gone.
+  } finally {
+    clearTimeout(timeout);
+    // A query in flight during the request can have refilled the cache.
+    clearAccessToken();
+    queryClient.clear();
+  }
 }
