@@ -76,7 +76,7 @@ def _LIVE_STREAM(sandbox_id: str) -> DesktopStream:
 def _owner_bound_links():
     with patch(
         f"{_C}.create_preview_link",
-        side_effect=lambda user_id, url: f"preview://{user_id}/token",
+        side_effect=lambda user_id, url, stream_key=None: f"preview://{user_id}/token",
     ) as link:
         yield link
 
@@ -235,9 +235,11 @@ class TestOpenDesktop:
         redis_p, get_p, cls_p, cfg_p = self._patches(redis, sandbox, desktop)
         with redis_p, get_p, cls_p, cfg_p:
             stream, _, _ = await open_desktop(owner, {}, "k", user_id=_USER)
-        # The live URL went into the link for this user, and only the link
-        # comes out.
-        _owner_bound_links.assert_called_once_with(_USER, _LIVE_STREAM("sb-1").url)
+        # The live URL went into the link for this user, with the key the
+        # endpoint checks it is still served under, and only the link comes out.
+        _owner_bound_links.assert_called_once_with(
+            _USER, _LIVE_STREAM("sb-1").url, stream_key=owner.stream_key()
+        )
         assert stream.url == f"preview://{_USER}/token"
         assert stream.requires_auth is True
         assert "secret" not in stream.model_dump_json()

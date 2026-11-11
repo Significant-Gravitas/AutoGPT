@@ -4,6 +4,7 @@ import {
   ArrowUpRight01Icon,
   ComputerIcon,
 } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -12,6 +13,7 @@ import {
   DownloadContent,
   CopyContent,
 } from "../types";
+import { useDesktopStreamLiveness } from "./useDesktopStreamLiveness";
 
 export interface DesktopStreamValue {
   kind: "desktop_stream";
@@ -27,11 +29,7 @@ function isStreamUrl(url: unknown): url is string {
   if (typeof url !== "string") return false;
   // The frame runs allow-scripts allow-same-origin, so on our own origin it may
   // load only the desktop-preview route, and anywhere else only https.
-  if (url.startsWith("/") && !url.startsWith("//")) {
-    return (
-      new URL(url, "https://origin.invalid").pathname === DESKTOP_PREVIEW_PATH
-    );
-  }
+  if (url.startsWith("/") && !url.startsWith("//")) return isPreviewLink(url);
   try {
     const parsed = new URL(url);
     return (
@@ -41,6 +39,13 @@ function isStreamUrl(url: unknown): url is string {
   } catch {
     return false;
   }
+}
+
+function isPreviewLink(url: string): boolean {
+  if (!url.startsWith("/") || url.startsWith("//")) return false;
+  return (
+    new URL(url, "https://origin.invalid").pathname === DESKTOP_PREVIEW_PATH
+  );
 }
 
 export function isDesktopStream(value: unknown): value is DesktopStreamValue {
@@ -63,15 +68,25 @@ interface PreviewProps {
   ownerView?: boolean;
   /** `body-md` inside a profile tab, whose copy reads at 15px. */
   textSize?: "body" | "body-md";
+  /** Offered once the stream has stopped; opens the desktop again. */
+  onReconnect?: () => void;
+  reconnecting?: boolean;
 }
 
 export function DesktopStreamPreview({
   value,
   ownerView = true,
   textSize = "body",
+  onReconnect,
+  reconnecting = false,
 }: PreviewProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const ownerOnly = value.requires_auth === true && !ownerView;
+  const liveness = useDesktopStreamLiveness(
+    value.url,
+    !ownerOnly && value.requires_auth === true && isPreviewLink(value.url),
+  );
+  const ended = liveness === "ended";
   const [canFullscreen, setCanFullscreen] = useState(false);
 
   useEffect(() => {
@@ -109,7 +124,7 @@ export function DesktopStreamPreview({
             </Text>
           </span>
         </div>
-        {!ownerOnly && (
+        {!ownerOnly && !ended && (
           <div className="flex items-center gap-2">
             {canFullscreen && (
               <button
@@ -139,15 +154,29 @@ export function DesktopStreamPreview({
         )}
       </div>
       {ownerOnly ? (
-        <div className="flex aspect-video w-full items-center justify-center bg-action-hover px-6">
-          <Text
-            variant={textSize === "body-md" ? "body-md" : "body-tight"}
-            tone="subtle"
-            className="text-center"
-          >
-            The live desktop is only visible to the owner of this chat.
-          </Text>
-        </div>
+        <FrameNotice textSize={textSize}>
+          The live desktop is only visible to the owner of this chat.
+        </FrameNotice>
+      ) : ended ? (
+        <FrameNotice
+          textSize={textSize}
+          action={
+            onReconnect && (
+              <Button
+                variant="secondary"
+                size="small"
+                loading={reconnecting}
+                onClick={onReconnect}
+              >
+                Reconnect
+              </Button>
+            )
+          }
+        >
+          This live desktop has stopped.
+        </FrameNotice>
+      ) : liveness === "checking" ? (
+        <div className="aspect-video w-full bg-action-hover" />
       ) : (
         <iframe
           ref={frameRef}
@@ -167,6 +196,27 @@ export function DesktopStreamPreview({
           here is visible to it. Do not sign into personal accounts.
         </Text>
       </div>
+    </div>
+  );
+}
+
+interface FrameNoticeProps {
+  textSize: "body" | "body-md";
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}
+
+function FrameNotice({ textSize, children, action }: FrameNoticeProps) {
+  return (
+    <div className="flex aspect-video w-full flex-col items-center justify-center gap-3 bg-action-hover px-6">
+      <Text
+        variant={textSize === "body-md" ? "body-md" : "body-tight"}
+        tone="subtle"
+        className="text-center"
+      >
+        {children}
+      </Text>
+      {action}
     </div>
   );
 }

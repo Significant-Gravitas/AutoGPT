@@ -7250,7 +7250,7 @@
       "get": {
         "tags": ["v1"],
         "summary": "Open Desktop Preview",
-        "description": "Redirect the desktop's owner to its live stream.\n\nThe stream URL carries the desktop's password, so it is only ever\ndisclosed here, to the user the token was issued to, and marked\n``no-store`` so no cache or referrer keeps a copy.",
+        "description": "Redirect the desktop's owner to its live stream.\n\nThe stream URL carries the desktop's password, so it is only ever\ndisclosed here, to the user the token was issued to, and marked\n``no-store`` so no cache or referrer keeps a copy.  A stream the box no\nlonger serves answers 410, so the page can say so instead of showing a\ndead frame.",
         "operationId": "getV1OpenDesktopPreview",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -7267,6 +7267,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Preview unavailable" },
+          "410": { "description": "Desktop stream ended" },
           "422": {
             "description": "Validation Error",
             "content": {
