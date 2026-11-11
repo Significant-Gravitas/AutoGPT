@@ -21,3 +21,4 @@ CREATE TABLE "SubscriptionBillingRestart" (
 
 CREATE INDEX "SubscriptionBillingRestart_userId_idx" ON "SubscriptionBillingRestart"("userId");
 
+ALTER TABLE "SubscriptionBillingRestart" ADD CONSTRAINT "SubscriptionBillingRestart_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
