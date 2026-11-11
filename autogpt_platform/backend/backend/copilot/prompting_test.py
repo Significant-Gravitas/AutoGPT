@@ -165,6 +165,16 @@ class TestCredentialsSurfacingGuardrails:
         assert "only for an action it does not offer" in result
 
 
+class TestReviewCardLocation:
+    def test_supplement_says_where_a_review_card_is(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        step = result[result.index("4. `review_required`") :].split("\n", 1)[0]
+        # The result says where the card is, which depends on the surface.
+        assert "where its approval card is, as the result says" in step
+        assert "never send them to look for it in another chat" in step
+        assert "don't repeat the call to raise it again" in step
+
+
 class TestToolDiscoveryPriorityAntiPattern:
     """The supplement must send the model to the registry before it talks
     about what exists; the honest-gap wording lives in the base prompt.
@@ -237,19 +247,28 @@ class TestTeamBuildingSupplement:
         assert "handoff_title" in result
         assert "handoff_task" in result
         assert (
-            "Never ask in text whether to hand a task to a new hire from "
-            "`tool:hire_expert`." in result
+            "Never ask in text whether to hand that task to the new expert." in result
         )
 
-    def test_a_raised_expert_is_not_barred_from_being_asked_about_a_task(self):
-        """A raise_expert hire has no hand-off card, so Otto may still ask
-        before delegating to it ("Never delegate silently"). The rule that
-        forbids asking in text names only tool:hire_expert hires (#16101)."""
+    def test_a_new_expert_for_a_known_task_hands_it_off_on_the_card_too(self):
+        """SECRT-3401: raise_expert takes the task like a hire, so its card
+        creates and starts in one click; the rule names both tools."""
         result = prompting.get_team_building_supplement(
             experts_enabled=True, expert_id=None
         )
 
-        assert "Never ask in text whether to hand a task to a new hire." not in result
+        rule = next(line for line in result.splitlines() if "handoff_title" in line)
+        assert "`tool:hire_expert` or `tool:raise_expert`" in rule
+
+    def test_otto_never_points_at_a_chat_that_does_not_exist(self):
+        """SECRT-3401: told only who joined, Otto sent the user to open a new
+        expert's thread before any chat with them existed."""
+        result = prompting.get_team_building_supplement(
+            experts_enabled=True, expert_id=None
+        )
+
+        assert "A new expert has no chat until the user opens one" in result
+        assert "Never say a thread or chat with them exists" in result
 
     def test_an_expert_session_is_not_told_to_hire(self):
         result = prompting.get_team_building_supplement(

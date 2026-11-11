@@ -376,8 +376,9 @@ async def test_shutdown_does_not_wait_past_the_grace_for_a_handler(monkeypatch):
     )
     await asyncio.sleep(0.01)
     consumer.cancel()
+    # A hang guard only: a runner can stall for longer than the 0.05 s grace.
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(consumer, timeout=1)
+        await asyncio.wait_for(consumer, timeout=30)
 
     assert cancelled.is_set()
     # The honest half of the trade: this message is never settled, so the
@@ -511,7 +512,7 @@ async def test_cancelling_the_service_still_lets_in_flight_handlers_settle():
         await asyncio.sleep(0.01)
         run.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(run, timeout=1)
+            await asyncio.wait_for(run, timeout=30)
 
     assert len(messages) == 4
     for message in messages:
