@@ -144,6 +144,7 @@ export function useVoiceCall(args: Args) {
   const [turnsLeft, setTurnsLeft] = useState<number | null>(null);
   const [resumedAt, setResumedAt] = useState<number | null>(null);
   const [isWrappingUp, setIsWrappingUp] = useState(false);
+  const [isHalfDuplex, setIsHalfDuplex] = useState(false);
   // The words have had no answer for the whole poll window: the person may
   // type instead while it goes on.
   const [isPastWindow, setIsPastWindow] = useState(false);
@@ -439,6 +440,7 @@ export function useVoiceCall(args: Args) {
         return;
       case "duplex":
         trackInterview("voice_interview_echo", { by: message.by });
+        setIsHalfDuplex(true);
         return;
       case "resumed":
         onResumed(message.gap_s);
@@ -1155,6 +1157,7 @@ export function useVoiceCall(args: Args) {
     setResumedAt(null);
     callRoom.clearReconnecting();
     setIsWrappingUp(false);
+    setIsHalfDuplex(false);
     setIsPastWindow(false);
     setIsHangingUp(false);
     setStartFailure(null);
@@ -1215,6 +1218,9 @@ export function useVoiceCall(args: Args) {
     timeLeft: endsAt !== null ? timeLeftCopy(endsAt - now) : null,
     turnsLeft,
     isWrappingUp,
+    // Otto's voice reaches the microphone, so the relay stops listening while
+    // he speaks, for the rest of the call.
+    isHalfDuplex,
     isPastWindow,
     wasResumed:
       phase === "live" &&
