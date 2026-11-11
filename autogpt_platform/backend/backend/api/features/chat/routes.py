@@ -2582,6 +2582,12 @@ async def resume_session_stream(
     when nothing is running: the AI SDK's parser cannot continue a block it
     did not see start.
     """
+    # The stream of a chat a reset removed is still in Redis until it
+    # expires; it must not replay what the chat page no longer shows.
+    session = await get_chat_session_metadata(session_id, user_id)
+    if session is not None and session.archived_at is not None:
+        raise await chat_removed_error(session)
+
     if turn is not None:
         try:
             subscriber_queue = await stream_registry.subscribe_to_turn(

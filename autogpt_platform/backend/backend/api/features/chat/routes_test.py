@@ -4684,8 +4684,51 @@ def test_reset_usage_refunds_on_redis_failure(
 # ─── resume_session_stream ───────────────────────────────────────────
 
 
+@pytest.fixture
+def resumed_chat(mocker: pytest_mock.MockerFixture):
+    """The chat a resume reads, still open; a test archives it to reset it."""
+    chat = _make_session_info(expert_id="expert-1")
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=chat),
+    )
+    return chat
+
+
+@pytest.mark.parametrize("query", ["", "?turn=turn-1&after=0-0"])
+def test_resume_session_stream_of_a_reset_experts_chat_says_it_was_removed(
+    mocker: pytest_mock.MockerFixture, resumed_chat, query: str
+) -> None:
+    """A finished turn of a chat a reset removed stays in Redis until it
+    expires; resuming it answers like opening the chat, not with the turn."""
+    resumed_chat.archived_at = datetime.now(UTC)
+    mock_registry = MagicMock()
+    mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
+    find = mocker.patch(
+        "backend.api.features.chat.removed_chat.prisma.models.Expert.prisma"
+    )
+    expert = MagicMock(id="expert-1", isArchived=False)
+    expert.name = "Remy"
+    find.return_value.find_first = AsyncMock(return_value=expert)
+
+    response = client.get(f"/sessions/sess-1/stream{query}")
+
+    assert response.status_code == 410
+    assert response.json() == {
+        "detail": {
+            "type": "chat_removed",
+            "expert_id": "expert-1",
+            "expert_name": "Remy",
+            "message": "This chat was removed when Remy was reset.",
+        }
+    }
+    mock_registry.subscribe_to_turn.assert_not_called()
+    mock_registry.get_active_session.assert_not_called()
+    mock_registry.subscribe_to_session.assert_not_called()
+
+
 def test_resume_session_stream_no_active_session(
-    mocker: pytest_mock.MockerFixture,
+    mocker: pytest_mock.MockerFixture, resumed_chat
 ) -> None:
     """GET /sessions/{id}/stream returns 204 when no active session."""
     mock_registry = MagicMock()
@@ -4698,7 +4741,7 @@ def test_resume_session_stream_no_active_session(
 
 
 def test_resume_session_stream_no_subscriber_queue(
-    mocker: pytest_mock.MockerFixture,
+    mocker: pytest_mock.MockerFixture, resumed_chat
 ) -> None:
     """GET /sessions/{id}/stream returns 204 when subscribe_to_session returns None."""
     from backend.copilot.stream_registry import ActiveSession
