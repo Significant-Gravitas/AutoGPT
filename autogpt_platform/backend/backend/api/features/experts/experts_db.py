@@ -2299,12 +2299,22 @@ async def _install_marketplace_workflow(
         },
         include=_WORKFLOW_ROW_INCLUDE,
     )
-    if existing is not None:
+    if existing is not None and _has_live_library_agent(existing):
         return _to_workflow_ref(existing)
 
     library_agent = await library_db.add_store_agent_to_library(
         store_listing_version_id, user_id, track_listing_added=False
     )
+    if existing is not None:
+        # Its library copy was deleted; the add restored or recreated it.
+        rebound = await prisma.models.ExpertWorkflow.prisma().update(
+            where={"id": existing.id},
+            data={"libraryAgentId": library_agent.id},
+            include=_WORKFLOW_ROW_INCLUDE,
+        )
+        if rebound is None:
+            raise NotFoundError(f"Workflow #{existing.id} not found on expert")
+        return _to_workflow_ref(rebound)
     try:
         row = await prisma.models.ExpertWorkflow.prisma().create(
             data={
@@ -2336,6 +2346,10 @@ async def _install_marketplace_workflow(
         },
     )
     return _to_workflow_ref(row)
+
+
+def _has_live_library_agent(row: prisma.models.ExpertWorkflow) -> bool:
+    return row.LibraryAgent is not None and not row.LibraryAgent.isDeleted
 
 
 async def remove_workflow(user_id: str, expert_id: str, workflow_id: str) -> list[str]:

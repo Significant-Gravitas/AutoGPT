@@ -2879,6 +2879,30 @@ async def test_a_workflow_whose_library_agent_was_deleted_is_not_offered(
     assert await _setup_links(test_user.id, hired.expert.id) == set()
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reinstalling_a_marketplace_workflow_restores_its_deleted_library_copy(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    first = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
+    assert first.library_agent_id is not None
+    await library_db.delete_library_agent(first.library_agent_id, test_user.id)
+
+    again = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
+
+    assert again.id == first.id and again.library_agent_id is not None
+    await library_db.get_library_agent(again.library_agent_id, test_user.id)
+    expert = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert expert is not None
+    assert [w.library_agent_id for w in expert.workflows] == [again.library_agent_id]
+
+
 async def _setup_links(user_id: str, expert_id: str) -> set[str | None]:
     items = await expert_setup.list_setup_items(user_id)
     return {item.library_agent_id for item in items if item.expert_id == expert_id}
