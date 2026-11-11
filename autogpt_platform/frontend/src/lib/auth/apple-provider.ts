@@ -1,10 +1,7 @@
 import { APIError } from "better-auth/api";
 import { apple, type AppleOptions } from "better-auth/social-providers";
 import { verifyProviderIdToken } from "@better-auth/core/oauth2";
-import {
-  appleWebCredentials,
-  createAppleClientSecret,
-} from "./apple-client-secret";
+import { appleWebCredentials } from "./apple-client-secret";
 import { currentAuthEndpoint } from "./auth-endpoint";
 
 export interface AppleAccountUser {
@@ -23,7 +20,7 @@ export function getAppleProvider(
 
   const options: AppleOptions = {
     clientId: clientID,
-    audience: bundleID ? [clientID, bundleID] : [clientID],
+    audience: Array.from(new Set([clientID, bundleID ?? clientID])),
     async mapProfileToUser(profile) {
       if (profile.email) return {};
       const user = await findAccountUser(profile.sub);
@@ -37,7 +34,7 @@ export function getAppleProvider(
   };
   const provider = apple(options);
   const callbackProvider = apple({ ...options, audience: [clientID] });
-  const verifiedOptions: AppleOptions = {
+  return {
     ...options,
     async getUserInfo(tokens) {
       const endpoint = await currentAuthEndpoint();
@@ -49,12 +46,7 @@ export function getAppleProvider(
         return null;
       return provider.getUserInfo(tokens);
     },
-  };
-  if (!web) return verifiedOptions;
-  return async () => ({
-    ...verifiedOptions,
-    clientSecret: await createAppleClientSecret(web),
-  });
+  } satisfies AppleOptions;
 }
 
 export function appleTrustedOrigins(request?: Request) {

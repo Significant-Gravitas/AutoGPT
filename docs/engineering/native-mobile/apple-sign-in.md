@@ -30,6 +30,8 @@ All four browser settings are required. When native login is configured, incompl
 
 The auth service signs a fresh ES256 client-secret JWT with a five-minute lifetime for each authorization, code exchange and provider-token refresh. Better Auth caches provider options at initialization, so the Apple plugin refreshes that credential when each operation runs, including after a long consent flow. The private key and client-secret JWT never go to the browser. Browser callback identities must have the configured Service ID audience; direct ID-token exchanges accept the configured native and Service ID audiences.
 
+Apple signing keys are parsed when a browser OAuth operation runs, never during shared auth initialization. A malformed key or signing failure returns HTTP 503 `APPLE_SIGN_IN_UNAVAILABLE` when starting browser Apple login and emits a warning without credential values. Email login and configured native Apple login remain available. Correct the key configuration and restart the auth service before retrying browser Apple login.
+
 ## Browser exchange
 
 The existing browser login endpoint accepts Apple:
