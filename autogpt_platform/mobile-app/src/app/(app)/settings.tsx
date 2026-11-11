@@ -17,27 +17,36 @@ export default function SettingsScreen() {
     cookie,
     script,
     isError,
+    isBlocked,
+    webViewKey,
     retry,
     webViewRef,
     handleNavigation,
     handleStateChange,
   } = useSettingsScreen();
 
+  function renderNotice(message: string) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.notice}>{message}</Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={retry}
+          style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+        >
+          <Text style={styles.buttonText}>Try again</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   function renderBody() {
     if (isError) {
-      return (
-        <View style={styles.center}>
-          <Text style={styles.notice}>
-            Couldn&apos;t open Settings. Try again.
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={retry}
-            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-          >
-            <Text style={styles.buttonText}>Try again</Text>
-          </Pressable>
-        </View>
+      return renderNotice("Couldn't open Settings. Try again.");
+    }
+    if (isBlocked) {
+      return renderNotice(
+        "Settings didn't open here. Try again, or open Settings on the web.",
       );
     }
     if (cookie === undefined) {
@@ -49,6 +58,7 @@ export default function SettingsScreen() {
     }
     return (
       <WebView
+        key={webViewKey}
         ref={webViewRef}
         source={{ uri: settingsURL, headers: { Cookie: cookie } }}
         injectedJavaScriptBeforeContentLoaded={script}

@@ -1,7 +1,8 @@
 import { FRONTEND_URL } from "@/lib/env";
 
-export function cookieScript(cookieHeader: string, isSecure: boolean) {
-  const flags = `; path=/; SameSite=Lax${isSecure ? "; Secure" : ""}`;
+export function cookieScript(cookieHeader: string, frontendURL: string) {
+  const { origin, protocol } = new URL(frontendURL);
+  const flags = `; path=/; SameSite=Lax${protocol === "https:" ? "; Secure" : ""}`;
   const assignments = cookieHeader
     .split(";")
     .map((pair) => pair.trim())
@@ -12,10 +13,17 @@ export function cookieScript(cookieHeader: string, isSecure: boolean) {
       const value = pair.slice(split + 1).trim();
       if (!name) return [];
       return [
-        `document.cookie = ${JSON.stringify(`${name}=${value}${flags}`)};`,
+        `  document.cookie = ${JSON.stringify(`${name}=${value}${flags}`)};`,
       ];
     });
-  return [...assignments, "true;"].join("\n");
+  // Android lets a navigation through when JS is slow to answer
+  // onShouldStartLoadWithRequest, so this script can run on any page.
+  return [
+    `if (location.origin === ${JSON.stringify(origin)}) {`,
+    ...assignments,
+    "}",
+    "true;",
+  ].join("\n");
 }
 
 export function isAllowedSettingsURL(url: string) {
