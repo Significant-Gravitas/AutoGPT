@@ -1,0 +1,284 @@
+# Rate Limits
+
+## Overview
+
+The AutoGPT Platform limits how much any one caller can do in a given time, to control cost and prevent abuse. This page lists those limits: what each one covers, what it counts, how big it is, when it resets, and what you see when you reach it. If you self-host, it also names the setting that changes each one.
+
+A limit is counted per **account** (everything you do while signed in, on any device), per **IP address**, or once for **everyone together**. [Client IP Addresses](client-ip.md) explains how the Platform determines the IP address it counts by.
+
+{% hint style="info" %}
+The numbers on this page are the Platform's built-in defaults. On AutoGPT Cloud, your plan sets the size of your chat allowance: see the [pricing page](https://agpt.co/pricing), and the **Usage limits** popover in the chat for your own figures.
+{% endhint %}
+
+### When you reach a limit
+
+Most limits refuse the request with `429 Too Many Requests` and a message saying which limit you reached. Where the response carries a `Retry-After` header, it gives the number of seconds until you can try again. Some limits don't refuse anything: the work waits in a queue, or you get a simpler result. Each section below says which.
+
+## Chat with Otto and your Experts
+
+### Daily and weekly chat allowance
+
+Every message you send to Otto or an Expert uses part of your chat allowance, measured by what the AI models cost to answer it. The allowance has two windows, and a message is refused when either is used up:
+
+| Window | Resets                    | Default (self-hosted) |
+| ------ | ------------------------- | --------------------- |
+| Daily  | Every day at 00:00 UTC    | $2.50                 |
+| Weekly | Every Monday at 00:00 UTC | $5.00                 |
+
+- **Counted per:** account.
+- **On AutoGPT Cloud**, each plan has its own allowance, which can change without a new release. The **Usage limits** popover in the chat shows how much of each window you have used and when it resets.
+- **Free trial:** a trial has one allowance for the whole trial instead, to use at any pace. It doesn't reset, and it can't be reset with credits.
+- **What counts:** chat messages, tasks you continue, replies read aloud in voice mode, and messages to Otto from chat apps you've linked, such as Telegram or Discord. Messages answered through your own connected ChatGPT or Microsoft 365 Copilot account don't count.
+- **What you see:** the chat says you've reached your daily or weekly usage limit and when it resets, and your message isn't sent. You can have a paused task resume, or a message send, when the allowance comes back. The API answers `429`, with the window and its reset time in the response body.
+- **Reset with credits:** when the daily window is used up and the weekly one isn't, you can spend $5.00 of credits to reset the daily window, up to 5 times per UTC day. A sixth attempt is refused with `429`.
+
+**Self-hosting:** set `CHAT_DAILY_COST_LIMIT_MICRODOLLARS` and `CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS` on the backend, in microdollars (1 USD = `1000000`). The defaults are `2500000` and `5000000`. A negative value such as `-1` removes that window's limit, and `0` allows nothing. The [single-container image](single-container.md#autopilot-spend-caps) sets both to `-1`. Resets with credits need the credit system on (`ENABLE_CREDIT=true`). `CHAT_RATE_LIMIT_RESET_COST` sets the price of a reset in cents (`500`; `0` turns resets off), and `CHAT_MAX_DAILY_RESETS` the number per UTC day (`5`; `0` means no limit).
+
+### Tasks running at once
+
+| Limit                    | Default | Counted per | Setting                               |
+| ------------------------ | ------- | ----------- | ------------------------------------- |
+| Tasks running at once    | 5       | account     | `MAX_RUNNING_COPILOT_TURNS_PER_USER`  |
+| Tasks running or waiting | 15      | account     | `MAX_INFLIGHT_COPILOT_TURNS_PER_USER` |
+
+A task is one reply that Otto or an Expert is working on, in any chat. When 5 are running, a new message waits in a queue and starts by itself when one finishes; the chat says it has been queued. When 15 are running or waiting, a new message is refused with `429`, and the chat asks you to wait for one of your tasks to finish. Subtasks that Otto or an Expert starts count too, but they never take your last free running slot.
+
+### Messages sent while Otto is working
+
+While a reply is in progress you can keep sending follow-up messages, which Otto reads as it works.
+
+- **Up to 30 a minute** per account, across all your chats. The minute starts with your first follow-up. Past that, the follow-up is still delivered, but the response is `429` so the app slows down.
+- **Up to 10 waiting** per chat. A newer follow-up pushes out the oldest one still waiting.
+
+Neither is configurable.
+
+### Workflows Otto runs for you
+
+In one chat, Otto can run each workflow up to 30 times and set up to 30 schedules for it. Past that, Otto tells you it has reached the maximum for this chat. Self-hosters can change both with `CHAT_MAX_AGENT_RUNS` and `CHAT_MAX_AGENT_SCHEDULES` (default `30` each).
+
+## Experts
+
+### Weekly budget per Expert
+
+Each Expert you hire has a weekly budget for the work it runs on its own: its schedules, its triggers, and the workflows it runs for you. The default is $5.00 a week per Expert, and you can change it for each Expert or turn it off. The week starts on Monday at 00:00 UTC.
+
+- At 80% of the budget, the Expert posts a warning in its chat.
+- At the budget, the Expert pauses its schedules and says so in its chat. Its scheduled and triggered runs are skipped, and starting one of its runs by hand is refused with `409 Conflict`. The pause doesn't lift when the week ends: resume the Expert's schedules to continue, which also starts its count for the week over.
+
+**Self-hosting:** `EXPERT_WEEKLY_CREDIT_BUDGET_DEFAULT` sets the default budget, in credits (100 credits = $1; default `500`; `0` turns it off).
+
+### Approving further spending
+
+Where spending approval is enabled, an Expert that has spent $2.50 in a week asks for your approval before it starts more work. Its new runs wait for review until you approve; one approval covers the rest of the week, and a declined run is stopped.
+
+**Self-hosting:** approval needs the credit system on (`ENABLE_CREDIT=true`). `EXPERT_SPEND_APPROVAL_THRESHOLD_DEFAULT` sets the amount in credits (default `250`; `0` turns it off), and `EXPERT_SPEND_APPROVAL_WINDOW` counts it per `week` (the default) or per UTC `day`.
+
+### Results posted in an Expert's chat
+
+An Expert posts the result of each finished run in its chat, up to 10 a day per Expert (UTC). Later results that day appear only in your activity feed. Not configurable.
+
+### Avatar generation
+
+| Limit                          | Counted per | Resets                                    |
+| ------------------------------ | ----------- | ----------------------------------------- |
+| 10 generated avatars           | account     | 24 hours after the first one in the count |
+| 15 seconds between generations | account     |                                           |
+
+Failed generations count too. Past either limit, the request is refused with `429`, the message "Please wait before generating again. Limit: 10 avatars per day.", and a `Retry-After` header. Not configurable.
+
+## Workflows
+
+### Runs at once
+
+You can have up to 25 runs of the same workflow running at once. More runs aren't refused: they wait in the queue as **Queued** and start as running ones finish.
+
+- **Counted per:** account and workflow, whether a run was started by hand, by a schedule, by a trigger, by Otto or through the API.
+- **Self-hosting:** `MAX_CONCURRENT_GRAPH_EXECUTIONS_PER_USER` (default `25`).
+
+Across all your workflows, each of the Platform's executors (the servers that run workflows, on 10 workers each) also runs at most 5 of your runs at once. A run past that waits as **Queued** and is offered to an executor again after 30 seconds.
+
+Sub-workflows, the workflows a run starts as one of its steps, count toward the 5 too. A run waiting on its sub-workflow keeps its worker, so each level of nesting may use one more worker than the level above it, and sub-workflows nest at most 4 levels deep. Your runs then hold at most 9 of an executor's 10 workers, so another account's run can always start. A fifth level fails with "Sub-workflows can be nested at most 4 levels deep".
+
+- **Self-hosting:** `MAX_GRAPH_WORKERS_PER_USER` (default `5`), `NUM_GRAPH_WORKERS` (default `10`) and `GRAPH_RUN_REQUEUE_DELAY_SECONDS` (default `30`). Keep `MAX_GRAPH_WORKERS_PER_USER` at most `NUM_GRAPH_WORKERS` minus 5, so that one account's runs never hold every worker.
+
+### Schedules
+
+You can have up to 200 schedules, paused ones included. A new one past that is refused with a message saying you have reached the most one account can have; delete one to add another.
+
+- **Counted per:** account.
+- **Self-hosting:** `MAX_SCHEDULES_PER_USER` (default `200`).
+
+### Generated workflow images
+
+The Platform generates a picture for each workflow you add to your library, sub-workflows included, and for a marketplace listing when you ask it to. It generates up to 25 a day.
+
+- **Counted per:** account. The count starts over 24 hours after the first image in it. Failed generations count too; a workflow that already has a generated picture keeps it, and that doesn't count.
+- **What you see:** past the limit, a workflow you add has no picture, and generating one for a listing is refused with `429` and "Limit: 25 generated agent images per day."
+- Not configurable.
+
+### Emails to yourself
+
+The **Send Email To Me** block emails your own account address from the Platform, up to 20 times a day.
+
+- **Counted per:** account, from every workflow and chat that runs for it. The day starts at 00:00 UTC. A send the mail service refused doesn't count; one whose outcome it didn't confirm does, since it may have arrived.
+- **What you see:** past the limit, the block sends nothing, and its `error` output says "Already sent 20 emails to this account today, the most allowed in a day. Try again after midnight UTC."
+- **Self-hosting:** `OWNER_EMAIL_DAILY_LIMIT` (default `20`; `0` allows none).
+
+## Sandboxes
+
+### Sandboxes running at once
+
+Otto and your Experts run code and use a computer in sandboxes, and so do some blocks, such as code execution and Claude Code. Up to 10 of your sandboxes can run at once; a paused one doesn't count until it is woken.
+
+- **Counted per:** account. Only sandboxes on the Platform's own E2B account count: a block that uses an E2B key you added is neither counted nor refused.
+- **What you see:** a new sandbox past the limit isn't started, with "Too many sandboxes are running on your account: 10 at once is the most. Wait for one of your tasks to finish, then try again." In a chat, the reply ends with that message; starting a computer's desktop from a chat or an Expert's page is refused with `429` and the same message.
+- **Self-hosting:** `E2B_ACCOUNT_SANDBOX_LIMIT` (default `10`; `0` turns it off). `E2B_DEPLOYMENT_SANDBOX_LIMIT` caps the sandboxes of everyone together (default `0`, no cap); past it a start is refused with "Too many sandboxes are running right now. Please try again in a few minutes."
+
+## Search
+
+### Search across the Platform
+
+The search box that searches everything in your account allows 120 searches a minute.
+
+- **Counted per:** account. Each minute starts on the clock minute.
+- **What you see:** `429`, with "Rate limit exceeded (120 requests per 60s). Try again shortly." and a `Retry-After` header.
+- Not configurable.
+
+### Store search
+
+| Searching  | Limit        | Counted per |
+| ---------- | ------------ | ----------- |
+| Signed in  | 120 a minute | account     |
+| Signed out | 30 a minute  | IP address  |
+
+- Each minute starts on the clock minute.
+- **What you see:** `429`, with "Store search rate limit exceeded (120 requests per 60s). Try again shortly." (30 when signed out) and a `Retry-After` header.
+- **Busy minutes:** store search matches on meaning as well as on words. In a minute when all searches together have used the Platform's budget for matching on meaning, new searches match on words alone until the next minute.
+
+**Self-hosting:** `PUBLIC_SEARCH_USER_REQUESTS_PER_MINUTE` sets the limit per signed-in account (default `120`), `PUBLIC_SEARCH_REQUESTS_PER_MINUTE` the limit per IP address for signed-out searches (default `30`), and `PUBLIC_SEARCH_EMBEDDINGS_PER_MINUTE` the budget shared by all searches (default `1000`; `0` makes store search match on words alone). Signed-out searches are counted per visitor only when the frontend can tell visitors apart; see [Client IP Addresses](client-ip.md).
+
+## Plans and billing
+
+### Billing page and plan changes
+
+Loading your plan, previewing a plan change, and every request about a free trial (checking, starting, confirming, cancelling or resuming it) or a plan activation (previewing, confirming or checking it) share one limit of 60 requests a minute.
+
+- **Counted per:** account. Each minute starts on the clock minute.
+- **What you see:** `429`, with "Subscription status rate limit exceeded (60 requests per 60s). Try again shortly." and a `Retry-After` header.
+- Not configurable.
+
+### Free trial places
+
+AutoGPT Cloud may limit how many free trials run at the same time. When every place is taken, the trial isn't offered, and starting one is refused with `409 Conflict` and "The trial is full right now. Please check back later."
+
+## Onboarding
+
+### Personalizing your account
+
+When you tell the Platform about yourself during onboarding, by voice or typing, it uses AI to personalize your account. On AutoGPT Cloud, an account without a plan can do this 10 times an hour and 30 times a day.
+
+- **Counted per:** account. The hour starts on the clock hour, and the day at 00:00 UTC. Sending the same answer again doesn't count while it is being processed or once it has been, though a retry after a failure does; a skipped step doesn't count.
+- **What you see:** `429`, with "You have made several personalization attempts. Your progress is saved; please try again later." and a `Retry-After` header.
+- Not configurable, and off on a self-hosted install.
+
+## Connecting integrations
+
+### Sign-in with a code
+
+Some integrations connect by showing a code to enter on the provider's site.
+
+- **Starting:** once every 3 seconds per account and integration. Sooner is refused with `429` and "A device authorization was just started. Please wait a moment."
+- **Checking for approval:** at most as often as the provider asks, every 5 seconds unless it says otherwise. A sooner check isn't refused: the answer is `slow_down`, as the provider would give.
+
+Neither is configurable.
+
+## Signing in and account emails
+
+### Account emails
+
+When the Platform requires new accounts to verify their email address:
+
+| Limit                                                                                               | Counted per   | What you see                                                      |
+| --------------------------------------------------------------------------------------------------- | ------------- | ----------------------------------------------------------------- |
+| 5 sign-ups and **Resend email** clicks together, per 10 minutes                                     | IP address    | `429` and "Too many attempts. Please try again in a few minutes." |
+| 1 verification email per 10 minutes, from signing up or signing in                                  | email address | No new email is sent; use the one you already have                |
+| 1 set-password email per 10 minutes, when you sign up again with an address that isn't verified yet | email address | No new email is sent; use the one you already have                |
+
+The 10-minute windows for the first row start on the clock: at :00, :10, :20 and so on. **Resend email** isn't held to the per-address limit; it waits 60 seconds between clicks instead. None of these are configurable. A self-hosted install requires verification only with `AUTH_REQUIRE_EMAIL_VERIFICATION=true` on the frontend.
+
+### Signing in and resetting a password
+
+| Action                      | Limit                            | Counted per   |
+| --------------------------- | -------------------------------- | ------------- |
+| Signing in                  | 3 per 10 seconds                 | IP address    |
+| Signing in                  | 5 failed attempts per 10 minutes | email address |
+| Requesting a password reset | 3 per 60 seconds                 | IP address    |
+| Requesting a password reset | 1 per 10 minutes                 | email address |
+
+- A successful sign-in gives its attempt back, so only failed sign-ins count toward the 5.
+- The per-address limits apply whether or not the address has an account, so a refusal says nothing about which addresses do.
+- Each window starts on the clock, and these limits cover the sign-in and reset-password pages as well as the API paths below.
+- **What you see:** `429`, with "Too many attempts. Please try again in 3 minutes." — the wait named in seconds under a minute — and an `X-Retry-After` header in seconds.
+- Where the Platform has no IP address for the caller, only the per-address limits apply; see [Client IP Addresses](client-ip.md#signing-in). None of these are configurable.
+
+### The authentication API
+
+Requests to the authentication API under `/api/auth/` are limited per IP address and path:
+
+| Paths                                                 | Limit              |
+| ----------------------------------------------------- | ------------------ |
+| `/sign-in/*`, `/sign-up/*`, `/change-email`           | 3 per 10 seconds   |
+| `/request-password-reset`, `/send-verification-email` | 3 per 60 seconds   |
+| Every other path                                      | 100 per 10 seconds |
+
+Each path counts on its own. A path allows that many requests in a row, and starts counting again once a whole window has passed since the last request it let through. Past the limit, the answer is `429` with `{"message":"Too many requests. Please try again later."}` and an `X-Retry-After` header in seconds.
+
+These limits apply to production builds of the frontend and aren't configurable. On a self-hosted install behind a reverse proxy, see [Client IP Addresses](client-ip.md).
+
+## Closing your account
+
+### Telling us why you're leaving
+
+Where you can close your account yourself, the **Delete account** dialog asks why you're leaving and may suggest an alternative. Opening the dialog, your answer and each click on a suggestion are recorded anonymously, up to 20 times an hour.
+
+- **Counted per:** account. The hour starts on the clock hour.
+- **What you see:** nothing. Past the limit, the Platform stops recording them, and closing your account works as before. The API answers `429` with "Too many answers. Try again later.", without a `Retry-After` header.
+- Not configurable.
+
+## The External API
+
+### API v2
+
+Every call to [API v2](integrating/api-guide.md) shares one limit, on top of the lower limits on a few endpoints and on presenting a credential, which [Errors, rate limits, and pagination](integrating/api-conventions.md#rate-limits) lists:
+
+| Caller                                                     | Limit                 | Counted per |
+| ---------------------------------------------------------- | --------------------- | ----------- |
+| With an API key or an access token                         | 200 requests a minute | account     |
+| Without one                                                | 5 requests a minute   | IP address  |
+| Without one, reading the API's own docs and OpenAPI schema | 60 requests a minute  | IP address  |
+
+- Each minute starts on the clock minute. Responses carry their place in the window in `X-RateLimit-*` headers, and a `429` adds `Retry-After`; a refusal of a credential that keeps failing carries `Retry-After` alone.
+- A request that presents a credential is also counted before the credential is checked, per credential at each IP address, so repeated failures are refused without the cost of checking them.
+- **Self-hosting:** behind a reverse proxy, list it in `TRUSTED_PROXIES` on the backend, so the per-IP counts see each caller rather than the proxy; see [Client IP Addresses](client-ip.md#limits-on-the-external-api).
+
+### API v1
+
+The deprecated v1 has no limit across all calls. Instead, its endpoints share two counts per account:
+
+| Endpoints       | Limit                 |
+| --------------- | --------------------- |
+| `GET` endpoints | 300 requests a minute |
+| Every other one | 30 requests a minute  |
+
+- Each minute starts on the clock minute. Responses carry `X-RateLimit-*` headers, with `X-RateLimit-Reset` as a Unix time.
+- **What you see:** `429`, with "Rate limit exceeded for scope 'read'. Retry after …s." (`'execution'` on the 30-a-minute tier) and a `Retry-After` header.
+- Not configurable.
+
+### Running a block on its own
+
+Running one block directly, through v1's `POST /blocks/{block_id}/execute` or the same path in the Platform's own API, allows 4 runs at once per account on each of the Platform's servers. A fifth is refused with `429` and "You already have 4 blocks running. Wait for one to finish, then try again." Not configurable.
+
+## Not on this page
+
+- Limits of other services that blocks and Otto use, such as an AI provider's own rate limits. Their errors are passed on as they come.
+- Size limits, such as the largest file you can upload or the storage that comes with your plan.

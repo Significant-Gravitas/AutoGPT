@@ -163,22 +163,9 @@ firewall or a cloud security group. The other ports the stack publishes
 only.
 
 Set `TRUSTED_PROXIES` in both `backend/.env` and `frontend/.env` to your
-proxies' addresses, as a comma-separated list of IP addresses or CIDR ranges,
-for example `10.0.0.0/8,172.16.0.0/12`. Each takes the visitor to be the first
-`X-Forwarded-For` address from the right that the list does not include, and
-the backend reads the header only from a listed peer, so the proxies may
-append to the header or replace it. The backend uses it for the client address
-of every request, including the External API's (`/api/v2`) per-IP rate
-limits. The frontend uses it for its per-IP limits on sign-in and
-password-reset attempts, the per-visitor limit on store search, and the
-sign-in history and IP blocks. Without it, sign-in and password-reset attempts
-are limited only per email address, all visitors share one store-search limit,
-and sign-ins record no IP address. An entry that is not an IP address or CIDR
-range stops the service from starting.
-
-`TRUSTED_PROXY_COUNT` and `FORWARDED_ALLOW_IPS` still work in `backend/.env`
-while `TRUSTED_PROXIES` is unset, but are deprecated. The frontend no longer
-reads `TRUST_X_FORWARDED_FOR`.
+proxy, so rate limits, the sign-in history and IP blocks see each visitor
+rather than the proxy. [Client IP Addresses](client-ip.md) says which
+addresses to list on each, and which older settings it replaces.
 
 ## 4. Decide who can sign up
 

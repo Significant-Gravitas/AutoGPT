@@ -16,6 +16,7 @@ IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 
+# Documented in docs/platform/client-ip.md: update it with any change here.
 def client_address(peer: str, forwarded_for: Iterable[str], proxies: str) -> str:
     """The first X-Forwarded-For address from the right that `proxies` does not list.
 

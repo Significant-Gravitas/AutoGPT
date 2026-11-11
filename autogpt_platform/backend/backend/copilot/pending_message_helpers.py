@@ -62,6 +62,7 @@ logger = logging.getLogger(__name__)
 # Call-frequency cap for the pending-message endpoint.  The token-budget
 # check guards against overspend but not rapid-fire pushes from a client
 # with a large budget.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 PENDING_CALL_LIMIT = 30
 PENDING_CALL_WINDOW_SECONDS = 60
 _PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"

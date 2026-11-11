@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
-CONFIG_VERSION = "2"
+CONFIG_VERSION = "3"
 SAFE_SECRET = re.compile(r"^[A-Za-z0-9._~-]+={0,2}$")
 SAFE_USERNAME = re.compile(r"^[A-Za-z0-9._-]+$")
 SAFE_DNS_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
@@ -169,16 +169,19 @@ def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[st
     """Return the existing secrets or atomically create them on first boot.
 
     A version 1 config, written before INTERNAL_API_KEY existed, gets one, and
-    a config whose Web Push pair is the published one gets the pair a first
-    boot would make today. Either is saved once it passes every check, so a
-    boot that fails them leaves the file as it was."""
+    a version 2 config, written before BAN_RECORD_HASH_KEY existed, gets that.
+    A config whose Web Push pair is the published one gets the pair a first
+    boot would make today. The result is saved once it passes every check, so
+    a boot that fails them leaves the file as it was."""
     if path.is_symlink():
         raise ValueError(f"refusing symlink at {path}")
     if path.exists():
         values = _read_config(path)
-        upgrade = values.get("AUTOGPT_RUNTIME_CONFIG_VERSION") == "1"
-        if upgrade:
+        upgrade = values.get("AUTOGPT_RUNTIME_CONFIG_VERSION") in ("1", "2")
+        if values.get("AUTOGPT_RUNTIME_CONFIG_VERSION") == "1":
             values = _upgraded_from_version_1(values, environment)
+        if values.get("AUTOGPT_RUNTIME_CONFIG_VERSION") == "2":
+            values = _upgraded_from_version_2(values, environment)
         rotated = _with_a_published_vapid_pair_replaced(values, environment)
         if rotated is not None:
             values = rotated
@@ -726,10 +729,10 @@ def _closing_brace(template: str) -> int:
 
 
 def _missing_credentials(path: Path, assigned: set[str]) -> list[str]:
-    """Credentials, and the Web Push key pair, the file's .env.default leaves
-    for setup to fill that the file has no line for, typically because it was
-    copied before they existed. Without them the services would fall back to a
-    blank .env.default value."""
+    """Credentials, the Web Push key pair and the ban-record key, the file's
+    .env.default leaves for setup to fill that the file has no line for,
+    typically because it was copied before they existed. Without them the
+    services would fall back to a blank .env.default value."""
     defaults = path.with_name(".env.default")
     if path.name == defaults.name or not defaults.is_file():
         return []
@@ -741,7 +744,12 @@ def _missing_credentials(path: Path, assigned: set[str]) -> list[str]:
     return [
         name
         for name in names
-        if (name in CREDENTIALS or name in VAPID_KEY_SETTINGS) and name not in assigned
+        if (
+            name in CREDENTIALS
+            or name in VAPID_KEY_SETTINGS
+            or name in KEYS_ADDED_WHEN_MISSING
+        )
+        and name not in assigned
     ]
 
 
@@ -878,6 +886,25 @@ def _upgraded_from_version_1(
         "AUTOGPT_RUNTIME_CONFIG_VERSION": "2",
         "INTERNAL_API_KEY": _configured_or_generated(
             environment, "INTERNAL_API_KEY", SECRET_GENERATORS["INTERNAL_API_KEY"]
+        ),
+    }
+
+
+def _upgraded_from_version_2(
+    values: dict[str, str], environment: Mapping[str, str]
+) -> dict[str, str]:
+    """A version 2 config is a version 3 config without BAN_RECORD_HASH_KEY.
+
+    This step produces version 3, whatever the current version is."""
+    if "BAN_RECORD_HASH_KEY" in values:
+        raise ValueError("runtime configuration has missing or unknown keys")
+    return {
+        **values,
+        "AUTOGPT_RUNTIME_CONFIG_VERSION": "3",
+        "BAN_RECORD_HASH_KEY": _configured_or_generated(
+            environment,
+            "BAN_RECORD_HASH_KEY",
+            SECRET_GENERATORS["BAN_RECORD_HASH_KEY"],
         ),
     }
 
@@ -1045,6 +1072,7 @@ SECRET_GENERATORS: dict[str, Callable[[], str]] = {
     "UNSUBSCRIBE_SECRET_KEY": lambda: secrets.token_urlsafe(36),
     "GRAPHITI_FALKORDB_PASSWORD": lambda: secrets.token_urlsafe(36),
     "INTERNAL_API_KEY": lambda: secrets.token_urlsafe(32),
+    "BAN_RECORD_HASH_KEY": lambda: secrets.token_urlsafe(32),
 }
 
 # Passwords of the stack's own services. Each service takes its password from
@@ -1091,6 +1119,9 @@ PUBLISHED_CREDENTIAL_DIGESTS = frozenset(
 # is cleared when it is the published one and otherwise left alone: blank,
 # the app fetches the public key from the backend.
 VAPID_KEY_SETTINGS = ("VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY")
+# Keys an older .env gets appended when it has no line for them. Safe for the
+# ban-record key: no ban record can exist before the key does.
+KEYS_ADDED_WHEN_MISSING = ("BAN_RECORD_HASH_KEY",)
 FRONTEND_VAPID_PUBLIC_KEY = "NEXT_PUBLIC_VAPID_PUBLIC_KEY"
 
 # SHA-256 of the private and public key backend/.env.default shipped from
@@ -1116,6 +1147,7 @@ BLANK_IN_ENV_DEFAULT: dict[str, tuple[str, ...]] = {
         "ENCRYPTION_KEY",
         "UNSUBSCRIBE_SECRET_KEY",
         "INTERNAL_API_KEY",
+        "BAN_RECORD_HASH_KEY",
         "GRAPHITI_FALKORDB_PASSWORD",
         *VAPID_KEY_SETTINGS,
     ),
@@ -1146,6 +1178,7 @@ def _validate_values(values: dict[str, str]) -> None:
         "UNSUBSCRIBE_SECRET_KEY",
         "GRAPHITI_FALKORDB_PASSWORD",
         "INTERNAL_API_KEY",
+        "BAN_RECORD_HASH_KEY",
         "VAPID_PRIVATE_KEY",
         "VAPID_PUBLIC_KEY",
     }
