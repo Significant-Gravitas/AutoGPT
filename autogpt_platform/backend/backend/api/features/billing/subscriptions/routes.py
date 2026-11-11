@@ -1076,7 +1076,15 @@ async def stripe_webhook(request: Request):
         if event_type == "charge.dispute.created":
             await UserCredit().handle_dispute(cast(stripe.Dispute, data_object))
 
-        if event_type == "refund.created" or event_type == "charge.dispute.closed":
+        # A refund created `pending` reports `succeeded` in a `refund.updated`;
+        # updates that leave the status alone (its card reference) settle nothing.
+        refund_status_changed = event_type == "refund.updated" and "status" in (
+            event_data.get("previous_attributes") or {}
+        )
+        if (
+            event_type in ("refund.created", "charge.dispute.closed")
+            or refund_status_changed
+        ):
             await UserCredit().deduct_credits(
                 cast("stripe.Refund | stripe.Dispute", data_object)
             )

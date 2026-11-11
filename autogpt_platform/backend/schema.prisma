@@ -213,7 +213,6 @@ model User {
   AgentGraphExecutions AgentGraphExecution[]
   AnalyticsDetails     AnalyticsDetails[]
   AnalyticsMetrics     AnalyticsMetrics[]
-  CreditTransactions   CreditTransaction[]
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
   ChatMessageFeedback  ChatMessageFeedback[]
@@ -252,6 +251,7 @@ model User {
   NotificationBatches   UserNotificationBatch[]
   AlertConditions       AlertCondition[]
   PushSubscriptions     PushSubscription[]
+  FeedbackPrompts       FeedbackPrompt[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
   PlatformCostLogs      PlatformCostLog[]
@@ -411,6 +411,61 @@ model SubscriptionTrialClaim {
   createdAt DateTime @default(now())
 
   @@index([trialId])
+}
+
+enum AccountDeletionSource {
+  SETTINGS
+  PAYWALL
+  // A request made by email to privacy@, closed by `erase-account --close`.
+  EMAIL
+}
+
+// A user's request to delete their account. Its presence closes the account
+// (backend auth rejects the user). Until eraseAfter the owner can change their
+// mind by signing in and keeping the account, which deletes the row; after it
+// the data erasure routine (SECRT-2854) processes rows with completedAt null.
+// No relation to User: the row must outlive the erasure of the User it names.
+model AccountDeletionRequest {
+  id                 String                @id @default(uuid())
+  userId             String                @unique
+  requestedAt        DateTime              @default(now())
+  // requestedAt plus 14 days: the account can be restored before this, and
+  // its data is erased only after it.
+  eraseAfter         DateTime
+  // Set by the erasure routine when it claims the request, before it erases
+  // anything. From then on the account can no longer be kept, whatever the
+  // clock says.
+  startedAt          DateTime?
+  source             AccountDeletionSource
+  // Set once the confirmation email went out. The erasure routine sends it
+  // for a row where this is still null, before it erases the User.
+  confirmationSentAt DateTime?
+  // Set by the erasure routine once the user's data is gone.
+  completedAt        DateTime?
+
+  @@index([completedAt])
+}
+
+// Why an erased account was banned, as a category only: an admin's ban reason
+// is free text and may name the person, so it is never copied here.
+enum AccountBanCategory {
+  // Banned by an admin (/admin/users), the only way an account is banned.
+  ADMIN
+}
+
+// Kept when an account erased while banned (SECRT-2854), so its address can't
+// sign up again while the ban would have lasted, for 3 years at most. Holds no
+// address: `emailHash` is a keyed hash of it (backend/data/account_erasure/
+// ban_record.py), checked at sign-up. Deleted once `deleteAfter` passes.
+model AccountBanRecord {
+  id          String             @id @default(uuid())
+  emailHash   String             @unique
+  category    AccountBanCategory
+  recordedAt  DateTime           @default(now())
+  // The ban's own expiry, or 3 years after recordedAt, whichever comes first.
+  deleteAfter DateTime
+
+  @@index([deleteAfter])
 }
 
 model UserOnboarding {
@@ -1078,9 +1133,13 @@ model ChatMessageFeedback {
   // Copied from the message so a chat's ratings read without a join.
   sessionId String
 
-  scoreName  String // "user-feedback" (1 = up, 0 = down) or "copy" (always 1)
+  // "user-feedback" (1 = up, 0 = down), "copy" (always 1), "work_check"
+  // (0 = bad, 1 = okay, 2 = great) or "otto_mistake" (always 0).
+  scoreName  String
   scoreValue Int
   comment    String?
+  // The picked option on a work check or mistake card; see REASONS_BY_KIND.
+  reason     String?
 
   // Legacy: the trace the rating's Langfuse score was attached to. Nothing
   // writes it (SECRT-2711); it is dropped with the rest of Langfuse
@@ -1316,6 +1375,29 @@ model UserNotificationBatch {
   // Each user can only have one batch of a notification type at a time
   @@unique([userId, type])
   @@index([organizationId])
+}
+
+// One row per showing of an in-app feedback prompt. The row is what enforces
+// each prompt's limit, across tabs and devices (backend/data/feedback_prompts.py).
+model FeedbackPrompt {
+  id String @id @default(uuid())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  kind      String
+  sessionId String?
+  messageId String?
+
+  shownAt     DateTime  @default(now())
+  answeredAt  DateTime?
+  dismissedAt DateTime?
+
+  reason String?
+  note   String?
+  score  Int?
+
+  @@index([userId, kind, shownAt])
 }
 
 model PushSubscription {
@@ -2071,12 +2153,14 @@ model MemoryScopeSchedule {
 
   // Null while that cron is not registered: its flag is off, registration
   // failed, or the scope is paused or wiped. Skill learning runs per account,
-  // so an expert's scope never records a learning job.
+  // so an expert's scope never records a learning job. communityJobId is no
+  // longer read or written: the hourly community sweep replaced that cron.
   communityJobId String?
   nightlyJobId   String?
   learningJobId  String?
 
-  // When each job body last ran its pass without an error.
+  // When the nightly job body last ran its pass without an error, and when
+  // the community sweep last took the scope; it takes it again a week later.
   lastNightlyRunAt   DateTime?
   lastCommunityRunAt DateTime?
 
@@ -2548,8 +2632,10 @@ model CreditTransaction {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
 
+  // No foreign key: the ledger is a billing record and outlives the account
+  // (kept six years). Account deletion strips the personal content from its
+  // metadata instead (backend/data/account_erasure/database.py).
   userId String
-  User   User?  @relation(fields: [userId], references: [id], onDelete: NoAction)
 
   amount Int
   type   CreditTransactionType

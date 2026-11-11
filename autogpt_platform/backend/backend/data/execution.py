@@ -122,6 +122,9 @@ class ExecutionContext(BaseModel):
     # Execution hierarchy
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
+    # The workflows of the runs this run is nested in, outermost first; empty
+    # for a top-level run.
+    ancestor_graph_ids: list[str] = Field(default_factory=list)
 
     # File workspace (UserWorkspace — NOT the Team concept)
     workspace_id: Optional[str] = None
@@ -1130,12 +1133,7 @@ async def upsert_execution_input(
         "agentGraphExecutionId": graph_exec_id,
         "agentNodeId": node_id,
         "executionStatus": ExecutionStatus.INCOMPLETE,
-        "Input": {
-            "none": {
-                "name": input_name,
-                "time": {"gte": datetime.now(tz=timezone.utc) - timedelta(days=1)},
-            }
-        },
+        "Input": {"none": {"name": input_name}},
     }
     if node_exec_id:
         existing_exec_query_filter["id"] = node_exec_id

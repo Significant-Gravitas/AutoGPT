@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.copilot.limit_tracking import LimitReading, track_chat_blocked
 from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
     CHAT_STATUS_RUNNING,
@@ -61,6 +62,7 @@ logger = logging.getLogger(__name__)
 # Call-frequency cap for the pending-message endpoint.  The token-budget
 # check guards against overspend but not rapid-fire pushes from a client
 # with a large budget.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 PENDING_CALL_LIMIT = 30
 PENDING_CALL_WINDOW_SECONDS = 60
 _PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"
@@ -340,6 +342,13 @@ async def queue_pending_for_http(
     # but report 429 so the client backs off further pushes.
     call_count = await check_pending_call_rate(user_id)
     if call_count > PENDING_CALL_LIMIT:
+        track_chat_blocked(
+            user_id,
+            limit="rate",
+            outcome="refused",
+            surface="chat",
+            reading=LimitReading(used=call_count, cap=PENDING_CALL_LIMIT),
+        )
         raise HTTPException(
             status_code=429,
             detail=(
