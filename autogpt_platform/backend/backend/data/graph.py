@@ -2526,9 +2526,7 @@ async def fork_graph(
     if not graph:
         raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 
-    # Set forked from ID and version as itself as it's about ot be copied
-    graph.forked_from_id = graph.id
-    graph.forked_from_version = graph.version
+    record_copy_sources([graph, *graph.sub_graphs])
     graph.name = fork_name(graph.name)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
@@ -2570,8 +2568,7 @@ async def copy_graph(
     if not graph:
         raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 
-    graph.forked_from_id = graph.id
-    graph.forked_from_version = graph.version
+    record_copy_sources([graph, *graph.sub_graphs])
     # Preserve the original graph name (no "Copy of" prefix)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
@@ -2588,6 +2585,13 @@ async def copy_graph(
         )
 
     return graph
+
+
+def record_copy_sources(graphs: Iterable[BaseGraph]) -> None:
+    """Make each graph about to be copied the source its copy records."""
+    for graph in graphs:
+        graph.forked_from_id = graph.id
+        graph.forked_from_version = graph.version
 
 
 async def __create_graph(
