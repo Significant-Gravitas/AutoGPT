@@ -62,9 +62,10 @@ count.
 
 Hand-off to data erasure (SECRT-2854): the AccountDeletionRequest row is the
 whole hand-off. That routine processes every row whose ``eraseAfter`` has
-passed and whose ``startedAt`` and ``completedAt`` are still null, claiming it
-by setting ``startedAt`` before it erases anything, so there is nothing to
-enqueue here; a row deleted by reopening the account is simply gone. It
+passed and whose ``completedAt`` is still null, claiming it by setting
+``startedAt`` (never cleared, and kept by a run that resumes a stopped
+erasure) before it erases anything, so there is nothing to enqueue here; a
+row deleted by reopening the account is simply gone. It
 should first rerun ``stop_user_work``, as a schedule or trigger whose removal
 failed here is not retried (``is_user_refused`` keeps them from starting work
 meanwhile). It owns removing the memory crons closing leaves registered so
@@ -85,7 +86,7 @@ Neither the typed email nor the account's email is ever logged.
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import stripe
 from autogpt_libs.auth import remember_account_closed
@@ -122,6 +123,7 @@ CONFIRMATION_EMAIL_TIMEOUT_SECONDS = 15.0
 _SURFACES = {
     AccountDeletionSource.SETTINGS: "settings",
     AccountDeletionSource.PAYWALL: "paywall",
+    AccountDeletionSource.EMAIL: "email",
 }
 
 
@@ -135,7 +137,11 @@ class PlanCancellationError(Exception):
 
 
 async def delete_account(
-    user_id: str, confirm_email: str, source: AccountDeletionSource
+    user_id: str,
+    confirm_email: str,
+    source: AccountDeletionSource,
+    *,
+    grace: timedelta = GRACE_PERIOD,
 ) -> datetime:
     """Close the account, in the order the module docstring gives, and return
     when its data may be erased: until then its owner can keep it.
@@ -154,10 +160,12 @@ async def delete_account(
     await _cancel_plan(user_id)
     await set_auto_top_up(user_id, AutoTopUpConfig(threshold=0, amount=0))
     await _revoke_and_stop(user_id)
-    request = await _close(user_id, source)
+    request = await _close(user_id, source, grace)
     if request is None:
         return await _winners_erase_after(user_id)
-    await _send_confirmation(user_id, user.email, source, request.eraseAfter)
+    await _send_confirmation(
+        user_id, user.email, source, request.eraseAfter, erase_now=grace < GRACE_PERIOD
+    )
     capture_anonymous(
         PostHogEvent.ACCOUNT_DELETION_COMPLETED,
         {"plan_state": plan, "surface": _SURFACES[source]},
@@ -198,10 +206,10 @@ async def _revoke_and_stop(user_id: str) -> None:
 
 
 async def _close(
-    user_id: str, source: AccountDeletionSource
+    user_id: str, source: AccountDeletionSource, grace: timedelta
 ) -> AccountDeletionRequest | None:
     """Close the account; None when a concurrent call closed it first."""
-    request = await close_account(user_id, source)
+    request = await close_account(user_id, source, grace=grace)
     # Closed either way, so this worker rejects the user from now on, no
     # background work starts for it, and its listings and creator page leave
     # the store at once (the transaction has committed).
@@ -228,13 +236,18 @@ async def _winners_erase_after(user_id: str) -> datetime:
 
 
 async def _send_confirmation(
-    user_id: str, email: str, source: AccountDeletionSource, erase_after: datetime
+    user_id: str,
+    email: str,
+    source: AccountDeletionSource,
+    erase_after: datetime,
+    *,
+    erase_now: bool,
 ) -> None:
     """Best effort: the account is already closed. One that did not go out
     stays unmarked on the request row, for the erasure routine."""
     try:
         await asyncio.wait_for(
-            send_account_deleted_email(email, source, erase_after),
+            send_account_deleted_email(email, source, erase_after, erase_now=erase_now),
             timeout=CONFIRMATION_EMAIL_TIMEOUT_SECONDS,
         )
         await mark_confirmation_sent(user_id)

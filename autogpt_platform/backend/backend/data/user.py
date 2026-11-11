@@ -921,7 +921,7 @@ def generate_unsubscribe_link(user_id: str) -> str:
 
 async def unsubscribe_user_by_token(token: str) -> None:
     """Unsubscribe a user from all notifications using the token"""
-    user_id = _verify_unsubscribe_token(token)
+    user_id = verify_unsubscribe_token(token)
     # A deleted user's token gets a forged token's answer, which names no user.
     email = await get_user_email_by_id(user_id)
     if email is None:
@@ -944,7 +944,7 @@ async def unsubscribe_user_by_token(token: str) -> None:
         raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN) from e
 
 
-def _verify_unsubscribe_token(token: str) -> str:
+def verify_unsubscribe_token(token: str) -> str:
     """Return the token's user id; a token we did not issue is a ValueError
     whose message leaves the token out, because the token never expires."""
     try:

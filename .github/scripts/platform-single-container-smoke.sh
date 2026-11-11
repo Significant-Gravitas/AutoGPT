@@ -560,6 +560,7 @@ for item in Path(f"/proc/{sys.argv[1]}/environ").read_bytes().split(b"\0"):
 
 forbidden = {
     "AUTH_DATABASE_URL",
+    "BAN_RECORD_HASH_KEY",
     "DB_PASS",
     "DIRECT_URL",
     "ENCRYPTION_KEY",

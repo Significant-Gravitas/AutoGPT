@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 # Per-session cap; typing faster than the copilot drains is already unusual.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 MAX_PENDING_MESSAGES = 10
 PENDING_BUFFER_FULL_REFUSAL = (
     "That conversation has too many messages waiting. This message was not sent. "
