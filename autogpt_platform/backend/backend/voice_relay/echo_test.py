@@ -228,13 +228,13 @@ async def test_ottos_own_words_in_a_caption_make_a_full_duplex_call_half_duplex_
     ]
     assert "That's a" not in [m.get("text") for m in call.ws.sent]
     assert _echo_total("captions") - before == 1
-    await until(lambda: bool(live.notes))
-    assert live.notes == [(SERVER_NOTE + ECHO_NOTE, True)]
+    await until(lambda: bool(live.notes_after_opening))
+    assert live.notes_after_opening == [(SERVER_NOTE + ECHO_NOTE, True)]
 
     # The call is half-duplex for good: another echo tells the model nothing.
     live.emit(UserText(text="What do you sell"))
     await until(lambda: "What do you sell" in [m.get("text") for m in call.ws.sent])
-    assert live.notes == [(SERVER_NOTE + ECHO_NOTE, True)]
+    assert live.notes_after_opening == [(SERVER_NOTE + ECHO_NOTE, True)]
     record = await _hung_up(call)
     assert record.duplex is not None
     assert (record.duplex.mode, record.duplex.by) == ("half", "captions")
@@ -252,7 +252,7 @@ async def test_a_caption_that_is_not_ottos_words_is_the_persons(redis, tmp_path)
     await until(lambda: call.session.user_buf == "Unique sell bread")
 
     assert call.session.duplex == "full"
-    assert live.notes == []
+    assert live.notes_after_opening == []
     assert {"type": "user_text", "text": " sell bread"} in call.ws.sent
     await _hung_up(call)
 

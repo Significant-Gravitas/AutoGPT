@@ -123,8 +123,10 @@ class VendorSession(Protocol):
 
 @runtime_checkable
 class VendorConnector(Protocol):
-    async def connect(self, *, opening: str) -> VendorSession:
-        """Open a session and send *opening* as the conversation's first turn."""
+    async def connect(self) -> VendorSession:
+        """Open a session, and send it nothing: a session that has been sent
+        nothing has generated nothing. The call sends its opening itself
+        (``send_note``), once it is ready to be heard."""
         ...
 
 
@@ -170,16 +172,10 @@ class GeminiLive:
             ],
         )
 
-    async def connect(self, *, opening: str) -> "GeminiLiveSession":
+    async def connect(self) -> "GeminiLiveSession":
         manager = self._client.aio.live.connect(model=self._model, config=self._config)
         live = await manager.__aenter__()
-        session = GeminiLiveSession(manager, live)
-        try:
-            await session.send_note(opening, turn_complete=True)
-        except BaseException:
-            await session.close()
-            raise
-        return session
+        return GeminiLiveSession(manager, live)
 
 
 class GeminiLiveSession:

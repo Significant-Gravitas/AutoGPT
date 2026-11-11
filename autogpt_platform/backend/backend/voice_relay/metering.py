@@ -91,6 +91,17 @@ UNPROMPTED_TURNS = Counter(
     "Turns of Otto's begun with nothing heard from the person since his last, "
     "and no server note or tool answer from the relay to prompt them",
 )
+VENDOR_CONNECT_SECONDS = Histogram(
+    "voice_interview_vendor_connect_seconds",
+    "How long a call's first Gemini Live session took to open",
+    buckets=(0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0, 15.0),
+)
+ROOM_JOIN_SECONDS = Histogram(
+    "voice_interview_room_join_seconds",
+    "How long the relay took to join a call's LiveKit room and publish Otto's "
+    "track",
+    buckets=(0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0),
+)
 REPLY_SECONDS = Histogram(
     "voice_interview_reply_seconds",
     "From the last frame the relay's voice detector heard the person in to "

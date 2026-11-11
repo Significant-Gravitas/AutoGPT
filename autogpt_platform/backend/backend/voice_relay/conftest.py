@@ -225,6 +225,19 @@ class FakeAudioSource:
         return b"".join(self.frames)
 
 
+class FakeOttoPublication:
+    """Otto's track as the relay published it. The person's browser
+    subscribes to it at once, unless the test holds that back
+    (``FakeMedia.otto_heard_gate``)."""
+
+    def __init__(self, media: "FakeMedia") -> None:
+        self.media = media
+
+    async def wait_for_subscription(self) -> None:
+        if self.media.otto_heard_gate is not None:
+            await self.media.otto_heard_gate.wait()
+
+
 class FakeRoom:
     """A call's LiveKit room as the relay's SDK shows it. The person's
     browser joined first, so the room has them in it, their microphone
@@ -279,8 +292,9 @@ class FakeRoom:
         self.left = True
         self.emit("disconnected", rtc.DisconnectReason.CLIENT_INITIATED)
 
-    async def _publish(self, track: object, options: object) -> None:
+    async def _publish(self, track: object, options: object) -> "FakeOttoPublication":
         self.local_participant.published.append((track, options))
+        return FakeOttoPublication(self.media)
 
     # --- the room's side ---
 
@@ -394,6 +408,9 @@ class FakeMedia:
         # While set and clear, each connect waits on it: a connect that lands
         # only once the test lets it.
         self.connect_gate: asyncio.Event | None = None
+        # While set and clear, the person's browser has not subscribed to
+        # Otto's track.
+        self.otto_heard_gate: asyncio.Event | None = None
         self.rooms: list[FakeRoom] = []
         self.sources: list[FakeAudioSource] = []
         self.streams: dict[str, FakeAudioStream] = {}

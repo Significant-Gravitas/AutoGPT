@@ -216,6 +216,10 @@ class Timing(BaseModel):
     scope_settle_s: float = 0.4
     scope_timeout_s: float = 8.0
     vendor_connect_timeout_s: float = 15.0
+    # A call not ready this long after its start, with the person's
+    # microphone in its room and Otto's track taken, ends unpaid for; under
+    # the room sweep's wait on a call that never started.
+    ready_within_s: float = 45.0
     max_vendor_reconnects: int = 2
     # One send or close on the browser's socket; past it the browser counts
     # as gone and the call holds for a re-attach.

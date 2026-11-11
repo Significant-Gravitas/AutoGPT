@@ -177,6 +177,8 @@ class RoomLeg:
         self._connecting: asyncio.Task[None] | None = None
         self._late_leave: asyncio.Task[None] | None = None
         self._source: rtc.AudioSource | None = None
+        # Otto's track, as the relay published it.
+        self._otto: rtc.LocalTrackPublication | None = None
         # The person's microphone: the one publication the relay subscribes
         # to, its track, the stream over it, and the task reading the
         # stream. A stream is closed here, never by its reader, which a
@@ -242,7 +244,7 @@ class RoomLeg:
         self._joined_at = self._clock()
         source = self._media.source()
         self._source = source
-        await room.local_participant.publish_track(
+        self._otto = await room.local_participant.publish_track(
             self._media.track(source),
             rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE),
         )
@@ -252,6 +254,12 @@ class RoomLeg:
         if person is not None:
             for publication in list(person.track_publications.values()):
                 self._consider(publication, person)
+
+    async def otto_heard(self) -> None:
+        """Return once someone in the room subscribes to Otto's track: from
+        then what he says reaches the person."""
+        if self._otto is not None:
+            await self._otto.wait_for_subscription()
 
     async def close(self, *, play_out: bool) -> None:
         """Leave the room, once what Otto has said has played when

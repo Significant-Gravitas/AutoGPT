@@ -420,7 +420,8 @@ async def _start_call(
             ),
             classifier=deps.classifier,
             edge=deps.edge,
-            first_name=await _first_name(deps, claims.user_id),
+            # Read beside the call's opening, not before it.
+            read_first_name=lambda: _first_name(deps, claims.user_id),
             caps=deps.caps,
             timing=deps.timing,
             started=started,

@@ -1,9 +1,11 @@
 """A scripted stand-in for Gemini Live, for tests.
 
 It speaks the relay's own vendor events, so a call runs unchanged against it
-with no network and no bill. Every session it opens takes the script's next
-reply as its answer: to its opening, to the person falling silent after
-speaking, and to a server note sent with ``turn_complete`` (a goodbye). A
+with no network and no bill. A session it opens says nothing until it is
+sent a note, as a live one does. Every session takes the script's next reply
+as its answer: to a server note sent with ``turn_complete`` (the call's
+opening, a reconnect's, a goodbye), and to the person falling silent after
+speaking. A
 reply can call the end tool before it speaks, and reports its usage at the
 end. A session can be told to drop partway through a reply, the way a vendor
 socket dies with 1011.
@@ -95,16 +97,14 @@ class FakeVendor:
         self.sessions: list[FakeVendorSession] = []
         self._next = 0
 
-    async def connect(self, *, opening: str) -> "FakeVendorSession":
+    async def connect(self) -> "FakeVendorSession":
         if self.connect_delay_s:
             await asyncio.sleep(self.connect_delay_s)
         if self.connect_gate is not None:
             await self.connect_gate.wait()
         if self.refuse is not None:
             raise self.refuse
-        session = FakeVendorSession(
-            self, number=len(self.sessions) + 1, opening=opening
-        )
+        session = FakeVendorSession(self, number=len(self.sessions) + 1)
         self.sessions.append(session)
         session.start()
         return session
@@ -122,10 +122,9 @@ class FakeVendor:
 
 
 class FakeVendorSession:
-    def __init__(self, vendor: FakeVendor, *, number: int, opening: str) -> None:
+    def __init__(self, vendor: FakeVendor, *, number: int) -> None:
         self.vendor = vendor
         self.number = number
-        self.opening = opening
         self.notes: list[tuple[str, bool]] = []
         self.tool_results: list[ToolResult] = []
         self.audio_in_bytes = 0
@@ -142,8 +141,18 @@ class FakeVendorSession:
         self._speaking_lock = asyncio.Lock()
         self._tasks: set[asyncio.Task] = set()
 
+    @property
+    def opening(self) -> str:
+        """The first note the session was sent: the call's opening, or a
+        reconnect's; empty before one."""
+        return self.notes[0][0] if self.notes else ""
+
+    @property
+    def notes_after_opening(self) -> list[tuple[str, bool]]:
+        """The server's notes since the session's opening."""
+        return self.notes[1:]
+
     def start(self) -> None:
-        self._spawn(self._answer())
         self._spawn(self._listen())
 
     def emit(self, *events: VendorEvent) -> None:

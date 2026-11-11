@@ -303,11 +303,11 @@ async def test_the_turn_cap_ends_a_call_after_a_nudge_two_turns_before(redis):
         ),
     )
     await call.ws.wait_for("turn_complete", count=1)
-    assert vendor.sessions[0].notes == []
+    assert vendor.sessions[0].notes_after_opening == []
     await call.answer(speech(0.2))
     await call.ws.wait_for("turn_complete", count=2)
-    await until(lambda: bool(vendor.sessions[0].notes))
-    assert vendor.sessions[0].notes == [(NUDGES["turns"], False)]
+    await until(lambda: bool(vendor.sessions[0].notes_after_opening))
+    assert vendor.sessions[0].notes_after_opening == [(NUDGES["turns"], False)]
     for turn in (2, 3):
         await call.ws.wait_for("turn_complete", count=turn)
         await call.answer(speech(0.2))
@@ -595,7 +595,7 @@ async def test_the_browser_cannot_put_text_into_the_conversation(redis):
     call.ws.send_raw_text(json.dumps({"type": "ping", "id": 1, "pad": "x" * 5_000}))
     call.ws.send_json({"type": "ping", "id": 7})
     assert await call.ws.wait_for("pong") == {"type": "pong", "id": 7}
-    assert vendor.sessions[0].notes == []
+    assert vendor.sessions[0].notes_after_opening == []
     call.ws.send_json({"type": "hangup"})
     assert (await call.ended())["reason"] == "user_hangup"
     assert [m for m in call.ws.sent if m["type"] == "pong"] == [
@@ -864,7 +864,7 @@ async def test_a_stalled_nudge_does_not_hold_up_the_wall_clock(redis, monkeypatc
     )
     ended = await call.ended(timeout=10)
     assert ended["reason"] == "wall_clock"
-    assert vendor.sessions[0].notes == [(NUDGES["time"], False)]
+    assert vendor.sessions[0].notes_after_opening == [(NUDGES["time"], False)]
 
 
 async def test_a_vendor_send_that_never_finishes_is_given_up(redis, monkeypatch):
@@ -888,7 +888,7 @@ async def test_a_vendor_send_that_never_finishes_is_given_up(redis, monkeypatch)
     await call.answer(speech(0.2))
     # Otto's events flow again once the stalled nudge is given up.
     await call.ws.wait_for("turn_complete", count=2, timeout=10)
-    assert vendor.sessions[0].notes == [(NUDGES["turns"], False)]
+    assert vendor.sessions[0].notes_after_opening == [(NUDGES["turns"], False)]
     call.ws.send_json({"type": "hangup"})
     assert (await call.ended())["reason"] == "user_hangup"
 
