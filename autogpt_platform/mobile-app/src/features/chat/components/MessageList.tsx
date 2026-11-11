@@ -33,6 +33,7 @@ export function MessageList({
 }: Props) {
   const listRef = useRef<FlatList<UIMessage>>(null);
   const isNearEnd = useRef(true);
+  const isBusy = status === "submitted" || status === "streaming";
 
   function handleScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -53,8 +54,14 @@ export function MessageList({
     return (
       <Pressable
         accessibilityRole="button"
+        accessibilityState={{ disabled: isBusy }}
+        disabled={isBusy}
         onPress={onLoadEarlier}
-        style={({ pressed }) => [styles.earlier, pressed && styles.pressed]}
+        style={({ pressed }) => [
+          styles.earlier,
+          pressed && styles.pressed,
+          isBusy && styles.disabled,
+        ]}
       >
         <Text style={styles.earlierLabel}>Load earlier messages</Text>
       </Pressable>
@@ -100,5 +107,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   pressed: { backgroundColor: colors.surfacePressed },
+  disabled: { opacity: 0.4 },
   earlierLabel: { ...type.small, color: colors.textSecondary },
 });

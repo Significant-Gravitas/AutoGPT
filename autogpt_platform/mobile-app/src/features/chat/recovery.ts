@@ -37,6 +37,26 @@ export function turnLanded(
     .some((role) => role === "assistant" || role === "reasoning");
 }
 
+/**
+ * The local messages a fetch of the newest page can account for: hydrated
+ * ones (`${sessionID}-${sequence}`) from `oldestSequence` on, and every
+ * message streamed here. An `idx-` id has no sequence, so it is kept: an
+ * extra user message only makes `turnLanded` say no, which keeps the text.
+ */
+export function messagesInWindow(
+  sessionID: string,
+  messages: UIMessage[],
+  oldestSequence: number | null,
+) {
+  if (oldestSequence === null) return messages;
+  const prefix = `${sessionID}-`;
+  return messages.filter((message) => {
+    if (!message.id.startsWith(prefix)) return true;
+    const sequence = message.id.slice(prefix.length);
+    return !/^\d+$/.test(sequence) || Number(sequence) >= oldestSequence;
+  });
+}
+
 export function lastMessageIsUser(messages: UIMessage[]) {
   return messages[messages.length - 1]?.role === "user";
 }

@@ -19,6 +19,7 @@ import { chatErrorMessage } from "./chatErrors";
 import {
   isRecoverableChatError,
   lastMessageIsUser,
+  messagesInWindow,
   turnLanded,
 } from "./recovery";
 import { createChatTransport } from "./transport";
@@ -61,15 +62,14 @@ export function useChatThread({ sessionID, detail }: Args) {
   const isMounted = useRef(true);
   const recoveries = useRef(0);
   const isBusy = status === "submitted" || status === "streaming";
-  const { hasEarlier, isLoadingEarlier, loadEarlier, showServerMessages } =
-    useEarlierMessages({
-      sessionID,
-      detail,
-      chat,
-      setMessages,
-      isSyncingRef: isSyncing,
-      isMountedRef: isMounted,
-    });
+  const earlier = useEarlierMessages({
+    sessionID,
+    detail,
+    chat,
+    setMessages,
+    isSyncingRef: isSyncing,
+    isMountedRef: isMounted,
+  });
 
   function isChatBusy() {
     return chat.status === "submitted" || chat.status === "streaming";
@@ -80,7 +80,10 @@ export function useChatThread({ sessionID, detail }: Args) {
   // Read straight from the API: a cache write would outlive the screen.
   // Fetch first: if that fails, the live stream is left as it was.
   async function syncWithServer() {
-    if (isSyncing.current) return;
+    if (isSyncing.current) {
+      earlier.deferUntilLoaded("sync");
+      return;
+    }
     isSyncing.current = true;
     let fresh: SessionDetail;
     try {
@@ -88,7 +91,7 @@ export function useChatThread({ sessionID, detail }: Args) {
       if (!isMounted.current) return;
       await chat.stop();
       if (!isMounted.current) return;
-      showServerMessages(fresh);
+      earlier.showServerMessages(fresh);
       chat.clearError();
     } finally {
       isSyncing.current = false;
@@ -110,7 +113,7 @@ export function useChatThread({ sessionID, detail }: Args) {
     try {
       const fresh = await getSession(sessionID);
       if (!isMounted.current || isChatBusy() || fresh.active_stream) return;
-      showServerMessages(fresh);
+      earlier.showServerMessages(fresh);
     } finally {
       isSyncing.current = false;
     }
@@ -122,6 +125,10 @@ export function useChatThread({ sessionID, detail }: Args) {
     if (recoveries.current >= MAX_RECOVERIES) return;
     recoveries.current += 1;
     await new Promise((resolve) => setTimeout(resolve, RECOVERY_DELAY_MS));
+    if (isSyncing.current && earlier.deferUntilLoaded("recover")) {
+      recoveries.current -= 1;
+      return;
+    }
     if (!isMounted.current || isSyncing.current || isChatBusy()) return;
     isSyncing.current = true;
     let fresh: SessionDetail;
@@ -129,10 +136,13 @@ export function useChatThread({ sessionID, detail }: Args) {
       fresh = await getSession(sessionID); // throws offline: the error line stays
       if (!isMounted.current || isChatBusy()) return;
       // Not taken, or taken but unanswered: keep the message and the error.
-      if (!turnLanded(fresh.messages, chat.messages, fresh.active_stream)) {
-        return;
-      }
-      showServerMessages(fresh);
+      const local = messagesInWindow(
+        sessionID,
+        chat.messages,
+        fresh.oldest_sequence,
+      );
+      if (!turnLanded(fresh.messages, local, fresh.active_stream)) return;
+      earlier.showServerMessages(fresh);
       chat.clearError();
     } finally {
       isSyncing.current = false;
@@ -169,6 +179,10 @@ export function useChatThread({ sessionID, detail }: Args) {
     return true;
   }
 
+  function loadEarlier() {
+    return earlier.loadEarlier({ sync: syncWithServer, recover });
+  }
+
   async function stop() {
     await chat.stop();
     await cancelSession(sessionID).catch(() => undefined);
@@ -181,8 +195,8 @@ export function useChatThread({ sessionID, detail }: Args) {
     isBusy,
     send,
     stop,
-    hasEarlier,
-    isLoadingEarlier,
+    hasEarlier: earlier.hasEarlier,
+    isLoadingEarlier: earlier.isLoadingEarlier,
     loadEarlier,
   };
 }
