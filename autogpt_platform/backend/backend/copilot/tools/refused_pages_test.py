@@ -31,41 +31,59 @@ _CHALLENGE_PAGE = (
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize(
-    "url, body, headers, refused_by",
+    "url, status, body, headers, refused_by",
     [
-        ("https://www.facebook.com/examplebakery", _SCRIPT_ONLY_PAGE, {}, "Facebook"),
-        ("https://m.facebook.com/examplebakery", _SCRIPT_ONLY_PAGE, {}, "Facebook"),
+        (
+            "https://www.facebook.com/examplebakery",
+            200,
+            _SCRIPT_ONLY_PAGE,
+            {},
+            "Facebook",
+        ),
+        (
+            "https://m.facebook.com/examplebakery",
+            200,
+            _SCRIPT_ONLY_PAGE,
+            {},
+            "Facebook",
+        ),
         (
             "https://www.instagram.com/examplebakery/",
+            200,
             _SCRIPT_ONLY_PAGE,
             {},
             "Instagram",
         ),
         (
             "https://www.linkedin.com/authwall?trk=bf",
+            200,
             _READABLE_PAGE,
             {},
             "LinkedIn",
         ),
         (
             "https://www.example.com/pricing",
+            403,
             _CHALLENGE_PAGE,
             {"cf-mitigated": "challenge"},
             "example.com answered with a bot check",
         ),
-        ("https://x.com/examplebakery", _READABLE_PAGE, {}, None),
+        ("https://x.com/examplebakery", 200, _READABLE_PAGE, {}, None),
         # An empty page off the listed sites is not read as a wall.
-        ("https://www.example.com/gallery", _SCRIPT_ONLY_PAGE, {}, None),
+        ("https://www.example.com/gallery", 200, _SCRIPT_ONLY_PAGE, {}, None),
+        # A server error or rate limit on a listed site stays retryable.
+        ("https://www.facebook.com/examplebakery", 502, _SCRIPT_ONLY_PAGE, {}, None),
+        ("https://www.instagram.com/examplebakery/", 429, _SCRIPT_ONLY_PAGE, {}, None),
     ],
 )
 async def test_web_fetch_names_the_refusing_site_and_a_fallback(
-    url, body, headers, refused_by
+    url, status, body, headers, refused_by
 ):
     response = MagicMock()
     response.headers = {"content-type": "text/html; charset=utf-8", **headers}
     response.content = body.encode()
     response.url = url
-    response.status = 403 if headers else 200
+    response.status = status
     client = MagicMock()
     client.get = AsyncMock(return_value=response)
 

@@ -275,7 +275,12 @@ class WebFetchTool(BaseTool):
         notice = refused_page_notice(
             response.url,
             bot_check=response.headers.get("cf-mitigated", "").lower() == "challenge",
-            content_withheld=is_html and extract_text and not text.strip(),
+            # A server error or rate limit is worth a retry, not a sign-in wall.
+            content_withheld=is_html
+            and extract_text
+            and not text.strip()
+            and response.status < 500
+            and response.status != 429,
         )
         if notice:
             return ErrorResponse(
