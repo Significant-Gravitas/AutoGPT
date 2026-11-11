@@ -56,6 +56,10 @@ OPEN_WHILE_PAYWALLED = {
     "PUT /api/chat/transports/default",
     "GET /api/experiments/assignments",
     "GET /api/experiments/assignments/{experiment}",
+    # Feedback stays open during onboarding and after a cancelled checkout.
+    "POST /api/feedback-prompts/claim",
+    "PATCH /api/feedback-prompts/{id}",
+    "GET /api/feedback-prompts/{id}",
     "GET /api/invitations/pending",
     "POST /api/invitations/{token}/accept",
     "POST /api/invitations/{token}/decline",
@@ -315,6 +319,7 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/credits/stripe_webhook",
     "POST /api/email/",
     "POST /api/email/mailerlite/webhook",
+    "GET /api/email/unsubscribe",
     "POST /api/email/unsubscribe",
     "GET /api/experts/templates",
     "GET /api/feature-flags",
