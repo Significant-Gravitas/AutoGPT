@@ -11,11 +11,13 @@ import { IconButton } from "./IconButton";
 
 interface Props {
   title?: string;
+  /** Replaces the menu button. */
+  left?: ReactNode;
   center?: ReactNode;
   right?: ReactNode;
 }
 
-export function ScreenHeader({ title, center, right }: Props) {
+export function ScreenHeader({ title, left, center, right }: Props) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const styles = useStyles();
@@ -27,7 +29,9 @@ export function ScreenHeader({ title, center, right }: Props) {
   return (
     <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
       <View style={styles.side}>
-        <IconButton icon={Menu01Icon} label="Open menu" onPress={openMenu} />
+        {left ?? (
+          <IconButton icon={Menu01Icon} label="Open menu" onPress={openMenu} />
+        )}
       </View>
       {center ? (
         <View style={styles.center}>{center}</View>
