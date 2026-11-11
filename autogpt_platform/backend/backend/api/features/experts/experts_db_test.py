@@ -58,8 +58,11 @@ from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
+from backend.data.onboarding import get_user_onboarding
+from backend.data.onboarding_steps import OnboardingStep
 from backend.data.user import get_or_create_user
 from backend.executor import utils as execution_utils
+from backend.util.background import _background_tasks
 from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
 from backend.util.json import SafeJson
@@ -140,8 +143,8 @@ def hire_waits_for_setup(monkeypatch):
     """Most tests assert on what a hire installs, so let them read it back
     once the background setup has finished."""
 
-    async def hire_and_finish_setup(user_id, template_id, name, surface=None):
-        result = await _hire_without_waiting(user_id, template_id, name, surface)
+    async def hire_and_finish_setup(user_id, template_id, name, surface=None, via=None):
+        result = await _hire_without_waiting(user_id, template_id, name, surface, via)
         await _finish_hire_setup()
         row = await prisma.models.Expert.prisma().find_unique(
             where={"id": result.expert.id}, include=experts_db._WORKFLOW_INCLUDE
@@ -1856,6 +1859,10 @@ async def test_list_expert_identities_is_lightweight_and_includes_archived(
         item for item in identities if item.id == active_hired.expert.id
     )
     assert active_identity.is_archived is False
+    # The sidebar lists an expert added in the last week before their first
+    # chat, so the join time has to come back, as an aware UTC time.
+    assert active_identity.created_at is not None
+    assert active_identity.created_at.utcoffset() is not None
     assert template.id not in identity_ids
     assert active_template.id not in identity_ids
     assert other_hired.expert.id not in identity_ids
@@ -1965,6 +1972,7 @@ def test_expert_identity_projection_columns_exist_in_schema():
         "jobTitle",
         "isArchived",
         "autopilotMode",
+        "createdAt",
     } <= fields
     assert {"ownerUserId", "isTemplate"} <= fields
 
@@ -2476,6 +2484,84 @@ async def test_resolve_private_expert_tenancy_allows_missing_default_team():
         assert await experts_db.resolve_private_expert_tenancy(
             "owner-1", "expert-1"
         ) == ("personal-org", None)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_check_private_expert_reads_the_hire_and_its_owners_scope(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    check = await experts_db.check_private_expert(test_user.id, hired.expert.id)
+
+    fresh = await experts_db.get_expert(
+        test_user.id, hired.expert.id, include_workflows=False
+    )
+    assert fresh is not None
+    identity_fields = {
+        "id",
+        "name",
+        "role",
+        "identity",
+        "voice_preferences",
+        "boundaries",
+        "protected_soul_rules",
+        "is_archived",
+        "setup_status",
+    }
+    assert check.expert.model_dump(include=identity_fields) == fresh.model_dump(
+        include=identity_fields
+    )
+    assert (
+        check.organization_id,
+        check.team_id,
+    ) == await experts_db.resolve_private_expert_tenancy(test_user.id, hired.expert.id)
+    refused = [(other_user.id, hired.expert.id), (test_user.id, template.id)]
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    refused.append((test_user.id, hired.expert.id))
+    for user_id, expert_id in refused:
+        with pytest.raises(experts_db.ExpertNotFoundError):
+            await experts_db.check_private_expert(user_id, expert_id)
+        # A database manager from before check_private_expert is asked with
+        # these two reads instead, and they refuse the same experts.
+        assert (
+            await experts_db.get_expert(user_id, expert_id, include_workflows=False)
+            is None
+        )
+        with pytest.raises(experts_db.ExpertNotFoundError):
+            await experts_db.resolve_private_expert_tenancy(user_id, expert_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_check_private_expert_skips_the_roster_only_reads():
+    """The latest run and the weekly spend are roster card fields; a turn's
+    check never needs them, and the latest-run read grows with the expert's
+    history."""
+    row = SimpleNamespace(id="expert-1")
+    expert = SimpleNamespace(id="expert-1")
+    manager = SimpleNamespace(find_first=AsyncMock(return_value=row))
+    latest_runs = AsyncMock()
+    weekly_spend = AsyncMock()
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=manager),
+        patch.object(
+            experts_db,
+            "get_user_default_team",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+        patch.object(experts_db, "_latest_runs", latest_runs),
+        patch.object(experts_db, "get_weekly_spend", weekly_spend),
+        patch.object(experts_db, "_to_model", return_value=expert) as to_model,
+        patch.object(experts_db, "CheckedExpert", side_effect=SimpleNamespace),
+    ):
+        check = await experts_db.check_private_expert("owner-1", "expert-1")
+
+    to_model.assert_called_once_with(row)
+    assert check.expert is expert
+    assert (check.organization_id, check.team_id) == ("personal-org", "personal-team")
+    latest_runs.assert_not_awaited()
+    weekly_spend.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -6148,6 +6234,58 @@ async def test_expert_hired_carries_the_hiring_surface(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_expert_hired_says_the_plan_made_a_fresh_or_a_revived_hire(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        hired = await experts_db.hire_expert(
+            test_user.id, template.id, None, "onboarding", via="plan"
+        )
+    emit.assert_called_once_with(
+        test_user.id,
+        "expert_hired",
+        _expert_hired(hired, template.id, surface="onboarding", via="plan"),
+    )
+
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        revived = await experts_db.hire_expert(
+            test_user.id, template.id, None, "onboarding", via="plan"
+        )
+
+    assert revived.expert.id == hired.expert.id
+    emit.assert_called_once_with(
+        test_user.id,
+        "expert_hired",
+        _expert_hired(revived, template.id, surface="onboarding", via="plan"),
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_hired_names_no_via_when_a_person_rehires_a_plan_hire(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(
+        test_user.id, template.id, None, "onboarding", via="plan"
+    )
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        revived = await experts_db.hire_expert(
+            test_user.id, template.id, None, "expert_page"
+        )
+
+    assert revived.expert.id == hired.expert.id
+    emit.assert_called_once_with(
+        test_user.id,
+        "expert_hired",
+        _expert_hired(revived, template.id, surface="expert_page"),
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_hire_expert_emits_hire_failed_on_unknown_template(
     server: SpinTestServer, test_user
 ):
@@ -7367,3 +7505,74 @@ async def test_hiring_copies_no_autopilot_mode_and_junk_reads_as_default(
     identities = await experts_db.list_expert_identities(test_user.id)
     identity = next(item for item in identities if item.id == hired.expert.id)
     assert identity.autopilot_mode is None
+
+
+# =============================================================================
+# Wallet checklist: the marketplace step
+# =============================================================================
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "surface, ticks",
+    [("expert_page", True), ("copilot", True), ("onboarding", False), (None, False)],
+)
+async def test_only_a_hire_the_user_made_ticks_the_marketplace_step(
+    server: SpinTestServer, test_user, surface, ticks
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+
+    await experts_db.hire_expert(test_user.id, template.id, None, surface)
+
+    assert await _marketplace_step_state(test_user.id) == (ticks, ticks)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_onboarding_hire_ticks_the_step_only_once_rehired_after_firing(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None, "onboarding")
+
+    await experts_db.hire_expert(test_user.id, template.id, None, "expert_page")
+    assert await _marketplace_step_state(test_user.id) == (False, False)
+
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    await experts_db.hire_expert(test_user.id, template.id, None, "expert_page")
+    assert await _marketplace_step_state(test_user.id) == (True, True)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failure_to_record_the_step_never_fails_the_hire(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    failing = AsyncMock(side_effect=RuntimeError("redis is down"))
+
+    with patch.object(experts_db, "complete_onboarding_step", failing):
+        hired = await experts_db.hire_expert(
+            test_user.id, template.id, None, "expert_page"
+        )
+
+    assert hired.expert.source_template_id == template.id
+    await _record_marketplace_step()
+    failing.assert_awaited_once_with(test_user.id, OnboardingStep.MARKETPLACE_ADD_AGENT)
+
+
+async def _marketplace_step_state(user_id: str) -> tuple[bool, bool]:
+    """(completed, rewarded) for the step, once the hire's recording has run."""
+    await _record_marketplace_step()
+    onboarding = await get_user_onboarding(user_id)
+    step = OnboardingStep.MARKETPLACE_ADD_AGENT
+    return step in onboarding.completedSteps, step in onboarding.rewardedFor
+
+
+async def _record_marketplace_step() -> None:
+    await asyncio.gather(
+        *(
+            task
+            for task in _background_tasks
+            if task.get_name().startswith("marketplace-step-")
+        ),
+        return_exceptions=True,
+    )

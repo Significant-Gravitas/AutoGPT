@@ -84,7 +84,7 @@ export function ApprovalCard({
         className="flex flex-col gap-3 sm:pl-[38px]"
       >
         {failed && (
-          <p role="alert" className="text-sm text-error-foreground">
+          <p role="alert" className="text-body text-error-foreground">
             Couldn&apos;t send your answer. Nothing ran. Try again.
           </p>
         )}

@@ -11,14 +11,14 @@ export function ErrorHeader() {
           data-slot="error-card-icon"
           icon={Alert01Icon}
           size={24}
-          className="text-error"
+          tone="error"
         />
       </div>
       <div data-slot="error-card-heading">
         <Text
           variant="large-semibold"
           data-slot="error-card-title"
-          className="text-foreground-emphasis"
+          tone="emphasis"
         >
           Something went wrong
         </Text>

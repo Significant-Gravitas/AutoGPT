@@ -67,7 +67,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
                       placeholder="https://"
                       aria-label={`Link ${index + 1}`}
                       onChange={(e) => onChange(index, e.target.value)}
-                      className="h-[2.875rem] w-full border-none bg-transparent text-sm text-foreground-base placeholder:text-foreground-subtle focus:outline-none"
+                      className="h-[2.875rem] w-full border-none bg-transparent text-body text-foreground-base placeholder:text-foreground-subtle focus:outline-none"
                     />
                   </div>
                   <Button

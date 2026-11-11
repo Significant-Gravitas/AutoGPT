@@ -10,16 +10,22 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { SidebarMenu } from "@/components/molecules/Sidebar/Sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { PinIcon } from "@hugeicons/core-free-icons";
+import { useState } from "react";
 import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
+import { NewExpertGroup } from "./components/NewExpertGroup/NewExpertGroup";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
-import { getNewChatHref } from "./helpers";
+import { getNewChatHref, getNewExpertsWithoutChats } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
 
 export function RecentChats() {
   const chatPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
 
   const isLearningEnabled = useGetFlag(Flag.DREAM_SKILL_LEARNING_ENABLED);
-  const { expertsById, activeExpertIds } = useExpertMap();
+  const { expertsById, activeExperts, activeExpertIds } = useExpertMap();
+  // The week a new expert keeps their entry is measured from when the list
+  // mounted: an expert who joins later counts as new, and one only ages out
+  // on a later visit.
+  const [mountedAt] = useState(() => Date.now());
   const {
     sessions,
     isLoading,
@@ -54,11 +60,19 @@ export function RecentChats() {
     );
   }
 
-  if (!sessions.length) {
+  const newExperts = getNewExpertsWithoutChats(
+    activeExperts,
+    sessions,
+    mountedAt,
+  );
+
+  if (!sessions.length && !newExperts.length) {
     return (
-      <Text variant="body-tight" as="p" tone="muted" className="px-2 py-2">
-        No conversations yet
-      </Text>
+      <div className="px-2 py-2">
+        <Text variant="body-tight" as="p" tone="muted">
+          No conversations yet
+        </Text>
+      </div>
     );
   }
 
@@ -95,6 +109,30 @@ export function RecentChats() {
     pinnedSessions.length > 0
       ? sessions.filter((session) => !session.is_pinned)
       : sessions;
+  const groups = groupSessionsByExpert(unpinnedSessions);
+  // Otto stays first; an expert waiting to be greeted comes next, ahead of
+  // the experts the user already talks to.
+  const ottoGroups = groups.filter((group) => !group.expertId);
+  const expertGroups = groups.filter((group) => !!group.expertId);
+
+  function renderGroup(group: (typeof groups)[number]) {
+    const expert = group.expertId ? expertsById.get(group.expertId) : null;
+    return (
+      // Keyed by expert id so each group's collapse/reveal state
+      // survives the session list's periodic refetch.
+      <ExpertChatGroup
+        key={group.expertId ?? "autopilot"}
+        label={group.expertId ? (expert?.name ?? "Expert") : "Otto"}
+        role={group.expertId ? expert?.jobTitle || expert?.role : "Head of AI"}
+        avatarUrl={expert?.avatarUrl ?? null}
+        color={expert?.color ?? null}
+        newChatHref={getNewChatHref(group.expertId, activeExpertIds)}
+        isAutopilot={!group.expertId}
+        sessions={group.sessions}
+        renderItem={renderItem}
+      />
+    );
+  }
 
   return (
     <>
@@ -115,28 +153,11 @@ export function RecentChats() {
             <SidebarMenu>{pinnedSessions.map(renderItem)}</SidebarMenu>
           </div>
         )}
-        {groupSessionsByExpert(unpinnedSessions).map((group) => {
-          const expert = group.expertId
-            ? expertsById.get(group.expertId)
-            : null;
-          return (
-            // Keyed by expert id so each group's collapse/reveal state
-            // survives the session list's periodic refetch.
-            <ExpertChatGroup
-              key={group.expertId ?? "autopilot"}
-              label={group.expertId ? (expert?.name ?? "Expert") : "Otto"}
-              role={
-                group.expertId ? expert?.jobTitle || expert?.role : "Head of AI"
-              }
-              avatarUrl={expert?.avatarUrl ?? null}
-              color={expert?.color ?? null}
-              newChatHref={getNewChatHref(group.expertId, activeExpertIds)}
-              isAutopilot={!group.expertId}
-              sessions={group.sessions}
-              renderItem={renderItem}
-            />
-          );
-        })}
+        {ottoGroups.map(renderGroup)}
+        {newExperts.map((expert) => (
+          <NewExpertGroup key={`new-${expert.id}`} expert={expert} />
+        ))}
+        {expertGroups.map(renderGroup)}
       </div>
 
       {hasMore && (

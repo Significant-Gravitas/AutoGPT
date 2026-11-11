@@ -251,6 +251,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     META_MUSE_SPARK_1_3_CONTRIBUTOR = "meta/muse-spark-1.3-contributor"
     META_MUSE_SPARK_OPEN = "meta/muse-spark-open"
     META_MUSE_WONDER = "meta/muse-wonder"
+    META_MUSE_EMBER = "meta/muse-ember"
     GROK_3 = "x-ai/grok-3"
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"
@@ -286,6 +287,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     INCEPTION_MERCURY_2_5 = "inception/mercury-2.5"
     # Tencent models
     TENCENT_HY4_PREVIEW = "tencent/hy4-preview"
+    TENCENT_HY4 = "tencent/hy4"
     # Unbiased models
     UNBIASED_PARETO = "unbiased/pareto"
     # Llama API models
@@ -466,12 +468,22 @@ DEFAULT_LLM_MODEL = _default_model_from_catalog()
 # definitions and by the boot-time safety net (`migrate_llm_models` in
 # backend/data/graph.py) so a Claude Opus user lands on a newer Opus instead of
 # the global GPT default. Keep this in sync with
-# migrations/20260512120000_retire_deprecated_llm_models/migration.sql.
+# migrations/20260512120000_retire_deprecated_llm_models/migration.sql and
+# migrations/20261025120000_retire_undated_claude_aliases/migration.sql.
+# Never resolve these in ``LLMModel._missing_``: the copilot's registry gate
+# accepts what the enum accepts and sends the slug unchanged.
 LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     "claude-3-haiku-20240307": LLMModel.CLAUDE_4_5_HAIKU,
     "claude-opus-4-20250514": LLMModel.CLAUDE_4_7_OPUS,
     "claude-sonnet-4-20250514": LLMModel.CLAUDE_4_6_SONNET,
     "claude-opus-4-1-20250805": LLMModel.CLAUDE_4_7_OPUS,
+    # Anthropic's undated aliases and OpenRouter's slugs for the same models.
+    "claude-opus-4-1": LLMModel.CLAUDE_4_7_OPUS,
+    "anthropic/claude-opus-4.1": LLMModel.CLAUDE_4_7_OPUS,
+    "claude-opus-4-0": LLMModel.CLAUDE_4_7_OPUS,
+    "anthropic/claude-opus-4": LLMModel.CLAUDE_4_7_OPUS,
+    "claude-sonnet-4-0": LLMModel.CLAUDE_4_6_SONNET,
+    "anthropic/claude-sonnet-4": LLMModel.CLAUDE_4_6_SONNET,
     "gpt-4-turbo": LLMModel.GPT41,
     "o1": LLMModel.O3,
     "o1-mini": LLMModel.O3_MINI,

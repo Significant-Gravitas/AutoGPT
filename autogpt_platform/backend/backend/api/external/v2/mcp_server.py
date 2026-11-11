@@ -18,6 +18,7 @@ from contextvars import ContextVar
 from typing import Any, AsyncIterator, Optional, Sequence
 
 import pydantic
+from autogpt_libs.auth.closed_accounts import AccountState, get_account_state
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
@@ -51,7 +52,7 @@ from backend.api.external.v2.mcp_calls import (
 )
 from backend.api.external.v2.mcp_tenancy import check_ids_in_tenant
 from backend.api.external.v2.tenancy import resolve_credential_tenancy
-from backend.copilot.context import set_turn_unattended
+from backend.copilot.context import set_execution_context, set_turn_unattended
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.tool_adapter import _execute_tool_sync
 from backend.copilot.tools import TOOL_REGISTRY
@@ -89,6 +90,8 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     "browser_act": "browser state is bound to the chat session",
     "browser_screenshot": "browser state is bound to the chat session",
     "expert_onboarding": "renders the expert intake card in a chat session",
+    "request_work_check": "renders a feedback card in a chat session",
+    "flag_mistake": "Otto's report on its own mistake in a chat session",
     "consult_teammate": "teammate checks run inside a chat session",
     "find_session": "lists the caller's live chat sessions",
     "message_session": "messages another live chat session",
@@ -381,6 +384,9 @@ class ExternalAPITokenVerifier(TokenVerifier):
     async def _tenanted(
         self, token: str, auth: APIAuthorizationInfo
     ) -> TenantedAccessToken | None:
+        if await get_account_state(auth.user_id) is AccountState.CLOSED:
+            logger.warning(f"Rejecting MCP token for closed account {auth.user_id}")
+            return None
         if await owner_is_banned(auth):
             logger.warning(f"Rejecting MCP token for banned user {auth.user_id}")
             return None
@@ -454,6 +460,9 @@ def _create_tool_handler(
         # Tools read the turn, not the origin: without this a missing credential
         # comes back as a setup card, and an ambiguous one as a question.
         set_turn_unattended(session, scheduled=False)
+        # Workspace tools take their file scope from the executing session; with
+        # none they confine the call to this new session's empty folder.
+        set_execution_context(user_id, session)
 
         try:
             result = await _execute_tool_sync(tool, user_id, session, kwargs)

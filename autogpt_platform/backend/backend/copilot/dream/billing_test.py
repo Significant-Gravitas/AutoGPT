@@ -58,7 +58,9 @@ async def test_check_dream_budget_skips_paywalled_user_as_insufficient_credits()
 
 
 @pytest.mark.asyncio
-async def test_check_dream_budget_skips_when_user_is_over_daily_cap():
+async def test_check_dream_budget_skips_when_user_is_over_daily_cap(
+    chat_blocked_events,
+):
     reset_at = datetime(2026, 5, 22, tzinfo=timezone.utc)
     with patch.object(
         billing_mod, "is_user_paywalled", new=AsyncMock(return_value=False)
@@ -73,6 +75,9 @@ async def test_check_dream_budget_skips_when_user_is_over_daily_cap():
     ):
         ok, reason = await billing_mod.check_dream_budget("u1")
     assert (ok, reason) == (False, "insufficient_credits")
+    assert [(e["distinct_id"], e["surface"]) for e in chat_blocked_events] == [
+        ("u1", "background")
+    ]
 
 
 @pytest.mark.asyncio

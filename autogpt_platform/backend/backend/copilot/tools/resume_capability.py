@@ -12,6 +12,7 @@ from typing import Any
 
 from prisma.enums import ReviewStatus
 
+from backend.blocks import get_block
 from backend.blocks.mcp.helpers import server_host
 from backend.copilot.capabilities.mcp_review import (
     MCPReviewPayload,
@@ -26,10 +27,12 @@ from backend.copilot.constants import (
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
 from backend.data.db_accessors import review_db
+from backend.util.json import same_json
 
 from .base import BaseTool
 from .capability_gates import gate_denied, gate_denied_error
-from .continue_run_block import ContinueRunBlockTool, run_claimed
+from .continue_run_block import ContinueRunBlockTool, refuse_disabled_block, run_claimed
+from .helpers import block_run_refusal
 from .models import ErrorResponse, ReviewRequiredResponse, ToolResponseBase
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -172,7 +175,7 @@ async def _resume_mcp(
             session_id=session.session_id,
         ).from_outside()
     arguments = {**payload.arguments, **(input_overrides or {})}
-    if arguments != payload.arguments:
+    if not same_json(arguments, payload.arguments):
         # The user approved one call, not a family of them. This review only
         # exists because the original call needed approving, so the changed
         # call needs approving too. Re-deriving that from the live catalog
@@ -228,6 +231,17 @@ async def _rerun_block(
     if isinstance(review, ErrorResponse):
         return review
     block_id = parse_node_id_from_exec_id(review_id).removeprefix(COPILOT_NODE_PREFIX)
+    block = get_block(block_id)
+    if block is not None and block.disabled:
+        return await refuse_disabled_block(
+            block_id, review_id, user_id, session.session_id
+        )
+    # Before the claim, as on the plain resume: a refusal keeps the approval,
+    # and a parallel resume never finds it held by a run that won't happen.
+    if block is not None and (
+        refusal := block_run_refusal(block, block_id, session.session_id)
+    ):
+        return refusal
     stored = review.payload if isinstance(review.payload, dict) else {}
     return await run_claimed(
         review_id,

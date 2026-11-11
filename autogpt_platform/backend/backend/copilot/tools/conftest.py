@@ -43,6 +43,31 @@ def stub_user_lookup_in_helpers(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def stub_expert_chat_lookup(monkeypatch):
+    """``has_chat_with`` lists the user's chats with an expert to tell a first
+    turn from a later one. Without a connected Prisma client that read is the
+    DatabaseManager RPC client, whose retries would stall every hire and
+    delegation test; by default the expert has no chat yet. Tests that need
+    one patch ``expert_delegation.get_user_sessions`` themselves."""
+    monkeypatch.setattr(
+        "backend.copilot.tools.expert_delegation.get_user_sessions",
+        AsyncMock(return_value=([], 0)),
+    )
+
+
+@pytest.fixture(autouse=True)
+def stub_background_task_store(monkeypatch):
+    """``get_sub_session_result`` asks the background-task store whether a sub
+    is a background child. Without a connected Prisma client that accessor is
+    the DatabaseManager RPC client, whose connection retries would stall every
+    sub-session test; the real-database handoff suite covers the store."""
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result.background_task_db",
+        lambda: MagicMock(background_child_result=AsyncMock(return_value=None)),
+    )
+
+
+@pytest.fixture(autouse=True)
 def stub_learning_registry(monkeypatch):
     """Route the skill registry's learning hooks to an in-memory store.
 
