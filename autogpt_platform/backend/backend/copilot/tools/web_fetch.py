@@ -8,10 +8,10 @@ from html.parser import HTMLParser
 from typing import Any
 
 import aiohttp
-import html2text
 from prisma.enums import APIKeyPermission
 
 from backend.copilot.model import ChatSession
+from backend.util.html_to_text import BoundedHTML2Text
 from backend.util.request import Requests
 
 from .base import BaseTool
@@ -25,6 +25,8 @@ _MAX_DOWNLOAD_BYTES = (
     2_097_152  # 2 MB of the response body is decoded and converted to text
 )
 _MAX_TEXT_CHARS = 100_000  # 100K characters text budget for the model
+# Conversion stops here, leaving room for the whitespace it strips last.
+_MAX_CONVERTED_CHARS = 10 * _MAX_TEXT_CHARS
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=15)
 
 # Content types we'll read as text
@@ -128,22 +130,30 @@ def _html_to_text(html: str) -> str:
             "HTML cleaner encountered an error, falling back to raw html: %s", err
         )
         cleaned_html = html
-    h = html2text.HTML2Text()
+    h = BoundedHTML2Text(_MAX_CONVERTED_CHARS)
     h.ignore_links = False
     h.ignore_images = True
     h.body_width = 0
     return h.handle(cleaned_html).strip()
 
 
-_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+_TITLE_OPEN_RE = re.compile(r"<title", re.IGNORECASE)
+_TITLE_CLOSE_RE = re.compile(r"</title>", re.IGNORECASE)
 
 
 def _extract_title(html: str) -> str | None:
-    match = _TITLE_RE.search(html)
-    if not match:
+    # A later <title can't have an end the first one lacks.
+    opening = _TITLE_OPEN_RE.search(html)
+    if not opening:
         return None
-    title = re.sub(r"\s+", " ", unescape(match.group(1))).strip()
-    return title or None
+    content_start = html.find(">", opening.end()) + 1
+    if not content_start:
+        return None
+    closing = _TITLE_CLOSE_RE.search(html, content_start)
+    if not closing:
+        return None
+    title = re.sub(r"\s+", " ", unescape(html[content_start : closing.start()]))
+    return title.strip() or None
 
 
 def _is_client_rendered_shell(raw_html: str, extracted_text: str) -> bool:

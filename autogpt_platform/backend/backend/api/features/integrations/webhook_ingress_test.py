@@ -642,7 +642,7 @@ class TestVerificationOrder:
             creds_manager.get = AsyncMock(return_value=MagicMock())
             for p in _stub_registry(_manager(ProviderName.COMPASS)) + [
                 patch(
-                    "backend.api.features.integrations.router.is_user_banned",
+                    "backend.api.features.integrations.router.is_user_refused",
                     AsyncMock(return_value=True),
                 )
             ]:
@@ -757,7 +757,9 @@ def _make_expert_preset(
         team_id=team_id,
         graph_id="graph-1",
         graph_version=1,
-        inputs={},
+        # Trigger config nests under the per-node mask key (trigger node id
+        # "trigger-node" -> "trigger"); without it the run is skipped.
+        inputs={"_node_input_mask_trigger": {}},
         credentials={},
     )
 
@@ -908,6 +910,54 @@ def test_a_webhook_runs_only_for_an_owner_with_a_plan(paywalled: bool, request):
     assert run_node.await_count == expected
 
 
+@pytest.mark.parametrize("paywalled", [True, False])
+def test_a_triggered_preset_runs_only_for_an_owner_with_a_plan(
+    paywalled: bool, request
+):
+    """A paywalled owner's delivery stops before the preset runs; an allowed one
+    reaches it with the graph inputs and the nested trigger config apart."""
+    if paywalled:
+        request.getfixturevalue("paywalled_user")
+    preset = _make_expert_preset()
+    preset.expert_id = None
+    preset.inputs = {"count": 3, "_node_input_mask_trigger": {"constants": {"k": 1}}}
+    webhook = _make_webhook(ProviderName("generic_webhook"), triggered_presets=[preset])
+    router_path = "backend.api.features.integrations.router"
+    with ExitStack() as stack:
+        # Every ingress stub but the two trigger runners, so the real preset path runs.
+        _, _, publish, reward = [
+            stack.enter_context(p) for p in _patch_ingress(webhook)[:4]
+        ]
+        stack.enter_context(
+            patch(
+                f"{router_path}.get_webhook_manager",
+                return_value=_manager(webhook.provider),
+            )
+        )
+        stack.enter_context(
+            patch(
+                f"{router_path}.get_graph",
+                AsyncMock(return_value=_make_trigger_graph()),
+            )
+        )
+        add_exec = stack.enter_context(
+            patch(f"{router_path}.add_graph_execution", AsyncMock())
+        )
+        resp = _post("generic_webhook", body=b'{"event": "push"}')
+
+    assert resp.status_code == 200, resp.text
+    if paywalled:
+        publish.assert_not_awaited()
+        reward.assert_not_awaited()
+        add_exec.assert_not_awaited()
+        return
+    add_exec.assert_awaited_once()
+    assert add_exec.await_args.kwargs["inputs"] == {"count": 3}
+    assert add_exec.await_args.kwargs["nodes_input_masks"] == {
+        "trigger-node": {"constants": {"k": 1}, "payload": {"event": "push"}}
+    }
+
+
 def test_a_banned_owners_delivery_is_acknowledged_and_dropped():
     """200, so the provider doesn't retry; nothing is published or run."""
     from backend.api.features.integrations import router as ingress_router
@@ -922,7 +972,7 @@ def test_a_banned_owners_delivery_is_acknowledged_and_dropped():
                 return_value=_manager(ProviderName.COMPASS),
             ),
             patch.object(
-                ingress_router, "is_user_banned", AsyncMock(return_value=True)
+                ingress_router, "is_user_refused", AsyncMock(return_value=True)
             ),
             patch.object(ingress_router, "publish_webhook_event", publish),
             patch.object(ingress_router, "complete_onboarding_step", onboarding),

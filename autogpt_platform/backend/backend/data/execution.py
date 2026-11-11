@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import queue
 from collections import defaultdict
@@ -22,6 +23,7 @@ from prisma.enums import AgentExecutionStatus, ResourceVisibility, SharedVia
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
     AgentGraphExecution,
+    AgentNode,
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
     AgentNodeExecutionKeyValueData,
@@ -73,6 +75,7 @@ from .db import BaseDbModel, query_raw_with_schema
 from .event_bus import AsyncRedisEventBus, RedisEventBus
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
+    EXECUTION_RESULT_INCLUDE_WITHOUT_NODE,
     EXECUTION_RESULT_ORDER,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     MAX_NODE_INPUT_OUTPUT_FETCH,
@@ -119,6 +122,9 @@ class ExecutionContext(BaseModel):
     # Execution hierarchy
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
+    # The workflows of the runs this run is nested in, outermost first; empty
+    # for a top-level run.
+    ancestor_graph_ids: list[str] = Field(default_factory=list)
 
     # File workspace (UserWorkspace — NOT the Team concept)
     workspace_id: Optional[str] = None
@@ -860,16 +866,17 @@ async def get_graph_executions_paginated(
     if statuses:
         where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 
-    total_count = await AgentGraphExecution.prisma().count(where=where_filter)
-    total_pages = (total_count + page_size - 1) // page_size
-
     offset = (page - 1) * page_size
-    executions = await AgentGraphExecution.prisma().find_many(
-        where=where_filter,
-        order={"createdAt": "desc"},
-        take=page_size,
-        skip=offset,
+    total_count, executions = await asyncio.gather(
+        AgentGraphExecution.prisma().count(where=where_filter),
+        AgentGraphExecution.prisma().find_many(
+            where=where_filter,
+            order={"createdAt": "desc"},
+            take=page_size,
+            skip=offset,
+        ),
     )
+    total_pages = (total_count + page_size - 1) // page_size
 
     return GraphExecutionsPaginated(
         executions=[GraphExecutionMeta.from_db(execution) for execution in executions],
@@ -1612,6 +1619,9 @@ class NodeExecutionEntry(BaseModel):
     queued_by: Optional[Literal["graph_start", "node_output"]] = Field(
         default=None, exclude=True
     )
+    # The node is queued only to fail on an input it can't use, so it isn't
+    # billed. In-memory only; a restart derives it again from the inputs.
+    input_error: Optional[str] = Field(default=None, exclude=True)
 
 
 class ExecutionQueue(Generic[T]):
@@ -1952,13 +1962,18 @@ async def get_graph_execution_by_share_token(
         where=live_execution_share(share_token),
         include={
             "AgentGraph": True,
-            **GRAPH_EXECUTION_INCLUDE_WITH_NODES,
+            # The owner's filter and cap; the nodes are read once below.
+            **graph_execution_include(
+                [*get_io_block_ids(), *get_webhook_block_ids()],
+                node_execution_include=EXECUTION_RESULT_INCLUDE_WITHOUT_NODE,
+            ),
         },
     )
 
     if not execution:
         return None
 
+    await attach_nodes_to_executions(execution.NodeExecutions or [])
     outputs = GraphExecution.from_db(execution).outputs
 
     return SharedExecutionResponse(
@@ -1975,6 +1990,26 @@ async def get_graph_execution_by_share_token(
         created_at=execution.createdAt,
         outputs=outputs,
     )
+
+
+async def attach_nodes_to_executions(
+    executions: list[AgentNodeExecution], tx: Any | None = None
+) -> None:
+    """Give each execution its node, read once per node rather than per row.
+
+    Rows that already carry their node keep it, so a caller whose include
+    brought the node along is left alone.
+    """
+    missing = [node_exec for node_exec in executions if node_exec.Node is None]
+    node_ids = list({node_exec.agentNodeId for node_exec in missing})
+    if not node_ids:
+        return
+    nodes = {
+        node.id: node
+        for node in await AgentNode.prisma(tx).find_many(where={"id": {"in": node_ids}})
+    }
+    for node_exec in missing:
+        node_exec.Node = nodes.get(node_exec.agentNodeId)
 
 
 async def create_shared_execution_files(

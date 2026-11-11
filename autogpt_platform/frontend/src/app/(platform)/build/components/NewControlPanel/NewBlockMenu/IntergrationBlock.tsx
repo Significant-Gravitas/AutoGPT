@@ -66,8 +66,9 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
     <Button
       draggable={true}
       variant={"ghost"}
+      shape="rounded"
       className={cn(
-        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 rounded-xl bg-surface-muted px-3.5 py-2.5 text-start whitespace-normal shadow-none",
+        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 bg-surface-muted px-3.5 py-2.5 text-start whitespace-normal",
         "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-surface-hover active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
         className,
       )}
@@ -91,8 +92,8 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
           <Text
             variant="body-medium"
             as="span"
-            tone="emphasis"
-            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
+            tone={rest.disabled ? "subtle" : "emphasis"}
+            className="line-clamp-1"
           >
             {highlightText(
               beautifyString(title).replace(/ Block$/, ""),
@@ -104,8 +105,8 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
           <Text
             variant="small-loose"
             as="span"
-            tone="muted"
-            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
+            tone={rest.disabled ? "subtle" : "muted"}
+            className="line-clamp-1"
           >
             {highlightText(description, highlightedText, "small-bold-loose")}
           </Text>

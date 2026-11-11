@@ -237,19 +237,28 @@ class TestTeamBuildingSupplement:
         assert "handoff_title" in result
         assert "handoff_task" in result
         assert (
-            "Never ask in text whether to hand a task to a new hire from "
-            "`tool:hire_expert`." in result
+            "Never ask in text whether to hand that task to the new expert." in result
         )
 
-    def test_a_raised_expert_is_not_barred_from_being_asked_about_a_task(self):
-        """A raise_expert hire has no hand-off card, so Otto may still ask
-        before delegating to it ("Never delegate silently"). The rule that
-        forbids asking in text names only tool:hire_expert hires (#16101)."""
+    def test_a_new_expert_for_a_known_task_hands_it_off_on_the_card_too(self):
+        """SECRT-3401: raise_expert takes the task like a hire, so its card
+        creates and starts in one click; the rule names both tools."""
         result = prompting.get_team_building_supplement(
             experts_enabled=True, expert_id=None
         )
 
-        assert "Never ask in text whether to hand a task to a new hire." not in result
+        rule = next(line for line in result.splitlines() if "handoff_title" in line)
+        assert "`tool:hire_expert` or `tool:raise_expert`" in rule
+
+    def test_otto_never_points_at_a_chat_that_does_not_exist(self):
+        """SECRT-3401: told only who joined, Otto sent the user to open a new
+        expert's thread before any chat with them existed."""
+        result = prompting.get_team_building_supplement(
+            experts_enabled=True, expert_id=None
+        )
+
+        assert "A new expert has no chat until the user opens one" in result
+        assert "Never say a thread or chat with them exists" in result
 
     def test_an_expert_session_is_not_told_to_hire(self):
         result = prompting.get_team_building_supplement(
@@ -495,6 +504,14 @@ class TestPlainLanguageRules:
         result = prompting.SHARED_TOOL_NOTES
         assert "Never mention internal errors" in result
         assert "Retry a failing step at most once" in result
+
+    def test_a_failure_cause_is_named_only_when_the_error_shows_it(self):
+        """Otto told a user a failure looked like a permissions issue when the
+        input format was wrong (SECRT-2001)."""
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "only when a tool result shows it" in notes
+        assert "Don't guess one from a vague error" in notes
+        assert "the cause isn't clear yet, and what you'll do next" in notes
 
     def test_blocking_inputs_are_asked_before_building(self):
         notes = prompting.SHARED_TOOL_NOTES

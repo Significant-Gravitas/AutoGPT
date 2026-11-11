@@ -81,9 +81,7 @@ export function GraphScheduleListItem({
           <Icon
             icon={Calendar03Icon}
             size={18}
-            className={
-              iconClassName ? "text-inherit" : "text-success-foreground"
-            }
+            tone={iconClassName ? "inherit" : "success-strong"}
           />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
@@ -149,11 +147,7 @@ export function GraphScheduleListItem({
           <div className="flex flex-col gap-5">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-success/20 bg-success-surface">
-                <Icon
-                  icon={Calendar03Icon}
-                  size={20}
-                  className="text-success-foreground"
-                />
+                <Icon icon={Calendar03Icon} size={20} tone="success-strong" />
               </div>
               <div className="min-w-0">
                 <Text variant="body-medium" className="truncate">

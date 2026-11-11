@@ -16,7 +16,7 @@ interface Props {
 }
 
 const baseRowClasses =
-  "group relative flex w-full items-center gap-3 rounded-lg pl-3 pr-2 py-2 text-left text-sm outline-none transition-colors duration-200 ease-out focus-visible:outline-none";
+  "group relative flex w-full items-center gap-3 rounded-lg pl-3 pr-2 py-2 text-left text-body outline-none transition-colors duration-200 ease-out focus-visible:outline-none";
 
 function RowBody({
   icon,
@@ -49,7 +49,8 @@ function RowBody({
       ) : external ? (
         <Icon
           icon={LinkSquare01Icon}
-          className="relative z-10 shrink-0 text-foreground-body"
+          tone="body"
+          className="relative z-10 shrink-0"
           size={16}
           aria-hidden="true"
         />

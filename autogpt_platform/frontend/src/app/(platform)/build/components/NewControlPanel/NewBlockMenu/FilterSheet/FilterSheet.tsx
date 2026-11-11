@@ -56,9 +56,9 @@ export function FilterSheet({
             <div className="flex items-center justify-between px-5 pt-4">
               <Text variant="body">Filters</Text>
               <Button
-                className="p-0"
                 variant="ghost"
-                size="icon"
+                size="icon-2xs"
+                shape="pill"
                 onClick={handleCloseButton}
               >
                 <Icon icon={Cancel01Icon} size={20} />
@@ -125,7 +125,8 @@ export function FilterSheet({
               {creators.length > INITIAL_CREATORS_TO_SHOW && (
                 <Button
                   variant={"link"}
-                  className="m-0 p-0 text-foreground-emphasis hover:text-foreground-secondary"
+                  tone="emphasis"
+                  className="m-0 p-0 hover:text-foreground-secondary"
                   onClick={handleToggleShowMoreCreators}
                 >
                   <Text variant="body-medium" as="span" tone="inherit">
@@ -139,18 +140,18 @@ export function FilterSheet({
             <div className="fixed bottom-0 flex w-full justify-between gap-3 border-t border-border-base bg-surface px-5 py-3">
               <Button
                 size="small"
+                shape="soft"
                 variant={"outline"}
                 onClick={handleClearFilters}
-                className="rounded-lg px-2 py-1.5"
               >
                 Clear
               </Button>
 
               <Button
                 size="small"
+                shape="soft"
                 onClick={handleApplyFilters}
                 disabled={!hasLocalActiveFilters()}
-                className="rounded-lg px-2 py-1.5"
               >
                 Apply filters
               </Button>

@@ -78,9 +78,9 @@ function NotesList({
             <Button
               type="button"
               variant="ghost"
-              size="small"
-              // oxlint-disable-next-line design-system/no-restyle -- no Button variant is a 28px ghost pill with secondary text; ghost/xs would turn it rectangular (deferred)
-              className="h-7 !min-w-0 shrink-0 px-2 text-foreground-secondary"
+              size="row"
+              tone="secondary"
+              className="h-7 shrink-0"
               loading={forgettingUuid === fact.uuid}
               onClick={() => onForget(fact.uuid)}
             >

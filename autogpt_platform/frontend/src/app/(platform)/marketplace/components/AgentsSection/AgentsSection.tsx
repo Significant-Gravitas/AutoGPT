@@ -57,7 +57,7 @@ export function AgentsSection({
             subtitle={subtitle}
           />
         ) : sectionTitle ? (
-          <h2 className="mb-7 text-2xl font-semibold tracking-heading text-foreground-strong">
+          <h2 className="mb-7 text-heading-md font-semibold tracking-heading text-foreground-strong">
             {sectionTitle}
           </h2>
         ) : null}
