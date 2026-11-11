@@ -68,8 +68,7 @@ export function ExpertPanel({
       ) : (
         <FileLibrary
           sessionID={sessionID}
-          expertID={expertID}
-          expertName={name}
+          expert={{ id: expertID, name }}
           isOpen={isOpen}
         />
       )}

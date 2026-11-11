@@ -29,12 +29,7 @@ export function FilesPanel({ sessionID, isOpen }: Props) {
       <Text accessibilityRole="header" style={styles.title}>
         Files
       </Text>
-      <FileLibrary
-        sessionID={sessionID}
-        expertID={null}
-        expertName={null}
-        isOpen={isOpen}
-      />
+      <FileLibrary sessionID={sessionID} expert={null} isOpen={isOpen} />
     </ScrollView>
   );
 }

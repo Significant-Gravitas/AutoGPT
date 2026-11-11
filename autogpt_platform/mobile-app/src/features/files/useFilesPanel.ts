@@ -9,6 +9,7 @@ import {
 } from "@/lib/api/workspace";
 
 import { visibleFiles } from "./helpers";
+import { chatFiles } from "./listHelpers";
 
 interface Args {
   sessionID: string;
@@ -32,14 +33,24 @@ export function useFilesPanel({ sessionID, expertID, isOpen }: Args) {
     enabled: isOpen,
     select: visibleFiles,
   });
+  const expert = expertID ? toSection(expertFiles, expertFiles.data ?? []) : null;
+  // Until the expert's documents arrive we can't tell which chat files they
+  // already cover, so the chat list waits for them.
+  const isWaitingForExpert = Boolean(expert?.isLoading);
+  const session = toSection(
+    sessionFiles,
+    isWaitingForExpert
+      ? []
+      : chatFiles(sessionFiles.data ?? [], expertID ? (expertFiles.data ?? null) : null),
+  );
 
   function closeFile() {
     setOpenFile(null);
   }
 
   return {
-    session: toSection(sessionFiles),
-    expert: expertID ? toSection(expertFiles) : null,
+    session: { ...session, isLoading: session.isLoading || isWaitingForExpert },
+    expert,
     openFile,
     selectFile: setOpenFile,
     closeFile,
@@ -53,9 +64,9 @@ interface FilesQuery {
   refetch: () => Promise<unknown>;
 }
 
-function toSection(query: FilesQuery) {
+function toSection(query: FilesQuery, files: WorkspaceFile[]) {
   return {
-    files: query.data ?? [],
+    files,
     // Data first: a failed background refetch keeps showing the last list.
     isLoading: !query.data && query.isPending,
     isError: !query.data && query.isError,

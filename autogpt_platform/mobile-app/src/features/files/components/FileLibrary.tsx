@@ -4,47 +4,54 @@ import { createStyles, spacing } from "@/lib/theme";
 
 import { useFilesPanel } from "../useFilesPanel";
 import { FileSection } from "./FileSection";
+import { FilesEmptyState } from "./FilesEmptyState";
 import { FileViewer } from "./FileViewer";
 
 interface Props {
   sessionID: string;
-  expertID: string | null;
-  expertName: string | null;
+  expert: { id: string; name: string } | null;
   isOpen: boolean;
 }
 
-/** "This chat" files and, in an expert's chat, the expert's own. */
-export function FileLibrary({ sessionID, expertID, expertName, isOpen }: Props) {
-  const { session, expert, openFile, selectFile, closeFile } = useFilesPanel({
-    sessionID,
-    expertID,
-    isOpen,
-  });
+/**
+ * As on the web: this chat's files once there are any, then, in an expert's
+ * chat, all of that expert's documents. Otto's chat with no files gets one
+ * empty state.
+ */
+export function FileLibrary({ sessionID, expert, isOpen }: Props) {
+  const panel = useFilesPanel({ sessionID, expertID: expert?.id ?? null, isOpen });
   const styles = useStyles();
+  const { session } = panel;
+  // In an expert's chat only the documents section shows the wait.
+  const showSession =
+    session.isError || session.files.length > 0 || (session.isLoading && !expert);
 
   return (
     <View style={styles.library}>
-      <FileSection
-        title="This chat"
-        emptyText="No files in this chat yet."
-        files={session.files}
-        isLoading={session.isLoading}
-        isError={session.isError}
-        onRetry={session.retry}
-        onSelect={selectFile}
-      />
-      {expert ? (
+      {!showSession && !expert ? <FilesEmptyState /> : null}
+      {showSession ? (
         <FileSection
-          title={`${expertName ?? "Expert"}'s files`}
-          emptyText="No files yet."
-          files={expert.files}
-          isLoading={expert.isLoading}
-          isError={expert.isError}
-          onRetry={expert.retry}
-          onSelect={selectFile}
+          title="Files in this chat"
+          showCount
+          files={session.files}
+          isLoading={session.isLoading}
+          isError={session.isError}
+          onRetry={session.retry}
+          onSelect={panel.selectFile}
         />
       ) : null}
-      <FileViewer file={openFile} onClose={closeFile} />
+      {expert && panel.expert ? (
+        <FileSection
+          title={`All ${expert.name}'s documents`}
+          emptyText={`${expert.name} hasn't created any documents yet.`}
+          files={panel.expert.files}
+          isLoading={panel.expert.isLoading}
+          isError={panel.expert.isError}
+          onRetry={panel.expert.retry}
+          onSelect={panel.selectFile}
+        />
+      ) : null}
+      <FileViewer file={panel.openFile} onClose={panel.closeFile} />
     </View>
   );
 }

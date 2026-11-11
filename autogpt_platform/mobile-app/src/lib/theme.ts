@@ -24,6 +24,7 @@ const dark = {
   error: "#F87171",
   errorSurface: "#3A1616",
   success: "#4ADE80",
+  sky: "#38BDF8",
   avatarBorder: "rgba(255,255,255,0.12)",
   avatarTintBase: "#17171B",
 };
@@ -53,6 +54,7 @@ const light: Colors = {
   error: "#DC2626",
   errorSurface: "#FEF5F5",
   success: "#16A34A",
+  sky: "#0EA5E9",
   avatarBorder: "rgba(20,20,30,0.10)",
   avatarTintBase: "#FFFFFF",
 };

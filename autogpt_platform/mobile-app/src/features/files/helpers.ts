@@ -28,13 +28,6 @@ const TEXT_MIMES = new Set([
   "application/x-ndjson",
 ]);
 
-const KIND_LABELS: Record<FileKind, string> = {
-  markdown: "Markdown",
-  text: "Text",
-  image: "Image",
-  other: "File",
-};
-
 export const TEXT_DISPLAY_LIMIT = 200 * 1024;
 // How much of a larger text file the preview route sends.
 export const PREVIEW_BYTES = 131072;
@@ -70,28 +63,6 @@ export function fileKind(file: Pick<WorkspaceFile, "name" | "mime_type">): FileK
 function readExtension(name: string) {
   const dot = name.lastIndexOf(".");
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
-}
-
-export function kindLabel(kind: FileKind) {
-  return KIND_LABELS[kind];
-}
-
-const SIZE_UNITS = ["B", "KB", "MB", "GB", "TB"];
-
-export function formatFileSize(bytes: number) {
-  if (!bytes || bytes < 0) return "0 B";
-  const exponent = Math.min(
-    Math.floor(Math.log(bytes) / Math.log(1024)),
-    SIZE_UNITS.length - 1,
-  );
-  const value = bytes / Math.pow(1024, exponent);
-  const rounded = exponent === 0 ? value : Math.round(value * 10) / 10;
-  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-  return `${text} ${SIZE_UNITS[exponent]}`;
-}
-
-export function fileDetailLine(file: WorkspaceFile) {
-  return `${formatFileSize(file.size_bytes)} · ${kindLabel(fileKind(file))}`;
 }
 
 /** A file bigger than the display limit is previewed, not downloaded whole. */
