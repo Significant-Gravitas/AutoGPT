@@ -1816,6 +1816,11 @@ def _mock_reset_offer(mocker: pytest_mock.MockerFixture, balance: object) -> Asy
     from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
 
     """A subscriber stopped by a limit whose plan sells a reset for $80."""
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(22_666_667, 68_000_000, SubscriptionTier.MAX),
+    )
     resets_at = datetime.now(UTC) + timedelta(days=2)
     window = UsageWindow(used=1, limit=1, resets_at=resets_at)
     status = CoPilotUsageStatus(
