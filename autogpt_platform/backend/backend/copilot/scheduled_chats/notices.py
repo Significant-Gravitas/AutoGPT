@@ -11,7 +11,7 @@ keeps it out of everything the model reads (``hidden_rows``).
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Literal, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -190,13 +190,16 @@ def _usage_notice(
     if resets_at is None:
         when = "when the limit resets"
     else:
-        local = _in_timezone(resets_at, user_timezone)
+        # A reset can fall on any second of any day (each customer's own
+        # billing clock): round up to the minute, so the time shown is never
+        # before the reset, and date the weekly one, which can be over a week
+        # of weekdays away.
+        local = _in_timezone(_next_whole_minute(resets_at), user_timezone)
         clock = f"{local:%H:%M} {local.tzname()}"
-        # Monday 00:00 UTC is still Sunday for someone in Chicago.
         when = (
             f"when the limit resets at {clock}"
             if daily
-            else f"when the limit resets on {local:%A} at {clock}"
+            else f"when the limit resets on {local:%A} {local.day} {local:%B} at {clock}"
         )
     if run == "waits_for_reset":
         body = f"“{title}” will run {when}."
@@ -219,6 +222,12 @@ def _usage_notice(
             f"{resets_at.isoformat() if resets_at else 'unknown'}"
         ),
     )
+
+
+def _next_whole_minute(moment: datetime) -> datetime:
+    if moment.second == 0 and moment.microsecond == 0:
+        return moment
+    return moment.replace(second=0, microsecond=0) + timedelta(minutes=1)
 
 
 def _plan_notice(

@@ -32,6 +32,11 @@ class SubscriptionUpgradePreview(BaseModel):
     recurring_tax_included: bool
     billing_cycle: Literal["monthly", "yearly"]
     lines: list[UpgradeProrationLine]
+    # The upgrade starts a fresh billing month: the full new price is charged
+    # now, less a credit for the old plan's unused time, and the plan renews
+    # at ``period_end``, a full period from now. Decided when the charge is
+    # reviewed, and applied as reviewed.
+    resets_billing_date: bool = False
 
 
 class StoredUpgradePreview(BaseModel):

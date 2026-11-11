@@ -51,6 +51,14 @@ class PostHogEvent(StrEnum):
     # backend/copilot/limit_tracking.py (SECRT-3411): a usage limit refused,
     # paused or queued work, from any surface.
     CHAT_BLOCKED = "chat_blocked"
+    # backend/copilot/usage_clock.py (SECRT-3441): a Stripe-billed plan whose
+    # stored billing period has ended and Stripe hasn't confirmed the next
+    # one (held), or that has no stored period at all (missing).
+    USAGE_CLOCK_HELD = "usage_clock_held"
+    USAGE_CLOCK_MISSING = "usage_clock_missing"
+    # backend/api/features/chat/usage_extra_routes.py
+    USAGE_EXTRA_WEEK_PURCHASED = "usage_extra_week_purchased"
+    USAGE_EXTRA_WEEK_REFUSED = "usage_extra_week_refused"
     # backend/copilot/gate/shadow.py
     CHAT_READ_SCREEN_SHADOW_DECISION = "chat_read_screen_shadow_decision"
 

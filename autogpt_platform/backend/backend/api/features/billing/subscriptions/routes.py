@@ -25,6 +25,7 @@ from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
 from backend.copilot.rate_limit import get_tier_multipliers
+from backend.copilot.usage_mode import billing_clock_live
 from backend.data import checkout_audience
 from backend.data.credit import (
     BillingCycle,
@@ -157,6 +158,16 @@ class SubscriptionStatusResponse(BaseModel):
             "Unix timestamp of the active subscription's current_period_end. Used"
             " to show the date Stripe will issue the next invoice (with prorated"
             " upgrade charges, if any). None when no active sub."
+        ),
+    )
+    upgrade_resets_billing_date: bool = Field(
+        default=False,
+        description=(
+            "An upgrade made now starts a fresh billing month: the full new"
+            " price is charged, less a credit for the unused part of the"
+            " current plan, the plan renews a full period from today, and the"
+            " usage limits start over. False while an upgrade is still"
+            " prorated inside the current billing period."
         ),
     )
     paused_workflow_schedules: int = Field(
@@ -348,6 +359,7 @@ async def get_subscription_status(
         proration_credit_cents=proration_credit,
         has_active_stripe_subscription=current_period_end is not None,
         current_period_end=current_period_end,
+        upgrade_resets_billing_date=await billing_clock_live(),
         paused_workflow_schedules=paused_workflow_schedules,
     )
     if pending is not None:

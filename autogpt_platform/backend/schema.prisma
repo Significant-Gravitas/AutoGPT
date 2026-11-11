@@ -205,6 +205,8 @@ model User {
   subscriptionEndedAt DateTime?
   subscriptionTrial SubscriptionTrial?
   paidUsageActivation PaidUsageActivation?
+  usageBillingClock UsageBillingClock?
+  usageExtraAllowances UsageExtraAllowance[]
   proActivationAttempt ProActivationAttempt?
 
   // Relations
@@ -352,6 +354,42 @@ model PaidUsageActivation {
   stripeInvoiceId      String @unique
   readyAt              DateTime?
   createdAt            DateTime @default(now())
+}
+
+// The customer's current Stripe billing period, copied from Stripe so usage
+// limits can reset on it. Unix seconds, UTC. Written only forwards: a period
+// that starts earlier never replaces one that starts later.
+model UsageBillingClock {
+  userId               String @id
+  user                 User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String
+  periodStart          BigInt
+  periodEnd            BigInt
+  // Stripe's billing_cycle_anchor: the day of month a yearly plan's months fall on.
+  billingCycleAnchor   BigInt?
+  updatedAt            DateTime @default(now()) @updatedAt
+}
+
+// One paid extra week of usage, bought with credits in the same transaction
+// as its CreditTransaction (key "EXTRA-WEEK-<purchaseKey>"). Unix seconds, UTC.
+model UsageExtraAllowance {
+  id                 String @id @default(uuid())
+  userId             String
+  user               User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // The buyer's idempotency key: a retried purchase returns this row.
+  purchaseKey        String
+  tier               SubscriptionTier
+  // The plan's weekly limit when it was bought.
+  amountMicrodollars BigInt
+  usedMicrodollars   BigInt @default(0)
+  priceCredits       Int
+  purchasedAt        BigInt
+  // purchasedAt + 30 days, whatever resets or plan changes happen meanwhile.
+  expiresAt          BigInt
+  createdAt          DateTime @default(now())
+
+  @@unique([userId, purchaseKey])
+  @@index([userId, expiresAt])
 }
 
 // Cutover fence: old settled payments cannot become new activation resets on replay.

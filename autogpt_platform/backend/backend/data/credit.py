@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 from urllib.parse import urlsplit, urlunsplit
 
 import stripe
+from prisma import Prisma
 from prisma.enums import (
     CreditRefundRequestStatus,
     CreditTransactionType,
@@ -23,6 +24,7 @@ from prisma.types import (
 from pydantic import BaseModel
 
 from backend.api.features.admin.model import UserHistoryResponse
+from backend.copilot.usage_mode import billing_clock_live
 from backend.data import subscription_activation, subscription_trial_stripe
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.credit_history import get_credit_history
@@ -62,6 +64,7 @@ from backend.data.subscription_upgrade_models import (
     StoredUpgradePreview,
     UpgradePreviewUnavailable,
 )
+from backend.data.usage_clock import save_billing_clock
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.data.wallet_payment_state import invoice_paid_from_wallet
 from backend.notifications.queue import queue_notification_async
@@ -568,10 +571,14 @@ class UserCreditBase(ABC):
         fail_insufficient_credits: bool = True,
         floor_balance: int = 0,
         metadata: SafeJson = SafeJson({}),
+        client: Prisma | None = None,
     ) -> tuple[int, str]:
         """
         Add a new transaction for the user.
         This is the only method that should be used to add a new transaction.
+
+        ``client`` runs the balance statement inside the caller's database
+        transaction, so the charge commits or rolls back with what it pays for.
 
         ATOMIC OPERATION DESIGN DECISION:
         ================================
@@ -727,6 +734,7 @@ class UserCreditBase(ABC):
                 transaction_key,  # $9 - transaction key (nullable)
                 POSTGRES_INT_MIN,  # $10 - underflow protection
                 floor_balance,  # $11 - lowest balance a checked deduction may leave
+                client=client,
             )
         except Exception as e:
             # Convert raw SQL unique constraint violations to UniqueViolationError
@@ -2428,7 +2436,10 @@ async def modify_stripe_subscription_for_tier(
     Upgrades (e.g. PRO→BUSINESS) apply immediately via ``stripe.Subscription.modify``
     with ``proration_behavior="always_invoice"``: Stripe credits unused time on
     the old plan and charges the pro-rated amount for the new plan in the same
-    billing cycle.
+    billing cycle. Once usage limits run on the billing clock
+    (``billing_clock_live``), the upgrade also sets ``billing_cycle_anchor="now"``:
+    Stripe charges the full new price less that credit and starts a new billing
+    period, and with it fresh usage windows.
 
     Downgrades (e.g. BUSINESS→PRO) are deferred to the end of the current billing
     period via a Stripe Subscription Schedule: the user keeps their current tier
@@ -2544,11 +2555,25 @@ async def modify_stripe_subscription_for_tier(
             )
         if sub.cancel_at_period_end:
             modify_kwargs["cancel_at_period_end"] = False
+        # Once usage limits run on the billing clock, an upgrade starts a
+        # fresh billing month: the full new price now, less a credit for the
+        # unused part of the old plan, and the usage windows restart with it.
+        # Until then (and after a rollback) the period is kept, as before.
+        # A reviewed upgrade is applied as it was reviewed.
+        resets_billing_date = (
+            upgrade_preview.preview.resets_billing_date
+            if upgrade_preview is not None
+            else await billing_clock_live()
+        )
+        if resets_billing_date:
+            modify_kwargs["billing_cycle_anchor"] = "now"
 
         # Retire definitive failures cached by Stripe. Connection errors and
         # 5xx may have charged, so they must retain the same idempotency key.
         try:
-            await stripe_call(stripe.Subscription.modify_async, sub_id, **modify_kwargs)
+            upgraded = await stripe_call(
+                stripe.Subscription.modify_async, sub_id, **modify_kwargs
+            )
         except stripe.CardError:
             if upgrade_preview is not None:
                 await discard_subscription_upgrade_preview(
@@ -2576,6 +2601,8 @@ async def modify_stripe_subscription_for_tier(
         # AttributeError etc. propagate so programming errors surface in Sentry
         # instead of being silently masked as benign DB-write-swallow events.
         db_flip_succeeded = False
+        # The new period is in Stripe's answer; the webhook copies it too.
+        await _copy_billing_clock(user_id, upgraded)
         try:
             await set_subscription_tier(user_id, tier)
             db_flip_succeeded = True
@@ -2606,6 +2633,7 @@ async def modify_stripe_subscription_for_tier(
                     "previous_subscription_tier": current_tier.value,
                     "subscription_tier": tier.value,
                     "billing_cycle": billing_cycle,
+                    "billing_date_reset": resets_billing_date,
                 },
             )
         return True
@@ -3316,6 +3344,7 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
         await end_revived_plan(new_sub_id)
         return
     if status in ("active", "trialing"):
+        await _copy_billing_clock(user.id, stripe_subscription)
         price_id = ""
         items = stripe_subscription.get("items", {}).get("data", [])
         if items:
@@ -3491,6 +3520,24 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
                 "billing_cycle": billing_cycle,
             },
         )
+
+
+async def _copy_billing_clock(
+    user_id: str, subscription: stripe.Subscription | dict
+) -> None:
+    """Copy a live subscription's billing period, which usage limits reset on.
+
+    Before any check of its invoice: a renewal's invoice is an unpaid draft
+    for about an hour, and the new month's allowance starts with the period,
+    not with the charge. A plan whose renewal failed is ``past_due``, never
+    reaches here, and has no tier to use the clock with. A failure is logged
+    and left to the next event, the sweep or the limiter's own re-read: the
+    tier this sync is about to write matters more than the clock.
+    """
+    try:
+        await save_billing_clock(user_id, dict(subscription))
+    except Exception:
+        logger.exception(f"Could not copy the billing clock of user {user_id}")
 
 
 async def sync_subscription_schedule_from_stripe(stripe_schedule: dict) -> None:

@@ -74,6 +74,12 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
+    # Per-plan daily, weekly and reserve limits and the extra-week price
+    # (backend/copilot/usage_limits.py).
+    USAGE_PLAN_LIMITS = "usage-plan-limits"
+    # The second from which usage limits run on each customer's billing clock
+    # (backend/copilot/usage_mode.py).
+    USAGE_BILLING_CLOCK = "usage-billing-clock"
 
     # Gates Otto voice mode end-to-end. The speech endpoint 404s when
     # off so a stale frontend cannot spend TTS budget. Fail-closed.
@@ -320,6 +326,16 @@ async def get_feature_flag_value(
     return value
 
 
+async def read_feature_flag(flag_key: str, user_id: str) -> tuple[Any, bool]:
+    """``(value, answered)`` for one raw flag read.
+
+    ``answered`` is False when PostHog gave no answer (not configured, down,
+    flag not loaded), which a caller that must not flip on an outage can tell
+    from a conclusive "off" (``False, True``).
+    """
+    return await _evaluate_flag_value(flag_key, user_id)
+
+
 async def evaluate_experiment_variant(flag_key: str, user_id: str) -> str | None:
     """The arm PostHog buckets *user_id* into for an experiment, or None.
 
@@ -466,6 +482,8 @@ _NON_BOOLEAN_FLAG_VALUES: frozenset[str] = frozenset(
         Flag.COPILOT_TIER_WORKSPACE_STORAGE_LIMITS.value,
         Flag.COPILOT_TIER_STRIPE_PRICES.value,
         Flag.CARD_REQUIRED_TRIAL_OFFER.value,
+        Flag.USAGE_PLAN_LIMITS.value,
+        Flag.USAGE_BILLING_CLOCK.value,
     }
 )
 

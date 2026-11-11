@@ -205,6 +205,15 @@ async def _blocking_reset(user_id: str) -> datetime:
     status = await get_usage_status(
         user_id, daily_limit, weekly_limit, tier=tier, fail_closed=True
     )
+    if status.on_billing_clock:
+        # The gate's own verdict: a full week doesn't stop a turn that today's
+        # reserve or a paid extra week still covers. The wait is for the limit
+        # that does stop it, so for the weekly reset when the week is used up,
+        # not for the small daily reserve that arrives first.
+        if status.blocked_by is None:
+            raise NoResetAhead("not_out_of_budget")
+        blocking = status.weekly if status.blocked_by == "weekly" else status.daily
+        return blocking.resets_at
     # As in ``check_rate_limit``: a negative limit means no cap at all.
     exhausted = [w for w in (status.daily, status.weekly) if 0 <= w.limit <= w.used]
     if not exhausted:
