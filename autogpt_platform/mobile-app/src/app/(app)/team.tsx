@@ -2,10 +2,15 @@ import { FlatList, RefreshControl, Text, View } from "react-native";
 
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { ExpertCard, PlaceholderCard } from "@/features/team/components/ExpertCard";
-import { avatarSource, roleLine, statusLine } from "@/features/team/helpers";
+import {
+  avatarSource,
+  avatarTint,
+  roleLine,
+  statusLine,
+} from "@/features/team/helpers";
 import { useTeamScreen } from "@/features/team/useTeamScreen";
 import type { Expert } from "@/lib/api/experts";
-import { OTTO_AVATAR_URL, OTTO_NAME } from "@/lib/otto";
+import { OTTO_AVATAR_URL, OTTO_NAME, OTTO_TINT } from "@/lib/otto";
 import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 export default function TeamScreen() {
@@ -33,6 +38,7 @@ export default function TeamScreen() {
         <ExpertCard
           name={OTTO_NAME}
           avatar={OTTO_AVATAR_URL}
+          tint={OTTO_TINT}
           detail="Ask anything, or hand off a task"
           onPress={openOtto}
         />
@@ -72,6 +78,7 @@ export default function TeamScreen() {
       <ExpertCard
         name={item.name}
         avatar={avatarSource(item)}
+        tint={avatarTint(item)}
         detail={roleLine(item)}
         status={statusLine(item)}
         isOpening={openingID === item.id}

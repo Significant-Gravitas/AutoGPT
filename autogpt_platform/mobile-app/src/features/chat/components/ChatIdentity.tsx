@@ -7,13 +7,14 @@ interface Props {
   name: string;
   role: string | null;
   avatar: string | null;
+  tint: string | null;
 }
 
-export function ChatIdentity({ name, role, avatar }: Props) {
+export function ChatIdentity({ name, role, avatar, tint }: Props) {
   const styles = useStyles();
   return (
     <View accessibilityRole="header" style={styles.row}>
-      <ExpertAvatar name={name} source={avatar} size={32} />
+      <ExpertAvatar name={name} source={avatar} tint={tint} size={32} />
       <View style={styles.text}>
         <Text numberOfLines={1} style={styles.name}>
           {name}

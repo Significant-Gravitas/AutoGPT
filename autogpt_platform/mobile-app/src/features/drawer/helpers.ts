@@ -1,7 +1,8 @@
 import type { SessionSummary } from "@/lib/api/chat";
 import type { Expert } from "@/lib/api/experts";
-import { OTTO_AVATAR_URL, OTTO_NAME, OTTO_ROLE } from "@/lib/otto";
-import { avatarSource, roleLine } from "@/features/team/helpers";
+import { palette } from "@/lib/expertPalette";
+import { OTTO_AVATAR_URL, OTTO_NAME, OTTO_ROLE, OTTO_TINT } from "@/lib/otto";
+import { avatarSource, avatarTint, roleLine } from "@/features/team/helpers";
 
 // The list route's maximum page size.
 export const DRAWER_SESSION_LIMIT = 100;
@@ -11,6 +12,7 @@ export interface ChatGroup {
   label: string;
   role: string | null;
   avatar: string | null;
+  tint: string;
   isOtto: boolean;
   sessions: SessionSummary[];
 }
@@ -55,6 +57,7 @@ function toGroup(
       label: OTTO_NAME,
       role: OTTO_ROLE,
       avatar: OTTO_AVATAR_URL,
+      tint: OTTO_TINT,
       isOtto: true,
       sessions,
     };
@@ -65,6 +68,7 @@ function toGroup(
     label: expert?.name || "Expert",
     role: expert ? roleLine(expert) : null,
     avatar: expert ? avatarSource(expert) : null,
+    tint: expert ? avatarTint(expert) : palette.general.hex,
     isOtto: false,
     sessions,
   };

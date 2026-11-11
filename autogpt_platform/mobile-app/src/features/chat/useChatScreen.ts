@@ -8,8 +8,8 @@ import {
   isSessionID,
 } from "@/lib/api/chat";
 import { expertKeys, listExperts } from "@/lib/api/experts";
-import { avatarSource, roleLine } from "@/features/team/helpers";
-import { OTTO_AVATAR_URL, OTTO_NAME, OTTO_ROLE } from "@/lib/otto";
+import { avatarSource, avatarTint, roleLine } from "@/features/team/helpers";
+import { OTTO_AVATAR_URL, OTTO_NAME, OTTO_ROLE, OTTO_TINT } from "@/lib/otto";
 
 /** `routeSessionID` comes from the URL, which a deep link controls. */
 export function useChatScreen(routeSessionID: unknown) {
@@ -32,15 +32,21 @@ export function useChatScreen(routeSessionID: unknown) {
   function readIdentity() {
     if (!detail.data) return null;
     if (!expertID) {
-      return { name: OTTO_NAME, role: OTTO_ROLE, avatar: OTTO_AVATAR_URL };
+      return {
+        name: OTTO_NAME,
+        role: OTTO_ROLE,
+        avatar: OTTO_AVATAR_URL,
+        tint: OTTO_TINT,
+      };
     }
     if (experts.isPending) return null;
     const expert = experts.data?.find((item) => item.id === expertID);
-    if (!expert) return { name: "Expert", role: null, avatar: null };
+    if (!expert) return { name: "Expert", role: null, avatar: null, tint: null };
     return {
       name: expert.name,
       role: roleLine(expert),
       avatar: avatarSource(expert),
+      tint: avatarTint(expert),
     };
   }
 

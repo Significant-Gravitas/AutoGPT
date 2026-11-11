@@ -1,5 +1,6 @@
 import type { Expert } from "@/lib/api/experts";
 import { FRONTEND_URL } from "@/lib/env";
+import { expertTint } from "@/lib/expertPalette";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -16,6 +17,16 @@ export function avatarSource(expert: Pick<Expert, "avatar_url">) {
   if (/^https:\/\//i.test(url)) return url;
   if (/^http:\/\//i.test(url) && /^http:\/\//i.test(FRONTEND_URL)) return url;
   return null;
+}
+
+export function avatarTint(
+  expert: Pick<Expert, "avatar_url" | "categories" | "role">,
+) {
+  return expertTint({
+    avatarUrl: expert.avatar_url,
+    categories: expert.categories,
+    role: expert.role,
+  });
 }
 
 export function relativeTime(iso: string, now = Date.now()) {

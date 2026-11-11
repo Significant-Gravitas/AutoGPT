@@ -7,6 +7,7 @@ export interface Expert {
   role: string;
   job_title: string | null;
   tagline: string | null;
+  categories: string[];
   last_run_at: string | null;
   last_run_status: string | null;
   schedules_paused_at: string | null;

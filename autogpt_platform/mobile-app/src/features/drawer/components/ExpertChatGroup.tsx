@@ -71,7 +71,12 @@ export function ExpertChatGroup({
         onPress={toggle}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}
       >
-        <ExpertAvatar name={group.label} source={group.avatar} size={AVATAR_SIZE} />
+        <ExpertAvatar
+          name={group.label}
+          source={group.avatar}
+          tint={group.tint}
+          size={AVATAR_SIZE}
+        />
         <View style={styles.identity}>
           <View style={styles.nameRow}>
             <Text numberOfLines={1} style={styles.name}>

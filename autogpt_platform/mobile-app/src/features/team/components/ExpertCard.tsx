@@ -8,6 +8,7 @@ const AVATAR_SIZE = 48;
 interface Props {
   name: string;
   avatar: string | number | null;
+  tint: string;
   detail?: string | null;
   status?: string | null;
   isOpening?: boolean;
@@ -17,6 +18,7 @@ interface Props {
 export function ExpertCard({
   name,
   avatar,
+  tint,
   detail,
   status,
   isOpening,
@@ -32,7 +34,7 @@ export function ExpertCard({
       onPress={onPress}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
-      <ExpertAvatar name={name} source={avatar} size={AVATAR_SIZE} />
+      <ExpertAvatar name={name} source={avatar} tint={tint} size={AVATAR_SIZE} />
       <View style={styles.text}>
         <Text numberOfLines={1} style={styles.name}>
           {name}
