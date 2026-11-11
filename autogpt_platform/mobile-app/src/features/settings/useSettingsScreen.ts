@@ -48,14 +48,15 @@ export function useSettingsScreen() {
 
   // Next.js links change the page with pushState, which never reaches
   // handleNavigation, so a page outside Settings is undone here instead.
-  function handleStateChange({ url, canGoBack }: WebViewNavigation) {
+  function handleStateChange({ url, canGoBack, loading }: WebViewNavigation) {
     if (url === "about:blank") {
       isGoingBack.current = false;
       return;
     }
     if (isAllowedSettingsURL(url)) {
       isGoingBack.current = false;
-      hasShownSettings.current = true;
+      // Load start reports the URL too, before a redirect away from it.
+      if (!loading) hasShownSettings.current = true;
       return;
     }
     if (!canGoBack) {
