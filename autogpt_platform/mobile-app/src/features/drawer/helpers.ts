@@ -15,6 +15,14 @@ export interface ChatGroup {
   tint: string;
   isOtto: boolean;
   sessions: SessionSummary[];
+  /** The group's most recently updated chat. */
+  latest: SessionSummary;
+  isBusy: boolean;
+}
+
+export interface ChatMatch {
+  session: SessionSummary;
+  group: ChatGroup;
 }
 
 // Same order as the web sidebar: Otto first, then each expert in the order
@@ -46,11 +54,45 @@ export function chatCountLabel(count: number, isTruncated: boolean) {
   return isTruncated ? `${count}+` : String(count);
 }
 
+export function chatTitle(session: SessionSummary) {
+  return session.title || "New chat";
+}
+
+/** Loaded chats whose title or expert name holds the query, newest first. */
+export function searchChats(groups: ChatGroup[], query: string): ChatMatch[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+  return groups
+    .flatMap((group) => group.sessions.map((session) => ({ session, group })))
+    .filter(
+      ({ session, group }) =>
+        (session.title ?? "").toLowerCase().includes(needle) ||
+        group.label.toLowerCase().includes(needle),
+    )
+    .sort((a, b) => updatedAt(b.session) - updatedAt(a.session));
+}
+
+function updatedAt(session: SessionSummary) {
+  const time = Date.parse(session.updated_at);
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function latestOf(sessions: SessionSummary[]) {
+  return sessions.reduce((latest, session) =>
+    updatedAt(session) > updatedAt(latest) ? session : latest,
+  );
+}
+
 function toGroup(
   expertID: string | null,
   sessions: SessionSummary[],
   expertsByID: Map<string, Expert>,
 ): ChatGroup {
+  const shared = {
+    sessions,
+    latest: latestOf(sessions),
+    isBusy: sessions.some((session) => session.is_processing),
+  };
   if (!expertID) {
     return {
       key: "otto",
@@ -59,7 +101,7 @@ function toGroup(
       avatar: OTTO_AVATAR_URL,
       tint: OTTO_TINT,
       isOtto: true,
-      sessions,
+      ...shared,
     };
   }
   const expert = expertsByID.get(expertID);
@@ -70,6 +112,6 @@ function toGroup(
     avatar: expert ? avatarSource(expert) : null,
     tint: expert ? avatarTint(expert) : palette.general.hex,
     isOtto: false,
-    sessions,
+    ...shared,
   };
 }

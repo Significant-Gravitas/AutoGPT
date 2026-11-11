@@ -15,10 +15,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { DRAWER_SESSION_LIMIT } from "@/features/drawer/helpers";
 import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
-import { ExpertChatGroup } from "./components/ExpertChatGroup";
+import { DrawerSearchField } from "./components/DrawerSearchField";
+import { ExpertRecentRow } from "./components/ExpertRecentRow";
+import { RecentHeading } from "./components/RecentHeading";
+import { SearchResultRow } from "./components/SearchResultRow";
 import { DrawerRow } from "./DrawerRow";
 import { useAppDrawer } from "./useAppDrawer";
 
@@ -29,8 +31,11 @@ interface Props {
 export function AppDrawerContent({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const {
+    query,
+    setQuery,
+    isSearching,
     groups,
-    isTruncated,
+    matches,
     isLoading,
     isError,
     refetch,
@@ -40,6 +45,7 @@ export function AppDrawerContent({ navigation }: Props) {
     openChat,
     newChat,
     openTeam,
+    openAllChats,
     openSettings,
     handleSignOut,
   } = useAppDrawer(navigation);
@@ -69,39 +75,54 @@ export function AppDrawerContent({ navigation }: Props) {
       ]}
     >
       <View style={styles.section}>
+        <DrawerSearchField value={query} onChangeText={setQuery} />
         <DrawerRow icon={PencilEdit02Icon} label="New chat" onPress={newChat} />
         <DrawerRow icon={UserGroupIcon} label="Your team" onPress={openTeam} />
       </View>
-      <Text style={styles.heading}>Recent chats</Text>
-      <FlatList
-        data={groups}
-        keyExtractor={(group) => group.key}
-        renderItem={({ item }) => (
-          <ExpertChatGroup
-            group={item}
-            isTruncated={isTruncated}
-            activeSessionID={activeSessionID}
-            onOpenChat={openChat}
+      {isSearching ? (
+        <FlatList
+          data={matches}
+          keyExtractor={(match) => match.session.id}
+          renderItem={({ item }) => (
+            <SearchResultRow
+              match={item}
+              isActive={item.session.id === activeSessionID}
+              onOpenChat={openChat}
+            />
+          )}
+          ListEmptyComponent={<Text style={styles.notice}>No chats match.</Text>}
+          keyboardShouldPersistTaps="handled"
+          style={styles.list}
+          contentContainerStyle={styles.searchContent}
+        />
+      ) : (
+        <>
+          <RecentHeading onOpenAllChats={openAllChats} />
+          <FlatList
+            data={groups}
+            keyExtractor={(group) => group.key}
+            renderItem={({ item }) => (
+              <ExpertRecentRow
+                group={item}
+                isActive={item.sessions.some(
+                  (session) => session.id === activeSessionID,
+                )}
+                onOpenChat={openChat}
+              />
+            )}
+            ListEmptyComponent={renderEmpty}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefetching}
+                onRefresh={handleRefresh}
+                tintColor={colors.textTertiary}
+              />
+            }
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
           />
-        )}
-        ListEmptyComponent={renderEmpty}
-        ListFooterComponent={
-          isTruncated ? (
-            <Text style={styles.notice}>
-              Showing your {DRAWER_SESSION_LIMIT} most recent chats.
-            </Text>
-          ) : undefined
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={handleRefresh}
-            tintColor={colors.textTertiary}
-          />
-        }
-        style={styles.list}
-        contentContainerStyle={styles.listContent}
-      />
+        </>
+      )}
       <View style={[styles.section, styles.footer]}>
         {email ? (
           <Text numberOfLines={1} style={styles.email}>
@@ -122,15 +143,9 @@ const useStyles = createStyles((colors) => ({
     backgroundColor: colors.background,
   },
   section: { gap: spacing.xs },
-  heading: {
-    ...type.small,
-    color: colors.textTertiary,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xs,
-  },
   list: { flex: 1 },
-  listContent: { flexGrow: 1, gap: spacing.sm },
+  listContent: { flexGrow: 1, gap: 2 },
+  searchContent: { flexGrow: 1, gap: 2, paddingTop: spacing.sm },
   notice: {
     ...type.small,
     color: colors.textSecondary,

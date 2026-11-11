@@ -1,10 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { router, usePathname } from "expo-router";
 import type { DrawerContentComponentProps } from "expo-router/drawer";
+import { useState } from "react";
 
 import {
   DRAWER_SESSION_LIMIT,
   groupChatsByExpert,
+  searchChats,
 } from "@/features/drawer/helpers";
 import { chatKeys, listSessionsPage } from "@/lib/api/chat";
 import { expertKeys, listExperts } from "@/lib/api/experts";
@@ -16,6 +18,7 @@ const CHAT_PATH_PREFIX = "/chat/";
 export function useAppDrawer(navigation: DrawerContentComponentProps["navigation"]) {
   const pathname = usePathname();
   const { data: session } = authClient.useSession();
+  const [query, setQuery] = useState("");
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: chatKeys.sessions,
     queryFn: () => listSessionsPage({ limit: DRAWER_SESSION_LIMIT }),
@@ -44,6 +47,11 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
     navigation.closeDrawer();
   }
 
+  function openAllChats() {
+    router.navigate("/chats");
+    navigation.closeDrawer();
+  }
+
   function openSettings() {
     router.navigate("/settings");
     navigation.closeDrawer();
@@ -54,11 +62,14 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
     void signOut();
   }
 
-  const sessions = data?.sessions ?? [];
+  const groups = groupChatsByExpert(data?.sessions ?? [], experts.data ?? []);
 
   return {
-    groups: groupChatsByExpert(sessions, experts.data ?? []),
-    isTruncated: (data?.total ?? 0) > sessions.length,
+    query,
+    setQuery,
+    isSearching: query.trim().length > 0,
+    groups,
+    matches: searchChats(groups, query),
     isLoading,
     isError,
     refetch,
@@ -68,6 +79,7 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
     openChat,
     newChat,
     openTeam,
+    openAllChats,
     openSettings,
     handleSignOut,
   };
