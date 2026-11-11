@@ -1,5 +1,6 @@
 import { skipToken, useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
+import { useState } from "react";
 
 import {
   chatKeys,
@@ -13,6 +14,7 @@ import { OTTO_AVATAR_URL, OTTO_NAME, OTTO_ROLE } from "@/lib/otto";
 /** `routeSessionID` comes from the URL, which a deep link controls. */
 export function useChatScreen(routeSessionID: unknown) {
   const sessionID = isSessionID(routeSessionID) ? routeSessionID : null;
+  const [isFilesOpen, setIsFilesOpen] = useState(false);
   const detail = useQuery({
     queryKey: chatKeys.session(sessionID ?? ""),
     queryFn: sessionID ? () => getSession(sessionID) : skipToken,
@@ -46,12 +48,24 @@ export function useChatScreen(routeSessionID: unknown) {
     router.navigate("/");
   }
 
+  function openFiles() {
+    setIsFilesOpen(true);
+  }
+
+  function closeFiles() {
+    setIsFilesOpen(false);
+  }
+
   return {
     sessionID,
     detail: detail.data,
     isPending: sessionID !== null && detail.isPending,
     refetch: detail.refetch,
+    expertID,
     identity: readIdentity(),
     newChat,
+    isFilesOpen,
+    openFiles,
+    closeFiles,
   };
 }

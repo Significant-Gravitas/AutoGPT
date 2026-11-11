@@ -49,5 +49,10 @@ const styles = StyleSheet.create({
   },
   title: { ...type.heading, flex: 1, color: colors.text, textAlign: "center" },
   center: { flex: 1, alignItems: "center" },
-  right: { width: 40, alignItems: "flex-end" },
+  right: {
+    minWidth: 40,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: spacing.xs,
+  },
 });
