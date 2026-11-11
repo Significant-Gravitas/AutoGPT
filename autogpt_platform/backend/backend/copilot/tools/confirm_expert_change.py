@@ -110,6 +110,7 @@ class ConfirmExpertChangeTool(BaseTool):
             proposal,
             # A chat-platform conversation renders no card to point at.
             on_card=session.metadata.source_platform is None,
+            handing_off=proposal.handoff is not None and proposal.hand_off,
         )
         task = proposal.handoff
         if task is None or not isinstance(applied, ExpertChangeAppliedResponse):

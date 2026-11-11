@@ -162,10 +162,11 @@ def _env(
 @contextmanager
 def _has_chats():
     """The expert already has a chat with the user (a re-hire)."""
-    with patch(
-        "backend.copilot.tools.expert_delegation.get_user_sessions",
-        AsyncMock(return_value=([SimpleNamespace(session_id="old")], 1)),
-    ):
+    chats = MagicMock()
+    chats.get_user_chat_sessions = AsyncMock(
+        return_value=[SimpleNamespace(session_id="old")]
+    )
+    with patch("backend.copilot.tools.expert_delegation.chat_db", lambda: chats):
         yield
 
 
@@ -276,6 +277,20 @@ class TestHireAndHandOffInOneApproval:
         assert "tool:get_sub_session_result (sub_session_id: thread-1)" in (
             resp.message
         )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_hire_and_start_reads_whether_a_chat_exists_once(
+        self, stub_expert_chat_lookup
+    ):
+        """The hand-off's report replaces the hire's applied message, so only
+        the first-turn check reads the expert's chats."""
+        with _env():
+            session = make_session(_USER)
+            preview = await _propose_with_task(session)
+            assert preview.handoff_confirmation_id
+            await _confirm(_approve(session), preview.handoff_confirmation_id)
+
+        stub_expert_chat_lookup.get_user_chat_sessions.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_hire_with_no_task_points_at_the_chat_button(self):

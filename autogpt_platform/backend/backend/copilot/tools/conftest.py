@@ -48,11 +48,14 @@ def stub_expert_chat_lookup(monkeypatch):
     turn from a later one. Without a connected Prisma client that read is the
     DatabaseManager RPC client, whose retries would stall every hire and
     delegation test; by default the expert has no chat yet. Tests that need
-    one patch ``expert_delegation.get_user_sessions`` themselves."""
+    one patch ``expert_delegation.chat_db`` themselves; the fixture's value is the
+    stub, for tests that count the reads."""
+    chats = MagicMock()
+    chats.get_user_chat_sessions = AsyncMock(return_value=[])
     monkeypatch.setattr(
-        "backend.copilot.tools.expert_delegation.get_user_sessions",
-        AsyncMock(return_value=([], 0)),
+        "backend.copilot.tools.expert_delegation.chat_db", lambda: chats
     )
+    return chats
 
 
 @pytest.fixture(autouse=True)
