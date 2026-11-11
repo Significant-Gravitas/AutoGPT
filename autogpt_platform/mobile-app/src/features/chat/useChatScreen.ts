@@ -5,9 +5,10 @@ import {
   chatKeys,
   getSession,
   isSessionID,
-  listSessions,
 } from "@/lib/api/chat";
 import { expertKeys, listExperts } from "@/lib/api/experts";
+import { avatarSource, roleLine } from "@/features/team/helpers";
+import { OTTO_AVATAR_URL, OTTO_NAME, OTTO_ROLE } from "@/lib/otto";
 
 /** `routeSessionID` comes from the URL, which a deep link controls. */
 export function useChatScreen(routeSessionID: unknown) {
@@ -19,21 +20,27 @@ export function useChatScreen(routeSessionID: unknown) {
     // load fresh rather than start from an old copy.
     gcTime: 0,
   });
-  const { data: sessions } = useQuery({
-    queryKey: chatKeys.sessions,
-    queryFn: () => listSessions(),
-  });
-
   const expertID = detail.data?.expert_id ?? null;
-  const { data: experts } = useQuery({
+  const experts = useQuery({
     queryKey: expertKeys.list,
     queryFn: listExperts,
     enabled: expertID !== null,
   });
 
-  const summary = sessions?.find((session) => session.id === sessionID);
-  const expert = experts?.find((item) => item.id === expertID);
-  const title = expert?.name || summary?.title || "Otto";
+  function readIdentity() {
+    if (!detail.data) return null;
+    if (!expertID) {
+      return { name: OTTO_NAME, role: OTTO_ROLE, avatar: OTTO_AVATAR_URL };
+    }
+    if (experts.isPending) return null;
+    const expert = experts.data?.find((item) => item.id === expertID);
+    if (!expert) return { name: "Expert", role: null, avatar: null };
+    return {
+      name: expert.name,
+      role: roleLine(expert),
+      avatar: avatarSource(expert),
+    };
+  }
 
   function newChat() {
     router.navigate("/");
@@ -44,7 +51,7 @@ export function useChatScreen(routeSessionID: unknown) {
     detail: detail.data,
     isPending: sessionID !== null && detail.isPending,
     refetch: detail.refetch,
-    title,
+    identity: readIdentity(),
     newChat,
   };
 }

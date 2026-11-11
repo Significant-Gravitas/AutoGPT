@@ -11,10 +11,11 @@ import { IconButton } from "./IconButton";
 
 interface Props {
   title?: string;
+  center?: ReactNode;
   right?: ReactNode;
 }
 
-export function ScreenHeader({ title, right }: Props) {
+export function ScreenHeader({ title, center, right }: Props) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
 
@@ -25,9 +26,13 @@ export function ScreenHeader({ title, right }: Props) {
   return (
     <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
       <IconButton icon={Menu01Icon} label="Open menu" onPress={openMenu} />
-      <Text numberOfLines={1} style={styles.title}>
-        {title}
-      </Text>
+      {center ? (
+        <View style={styles.center}>{center}</View>
+      ) : (
+        <Text numberOfLines={1} style={styles.title}>
+          {title}
+        </Text>
+      )}
       <View style={styles.right}>{right}</View>
     </View>
   );
@@ -43,5 +48,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   title: { ...type.heading, flex: 1, color: colors.text, textAlign: "center" },
+  center: { flex: 1, alignItems: "center" },
   right: { width: 40, alignItems: "flex-end" },
 });

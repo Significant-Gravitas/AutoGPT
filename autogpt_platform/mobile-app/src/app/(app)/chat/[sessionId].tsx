@@ -4,13 +4,14 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 
 import { IconButton } from "@/components/IconButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { ChatIdentity } from "@/features/chat/components/ChatIdentity";
 import { ChatThread } from "@/features/chat/components/ChatThread";
 import { useChatScreen } from "@/features/chat/useChatScreen";
 import { colors, radius, spacing, type } from "@/lib/theme";
 
 export default function ChatScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
-  const { sessionID, detail, isPending, refetch, title, newChat } =
+  const { sessionID, detail, isPending, refetch, identity, newChat } =
     useChatScreen(sessionId);
 
   function handleRetry() {
@@ -48,7 +49,7 @@ export default function ChatScreen() {
   return (
     <View style={styles.screen}>
       <ScreenHeader
-        title={title}
+        center={identity ? <ChatIdentity {...identity} /> : null}
         right={<IconButton icon={PencilEdit02Icon} label="New chat" onPress={newChat} />}
       />
       {renderBody()}
