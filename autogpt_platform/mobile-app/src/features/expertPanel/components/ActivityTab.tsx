@@ -1,8 +1,9 @@
-import { Text, View } from "react-native";
+import { View } from "react-native";
 
-import { createStyles, spacing, type } from "@/lib/theme";
+import { createStyles, spacing } from "@/lib/theme";
 
 import { useExpertActivity } from "../useExpertActivity";
+import { ActivityEmptyState } from "./ActivityEmptyState";
 import { ComputerSection } from "./ComputerSection";
 import { RecentSection } from "./RecentSection";
 import { UpcomingSection } from "./UpcomingSection";
@@ -20,7 +21,7 @@ export function ActivityTab({ expertID, expertName, isOpen }: Props) {
   const isEmpty = sections.every((section) => !section.isLoading && !section.isShown);
 
   if (isEmpty) {
-    return <Text style={styles.empty}>Nothing to show yet.</Text>;
+    return <ActivityEmptyState expertName={expertName} />;
   }
 
   return (
@@ -51,12 +52,6 @@ export function ActivityTab({ expertID, expertName, isOpen }: Props) {
   );
 }
 
-const useStyles = createStyles((colors) => ({
+const useStyles = createStyles(() => ({
   tab: { gap: spacing.xl },
-  empty: {
-    ...type.small,
-    color: colors.textTertiary,
-    textAlign: "center",
-    paddingVertical: spacing.xl,
-  },
 }));
