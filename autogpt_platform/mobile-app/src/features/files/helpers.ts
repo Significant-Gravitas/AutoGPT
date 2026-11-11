@@ -99,21 +99,90 @@ export function isPreviewed(file: Pick<WorkspaceFile, "size_bytes">) {
   return file.size_bytes > TEXT_DISPLAY_LIMIT;
 }
 
-/**
- * Caps very long text so a large log can't freeze the viewer. A preview is
- * cut by bytes, so its last character can be half a character, which decodes
- * to U+FFFD.
- */
+/** Caps very long text so a large log can't freeze the viewer. */
 export function capText({ text, isPreview }: FileText) {
-  if (isPreview) {
-    return {
-      text: text.replace(/\uFFFD$/, ""),
-      cappedNotice: "Showing the first 128 KB.",
-    };
-  }
+  if (isPreview) return { text, cappedNotice: "Showing the first 128 KB." };
   if (text.length <= TEXT_DISPLAY_LIMIT) return { text, cappedNotice: null };
   return {
     text: text.slice(0, TEXT_DISPLAY_LIMIT),
     cappedNotice: "Showing the first 200 KB.",
   };
+}
+
+const REPLACEMENT_CHARACTER = 0xfffd;
+const DECODE_CHUNK = 8192;
+
+/** A preview is cut by bytes: drop a last character that lost its tail. */
+export function trimPartialUtf8(bytes: Uint8Array) {
+  let start = bytes.length;
+  // A character has at most three continuation bytes after its lead byte.
+  while (
+    start > 0 &&
+    bytes.length - start < 3 &&
+    isContinuation(bytes[start - 1])
+  ) {
+    start -= 1;
+  }
+  if (start === 0) return bytes;
+  const have = bytes.length - start + 1;
+  return have < sequenceLength(bytes[start - 1])
+    ? bytes.subarray(0, start - 1)
+    : bytes;
+}
+
+/**
+ * Hermes has no TextDecoder we can count on, and iOS fetch's text() gives up
+ * on the whole body at one bad byte, so bad bytes become U+FFFD here instead.
+ */
+export function decodeUtf8(bytes: Uint8Array) {
+  let text = "";
+  let units: number[] = [];
+  let index = 0;
+  while (index < bytes.length) {
+    const [codePoint, length] = readCodePoint(bytes, index);
+    if (codePoint > 0xffff) {
+      const offset = codePoint - 0x10000;
+      units.push(0xd800 + (offset >> 10), 0xdc00 + (offset & 0x3ff));
+    } else {
+      units.push(codePoint);
+    }
+    index += length;
+    if (units.length >= DECODE_CHUNK) {
+      text += String.fromCharCode(...units);
+      units = [];
+    }
+  }
+  return text + String.fromCharCode(...units);
+}
+
+function isContinuation(byte: number) {
+  return (byte & 0xc0) === 0x80;
+}
+
+function sequenceLength(lead: number) {
+  if (lead >= 0xf0 && lead <= 0xf4) return 4;
+  if (lead >= 0xe0) return lead <= 0xef ? 3 : 1;
+  return lead >= 0xc2 ? 2 : 1;
+}
+
+// Follows the WHATWG decoder: a bad sequence becomes one U+FFFD and the byte
+// that broke it starts the next read.
+function readCodePoint(bytes: Uint8Array, index: number): [number, number] {
+  const lead = bytes[index];
+  if (lead < 0x80) return [lead, 1];
+  const length = sequenceLength(lead);
+  if (length === 1) return [REPLACEMENT_CHARACTER, 1];
+  let lower = lead === 0xe0 ? 0xa0 : lead === 0xf0 ? 0x90 : 0x80;
+  let upper = lead === 0xed ? 0x9f : lead === 0xf4 ? 0x8f : 0xbf;
+  let codePoint = lead & (0xff >> (length + 1));
+  for (let offset = 1; offset < length; offset += 1) {
+    const byte = bytes[index + offset];
+    if (byte === undefined || byte < lower || byte > upper) {
+      return [REPLACEMENT_CHARACTER, offset];
+    }
+    codePoint = (codePoint << 6) | (byte & 0x3f);
+    lower = 0x80;
+    upper = 0xbf;
+  }
+  return [codePoint, length];
 }

@@ -6,6 +6,7 @@ import {
   downloadFileText,
   fileDownloadURL,
   isPreviewUnavailable,
+  shouldRetryFileText,
   workspaceKeys,
   type WorkspaceFile,
 } from "@/lib/api/workspace";
@@ -26,6 +27,7 @@ export function useFileViewer(file: WorkspaceFile) {
     enabled: kind === "markdown" || kind === "text",
     gcTime: CONTENT_GC_TIME,
     select: capText,
+    retry: shouldRetryFileText,
   });
   // The token can be re-minted between openings, so the headers are read
   // fresh for every image rather than kept.

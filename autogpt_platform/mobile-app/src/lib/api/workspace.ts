@@ -1,4 +1,9 @@
-import { isPreviewed, PREVIEW_BYTES } from "@/features/files/helpers";
+import {
+  decodeUtf8,
+  isPreviewed,
+  PREVIEW_BYTES,
+  trimPartialUtf8,
+} from "@/features/files/helpers";
 import { clearAccessToken } from "@/lib/auth/token";
 
 import { ApiError, apiRequest, apiUrl, authHeaders } from "./client";
@@ -59,17 +64,19 @@ export interface FileText {
 export async function downloadFileText(
   file: WorkspaceFile,
 ): Promise<FileText> {
-  const isPreview = isPreviewed(file);
-  const url = isPreview
-    ? apiUrl(`/api/workspace/files/${encodeURIComponent(file.id)}/preview`, {
-        bytes: PREVIEW_BYTES,
-      })
-    : fileDownloadURL(file.id);
-  const response = await fetchWithFreshToken(url);
-  if (!response.ok) {
-    throw new ApiError(response.status, `Download failed (${response.status})`);
+  if (isPreviewed(file)) {
+    const response = await fetchWithFreshToken(filePreviewURL(file.id));
+    // The preview route is paywalled and the download route is not, so a
+    // refused preview falls back to the whole file.
+    if (response.status !== 402) {
+      ensureOk(response);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      return { text: decodeUtf8(trimPartialUtf8(bytes)), isPreview: true };
+    }
   }
-  return { text: await response.text(), isPreview };
+  const response = await fetchWithFreshToken(fileDownloadURL(file.id));
+  ensureOk(response);
+  return { text: await response.text(), isPreview: false };
 }
 
 /** The preview route can't cut this file: not a text type (415) or too big (413). */
@@ -77,6 +84,26 @@ export function isPreviewUnavailable(error: unknown) {
   return (
     error instanceof ApiError && (error.status === 413 || error.status === 415)
   );
+}
+
+/** A refusal (402, 413, 415) won't change on a second try. */
+export function shouldRetryFileText(failureCount: number, error: unknown) {
+  if (error instanceof ApiError && [402, 413, 415].includes(error.status)) {
+    return false;
+  }
+  return failureCount < 1;
+}
+
+function filePreviewURL(fileID: string) {
+  return apiUrl(`/api/workspace/files/${encodeURIComponent(fileID)}/preview`, {
+    bytes: PREVIEW_BYTES,
+  });
+}
+
+function ensureOk(response: Response) {
+  if (!response.ok) {
+    throw new ApiError(response.status, `Download failed (${response.status})`);
+  }
 }
 
 async function fetchWithFreshToken(url: string) {
