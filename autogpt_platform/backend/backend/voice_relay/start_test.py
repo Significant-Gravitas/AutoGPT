@@ -17,6 +17,7 @@ from backend.voice_relay.conftest import (
     FakeSocket,
     counted_calls,
     livekit_edge,
+    speech,
     until,
 )
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
@@ -56,7 +57,9 @@ class Starting:
 
     def person_arrives(self) -> None:
         """The person's browser publishes their microphone in the room."""
-        self.room.add_microphone(rooms.person_identity(USER, self.session.call_id))
+        person = rooms.person_identity(USER, self.session.call_id)
+        self.room.person = person
+        self.room.add_microphone(person)
 
 
 def _starting(
@@ -93,21 +96,30 @@ def _observed(histogram: str) -> float:
 
 
 async def test_the_model_is_sent_nothing_until_the_call_is_ready(redis, counted):
-    """Then, in order: the call counts against the person's allowance, goes
-    live, the browser hears ready, and the model gets the opening."""
-    media = FakeMedia()
+    """Not while the browser still asks for the person's microphone, nor once
+    it is in the room and they speak before their browser has taken Otto's
+    track. Then, in order: the call counts against the person's allowance,
+    goes live, the browser hears ready, and the model gets the opening."""
+    media = FakeMedia(user=None)
     media.otto_heard_gate = asyncio.Event()
     call = _starting(redis, media=media, read_first_name=_named("Dana"))
     await call.run()
     await _waiting(call)
     live = call.vendor.sessions[0]
     await asyncio.sleep(0.1)
+    assert _sent(live) == ([], 0, 0, [])
 
-    # The microphone is in the room, but the browser has not taken Otto's
-    # track: nothing is counted, sent or said.
+    call.person_arrives()
+    await media.hearing()
+    media.say(speech(0.5))
+    await asyncio.sleep(0.1)
+
+    # The microphone is in the room and the person speaks, but the browser
+    # has not taken Otto's track: nothing is counted, sent or said.
     assert call.session.away_since is None
     assert call.ws.types() == []
-    assert live.notes == [] and await counted_calls(redis) == []
+    assert _sent(live) == ([], 0, 0, [])
+    assert await counted_calls(redis) == []
     record = await locks.read_call(redis, call.session.call_id)
     assert record is None or record.connect_s is None
 
@@ -292,6 +304,12 @@ async def test_each_side_of_a_calls_start_is_timed(redis, caplog):
     assert "the relay joined the room in" in line
     call.ws.send_json({"type": "hangup"})
     await call.ended()
+
+
+def _sent(live) -> tuple[list, int, int, list]:
+    """Everything the model session was sent: notes, audio bytes, ends of the
+    audio stream and tool results."""
+    return live.notes, live.audio_in_bytes, live.stream_ends, live.tool_results
 
 
 def _said(call: Starting) -> str:

@@ -325,6 +325,10 @@ export interface VoiceFakes {
   // The next ask for the microphone fails with this error name. A refusal
   // (NotAllowedError) leaves the permission denied, as a browser does.
   refuseMicrophone(name: string): void;
+  // The next ask for the microphone waits on the person: the browser's
+  // prompt stays up until `allow` grants it, or `refuse` answers it with that
+  // error name.
+  holdMicrophone(): { allow: () => void; refuse: (name: string) => void };
   // The browser denied the microphone before the page asked.
   denyMicrophonePermission(): void;
   // LiveKit says this browser cannot join a room.
@@ -408,6 +412,24 @@ export function installVoiceFakes(): VoiceFakes {
           name,
         });
       });
+    },
+    holdMicrophone() {
+      let answer: (refusal: string | null) => void = () => undefined;
+      const answered = new Promise<string | null>((resolve) => {
+        answer = resolve;
+      });
+      getUserMedia.mockImplementationOnce(async () => {
+        const refusal = await answered;
+        if (refusal === null) {
+          permission = "granted";
+          return fakeMediaStream();
+        }
+        if (refusal === "NotAllowedError") permission = "denied";
+        throw Object.assign(new Error("The microphone was refused"), {
+          name: refusal,
+        });
+      });
+      return { allow: () => answer(null), refuse: (name) => answer(name) };
     },
     denyMicrophonePermission() {
       permission = "denied";

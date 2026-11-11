@@ -32,8 +32,12 @@ export interface OpenCall {
   marks: CallMarks | null;
   // How Otto's speech has fared in the call's room on this page.
   listening: OttoListening;
-  // What the browser applied to this page's microphone for the call.
-  microphone: MicrophoneSettings;
+  // What the browser applied to this page's microphone for the call; null
+  // while the browser still asks the person for it.
+  microphone: MicrophoneSettings | null;
+  // The relay gave the call up while the browser still asked for the
+  // microphone; the grant starts a fresh one in its place.
+  isLapsed: boolean;
 }
 
 // What the hook keeps between renders without rendering on it: the socket,

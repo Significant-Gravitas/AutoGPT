@@ -2,23 +2,24 @@ import * as Sentry from "@sentry/nextjs";
 import { secondsBetween } from "./helpers";
 
 // How long a call took to start, from the person's click to Otto's first
-// audible sound, in five steps: the microphone granted, the start answered,
-// the browser in the call's room, the relay's `ready`, and Otto's track
-// carrying sound. Each mark is epoch ms, or null until the call gets there.
+// audible sound, in five steps: the start answered and the microphone
+// granted, both from the click, then the browser in the call's room, the
+// relay's `ready`, and Otto's track carrying sound. Each mark is epoch ms, or
+// null until the call gets there.
 export interface CallMarks {
   clicked: number;
-  granted: number;
+  granted: number | null;
   minted: number | null;
   joined: number | null;
   ready: number | null;
   firstSound: number | null;
 }
 
-// The marks of a call clicked at *clicked*, its microphone granted now.
+// The marks of a call clicked at *clicked*.
 export function newCallMarks(clicked: number): CallMarks {
   return {
     clicked,
-    granted: Date.now(),
+    granted: null,
     minted: null,
     joined: null,
     ready: null,
@@ -26,8 +27,8 @@ export function newCallMarks(clicked: number): CallMarks {
   };
 }
 
-// Seconds from the microphone to each step the call has reached, for the
-// call's `interview_started`.
+// Seconds from the microphone's grant to each step the call has reached,
+// for the call's `interview_started`: 0 for a step it had reached by then.
 export function startSeconds(marks: CallMarks) {
   return {
     mint_s: since(marks, marks.minted),
@@ -44,8 +45,8 @@ export function startSeconds(marks: CallMarks) {
 // no time.
 export function reportCallStart(callId: string, marks: CallMarks) {
   const { clicked, granted, minted, joined, ready, firstSound } = marks;
-  if (minted === null || joined === null || ready === null) return;
-  if (firstSound === null) return;
+  if (granted === null || minted === null) return;
+  if (joined === null || ready === null || firstSound === null) return;
   const start = Sentry.startInactiveSpan({
     name: "Voice call start",
     op: "voice.call.start",
@@ -62,8 +63,8 @@ export function reportCallStart(callId: string, marks: CallMarks) {
   });
   const steps: [string, number, number][] = [
     ["voice.call.grant", clicked, granted],
-    ["voice.call.mint", granted, minted],
-    ["voice.call.room", minted, joined],
+    ["voice.call.mint", clicked, minted],
+    ["voice.call.room", Math.max(granted, minted), joined],
     ["voice.call.ready", joined, ready],
     ["voice.call.first_sound", ready, firstSound],
   ];
@@ -79,5 +80,6 @@ export function reportCallStart(callId: string, marks: CallMarks) {
 }
 
 function since(marks: CallMarks, mark: number | null) {
-  return mark === null ? null : secondsBetween(marks.granted, mark);
+  if (mark === null || marks.granted === null) return null;
+  return secondsBetween(marks.granted, mark);
 }

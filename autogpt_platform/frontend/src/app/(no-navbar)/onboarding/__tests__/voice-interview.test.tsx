@@ -1164,10 +1164,13 @@ describe("onboarding interview by voice: the call", () => {
       marks.ready,
       marks.firstSound,
     ];
-    // Every step reached, each no sooner than the one before it.
+    // Every step reached: the start and the microphone each from the click,
+    // in either order, and then the rest, each no sooner than the one before.
     expect(steps.every((step) => typeof step === "number")).toBe(true);
-    const times = steps.map(Number);
-    expect([...times].sort((a, b) => a - b)).toEqual(times);
+    const [clicked, granted, minted, ...rest] = steps.map(Number);
+    expect(clicked).toBeLessThanOrEqual(Math.min(granted, minted));
+    const after = [Math.max(granted, minted), ...rest];
+    expect([...after].sort((a, b) => a - b)).toEqual(after);
     // Otto's speech arriving again in the room is no second start.
     act(() => {
       room.ottoJoins();
@@ -1272,6 +1275,123 @@ describe("onboarding interview by voice: the call", () => {
     expect(
       await screen.findByText("You're on the call with Otto"),
     ).toBeDefined();
+  });
+
+  it("starts the call on the click while the browser asks for the microphone, and joins its room on Allow", async () => {
+    const prompt = fakes.holdMicrophone();
+    render(<OnboardingPage />);
+    await talkToOtto();
+
+    // The relay opens the call while the prompt is up; the room waits for
+    // the microphone.
+    const socket = await relaySocketAfter();
+    act(() => socket.accept());
+    expect(socket.messages()[0]).toEqual({ type: "start", token: TOKEN });
+    expect(mints).toBe(1);
+    expect(fakes.joinedRooms()).toEqual([]);
+    expect(screen.getByText("Calling Otto…")).toBeDefined();
+
+    act(() => prompt.allow());
+    const room = await joiningRoom();
+    await waitFor(() => expect(room.published).toHaveLength(1));
+    ready(socket);
+
+    expect(
+      await screen.findByText("You're on the call with Otto"),
+    ).toBeDefined();
+    expect(mints).toBe(1);
+    expect(fakes.sockets).toHaveLength(1);
+  });
+
+  it("ends the call the click started when the microphone is refused, before anything is said to it", async () => {
+    const prompt = fakes.holdMicrophone();
+    render(<OnboardingPage />);
+    await talkToOtto();
+    const socket = await relaySocketAfter();
+    act(() => socket.accept());
+
+    act(() => prompt.refuse("NotAllowedError"));
+
+    expect(
+      await screen.findByText(
+        "Your browser blocked the microphone, so write here instead.",
+      ),
+    ).toBeDefined();
+    await waitFor(() => expect(ends).toEqual([CALL_ID]));
+    // The call never went live: its socket closed with only the start sent,
+    // and nothing joined its room.
+    expect(socket.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(socket.messages()).toEqual([{ type: "start", token: TOKEN }]);
+    expect(fakes.joinedRooms()).toEqual([]);
+    expect(tracked("interview_started")).toEqual([]);
+    expect(tracked("voice_interview_mic_denied")).toEqual([{}]);
+  });
+
+  it("ends the call a start answers with once the microphone was refused meanwhile, opening no socket for it", async () => {
+    let answerStart = () => undefined as void;
+    const answered = new Promise<void>((resolve) => {
+      answerStart = resolve;
+    });
+    server.use(
+      http.post(
+        VOICE,
+        async () => {
+          mints += 1;
+          await answered;
+          return HttpResponse.json(STARTED);
+        },
+        { once: true },
+      ),
+    );
+    const prompt = fakes.holdMicrophone();
+    render(<OnboardingPage />);
+    await talkToOtto();
+    await waitFor(() => expect(mints).toBe(1));
+
+    act(() => prompt.refuse("NotAllowedError"));
+    expect(
+      await screen.findByText(
+        "Your browser blocked the microphone, so write here instead.",
+      ),
+    ).toBeDefined();
+    act(() => answerStart());
+
+    await waitFor(() => expect(ends).toEqual([CALL_ID]));
+    expect(fakes.sockets).toEqual([]);
+  });
+
+  it("starts a fresh call on Allow when the prompt outlasted the relay's wait, with no error", async () => {
+    const prompt = fakes.holdMicrophone();
+    render(<OnboardingPage />);
+    await talkToOtto();
+    const first = await relaySocketAfter();
+    act(() => first.accept());
+
+    // The relay gave the call up while the prompt was still up.
+    act(() => {
+      first.relay({ type: "ended", reason: "client_gone", elapsed_s: 45 });
+      first.close(1000);
+    });
+    expect(screen.getByText("Calling Otto…")).toBeDefined();
+    mintAnswer = { ...STARTED, call_id: OTHER_CALL_ID, token: "fresh-token" };
+
+    act(() => prompt.allow());
+
+    const socket = await relaySocketAfter(first);
+    act(() => socket.accept());
+    expect(socket.messages()[0]).toEqual({
+      type: "start",
+      token: "fresh-token",
+    });
+    const room = await joiningRoom();
+    await waitFor(() => expect(room.published).toHaveLength(1));
+    ready(socket);
+    expect(
+      await screen.findByText("You're on the call with Otto"),
+    ).toBeDefined();
+    expect(mints).toBe(2);
+    expect(screen.queryByText(/couldn't/)).toBeNull();
+    expect(tracked("voice_interview_start_failed")).toEqual([]);
   });
 
   it("captions what Otto and the person say", async () => {

@@ -5,8 +5,10 @@ import {
   startOnboardingVoiceCall,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import type { VoiceCallCaps } from "@/app/api/__generated__/models/voiceCallCaps";
+import type { VoiceCallStartResponse } from "@/app/api/__generated__/models/voiceCallStartResponse";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
 import {
+  type CallRoomPass,
   type CallTicket,
   forgetCallTicket,
   isCallId,
@@ -26,7 +28,12 @@ import {
   releasePlayer,
 } from "./audioGraph";
 import { loadLiveKit } from "./callRoom";
-import { newCallMarks, reportCallStart, startSeconds } from "./callTimings";
+import {
+  type CallMarks,
+  newCallMarks,
+  reportCallStart,
+  startSeconds,
+} from "./callTimings";
 import {
   clearTimers,
   closeContext,
@@ -255,63 +262,68 @@ export function useVoiceCall(args: Args) {
       (livekit) => livekit,
       () => null,
     );
+    // The call begins on the click: the relay opens it while the browser
+    // asks for the microphone, and sends the model nothing until the
+    // microphone is in the call's room.
+    const begun = beginCall(attempt, sdk, newCallMarks(clicked));
     let microphone: MediaStream;
     try {
       microphone = await openMicrophone();
     } catch (error) {
       releasePlayer(player);
       closeContext(context);
-      if (attempt === conn.attempt) refuseMicrophone(error);
+      if (attempt !== conn.attempt) return;
+      // A refused prompt ends the call it started, or is about to.
+      conn.attempt += 1;
+      void begun.then((call) => call && endUnheardCall(call));
+      refuseMicrophone(error);
       return;
     }
-    const marks = newCallMarks(clicked);
-    // The call begins here, on the microphone's grant. Begun on the click
-    // instead, it would be minted while the browser's prompt is up: the
-    // relay is ready only once the microphone is in the call's room either
-    // way.
-    const begun = await beginCall(attempt, sdk);
-    if (!begun || attempt !== conn.attempt) {
+    const granted = Date.now();
+    const call = await callForMicrophone(attempt, sdk, await begun, granted);
+    if (!call) {
       stopTracks(microphone);
       releasePlayer(player);
       closeContext(context);
       return;
     }
-    const { started, room } = begun;
-    const audio = createCallAudio(context, microphone);
-    marks.minted = Date.now();
-    argsRef.current.onCallStarted();
-    attachAudio(audio);
-    const call: OpenCall = {
-      callId: started.call_id,
-      relayUrl: started.relay_url,
-      caps: started.caps,
-      ticket: null,
-      startedAt: null,
-      turnsLeft: started.caps.max_agent_turns,
-      turns: 0,
-      room,
-      marks,
-      listening: newOttoListening(),
-      microphone: microphoneSettingsOf(microphone),
-    };
-    conn.call = call;
-    conn.shownCallId = started.call_id;
-    conn.startRetries = 0;
-    // The browser joins the call's room while the relay opens the call: the
-    // relay is ready once this browser's microphone is in the room and it has
-    // taken Otto's track. A join LiveKit refuses, fails or takes too long over
-    // is a call that never starts.
-    openSocket({ type: "start", token: started.token });
+    call.microphone = microphoneSettingsOf(microphone);
+    attachAudio(createCallAudio(context, microphone));
+    // A join LiveKit refuses, fails or takes too long over is a call that
+    // never starts.
     const isInRoom = await callRoom.enterRoom(
       call,
-      room,
+      call.room,
       microphone,
       player,
       (error) => abandonStart(call, roomJoinFailureOf(error)),
     );
-    if (!isInRoom || conn.call !== call) return;
-    marks.joined = Date.now();
+    if (!isInRoom || conn.call !== call || !call.marks) return;
+    call.marks.joined = Date.now();
     reportStartWhenMarked(call);
+  }
+
+  // The call the microphone granted at *granted* joins: the one the click
+  // began, or, when the relay gave that up while the browser asked, a fresh
+  // one begun now and timed from the grant. Null when neither is this
+  // attempt's to join.
+  async function callForMicrophone(
+    attempt: number,
+    sdk: Promise<Awaited<ReturnType<typeof loadLiveKit>> | null>,
+    begun: OpenCall | null,
+    granted: number,
+  ) {
+    const conn = connRef.current;
+    if (attempt !== conn.attempt || !begun) return null;
+    if (!begun.isLapsed) {
+      if (conn.call !== begun || !begun.marks) return null;
+      begun.marks.granted = granted;
+      return begun;
+    }
+    const marks = newCallMarks(granted);
+    marks.granted = granted;
+    const fresh = await beginCall(attempt, sdk, marks);
+    return fresh && conn.call === fresh ? fresh : null;
   }
 
   // A call's start goes to Sentry once its last step is marked: the page in
@@ -323,13 +335,14 @@ export function useVoiceCall(args: Args) {
     if (marks.firstSound !== null) reportCallStart(call.callId, marks);
   }
 
-  // Asks the server for a call once this browser can make one: the call it
-  // started and its room, or null with the reason shown. A browser that
-  // cannot make the call never spends one, and a later click that took over
-  // is the only start that may.
+  // Starts a call once this browser can make one, and opens the relay's
+  // socket for it: the call, or null with the reason shown. A browser that
+  // cannot make the call never spends one, and a start the person has moved
+  // on from meanwhile is ended at once.
   async function beginCall(
     attempt: number,
     sdk: Promise<Awaited<ReturnType<typeof loadLiveKit>> | null>,
+    marks: CallMarks,
   ) {
     const conn = connRef.current;
     const livekit = await sdk;
@@ -338,6 +351,23 @@ export function useVoiceCall(args: Args) {
       cannotCall(livekit ? "unsupported" : "failed");
       return null;
     }
+    const minted = await mintCall(attempt);
+    if (!minted) return null;
+    if (attempt !== conn.attempt) {
+      void endOnboardingVoiceCall(minted.started.call_id).catch(
+        () => undefined,
+      );
+      return null;
+    }
+    marks.minted = Date.now();
+    argsRef.current.onCallStarted();
+    return openCall(minted.started, minted.room, marks);
+  }
+
+  // Asks the server for a call: the call it started and its room, or null
+  // with the refusal shown.
+  async function mintCall(attempt: number) {
+    const conn = connRef.current;
     try {
       const response = await startOnboardingVoiceCall();
       const named = response.status === 200 ? response.data : null;
@@ -355,6 +385,43 @@ export function useVoiceCall(args: Args) {
       if (attempt === conn.attempt) refuseStart(error);
       return null;
     }
+  }
+
+  // The page's call from its start, with the relay's socket open: the relay
+  // opens the call while the browser joins its room, and is ready once this
+  // browser's microphone is in the room and it has taken Otto's track.
+  function openCall(
+    started: VoiceCallStartResponse,
+    room: CallRoomPass,
+    marks: CallMarks,
+  ) {
+    const conn = connRef.current;
+    const call: OpenCall = {
+      callId: started.call_id,
+      relayUrl: started.relay_url,
+      caps: started.caps,
+      ticket: null,
+      startedAt: null,
+      turnsLeft: started.caps.max_agent_turns,
+      turns: 0,
+      room,
+      marks,
+      listening: newOttoListening(),
+      microphone: null,
+      isLapsed: false,
+    };
+    conn.call = call;
+    conn.shownCallId = started.call_id;
+    conn.startRetries = 0;
+    openSocket({ type: "start", token: started.token });
+    return call;
+  }
+
+  // A call started for a microphone the browser never gave: let go, and
+  // ended through the REST API so its room closes now.
+  function endUnheardCall(call: OpenCall) {
+    if (connRef.current.call === call) dropCall();
+    void endOnboardingVoiceCall(call.callId).catch(() => undefined);
   }
 
   // This browser cannot join a call's room, or the room's SDK did not load.
@@ -504,7 +571,7 @@ export function useVoiceCall(args: Args) {
     trackInterview("interview_started", {
       mode: "voice",
       ...(marks ? startSeconds(marks) : {}),
-      ...call.microphone,
+      ...(call.microphone ?? {}),
     });
   }
 
@@ -550,6 +617,13 @@ export function useVoiceCall(args: Args) {
     // Ended before it went live: the relay could not open the call. Nothing
     // was said, so the choice shows again, as for a room never joined.
     if (call && !call.ticket) {
+      // Past the relay's wait for the browser while it still asked for the
+      // microphone: nothing failed, and the grant starts a fresh call.
+      if (call.microphone === null && reason === "client_gone") {
+        call.isLapsed = true;
+        dropCall();
+        return;
+      }
       trackInterview("voice_interview_start_failed", {
         stage: "relay",
         why: reason,
@@ -1092,6 +1166,7 @@ export function useVoiceCall(args: Args) {
       marks: null,
       listening: newOttoListening(),
       microphone: microphoneSettingsOf(microphone),
+      isLapsed: false,
     };
     conn.call = rejoined;
     conn.shownCallId = kept.callId;

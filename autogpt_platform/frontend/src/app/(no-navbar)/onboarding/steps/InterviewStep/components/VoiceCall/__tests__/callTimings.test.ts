@@ -37,11 +37,13 @@ vi.mock("@sentry/nextjs", () => ({
 const GRANTED = 1_700_000_000_000;
 const CALL_ID = "a".repeat(32);
 
+// A call started on the click: its start answered while the browser asked
+// for the microphone.
 function marks(overrides: Partial<CallMarks> = {}): CallMarks {
   return {
     clicked: GRANTED - 1_500,
     granted: GRANTED,
-    minted: GRANTED + 400,
+    minted: GRANTED - 1_100,
     joined: GRANTED + 1_200,
     ready: GRANTED + 2_000,
     firstSound: GRANTED + 2_900,
@@ -50,13 +52,15 @@ function marks(overrides: Partial<CallMarks> = {}): CallMarks {
 }
 
 describe("how long a call took to start", () => {
-  it("counts each step reached from the microphone being granted", () => {
+  it("counts each step reached from the microphone being granted, a step reached by then as 0", () => {
     expect(startSeconds(marks())).toEqual({
-      mint_s: 0.4,
+      mint_s: 0,
       room_s: 1.2,
       ready_s: 2,
     });
-    expect(startSeconds(marks({ joined: null, ready: null }))).toEqual({
+    expect(
+      startSeconds(marks({ minted: GRANTED + 400, joined: null, ready: null })),
+    ).toEqual({
       mint_s: 0.4,
       room_s: null,
       ready_s: null,
@@ -77,7 +81,7 @@ describe("how long a call took to start", () => {
       attributes: {
         call_id: CALL_ID,
         granted_s: 1.5,
-        mint_s: 0.4,
+        mint_s: 0,
         room_s: 1.2,
         ready_s: 2,
         first_sound_s: 2.9,
@@ -93,8 +97,8 @@ describe("how long a call took to start", () => {
       ]),
     ).toEqual([
       ["voice.call.grant", GRANTED - 1_500, GRANTED, true],
-      ["voice.call.mint", GRANTED, GRANTED + 400, true],
-      ["voice.call.room", GRANTED + 400, GRANTED + 1_200, true],
+      ["voice.call.mint", GRANTED - 1_500, GRANTED - 1_100, true],
+      ["voice.call.room", GRANTED, GRANTED + 1_200, true],
       ["voice.call.ready", GRANTED + 1_200, GRANTED + 2_000, true],
       ["voice.call.first_sound", GRANTED + 2_000, GRANTED + 2_900, true],
     ]);
@@ -120,9 +124,31 @@ describe("how long a call took to start", () => {
     ).toEqual([
       ["voice.call.grant", 1_500],
       ["voice.call.mint", 400],
-      ["voice.call.room", 800],
+      ["voice.call.room", 1_200],
       ["voice.call.ready", 800],
       ["voice.call.first_sound", 0],
+    ]);
+  });
+
+  it("times the room's step from the start when it answered after the grant", () => {
+    sentry.spans.length = 0;
+
+    reportCallStart(CALL_ID, marks({ minted: GRANTED + 400 }));
+
+    const [start, ...steps] = sentry.spans;
+    expect(start.options.attributes).toMatchObject({ mint_s: 0.4 });
+    expect(
+      steps.map(({ options, endedAt }) => [
+        options.op,
+        options.startTime,
+        endedAt,
+      ]),
+    ).toEqual([
+      ["voice.call.grant", GRANTED - 1_500, GRANTED],
+      ["voice.call.mint", GRANTED - 1_500, GRANTED + 400],
+      ["voice.call.room", GRANTED + 400, GRANTED + 1_200],
+      ["voice.call.ready", GRANTED + 1_200, GRANTED + 2_000],
+      ["voice.call.first_sound", GRANTED + 2_000, GRANTED + 2_900],
     ]);
   });
 
@@ -144,20 +170,23 @@ describe("how long a call took to start", () => {
     ).toEqual([
       ["voice.call.grant", 1_500],
       ["voice.call.mint", 400],
-      ["voice.call.room", 2_100],
+      ["voice.call.room", 2_500],
       ["voice.call.ready", 0],
       ["voice.call.first_sound", 400],
     ]);
   });
 
-  it.each([["minted"], ["joined"], ["ready"], ["firstSound"]] as const)(
-    "sends nothing for a start that never reached %s",
-    (step) => {
-      sentry.spans.length = 0;
+  it.each([
+    ["granted"],
+    ["minted"],
+    ["joined"],
+    ["ready"],
+    ["firstSound"],
+  ] as const)("sends nothing for a start that never reached %s", (step) => {
+    sentry.spans.length = 0;
 
-      reportCallStart(CALL_ID, marks({ [step]: null }));
+    reportCallStart(CALL_ID, marks({ [step]: null }));
 
-      expect(sentry.spans).toEqual([]);
-    },
-  );
+    expect(sentry.spans).toEqual([]);
+  });
 });
