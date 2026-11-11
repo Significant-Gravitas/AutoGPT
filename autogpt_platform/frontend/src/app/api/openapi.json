@@ -24116,6 +24116,12 @@
             "title": "Is Managed",
             "default": false
           },
+          "is_system": {
+            "type": "boolean",
+            "title": "Is System",
+            "description": "One of the platform's own keys, billed in credits, rather than a credential the user connected",
+            "default": false
+          },
           "service": { "type": "string", "title": "Service", "default": "" },
           "service_name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
