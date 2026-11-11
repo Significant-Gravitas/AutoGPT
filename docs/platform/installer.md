@@ -216,8 +216,9 @@ script uses that checkout; otherwise it clones the repository into a new
 
 Both create the three `.env` files if they are missing and generate the
 secrets `.env.default` leaves blank (`ENCRYPTION_KEY`,
-`UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`, `BETTER_AUTH_SECRET`, and the
-passwords of the database, RabbitMQ, Redis and FalkorDB), the same as
+`UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`, `BAN_RECORD_HASH_KEY`,
+`BETTER_AUTH_SECRET`, and the passwords of the database, RabbitMQ, Redis and
+FalkorDB), the same as
 `make init-env`. Running a script again never changes a value you set; it does
 replace a service password that still holds the value this repository used to
 ship, and restarts the stack, which empties RabbitMQ's queues. So to upgrade an
