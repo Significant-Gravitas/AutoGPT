@@ -1,7 +1,8 @@
 "use client";
 
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
-import { CheckIcon } from "@radix-ui/react-icons";
+import { Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
@@ -23,9 +24,12 @@ const Checkbox = React.forwardRef<
       data-slot="checkbox-indicator"
       className="flex items-center justify-center text-current"
     >
-      {/* TODO: Hugeicons' tick is drawn differently; swapping it changes the
-          pixels, so the Radix icon stays until a design pass. */}
-      <CheckIcon data-slot="checkbox-icon" className="h-4 w-4" />
+      <Icon
+        aria-hidden
+        icon={Tick02Icon}
+        data-slot="checkbox-icon"
+        className="h-4 w-4"
+      />
     </CheckboxPrimitive.Indicator>
   </CheckboxPrimitive.Root>
 ));

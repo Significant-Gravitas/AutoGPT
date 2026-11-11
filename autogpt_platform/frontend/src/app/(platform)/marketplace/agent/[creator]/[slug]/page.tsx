@@ -48,7 +48,8 @@ export default async function MarketplaceAgentPage({
 
   const params = await _params;
   const creator_lower = params.creator.toLowerCase();
-  await Promise.all([
+  const [{ user }] = await Promise.all([
+    getServerUser(),
     prefetchGetV2GetSpecificAgentQuery(queryClient, creator_lower, params.slug),
     prefetchGetV2ListStoreAgentsQuery(queryClient, {
       creator: creator_lower,
@@ -56,7 +57,6 @@ export default async function MarketplaceAgentPage({
     prefetchSimilarAgents(queryClient, params.slug),
   ]);
 
-  const { user } = await getServerUser();
   const { data: creator_agent, status } = await getAgentOrNotFound(
     creator_lower,
     params.slug,

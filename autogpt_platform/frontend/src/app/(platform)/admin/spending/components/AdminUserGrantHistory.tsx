@@ -60,7 +60,9 @@ export async function AdminUserGrantHistory({
     }
 
     return (
-      <span className={`rounded-full px-2 py-1 text-xs font-medium ${bgColor}`}>
+      <span
+        className={`rounded-full px-2 py-1 text-caption font-medium ${bgColor}`}
+      >
         {displayText.valueOf()}
       </span>
     );

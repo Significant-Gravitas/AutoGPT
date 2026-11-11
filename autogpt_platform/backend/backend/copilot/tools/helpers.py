@@ -12,6 +12,7 @@ from pydantic_core import PydanticUndefined
 
 from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
+from backend.copilot.capabilities import block_meta
 from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
@@ -24,7 +25,7 @@ from backend.copilot.credential_selection import (
     host_selection_key,
     turn_credential_pins,
 )
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, ChatSessionMetadata
 from backend.copilot.permissions import denied_block_providers
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.sdk.env import config as chat_config
@@ -50,10 +51,20 @@ from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.credential_lease import CredentialLease
-from backend.integrations.credentials_store import provider_matches
+from backend.integrations.credentials_store import (
+    is_system_credential,
+    provider_matches,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.oauth.refresh_failure import CredentialsNeedReconnectError
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import BlockError, InsufficientBalanceError
+from backend.util.exceptions import (
+    BlockError,
+    BlockInputError,
+    InsufficientBalanceError,
+)
+from backend.util.file import separate_exec_files
+from backend.util.json import same_json
 from backend.util.request import HTTPClientError
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -63,7 +74,9 @@ from .ayrshare_managed import is_ayrshare, is_not_linked_error
 from .ayrshare_managed import not_linked_response as ayrshare_not_linked_response
 from .ayrshare_managed import provision_for_block as provision_ayrshare_for_block
 from .chat_platform_hint import bot_link_hint
+from .credential_gaps import annotate_credential_gaps, credentials_for_gaps
 from .expert_scope import (
+    CredentialScopeSnapshot,
     annotate_expert_grants,
     provider_slug,
     ungranted_credential_hint,
@@ -79,6 +92,7 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
+from .review_card import review_card_location
 from .utils import (
     build_missing_credentials_from_field_info,
     credential_rejection_status,
@@ -255,43 +269,37 @@ async def _charge_block_credits(
     session_id: str,
     expert_id: str | None = None,
 ) -> None:
-    """Charge credits for a block execution and log any billing leak.
+    """Debit a block run before it starts.
 
-    Centralised so the normal-path charge and the cancellation-recovery charge
-    (see ``execute_block``'s finally) use the same metadata and the same
-    leak-logging contract. ``expert_id`` also meters the charge on the
-    expert's spend counters.
+    ``spend_credits`` checks the balance and debits in one atomic step, so it
+    is the only balance check: it raises ``InsufficientBalanceError`` when the
+    balance cannot cover ``cost``, and any other failure propagates too, so
+    the caller never runs a block it could not charge for. ``expert_id`` also
+    meters the charge on the expert's spend counters.
     """
+    await _credit_db.spend_credits(
+        user_id=user_id,
+        cost=cost,
+        metadata=UsageTransactionMetadata(
+            chat_session_id=session_id,
+            node_exec_id=node_exec_id,
+            block_id=block_id,
+            block=block_name,
+            input=cost_filter,
+            reason="copilot_block_execution",
+        ),
+    )
     try:
-        await _credit_db.spend_credits(
-            user_id=user_id,
-            cost=cost,
-            metadata=UsageTransactionMetadata(
-                chat_session_id=session_id,
-                node_exec_id=node_exec_id,
-                block_id=block_id,
-                block=block_name,
-                input=cost_filter,
-                reason="copilot_block_execution",
-            ),
-        )
         # Before the expert metering, which can fail after the debit landed.
         await charge_credits(user_id, lambda: cost)
         if expert_id:
             await add_weekly_spend(expert_id, cost)
     except Exception as e:
-        # Block already executed (with possible side effects). Never
-        # return ErrorResponse here — the user received output and
-        # deserves it. Log the billing failure for reconciliation.
-        leak_type = (
-            "INSUFFICIENT_BALANCE"
-            if isinstance(e, InsufficientBalanceError)
-            else "UNEXPECTED_ERROR"
-        )
+        # The debit landed, so the run is paid for and goes ahead; only the
+        # chat's spend metering missed it. Log it for reconciliation.
         logger.error(
-            "BILLING_LEAK[%s]: block executed but credit charge failed — "
-            "user_id=%s, block_id=%s, node_exec_id=%s, cost=%s: %s",
-            leak_type,
+            "SPEND_METERING_MISSED: block debited but spend metering "
+            "failed — user_id=%s, block_id=%s, node_exec_id=%s, cost=%s: %s",
             user_id,
             block_id,
             node_exec_id,
@@ -299,16 +307,12 @@ async def _charge_block_credits(
             e,
             extra={
                 "json_fields": {
-                    "billing_leak": True,
-                    "leak_type": leak_type,
+                    "spend_metering_missed": True,
                     "user_id": user_id,
                     "cost": str(cost),
                 }
             },
         )
-        # Intentionally swallow. Block already executed with possible side
-        # effects; the caller must still return BlockOutputResponse. The
-        # BILLING_LEAK log above is the signal for reconciliation.
 
 
 async def execute_block(
@@ -567,7 +571,6 @@ async def execute_block(
             # Coerce non-matching data types to the expected input schema.
             coerce_inputs_to_schema(input_data, block.input_schema)
 
-            # Pre-execution credit check (courtesy; spend_credits is atomic).
             # Pass `use_preflight_estimate=False` because this path bypasses
             # the executor manager and never runs reconciliation — locking in
             # the historical-average estimate as the final charge would be
@@ -576,54 +579,36 @@ async def execute_block(
             cost, cost_filter = block_usage_cost(
                 block, input_data, use_preflight_estimate=False
             )
-            has_cost = cost > 0
-            _credit_db = credit_db()
-            if has_cost:
-                balance = await _credit_db.get_credits(user_id)
-                if balance < cost:
-                    return ErrorResponse(
-                        message=(
-                            f"Insufficient credits to run '{block.name}'. "
-                            "Please top up your credits to continue."
-                        ),
-                        session_id=session_id,
-                    ).from_outside()
+            # Paid for before it runs, so a timed-out or cancelled run is
+            # already settled.
+            refused = await _debit_block_run(
+                block=block,
+                input_data=input_data,
+                cost=cost,
+                cost_filter=cost_filter,
+                user_id=user_id,
+                session_id=session_id,
+                node_exec_id=node_exec_id,
+                expert_id=expert_id,
+            )
+            if refused is not None:
+                return refused
 
             # Execute the block under the shared MCP wait cap. A block is
             # expected to finish in MAX_TOOL_WAIT_SECONDS; if it doesn't, the
             # MCP handler would block the stream close to the idle timeout.
-            # wait_for cancels the generator on timeout, but the finally below
-            # still settles billing via asyncio.shield — external side effects
-            # may already have landed and the user should be charged for them.
+            # wait_for cancels the generator on timeout; the charge stands,
+            # since external side effects may already have landed.
             outputs: dict[str, list[Any]] = defaultdict(list)
-            charge_handled = False
             try:
-                await asyncio.wait_for(
-                    _collect_block_outputs(block, input_data, exec_kwargs, outputs),
-                    timeout=MAX_TOOL_WAIT_SECONDS,
-                )
-
-                # Normal (non-cancelled) path. Mark charge_handled BEFORE the
-                # await so an outer cancellation landing mid-charge can't race
-                # the finally block into a double-charge. asyncio.shield keeps
-                # the spend running to completion even if the outer awaitable
-                # is cancelled.
-                if has_cost:
-                    charge_handled = True
-                    await asyncio.shield(
-                        _charge_block_credits(
-                            _credit_db,
-                            user_id=user_id,
-                            block_name=block.name,
-                            block_id=block_id,
-                            node_exec_id=node_exec_id,
-                            cost=cost,
-                            cost_filter=cost_filter,
-                            session_id=session_id,
-                            expert_id=await metered_expert_id(user_id, expert_id),
-                        )
+                # Every call in the chat shares its execution id, and calls from
+                # one message run at once: each keeps its local media files in
+                # a folder of its own, removed when the call ends.
+                with separate_exec_files(synthetic_graph_id):
+                    await asyncio.wait_for(
+                        _collect_block_outputs(block, input_data, exec_kwargs, outputs),
+                        timeout=MAX_TOOL_WAIT_SECONDS,
                     )
-
                 return BlockOutputResponse(
                     message=f"Block '{block.name}' executed successfully",
                     block_id=block_id,
@@ -633,6 +618,26 @@ async def execute_block(
                     success=True,
                     session_id=session_id,
                 ).from_outside(outputs)
+            except BlockError as e:
+                # A setup card (connect or reconnect) that comes before any
+                # output means the provider did no work, so it stays free.
+                if (
+                    cost > 0
+                    and not outputs
+                    and _is_setup_card_failure(block, e, matched_credentials)
+                ):
+                    await asyncio.shield(
+                        _refund_block_run(
+                            block=block,
+                            user_id=user_id,
+                            session_id=session_id,
+                            node_exec_id=node_exec_id,
+                            cost=cost,
+                            cost_filter=cost_filter,
+                            expert_id=expert_id,
+                        )
+                    )
+                raise
             except asyncio.TimeoutError:
                 # Structured record of tool-call timeouts (SECRT-2247 part 3).
                 # Grep prod logs for `copilot_tool_timeout` to find tools that
@@ -659,29 +664,6 @@ async def execute_block(
                     ),
                     session_id=session_id,
                 ).from_outside()
-            finally:
-                # Sentry r3105079148: asyncio.wait_for raises CancelledError
-                # into the generator. Normal `except Exception` doesn't catch
-                # it, so without this finally a cancelled block would skip
-                # credit charging entirely while external side effects still
-                # landed. Only run when the normal-path charge was NOT
-                # reached (the flag is set before the await, so any
-                # cancellation during charge still sets it and avoids
-                # double-billing — r3105216985).
-                if has_cost and outputs and not charge_handled:
-                    await asyncio.shield(
-                        _charge_block_credits(
-                            _credit_db,
-                            user_id=user_id,
-                            block_name=block.name,
-                            block_id=block_id,
-                            node_exec_id=node_exec_id,
-                            cost=cost,
-                            cost_filter=cost_filter,
-                            session_id=session_id,
-                            expert_id=await metered_expert_id(user_id, expert_id),
-                        )
-                    )
         finally:
             await _release_credential_leases(credential_leases)
             # Release auto-cred locks on every exit path so Redis doesn't hold them until TTL.
@@ -729,6 +711,112 @@ async def execute_block(
         ).from_outside(str(e))
 
 
+async def _debit_block_run(
+    *,
+    block: AnyBlockSchema,
+    input_data: dict[str, Any],
+    cost: int,
+    cost_filter: dict[str, Any],
+    user_id: str,
+    session_id: str,
+    node_exec_id: str,
+    expert_id: str | None,
+) -> ErrorResponse | None:
+    """Charge a block run before it starts, or say why it may not run.
+
+    The debit is the balance check: ``spend_credits`` checks the balance and
+    debits it in one atomic step, refusing to overdraw.
+    A run that fails after the debit keeps its charge, as an executor
+    RUN-priced block does, since it may already have called the provider;
+    the one exception is a setup card before any output (see
+    ``_is_setup_card_failure``).
+    """
+    if cost <= 0:
+        return None
+    # Invalid input fails in the block before any provider call, so refuse
+    # it here rather than charge for it.
+    if error := block.input_schema.validate_data(input_data):
+        raise BlockInputError(
+            message=f"Unable to execute block with invalid input data: {error}",
+            block_name=block.name,
+            block_id=block.id,
+        )
+    try:
+        await _charge_block_credits(
+            credit_db(),
+            user_id=user_id,
+            block_name=block.name,
+            block_id=block.id,
+            node_exec_id=node_exec_id,
+            cost=cost,
+            cost_filter=cost_filter,
+            session_id=session_id,
+            expert_id=await metered_expert_id(user_id, expert_id),
+        )
+    except InsufficientBalanceError:
+        return ErrorResponse(
+            message=(
+                f"Insufficient credits to run '{block.name}'. "
+                "Please top up your credits to continue."
+            ),
+            session_id=session_id,
+        ).from_outside()
+    return None
+
+
+def _is_setup_card_failure(
+    block: AnyBlockSchema,
+    error: BlockError,
+    matched_credentials: dict[str, CredentialsMetaInput],
+) -> bool:
+    """The provider refused the account before doing any work: an Ayrshare
+    network that is not linked, or a credential of the user's own that it
+    rejected. The user gets a connect or reconnect card for these (see
+    ``execute_block``). A rejected platform-managed credential is not the
+    user's to reconnect, so it does not count."""
+    if is_ayrshare(get_block_provider(block)) and is_not_linked_error(error):
+        return True
+    users_own = any(
+        not is_system_credential(meta.id) for meta in matched_credentials.values()
+    )
+    return users_own and credential_rejection_status(error) is not None
+
+
+async def _refund_block_run(
+    *,
+    block: AnyBlockSchema,
+    user_id: str,
+    session_id: str,
+    node_exec_id: str,
+    cost: int,
+    cost_filter: dict[str, Any],
+    expert_id: str | None,
+) -> None:
+    """Give back a run's debit. The chat's spend ledger keeps the charge, so
+    it errs towards stopping a chat early, never late."""
+    try:
+        await credit_db().spend_credits(
+            user_id=user_id,
+            cost=-cost,
+            metadata=UsageTransactionMetadata(
+                chat_session_id=session_id,
+                node_exec_id=node_exec_id,
+                block_id=block.id,
+                block=block.name,
+                input=cost_filter,
+                reason="copilot_block_execution_refund",
+            ),
+        )
+    except Exception as e:
+        logger.error(
+            f"Could not refund {cost} credits to user {user_id} for block "
+            f"{block.id} (node_exec_id={node_exec_id}): {e}"
+        )
+        return
+    if metered := await metered_expert_id(user_id, expert_id):
+        await add_weekly_spend(metered, -cost)
+
+
 def _credential_rejected_response(
     *,
     block: AnyBlockSchema,
@@ -758,11 +846,18 @@ def _credential_rejected_response(
     rejected, provider = _rejected_credential(block, matched_credentials)
     provider_name = provider.replace("_", " ").title() or "The provider"
     named = f" '{rejected.title}'" if rejected and rejected.title else ""
-    refused = (
-        f"{provider_name} rejected the saved credential{named} (HTTP {status_code})"
-        if status_code is not None
-        else f"The saved {provider_name} credential{named} could not be refreshed"
-    )
+    if isinstance(exc, CredentialsNeedReconnectError):
+        refused = (
+            f"The saved {provider_name} credential{named} has to be reconnected: "
+            f"{exc.marker.reason(provider_name)}"
+        )
+    elif status_code is not None:
+        refused = (
+            f"{provider_name} rejected the saved credential{named} "
+            f"(HTTP {status_code})"
+        )
+    else:
+        refused = f"The saved {provider_name} credential{named} could not be refreshed"
     logger.warning(
         "Unattended copilot turn in session %s: block %s did not run, %s",
         session_id,
@@ -825,14 +920,24 @@ def _build_credential_rejected_card(
     provider_name = provider.replace("_", " ").title() or "The provider"
     named = f" '{rejected.title}'" if rejected and rejected.title else ""
     detail = sanitize_provider_message(str(exc))
-    return SetupRequirementsResponse(
-        message=(
+    if isinstance(exc, CredentialsNeedReconnectError):
+        message = (
+            f"The saved {provider_name} credential{named} has to be reconnected: "
+            f"{exc.marker.reason(provider_name)}. Reconnect it or pick a "
+            "different one, then re-run."
+        )
+    elif status_code is not None:
+        message = (
             f"{provider_name} rejected the saved credential{named} "
             f"(HTTP {status_code}). Connect or pick a different one, then re-run."
-            if status_code is not None
-            else f"The saved {provider_name} credential{named} could not be "
+        )
+    else:
+        message = (
+            f"The saved {provider_name} credential{named} could not be "
             "refreshed. Reconnect it or pick a different one, then re-run."
-        ),
+        )
+    return SetupRequirementsResponse(
+        message=message,
         session_id=session_id,
         setup_info=SetupInfo(
             agent_id=block_id,
@@ -933,6 +1038,8 @@ async def unattended_missing_credentials_error(
     session_id: str,
     user_id: str,
     expert_id: str | None,
+    *,
+    credential_scope: CredentialScopeSnapshot | None = None,
 ) -> ErrorResponse:
     """The answer when a turn nobody watches has no credential to run with.
 
@@ -957,7 +1064,11 @@ async def unattended_missing_credentials_error(
     if pinned is not None:
         return pinned
     grant_hint = await ungranted_credential_hint(
-        user_id, expert_id, providers, missing.values()
+        user_id,
+        expert_id,
+        providers,
+        missing.values(),
+        credential_scope=credential_scope,
     )
     logger.warning(
         "Unattended copilot turn in session %s: %s has no %s credential to use",
@@ -1137,11 +1248,6 @@ async def prepare_block_for_execution(
     Returns:
         BlockPreparation on success, or a ToolResponseBase error/setup response.
     """
-    from backend.copilot.capabilities.block_meta import (
-        COPILOT_EXCLUDED_BLOCK_IDS,
-        COPILOT_EXCLUDED_BLOCK_TYPES,
-    )
-
     block = get_block(block_id)
     if not block:
         return ErrorResponse(
@@ -1152,29 +1258,9 @@ async def prepare_block_for_execution(
             message=f"Block '{block_id}' is disabled", session_id=session_id
         ).from_outside()
 
-    if (
-        block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
-        or block.id in COPILOT_EXCLUDED_BLOCK_IDS
-    ):
-        if block.block_type == BlockType.MCP_TOOL:
-            hint = (
-                " Use run_capability on the MCP server entry from find_capability instead — it handles "
-                "MCP server discovery, authentication, and execution."
-            )
-        elif block.block_type == BlockType.AGENT:
-            hint = " Use the `run_agent` tool instead."
-        else:
-            hint = " This block is designed for use within graphs only."
-        return ErrorResponse(
-            message=f"Block '{block.name}' cannot be run directly.{hint}",
-            session_id=session_id,
-        ).from_outside()
-
     # Before credentials: resolving them can provision a managed profile.
-    if denied := _permission_denied(block_id, block.name, session_id):
-        return denied
-    if denied := _provider_denied(block, block_id, session_id):
-        return denied
+    if refusal := block_run_refusal(block, block_id, session_id):
+        return refusal
 
     emit_tool_display_name(block.name)
 
@@ -1285,11 +1371,30 @@ async def prepare_block_for_execution(
             )
             unattended.message += bot_hint
             return unattended
+        # Connected-but-short (missing scopes, refused refresh) is not "not
+        # configured": the card names what is missing and its reconnect asks
+        # for the full set of scopes.
+        missing_creds_dict, gap_messages = annotate_credential_gaps(
+            (
+                await credentials_for_gaps(user_id, session.expert_id)
+                if missing_credentials
+                else []
+            ),
+            credentials_fields_info,
+            missing_entries,
+        )
         missing_creds_dict = await annotate_expert_grants(
-            user_id, session.expert_id, missing_entries
+            user_id, session.expert_id, missing_creds_dict
         )
         missing_creds_list = list(missing_creds_dict.values())
-        if missing_credentials:
+        if gap_messages:
+            message = (
+                f"Block '{block.name}' can't run yet. "
+                + " ".join(gap_messages)
+                + grant_hint
+                + bot_hint
+            )
+        elif missing_credentials:
             message = (
                 (
                     f"Block '{block.name}' requires credentials that are not "
@@ -1360,6 +1465,35 @@ async def prepare_block_for_execution(
     )
 
 
+def block_run_refusal(
+    block: AnyBlockSchema, block_id: str, session_id: str
+) -> ErrorResponse | None:
+    """The refusal when this turn may not run *block* directly: a block made
+    for graphs only, or one the session's permissions or provider ceiling
+    keep from the run.  Resuming an approved call answers to it too, since an
+    approval from an earlier turn is no exemption from this one's."""
+    if (
+        block.block_type in block_meta.COPILOT_EXCLUDED_BLOCK_TYPES
+        or block.id in block_meta.COPILOT_EXCLUDED_BLOCK_IDS
+    ):
+        if block.block_type == BlockType.MCP_TOOL:
+            hint = (
+                " Use run_capability on the MCP server entry from find_capability instead — it handles "
+                "MCP server discovery, authentication, and execution."
+            )
+        elif block.block_type == BlockType.AGENT:
+            hint = " Use the `run_agent` tool instead."
+        else:
+            hint = " This block is designed for use within workflows only."
+        return ErrorResponse(
+            message=f"Block '{block.name}' cannot be run directly.{hint}",
+            session_id=session_id,
+        ).from_outside()
+    if denied := _permission_denied(block_id, block.name, session_id):
+        return denied
+    return _provider_denied(block, block_id, session_id)
+
+
 def _permission_denied(
     block_id: str, block_name: str, session_id: str
 ) -> ErrorResponse | None:
@@ -1419,12 +1553,14 @@ async def check_hitl_review(
     session_id: str,
     organization_id: str | None = None,
     team_id: str | None = None,
+    metadata: ChatSessionMetadata | None = None,
 ) -> "tuple[str, dict[str, Any]] | ToolResponseBase":
     """Check for an existing or new HITL review requirement.
 
     If a review is needed, stores the review record and returns a
     ReviewRequiredResponse.  Otherwise returns
     ``(synthetic_node_exec_id, input_data)`` ready for execute_block.
+    *metadata* is the session's, which decides where the reply says the card is.
     """
     block = prep.block
     block_id = prep.block_id
@@ -1441,7 +1577,7 @@ async def check_hitl_review(
             for r in existing_reviews
             if r.node_id == synthetic_node_id
             and r.status.value == "WAITING"
-            and r.payload == input_data
+            and same_json(r.payload, input_data)
         ),
         None,
     )
@@ -1450,7 +1586,8 @@ async def check_hitl_review(
             message=(
                 f"Block '{block.name}' requires human review. "
                 f"After the user approves, call resume_capability with "
-                f"review_id='{existing_review.node_exec_id}' to execute."
+                f"review_id='{existing_review.node_exec_id}' to execute. "
+                f"{review_card_location(metadata)}"
             ),
             session_id=session_id,
             block_id=block_id,
@@ -1488,7 +1625,8 @@ async def check_hitl_review(
             message=(
                 f"Block '{block.name}' requires human review. "
                 f"After the user approves, call resume_capability with "
-                f"review_id='{synthetic_node_exec_id}' to execute."
+                f"review_id='{synthetic_node_exec_id}' to execute. "
+                f"{review_card_location(metadata)}"
             ),
             session_id=session_id,
             block_id=block_id,
@@ -1530,7 +1668,8 @@ async def check_spend_approval(
     return ReviewRequiredResponse(
         message=(
             f"{needed.headline}. Tell the user, and after they approve "
-            "call run_capability again with the same input."
+            "call run_capability again with the same input. "
+            f"{review_card_location(session.metadata)}"
         ),
         session_id=session.session_id,
         block_id=prep.block_id,

@@ -3,6 +3,9 @@ import type { UIDataTypes, UIMessage, UITools } from "ai";
 import {
   convertChatSessionMessagesToUiMessages,
   createTurnLogRenderer,
+  extractDbSequence,
+  savedTurnBubbleIds,
+  type TurnStats,
   type TurnStatsMap,
 } from "../helpers/convertChatSessionToUiMessages";
 import type { RuntimeSnapshot } from "./turnRuntime";
@@ -24,6 +27,9 @@ export function createTailRenderer(sessionId: string) {
   return function renderTail(snapshot: RuntimeSnapshot) {
     const messages: UiMessage[] = [];
     const stats: TurnStatsMap = new Map();
+    function patch(id: string, fields: TurnStats) {
+      stats.set(id, { ...stats.get(id), ...fields });
+    }
     const drained = drainedTexts(snapshot);
     for (const seg of snapshot.segments) {
       if (seg.kind === "user") {
@@ -49,6 +55,13 @@ export function createTailRenderer(sessionId: string) {
           rowsMessages.set(seg, converted);
         }
         messages.push(...converted);
+        for (const message of converted) {
+          if (
+            message.role === "assistant" &&
+            extractDbSequence(message) !== null
+          )
+            patch(message.id, { savedMessageId: message.id });
+        }
       } else {
         let render = turnRenderers.get(seg.key);
         if (!render) {
@@ -57,14 +70,23 @@ export function createTailRenderer(sessionId: string) {
         }
         const rendered = render(seg.log);
         messages.push(...rendered);
+        const savedIds = seg.reconciled
+          ? savedTurnBubbleIds(sessionId, seg.log)
+          : null;
         for (const message of rendered) {
           const at = seg.rowCreatedAt[message.id];
           if (message.role === "user" && at)
-            stats.set(message.id, { createdAt: at });
+            patch(message.id, { createdAt: at });
+          const savedMessageId = savedIds?.get(message.id);
+          if (savedMessageId) patch(message.id, { savedMessageId });
         }
         const last = rendered.findLast((m) => m.role === "assistant");
+        if (last && !seg.reconciled && seg.lastReplySequence !== null)
+          patch(last.id, {
+            savedMessageId: `${sessionId}-seq-${seg.lastReplySequence}`,
+          });
         if (last && (seg.durationMs !== null || seg.createdAt)) {
-          stats.set(last.id, {
+          patch(last.id, {
             ...(seg.durationMs !== null ? { durationMs: seg.durationMs } : {}),
             ...(seg.createdAt ? { createdAt: seg.createdAt } : {}),
           });
@@ -119,8 +141,17 @@ export function statsOfAssistantRuns(
       continue;
     }
     const later = stats.get(message.id);
-    if (later)
-      joined.set(runStart.id, { ...joined.get(runStart.id), ...later });
+    // A joined bubble is rated by its latest turn's reply, so the earlier
+    // turn's saved id (or a history bubble's own id) must not stand in while
+    // the later one has none yet: null says "not rateable yet".
+    const savedMessageId =
+      later?.savedMessageId ??
+      (extractDbSequence(message) !== null ? message.id : null);
+    joined.set(runStart.id, {
+      ...joined.get(runStart.id),
+      ...later,
+      savedMessageId,
+    });
   }
   return joined;
 }

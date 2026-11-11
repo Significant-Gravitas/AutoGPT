@@ -4,7 +4,7 @@
 # be copied into the Debian appliance image. Browser-facing service URLs are
 # intentionally same-origin paths; the in-container reverse proxy decides
 # where they land at runtime.
-FROM node:24.22.1-bookworm-slim@sha256:1681862882da07ee5476fee047bcf34138833f1df42633bb25bcb0f438d5bf3d AS frontend
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS frontend
 
 WORKDIR /app
 RUN corepack enable
@@ -22,7 +22,6 @@ ENV NODE_ENV=production \
     NEXT_PUBLIC_FRONTEND_BASE_URL="" \
     NEXT_PUBLIC_APP_ENV=local \
     NEXT_PUBLIC_BEHAVE_AS=LOCAL \
-    NEXT_PUBLIC_LAUNCHDARKLY_ENABLED=false \
     NEXT_PUBLIC_SOURCEMAPS=false \
     NEXT_PUBLIC_TURNSTILE=disabled \
     NEXT_PUBLIC_VAPID_PUBLIC_KEY="" \
@@ -33,7 +32,7 @@ RUN pnpm run generate:api \
     && NODE_OPTIONS="--max-old-space-size=8192" pnpm build \
     && rm -f .env .env.local .env.production
 
-FROM node:24.22.1-bookworm-slim@sha256:1681862882da07ee5476fee047bcf34138833f1df42633bb25bcb0f438d5bf3d AS node-runtime
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS node-runtime
 
 ARG NPM_VERSION=12.0.2
 RUN npm install --global "npm@${NPM_VERSION}" \
@@ -200,14 +199,7 @@ RUN groupadd --system --gid 10001 autogpt \
     && chmod -R a+rX /opt/autogpt/single-container /usr/share/licenses/autogpt-platform /usr/share/licenses/falkordb /usr/share/licenses/redis \
     && find /opt/autogpt/single-container -type f \( -name '*.sh' -o -name 'entrypoint' -o -name 'autogpt-*' \) -exec chmod 0755 {} + \
     && ln -sf /opt/autogpt/single-container/healthcheck.sh /usr/local/bin/autogpt-healthcheck \
-    && ln -sf /opt/autogpt/single-container/promote-admin.sh /usr/local/bin/autogpt-admin \
-    && site_packages="$(/app/autogpt_platform/backend/.venv/bin/python -c \
-        'import sysconfig; print(sysconfig.get_paths()["purelib"])')" \
-    && rm -f \
-        "${site_packages}/ldclient/testing/selfsigned.key" \
-        "${site_packages}/ldclient/testing/selfsigned.pem" \
-    && test ! -e "${site_packages}/ldclient/testing/selfsigned.key" \
-    && test ! -e "${site_packages}/ldclient/testing/selfsigned.pem"
+    && ln -sf /opt/autogpt/single-container/promote-admin.sh /usr/local/bin/autogpt-admin
 
 # Everything above changes only when dependencies do. Everything below changes
 # with AutoGPT's code, so it goes last and a new commit reuses the layers above.

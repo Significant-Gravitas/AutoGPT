@@ -43,6 +43,12 @@ import {
   resolveWorkspaceUrls,
   workspaceLinkFileID,
 } from "../helpers";
+import { MistakeTool } from "../../../tools/FeedbackPrompts/MistakeTool";
+import {
+  type FeedbackCardTarget,
+  MISTAKE_PART_TYPE,
+  WORK_CHECK_PART_TYPE,
+} from "../../../tools/FeedbackPrompts/helpers";
 import { WorkspaceLink, WorkspaceLinksContext } from "./WorkspaceLink";
 import { ReasoningCollapse } from "./ReasoningCollapse";
 
@@ -171,6 +177,9 @@ interface Props {
    *  only animates while it is; once the stream ends the row is history,
    *  however it was left. */
   isCurrentlyStreaming?: boolean;
+  /** Set on the last settled reply: where the mistake card sends its answer.
+   *  Absent, the card does not show. */
+  feedbackTarget?: FeedbackCardTarget | null;
 }
 
 export function MessagePartRenderer({
@@ -184,6 +193,7 @@ export function MessagePartRenderer({
   liveCompactionCallId,
   liveCompactionStats,
   isCurrentlyStreaming,
+  feedbackTarget,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
 
@@ -200,7 +210,7 @@ export function MessagePartRenderer({
       const isActive = reasoningState === "streaming";
       return (
         <ReasoningCollapse key={key} isActive={isActive}>
-          <pre className="text-sm whitespace-pre-wrap text-foreground-body">
+          <pre className="text-body whitespace-pre-wrap text-foreground-body">
             {reasoningText}
           </pre>
         </ReasoningCollapse>
@@ -233,7 +243,7 @@ export function MessagePartRenderer({
         return (
           <div
             key={key}
-            className="my-2 rounded-lg bg-surface-hover px-3 py-2 text-sm text-foreground-secondary italic"
+            className="my-2 rounded-lg bg-surface-hover px-3 py-2 text-body text-foreground-secondary italic"
           >
             {markerText}
           </div>
@@ -311,6 +321,17 @@ export function MessagePartRenderer({
     case "tool-delete_folder":
     case "tool-move_agents_to_folder":
       return <FolderTool key={key} part={part as ToolUIPart} />;
+    case WORK_CHECK_PART_TYPE:
+      // Sits under the reply's actions, drawn by MessageRow.
+      return null;
+    case MISTAKE_PART_TYPE:
+      return feedbackTarget ? (
+        <MistakeTool
+          key={key}
+          part={part as ToolUIPart}
+          target={feedbackTarget}
+        />
+      ) : null;
     case "tool-TodoWrite":
       // Hidden inline — the task list surfaces through TaskProgressBar above
       // the composer, not as a message part. That bar is gated on
@@ -319,7 +340,7 @@ export function MessagePartRenderer({
     case COMPACTION_PART_TYPE: {
       const toolPart = part as ToolUIPart;
       // A failed compaction, or one closed by the abort sentinel (output ""),
-      // condensed nothing — settled "Condensed…" copy would report work that
+      // condensed nothing — a settled summary claim would report work that
       // never happened. Render nothing; failure messaging belongs to the
       // turn-level error surfaces, not a maintenance row. Same predicate the
       // phase derivation uses, so the row and the bar can never disagree.
@@ -327,7 +348,7 @@ export function MessagePartRenderer({
       const settled = toolPart.state === "output-available";
       // A row still open when the stream is over never completed — the
       // user stopped the turn or the connection dropped mid-compaction.
-      // Claiming "Condensed the conversation" would report work that
+      // Claiming a finished summary would report work that
       // never finished, so render nothing, like the abort sentinel.
       if (!isCurrentlyStreaming && !settled) return null;
       const isLiveRow =

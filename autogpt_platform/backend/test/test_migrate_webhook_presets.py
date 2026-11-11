@@ -33,12 +33,32 @@ def _make_test_ctx(user_id: str = "user-1") -> RequestContext:
 _PRISMA_PATCH_TARGET = "prisma.models.AgentPreset.prisma"
 
 
+@pytest.fixture(autouse=True)
+def caller_owns_every_graph_id(mocker):
+    mocker.patch(
+        "backend.data.graph.graph_owner_id", new=AsyncMock(return_value="user-1")
+    )
+
+
 @pytest.fixture
 def mock_prisma():
     with patch(_PRISMA_PATCH_TARGET) as mock:
         mock_client = AsyncMock()
         mock.return_value = mock_client
         yield mock_client
+
+
+@pytest.fixture(autouse=True)
+def mock_input_output_prisma():
+    """migrate_webhook_presets_to_new_version re-keys the trigger mask via
+    AgentNodeExecutionInputOutput.update_many; mock it so these DB-less tests
+    don't hit a real (unconnected) client. Re-key assertions live in
+    db_test.py::test_migrate_webhook_presets_rekeys_input_mask."""
+    with patch("prisma.models.AgentNodeExecutionInputOutput.prisma") as mock:
+        io_client = AsyncMock()
+        io_client.update_many = AsyncMock(return_value=0)
+        mock.return_value = io_client
+        yield io_client
 
 
 def _make_graph(

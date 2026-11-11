@@ -42,6 +42,7 @@ import secrets
 from typing import Any, Awaitable, Callable, Literal, Optional, TypeVar, cast
 
 from e2b import AsyncCommandHandle, AsyncSandbox
+from e2b.exceptions import NotFoundException
 from e2b.sandbox.sandbox_api import (
     SandboxEgressProxyOpts,
     SandboxNetworkOpts,
@@ -49,8 +50,11 @@ from e2b.sandbox.sandbox_api import (
 )
 from pydantic import BaseModel, ConfigDict
 
+from backend.data.model import APIKeyCredentials
 from backend.data.redis_client import get_redis_async
-from backend.util.settings import Settings
+from backend.integrations.credentials_store import is_system_credential
+from backend.util.sandbox_limits import USER_KEY, start_slot, stopped, tagged
+from backend.util.settings import Secrets, Settings
 
 logger = logging.getLogger(__name__)
 # One JSON line per pin: which box, for whom, and which of the user's accounts
@@ -72,6 +76,23 @@ _LOCK_KEY_PREFIX = "e2b:egress:lock:"
 # the holder dies mid-way.
 _ROTATION_LOCK_TTL = 60
 _ROTATION_LOCK_WAIT = 30
+# Block runs in flight on one kept box: two nodes can be fed one sandbox_id.
+_HOLDERS_KEY_PREFIX = "e2b:egress:holders:"
+# Past E2B's 24 h cap on a box's running time, so it never lapses mid-run. Every
+# hold re-arms it: a count a killed run leaves behind lapses only this long unused.
+_HOLDERS_TTL = 24 * 3600 + 15 * 60
+# One script each, so a count is never left without its expiry and a hold
+# landing between the decrement and the delete is never wiped.
+_HOLD_SCRIPT = (
+    'local n = redis.call("incr", KEYS[1]) '
+    'redis.call("expire", KEYS[1], ARGV[1]) '
+    "return n"
+)
+_RELEASE_SCRIPT = (
+    'local n = redis.call("decr", KEYS[1]) '
+    'if n <= 0 then redis.call("del", KEYS[1]) return 0 end '
+    "return n"
+)
 
 S = TypeVar("S", bound=AsyncSandbox)
 
@@ -137,14 +158,74 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
 
     *sandbox_cls* is the SDK class the caller uses (``e2b.AsyncSandbox`` or
     ``e2b_code_interpreter``'s); every other keyword goes to its ``create``.
-    The credential is recorded before the box exists so that its very first
-    connection already resolves at the proxy.
+    The box is stamped with its deployment and account, and on the platform's
+    key the create waits for a place under ``backend.util.sandbox_limits``,
+    raising ``SandboxLimitError`` when there is none.
     """
     if "network" in kwargs:
         raise ValueError("A box's network is decided here, not by the caller")
     # e2b 2.56 stopped sending this when unset, leaving it to E2B's default;
     # keep asking for the internet access every box has had so far.
     kwargs.setdefault("allow_internet_access", True)
+    kwargs["metadata"] = tagged(kwargs.get("metadata"), owner.user_id)
+    if not _on_platform_key(owner, kwargs.get("api_key")):
+        return await _create_pinned(sandbox_cls, owner, **kwargs)
+    async with start_slot(
+        kwargs.get("api_key"), kwargs["metadata"].get(USER_KEY)
+    ) as slot:
+        sandbox = await _create_pinned(sandbox_cls, owner, **kwargs)
+        await slot.started(sandbox.sandbox_id)
+    return sandbox
+
+
+async def connect_sandbox(
+    sandbox_cls: type[S],
+    sandbox_id: str,
+    owner: EgressOwner,
+    *,
+    apply_network: bool = True,
+    resumes: bool = True,
+    owner_at_pin: Optional[Callable[[EgressOwner], Awaitable[EgressOwner]]] = None,
+    **kwargs: Any,
+) -> S:
+    """Reconnect to a box, re-pinning its egress under a fresh credential.
+
+    *apply_network* is ``False`` for a connect that only pauses or kills the
+    box: nothing will egress before it is gone, so there is nothing to pin,
+    and it takes no place under the running-box limits.  *resumes* is
+    ``False`` when the caller has just seen the box running; any other
+    connect may wake it, so it waits for a place like a create does.
+    """
+    if not (
+        apply_network and resumes and _on_platform_key(owner, kwargs.get("api_key"))
+    ):
+        return await _connect_pinned(
+            sandbox_cls,
+            sandbox_id,
+            owner,
+            apply_network=apply_network,
+            owner_at_pin=owner_at_pin,
+            **kwargs,
+        )
+    async with start_slot(
+        kwargs.get("api_key"), owner.user_id, sandbox_id=sandbox_id
+    ) as slot:
+        sandbox = await _connect_pinned(
+            sandbox_cls, sandbox_id, owner, owner_at_pin=owner_at_pin, **kwargs
+        )
+        await slot.started(sandbox_id)
+    return sandbox
+
+
+def _on_platform_key(owner: EgressOwner, api_key: Optional[str]) -> bool:
+    """CoPilot boxes always run on the platform's key; a block's box only when
+    it runs on the platform's E2B credential, not one the user brought."""
+    return owner.kind != "block" or not api_key or api_key == Secrets().e2b_api_key
+
+
+async def _create_pinned(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any) -> S:
+    """The credential is recorded before the box exists so that its very first
+    connection already resolves at the proxy."""
     address = proxy_address()
     if address is None:
         return await sandbox_cls.create(**kwargs)
@@ -180,7 +261,7 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
     return sandbox
 
 
-async def connect_sandbox(
+async def _connect_pinned(
     sandbox_cls: type[S],
     sandbox_id: str,
     owner: EgressOwner,
@@ -189,11 +270,7 @@ async def connect_sandbox(
     owner_at_pin: Optional[Callable[[EgressOwner], Awaitable[EgressOwner]]] = None,
     **kwargs: Any,
 ) -> S:
-    """Reconnect to a box, re-pinning its egress under a fresh credential.
-
-    *apply_network* is ``False`` for a connect that only pauses or kills the
-    box: nothing will egress before it is gone, so there is nothing to pin.
-    The new credential is recorded before the update and the old one is
+    """The new credential is recorded before the update and the old one is
     forgotten after it, so a failed update leaves the box on a credential
     that still resolves.
 
@@ -254,6 +331,112 @@ async def reattach_command(
     return await sandbox.commands.connect(pid, **kwargs)
 
 
+def uses_platform_e2b_key(credentials: APIKeyCredentials) -> bool:
+    """Whether a run's boxes are created on the operator's E2B key, and so
+    must be paused when kept.  A credential with no key is one, because the
+    SDK reads ``api_key or $E2B_API_KEY``; a blank one counts to fail safe."""
+    return (
+        is_system_credential(credentials.id)
+        or not credentials.api_key.get_secret_value().strip()
+    )
+
+
+async def hold_sandbox(sandbox_id: str) -> None:
+    """Count a block run on a box it keeps, before the run connects to it, so
+    another run's ``release_sandbox`` leaves the box running under this one.
+    Under the box's rotation lock, so it waits out a pause already decided."""
+    async with contextlib.AsyncExitStack() as locked:
+        await _lock_if_possible(locked, sandbox_id)
+        try:
+            redis = await get_redis_async()
+            await redis.eval(
+                _HOLD_SCRIPT, 1, _HOLDERS_KEY_PREFIX + sandbox_id, _HOLDERS_TTL
+            )
+        except Exception:
+            # Uncounted, this run still pauses the box when it releases it.
+            logger.warning(
+                f"[E2B] Could not count a run on {sandbox_id:.12}", exc_info=True
+            )
+
+
+async def release_sandbox(
+    sandbox_id: str, sandbox: Optional[AsyncSandbox], **opts: Any
+) -> None:
+    """Uncount a block run and pause the box unless another run still holds
+    it, under the box's rotation lock.  Without a handle (the run's connect
+    failed) the box is paused by id, with *opts* as the SDK's API options.  A
+    count that cannot be read pauses the box too.  Never raises: a block
+    awaits this in its ``finally``."""
+    async with contextlib.AsyncExitStack() as locked:
+        await _lock_if_possible(locked, sandbox_id)
+        try:
+            redis = await get_redis_async()
+            remaining = int(
+                await redis.eval(_RELEASE_SCRIPT, 1, _HOLDERS_KEY_PREFIX + sandbox_id)
+            )
+        except Exception:
+            # A kept box must not stay running, even at the cost of pausing
+            # one another run is still executing on.
+            logger.warning(
+                f"[E2B] Could not uncount a run on {sandbox_id:.12}, pausing it",
+                exc_info=True,
+            )
+            remaining = 0
+        if remaining > 0:
+            logger.info(
+                f"[E2B] {sandbox_id:.12} is still held by {remaining} run(s), "
+                "leaving it running"
+            )
+            return
+        # Awaited from a block's ``finally``: raising here would replace the
+        # run's own result with this failure, and lose it.
+        try:
+            if sandbox is not None:
+                await pause_sandbox(sandbox)
+            else:
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(
+                        AsyncSandbox.pause(sandbox_id, **opts),
+                        timeout=_KILL_TIMEOUT_SECONDS,
+                    )
+                await forget_sandbox(sandbox_id)
+        except Exception:
+            logger.exception(
+                f"[E2B] Could not stop {sandbox_id:.12} after its last run"
+            )
+
+
+async def _lock_if_possible(stack: contextlib.AsyncExitStack, sandbox_id: str) -> None:
+    """Hold the box's rotation lock until *stack* closes.  Without it the
+    caller goes on unlocked: a count kept unlocked beats one dropped."""
+    try:
+        await stack.enter_async_context(_rotation_lock(sandbox_id))
+    except Exception:
+        logger.warning(
+            f"[E2B] Could not lock {sandbox_id:.12}, going on unlocked",
+            exc_info=True,
+        )
+
+
+async def pause_sandbox(sandbox: AsyncSandbox) -> None:
+    """Pause a box and revoke its proxy credential; ``connect_sandbox`` resumes
+    it under a fresh one.  A box that will not pause is killed instead, and one
+    that is already gone is only revoked."""
+    try:
+        await asyncio.wait_for(sandbox.pause(), timeout=_KILL_TIMEOUT_SECONDS)
+    except NotFoundException:
+        pass
+    except Exception:
+        logger.warning(
+            f"[E2B] Could not pause {sandbox.sandbox_id:.12}, killing it",
+            exc_info=True,
+        )
+        await kill_sandbox(sandbox)
+        return
+    # Unlike a kill, the provider ceiling stays for the box's next re-pin.
+    await forget_sandbox(sandbox.sandbox_id)
+
+
 async def kill_sandbox(sandbox: AsyncSandbox) -> None:
     """Kill a box and revoke its proxy credential: the kill for any caller
     that holds the handle.  A kill that raises leaves the credential alone,
@@ -267,13 +450,15 @@ async def kill_sandbox(sandbox: AsyncSandbox) -> None:
 
 
 async def forget_sandbox(sandbox_id: str) -> None:
-    """Revoke a box's proxy credential: call when the box is paused or killed.
+    """Revoke a box's proxy credential and stop counting the box under the
+    running-box limits: call when the box is paused or killed.
 
     Nothing will present it again (a resume mints a fresh one), and until its
     TTL it would keep naming this owner to the proxy.  Best effort: a failure
     here must not fail the pause or kill it follows.  The box's provider
     ceiling stays: the next re-pin of a paused box keeps it.
     """
+    await stopped(sandbox_id)
     # Not skipped while no proxy is configured: a box pinned before the
     # address was removed still has a credential on record.
     try:

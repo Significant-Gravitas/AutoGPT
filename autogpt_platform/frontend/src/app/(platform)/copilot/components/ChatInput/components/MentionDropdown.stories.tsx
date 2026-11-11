@@ -79,7 +79,7 @@ function AccountMentionComposer({ expertId }: Props) {
               key={name}
               variant="body-tight"
               as="span"
-              className="rounded-lg bg-surface-hover px-2 py-1 text-foreground"
+              className="rounded-lg bg-surface-hover px-2 py-1 text-foreground-base"
             >
               {name}
             </Text>
@@ -143,6 +143,21 @@ export const ExpertAccounts: Story = {
     await expect(
       canvas.queryByRole("option", { name: /Personal Gmail/ }),
     ).not.toBeInTheDocument();
+  },
+};
+
+export const SkillCommands: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByRole("textbox"), "/");
+    await expect(
+      await canvas.findByRole("option", { name: /\/fix-issue/ }),
+    ).toBeVisible();
+    await expect(
+      canvas.queryByRole("option", { name: /house-style/ }),
+    ).not.toBeInTheDocument();
+    await userEvent.type(canvas.getByRole("textbox"), "fi{Enter}");
+    await expect(canvas.getByRole("textbox")).toHaveValue("/fix-issue ");
   },
 };
 

@@ -1,11 +1,17 @@
 import { memo, type ReactNode } from "react";
-import type { UIDataTypes, UIMessage, UITools } from "ai";
+import type { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import {
   Message,
   MessageContent,
 } from "@/components/organisms/Message/Message";
 import type { TurnStats } from "../../../../helpers/convertChatSessionToUiMessages";
 import type { SentFrom } from "../../../../sentFrom";
+import { WorkCheckTool } from "../../../../tools/FeedbackPrompts/WorkCheckTool";
+import {
+  readFeedbackPrompt,
+  WORK_CHECK_PART_TYPE,
+} from "../../../../tools/FeedbackPrompts/helpers";
+import type { ExpertIdentity } from "../../../../useExpertMap";
 import { TurnStatsBar } from "../../../JobStatsBar/TurnStatsBar";
 import { ScheduledChatNoticeCard } from "../../../ScheduledChatNoticeCard/ScheduledChatNoticeCard";
 import { WorkCard } from "../../../WorkCard/WorkCard";
@@ -16,7 +22,11 @@ import { SentFromBadge } from "../SentFromBadge";
 import { UserMessageClamp } from "../UserMessageClamp";
 import { AssistantRowActions } from "./components/AssistantRowActions";
 import { UserRowActions } from "./components/UserRowActions";
-import { areMessageRowPropsEqual, getMessageContentClassName } from "./helpers";
+import {
+  areMessageRowPropsEqual,
+  getFeedbackCardTarget,
+  getMessageContentClassName,
+} from "./helpers";
 import { useMessageRow } from "./useMessageRow";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
@@ -38,6 +48,12 @@ interface Props {
   isCurrentlyStreaming: boolean;
   /** Assistant row that closes its turn: shows the stats bar and actions. */
   isLastInTurn: boolean;
+  /** Last rendered row: only the latest turn's stats bar says how it ended. */
+  isLatestTurn: boolean;
+  /** The latest turn's stream has really ended (see TurnStatsBar). */
+  isTurnSettled: boolean;
+  /** The latest turn's stream is still settling (probe, reconnect, restore). */
+  isTurnSettling?: boolean;
   /** This row's entry from the turn stats map. */
   turnStat?: TurnStats;
   /** The turn this row closes, for the stats bar. Only set when the bar
@@ -58,6 +74,8 @@ interface Props {
   filePattern?: RegExp;
   fileUrlBuilder?: (fileId: string) => string;
   onRetry?: () => void;
+  /** Whose name a work check on this row carries; set on the last row only. */
+  expert?: ExpertIdentity | null;
 }
 
 // memo-boundary: a transcript row. The transcript re-renders on every
@@ -68,6 +86,9 @@ export const MessageRow = memo(function MessageRow({
   isLastAssistant,
   isCurrentlyStreaming,
   isLastInTurn,
+  isLatestTurn,
+  isTurnSettled,
+  isTurnSettling,
   turnStat,
   turnMessages,
   elapsedSeconds,
@@ -80,6 +101,7 @@ export const MessageRow = memo(function MessageRow({
   filePattern,
   fileUrlBuilder,
   onRetry,
+  expert,
 }: Props) {
   const {
     runMetadata,
@@ -138,6 +160,21 @@ export const MessageRow = memo(function MessageRow({
   }
 
   const isAssistant = message.role === "assistant";
+  const feedbackTarget = getFeedbackCardTarget({
+    isLastAssistant,
+    isCurrentlyStreaming,
+    readOnly,
+    sessionID,
+    message,
+    savedMessageId: turnStat?.savedMessageId,
+  });
+  const workCheckPart = feedbackTarget
+    ? renderableParts.findLast(
+        (part) =>
+          part.type === WORK_CHECK_PART_TYPE &&
+          readFeedbackPrompt(part as ToolUIPart) !== null,
+      )
+    : undefined;
   const showActions =
     isLastInTurn &&
     !isCurrentlyStreaming &&
@@ -162,6 +199,7 @@ export const MessageRow = memo(function MessageRow({
             compactionPhase={compactionPhase}
             liveCompactionCallId={liveCompactionCallId}
             liveCompactionStats={liveCompactionStats}
+            feedbackTarget={feedbackTarget}
           />
         ) : (
           <UserMessageClamp
@@ -188,6 +226,9 @@ export const MessageRow = memo(function MessageRow({
             turnMessages={turnMessages ?? [message]}
             elapsedSeconds={elapsedSeconds}
             stats={turnStat}
+            isLatest={isLatestTurn}
+            isSettled={isTurnSettled}
+            isSettling={isTurnSettling}
           />
         )}
         {indicator}
@@ -219,6 +260,14 @@ export const MessageRow = memo(function MessageRow({
           readOnly={readOnly}
           copyText={copyText}
           sessionID={sessionID}
+          savedMessageId={turnStat?.savedMessageId}
+        />
+      )}
+      {workCheckPart && feedbackTarget && (
+        <WorkCheckTool
+          part={workCheckPart as ToolUIPart}
+          target={feedbackTarget}
+          expert={expert}
         />
       )}
     </Message>

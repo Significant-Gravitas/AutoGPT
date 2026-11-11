@@ -98,7 +98,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
         >
           <SheetHeader className="mt-12 px-6 pt-2 pb-1 text-left">
             <SheetTitle>
-              <Text as="span" variant="lg-semibold" tone="primary">
+              <Text as="span" variant="lead-semibold" tone="primary">
                 {TAB_TITLES[activeTab]}
               </Text>
             </SheetTitle>
@@ -129,7 +129,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           animate={{ width: contextPanelWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
-          className="relative h-full shrink-0 border-l border-l-separator bg-sidebar"
+          className="relative h-full shrink-0 border-l border-l-separator bg-surface-muted"
         >
           {/* Sibling of the clip, not a child of it: the handle is
               -translate-x-1/2 and deliberately straddles the border, so
