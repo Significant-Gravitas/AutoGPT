@@ -140,6 +140,7 @@ logger = logging.getLogger(__name__)
 
 # Long enough to stop a loop, short enough that a user who cancels and retries
 # is not left waiting.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 _INITIATE_COOLDOWN_SECONDS = 3
 # The throttle protects an upstream client id; it must never be the reason a
 # request hangs.
@@ -849,6 +850,7 @@ async def device_auth_poll(
             detail="Invalid or expired state token",
         )
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     interval = int(valid_state.state_metadata.get("interval") or 5)
     if await _throttle_upstream(
         user_id, provider, interval, scope="poll", flow=body.state_token
