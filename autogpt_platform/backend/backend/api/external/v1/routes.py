@@ -2,7 +2,7 @@ import logging
 import urllib.parse
 from typing import Annotated, Any, Optional, Sequence
 
-from fastapi import APIRouter, Body, HTTPException, Security, status
+from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
@@ -12,6 +12,7 @@ import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
 from backend.api.external.middleware import require_auth, require_permission
+from backend.api.external.rate_limit import EXECUTION_LIMIT, READ_LIMIT
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
@@ -37,6 +38,7 @@ from backend.executor.utils import (
 )
 from backend.integrations.webhooks.graph_lifecycle_hooks import before_graph_activate
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.models import MAX_PAGE
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
@@ -48,6 +50,11 @@ logger = logging.getLogger(__name__)
 
 v1_router = APIRouter()
 
+# Each integrations route declares its own tier in ``integrations.py``: the
+# reads take READ_LIMIT, while credential writes and the two OAuth hops (which
+# call out to a provider) take EXECUTION_LIMIT. A router-level dependency
+# cannot express that split — FastAPI would AND it with every route's own
+# dependency, so a write would be counted against both budgets.
 v1_router.include_router(integrations_router)
 v1_router.include_router(tools_router)
 
@@ -65,6 +72,9 @@ class UserInfoResponse(BaseModel):
 @v1_router.get(
     path="/me",
     tags=["user", "meta"],
+    dependencies=[
+        READ_LIMIT,
+    ],
 )
 async def get_user_info(
     auth: APIAuthorizationInfo = Security(
@@ -84,7 +94,10 @@ async def get_user_info(
 @v1_router.get(
     path="/blocks",
     tags=["blocks"],
-    dependencies=[Security(require_permission(APIKeyPermission.READ_BLOCK))],
+    dependencies=[
+        Security(require_permission(APIKeyPermission.READ_BLOCK)),
+        READ_LIMIT,
+    ],
 )
 async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in backend.blocks.get_blocks().values()]
@@ -94,7 +107,10 @@ async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
 @v1_router.post(
     path="/blocks/{block_id}/execute",
     tags=["blocks"],
-    dependencies=[Security(require_permission(APIKeyPermission.EXECUTE_BLOCK))],
+    dependencies=[
+        Security(require_permission(APIKeyPermission.EXECUTE_BLOCK)),
+        EXECUTION_LIMIT,
+    ],
 )
 async def execute_graph_block(
     block_id: str,
@@ -193,7 +209,8 @@ async def _run_direct_block(
             require_permission(
                 APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY
             )
-        )
+        ),
+        EXECUTION_LIMIT,
     ],
 )
 async def create_graph(
@@ -240,6 +257,9 @@ async def create_graph(
 @v1_router.post(
     path="/graphs/{graph_id}/execute/{graph_version}",
     tags=["graphs"],
+    dependencies=[
+        EXECUTION_LIMIT,
+    ],
 )
 async def execute_graph(
     graph_id: str,
@@ -316,6 +336,9 @@ class GraphExecutionResult(TypedDict):
 @v1_router.get(
     path="/graphs/{graph_id}/executions/{graph_exec_id}/results",
     tags=["graphs"],
+    dependencies=[
+        READ_LIMIT,
+    ],
 )
 async def get_graph_execution_results(
     graph_id: str,
@@ -372,7 +395,10 @@ async def get_graph_execution_results(
 @v1_router.get(
     path="/store/agents",
     tags=["store"],
-    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
+    dependencies=[
+        Security(require_auth),  # data is public; auth required as anti-DDoS
+        READ_LIMIT,
+    ],
     response_model=store_model.StoreAgentsResponse,
 )
 async def get_store_agents(
@@ -381,7 +407,7 @@ async def get_store_agents(
     sorted_by: store_db.StoreAgentsSortOptions | None = None,
     search_query: str | None = None,
     category: str | None = None,
-    page: int = 1,
+    page: int = Query(default=1, ge=1, le=MAX_PAGE),
     page_size: int = 20,
 ) -> store_model.StoreAgentsResponse:
     """
@@ -405,6 +431,10 @@ async def get_store_agents(
     if page_size < 1:
         raise HTTPException(status_code=422, detail="Page size must be greater than 0")
 
+    # page_size stays uncapped in v1, but the query's offset and limit are 64-bit.
+    if page * page_size >= 2**63:
+        raise HTTPException(status_code=422, detail="Page size is too large")
+
     agents = await store_cache.get_cached_store_agents(
         featured=featured,
         creator=creator,
@@ -420,7 +450,10 @@ async def get_store_agents(
 @v1_router.get(
     path="/store/agents/{username}/{agent_name}",
     tags=["store"],
-    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
+    dependencies=[
+        Security(require_auth),  # data is public; auth required as anti-DDoS
+        READ_LIMIT,
+    ],
     response_model=store_model.StoreAgentDetails,
 )
 async def get_store_agent(
@@ -448,14 +481,17 @@ async def get_store_agent(
 @v1_router.get(
     path="/store/creators",
     tags=["store"],
-    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
+    dependencies=[
+        Security(require_auth),  # data is public; auth required as anti-DDoS
+        READ_LIMIT,
+    ],
     response_model=store_model.CreatorsResponse,
 )
 async def get_store_creators(
     featured: bool = False,
     search_query: str | None = None,
     sorted_by: store_db.StoreCreatorsSortOptions | None = None,
-    page: int = 1,
+    page: int = Query(default=1, ge=1, le=MAX_PAGE),
     page_size: int = 20,
 ) -> store_model.CreatorsResponse:
     """
@@ -466,7 +502,7 @@ async def get_store_creators(
         search_query: Search creators by profile description
         sorted_by: Sort by "agent_rating", "agent_runs", or "num_agents"
         page: Page number for pagination (default 1)
-        page_size: Number of creators per page (default 20)
+        page_size: Number of creators per page (default 20, maximum 100)
 
     Returns:
         CreatorsResponse: Paginated list of creators matching the filters
@@ -476,6 +512,10 @@ async def get_store_creators(
 
     if page_size < 1:
         raise HTTPException(status_code=422, detail="Page size must be greater than 0")
+
+    # The store query refuses more than 100 creators a page.
+    if page_size > 100:
+        raise HTTPException(status_code=422, detail="Page size must be at most 100")
 
     creators = await store_cache.get_cached_store_creators(
         featured=featured,
@@ -490,7 +530,10 @@ async def get_store_creators(
 @v1_router.get(
     path="/store/creators/{username}",
     tags=["store"],
-    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
+    dependencies=[
+        Security(require_auth),  # data is public; auth required as anti-DDoS
+        READ_LIMIT,
+    ],
     response_model=store_model.CreatorDetails,
 )
 async def get_store_creator(

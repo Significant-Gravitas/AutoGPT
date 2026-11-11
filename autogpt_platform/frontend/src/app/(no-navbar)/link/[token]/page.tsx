@@ -60,7 +60,7 @@ export default function PlatformLinkPage() {
 
       {page.status === "error" && <ErrorView message={page.errorMessage} />}
 
-      <div className="mt-8 text-center text-xs text-muted-foreground">
+      <div className="mt-8 text-center text-caption text-foreground-tertiary">
         <p>Powered by AutoGPT Platform</p>
       </div>
       <CookieSettingsLink className="mt-2" />

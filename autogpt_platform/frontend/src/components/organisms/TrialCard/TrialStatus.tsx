@@ -1,3 +1,4 @@
+import type { CancelTrialRequest } from "@/app/api/__generated__/models/cancelTrialRequest";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
@@ -9,7 +10,7 @@ import { TrialRejection } from "./TrialRejection";
 interface Props {
   trial: TrialStatusResponse;
   isCanceling: boolean;
-  onCancel: () => void;
+  onCancel: (request: CancelTrialRequest) => void;
   isResuming: boolean;
   onResume: () => void;
 }
@@ -58,11 +59,7 @@ export function TrialStatus({
                 : "Ended"}
           </Badge>
         </div>
-        <Text
-          variant="small"
-          tone="secondary"
-          className="max-w-[560px] leading-5"
-        >
+        <Text variant="small-loose" tone="secondary" className="max-w-[560px]">
           {trial.status === "canceled"
             ? "Cancellation confirmed. Trial access has ended and your trial will not convert to a paid plan."
             : trial.cancel_at_period_end
@@ -72,7 +69,7 @@ export function TrialStatus({
                 : "Paid access requires a successful payment. Review your payment method and plan below."}
         </Text>
         {trial.active && (
-          <Text variant="small" tone="secondary" className="text-xs">
+          <Text variant="small-tight" tone="secondary">
             Cancel before your trial ends to avoid a charge.
           </Text>
         )}

@@ -12,7 +12,9 @@ on:
       - ".github/scripts/test_e2e_seed_cache_contract.py"
       - ".github/scripts/hosted_journeys_env.py"
       - ".github/scripts/test_hosted_journeys_env.py"
+      - ".github/actions/generate-prisma-client/**"
       - ".github/scripts/docker-pull-with-retry.sh"
+      - ".github/scripts/install-prisma-cli-with-retry.sh"
       - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/**"
@@ -26,7 +28,9 @@ on:
       - ".github/scripts/test_e2e_seed_cache_contract.py"
       - ".github/scripts/hosted_journeys_env.py"
       - ".github/scripts/test_hosted_journeys_env.py"
+      - ".github/actions/generate-prisma-client/**"
       - ".github/scripts/docker-pull-with-retry.sh"
+      - ".github/scripts/install-prisma-cli-with-retry.sh"
       - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/**"
@@ -105,8 +109,7 @@ jobs:
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
 
       - name: Set up Backend - Generate Prisma client
-        working-directory: autogpt_platform/backend
-        run: poetry run prisma generate && poetry run gen-prisma-stub
+        uses: ./.github/actions/generate-prisma-client
 
       - name: Set up Frontend - Export OpenAPI schema from Backend
         working-directory: autogpt_platform/backend
@@ -188,8 +191,8 @@ jobs:
           - suite: smoke
             config: playwright.config.ts
             playwright_args: ""
-            # Pinned inventory: 28 tests in 9 files; raise when adding E2E tests.
-            min_tests: 28
+            # Pinned inventory: 29 tests in 10 files; raise when adding E2E tests.
+            min_tests: 29
             embeddings: true
             seed: true
             hosted: false
@@ -303,6 +306,14 @@ jobs:
         env:
           # Used by E2E test data script to generate embeddings for approved store agents
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      # Flags that ship off but have an E2E spec. Written before the compose
+      # file is resolved and the images are built, since the frontend inlines
+      # NEXT_PUBLIC_* at build time.
+      - name: Set up Platform - Force on the flags the E2E suite covers
+        run: |
+          echo "NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true" >> .env
+          echo "FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true" >> ../backend/.env
 
       # The hosted configuration, as far as one compose stack allows. Gaps are
       # listed in src/playwright/journeys/README.md.

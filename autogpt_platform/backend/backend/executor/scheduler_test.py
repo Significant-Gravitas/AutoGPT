@@ -234,7 +234,7 @@ async def test_update_schedule_is_owner_only_and_all_or_nothing(
 
 
 # ---------------------------------------------------------------------------
-# Community rebuild @expose methods — lightweight unit tests
+# Memory-cron @expose methods — lightweight unit tests
 #
 # Avoid SpinTestServer for these (Postgres + RabbitMQ overhead is overkill
 # for verifying job-args plumbing). Instantiate Scheduler via __new__ so we
@@ -392,6 +392,15 @@ class TestUpdateGraphExecutionSchedule:
         assert changes["kwargs"]["input_data"] == {"input": "new"}
         run_async.assert_called_once()
 
+    def test_a_cron_that_never_fires_is_refused_without_a_write(self) -> None:
+        s = _stub_scheduler()
+        s.scheduler.get_job.return_value = self._job()
+        with pytest.raises(ValueError, match="never fires"):
+            s.update_graph_execution_schedule(
+                schedule_id="sched-1", user_id="user-1", cron="0 0 30 2 *"
+            )
+        s.scheduler.modify_job.assert_not_called()
+
     def test_a_copilot_follow_up_is_not_an_agent_schedule(self) -> None:
         s = _stub_scheduler()
         s.scheduler.get_job.return_value = self._job(kind="copilot_turn")
@@ -400,120 +409,6 @@ class TestUpdateGraphExecutionSchedule:
                 schedule_id="sched-1", user_id="user-1", cron="0 7 * * *"
             )
         s.scheduler.modify_job.assert_not_called()
-
-
-class TestAddCommunityRebuildSchedule:
-    def test_registers_with_expected_cron_and_jobstore(self) -> None:
-        s = _stub_scheduler()
-        fake_job = MagicMock(id="community_rebuild_abc", next_run_time=None)
-        s.scheduler.add_job.return_value = fake_job
-
-        with patch(
-            "backend.executor.scheduler.run_async",
-            side_effect=RuntimeError("flag provider unavailable"),
-        ) as flag_read:
-            result = s.add_community_rebuild_schedule(
-                user_id="abc", user_timezone="America/New_York"
-            )
-
-        flag_read.assert_not_called()
-        s.scheduler.add_job.assert_called_once()
-        kwargs = s.scheduler.add_job.call_args.kwargs
-        # Job id matches the documented per-user convention.
-        assert kwargs["id"] == "community_rebuild_abc"
-        # Single-fire safety + drop-in replace.
-        assert kwargs["max_instances"] == 1
-        assert kwargs["replace_existing"] is True
-        # Lands in the EXECUTION jobstore (Postgres-backed).
-        assert kwargs["jobstore"] == Jobstores.EXECUTION.value
-        # Cron is 04:00 on Mondays (P-1.7; see the next test). Trigger repr is the
-        # most stable surface to assert against without depending on
-        # APScheduler's internal CronTrigger.field accessors.
-        trigger_repr = repr(kwargs["trigger"])
-        assert "hour='4'" in trigger_repr
-        assert "day_of_week='sun'" in trigger_repr or "day_of_week='0'" in trigger_repr
-        # User kwargs are passed through to the job body.
-        assert kwargs["kwargs"] == {"user_id": "abc"}
-
-        # Returned dict surfaces job id and tz.
-        assert result["id"] == "community_rebuild_abc"
-        assert result["user_id"] == "abc"
-        assert result["user_timezone"] == "America/New_York"
-
-    def test_the_weekly_rebuild_fires_on_mondays(self) -> None:
-        """``0 4 * * 0`` is Monday to APScheduler, whose weekdays count from
-        0 = Monday (the docs used to say Sunday; the expression is kept)."""
-        s = _stub_scheduler()
-        s.scheduler.add_job.return_value = MagicMock(id="j", next_run_time=None)
-        with patch("backend.executor.scheduler.run_async", return_value=True):
-            s.add_community_rebuild_schedule(user_id="abc", user_timezone="UTC")
-        trigger = s.scheduler.add_job.call_args.kwargs["trigger"]
-        sunday = datetime(2026, 9, 27, tzinfo=timezone.utc)
-
-        fires = trigger.get_next_fire_time(None, sunday)
-
-        assert fires == datetime(2026, 9, 28, 4, tzinfo=timezone.utc)
-        assert fires.strftime("%A") == "Monday"
-
-    def test_empty_timezone_falls_back_to_utc(self) -> None:
-        s = _stub_scheduler()
-        s.scheduler.add_job.return_value = MagicMock(
-            id="community_rebuild_abc", next_run_time=None
-        )
-        with patch("backend.executor.scheduler.run_async", return_value=True):
-            result = s.add_community_rebuild_schedule(user_id="abc", user_timezone="")
-        assert result["user_timezone"] == "UTC"
-
-    def test_next_run_time_isoformatted_when_present(self) -> None:
-        s = _stub_scheduler()
-        nrt = datetime(2026, 5, 24, 4, 0, tzinfo=timezone.utc)
-        s.scheduler.add_job.return_value = MagicMock(
-            id="community_rebuild_abc", next_run_time=nrt
-        )
-        with patch("backend.executor.scheduler.run_async", return_value=True):
-            result = s.add_community_rebuild_schedule(user_id="abc")
-        assert result["next_run_time"] == nrt.isoformat()
-
-
-class TestDeleteCommunityRebuildSchedule:
-    def test_returns_true_when_job_exists(self) -> None:
-        s = _stub_scheduler()
-        fake_job = MagicMock()
-        s.scheduler.get_job.return_value = fake_job
-        with (
-            patch("backend.executor.scheduler.run_async"),
-            patch("backend.executor.scheduler.forget_registration"),
-        ):
-            assert s.delete_community_rebuild_schedule("abc") is True
-        # Look up by the canonical job id
-        s.scheduler.get_job.assert_called_once_with(
-            "community_rebuild_abc", jobstore=Jobstores.EXECUTION.value
-        )
-        fake_job.remove.assert_called_once()
-
-    def test_returns_false_when_no_job(self) -> None:
-        s = _stub_scheduler()
-        s.scheduler.get_job.return_value = None
-        assert s.delete_community_rebuild_schedule("abc") is False
-
-    def test_delete_forgets_the_registration_so_ensure_can_re_register(
-        self,
-    ) -> None:
-        """An in-band delete must forget the job in the registry (its id on
-        the scope's row, and the Redis marker) — otherwise
-        ``ensure_scope_scheduled`` reads the recorded job id and never
-        re-registers a cron that no longer exists in APScheduler."""
-        s = _stub_scheduler()
-        s.scheduler.get_job.return_value = MagicMock()
-        with (
-            patch("backend.executor.scheduler.run_async") as run_async_mock,
-            patch("backend.executor.scheduler.forget_registration") as forget_mock,
-        ):
-            assert s.delete_community_rebuild_schedule("abc") is True
-        scope, job = forget_mock.call_args.args
-        assert scope == MemoryScope.for_user("abc")
-        assert job.job_id_prefix == "community_rebuild"
-        run_async_mock.assert_called_once()
 
 
 class TestExecuteCommunityRebuildPass:
@@ -603,8 +498,8 @@ class TestAddNightlyBatchSchedule:
         }
 
 
-class TestAddScopeNightlyBatchAndCommunityRebuildSchedules:
-    """The scope-keyed registrations the registry calls."""
+class TestAddScopeNightlyBatchSchedule:
+    """The scope-keyed registration the registry calls."""
 
     EXPERT = MemoryScope.for_expert("abc", "expert-1")
 
@@ -617,17 +512,9 @@ class TestAddScopeNightlyBatchAndCommunityRebuildSchedules:
             getattr(s, method)(scope=scope, user_timezone="Asia/Tokyo")
         return s.scheduler.add_job.call_args.kwargs
 
-    @pytest.mark.parametrize(
-        "method, prefix",
-        [
-            ("add_scope_nightly_batch_schedule", "dream_nightly_batch"),
-            ("add_scope_community_rebuild_schedule", "community_rebuild"),
-        ],
-    )
-    def test_expert_scope_is_keyed_by_its_scope_key(
-        self, method: str, prefix: str
-    ) -> None:
-        kwargs = self._register(method, self.EXPERT)
+    def test_expert_scope_is_keyed_by_its_scope_key(self) -> None:
+        prefix = "dream_nightly_batch"
+        kwargs = self._register("add_scope_nightly_batch_schedule", self.EXPERT)
 
         assert kwargs["id"] == f"{prefix}_{self.EXPERT.scope_key}"
         assert kwargs["kwargs"] == {
@@ -642,11 +529,10 @@ class TestAddScopeNightlyBatchAndCommunityRebuildSchedules:
         ``MemoryScope`` argument has to be constructible there."""
         s = _stub_scheduler()
         s._create_fastapi_endpoint(s.add_scope_nightly_batch_schedule)
-        s._create_fastapi_endpoint(s.add_scope_community_rebuild_schedule)
         s._create_fastapi_endpoint(s.remove_scope_memory_jobs)
 
 
-class TestRemoveScopeMemoryJobsForNightlyBatchAndCommunityRebuild:
+class TestRemoveScopeMemoryJobsForNightlyBatch:
     def test_removes_only_that_scopes_crons(self) -> None:
         scope = MemoryScope.for_expert("abc", "expert-1")
         s = _stub_scheduler()
@@ -659,10 +545,7 @@ class TestRemoveScopeMemoryJobsForNightlyBatchAndCommunityRebuild:
 
         nightly.remove.assert_called_once()
         looked_up = [call.args[0] for call in s.scheduler.get_job.call_args_list]
-        assert looked_up == [
-            f"community_rebuild_{scope.scope_key}",
-            f"dream_nightly_batch_{scope.scope_key}",
-        ]
+        assert looked_up == [f"dream_nightly_batch_{scope.scope_key}"]
 
 
 class TestDeleteNightlyBatchSchedule:
@@ -716,9 +599,8 @@ class TestDeleteNightlyBatchSchedule:
     def test_delete_forgets_the_registration_so_ensure_can_re_register(
         self,
     ) -> None:
-        """Same contract as the community-rebuild delete: removing the
-        cron in-band must also forget it in the registry so the next
-        memory write registers it again."""
+        """Removing the cron in-band must also forget it in the registry,
+        so the next memory write registers it again."""
         s = _stub_scheduler()
         s.scheduler.get_job.return_value = MagicMock()
         with (
@@ -835,11 +717,7 @@ class TestRemoveScopeMemoryJobsWithSkillLearning:
 
         learning.remove.assert_called_once()
         looked_up = [call.args[0] for call in s.scheduler.get_job.call_args_list]
-        assert looked_up == [
-            "community_rebuild_abc",
-            "dream_nightly_batch_abc",
-            "skill_learning_nightly_abc",
-        ]
+        assert looked_up == ["dream_nightly_batch_abc", "skill_learning_nightly_abc"]
 
 
 class TestDeleteSkillLearningSchedule:
@@ -1110,6 +988,22 @@ class TestMemoryScopeGateBridge:
         ):
             assert _memory_scope_may_fire(scope) is True
         gate.assert_awaited_once_with(scope, scheduler_module._expert_scope_status)
+
+    def test_a_banned_or_closed_owners_cron_is_skipped(self) -> None:
+        """Memory, community and skill-learning crons all ask this gate; the
+        registry is left alone, so they resume if the owner keeps the
+        account."""
+        gate = AsyncMock(return_value=True)
+        with (
+            patch("backend.executor.scheduler.run_async", new=_run_coroutine),
+            patch("backend.executor.scheduler.memory_scope_may_fire", new=gate),
+            patch(
+                "backend.executor.scheduler.is_user_refused",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            assert _memory_scope_may_fire(MemoryScope.for_user("abc")) is False
+        gate.assert_not_awaited()
 
     def test_a_gate_the_bridge_gives_up_on_skips_and_is_cancelled(
         self, monkeypatch
