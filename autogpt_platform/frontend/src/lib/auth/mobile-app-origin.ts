@@ -53,9 +53,20 @@ export function mobileAppOrigin(
       if (request.headers.get("origin")) return;
       const appOrigin = request.headers.get(MOBILE_APP_ORIGIN_HEADER);
       if (!appOrigin || !isAppOrigin(appOrigin)) return;
-      const headers = new Headers(request.headers);
-      headers.set("origin", siteOrigin);
-      return { request: new Request(request, { headers }) };
+      try {
+        request.headers.set("origin", siteOrigin);
+        return { request };
+      } catch {
+        // Some runtimes hand over read-only headers.
+        const headers = new Headers(request.headers);
+        headers.set("origin", siteOrigin);
+        return {
+          request: new Request(request, {
+            headers,
+            duplex: "half",
+          } as RequestInit),
+        };
+      }
     },
   };
 }
