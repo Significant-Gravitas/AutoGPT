@@ -75,7 +75,9 @@ export function ShareSheetBody({ sessionID }: Props) {
           {sheet.isStopping ? (
             <ActivityIndicator size="small" color={colors.error} />
           ) : null}
-          <Text style={styles.stopLabel}>Stop sharing</Text>
+          <Text style={styles.stopLabel}>
+            {sheet.isConfirmingStop ? "Confirm stop sharing" : "Stop sharing"}
+          </Text>
         </Pressable>
       </>
     );

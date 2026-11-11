@@ -24,6 +24,8 @@ export function useShareSheet(sessionID: string) {
   // The web's default: share the chat's runs too, unless the owner says no.
   const [includeRuns, setIncludeRuns] = useState(true);
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
+  // As on the web: the first tap arms the button, the second stops sharing.
+  const [isConfirmingStop, setIsConfirmingStop] = useState(false);
   const state = useQuery({
     queryKey: shareKeys.state(sessionID),
     queryFn: () => getShareState(sessionID),
@@ -73,6 +75,11 @@ export function useShareSheet(sessionID: string) {
   }
 
   function stopSharing() {
+    if (!isConfirmingStop) {
+      setIsConfirmingStop(true);
+      return;
+    }
+    setIsConfirmingStop(false);
     create.reset();
     stop.mutate();
   }
@@ -97,6 +104,7 @@ export function useShareSheet(sessionID: string) {
     createLink,
     isCreating: create.isPending,
     stopSharing,
+    isConfirmingStop,
     isStopping: stop.isPending,
     sendLink,
     error: errorText(),
