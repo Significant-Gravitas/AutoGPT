@@ -114,7 +114,8 @@ class FinalizeResponse(BaseModel):
     error_reason: str | None = None
     """What decided a quality-gate rejection (``quality.QualityRejection``)."""
     transcript_words: int | None = None
-    """A rejected transcript's length as the gate counts words; the text is not sent."""
+    """The judged words' length as the gate counts words, accepted or rejected;
+    None where no words were judged. The text is never sent."""
 
 
 class DumpStatusResponse(BaseModel):

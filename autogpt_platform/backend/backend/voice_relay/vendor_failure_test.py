@@ -44,10 +44,11 @@ def closed(code: int, reason: str) -> errors.APIError:
     [
         (429, "quota"),
         (402, "payment"),
+        (401, "forbidden"),
         (403, "forbidden"),
         (503, "unavailable"),
         (500, "other"),
-        (401, "other"),
+        (400, "other"),
     ],
 )
 def test_a_refused_connection_reads_its_http_status(status, reason):
@@ -65,8 +66,14 @@ def test_a_refused_connection_reads_its_http_status(status, reason):
         (400, "RESOURCE_EXHAUSTED", "quota"),
         (402, "FAILED_PRECONDITION", "payment"),
         (403, "PERMISSION_DENIED", "forbidden"),
+        (401, "UNAUTHENTICATED", "forbidden"),
+        # The API status says it where the code does not.
+        (400, "UNAUTHENTICATED", "forbidden"),
+        (400, "PERMISSION_DENIED", "forbidden"),
         (503, "UNAVAILABLE", "unavailable"),
+        (500, "UNAVAILABLE", "unavailable"),
         (500, "INTERNAL", "other"),
+        (400, "INVALID_ARGUMENT", "other"),
     ],
 )
 def test_an_error_the_server_sent_reads_its_code_and_status(code, status, reason):

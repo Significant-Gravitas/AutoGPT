@@ -66,9 +66,23 @@ VENDOR_FAILURES = Counter(
     "Gemini Live failures, by stage (connect: a call's first session; "
     "reconnect: a replacement's; session: a running session dropped) and "
     "reason (quota: HTTP 429 or RESOURCE_EXHAUSTED; payment: 402; forbidden: "
-    "403; unavailable: 503; server_reset: dropped after the vendor's closing "
-    "notice; other)",
+    "401, 403, UNAUTHENTICATED or PERMISSION_DENIED; unavailable: 503 or "
+    "UNAVAILABLE; server_reset: dropped after the vendor's closing notice; "
+    "other)",
     ["stage", "reason"],
+)
+END_TOOL_CALLS = Counter(
+    "voice_interview_end_tool_total",
+    "Otto's tool calls, by what the relay made of them: accepted (the person "
+    "had answered, so the call ends after his goodbye), refused_unanswered "
+    "(they had not, or he was still speaking), repeat (the end tool again "
+    "once accepted) and unknown_tool",
+    ["outcome"],
+)
+UNPROMPTED_TURNS = Counter(
+    "voice_interview_unprompted_turns_total",
+    "Turns of Otto's begun with nothing heard from the person since his last, "
+    "and no server note or tool answer from the relay to prompt them",
 )
 REPLY_SECONDS = Histogram(
     "voice_interview_reply_seconds",

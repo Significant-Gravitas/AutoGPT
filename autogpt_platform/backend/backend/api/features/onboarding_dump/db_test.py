@@ -120,7 +120,7 @@ async def test_a_later_calls_take_displaces_an_earlier_calls_in_any_status(
     )
 
     await db.start_dump(
-        USER_ID, LATER_CALL_TAKE, BrainDumpInputMode.typed, call_take=True
+        USER_ID, LATER_CALL_TAKE, BrainDumpInputMode.voice, call_take=True
     )
 
     upsert.assert_awaited_once()
@@ -130,6 +130,8 @@ async def test_a_later_calls_take_displaces_an_earlier_calls_in_any_status(
         None,
         None,
     )
+    # A call's words were spoken.
+    assert update["inputMode"] == BrainDumpInputMode.voice
 
 
 @pytest.mark.asyncio
@@ -167,21 +169,24 @@ async def test_a_take_named_like_a_calls_displaces_nothing_unless_a_call_made_it
         "typed-interview-over-a-call",
     ],
 )
-async def test_no_other_typed_take_displaces_a_take_still_processing(
+async def test_no_take_without_a_recording_displaces_a_take_still_processing(
     mocker: MockerFixture,
     upsert: AsyncMock,
     status: BrainDumpStatus,
     taking: str,
     held: str,
 ):
+    """A call's take is ``voice`` as an upload is, and still displaces only
+    another call's."""
     existing = _row(status, held)
     mocker.patch.object(db, "get_dump", AsyncMock(return_value=existing))
+    call_take = taking == LATER_CALL_TAKE
 
     result = await db.start_dump(
         USER_ID,
         taking,
-        BrainDumpInputMode.typed,
-        call_take=taking == LATER_CALL_TAKE,
+        BrainDumpInputMode.voice if call_take else BrainDumpInputMode.typed,
+        call_take=call_take,
     )
 
     assert result is existing

@@ -296,7 +296,7 @@ def _failed(code: str) -> FinalizeResponse:
     """The answer a call records when no transcript of it could be made."""
     return FinalizeResponse(
         status=BrainDumpStatus.failed,
-        input_mode=BrainDumpInputMode.typed,
+        input_mode=BrainDumpInputMode.voice,
         error_code=code,
     )
 

@@ -195,9 +195,11 @@ def refused_hand_off(refusal: HTTPException) -> FinalizeResponse | None:
 
 
 def failed_hand_off(code: str) -> FinalizeResponse:
+    """A call's hand-off that failed with *code*: an answer about spoken
+    words."""
     return FinalizeResponse(
         status=BrainDumpStatus.failed,
-        input_mode=BrainDumpInputMode.typed,
+        input_mode=BrainDumpInputMode.voice,
         error_code=code,
     )
 
@@ -415,7 +417,8 @@ async def hand_off_call(
             )
             freed = await _give_the_row_up(record)
             closure = InterviewClosure(
-                ending=closure.ending, hand_off=superseded_take()
+                ending=closure.ending,
+                hand_off=superseded_take(BrainDumpInputMode.voice),
             )
     elif closure.outranked:
         # Another take owns the interview: the record says so too, for the

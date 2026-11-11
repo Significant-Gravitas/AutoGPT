@@ -1,9 +1,11 @@
 // How Otto's speech fared on its way to the person, from WebRTC's stats for
 // his track in the call's room: the share of his audio the browser had to
 // make up for packets that never came, the packets lost, and the worst
-// jitter and round trip seen. Each track counts from nothing, and a rejoin or
-// a LiveKit reconnect brings a new one, so each stream's latest counts are
-// kept apart and summed.
+// jitter and round trip seen. Otto is silent for much of a call, and what the
+// browser fills a silent stretch with is counted apart, so the share of his
+// speech made up is not the share of his silence. Each track counts from
+// nothing, and a rejoin or a LiveKit reconnect brings a new one, so each
+// stream's latest counts are kept apart and summed.
 export interface OttoListening {
   streams: Map<string, StreamCounts>;
   jitterMsMax: number | null;
@@ -12,6 +14,8 @@ export interface OttoListening {
 
 interface StreamCounts {
   concealedSamples: number;
+  // The concealed samples that filled silence, a part of concealedSamples.
+  silentConcealedSamples: number;
   totalSamplesReceived: number;
   packetsLost: number;
 }
@@ -30,6 +34,7 @@ export function addOttoStats(listening: OttoListening, report: RTCStatsReport) {
     if (typeof stat.id !== "string") return;
     listening.streams.set(stat.id, {
       concealedSamples: countOf(stat.concealedSamples),
+      silentConcealedSamples: countOf(stat.silentConcealedSamples),
       totalSamplesReceived: countOf(stat.totalSamplesReceived),
       packetsLost: countOf(stat.packetsLost),
     });
@@ -50,11 +55,12 @@ export function ottoListeningSummary(listening: OttoListening | undefined) {
   const streams = [...(listening?.streams.values() ?? [])];
   const received = sumOf(streams, (stream) => stream.totalSamplesReceived);
   const concealed = sumOf(streams, (stream) => stream.concealedSamples);
+  const silent = sumOf(streams, (stream) =>
+    Math.min(stream.silentConcealedSamples, stream.concealedSamples),
+  );
   return {
-    concealed_share:
-      received > 0
-        ? Math.round((concealed / received) * 10_000) / 10_000
-        : null,
+    concealed_share: shareOf(concealed - silent, received),
+    silent_concealed_share: shareOf(silent, received),
     packets_lost:
       streams.length > 0
         ? sumOf(streams, (stream) => stream.packetsLost)
@@ -89,6 +95,10 @@ function pairInUse(stats: Stat[]) {
     return pairs.find((pair) => pair.id === transport.selectedCandidatePairId);
   }
   return pairs.find((pair) => pair.selected === true);
+}
+
+function shareOf(part: number, whole: number) {
+  return whole > 0 ? Math.round((part / whole) * 10_000) / 10_000 : null;
 }
 
 function countOf(value: unknown) {

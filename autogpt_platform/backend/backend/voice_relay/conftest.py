@@ -2,6 +2,7 @@ import asyncio
 import json
 import socket
 import tempfile
+import time
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -689,6 +690,13 @@ class RunningRelay:
         self.recorded = recorded
         self.postcall = postcall
         self.recordings = recordings
+
+    async def answer(self, call_id: str, frames: Sequence[bytes]) -> None:
+        """The person on call *call_id* answers Otto once his turn has played
+        out, as someone does on hearing him finish."""
+        session = self.relay.sessions[call_id]
+        await until(lambda: session.answer.is_open(time.monotonic()))
+        (await self.media.hearing()).say(frames)
 
     async def postcalls_done(self, timeout: float = 10.0) -> None:
         """Wait for the post-call jobs running on the relay."""

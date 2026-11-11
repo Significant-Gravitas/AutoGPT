@@ -453,6 +453,16 @@ class TurnMark(BaseModel):
     text: str = ""
 
 
+class EndToolStats(BaseModel):
+    """What became of Otto's calls of the end tool during a call."""
+
+    calls: int = 0
+    # Those refused because the person had not answered.
+    refused: int = 0
+    # Seconds into the call the first accepted one came, or None.
+    accepted_at_s: float | None = None
+
+
 class CallRecord(BaseModel):
     """A call's record, read back from Redis."""
 
@@ -469,8 +479,9 @@ class CallRecord(BaseModel):
     ending: str | None = None
     # The person's call the onboarding row named before this one, if any.
     prev: str | None = None
-    # The task Otto's end tool carried.
+    # The task Otto's end tool carried, and what became of his calls of it.
     first_task: str | None = None
+    end_tool: EndToolStats | None = None
     # The latest upload of the person's audio, until its transcript is made.
     audio_path: str | None = None
     turns: list[TurnMark] = []
@@ -525,6 +536,7 @@ _JSON_FIELDS = frozenset(
     {
         "turns",
         "hand_off",
+        "end_tool",
         "transcribed_from_upload",
         "postcall_attempts",
         "handoff_attempts",

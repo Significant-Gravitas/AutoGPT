@@ -8,7 +8,8 @@ browser only displays them:
 - the idle cutoff: nothing heard for ``idle_s``, Otto's own speech excluded;
 - the scope guard, from a label per user turn and the interview's rule;
 - the spend cap, from every priced usage row;
-- the end tool: once Otto calls it, the call ends after its goodbye;
+- the end tool: once Otto calls it after the person answered, the call ends
+  after his goodbye (``end_tool``);
 - re-attach: a dropped browser socket comes back on its resume ticket within
   ``reattach_s``, and what the call said on it meanwhile is replayed;
 - vendor reconnect: a dropped vendor session is replaced by one seeded with
@@ -48,10 +49,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.copilot.onboarding_interview import MAX_FIRST_TASK_CHARS
 from backend.copilot.onboarding_interview_goals import END_SIGNAL_FIRST_TASK
 from backend.copilot.onboarding_interview_scope import ScopeLabel, scope_verdict
-from backend.copilot.onboarding_interview_voice import (
-    VOICE_INTERVIEW_END_TOOL,
-    voice_interview_kickoff,
-)
+from backend.copilot.onboarding_interview_voice import voice_interview_kickoff
 from backend.voice_relay import tokens, vad
 from backend.voice_relay.config import (
     BURST_S,
@@ -68,19 +66,30 @@ from backend.voice_relay.config import (
     RoomCloseWhy,
     Timing,
 )
+from backend.voice_relay.end_tool import (
+    Answer,
+    ToolCallLine,
+    arg_names,
+    judge,
+    response_for,
+    safe_name,
+)
 from backend.voice_relay.locks import (
     CONNECTING,
     ENDED,
     LIVE,
     RUNNING,
     CallStore,
+    EndToolStats,
     TurnMark,
 )
 from backend.voice_relay.metering import (
     CALL_SECONDS,
     CALLS,
+    END_TOOL_CALLS,
     FIRST_AUDIO_SECONDS,
     REPLY_SECONDS,
+    UNPROMPTED_TURNS,
     VENDOR_FAILURES,
     CallMeter,
 )
@@ -89,6 +98,7 @@ from backend.voice_relay.scope import ScopeClassifier
 from backend.voice_relay.vendor import (
     AgentAudio,
     AgentText,
+    FunctionCall,
     GoingAway,
     Interrupted,
     ToolCall,
@@ -254,6 +264,8 @@ class AgentTurn(BaseModel):
     # When its first audio arrived (monotonic), or None while silent.
     first_audio: float | None = None
     interrupted: bool = False
+    # Whether anything of it has arrived: words, audio or a tool call.
+    began: bool = False
 
 
 class UserTurn(BaseModel):
@@ -376,6 +388,14 @@ class Session:
         self.finish_at = 0.0
         self.first_task: str | None = None
         self.nudged: set[str] = set()
+        # What the person has said since Otto's last turn played out, which
+        # the end tool needs (``end_tool``), and whether the relay prompted
+        # Otto since his last turn: the call's opening, a note, a tool's
+        # answer or a reconnect.
+        self.answer = Answer()
+        self.prompted = True
+        self.end_tool = EndToolStats()
+        self.tool_calls: dict[str, int] = {}
 
     # --- lifecycle --------------------------------------------------------
 
@@ -518,6 +538,7 @@ class Session:
                 guarded={"end_reason": reason},
                 ended_at=round(time.time(), 3),
                 elapsed_s=round(elapsed, 1),
+                end_tool=self.end_tool.model_dump(),
                 agent_turns=len(self.turns),
                 usd=round(self.meter.usd, 6),
                 first_task=self.first_task,
@@ -765,6 +786,7 @@ class Session:
         if vad.heard(pcm):
             self.quiet_s = 0.0
             self.last_heard = now
+            self.answer.hear(samples / IN_RATE, now)
         live = self.live
         if self.wrapping or self.reconnecting or live is None:
             return
@@ -876,6 +898,8 @@ class Session:
         self.live = live
         self.vendor_notice = False
         self.reconnecting = False
+        # The replacement opens on the call so far, which prompts its turn.
+        self.prompted = True
         self.spawn(self.downstream(live), "downstream")
         logger.info(
             f"Voice call {self.call_id}: vendor reconnected in "
@@ -940,8 +964,11 @@ class Session:
                 await self.on_tool_call(event)
             case UserText(text=text):
                 self.user_buf += text
+                self.answer.caption(text, now)
                 await self.send_json({"type": "user_text", "text": text})
             case AgentText(text=text):
+                if text.strip():
+                    self._turn_begins(now)
                 self.cur.text += text
                 await self.send_json({"type": "agent_text", "text": text})
             case Interrupted():
@@ -955,6 +982,7 @@ class Session:
                 await self.on_turn_complete()
 
     async def on_agent_audio(self, pcm: bytes, now: float) -> None:
+        self._turn_begins(now)
         turn = self.cur
         if turn.first_audio is None:
             turn.first_audio = now
@@ -988,34 +1016,95 @@ class Session:
         if self.audio is not None:
             self.audio.flush()
 
+    def _turn_begins(self, now: float) -> None:
+        """Note that Otto's turn has begun. One begun with nothing heard from
+        the person since his last, and nothing from the relay to prompt it,
+        is counted as unprompted."""
+        turn = self.cur
+        if turn.began:
+            return
+        turn.began = True
+        if not self.turns or self.prompted or not self.answer.silent:
+            return
+        UNPROMPTED_TURNS.inc()
+        opened = self.answer.opened_at
+        since = "" if opened is None else f", {now - opened:.1f}s after his last played"
+        logger.info(
+            f"Voice call {self.call_id}: Otto began turn {len(self.turns)} "
+            f"unprompted{since}"
+        )
+
+    def _otto_speaking(self) -> bool:
+        """Whether Otto has spoken in a turn not yet over."""
+        return bool(self.cur.text.strip()) or self.cur.first_audio is not None
+
     async def on_tool_call(self, event: ToolCall) -> None:
-        results: list[ToolResult] = []
-        for call in event.calls:
-            if call.name != VOICE_INTERVIEW_END_TOOL:
-                results.append(
-                    ToolResult(
-                        call_id=call.call_id,
-                        name=call.name,
-                        response={"error": "unknown tool"},
-                    )
-                )
-                continue
-            if not self.finish_called:
-                self.finish_called = True
-                self.finish_at = time.monotonic()
-            first_task = " ".join(str(call.args.get(END_SIGNAL_FIRST_TASK, "")).split())
-            if first_task:
-                self.first_task = first_task[:MAX_FIRST_TASK_CHARS]
-            results.append(
-                ToolResult(
-                    call_id=call.call_id, name=call.name, response={"result": "saved"}
-                )
+        """Answer Otto's tool calls. The end tool is accepted only once the
+        person has answered (``end_tool``); each call logs its line."""
+        now = time.monotonic()
+        speaking = self._otto_speaking()
+        self._turn_begins(now)
+        lines = [self._take_tool_call(call, now, speaking) for call in event.calls]
+        results = [
+            ToolResult(
+                call_id=call.call_id,
+                name=call.name,
+                response=response_for(line.outcome),
             )
-        await self._vendor_call(
+            for call, line in zip(event.calls, lines, strict=True)
+        ]
+        reached = await self._vendor_call(
             "tool results", lambda live: live.send_tool_results(results)
+        )
+        # The answer starts Otto's next words.
+        self.prompted = True
+        for line in lines:
+            END_TOOL_CALLS.labels(outcome=line.outcome).inc()
+            logger.info(line.describe(reached=reached))
+
+    def _take_tool_call(
+        self, call: FunctionCall, now: float, speaking: bool
+    ) -> ToolCallLine:
+        """Judge one tool call and act on it: an accepted end tool marks the
+        call finishing, and nothing of a refused one is kept."""
+        name = safe_name(call.name)
+        nth = self.tool_calls[name] = self.tool_calls.get(name, 0) + 1
+        outcome = judge(
+            call.name,
+            finishing=self.finish_called,
+            otto_speaking=speaking,
+            answer=self.answer,
+        )
+        first_task = " ".join(str(call.args.get(END_SIGNAL_FIRST_TASK, "")).split())
+        if outcome != "unknown_tool":
+            self.end_tool.calls += 1
+        if outcome == "refused_unanswered":
+            self.end_tool.refused += 1
+        if outcome == "accepted":
+            self.finish_called = True
+            self.finish_at = now
+            self.end_tool.accepted_at_s = round(self.elapsed(), 1)
+        if outcome in ("accepted", "repeat") and first_task:
+            self.first_task = first_task[:MAX_FIRST_TASK_CHARS]
+        opened = self.answer.opened_at
+        return ToolCallLine(
+            call_id=self.call_id,
+            name=name,
+            nth=nth,
+            outcome=outcome,
+            turns=len(self.turns),
+            otto_speaking=speaking,
+            since_played_s=None if opened is None else round(now - opened, 1),
+            speech_s=round(self.answer.speech_s, 2),
+            caption_chars=self.answer.caption_chars,
+            first_task_chars=len(first_task) if first_task else None,
+            arg_names=arg_names(call.args) if outcome == "unknown_tool" else (),
         )
 
     async def on_turn_complete(self) -> None:
+        # What the person says next answers this turn, once it has played.
+        self.answer.reopen(max(time.monotonic(), self.playout_end))
+        self.prompted = False
         turn = self.cur
         turn.index = len(self.turns)
         turn.text = turn.text.strip()
@@ -1132,6 +1221,7 @@ class Session:
         return True
 
     async def _send_nudge(self, kind: str) -> None:
+        self.prompted = True
         await self._vendor_call(
             f"{kind} nudge",
             lambda live: live.send_note(NUDGES[kind], turn_complete=False),
@@ -1193,6 +1283,7 @@ class Session:
         self.wrap_started = time.monotonic()
         self.wrap_deadline = self.wrap_started + self.timing.wrap_grace_s
         logger.info(f"Voice call {self.call_id}: wrapping up ({reason})")
+        self.prompted = True
         await self.send_json({"type": "wrap_up", "reason": reason})
         spoken = await self._vendor_call(
             "goodbye", lambda live: live.end_audio_stream()

@@ -288,6 +288,33 @@ class Judge:
 # ---------- what starts a hand-off ----------
 
 
+async def test_a_calls_take_reaches_the_pipeline_as_spoken_words(
+    rig: Rig,
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    extraction: dict[str, AsyncMock],
+):
+    """The row, the judge's prompt, the profile's note and the call's answer
+    all say ``voice``: the words were said, not typed. The answer counts the
+    words it judged."""
+    call_id = await rig.call()
+
+    record = await rig.hand_off(call_id)
+
+    assert dumps.row is not None and dumps.row.inputMode == BrainDumpInputMode.voice
+    assert quality_gate.await_args is not None
+    assert quality_gate.await_args.kwargs["input_mode"] == BrainDumpInputMode.voice
+    upsert = extraction["upsert_business_understanding"]
+    assert upsert.await_args is not None
+    _, understanding = upsert.await_args.args
+    assert understanding.additional_notes == (
+        f"Onboarding brain dump (spoken): {SAID[0]}"
+    )
+    assert record.hand_off is not None
+    assert record.hand_off.input_mode == BrainDumpInputMode.voice
+    assert record.hand_off.transcript_words == quality.count_words(SAID[0])
+
+
 async def test_a_status_read_of_an_owed_call_answers_handing_off_and_hands_it_off(
     rig: Rig, dumps: DumpStore
 ):
@@ -798,6 +825,7 @@ async def test_a_call_where_nothing_was_said_leaves_the_interview_open_for_anoth
     assert record.status == locks.FAILED
     assert record.hand_off is not None
     assert record.hand_off.error_code == quality.NO_USABLE_SPEECH
+    assert record.hand_off.input_mode == BrainDumpInputMode.voice
     assert dumps.row is None
     assert await locks.postcall_pending(rig.redis) == []
     assert await interview.call_that_took_the_interview(USER) is None
@@ -1997,6 +2025,7 @@ async def test_a_calls_take_never_displaces_a_typed_interviews_or_a_brain_dumps(
     assert record.status == locks.HANDED_OFF
     assert record.hand_off is not None
     assert record.hand_off.error_code == interview.SUPERSEDED
+    assert record.hand_off.input_mode == BrainDumpInputMode.voice
     assert record.interview is None
     quality_gate.assert_not_awaited()
     assert dumps.row is not None and dumps.row.recordingId == take

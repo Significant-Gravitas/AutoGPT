@@ -81,7 +81,7 @@ async def test_sigterm_lets_a_live_call_finish_then_the_server_exits(redis):
             await late.recv()
         assert closed.value.rcvd is not None and closed.value.rcvd.code == 1013
 
-        (await running.media.hearing()).say(speech(0.3))
+        await running.answer(call_id, speech(0.4))
         ended = await read_until(ws, "ended")
         assert ended["reason"] == "finished"
         # The server exits on its own once its last call has ended.
@@ -176,7 +176,7 @@ async def test_sigterm_waits_for_a_calls_transcript_job_before_exiting(redis):
     async with running_relay(redis, vendor, transcriber=transcriber) as running:
         ws, call_id = await start_call(running.url)
         await read_until(ws, "turn_complete")
-        (await running.media.hearing()).say(speech(0.3))
+        await running.answer(call_id, speech(0.4))
         await read_until(ws, "ended")
 
         running.server.handle_exit(signal.SIGTERM, None)
@@ -405,6 +405,9 @@ async def call_and_transcribe(spool):
     await store.record(status="connecting", started=round(time.time(), 3))
     running = asyncio.create_task(session.run())
     await ws.wait_for("turn_complete")
+    # The person answers once Otto has played out.
+    while not session.answer.is_open(time.monotonic()):
+        await asyncio.sleep(0.02)
     (await media.hearing()).say(speech(0.4))
     await asyncio.wait_for(running, timeout=20)
     assert session.postcall_claimed

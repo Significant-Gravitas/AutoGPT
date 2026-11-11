@@ -661,7 +661,7 @@ async def test_a_calls_transcript_is_made_from_its_recording_once_it_ends(redis)
         await ws.send(json.dumps(start()))
         ready = await read_until(ws, "ready")
         await read_until(ws, "turn_complete")
-        (await running.media.hearing()).say(speech(0.4))
+        await running.answer(ready["call_id"], speech(0.4))
         ended = await read_until(ws, "ended")
         await running.postcalls_done()
 

@@ -64,6 +64,15 @@ def test_the_call_ends_on_an_agreed_first_task_and_the_end_tool() -> None:
     assert "Great, I'm putting your team together now" not in VOICE_INTERVIEW_PROMPT
 
 
+def test_otto_waits_for_an_answer_out_loud_before_the_end_tool() -> None:
+    """A live model can take a silence for a yes; the call must hear one."""
+    assert (
+        "Then wait for them to answer out loud, and never answer for them; if "
+        "they say nothing, ask once more. Once they agree or correct it, call "
+        f"{VOICE_INTERVIEW_END_TOOL}"
+    ) in VOICE_INTERVIEW_PROMPT
+
+
 def test_a_call_that_runs_long_ends_on_what_otto_has() -> None:
     """A call has no reply cap to stop it, so after about three minutes Otto
     proposes the first task with what it has heard. The typed interview has
@@ -74,7 +83,7 @@ def test_a_call_that_runs_long_ends_on_what_otto_has() -> None:
     assert (
         "Say in one sentence what their team will start on and check that's "
         "right. If about three minutes have passed, do that with what you have. "
-        f"Once they agree or correct it, call {VOICE_INTERVIEW_END_TOOL}"
+        "Then wait for them to answer out loud"
     ) in VOICE_INTERVIEW_PROMPT
     typed = get_onboarding_interview_supplement(ONBOARDING_INTERVIEW_KIND)
     assert "three minutes" not in typed

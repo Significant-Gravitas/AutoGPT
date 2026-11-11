@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 import numpy as np
 import pytest
 from google.genai import types
+from prisma.enums import BrainDumpInputMode
 from pytest_mock import MockerFixture
 
 from backend.voice_relay import locks, postcall, tokens
@@ -795,6 +796,7 @@ async def test_a_call_whose_recording_was_lost_says_so(rig: Rig):
     assert record.status == locks.FAILED
     assert record.hand_off is not None
     assert record.hand_off.error_code == postcall.RECORDING_UNAVAILABLE
+    assert record.hand_off.input_mode == BrainDumpInputMode.voice
     assert record.transcript_of_record is None
     assert transcriber.calls == []
     assert _outcomes(postcall.RECORDING_UNAVAILABLE) == before + 1

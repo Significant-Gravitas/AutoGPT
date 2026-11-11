@@ -87,8 +87,9 @@ class DumpStore:
     ) -> OnboardingBrainDump:
         # Mirrors the real `start_dump`: a take already moving through
         # the pipeline is returned untouched, so a replayed part 0 or a
-        # repeated finalize cannot reset it, and a typed or skipped take
-        # cannot displace one still being processed.
+        # repeated finalize cannot reset it, and a take that is no uploaded
+        # recording (typed, skipped, or a call's) cannot displace one still
+        # being processed.
         processing = (
             BrainDumpStatus.recording_uploaded,
             BrainDumpStatus.transcribing,
@@ -101,7 +102,7 @@ class DumpStore:
                 and self.row.status in (*processing, BrainDumpStatus.completed)
             )
             or (
-                input_mode != BrainDumpInputMode.voice
+                (input_mode != BrainDumpInputMode.voice or call_take)
                 and self.row.status in processing
                 and not db.call_take_displaces(
                     recording_id, self.row.recordingId, call_take=call_take

@@ -50,6 +50,7 @@ from datetime import UTC, datetime
 from typing import TypeVar
 
 from fastapi import BackgroundTasks, HTTPException
+from prisma.enums import BrainDumpInputMode
 from prometheus_client import Counter
 
 from backend.api.features.onboarding_dump import quality
@@ -470,7 +471,7 @@ def _answer_as_it_stands(record: CallRecord) -> FinalizeResponse | None:
     """The answer a finish of *record* only repeats, or None when the finish
     has words to hand off."""
     if record.interview == locks.INTERVIEW_SUPERSEDED:
-        return superseded_take()
+        return superseded_take(BrainDumpInputMode.voice)
     stored = record.hand_off
     if stored is None:
         return None

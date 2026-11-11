@@ -307,11 +307,15 @@ async def finalize_typed_take(
     text: str,
     background_tasks: BackgroundTasks,
     *,
+    input_mode: BrainDumpInputMode = BrainDumpInputMode.typed,
     call_take: bool = False,
 ) -> TypedTake:
-    """A typed take through the pipeline. *call_take* says it is a voice
-    call's, made by the call's hand-off, which may displace another call's
-    take still being processed (``db.call_take_displaces``)."""
+    """A take of words with no recording to transcribe, through the
+    pipeline, as *input_mode*: ``typed`` for typing, ``voice`` for a call's
+    words, which the quality gate judges as speech and every answer reports
+    as spoken. *call_take* says it is a voice call's, made by the call's
+    hand-off, which may displace another call's take still being processed
+    (``db.call_take_displaces``)."""
     # Same idempotency contract as the voice path: a repeated submit must
     # not reset the row or queue a second extraction and greeting on top
     # of the pair already running.
@@ -334,9 +338,7 @@ async def finalize_typed_take(
             judged=False,
         )
 
-    await db.start_dump(
-        user_id, recording_id, BrainDumpInputMode.typed, call_take=call_take
-    )
+    await db.start_dump(user_id, recording_id, input_mode, call_take=call_take)
     # Same reasoning as the voice path: only the caller that wins this
     # transition queues the extraction and greeting pair.
     claimed = await db.claim_transition(
@@ -354,12 +356,12 @@ async def finalize_typed_take(
         current = await db.get_dump(user_id)
         if current is None:
             response = FinalizeResponse(
-                status=BrainDumpStatus.failed, input_mode=BrainDumpInputMode.typed
+                status=BrainDumpStatus.failed, input_mode=input_mode
             )
         elif current.recordingId != recording_id:
             response = FinalizeResponse(
                 status=BrainDumpStatus.failed,
-                input_mode=BrainDumpInputMode.typed,
+                input_mode=input_mode,
                 error_code="superseded",
             )
         else:
@@ -373,13 +375,11 @@ async def finalize_typed_take(
     # produce "asdf asdf asdf" just as easily as a silent mic produces a
     # hallucinated transcript. Only the claim winner reaches this point,
     # so concurrent retries never run duplicate quality checks.
-    rejection = await quality.check_transcript_quality(
-        text, input_mode=BrainDumpInputMode.typed
-    )
+    rejection = await quality.check_transcript_quality(text, input_mode=input_mode)
     if rejection is not None:
         return TypedTake(
             response=await _quality_rejection(
-                user_id, recording_id, rejection, text, BrainDumpInputMode.typed
+                user_id, recording_id, rejection, text, input_mode
             ),
             judged=True,
         )
@@ -389,11 +389,11 @@ async def finalize_typed_take(
         user_id,
         recording_id,
         text.strip(),
-        BrainDumpInputMode.typed,
+        input_mode,
     )
     return TypedTake(
         response=_pipeline_response(
-            BrainDumpStatus.transcribed, text.strip(), BrainDumpInputMode.typed
+            BrainDumpStatus.transcribed, text.strip(), input_mode
         ),
         judged=True,
     )
@@ -879,6 +879,9 @@ def _pipeline_response(
         status=status,
         input_mode=input_mode,
         transcript_preview=(transcript or "")[:TRANSCRIPT_PREVIEW_CHARS] or None,
+        transcript_words=(
+            quality.count_words(transcript) if transcript is not None else None
+        ),
     )
 
 

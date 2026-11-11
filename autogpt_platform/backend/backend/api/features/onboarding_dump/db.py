@@ -112,9 +112,10 @@ async def start_dump(
     """Claim the row for ``recording_id``, resetting any prior take's state.
 
     A take already moving through the pipeline is returned untouched when
-    recovery replays part 0 or finalize is retried, and a typed or skipped
-    take with a different id cannot displace one still being processed,
-    unless it is a voice call's take (*call_take*) and the take on the row
+    recovery replays part 0 or finalize is retried, and a take that is no
+    uploaded recording (typed, skipped, or a voice call's words, *call_take*,
+    which are ``voice`` too) with a different id cannot displace one still
+    being processed, unless it is a call's take and the take on the row
     another call's (:func:`call_take_displaces`). Any other new id is a
     deliberate new take, a re-take after a finished one included, and claims
     the row, taking every take-owned column with it.
@@ -126,7 +127,7 @@ async def start_dump(
             and existing.status in _IN_FLIGHT_STATUSES
         )
         or (
-            input_mode != BrainDumpInputMode.voice
+            (input_mode != BrainDumpInputMode.voice or call_take)
             and existing.status in _PROCESSING_STATUSES
             and not call_take_displaces(
                 recording_id, existing.recordingId, call_take=call_take

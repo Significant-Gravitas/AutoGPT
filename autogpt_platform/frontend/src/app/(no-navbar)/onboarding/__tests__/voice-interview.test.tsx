@@ -64,19 +64,21 @@ const VOICE = "/api/proxy/api/onboarding/brain-dump/interview/voice";
 // were read.
 const NOT_LISTENED = {
   concealed_share: null,
+  silent_concealed_share: null,
   packets_lost: null,
   jitter_ms_max: null,
   rtt_ms_max: null,
 };
-// WebRTC's stats for Otto's speech in a call's room: 5% of his audio made
-// up for packets that never came, 18 ms of jitter, and a 142 ms round trip
-// on the candidate pair in use.
+// WebRTC's stats for Otto's speech in a call's room: 5% of his speech made
+// up for packets that never came and 25% of his silence filled, 18 ms of
+// jitter, and a 142 ms round trip on the candidate pair in use.
 const OTTO_STATS = [
   {
     id: "IT01A1",
     type: "inbound-rtp",
     kind: "audio",
-    concealedSamples: 4_800,
+    concealedSamples: 28_800,
+    silentConcealedSamples: 24_000,
     totalSamplesReceived: 96_000,
     packetsLost: 12,
     jitter: 0.018,
@@ -87,6 +89,7 @@ const OTTO_STATS = [
 ];
 const OTTO_HEARD = {
   concealed_share: 0.05,
+  silent_concealed_share: 0.25,
   packets_lost: 12,
   jitter_ms_max: 18,
   rtt_ms_max: 142,

@@ -16,8 +16,10 @@ person's arm of the ending experiment (``interview_endings``) decides when
 the answers are handed off: as it closes, or on the confirm.
 
 An interview ends where a brain dump does: with what the user said. So it is
-handed over as a typed take, and everything downstream runs exactly as it does
-for a dump: the quality gate; extraction into ``upsert_business_understanding``,
+handed over as a take with no recording to transcribe, ``typed`` for the typed
+interview and ``voice`` for a call, and everything downstream runs exactly as
+it does for a dump: the quality gate, which judges a call's words as speech;
+extraction into ``upsert_business_understanding``,
 with the words themselves in ``additional_notes`` and from there in Otto's
 ``<user_context>``; the greeting and suggested prompts; the provider and team
 recommendations; and the ``/status``, ``/intro`` and recommendation reads the
@@ -1066,21 +1068,27 @@ def voice_hand_off_closes_interview(response: FinalizeResponse) -> bool:
     )
 
 
-def superseded_take() -> FinalizeResponse:
-    """The answer for a take another take beat: it never replaces the row."""
+def superseded_take(
+    input_mode: BrainDumpInputMode = BrainDumpInputMode.typed,
+) -> FinalizeResponse:
+    """The answer for a take another take beat: it never replaces the row.
+    *input_mode* is ``voice`` for a call's."""
     return FinalizeResponse(
         status=BrainDumpStatus.failed,
-        input_mode=BrainDumpInputMode.typed,
+        input_mode=input_mode,
         error_code=SUPERSEDED,
     )
 
 
-def _nothing_said() -> FinalizeResponse:
+def _nothing_said(
+    input_mode: BrainDumpInputMode = BrainDumpInputMode.typed,
+) -> FinalizeResponse:
     """The quality gate's own "nothing usable" answer, which the onboarding
-    screens already handle, for an interview where nothing was said."""
+    screens already handle, for an interview where nothing was said.
+    *input_mode* is ``voice`` for a call's."""
     return FinalizeResponse(
         status=BrainDumpStatus.failed,
-        input_mode=BrainDumpInputMode.typed,
+        input_mode=input_mode,
         error_code=quality.NO_USABLE_SPEECH,
     )
 
@@ -1137,13 +1145,19 @@ async def close_voice_interview(
     standing = await _call_standing(user_id, call_id)
     if standing == "superseded":
         logger.info(f"Voice onboarding interview {call_id[:12]} superseded: {reason}")
-        return InterviewClosure(ending=None, hand_off=superseded_take(), outranked=True)
+        return InterviewClosure(
+            ending=None,
+            hand_off=superseded_take(BrainDumpInputMode.voice),
+            outranked=True,
+        )
     if standing == "waiting":
         raise LaterCallUnsettled
     if not transcript.strip():
         # Nothing was said, so nothing to confirm or correct: corrections
         # alone never make a call a take (:func:`call_words`).
-        return InterviewClosure(ending=None, hand_off=_nothing_said())
+        return InterviewClosure(
+            ending=None, hand_off=_nothing_said(BrainDumpInputMode.voice)
+        )
     words = with_corrections(transcript, corrections)
     if not (confirmed or hands_off_on_close(ending)):
         return InterviewClosure(ending=ending, hand_off=None)
@@ -1165,7 +1179,12 @@ async def _hand_off_call_words(
     text = words.strip()[:MAX_TYPED_CHARS]
     recording_id = interview_recording_id(call_id)
     take = await service.finalize_typed_take(
-        user_id, recording_id, text, background_tasks, call_take=True
+        user_id,
+        recording_id,
+        text,
+        background_tasks,
+        input_mode=BrainDumpInputMode.voice,
+        call_take=True,
     )
     if (
         take.judged
@@ -1179,7 +1198,12 @@ async def _hand_off_call_words(
         f"words unjudged; judging them now"
     )
     take = await service.finalize_typed_take(
-        user_id, recording_id, text, background_tasks, call_take=True
+        user_id,
+        recording_id,
+        text,
+        background_tasks,
+        input_mode=BrainDumpInputMode.voice,
+        call_take=True,
     )
     return take.response
 

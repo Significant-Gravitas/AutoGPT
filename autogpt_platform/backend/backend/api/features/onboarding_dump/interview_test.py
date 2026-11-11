@@ -254,12 +254,19 @@ class VoiceCalls:
         )
 
 
-def _take(code: str | None = None) -> FinalizeResponse:
+def _take(
+    code: str | None = None, input_mode: BrainDumpInputMode = BrainDumpInputMode.typed
+) -> FinalizeResponse:
     return FinalizeResponse(
         status=BrainDumpStatus.failed if code else BrainDumpStatus.transcribed,
-        input_mode=BrainDumpInputMode.typed,
+        input_mode=input_mode,
         error_code=code,
     )
+
+
+def _call_take(code: str | None = None) -> FinalizeResponse:
+    """A voice call's answer: about spoken words."""
+    return _take(code, BrainDumpInputMode.voice)
 
 
 @pytest.fixture(autouse=True)
@@ -1748,7 +1755,7 @@ async def test_a_voice_call_the_person_has_called_again_since_is_superseded(
         USER_ID, "call-1", SAID, BackgroundTasks(), reason="confirmed"
     )
 
-    assert closure.hand_off == _take(interview.SUPERSEDED)
+    assert closure.hand_off == _call_take(interview.SUPERSEDED)
     assert dumps.row is None
 
 
@@ -1763,7 +1770,7 @@ async def test_a_voice_call_the_persons_typing_superseded_runs_no_pipeline(
         USER_ID, "call-1", SAID, BackgroundTasks(), reason="confirmed", confirmed=True
     )
 
-    assert closure.hand_off == _take(interview.SUPERSEDED)
+    assert closure.hand_off == _call_take(interview.SUPERSEDED)
     quality_gate.assert_not_awaited()
     assert dumps.row is None
 
@@ -1779,7 +1786,7 @@ async def test_a_voice_call_ending_after_the_typed_interview_is_over_is_supersed
         USER_ID, "call-1", SAID, BackgroundTasks(), reason="confirmed"
     )
 
-    assert closure.hand_off == _take(interview.SUPERSEDED)
+    assert closure.hand_off == _call_take(interview.SUPERSEDED)
     assert dumps.row is None
 
 

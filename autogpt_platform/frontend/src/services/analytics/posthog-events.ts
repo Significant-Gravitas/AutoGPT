@@ -212,8 +212,8 @@ export const InterviewEvent = {
   INTERVIEW_STARTED: "interview_started",
   // A call ended: `mode`, the relay's `reason`, `elapsed_s` and Otto's
   // `turns`, and how his speech fared in the call's room (`concealed_share`,
-  // `packets_lost`, `jitter_ms_max`, `rtt_ms_max`). A call lost on the way is
-  // reported once its end is known.
+  // `silent_concealed_share`, `packets_lost`, `jitter_ms_max`, `rtt_ms_max`).
+  // A call lost on the way is reported once its end is known.
   INTERVIEW_ENDED: "interview_ended",
   // LiveKit got a call's audio back after `gap_s`.
   VOICE_INTERVIEW_RECONNECTED: "voice_interview_reconnected",

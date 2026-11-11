@@ -149,9 +149,9 @@ def _reason_of(failure: VendorFailure, *, after_notice: bool) -> Reason:
         return "quota"
     if status == 402:
         return "payment"
-    if status == 403:
+    if status in (401, 403) or api_status in ("UNAUTHENTICATED", "PERMISSION_DENIED"):
         return "forbidden"
-    if status == 503:
+    if status == 503 or api_status == "UNAVAILABLE":
         return "unavailable"
     if after_notice:
         return "server_reset"

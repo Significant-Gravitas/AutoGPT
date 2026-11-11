@@ -209,7 +209,7 @@ class DumpStore:
             and (
                 self.row.recordingId == recording_id
                 or (
-                    input_mode != BrainDumpInputMode.voice
+                    (input_mode != BrainDumpInputMode.voice or call_take)
                     and not dump_db.call_take_displaces(
                         recording_id, self.row.recordingId, call_take=call_take
                     )

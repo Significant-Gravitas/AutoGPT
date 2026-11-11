@@ -67,6 +67,12 @@ class Call:
         """The person speaks into the call's room."""
         self.media.say(frames)
 
+    async def answer(self, frames: list[bytes]) -> None:
+        """The person answers Otto once his turn has played out, as someone
+        does on hearing him finish."""
+        await until(lambda: self.session.answer.is_open(time.monotonic()))
+        self.say(frames)
+
     @property
     def otto(self) -> bytes:
         """What Otto said in the call's room."""
@@ -183,7 +189,7 @@ async def test_a_call_ends_finished_once_otto_says_goodbye_after_the_end_tool(re
     ]
 
     await call.ws.wait_for("turn_complete")
-    call.say(speech(0.4))
+    await call.answer(speech(0.4))
     ended = await call.ended()
 
     assert ended["reason"] == "finished"
@@ -508,7 +514,7 @@ async def test_a_dropped_vendor_session_is_replaced_and_the_call_carries_on(redi
     )
     assert "Otto: Hi, I'm Otto, an AI. What do you do?" in reseed
 
-    call.say(speech(0.2))
+    await call.answer(speech(0.4))
     ended = await call.ended()
     assert ended["reason"] == "finished"
     assert call.session.vendor_reconnects == 1
@@ -881,7 +887,7 @@ async def test_each_of_ottos_turns_is_marked_where_it_ended_in_the_recording(red
     )
     call = await open_call(redis, vendor)
     await call.ws.wait_for("turn_complete")
-    call.say(speech(0.4))
+    await call.answer(speech(0.4))
     await call.ended()
 
     record = await locks.read_call(redis, call.session.call_id)

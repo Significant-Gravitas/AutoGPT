@@ -13,8 +13,9 @@ The contract with a voice runtime:
   :data:`VOICE_INTERVIEW_END_TOOL_PARAMETERS`: the first task the person
   agreed their team starts on, the same input as the typed interview's
   ``end_interview``. Otto calls it once they have agreed to that task or
-  corrected it, then says goodbye; the runtime ends the call after the
-  goodbye has played.
+  corrected it out loud, then says goodbye; the runtime ends the call after
+  the goodbye has played, and refuses a call made before the person
+  answered.
 - Open the call with :func:`voice_interview_kickoff`, which carries the
   person's first name when their account has one, so Otto never has to ask
   for it or hear it.
@@ -60,7 +61,7 @@ How to talk:
 - Don't pitch features or promise results.
 - If they ask what happens with what they tell you: it's used to set up their team and they can change it any time.
 
-As soon as you know what they do and one concrete thing their team could start on now (and the tool it runs on, if it needs one), stop asking. Say in one sentence what their team will start on and check that's right. If about three minutes have passed, do that with what you have. Once they agree or correct it, call {VOICE_INTERVIEW_END_TOOL}, then say a short goodbye in their language. Their team starts on that first and learns the rest of their work as it goes."""
+As soon as you know what they do and one concrete thing their team could start on now (and the tool it runs on, if it needs one), stop asking. Say in one sentence what their team will start on and check that's right. If about three minutes have passed, do that with what you have. Then wait for them to answer out loud, and never answer for them; if they say nothing, ask once more. Once they agree or correct it, call {VOICE_INTERVIEW_END_TOOL}, then say a short goodbye in their language. Their team starts on that first and learns the rest of their work as it goes."""
 
 # The call's first turn: the platform's note, never the person's words.
 VOICE_INTERVIEW_KICKOFF = "(The user just opened the voice onboarding call.)"

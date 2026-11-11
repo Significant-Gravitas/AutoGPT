@@ -38,7 +38,8 @@ describe("how Otto's speech fared in the call's room", () => {
       listening,
       report([
         ottoAudio("IT01A1", {
-          concealedSamples: 4_800,
+          concealedSamples: 7_200,
+          silentConcealedSamples: 2_400,
           totalSamplesReceived: 96_000,
           packetsLost: 12,
           jitter: 0.004,
@@ -52,9 +53,50 @@ describe("how Otto's speech fared in the call's room", () => {
     // round trip read stand.
     expect(ottoListeningSummary(listening)).toEqual({
       concealed_share: 0.05,
+      silent_concealed_share: 0.025,
       packets_lost: 12,
       jitter_ms_max: 12,
       rtt_ms_max: 142,
+    });
+  });
+
+  it("counts what filled Otto's silence apart from what filled his speech", () => {
+    const listening = newOttoListening();
+
+    addOttoStats(
+      listening,
+      report([
+        ottoAudio("IT01A1", {
+          concealedSamples: 50_000,
+          silentConcealedSamples: 49_000,
+          totalSamplesReceived: 100_000,
+        }),
+      ]),
+    );
+
+    expect(ottoListeningSummary(listening)).toMatchObject({
+      concealed_share: 0.01,
+      silent_concealed_share: 0.49,
+    });
+  });
+
+  it("never counts more silence filled than was filled at all", () => {
+    const listening = newOttoListening();
+
+    addOttoStats(
+      listening,
+      report([
+        ottoAudio("IT01A1", {
+          concealedSamples: 100,
+          silentConcealedSamples: 400,
+          totalSamplesReceived: 1_000,
+        }),
+      ]),
+    );
+
+    expect(ottoListeningSummary(listening)).toMatchObject({
+      concealed_share: 0,
+      silent_concealed_share: 0.1,
     });
   });
 
@@ -66,6 +108,7 @@ describe("how Otto's speech fared in the call's room", () => {
       report([
         ottoAudio("IT01A1", {
           concealedSamples: 1_000,
+          silentConcealedSamples: 200,
           totalSamplesReceived: 10_000,
           packetsLost: 4,
         }),
@@ -85,7 +128,8 @@ describe("how Otto's speech fared in the call's room", () => {
     );
 
     expect(ottoListeningSummary(listening)).toMatchObject({
-      concealed_share: 0.025,
+      concealed_share: 0.02,
+      silent_concealed_share: 0.005,
       packets_lost: 5,
     });
   });
@@ -128,6 +172,7 @@ describe("how Otto's speech fared in the call's room", () => {
 
     expect(ottoListeningSummary(listening)).toEqual({
       concealed_share: 0,
+      silent_concealed_share: 0,
       packets_lost: 0,
       jitter_ms_max: null,
       rtt_ms_max: null,
@@ -137,6 +182,7 @@ describe("how Otto's speech fared in the call's room", () => {
   it("says nothing of a call whose stats were never read", () => {
     const empty = {
       concealed_share: null,
+      silent_concealed_share: null,
       packets_lost: null,
       jitter_ms_max: null,
       rtt_ms_max: null,
