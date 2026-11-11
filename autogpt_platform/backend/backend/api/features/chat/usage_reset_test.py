@@ -27,7 +27,7 @@ from backend.copilot.rate_limit import (
     SubscriptionTier,
     UsageWindow,
 )
-from backend.data.usage_reset import CreditReset, ResetPurchase
+from backend.data.usage_reset import CreditReset, ResetPurchase, ResetWindowChanged
 from backend.data.usage_reset_card import CardCheckout, CardGrant, CheckoutUnsettled
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.posthog_events import PostHogEvent
@@ -242,6 +242,64 @@ async def test_a_key_that_started_a_card_payment_at_the_same_moment_stays_on_it(
 
     assert response.status == "payment_required"
     assert response.checkout_url == CHECKOUT_URL
+
+
+@pytest.mark.asyncio
+async def test_credits_are_not_taken_from_a_customer_who_confirmed_a_card_payment(
+    shop: Shop,
+):
+    """They were shown "pay by card"; a top-up landed before they confirmed.
+    Taking credits now is not what they agreed to: it is refused, and the
+    app shows the offer again."""
+    by_card = UsageResetRequest(purchase_key=KEY, price_credits=8_000, pay_with="card")
+
+    refused = await _refused(shop, by_card)
+
+    assert (refused.status_code, refused.detail) == (409, "payment_changed")
+    assert shop.event()[1]["reason"] == "payment_changed"
+
+
+@pytest.mark.asyncio
+async def test_a_card_confirmation_with_too_few_credits_goes_to_the_card(shop: Shop):
+    shop.balance(100)
+    by_card = UsageResetRequest(purchase_key=KEY, price_credits=8_000, pay_with="card")
+
+    response = await buy_usage_reset(by_card, "user-1")
+
+    assert response.status == "payment_required"
+    shop.buy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_retry_racing_its_own_grant_gets_the_purchase_not_a_refusal(
+    shop: Shop,
+):
+    """The first request with this key granted the reset between this one's
+    look for the purchase and its read of the usage, which now says nothing
+    is limited."""
+    shop.earlier.side_effect = [None, _purchase()]
+    shop.status.return_value = _status(
+        blocked_by=None, reset_refusal="not_limited", reset_active=True
+    )
+
+    response = await buy_usage_reset(REQUEST, "user-1")
+
+    assert (response.status, response.credits_charged) == ("granted", 0)
+    shop.nothing_was_sold()
+    shop.events.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_window_that_changed_as_the_charge_began_charges_nothing(shop: Shop):
+    """An upgrade or a renewal landed between the check and the charge."""
+    shop.buy.side_effect = ResetWindowChanged()
+
+    with pytest.raises(HTTPException) as refused:
+        await buy_usage_reset(REQUEST, "user-1")
+
+    assert refused.value.status_code == 409
+    shop.checkout.assert_not_awaited()
+    assert shop.event()[1]["reason"] == "window_changed"
 
 
 @pytest.mark.asyncio

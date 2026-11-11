@@ -9,6 +9,7 @@ import { formatExactReset } from "@/services/usageExperience/resetTime";
 import {
   describePayment,
   formatResetPrice,
+  RESET_REPLACES,
   payLabel,
   resetPromise,
 } from "./helpers";
@@ -30,14 +31,15 @@ export function PaidResetOffer({
   onBought,
   goToCheckout,
 }: Props) {
+  const payWith = offer.pay_with ?? "card";
   const purchase = usePaidResetPurchase({
     priceCredits: offer.price_credits,
+    payWith,
     onBought,
     goToCheckout,
   });
   const resetsAt = useReadEveryRender(() => formatExactReset(weeklyResetsAt));
   const price = formatResetPrice(offer.price_credits);
-  const payWith = offer.pay_with ?? "card";
   return (
     <>
       <Button
@@ -59,6 +61,11 @@ export function PaidResetOffer({
               {resetPromise(resetsAt)}
             </Text>
             <ul className="flex list-disc flex-col gap-1 pl-5">
+              <li>
+                <Text variant="body" as="span" tone="body">
+                  {RESET_REPLACES}
+                </Text>
+              </li>
               <li>
                 <Text variant="body" as="span" tone="body">
                   Your weekly reset doesn’t move. Usage you haven’t used by then

@@ -252,6 +252,47 @@ def test_a_paid_usage_reset_with_no_purchase_to_grant_is_an_error_someone_sees(
     assert bool(errors) == logged
 
 
+@pytest.mark.parametrize("is_reset", [True, False])
+def test_a_delivery_that_died_before_granting_a_reset_grants_it_on_the_retry(
+    mocker: pytest_mock.MockFixture, settle_reset: AsyncMock, is_reset: bool
+) -> None:
+    """The first delivery claimed the event and stopped before the grant.
+    Stripe's retry finds the claim; it must still grant the paid reset."""
+    event = _make_checkout_event("payment")
+    event["data"]["object"]["metadata"] = {"usage_reset": "1"} if is_reset else {}
+    mocker.patch("stripe.Webhook.construct_event", return_value=event)
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes._claim_stripe_event",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.recover_claimed_billing_event",
+        new_callable=AsyncMock,
+    )
+    fulfill = mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.UserCredit.fulfill_checkout",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=sig"},
+    )
+
+    assert response.status_code == 200
+    fulfill.assert_not_called()
+    if is_reset:
+        settle_reset.assert_awaited_once_with(event["data"]["object"]["id"])
+    else:
+        settle_reset.assert_not_awaited()
+
+
 def test_a_usage_reset_that_cannot_be_granted_makes_stripe_retry(
     mocker: pytest_mock.MockFixture, settle_reset: AsyncMock
 ) -> None:

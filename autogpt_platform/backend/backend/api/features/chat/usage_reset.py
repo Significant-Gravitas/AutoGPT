@@ -47,6 +47,7 @@ from backend.data.credit import get_user_credit_model
 from backend.data.usage_reset import (
     CreditReset,
     ResetPurchase,
+    ResetWindowChanged,
     buy_reset_with_credits,
     find_reset_purchase,
 )
@@ -67,7 +68,13 @@ config = ChatConfig()
 settings = Settings()
 
 RefusalReason = Literal[
-    "not_live", "not_eligible", "not_limited", "resets_soon", "price_changed"
+    "not_live",
+    "not_eligible",
+    "not_limited",
+    "resets_soon",
+    "price_changed",
+    "payment_changed",
+    "window_changed",
 ]
 _REFUSALS: dict[RefusalReason, str] = {
     "not_live": "A usage reset isn't available for this account.",
@@ -75,6 +82,9 @@ _REFUSALS: dict[RefusalReason, str] = {
     "not_limited": "You haven't reached a usage limit, so there is nothing to reset.",
     "resets_soon": "Your limits reset shortly anyway, so a reset can't be bought now.",
     "price_changed": "price_changed",
+    "payment_changed": "payment_changed",
+    "window_changed": "Your usage window has just changed. Check your usage "
+    "and try again.",
 }
 
 
@@ -121,8 +131,19 @@ async def buy_usage_reset(
         )
     except RateLimitUnavailable as error:
         raise _unavailable() from error
+    if earlier is None and status.reset_refusal is not None:
+        # This key may have bought its reset in another request a moment
+        # ago, which is why nothing is limited now: answer with it.
+        bought_meanwhile = await find_reset_purchase(user_id, request.purchase_key)
+        if bought_meanwhile is not None and bought_meanwhile.status == "granted":
+            usage = await _usage_now(user_id, daily, weekly, tier)
+            return _granted(bought_meanwhile, 0, usage)
     _refuse_unless_sold(user_id, request, status)
     if earlier is None and await _balance_covers(user_id, status.reset_price):
+        if request.pay_with == "card":
+            # They confirmed a card payment; the balance covers it by now.
+            # Credits aren't taken on a confirmation that named the card.
+            _refuse(user_id, "payment_changed", status.tier.value)
         bought = await _pay_with_credits(user_id, request, status, now)
         if bought is not None:
             return _granted(
@@ -246,6 +267,8 @@ async def _pay_with_credits(
         )
     except InsufficientBalanceError:
         return None
+    except ResetWindowChanged:
+        _refuse(user_id, "window_changed", status.tier.value)
     except UniqueViolationError:
         if await find_reset_purchase(user_id, request.purchase_key) is not None:
             return None

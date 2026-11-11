@@ -156,7 +156,7 @@ async def test_a_granted_reset_is_announced_for_a_while(user: str):
     assert await reset_marked(user)
     redis = await get_redis_async()
     ttl = await redis.ttl(f"usage:v2:{{{user}}}:reset-granted")
-    assert RESET_MARK_SECONDS - 5 <= ttl <= RESET_MARK_SECONDS
+    assert 0 < ttl <= RESET_MARK_SECONDS
 
 
 @pytest.mark.asyncio

@@ -7,25 +7,28 @@ import {
   getGetV2GetCopilotUsageQueryKey,
   usePostV2BuyUsageReset,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import { getGetV1GetUserCreditsQueryKey } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { UsageResetResponse } from "@/app/api/__generated__/models/usageResetResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { formatExactReset } from "@/services/usageExperience/resetTime";
 import {
   describePurchaseFailure,
   grantedMessage,
-  isPriceChanged,
+  isOfferChanged,
   newPurchaseKey,
 } from "./helpers";
 
 interface Args {
   /** The price the customer is shown, which is the price they agree to. */
   priceCredits: number;
+  /** How the customer is told it will be paid. */
+  payWith: "credits" | "card";
   onBought?: () => void;
   /** Leaves for Stripe's checkout; replaced in tests. */
   goToCheckout?: (url: string) => void;
 }
 
-type Outcome = "bought" | "checkout" | "price_changed" | "failed";
+type Outcome = "bought" | "checkout" | "offer_changed" | "failed";
 
 function leaveForCheckout(url: string) {
   window.location.assign(url);
@@ -58,13 +61,14 @@ async function attemptPurchase(
       variant: "destructive",
     });
     return (
-      isPriceChanged(error) ? "price_changed" : "failed"
+      isOfferChanged(error) ? "offer_changed" : "failed"
     ) satisfies Outcome;
   }
 }
 
 export function usePaidResetPurchase({
   priceCredits,
+  payWith,
   onBought,
   goToCheckout = leaveForCheckout,
 }: Args) {
@@ -90,7 +94,11 @@ export function usePaidResetPurchase({
     const outcome = await attemptPurchase(
       () =>
         buy.mutateAsync({
-          data: { purchase_key: purchaseKey, price_credits: priceCredits },
+          data: {
+            purchase_key: purchaseKey,
+            price_credits: priceCredits,
+            pay_with: payWith,
+          },
         }),
       goToCheckout,
     );
@@ -101,11 +109,15 @@ export function usePaidResetPurchase({
       return;
     }
     setIsOpen(false);
-    // Bought, or the price moved: either way the offer on screen is stale.
+    // Bought, or the offer moved: either way the offer on screen is stale.
     void queryClient.invalidateQueries({
       queryKey: getGetV2GetCopilotUsageQueryKey(),
     });
-    if (outcome === "price_changed") return;
+    if (outcome === "offer_changed") return;
+    // Credits may have paid for it: the balance shown elsewhere is stale too.
+    void queryClient.invalidateQueries({
+      queryKey: getGetV1GetUserCreditsQueryKey(),
+    });
     setPurchaseKey(newPurchaseKey());
     if (onBought) onBought();
   }

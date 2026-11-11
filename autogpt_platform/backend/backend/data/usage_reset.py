@@ -37,9 +37,11 @@ from prisma.models import UsageReset
 from pydantic import BaseModel
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.copilot.usage_clock import clock_from_state
 from backend.copilot.usage_counters import mark_reset
 from backend.data.credit import UsageTransactionMetadata, UserCredit
 from backend.data.db import transaction
+from backend.data.pro_activation import get_usage_activation_state
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson
 
@@ -86,6 +88,11 @@ class ResetPurchase(BaseModel):
         )
 
 
+class ResetWindowChanged(Exception):
+    """The buyer's weekly window or plan is no longer the one the purchase
+    was priced and agreed for (an upgrade or a renewal landed meanwhile)."""
+
+
 class CreditReset(BaseModel):
     purchase: ResetPurchase
     # The credit balance after the purchase.
@@ -129,14 +136,17 @@ async def buy_reset_with_credits(
     ``sequence``, both or neither.
 
     Raises ``InsufficientBalanceError`` when the balance doesn't cover it,
-    and ``UniqueViolationError`` when another purchase already is that reset
-    (the window was reset meanwhile); nothing is written or charged then.
+    ``UniqueViolationError`` when another purchase already is that reset
+    (the window was reset meanwhile), and ``ResetWindowChanged`` when the
+    buyer's window or plan is no longer the one given; nothing is written or
+    charged then.
     """
     if price_credits <= 0 or week_end <= week_start or sequence <= 0:
         raise ValueError("A usage reset needs a price and a window")
     credits = UserCredit()
     try:
         async with transaction() as tx:
+            await _still_in_window(user_id, tier, week_start, week_end, now)
             balance, _ = await credits._add_transaction(
                 user_id=user_id,
                 amount=-price_credits,
@@ -161,7 +171,7 @@ async def buy_reset_with_credits(
                     "grantedAt": now,
                 }
             )
-    except (UniqueViolationError, InsufficientBalanceError):
+    except (UniqueViolationError, InsufficientBalanceError, ResetWindowChanged):
         # The same key may have committed first: then this is that purchase,
         # whether this attempt met its unique key or, the first having spent
         # the balance, found too few credits left.
@@ -176,6 +186,23 @@ async def buy_reset_with_credits(
     return CreditReset(
         purchase=ResetPurchase.from_db(row), balance=balance, charged=True
     )
+
+
+async def _still_in_window(
+    user_id: str, tier: SubscriptionTier, week_start: int, week_end: int, now: int
+) -> None:
+    """Raise unless the stored clock still puts the buyer in this window on
+    this plan. Read last, as the charge begins: an upgrade or renewal that
+    landed after the eligibility check would otherwise be charged for a
+    reset of a window the limiter has already left."""
+    state = await get_usage_activation_state(user_id)
+    clock = clock_from_state(state, now)
+    same_window = clock is not None and (
+        clock.windows.week_start,
+        clock.windows.week_end,
+    ) == (week_start, week_end)
+    if not same_window or state.tier.value != tier.value:
+        raise ResetWindowChanged()
 
 
 async def announce_reset(user_id: str) -> None:

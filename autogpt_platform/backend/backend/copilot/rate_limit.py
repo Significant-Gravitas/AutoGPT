@@ -1415,6 +1415,9 @@ async def _record_on_billing_clock(
             # it and would count this cost on the counters it replaced.
             state = None
         if state is None:
+            # Not a state another check in this block read earlier either: it
+            # could predate the reset just as the remembered one could.
+            forget_usage_state(user_id)
             state = await get_ready_usage_state(user_id)
             remember_state(state)
         clock = clock_from_state(state, now)

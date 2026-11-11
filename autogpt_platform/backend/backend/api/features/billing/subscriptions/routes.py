@@ -831,6 +831,17 @@ def _stripe_event_dedup_key(event_id: str) -> str:
     return f"stripe_webhook_event:{event_id}"
 
 
+async def _recover_usage_reset(event_type: str, session: dict) -> None:
+    """A delivery that was claimed and then died before granting the reset it
+    paid for must still grant it on Stripe's retry. Granting is idempotent,
+    so an event that was fully processed changes nothing here."""
+    if not event_type.startswith("checkout.session."):
+        return
+    session_id = session.get("id")
+    if session_id and _is_usage_reset_checkout(session):
+        await settle_card_reset(session_id)
+
+
 def _is_usage_reset_checkout(session: dict) -> bool:
     """Whether a completed Checkout session says it paid for a usage reset.
     Subscription and top-up sessions never reach the reset's code."""
@@ -986,6 +997,7 @@ async def stripe_webhook(request: Request):
     # not every downstream handler is independently idempotent.
     if not await _claim_stripe_event(event_id):
         await recover_claimed_billing_event(event_type, data_object)
+        await _recover_usage_reset(event_type, data_object)
         logger.info(
             "stripe_webhook: event %s (%s) already processed; skipping",
             event_id,

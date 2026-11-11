@@ -21,6 +21,12 @@ class UsageResetRequest(BaseModel):
         description="The price the customer was shown and agreed to, from "
         "the usage read-out's reset_offer. Refused if it has changed.",
     )
+    pay_with: Literal["credits", "card"] | None = Field(
+        default=None,
+        description="How the customer was told it would be paid, from the "
+        "same reset_offer. Credits are never taken from a customer who "
+        "confirmed a card payment: that is refused, to be confirmed again.",
+    )
 
 
 class UsageResetResponse(BaseModel):

@@ -34,6 +34,11 @@ def _row(status: str = "pending") -> MagicMock:
     )
 
 
+def _on_max() -> AsyncMock:
+    """The buyer's usage state: still on the plan the purchase was priced for."""
+    return AsyncMock(return_value=MagicMock(tier=SubscriptionTier.MAX))
+
+
 def _paid_session() -> dict:
     return {
         "id": "cs_test_1",
@@ -57,6 +62,7 @@ def table(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     table.count = AsyncMock(return_value=0)
     table.update_many = AsyncMock(return_value=1)
     table.create = AsyncMock()
+    table.find_many = AsyncMock(return_value=[])
     monkeypatch.setattr(
         usage_reset_card.UsageReset, "prisma", MagicMock(return_value=table)
     )
@@ -73,7 +79,7 @@ async def test_a_paid_reset_takes_the_next_number_when_its_own_was_just_taken(
 ):
     """Two paid resets confirmed at the same moment: both were paid for, so
     both are granted, one after the other."""
-    monkeypatch.setattr(usage_reset_card, "get_usage_activation_state", AsyncMock())
+    monkeypatch.setattr(usage_reset_card, "get_usage_activation_state", _on_max())
     windows = MagicMock(week_start=NOW - 86_400, week_end=NOW + 86_400)
     monkeypatch.setattr(
         usage_reset_card, "clock_from_state", lambda *_: MagicMock(windows=windows)
@@ -95,7 +101,7 @@ async def test_a_paid_reset_takes_the_next_number_when_its_own_was_just_taken(
 async def test_a_paid_reset_that_cannot_be_numbered_is_an_error_stripe_retries(
     table: MagicMock, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr(usage_reset_card, "get_usage_activation_state", AsyncMock())
+    monkeypatch.setattr(usage_reset_card, "get_usage_activation_state", _on_max())
     monkeypatch.setattr(usage_reset_card, "clock_from_state", lambda *_: MagicMock())
     table.update_many.side_effect = TAKEN
 
@@ -110,7 +116,7 @@ async def test_a_paid_reset_with_no_window_to_go_in_is_an_error_not_a_loss(
     """Paid for, but the account has no clock to place it on: raising makes
     Stripe deliver the event again and leaves the purchase pending and
     visible, instead of answering 200 and dropping it."""
-    monkeypatch.setattr(usage_reset_card, "get_usage_activation_state", AsyncMock())
+    monkeypatch.setattr(usage_reset_card, "get_usage_activation_state", _on_max())
     monkeypatch.setattr(usage_reset_card, "clock_from_state", lambda *_: None)
 
     with pytest.raises(RuntimeError):

@@ -33,6 +33,9 @@ CHECKOUT_LIFETIME_SECONDS = 31 * 60
 RETURN_PATH = "/settings/billing"
 
 _GRANT_ATTEMPTS = 5
+# How many of the buyer's latest unpaid purchases are looked at for a
+# checkout that is still open.
+_OTHER_CHECKOUTS_CHECKED = 3
 
 
 class CardGrant(BaseModel):
@@ -76,9 +79,15 @@ async def start_card_reset(
     pending = await find_reset_purchase(user_id, purchase_key)
     if pending is not None:
         # Granted (by credits, too), open or paid: nothing new is opened.
-        resumed = await _resume_checkout(pending, now)
+        resumed = await _resume_checkout(pending, now, price_credits)
         if resumed is not None:
             return resumed
+    else:
+        # Another tab's checkout for the same reset is this one's too: two
+        # open checkouts would be two payments for one reset.
+        shared = await _open_checkout_elsewhere(user_id, tier, price_credits)
+        if shared is not None:
+            return shared
     session = await _create_checkout(user_id, purchase_key, tier, price_credits, now)
     if not session.url:
         raise ValueError("Stripe did not return a checkout session URL")
@@ -105,7 +114,7 @@ async def start_card_reset(
         raise CheckoutUnsettled("The purchase is gone")
     if moved:
         return CardCheckout(purchase=current, url=session.url)
-    resumed = await _resume_checkout(current, now)
+    resumed = await _resume_checkout(current, now, price_credits)
     if resumed is None:
         raise CheckoutUnsettled("The purchase's session changed meanwhile")
     return resumed
@@ -133,6 +142,15 @@ async def fulfill_card_reset(
     if not _pays_for(session, row):
         return None
     state = await get_usage_activation_state(row.userId)
+    if state.tier.value != SubscriptionTier(row.tier).value:
+        # Paid at one plan's price after moving to another plan: that price
+        # doesn't buy the new plan's weekly limit. Not granted; it stays
+        # pending for support to refund. ERROR reaches Sentry.
+        logger.error(
+            "A paid usage reset was not granted: the plan changed between "
+            "opening its checkout and paying it"
+        )
+        return None
     clock = clock_from_state(state, now)
     if clock is None:
         raise RuntimeError("No billing clock to grant a paid usage reset in")
@@ -218,7 +236,33 @@ async def _store_pending(
     return CardCheckout(purchase=ResetPurchase.from_db(row), url=session.url)
 
 
-async def _resume_checkout(pending: ResetPurchase, now: int) -> CardCheckout | None:
+async def _open_checkout_elsewhere(
+    user_id: str, tier: SubscriptionTier, price_credits: int
+) -> CardCheckout | None:
+    """A checkout the buyer already has open under another key, for the same
+    plan and price: returned instead of opening a second one."""
+    rows = await UsageReset.prisma().find_many(
+        where={"userId": user_id, "status": "pending", "paidWith": "card"},
+        order={"createdAt": "desc"},
+        take=_OTHER_CHECKOUTS_CHECKED,
+    )
+    for row in rows:
+        same_offer = row.priceCredits == price_credits and row.tier == tier
+        if not same_offer or not row.stripeCheckoutSessionId:
+            continue
+        session = await stripe_call(
+            stripe.checkout.Session.retrieve_async, row.stripeCheckoutSessionId
+        )
+        if session.get("status") == "open" and session.get("url"):
+            return CardCheckout(
+                purchase=ResetPurchase.from_db(row), url=session.get("url")
+            )
+    return None
+
+
+async def _resume_checkout(
+    pending: ResetPurchase, now: int, price_credits: int
+) -> CardCheckout | None:
     """The purchase's earlier session, if it can still be used or was paid.
     None when a new session is needed."""
     if pending.status == "granted":
@@ -226,9 +270,18 @@ async def _resume_checkout(pending: ResetPurchase, now: int) -> CardCheckout | N
     session_id = pending.checkout_session_id or ""
     session = await stripe_call(stripe.checkout.Session.retrieve_async, session_id)
     if session.get("status") == "open" and session.get("url"):
-        # Still payable: if it is paid a moment from now, it is still the
-        # purchase's session and its webhook grants it.
-        return CardCheckout(purchase=pending, url=session.get("url"))
+        if pending.price_credits == price_credits:
+            # Still payable: if it is paid a moment from now, it is still
+            # the purchase's session and its webhook grants it.
+            return CardCheckout(purchase=pending, url=session.get("url"))
+        # Open at a price the buyer no longer agreed to. Closed at Stripe
+        # first, so it can't be paid, and only then replaced. If Stripe
+        # won't close it (it was just paid), nothing is replaced.
+        try:
+            await stripe_call(stripe.checkout.Session.expire_async, session_id)
+        except stripe.StripeError as error:
+            raise CheckoutUnsettled("An open session could not be closed") from error
+        return None
     if session.get("status") == "expired":
         return None
     # Completed: paid, unless Stripe says otherwise.

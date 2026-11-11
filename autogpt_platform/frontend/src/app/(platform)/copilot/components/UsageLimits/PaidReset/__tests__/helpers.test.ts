@@ -5,7 +5,7 @@ import {
   describePurchaseFailure,
   formatResetPrice,
   grantedMessage,
-  isPriceChanged,
+  isOfferChanged,
   newPurchaseKey,
   payLabel,
   resetPromise,
@@ -84,14 +84,19 @@ describe("a refused purchase", () => {
     );
   });
 
-  it("knows a changed price from any other refusal", () => {
+  it("knows a changed offer from any other refusal", () => {
     const changed = new ApiError("no", 409, { detail: "price_changed" });
+    const payment = new ApiError("no", 409, { detail: "payment_changed" });
 
-    expect(isPriceChanged(changed)).toBe(true);
-    expect(isPriceChanged(new ApiError("no", 409, { detail: "other" }))).toBe(
+    expect(isOfferChanged(changed)).toBe(true);
+    expect(isOfferChanged(payment)).toBe(true);
+    expect(isOfferChanged(new ApiError("no", 409, { detail: "other" }))).toBe(
       false,
     );
-    expect(isPriceChanged(new Error("offline"))).toBe(false);
+    expect(isOfferChanged(new Error("offline"))).toBe(false);
+    expect(describePurchaseFailure(payment)).toBe(
+      "Your credit balance now covers this, so it would be paid with credits. Check the offer, then reset your limits. Nothing was charged.",
+    );
     expect(describePurchaseFailure(changed)).toBe(
       "The price has changed. Check the new price, then reset your limits.",
     );

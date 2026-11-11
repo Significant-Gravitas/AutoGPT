@@ -11,7 +11,7 @@ import pytest
 import stripe
 from prisma.enums import SubscriptionTier
 from prisma.errors import UniqueViolationError
-from prisma.models import CreditTransaction, UsageReset
+from prisma.models import CreditTransaction, UsageReset, User
 
 from backend.copilot.usage_clock import clock_from_state
 from backend.data import usage_clock_integration_fixtures as fixtures
@@ -20,6 +20,7 @@ from backend.data.credit import UserCredit
 from backend.data.pro_activation import get_usage_activation_state
 from backend.data.usage_clock import save_billing_clock
 from backend.data.usage_reset import (
+    ResetWindowChanged,
     buy_reset_with_credits,
     credit_transaction_key,
     find_reset_purchase,
@@ -61,6 +62,7 @@ def announced(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 
 async def _buy(user_id: str, key: str = "key-0001", sequence: int = 1):
+    await save_billing_clock(user_id, PERIOD)
     return await buy_reset_with_credits(
         user_id,
         key,
@@ -192,6 +194,7 @@ async def test_a_second_reset_in_the_same_window_counts_as_the_second(billing_us
 async def test_only_the_latest_windows_resets_are_in_the_state(billing_user):
     await UserCredit().grant_credits(billing_user, 5_000, "test balance")
     await _buy(billing_user, "key-this-week")
+    assert (await _resets_now(billing_user)) == (START, 1)
     await buy_reset_with_credits(
         billing_user,
         "key-next-week",
@@ -234,6 +237,7 @@ class Stripe:
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.sessions: dict[str, dict] = {}
         self.created: list[dict] = []
+        self.both_creating: asyncio.Barrier | None = None
         monkeypatch.setattr(usage_reset_card, "stripe_call", self._call)
         monkeypatch.setattr(
             usage_reset_card,
@@ -242,8 +246,16 @@ class Stripe:
         )
 
     async def _call(self, function, *args, **kwargs):
+        if function.__name__ == "expire_async":
+            if self.sessions[args[0]]["status"] != "open":
+                raise stripe.InvalidRequestError("not open", param=None)
+            self.expires(args[0])
+            return self.sessions[args[0]]
         if args:
             return self.sessions[args[0]]
+        if self.both_creating is not None:
+            # Hold each request at Stripe until the other has arrived too.
+            await asyncio.wait_for(self.both_creating.wait(), timeout=30)
         session = {
             "id": f"cs_test_{uuid4().hex}",
             "url": f"https://checkout.stripe.test/{len(self.created)}",
@@ -504,9 +516,16 @@ async def test_two_requests_replacing_an_expired_checkout_end_on_one_session(
     assert first.purchase.checkout_session_id
     stripe_side.expires(first.purchase.checkout_session_id)
 
+    # Neither may store its new session until both have seen the expired one
+    # and asked Stripe for a replacement: the order that would let a naive
+    # update overwrite a session a customer was already shown.
+    stripe_side.both_creating = asyncio.Barrier(2)
+
     one, other = await asyncio.gather(
         _open(billing_user, now=NOW + 3_600), _open(billing_user, now=NOW + 3_600)
     )
+
+    assert len(stripe_side.created) == 3
 
     row = await UsageReset.prisma().find_first_or_raise(where={"userId": billing_user})
     attached = stripe_side.sessions[row.stripeCheckoutSessionId or ""]
@@ -542,6 +561,150 @@ async def test_a_checkout_that_could_still_be_paid_is_never_replaced(
     stripe_side.pays(session_id)
     settled = await _open(billing_user, now=NOW + 120)
     assert settled.url is None and settled.purchase.status == "granted"
+
+
+@pytest.mark.asyncio
+async def test_a_second_tab_is_given_the_checkout_that_is_already_open(
+    billing_user, stripe_side: Stripe
+):
+    """Two tabs, two keys, one limit reached: one checkout, so one payment."""
+    await save_billing_clock(billing_user, PERIOD)
+
+    first = await _open(billing_user, "key-tab-a")
+    second = await _open(billing_user, "key-tab-b")
+
+    assert second.url == first.url
+    assert second.purchase.id == first.purchase.id
+    assert len(stripe_side.created) == 1
+    assert await UsageReset.prisma().count(where={"userId": billing_user}) == 1
+    # Once that one is paid or expired, a new purchase opens its own.
+    assert first.purchase.checkout_session_id
+    stripe_side.expires(first.purchase.checkout_session_id)
+    third = await _open(billing_user, "key-tab-c")
+    assert third.url != first.url and len(stripe_side.created) == 2
+
+
+@pytest.mark.asyncio
+async def test_an_open_checkout_at_an_old_price_is_closed_before_it_is_replaced(
+    billing_user, stripe_side: Stripe
+):
+    """The price changed and the customer agreed to the new one: they are
+    not sent to a checkout for the old price, and the old one can no longer
+    be paid."""
+    await save_billing_clock(billing_user, PERIOD)
+    first = await _open(billing_user)
+    old_session = first.purchase.checkout_session_id
+    assert old_session
+
+    again = await start_card_reset(
+        billing_user,
+        "key-card-1",
+        tier=SubscriptionTier.PRO,
+        price_credits=PRICE - 250,
+        now=NOW + 60,
+    )
+
+    assert stripe_side.sessions[old_session]["status"] == "expired"
+    assert again.purchase.id == first.purchase.id
+    assert again.purchase.price_credits == PRICE - 250
+    assert again.purchase.checkout_session_id != old_session
+    assert stripe_side.created[-1]["line_items"][0]["price_data"]["unit_amount"] == (
+        PRICE - 250
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_old_price_checkout_paid_at_that_moment_is_not_replaced(
+    billing_user, stripe_side: Stripe, monkeypatch: pytest.MonkeyPatch
+):
+    """Stripe refuses to close a session that was just paid: the purchase
+    keeps it, so the payment keeps its purchase."""
+    await save_billing_clock(billing_user, PERIOD)
+    first = await _open(billing_user)
+    session_id = first.purchase.checkout_session_id
+    assert session_id
+    retrieve = stripe_side._call
+
+    async def paid_just_before_closing(function, *args, **kwargs):
+        if function.__name__ == "expire_async":
+            stripe_side.pays(args[0])
+        return await retrieve(function, *args, **kwargs)
+
+    monkeypatch.setattr(usage_reset_card, "stripe_call", paid_just_before_closing)
+
+    with pytest.raises(CheckoutUnsettled):
+        await start_card_reset(
+            billing_user,
+            "key-card-1",
+            tier=SubscriptionTier.PRO,
+            price_credits=PRICE - 250,
+            now=NOW + 60,
+        )
+
+    row = await UsageReset.prisma().find_first_or_raise(where={"userId": billing_user})
+    assert row.stripeCheckoutSessionId == session_id
+    grant = await fulfill_card_reset(session_id, NOW + 90)
+    assert grant is not None and grant.granted_now
+
+
+@pytest.mark.asyncio
+async def test_a_checkout_paid_after_changing_plan_is_not_granted(
+    billing_user, stripe_side: Stripe
+):
+    """A Pro-priced checkout left open, an upgrade to Max, then the payment:
+    $12.50 does not buy a Max weekly limit. Nothing is reset; the purchase
+    stays pending, for a refund."""
+    await save_billing_clock(billing_user, PERIOD)
+    checkout = await _open(billing_user)
+    session_id = checkout.purchase.checkout_session_id
+    assert session_id
+    await User.prisma().update(
+        where={"id": billing_user}, data={"subscriptionTier": "MAX"}
+    )
+    stripe_side.pays(session_id)
+
+    assert await fulfill_card_reset(session_id, NOW + 120) is None
+
+    assert await _resets_now(billing_user) == (None, 0)
+    assert (await list_reset_purchases(billing_user))[0].status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_credits_are_not_charged_for_a_window_the_customer_has_left(
+    billing_user,
+):
+    """A renewal or an upgrade moved the clock between the eligibility check
+    and the charge: the reset would belong to a window the limiter no
+    longer reads."""
+    await UserCredit().grant_credits(billing_user, 5_000, "test balance")
+    await save_billing_clock(billing_user, PERIOD)
+
+    with pytest.raises(ResetWindowChanged):
+        await buy_reset_with_credits(
+            billing_user,
+            "key-old-window",
+            tier=SubscriptionTier.PRO,
+            price_credits=PRICE,
+            week_start=START - 7 * DAY,
+            week_end=START,
+            sequence=1,
+            now=NOW,
+        )
+    with pytest.raises(ResetWindowChanged):
+        await buy_reset_with_credits(
+            billing_user,
+            "key-old-plan",
+            tier=SubscriptionTier.MAX,
+            price_credits=PRICE,
+            week_start=START,
+            week_end=WEEK_END,
+            sequence=1,
+            now=NOW,
+        )
+
+    assert await _balance(billing_user) == 5_000
+    assert await _charges(billing_user) == []
+    assert await _resets_now(billing_user) == (None, 0)
 
 
 @pytest.mark.asyncio

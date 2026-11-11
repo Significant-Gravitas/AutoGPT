@@ -50,18 +50,25 @@ export function grantedMessage(resetsAt: string | null) {
   return `A full week of usage with no daily limit${until}.`;
 }
 
-/** The price is no longer the one the offer showed. */
-export function isPriceChanged(error: unknown) {
-  return (
-    error instanceof ApiError &&
-    error.status === 409 &&
-    error.response?.detail === "price_changed"
-  );
+/** What a reset does to the week in progress, said before anything is paid. */
+export const RESET_REPLACES =
+  "This replaces what’s left of this week’s usage with a full fresh week.";
+
+/** The price, or the way it would be paid, is no longer what the offer
+ *  showed: the offer on screen is stale. */
+export function isOfferChanged(error: unknown) {
+  if (!(error instanceof ApiError) || error.status !== 409) return false;
+  const detail = error.response?.detail;
+  return detail === "price_changed" || detail === "payment_changed";
 }
 
 export function describePurchaseFailure(error: unknown) {
-  if (isPriceChanged(error))
-    return "The price has changed. Check the new price, then reset your limits.";
+  if (error instanceof ApiError && error.status === 409) {
+    if (error.response?.detail === "price_changed")
+      return "The price has changed. Check the new price, then reset your limits.";
+    if (error.response?.detail === "payment_changed")
+      return "Your credit balance now covers this, so it would be paid with credits. Check the offer, then reset your limits. Nothing was charged.";
+  }
   if (error instanceof ApiError && error.status === 409) {
     const detail = error.response?.detail;
     const reason = typeof detail === "string" ? `${detail} ` : "";

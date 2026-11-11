@@ -32,17 +32,21 @@ const CHECKOUT = {
 };
 
 const prices: number[] = [];
+const confirmedPayments: Array<string | undefined> = [];
 
 function onPurchase(answer: (key: string) => Response | Promise<Response>) {
   const keys: string[] = [];
   prices.length = 0;
+  confirmedPayments.length = 0;
   server.use(
     http.post("*/api/chat/usage/paid-reset", async ({ request }) => {
       const body = (await request.json()) as {
         purchase_key: string;
         price_credits: number;
+        pay_with?: string;
       };
       prices.push(body.price_credits);
+      confirmedPayments.push(body.pay_with);
       keys.push(body.purchase_key);
       return answer(body.purchase_key);
     }),
@@ -91,6 +95,12 @@ describe("buying a usage reset", () => {
     expect(
       screen.getByText("$80 is taken from your AutoGPT credit balance."),
     ).toBeDefined();
+    // Said plainly: a reset replaces the rest of the week, it doesn't add.
+    expect(
+      screen.getByText(
+        "This replaces what’s left of this week’s usage with a full fresh week.",
+      ),
+    ).toBeDefined();
     expect(keys).toEqual([]);
   });
 
@@ -102,8 +112,10 @@ describe("buying a usage reset", () => {
 
     await waitFor(() => expect(onBought).toHaveBeenCalledTimes(1));
     expect(keys).toHaveLength(1);
-    // The price on the button is the price agreed to.
+    // The price on the button is the price agreed to, and so is the way
+    // it is paid.
     expect(prices).toEqual([8000]);
+    expect(confirmedPayments).toEqual(["credits"]);
     expect(goToCheckout).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(
@@ -188,6 +200,25 @@ describe("buying a usage reset", () => {
     ).toBeDefined();
     expect(goToCheckout).not.toHaveBeenCalled();
     expect(onBought).not.toHaveBeenCalled();
+  });
+
+  it("closes without buying when credits would now pay what was confirmed for the card", async () => {
+    const keys = onPurchase(() =>
+      HttpResponse.json({ detail: "payment_changed" }, { status: 409 }),
+    );
+    const { onBought, goToCheckout } = renderOffer(BY_CARD);
+
+    await openAndPay("Pay $80 by card");
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Pay $80 by card" }),
+      ).toBeNull(),
+    );
+    expect(keys).toHaveLength(1);
+    expect(confirmedPayments).toEqual(["card"]);
+    expect(onBought).not.toHaveBeenCalled();
+    expect(goToCheckout).not.toHaveBeenCalled();
   });
 
   it("closes without buying when the price is no longer the one shown", async () => {

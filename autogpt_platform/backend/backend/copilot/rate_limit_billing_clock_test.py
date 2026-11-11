@@ -601,6 +601,20 @@ async def test_a_cost_just_after_a_paid_reset_reads_the_state_again(
 
 
 @pytest.mark.asyncio
+async def test_a_cost_never_counts_on_a_state_shared_from_before_a_reset(
+    account: Account, recorded: AsyncMock, monkeypatch: pytest.MonkeyPatch
+):
+    """With no state of its own to reuse, the recording drops the one other
+    checks in the same request shared, which could predate the reset too."""
+    forgotten = MagicMock()
+    monkeypatch.setattr(rate_limit, "forget_usage_state", forgotten)
+
+    await record_cost_usage(USER, 4_000_000)
+
+    forgotten.assert_called_once_with(USER)
+
+
+@pytest.mark.asyncio
 async def test_a_cost_after_the_period_ended_reads_the_state_again(
     account: Account, recorded: AsyncMock
 ):
