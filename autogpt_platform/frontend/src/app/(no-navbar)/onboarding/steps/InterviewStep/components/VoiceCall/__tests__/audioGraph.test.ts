@@ -9,6 +9,7 @@ import {
   createCallAudio,
   createCallContext,
   createCallPlayer,
+  microphoneSettingsOf,
   openMicrophone,
   releasePlayer,
 } from "../audioGraph";
@@ -36,6 +37,39 @@ function callAudio() {
     context: context as unknown as FakeAudioContext,
   };
 }
+
+describe("what the browser applied to the microphone", () => {
+  it("reads echo cancellation, noise suppression and gain control off its track", () => {
+    expect(microphoneSettingsOf(fakeMediaStream())).toEqual({
+      echo_cancellation: true,
+      noise_suppression: true,
+      auto_gain_control: false,
+    });
+  });
+
+  it("says nothing of what the browser does not report", () => {
+    const track = { kind: "audio", getSettings: () => ({ channelCount: 1 }) };
+    const microphone = {
+      getAudioTracks: () => [track],
+    } as unknown as MediaStream;
+
+    expect(microphoneSettingsOf(microphone)).toEqual({
+      echo_cancellation: null,
+      noise_suppression: null,
+      auto_gain_control: null,
+    });
+  });
+
+  it("says nothing for a stream with no microphone track", () => {
+    const microphone = { getAudioTracks: () => [] } as unknown as MediaStream;
+
+    expect(microphoneSettingsOf(microphone)).toEqual({
+      echo_cancellation: null,
+      noise_suppression: null,
+      auto_gain_control: null,
+    });
+  });
+});
 
 describe("the call's audio", () => {
   it("asks for one echo-cancelled voice channel", async () => {

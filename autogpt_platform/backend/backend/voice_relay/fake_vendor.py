@@ -129,6 +129,8 @@ class FakeVendorSession:
         self.notes: list[tuple[str, bool]] = []
         self.tool_results: list[ToolResult] = []
         self.audio_in_bytes = 0
+        # The audio sent to it that the voice detector calls speech.
+        self.speech_in_bytes = 0
         self.stream_ends = 0
         self.closed = False
         self._queue: asyncio.Queue[VendorEvent | _Drop | None] = asyncio.Queue()
@@ -157,6 +159,7 @@ class FakeVendorSession:
         self._check_open()
         self.audio_in_bytes += len(pcm)
         if vad.heard(pcm):
+            self.speech_in_bytes += len(pcm)
             self._speaking = True
             self._last_speech = time.monotonic()
 

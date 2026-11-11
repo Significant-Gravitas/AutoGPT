@@ -206,9 +206,10 @@ export const OnboardingEvent = {
 // is stored on the server, so analysis splits these by it whatever the
 // browser's consent.
 export const InterviewEvent = {
-  // A call went live: `mode` (`voice`), and the seconds from the microphone
-  // to the call's start answering (`mint_s`), the browser in its room
-  // (`room_s`) and the relay's `ready` (`ready_s`).
+  // A call went live: `mode` (`voice`), the seconds from the microphone to
+  // the call's start answering (`mint_s`), the browser in its room (`room_s`)
+  // and the relay's `ready` (`ready_s`), and what the browser applied to the
+  // microphone (`echo_cancellation`, `noise_suppression`, `auto_gain_control`).
   INTERVIEW_STARTED: "interview_started",
   // A call ended: `mode`, the relay's `reason`, `elapsed_s` and Otto's
   // `turns`, and how his speech fared in the call's room (`concealed_share`,
@@ -219,6 +220,10 @@ export const InterviewEvent = {
   VOICE_INTERVIEW_RECONNECTED: "voice_interview_reconnected",
   // A call's control socket re-attached after `gap_s`.
   VOICE_INTERVIEW_RESUMED: "voice_interview_resumed",
+  // The relay found Otto's voice coming back through the person's
+  // microphone, by its probe of his first turn or in their captions (`by`):
+  // the call stops listening while he is audible.
+  VOICE_INTERVIEW_ECHO: "voice_interview_echo",
   VOICE_INTERVIEW_MIC_DENIED: "voice_interview_mic_denied",
   // A call that never went live: the browser could not join its room
   // (`stage` `room`, `why` `timeout`, `refused` or `failed`), the relay ended

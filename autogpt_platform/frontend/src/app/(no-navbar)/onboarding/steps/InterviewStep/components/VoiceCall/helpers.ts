@@ -130,6 +130,11 @@ export function parseRelayMessage(data: string): RelayMessage | null {
       return typeof message.reason === "string"
         ? { type: "wrap_up", reason: message.reason }
         : null;
+    case "duplex":
+      return message.mode === "half" &&
+        (message.by === "probe" || message.by === "captions")
+        ? { type: "duplex", mode: "half", by: message.by }
+        : null;
     case "resumed":
       return isCount(message.gap_s)
         ? { type: "resumed", gap_s: message.gap_s }

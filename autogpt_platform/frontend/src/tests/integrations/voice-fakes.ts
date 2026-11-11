@@ -136,8 +136,18 @@ export class FakeAudioContext {
   }
 }
 
+// A microphone as the browser opens it: echo cancellation and noise
+// suppression applied, automatic gain control not.
 export function fakeMediaStream() {
-  const track = { kind: "audio", stop: vi.fn() };
+  const track = {
+    kind: "audio",
+    stop: vi.fn(),
+    getSettings: () => ({
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: false,
+    }),
+  };
   return {
     id: "fake-stream",
     active: true,

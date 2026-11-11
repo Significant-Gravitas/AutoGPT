@@ -1047,15 +1047,29 @@ describe("onboarding interview by voice: the call", () => {
 
     expect(await screen.findByText("5:00 left")).toBeDefined();
     expect(screen.getByText("16 turns left")).toBeDefined();
-    // How long each step of the start took, from the microphone on.
+    // How long each step of the start took, from the microphone on, and
+    // what the browser applied to the microphone.
     expect(tracked("interview_started")).toEqual([
       {
         mode: "voice",
         mint_s: expect.any(Number),
         room_s: expect.any(Number),
         ready_s: expect.any(Number),
+        echo_cancellation: true,
+        noise_suppression: true,
+        auto_gain_control: false,
       },
     ]);
+  });
+
+  it("reports the relay finding Otto's voice in the microphone, and shows nothing of it", async () => {
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    act(() => socket.relay({ type: "duplex", mode: "half", by: "probe" }));
+
+    expect(tracked("voice_interview_echo")).toEqual([{ by: "probe" }]);
+    expect(screen.getByText("You're on the call with Otto")).toBeDefined();
   });
 
   it("reports how long the call took to reach Otto's first sound, once", async () => {

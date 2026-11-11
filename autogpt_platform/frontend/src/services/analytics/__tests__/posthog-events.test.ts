@@ -74,6 +74,7 @@ const LIVE_EVENT_NAMES = [
   "trial_offer_viewed",
   "trial_resume_clicked",
   "trial_subscribe_now_clicked",
+  "voice_interview_echo",
   "voice_interview_mic_denied",
   "voice_interview_reconnected",
   "voice_interview_resumed",

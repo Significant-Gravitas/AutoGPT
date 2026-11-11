@@ -23,6 +23,7 @@ import {
   createCallAudio,
   createCallContext,
   createCallPlayer,
+  microphoneSettingsOf,
   openMicrophone,
   releasePlayer,
 } from "./audioGraph";
@@ -314,6 +315,7 @@ export function useVoiceCall(args: Args) {
       room,
       marks,
       listening: newOttoListening(),
+      microphone: microphoneSettingsOf(microphone),
     };
     conn.call = call;
     conn.shownCallId = started.call_id;
@@ -435,6 +437,9 @@ export function useVoiceCall(args: Args) {
       case "wrap_up":
         setIsWrappingUp(true);
         return;
+      case "duplex":
+        trackInterview("voice_interview_echo", { by: message.by });
+        return;
       case "resumed":
         onResumed(message.gap_s);
         return;
@@ -477,6 +482,7 @@ export function useVoiceCall(args: Args) {
     trackInterview("interview_started", {
       mode: "voice",
       ...(marks ? startSeconds(marks) : {}),
+      ...call.microphone,
     });
   }
 
@@ -1063,6 +1069,7 @@ export function useVoiceCall(args: Args) {
       room,
       marks: null,
       listening: newOttoListening(),
+      microphone: microphoneSettingsOf(microphone),
     };
     conn.call = rejoined;
     conn.shownCallId = kept.callId;

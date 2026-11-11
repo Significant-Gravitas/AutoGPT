@@ -222,6 +222,12 @@ class Timing(BaseModel):
     socket_timeout_s: float = 5.0
     # How often the person's recording is uploaded while the call runs.
     checkpoint_s: float = CHECKPOINT_S
+    # The echo probe (``echo``) counts the microphone from this long after
+    # Otto's first audio, while a working echo canceller settles.
+    echo_probe_skip_s: float = 1.0
+    # How long after Otto's audio his echo may still come back: the probe
+    # counts until then, and a half-duplex call's microphone stays closed.
+    echo_tail_s: float = 0.5
 
 
 TIMING = Timing()

@@ -6,6 +6,7 @@ which the REST API hands off (``onboarding_dump.voice_handoff``).
 """
 
 import asyncio
+import logging
 import time
 from unittest.mock import AsyncMock, MagicMock
 
@@ -114,9 +115,11 @@ class Rig:
         end_reason: str | None = "finished",
         uploaded: bool = True,
         started: float | None = None,
+        otto: list[str] | None = None,
     ) -> str:
         """A call as the relay leaves it on its record: pending, its recording
-        uploaded. It started an hour ago unless *started* says otherwise."""
+        uploaded. It started an hour ago unless *started* says otherwise.
+        *otto* is what Otto said in each of his turns."""
         call_id = tokens.new_call_id()
         fields: dict[str, object] = {
             "status": status,
@@ -124,7 +127,9 @@ class Rig:
             "started": time.time() - 3600 if started is None else started,
             "end_reason": end_reason,
             "turns": [
-                TurnMark(index=index, at=at).model_dump()
+                TurnMark(
+                    index=index, at=at, text=otto[index] if otto else ""
+                ).model_dump()
                 for index, at in enumerate(marks)
             ],
         }
@@ -781,6 +786,33 @@ async def test_a_job_for_a_call_already_transcribed_still_deletes_its_recording(
 
 def _outcomes(outcome: str) -> float:
     return POSTCALLS.labels(outcome=outcome)._value.get()
+
+
+async def test_a_turn_that_is_ottos_own_words_is_left_out_of_the_transcript(
+    rig: Rig, caplog
+):
+    """Otto's voice came back through the person's speakers before the call
+    caught it: the clip is his words from the turns either side of it, so the
+    transcript of record leaves it out, and keeps what the person said."""
+    caplog.set_level(logging.INFO, logger="backend.voice_relay.postcall")
+    pcm, marks = recording_of(answer(), answer())
+    call_id = await rig.call(
+        pcm,
+        marks,
+        otto=[
+            "Hi, I'm Otto. What do you do?",
+            "That's a unique bakery. What do you sell?",
+            "Lovely.",
+        ],
+    )
+    transcriber = ScriptedTranscriber(["I run a bakery.", "That's a unique bakery!"])
+
+    record = await rig.run(rig.postcall(transcriber), call_id, pcm=pcm)
+
+    assert record.transcript_of_record == "I run a bakery."
+    [line] = [r.getMessage() for r in caplog.records if "Otto's own" in r.getMessage()]
+    assert "1 of the person's turns" in line
+    assert "bakery" not in line
 
 
 async def test_a_call_whose_recording_was_lost_says_so(rig: Rig):

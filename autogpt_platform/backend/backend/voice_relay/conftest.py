@@ -695,7 +695,12 @@ class RunningRelay:
         """The person on call *call_id* answers Otto once his turn has played
         out, as someone does on hearing him finish."""
         session = self.relay.sessions[call_id]
-        await until(lambda: session.answer.is_open(time.monotonic()))
+
+        def hears() -> bool:
+            now = time.monotonic()
+            return session.answer.is_open(now) and session.mic_open(now)
+
+        await until(hears)
         (await self.media.hearing()).say(frames)
 
     async def postcalls_done(self, timeout: float = 10.0) -> None:

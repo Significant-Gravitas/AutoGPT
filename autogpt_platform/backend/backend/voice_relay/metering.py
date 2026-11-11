@@ -79,6 +79,13 @@ END_TOOL_CALLS = Counter(
     "once accepted) and unknown_tool",
     ["outcome"],
 )
+ECHO = Counter(
+    "voice_interview_echo_total",
+    "Calls whose microphone carried Otto's voice, made half-duplex, by what "
+    "found it: probe (speech heard while his first turn played) or captions "
+    "(the person's caption was his own words)",
+    ["by"],
+)
 UNPROMPTED_TURNS = Counter(
     "voice_interview_unprompted_turns_total",
     "Turns of Otto's begun with nothing heard from the person since his last, "

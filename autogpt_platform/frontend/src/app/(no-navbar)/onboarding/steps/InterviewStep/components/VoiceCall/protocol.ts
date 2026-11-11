@@ -22,6 +22,9 @@ export type RelayMessage =
   | { type: "interrupted" }
   | { type: "turn_complete"; turn: number; turns_left: number }
   | { type: "wrap_up"; reason: string }
+  // The relay found Otto's voice coming back through the person's
+  // microphone: it stops listening while he is audible.
+  | { type: "duplex"; mode: "half"; by: "probe" | "captions" }
   | { type: "resumed"; gap_s: number }
   | { type: "ended"; reason: string; elapsed_s: number }
   | { type: "error"; error: string; call_id?: string | null }

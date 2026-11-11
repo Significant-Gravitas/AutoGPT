@@ -46,7 +46,7 @@ import logging
 import time
 from collections.abc import Awaitable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any, TypeVar, cast
+from typing import Any, Literal, TypeVar, cast
 
 from prisma.enums import BrainDumpStatus
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -463,6 +463,16 @@ class EndToolStats(BaseModel):
     accepted_at_s: float | None = None
 
 
+class DuplexStats(BaseModel):
+    """Whether the call's microphone carried Otto (``echo``): its mode when
+    the call ended, what made it half-duplex, and the share of speech the
+    echo probe heard while Otto's first turn played."""
+
+    mode: Literal["probing", "full", "half"] = "probing"
+    by: Literal["probe", "captions"] | None = None
+    probe_share: float | None = None
+
+
 class CallRecord(BaseModel):
     """A call's record, read back from Redis."""
 
@@ -482,6 +492,7 @@ class CallRecord(BaseModel):
     # The task Otto's end tool carried, and what became of his calls of it.
     first_task: str | None = None
     end_tool: EndToolStats | None = None
+    duplex: DuplexStats | None = None
     # The latest upload of the person's audio, until its transcript is made.
     audio_path: str | None = None
     turns: list[TurnMark] = []
@@ -537,6 +548,7 @@ _JSON_FIELDS = frozenset(
         "turns",
         "hand_off",
         "end_tool",
+        "duplex",
         "transcribed_from_upload",
         "postcall_attempts",
         "handoff_attempts",

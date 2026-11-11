@@ -71,6 +71,11 @@ class Answer(BaseModel):
         self.speech_s = 0.0
         self.caption_chars = 0
 
+    def forget(self) -> None:
+        """Drop what was counted: it was not the person."""
+        self.speech_s = 0.0
+        self.caption_chars = 0
+
     def hear(self, seconds: float, now: float) -> None:
         if self.is_open(now):
             self.speech_s += seconds

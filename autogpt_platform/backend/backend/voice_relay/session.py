@@ -16,6 +16,11 @@ browser only displays them:
   the conversation so far, at most ``max_vendor_reconnects`` times;
 - an end request from the person's other device, and the drain on deploys.
 
+The person's microphone reaches the model and the recording through the echo
+gate (``echo``): closed while Otto's first turn is probed for his own voice
+coming back, then open, or, on a call whose microphone carries him, closed
+while he is audible.
+
 It also records the person's audio (``record``) and marks on the call's
 record where each of Otto's turns ended in it, which is what the post-call
 job cuts the recording into turns by. The call is pending a post-call job
@@ -33,7 +38,7 @@ model session, the first moment it costs anything.
 Browser to relay, after ``start``: JSON ``hangup`` and ``ping {id}``; a
 binary frame is counted and dropped. Relay to browser: JSON ``ready``,
 ``user_text``, ``agent_text``, ``interrupted``, ``turn_complete``,
-``wrap_up``, ``resumed``, ``ended`` and ``pong``. The browser has no way to
+``wrap_up``, ``duplex {mode, by}``, ``resumed``, ``ended`` and ``pong``. The browser has no way to
 put text into the conversation: the server's notes are the server's alone.
 """
 
@@ -66,6 +71,7 @@ from backend.voice_relay.config import (
     RoomCloseWhy,
     Timing,
 )
+from backend.voice_relay.echo import ECHO_NOTE, Duplex, EchoBy, Probe, is_echo
 from backend.voice_relay.end_tool import (
     Answer,
     ToolCallLine,
@@ -80,12 +86,14 @@ from backend.voice_relay.locks import (
     LIVE,
     RUNNING,
     CallStore,
+    DuplexStats,
     EndToolStats,
     TurnMark,
 )
 from backend.voice_relay.metering import (
     CALL_SECONDS,
     CALLS,
+    ECHO,
     END_TOOL_CALLS,
     FIRST_AUDIO_SECONDS,
     REPLY_SECONDS,
@@ -400,6 +408,15 @@ class Session:
         self.prompted = True
         self.end_tool = EndToolStats()
         self.tool_calls: dict[str, int] = {}
+        # Whether the microphone carries Otto (``echo``): probed during his
+        # first turn, from probe_from until probe_ends (monotonic), then full
+        # or half, and what made it half.
+        self.duplex: Duplex = "probing"
+        self.echo_by: EchoBy | None = None
+        self.probe = Probe()
+        self.probe_from: float | None = None
+        self.probe_ends: float | None = None
+        self.probe_share: float | None = None
 
     # --- lifecycle --------------------------------------------------------
 
@@ -543,6 +560,9 @@ class Session:
                 ended_at=round(time.time(), 3),
                 elapsed_s=round(elapsed, 1),
                 end_tool=self.end_tool.model_dump(),
+                duplex=DuplexStats(
+                    mode=self.duplex, by=self.echo_by, probe_share=self.probe_share
+                ).model_dump(),
                 agent_turns=len(self.turns),
                 usd=round(self.meter.usd, 6),
                 first_task=self.first_task,
@@ -551,6 +571,11 @@ class Session:
                 vendor_reconnects=self.vendor_reconnects,
                 transcript=self.transcript(),
             )
+            if self.duplex == "probing":
+                logger.info(
+                    f"Voice call {self.call_id}: the call ended before the echo "
+                    f"probe decided, after {self.probe.frames} microphone frames"
+                )
             # Before the browser hears the call ended, so it can start another.
             await self.store.release()
         finally:
@@ -785,6 +810,9 @@ class Session:
             return
         self.bucket -= samples
         self.received += samples
+        # From here the call takes the audio as the echo gate lets it through:
+        # the model, the recording and every count of the person's speech.
+        pcm = await self._gated(pcm, now)
         if self.recording is not None:
             self.recording.append(pcm)
         if vad.heard(pcm):
@@ -800,6 +828,83 @@ class Session:
             # The vendor socket is going down; downstream reconnects it.
             return
         self.forwarded += samples
+
+    async def _gated(self, pcm: bytes, now: float) -> bytes:
+        """*pcm* as the call takes it (``echo``): silence of the same length
+        while Otto's first turn is probed, and on a half-duplex call while he
+        is audible."""
+        if self.duplex == "probing":
+            await self._probe(pcm, now)
+        return pcm if self.mic_open(now) else bytes(len(pcm))
+
+    def mic_open(self, now: float) -> bool:
+        """Whether the person's microphone reaches the call now, past the
+        echo gate: never while the probe runs, always on a full-duplex call,
+        and on a half-duplex one once Otto is no longer audible."""
+        if self.duplex == "probing":
+            return False
+        return (
+            self.duplex == "full" or now >= self.playout_end + self.timing.echo_tail_s
+        )
+
+    async def _probe(self, pcm: bytes, now: float) -> None:
+        """Count the microphone while Otto's first turn plays; decide the
+        call's duplex once it has played out."""
+        if self.probe_ends is not None and now >= self.probe_ends:
+            await self._decide_duplex()
+        elif self.probe_from is not None and now >= self.probe_from:
+            self.probe.count(heard=vad.heard(pcm))
+
+    async def _decide_duplex(self) -> None:
+        """The probe's verdict: the share of microphone frames heard as
+        speech while Otto's first turn played, logged on every call."""
+        probe = self.probe
+        self.probe_share = round(probe.share, 3)
+        mode: Duplex = "half" if probe.carries_otto else "full"
+        logger.info(
+            f"Voice call {self.call_id}: the echo probe heard speech in "
+            f"{probe.share:.0%} of {probe.frames} microphone frames while Otto's "
+            f"first turn played: {mode}-duplex"
+        )
+        if mode == "half":
+            await self._go_half("probe")
+        else:
+            self.duplex = "full"
+
+    async def _go_half(self, by: EchoBy) -> None:
+        """From now on the microphone is silence while Otto is audible."""
+        self.duplex = "half"
+        self.echo_by = by
+        ECHO.labels(by=by).inc()
+        await self.send_json({"type": "duplex", "mode": "half", "by": by})
+
+    async def on_user_text(self, text: str, now: float) -> None:
+        """A caption of the person's. On a full-duplex call, a caption that is
+        Otto's own words is his voice coming back (``echo``)."""
+        self.user_buf += text
+        previous = self.turns[-1].text if self.turns else ""
+        if self.duplex == "full" and is_echo(self.user_buf, self.cur.text, previous):
+            await self._caught_echo()
+            return
+        self.answer.caption(text, now)
+        await self.send_json({"type": "user_text", "text": text})
+
+    async def _caught_echo(self) -> None:
+        """Otto's words came back as the person's: the call is half-duplex
+        for good, the caption is dropped with what it made count as an
+        answer, and the model is told, once."""
+        logger.info(
+            f"Voice call {self.call_id}: a caption of the person's was Otto's own "
+            f"words: half-duplex from here"
+        )
+        self.user_buf = ""
+        self.answer.forget()
+        await self._go_half("captions")
+        self.prompted = True
+        await self._vendor_call(
+            "echo note",
+            lambda live: live.send_note(SERVER_NOTE + ECHO_NOTE, turn_complete=True),
+        )
 
     async def on_control(self, text: str) -> None:
         if len(text.encode()) > MAX_TEXT_BYTES:
@@ -967,9 +1072,7 @@ class Session:
             case ToolCall():
                 await self.on_tool_call(event)
             case UserText(text=text):
-                self.user_buf += text
-                self.answer.caption(text, now)
-                await self.send_json({"type": "user_text", "text": text})
+                await self.on_user_text(text, now)
             case AgentText(text=text):
                 if text.strip():
                     self._turn_begins(now)
@@ -993,6 +1096,7 @@ class Session:
             if self.first_audio_s is None:
                 self.first_audio_s = now - self.started
                 FIRST_AUDIO_SECONDS.observe(self.first_audio_s)
+                self.probe_from = now + self.timing.echo_probe_skip_s
             if self.last_heard is not None:
                 REPLY_SECONDS.observe(now - self.last_heard)
                 self.last_heard = None
@@ -1114,8 +1218,11 @@ class Session:
 
     async def on_turn_complete(self) -> None:
         # What the person says next answers this turn, once it has played.
-        self.answer.reopen(max(time.monotonic(), self.playout_end))
+        played = max(time.monotonic(), self.playout_end)
+        self.answer.reopen(played)
         self.prompted = False
+        if self.duplex == "probing" and self.probe_ends is None:
+            self.probe_ends = played + self.timing.echo_tail_s
         turn = self.cur
         turn.index = len(self.turns)
         turn.text = turn.text.strip()
@@ -1225,6 +1332,14 @@ class Session:
             if self.recording is not None and now >= next_checkpoint:
                 next_checkpoint = now + self.timing.checkpoint_s
                 self.recording.checkpoint_soon()
+            # The probe decides when Otto's first turn has played out, whether
+            # or not a microphone frame comes then.
+            if (
+                self.duplex == "probing"
+                and self.probe_ends is not None
+                and now >= self.probe_ends
+            ):
+                await self._decide_duplex()
 
     def _claim_nudge(self, kind: str) -> bool:
         """Whether *kind*'s nudge is still to send; it is sent once a call."""

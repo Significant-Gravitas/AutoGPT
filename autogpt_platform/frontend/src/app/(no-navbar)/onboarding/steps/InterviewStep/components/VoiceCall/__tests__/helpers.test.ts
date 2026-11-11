@@ -56,6 +56,15 @@ describe("the relay's messages", () => {
     ).toEqual({ type: "turn_complete", turn: 2, turns_left: 13 });
   });
 
+  it.each(["probe", "captions"] as const)(
+    "reads the relay finding Otto's voice in the microphone by its %s",
+    (by) => {
+      expect(
+        parseRelayMessage(JSON.stringify({ type: "duplex", mode: "half", by })),
+      ).toEqual({ type: "duplex", mode: "half", by });
+    },
+  );
+
   it("keeps only the fields each message carries", () => {
     expect(
       parseRelayMessage(
@@ -105,6 +114,14 @@ describe("the relay's messages", () => {
       '{"type":"leg","leg":"websocket"}',
     ],
     ["a caption with no text", '{"type":"agent_text"}'],
+    [
+      "a duplex mode the relay never sends",
+      '{"type":"duplex","mode":"full","by":"probe"}',
+    ],
+    [
+      "a duplex found by nothing the relay names",
+      '{"type":"duplex","mode":"half","by":"guess"}',
+    ],
     ["a caption whose text is not text", '{"type":"user_text","text":{"a":1}}'],
     [
       "a turn count that is not a number",

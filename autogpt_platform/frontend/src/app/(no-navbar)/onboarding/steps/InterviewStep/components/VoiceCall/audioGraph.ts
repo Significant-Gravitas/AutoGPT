@@ -55,6 +55,23 @@ export function openMicrophone() {
   });
 }
 
+// What the browser applied to the microphone it opened, as
+// `interview_started` reports it; null where the browser does not say.
+export function microphoneSettingsOf(microphone: MediaStream) {
+  const settings = microphone.getAudioTracks()[0]?.getSettings() ?? {};
+  return {
+    echo_cancellation: flagOf(settings.echoCancellation),
+    noise_suppression: flagOf(settings.noiseSuppression),
+    auto_gain_control: flagOf(settings.autoGainControl),
+  };
+}
+
+export type MicrophoneSettings = ReturnType<typeof microphoneSettingsOf>;
+
+function flagOf(value: unknown) {
+  return typeof value === "boolean" ? value : null;
+}
+
 export function createCallAudio(
   context: AudioContext,
   microphone: MediaStream,

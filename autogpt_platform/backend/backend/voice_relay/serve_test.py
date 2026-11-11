@@ -405,8 +405,11 @@ async def call_and_transcribe(spool):
     await store.record(status="connecting", started=round(time.time(), 3))
     running = asyncio.create_task(session.run())
     await ws.wait_for("turn_complete")
-    # The person answers once Otto has played out.
-    while not session.answer.is_open(time.monotonic()):
+    # The person answers once Otto has played out and the echo probe is done.
+    while not (
+        session.answer.is_open(time.monotonic())
+        and session.mic_open(time.monotonic())
+    ):
         await asyncio.sleep(0.02)
     (await media.hearing()).say(speech(0.4))
     await asyncio.wait_for(running, timeout=20)

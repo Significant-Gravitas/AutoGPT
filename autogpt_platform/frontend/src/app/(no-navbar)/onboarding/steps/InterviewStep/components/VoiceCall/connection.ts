@@ -6,7 +6,7 @@ import type { VoiceCallCaps } from "@/app/api/__generated__/models/voiceCallCaps
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
 import type { CallRoomPass } from "@/services/onboarding/voice-call-ticket";
 import { refusalOf } from "../../helpers";
-import type { CallAudio } from "./audioGraph";
+import type { CallAudio, MicrophoneSettings } from "./audioGraph";
 import type { CallRoom } from "./callRoom";
 import type { CallMarks } from "./callTimings";
 import { END_POLL_MS, END_WAIT_MS } from "./helpers";
@@ -32,6 +32,8 @@ export interface OpenCall {
   marks: CallMarks | null;
   // How Otto's speech has fared in the call's room on this page.
   listening: OttoListening;
+  // What the browser applied to this page's microphone for the call.
+  microphone: MicrophoneSettings;
 }
 
 // What the hook keeps between renders without rendering on it: the socket,
