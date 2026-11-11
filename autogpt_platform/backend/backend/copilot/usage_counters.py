@@ -2,7 +2,8 @@
 
 Each key is named after the window it counts, so a new window is a new key: a
 counter can neither clear before its window ends nor linger into the next
-one. Expiry is only garbage collection, two days after the window ends.
+one. Expiry is only garbage collection: two days after a day ends, forty
+after a week's window ends (a held window must keep its counter).
 
 Two counters per user, in microdollars:
 
@@ -22,8 +23,12 @@ from backend.copilot.usage_windows import UsageWindows
 from backend.data.redis_client import get_redis_async
 
 KEY_PREFIX = "usage:v2"
-# How long a counter outlives its window, for late costs and inspection.
+# How long a day counter outlives its day, for late costs and inspection.
 EXPIRY_GRACE_SECONDS = 2 * 86_400
+# A week counter outlives its window far longer: while Stripe hasn't
+# confirmed the next billing period the last window is held open, and a
+# counter that expired under it would hand out a fresh pool on a guess.
+WEEK_EXPIRY_GRACE_SECONDS = 40 * 86_400
 
 # KEYS: day, week. ARGV: cost, today's reserve, main pool (negative: no cap),
 # "1" when the cost counts against the day, day expiry, week expiry.
@@ -46,8 +51,9 @@ local week = tonumber(redis.call("GET", KEYS[2]) or "0")
 local before_week = week
 if to_pool > 0 then
     week = redis.call("INCRBY", KEYS[2], string.format("%d", to_pool))
-    redis.call("EXPIREAT", KEYS[2], ARGV[6])
 end
+-- Every cost keeps the week counter alive, also one within the day's reserve.
+redis.call("EXPIREAT", KEYS[2], ARGV[6])
 local excess = 0
 if pool >= 0 then
     excess = math.max(0, week - pool) - math.max(0, before_week - pool)
@@ -106,7 +112,7 @@ async def record_spend(
         pool,
         "1" if counts_daily else "0",
         max(windows.day_end, now) + EXPIRY_GRACE_SECONDS,
-        max(windows.pool_end, now) + EXPIRY_GRACE_SECONDS,
+        max(windows.pool_end, now) + WEEK_EXPIRY_GRACE_SECONDS,
     )
     return Recorded(
         day_used=int(day_used), week_used=int(week_used), weekly_excess=int(excess)

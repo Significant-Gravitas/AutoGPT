@@ -10,6 +10,7 @@ from redis.cluster import key_slot
 
 from backend.copilot.usage_counters import (
     EXPIRY_GRACE_SECONDS,
+    WEEK_EXPIRY_GRACE_SECONDS,
     clear_counters,
     counter_keys,
     read_counters,
@@ -146,7 +147,9 @@ async def test_a_counter_outlives_its_window_and_never_expires_inside_it(
     day_key, week_key = counter_keys(user, None, windows)
 
     assert await redis.expiretime(day_key) == windows.day_end + EXPIRY_GRACE_SECONDS
-    assert await redis.expiretime(week_key) == windows.week_end + EXPIRY_GRACE_SECONDS
+    assert (
+        await redis.expiretime(week_key) == windows.week_end + WEEK_EXPIRY_GRACE_SECONDS
+    )
 
 
 @pytest.mark.asyncio
@@ -160,8 +163,30 @@ async def test_a_held_windows_counters_keep_living(user: str, now: int):
 
     redis = await get_redis_async()
     _, week_key = counter_keys(user, None, held)
-    assert await redis.expiretime(week_key) == now + EXPIRY_GRACE_SECONDS
+    assert await redis.expiretime(week_key) == now + WEEK_EXPIRY_GRACE_SECONDS
     assert await read_counters(user, None, held) == (5_000_000, 3_000_000)
+
+
+@pytest.mark.asyncio
+async def test_a_used_up_held_window_is_not_refilled_by_its_counter_expiring(
+    user: str, now: int
+):
+    """Held for days with the pool used up, a customer spends only inside the
+    daily reserve, which adds nothing to the week counter. The counter must
+    still be there: gone, it would read as a fresh pool nobody confirmed."""
+    ended = now - 10 * DAY
+    held_then = windows_for_period(ended - 30 * DAY, ended, None, ended + 60)
+    await _spend(user, held_then, RESERVE + POOL, ended + 60)
+    held_now = windows_for_period(ended - 30 * DAY, ended, None, now)
+    redis = await get_redis_async()
+    _, week_key = counter_keys(user, None, held_now)
+    # Far longer than any hold, and pushed out again by a reserve-only cost.
+    assert await redis.expiretime(week_key) > now + 25 * DAY
+
+    await _spend(user, held_now, 1_000_000, now)
+
+    assert await redis.expiretime(week_key) == now + WEEK_EXPIRY_GRACE_SECONDS
+    assert (await read_counters(user, None, held_now))[1] == POOL
 
 
 @pytest.mark.asyncio

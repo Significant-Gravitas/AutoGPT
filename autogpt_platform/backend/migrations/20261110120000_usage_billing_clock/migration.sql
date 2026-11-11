@@ -9,6 +9,7 @@ CREATE TABLE "UsageBillingClock" (
     "periodStart" BIGINT NOT NULL,
     "periodEnd" BIGINT NOT NULL,
     "billingCycleAnchor" BIGINT,
+    "subscriptionCreatedAt" BIGINT NOT NULL,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "UsageBillingClock_pkey" PRIMARY KEY ("userId")

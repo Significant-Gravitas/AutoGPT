@@ -17,6 +17,7 @@ and no paying customer blocked because our copy is stale (they keep what the
 window had left, and each day's reserve).
 """
 
+import asyncio
 import logging
 from collections import OrderedDict
 from time import monotonic
@@ -31,7 +32,7 @@ from backend.copilot.usage_windows import (
     windows_for_period,
     windows_from_anchor,
 )
-from backend.data.db_accessors import credit_db
+from backend.data.db_accessors import usage_clock_db
 from backend.data.pro_activation import UsageActivationState
 from backend.data.redis_client import get_redis_async
 from backend.util import posthog_client
@@ -46,6 +47,9 @@ STRIPE_BILLED_TIERS = frozenset({"BASIC", "PRO", "MAX", "BUSINESS"})
 REFRESH_GATE_PREFIX = "usage:clock_refresh"
 # One Stripe read per user per minute while a period is unconfirmed.
 REFRESH_RETRY_SECONDS = 60
+# How long a turn's limit check waits for that read: with Stripe slow or down
+# it gives up and holds the last window rather than stall the turn.
+REFRESH_TIMEOUT_SECONDS = 8.0
 # Stripe said there is no live subscription: nothing to re-read until the
 # periodic tier sweep has had its turn.
 NO_SUBSCRIPTION_RETRY_SECONDS = 6 * 3600
@@ -91,7 +95,9 @@ async def resolve_clock(
     """The account's clock before a turn, re-reading Stripe when our copy of a
     Stripe-billed plan's period has ended or is missing. Returns the state the
     clock was read from, which is a fresh one after a re-read."""
-    if needs_refresh(state, now) and await _refresh_once(state, now):
+    # "busy": another check is re-reading Stripe right now, or just did; its
+    # answer may already be saved, so the state is read again either way.
+    if needs_refresh(state, now) and await _refresh_once(state, now) != "unconfirmed":
         forget_usage_state(state.user_id)
         state = await get_ready_usage_state(state.user_id)
     remember_state(state)
@@ -139,22 +145,28 @@ def forget_recent_states() -> None:
 _recent_states: OrderedDict[str, tuple[float, UsageActivationState]] = OrderedDict()
 
 
-async def _refresh_once(state: UsageActivationState, now: int) -> bool:
-    """Re-read the period from Stripe unless that was tried recently. True
-    when a newer period was saved. Never raises: without an answer the caller
-    holds the last window (or uses the account's clock)."""
+async def _refresh_once(
+    state: UsageActivationState, now: int
+) -> Literal["saved", "busy", "unconfirmed"]:
+    """Re-read the period from Stripe unless that was tried in the last
+    minute ("busy"). "saved" when a newer period was stored. Never raises:
+    without an answer the caller holds the last window (or uses the account's
+    clock)."""
     user_id = state.user_id
     gate = f"{REFRESH_GATE_PREFIX}:{user_id}"
     try:
         redis = await get_redis_async()
         if not await redis.set(gate, "1", nx=True, ex=REFRESH_RETRY_SECONDS):
-            return False
+            return "busy"
     except Exception:
         # No gate, no Stripe read: the check that follows fails closed on the
         # same Redis outage anyway.
-        return False
+        return "unconfirmed"
     try:
-        outcome = await credit_db().refresh_billing_clock(user_id)
+        outcome = await asyncio.wait_for(
+            usage_clock_db().refresh_billing_clock(user_id),
+            timeout=REFRESH_TIMEOUT_SECONDS,
+        )
     except Exception:
         logger.warning(
             f"Could not re-read the billing period of user {user_id} from Stripe",
@@ -163,14 +175,14 @@ async def _refresh_once(state: UsageActivationState, now: int) -> bool:
         outcome = "stripe_error"
     logger.info(f"Billing clock re-read for user {user_id}: {outcome}")
     if outcome == "saved":
-        return True
+        return "saved"
     if outcome in ("no_subscription", "not_stripe_billed"):
         try:
             await redis.expire(gate, NO_SUBSCRIPTION_RETRY_SECONDS)
         except Exception:
             logger.warning("Could not extend the billing clock re-read gate")
     _track_unconfirmed(state, now, outcome)
-    return False
+    return "unconfirmed"
 
 
 def _track_unconfirmed(state: UsageActivationState, now: int, outcome: str) -> None:

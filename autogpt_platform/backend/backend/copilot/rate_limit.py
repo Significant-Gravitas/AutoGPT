@@ -98,7 +98,7 @@ from backend.copilot.usage_clock import (
     resolve_clock,
 )
 from backend.copilot.usage_counters import clear_counters
-from backend.copilot.usage_limits import plan_limits_for
+from backend.copilot.usage_limits import PlanLimits, plan_limits_for
 from backend.copilot.usage_live import (
     UsageSnapshot,
     build_snapshot,
@@ -1395,7 +1395,7 @@ async def _record_on_billing_clock(
         clock = clock_from_state(state, now)
         if clock is None:
             return False
-        daily, weekly, reserve = await _limits_for_recording(state)
+        daily, weekly, plan = await _limits_for_recording(state)
         await record_live(
             state,
             generation,
@@ -1403,9 +1403,10 @@ async def _record_on_billing_clock(
             cost_microdollars,
             daily_limit=daily,
             weekly_limit=weekly,
-            reserve=reserve,
+            reserve=plan.reserve if plan else 0,
             skip_daily=skip_daily,
             now=now,
+            sells_extra_weeks=bool(plan and plan.extra_week_credits > 0),
         )
     except (
         RedisError,
@@ -1422,20 +1423,23 @@ async def _record_on_billing_clock(
     return True
 
 
-async def _limits_for_recording(state: UsageActivationState) -> tuple[int, int, int]:
-    """``(daily, weekly, reserve)`` for splitting a recorded cost between the
-    day's reserve, the week's pool and an extra week. A trial has neither a
-    reserve nor an extra week, so its cost is only counted."""
+async def _limits_for_recording(
+    state: UsageActivationState,
+) -> tuple[int, int, PlanLimits | None]:
+    """The daily and weekly limits and the plan's own limits, for splitting a
+    recorded cost between the day's reserve, the week's pool and an extra
+    week. A trial has neither a reserve nor an extra week, so its cost is
+    only counted."""
     tier = SubscriptionTier(state.tier.value)
     if tier == SubscriptionTier.TRIAL:
-        return -1, -1, 0
+        return -1, -1, None
     base_daily, base_weekly = await _base_limits(
         _chat_config.daily_cost_limit_microdollars,
         _chat_config.weekly_cost_limit_microdollars,
     )
     daily, weekly = await _tier_limits(tier, base_daily, base_weekly)
     plan = await plan_limits_for(tier.value)
-    return daily, weekly, plan.reserve if plan else 0
+    return daily, weekly, plan
 
 
 async def _incr_counter_atomic(
@@ -1806,16 +1810,18 @@ async def _tier_limits(
     """A plan's daily and weekly limits from the base ones.
 
     On the billing clock a plan with its own limits (Pro and Max, see
-    ``usage_limits``) takes those; a negative base limit still means no cap,
-    so a self-hosted install stays uncapped. Every other plan, and every plan
-    on the calendar, is the base limit times its multiplier.
+    ``usage_limits``) takes those. A base limit that isn't positive keeps its
+    meaning for them too: negative is no cap, so a self-hosted install stays
+    uncapped, and 0 allows nothing, so setting the base limit to 0 still
+    stops all spend. Every other plan, and every plan on the calendar, is
+    the base limit times its multiplier.
     """
     if await billing_clock_live():
         plan = await plan_limits_for(tier.value)
         if plan is not None:
             return (
-                plan.daily if daily >= 0 else daily,
-                plan.weekly if weekly >= 0 else weekly,
+                plan.daily if daily > 0 else daily,
+                plan.weekly if weekly > 0 else weekly,
             )
     # Apply tier multiplier — resolved through LD (copilot-tier-multipliers)
     # so multipliers can be tuned without a deploy. Falls back to the defaults

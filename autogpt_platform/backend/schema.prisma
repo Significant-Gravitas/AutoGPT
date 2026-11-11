@@ -357,8 +357,8 @@ model PaidUsageActivation {
 }
 
 // The customer's current Stripe billing period, copied from Stripe so usage
-// limits can reset on it. Unix seconds, UTC. Written only forwards: a period
-// that starts earlier never replaces one that starts later.
+// limits can reset on it. Unix seconds, UTC. Written only forwards (see
+// backend/data/usage_clock.py).
 model UsageBillingClock {
   userId               String @id
   user                 User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -367,6 +367,9 @@ model UsageBillingClock {
   periodEnd            BigInt
   // Stripe's billing_cycle_anchor: the day of month a yearly plan's months fall on.
   billingCycleAnchor   BigInt?
+  // When Stripe created the subscription: of two plans on one customer, the
+  // newer one keeps the clock.
+  subscriptionCreatedAt BigInt
   updatedAt            DateTime @default(now()) @updatedAt
 }
 

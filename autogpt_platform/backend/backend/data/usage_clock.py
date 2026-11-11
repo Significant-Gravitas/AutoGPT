@@ -5,11 +5,15 @@ read fresh from Stripe (every subscription webhook through the tier sync, an
 upgrade's own response, the periodic sweep, the backfill command) and re-read
 on demand once it has ended (:func:`refresh_billing_clock`).
 
-It only moves forwards: a period that starts earlier never replaces one that
-starts later. A renewal starts later, an upgrade that resets the billing date
-starts now, and a new subscription starts after any older one's period began,
-so a late, duplicate or out-of-order delivery, or an old subscription revived
-beside its replacement, cannot put the clock back.
+It only moves forwards. For the subscription already stored, a period that
+starts earlier never replaces one that starts later: a renewal starts later
+and an upgrade that resets the billing date starts now, so a late, duplicate
+or out-of-order delivery cannot put the clock back. Another subscription
+takes the clock over only when it is the newer plan (created later), or when
+the stored period has ended and that plan is the one still live. So an old
+plan left running beside its replacement neither pulls the clock back nor
+trades it back and forth at each renewal, and when the newer plan is the one
+that ends, the clock passes to the plan that remains.
 
 Writing the clock never changes a tier.
 """
@@ -44,6 +48,8 @@ class BillingPeriod(BaseModel):
     start: int
     end: int
     anchor: int | None = None
+    # When Stripe created the subscription: which of two plans is the newer.
+    created: int
 
 
 def billing_period(subscription: Mapping[str, Any]) -> BillingPeriod | None:
@@ -70,6 +76,11 @@ def billing_period(subscription: Mapping[str, Any]) -> BillingPeriod | None:
         start=start,
         end=end,
         anchor=_second(subscription.get("billing_cycle_anchor")),
+        created=(
+            _second(subscription.get("created"))
+            or _second(subscription.get("start_date"))
+            or start
+        ),
     )
 
 
@@ -86,23 +97,34 @@ async def save_billing_clock(
         )
         return False
     written = await execute_raw_with_schema(
-        """INSERT INTO {schema_prefix}"UsageBillingClock"
+        """INSERT INTO {schema_prefix}"UsageBillingClock" AS c
             ("userId", "stripeSubscriptionId", "periodStart", "periodEnd",
-             "billingCycleAnchor", "updatedAt")
-        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+             "billingCycleAnchor", "subscriptionCreatedAt", "updatedAt")
+        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
         ON CONFLICT ("userId") DO UPDATE SET
             "stripeSubscriptionId" = EXCLUDED."stripeSubscriptionId",
             "periodStart" = EXCLUDED."periodStart",
             "periodEnd" = EXCLUDED."periodEnd",
             "billingCycleAnchor" = EXCLUDED."billingCycleAnchor",
+            "subscriptionCreatedAt" = EXCLUDED."subscriptionCreatedAt",
             "updatedAt" = CURRENT_TIMESTAMP
-        WHERE {schema_prefix}"UsageBillingClock"."periodStart" <= EXCLUDED."periodStart"
+        WHERE (
+            c."stripeSubscriptionId" = EXCLUDED."stripeSubscriptionId"
+            AND c."periodStart" <= EXCLUDED."periodStart"
+        ) OR (
+            c."stripeSubscriptionId" <> EXCLUDED."stripeSubscriptionId"
+            AND (
+                c."subscriptionCreatedAt" < EXCLUDED."subscriptionCreatedAt"
+                OR c."periodEnd" <= EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint
+            )
+        )
         """,
         user_id,
         period.subscription_id,
         period.start,
         period.end,
         period.anchor,
+        period.created,
         client=client,
     )
     if written:
@@ -113,8 +135,8 @@ async def save_billing_clock(
     else:
         logger.warning(
             f"Billing clock of user {user_id} kept: the period {period.start} to "
-            f"{period.end} of subscription {period.subscription_id} starts before "
-            "the stored one"
+            f"{period.end} of subscription {period.subscription_id} is older "
+            "than the stored one, or belongs to an older plan"
         )
     return bool(written)
 

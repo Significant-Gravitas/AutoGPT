@@ -189,11 +189,15 @@ def _recording(excess: int):
 
 def _database(consume: AsyncMock):
     return patch.object(
-        usage_live, "credit_db", return_value=MagicMock(consume_extra_allowance=consume)
+        usage_live,
+        "usage_clock_db",
+        return_value=MagicMock(consume_extra_allowance=consume),
     )
 
 
-async def _record(state: UsageActivationState, *, skip_daily: bool = False) -> None:
+async def _record(
+    state: UsageActivationState, *, skip_daily: bool = False, sells: bool = True
+) -> None:
     windows = windows_for_period(START, END, START, START + 3600)
     await record_live(
         state,
@@ -205,7 +209,36 @@ async def _record(state: UsageActivationState, *, skip_daily: bool = False) -> N
         reserve=RESERVE,
         skip_daily=skip_daily,
         now=START + 3600,
+        sells_extra_weeks=sells,
     )
+
+
+@pytest.mark.asyncio
+async def test_a_plan_that_sells_none_asks_only_when_it_holds_one():
+    """A Business account that kept an extra week from its Max days still
+    draws on it; one that holds none costs no database call."""
+    consume = AsyncMock(return_value=0)
+    with _recording(1_500_000), _database(consume):
+        await _record(_state("BUSINESS", extra=0), sells=False)
+        consume.assert_not_awaited()
+        await _record(_state("BUSINESS", extra=30_000_000), sells=False)
+        consume.assert_awaited_once()
+
+
+def test_the_debit_goes_through_a_client_that_never_retries():
+    """The debit isn't idempotent: repeated after a reply lost in transit, it
+    would be taken twice."""
+    client = MagicMock()
+    with (
+        patch("backend.data.db_accessors.db.is_connected", return_value=False),
+        patch(
+            "backend.util.clients.get_database_manager_async_client",
+            return_value=client,
+        ) as factory,
+    ):
+        assert usage_live.usage_clock_db() is client
+
+    factory.assert_called_once_with(should_retry=False)
 
 
 @pytest.mark.asyncio

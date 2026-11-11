@@ -1,6 +1,7 @@
 """Which clock an account runs on, and the Stripe re-read when our copy of a
 billing period has ended."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -62,7 +63,7 @@ def redis():
 def stripe_read():
     read = AsyncMock(return_value="saved")
     database = MagicMock(refresh_billing_clock=read)
-    with patch.object(usage_clock, "credit_db", return_value=database):
+    with patch.object(usage_clock, "usage_clock_db", return_value=database):
         yield read
 
 
@@ -200,14 +201,55 @@ async def test_a_stripe_outage_holds_the_last_window_and_does_not_raise(
 @pytest.mark.asyncio
 async def test_stripe_is_read_at_most_once_a_minute_per_user(redis, stripe_read):
     redis.set.return_value = None  # another check holds the gate
-
-    _, clock = await resolve_clock(_state(), END + 5)
+    with patch.object(
+        usage_clock, "get_ready_usage_state", AsyncMock(return_value=_state())
+    ):
+        _, clock = await resolve_clock(_state(), END + 5)
 
     assert clock is not None and clock.source == "held"
     stripe_read.assert_not_awaited()
     gate = redis.set.await_args
     assert gate.args[0] == "usage:clock_refresh:u1"
     assert gate.kwargs == {"nx": True, "ex": REFRESH_RETRY_SECONDS}
+
+
+@pytest.mark.asyncio
+async def test_a_check_beside_the_one_re_reading_stripe_sees_what_it_saved(
+    redis, stripe_read
+):
+    """Right after a renewal several checks arrive together. Only one reads
+    Stripe; the others read the state again rather than judge the customer on
+    the window that just ended."""
+    redis.set.return_value = None
+    renewed = _state(period_start=END, period_end=END + 31 * DAY)
+    with patch.object(
+        usage_clock, "get_ready_usage_state", AsyncMock(return_value=renewed)
+    ):
+        _, clock = await resolve_clock(_state(), END + 5)
+
+    assert clock is not None and clock.source == "stripe"
+    assert clock.windows.week_start == END
+    stripe_read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_slow_stripe_does_not_stall_the_turn(
+    redis, stripe_read, events, monkeypatch
+):
+    release = asyncio.Event()
+
+    async def never_answers(_user_id: str) -> str:
+        await release.wait()
+        return "saved"
+
+    stripe_read.side_effect = never_answers
+    monkeypatch.setattr(usage_clock, "REFRESH_TIMEOUT_SECONDS", 0.01)
+
+    _, clock = await resolve_clock(_state(), END + 5)
+    release.set()
+
+    assert clock is not None and clock.source == "held"
+    assert events.call_args.args[2]["outcome"] == "stripe_error"
 
 
 @pytest.mark.asyncio

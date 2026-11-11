@@ -56,7 +56,7 @@ class PostHogEvent(StrEnum):
     # one (held), or that has no stored period at all (missing).
     USAGE_CLOCK_HELD = "usage_clock_held"
     USAGE_CLOCK_MISSING = "usage_clock_missing"
-    # backend/api/features/chat/usage_extra_routes.py
+    # backend/api/features/chat/usage_extra.py
     USAGE_EXTRA_WEEK_PURCHASED = "usage_extra_week_purchased"
     USAGE_EXTRA_WEEK_REFUSED = "usage_extra_week_refused"
     # backend/copilot/gate/shadow.py

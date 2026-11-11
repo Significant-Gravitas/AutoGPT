@@ -32,7 +32,7 @@ from backend.copilot.usage_windows import (
     reserve_today,
     weekly_limit_for,
 )
-from backend.data.db_accessors import credit_db
+from backend.data.db_accessors import usage_clock_db
 from backend.data.pro_activation import UsageActivationState
 
 logger = logging.getLogger(__name__)
@@ -210,6 +210,7 @@ async def record_live(
     reserve: int,
     skip_daily: bool,
     now: int,
+    sells_extra_weeks: bool = True,
 ) -> Recorded:
     """Count a cost in the current windows, then take the part beyond the
     week's pool from the account's extra weeks.
@@ -229,19 +230,26 @@ async def record_live(
         counts_daily=not skip_daily,
         now=now,
     )
-    # Asked of the database whenever a cost goes beyond the pool, not of the
-    # state in hand: an extra week bought seconds ago must still be drawn on.
-    may_hold_extra = state.tier.value not in ("TRIAL", "NO_TIER") and weekly_limit > 0
+    # A plan that sells extra weeks is asked of the database whenever a cost
+    # goes beyond the pool, not of the state in hand: an extra week bought
+    # seconds ago must still be drawn on. Any other plan only when the state
+    # shows one it kept from an earlier plan.
+    may_hold_extra = (
+        state.tier.value not in ("TRIAL", "NO_TIER")
+        and weekly_limit > 0
+        and (sells_extra_weeks or state.extra_remaining > 0)
+    )
     if recorded.weekly_excess > 0 and may_hold_extra and not skip_daily:
         await _debit_extra_weeks(state.user_id, recorded.weekly_excess, now)
     return recorded
 
 
 async def _debit_extra_weeks(user_id: str, amount: int, now: int) -> None:
-    # One attempt: the debit isn't idempotent, and a reply lost after it
-    # committed would otherwise take it twice.
+    # One attempt, on a client that doesn't retry: the debit isn't
+    # idempotent, and a reply lost after it committed would otherwise take it
+    # twice.
     try:
-        await credit_db().consume_extra_allowance(user_id, amount, now)
+        await usage_clock_db().consume_extra_allowance(user_id, amount, now)
     except Exception:
         logger.error(
             f"Could not take {amount} microdollars from the extra weeks of "

@@ -29,6 +29,7 @@ def _subscription(**fields: Any) -> dict:
         "current_period_start": START,
         "current_period_end": END,
         "billing_cycle_anchor": START - 86_400,
+        "created": START - 90 * 86_400,
         "metadata": {"user_id": "user-1"},
         **fields,
     }
@@ -36,8 +37,18 @@ def _subscription(**fields: Any) -> dict:
 
 def test_the_period_is_read_from_the_subscription():
     assert billing_period(_subscription()) == BillingPeriod(
-        subscription_id="sub_1", start=START, end=END, anchor=START - 86_400
+        subscription_id="sub_1",
+        start=START,
+        end=END,
+        anchor=START - 86_400,
+        created=START - 90 * 86_400,
     )
+
+
+def test_a_subscription_without_its_creation_time_is_dated_from_its_period():
+    period = billing_period(_subscription(created=None))
+
+    assert period is not None and period.created == START
 
 
 def test_a_newer_stripe_api_keeps_the_period_on_the_item():
@@ -100,9 +111,16 @@ async def test_saving_reports_whether_the_row_was_written(
     assert await save_billing_clock("user-1", _subscription()) is saved
 
     statement, *values = execute.await_args.args
-    assert values == ["user-1", "sub_1", START, END, START - 86_400]
+    assert values == [
+        "user-1",
+        "sub_1",
+        START,
+        END,
+        START - 86_400,
+        START - 90 * 86_400,
+    ]
     # Only forwards: an earlier period never replaces a later one.
-    assert '"periodStart" <= EXCLUDED."periodStart"' in statement
+    assert 'c."periodStart" <= EXCLUDED."periodStart"' in statement
 
 
 class Stripe:

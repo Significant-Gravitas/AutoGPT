@@ -131,6 +131,16 @@ async def test_an_uncapped_install_stays_uncapped_for_pro(account: Account):
     assert (await get_global_rate_limits(USER, -1, BASE_WEEKLY))[:2] == (-1, 8_000_000)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tier", ["PRO", "MAX"])
+async def test_a_base_limit_of_zero_still_stops_all_spend(account: Account, tier: str):
+    """Setting the base limits to 0 is the switch that stops everyone's
+    spend; a plan's own limits must not undo it."""
+    account.state = _state(tier)
+
+    assert (await get_global_rate_limits(USER, 0, 0))[:2] == (0, 0)
+
+
 async def _check(account: Account, **kwargs) -> None:
     await check_rate_limit(
         USER, DAILY, WEEKLY, expected_tier=account.state.tier.value, **kwargs
@@ -442,6 +452,7 @@ async def test_a_cost_is_recorded_in_the_window_it_finishes_in(
         "reserve": RESERVE,
         "skip_daily": False,
         "now": WEEK_END + 5,
+        "sells_extra_weeks": True,
     }
     account.calendar_redis.assert_not_awaited()
 
@@ -486,6 +497,20 @@ async def test_a_trials_cost_is_only_counted(account: Account, recorded: AsyncMo
 
     assert recorded.await_args.kwargs["reserve"] == 0
     assert recorded.await_args.kwargs["weekly_limit"] == -1
+    assert recorded.await_args.kwargs["sells_extra_weeks"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_business_cost_is_recorded_without_a_reserve_or_extra_weeks_for_sale(
+    account: Account, recorded: AsyncMock
+):
+    account.state = _state("BUSINESS")
+
+    await record_cost_usage(USER, 4_000_000)
+
+    assert recorded.await_args.kwargs["weekly_limit"] == 300_000_000
+    assert recorded.await_args.kwargs["reserve"] == 0
+    assert recorded.await_args.kwargs["sells_extra_weeks"] is False
 
 
 @pytest.mark.asyncio
