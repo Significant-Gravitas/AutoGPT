@@ -371,8 +371,8 @@ async def _credit_taken_back(customer_id: str, invoice_id: str) -> bool:
     transactions = await stripe_call(
         stripe.Customer.list_balance_transactions_async, customer_id, limit=100
     )
-    async for transaction in stripe_list_items(transactions):
-        metadata = transaction.get("metadata") or {}
+    async for entry in stripe_list_items(transactions):
+        metadata = entry.get("metadata") or {}
         if metadata.get(CREDIT_TAKEN_BACK_KEY) == invoice_id:
             return True
     return False

@@ -2785,7 +2785,10 @@ def _owes_a_yearly_max_renewal(mocker: pytest_mock.MockFixture) -> AsyncMock:
         return_value={"price_max_yearly": SubscriptionTier.MAX},
     )
     mocker.patch.object(
-        payment_due, "replaced_by_newer_plan", new_callable=AsyncMock, return_value=False
+        payment_due,
+        "replaced_by_newer_plan",
+        new_callable=AsyncMock,
+        return_value=False,
     )
     owed = {
         "id": "sub_max_yearly",
@@ -2863,7 +2866,7 @@ def test_a_different_plan_or_cycle_goes_through_checkout_while_a_bill_is_open(
         "backend.api.features.billing.subscriptions.routes.get_subscription_status",
         new_callable=AsyncMock,
         return_value=subscription_routes.SubscriptionStatusResponse(
-            tier="NO_TIER", monthly_cost=0, tier_costs={}
+            tier="NO_TIER", monthly_cost=0, tier_costs={}, proration_credit_cents=0
         ),
     )
     mocker.patch(

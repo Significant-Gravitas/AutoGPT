@@ -490,9 +490,7 @@ async def test_a_bank_payment_after_a_failed_renewal_restarts_once_it_settles(
     )
     assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 12)
     assert fake.card_charges == [PRICE]
-    assert fake.rows["in_march"].paidAt == datetime.fromtimestamp(
-        _ts(2026, 3, 12), UTC
-    )
+    assert fake.rows["in_march"].paidAt == datetime.fromtimestamp(_ts(2026, 3, 12), UTC)
 
 
 @pytest.mark.asyncio

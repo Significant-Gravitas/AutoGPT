@@ -10,8 +10,8 @@ basil on it has neither, and ``payments`` only when expanded.
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
 from contextlib import ExitStack, asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
