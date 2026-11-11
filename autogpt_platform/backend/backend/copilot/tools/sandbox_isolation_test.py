@@ -6,12 +6,14 @@ from pathlib import Path
 import pytest
 
 from backend.copilot.tools.sandbox import (
-    PROC_MOUNT_REFUSED,
     _build_bwrap_command,
     explain_proc_mount_failure,
     has_full_sandbox,
     run_sandboxed,
 )
+
+# bwrap's wording when it is refused a namespace, the one case worth skipping.
+_NAMESPACE_REFUSED = "No permissions to create a new namespace"
 
 
 def test_bwrap_gives_each_sandbox_its_own_processes_and_ipc():
@@ -95,16 +97,18 @@ async def _sandbox_runs_here(cwd: str) -> bool:
     """Whether this host can run the sandbox at all.
 
     Docker's default seccomp profile and Ubuntu's AppArmor userns restriction
-    stop bwrap from creating namespaces, and the sandbox fails closed there.  A
-    host that grants namespaces but masks ``/proc`` runs no command at all, so
-    that one is a failure rather than a skip.
+    stop bwrap from creating namespaces, and the sandbox fails closed there.
+    Every other failure is this suite's to report rather than skip, including a
+    host that grants namespaces but masks ``/proc``, where no command runs.
     """
     if not has_full_sandbox():
         return False
     _, stderr, exit_code, _ = await run_sandboxed(["true"], cwd)
-    if PROC_MOUNT_REFUSED in stderr:
-        pytest.fail(stderr)
-    return exit_code == 0
+    if exit_code == 0:
+        return True
+    if _NAMESPACE_REFUSED in stderr:
+        return False
+    pytest.fail(stderr or f"the sandbox exited {exit_code}")
 
 
 async def _until_exists(path: Path, sandbox: "asyncio.Task") -> None:
