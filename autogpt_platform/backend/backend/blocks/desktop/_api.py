@@ -23,6 +23,7 @@ from backend.util.e2b_network import (
     create_sandbox,
     kill_sandbox,
 )
+from backend.util.sandbox_limits import SandboxLimitError
 from backend.util.sandbox_login import LoginChainChanged, run_internal, take_baseline
 
 DESKTOP_TEMPLATE = "desktop"
@@ -432,6 +433,8 @@ async def _create_sandbox_with_volumes(
                 create_sandbox(AsyncSandbox, owner, **kwargs, volume_mounts=mounts),
                 timeout=CREATE_TIMEOUT_SECONDS,
             )
+        except SandboxLimitError:
+            raise
         except Exception as exc:
             mount_error = exc
             if attempt < MOUNTED_CREATE_ATTEMPTS:
