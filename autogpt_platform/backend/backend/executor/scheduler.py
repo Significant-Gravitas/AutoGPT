@@ -95,7 +95,12 @@ from backend.copilot.limit_tracking import (
     track_turn_cap,
     track_turn_refusal,
 )
-from backend.copilot.model import ChatSessionInfo, create_chat_session, get_chat_session
+from backend.copilot.model import (
+    ChatSessionInfo,
+    create_chat_session,
+    get_chat_session,
+    get_chat_session_metadata,
+)
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
 from backend.copilot.scheduled_chats.notices import (
@@ -642,7 +647,15 @@ async def _execute_copilot_turn(**kwargs):
             )
         else:
             session = await get_chat_session(args.session_id, args.user_id)
-            if session is None or session.archived_at is not None:
+            # A reset evicts the cached chat only best-effort, so a stale copy
+            # can still say it is open: read whether it is archived from the
+            # database instead.
+            stored = (
+                await get_chat_session_metadata(args.session_id, args.user_id)
+                if session is not None
+                else None
+            )
+            if session is None or stored is None or stored.archived_at is not None:
                 # An archived chat belongs to an expert that was reset: it is
                 # closed, so a follow-up aimed at it retires with it.
                 logger.info(

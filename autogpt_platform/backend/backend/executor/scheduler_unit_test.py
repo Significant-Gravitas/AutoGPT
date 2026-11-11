@@ -119,6 +119,17 @@ def owner_gate(monkeypatch: pytest.MonkeyPatch) -> _OwnerGate:
 
 
 @pytest.fixture(autouse=True)
+def stored_chat(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """The follow-up's chat as the database has it, still open; a test
+    archives it. Patched for every test so none reaches the DatabaseManager."""
+    chat = MagicMock(archived_at=None)
+    monkeypatch.setattr(
+        f"{_SCHEDULER_PATH}.get_chat_session_metadata", AsyncMock(return_value=chat)
+    )
+    return chat
+
+
+@pytest.fixture(autouse=True)
 def post_notice(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     """The note a skipped run posts into its chat. Patched for every test so
     none reaches the DatabaseManager, whose client retries for minutes."""
@@ -376,11 +387,25 @@ async def test_execute_copilot_turn_skips_and_self_deletes_when_session_gone():
 
 
 @pytest.mark.asyncio
-async def test_execute_copilot_turn_retires_a_follow_up_into_an_archived_chat():
+@pytest.mark.parametrize(
+    "cached_archived_at",
+    [
+        datetime.now(tz=timezone.utc),
+        # The reset could not evict the cached chat, which still says open.
+        None,
+    ],
+)
+async def test_execute_copilot_turn_retires_a_follow_up_into_an_archived_chat(
+    stored_chat: MagicMock, cached_archived_at: datetime | None
+):
     """Resetting an expert archives its chats; a follow-up aimed at one must
-    not run another turn on the old history."""
+    not run another turn on the old history, whatever the cache says."""
     args = _args()
-    archived = MagicMock(archived_at=datetime.now(tz=timezone.utc))
+    stored_chat.archived_at = datetime.now(tz=timezone.utc)
+    # The user's own chat, so nothing but the archive check could skip it.
+    cached = MagicMock(
+        archived_at=cached_archived_at, session_id="session-1", expert_id=None
+    )
     mock_schedule_turn = AsyncMock()
     mock_self_delete = AsyncMock()
 
@@ -388,7 +413,7 @@ async def test_execute_copilot_turn_retires_a_follow_up_into_an_archived_chat():
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
         patch(
             "backend.executor.scheduler.get_chat_session",
-            new=AsyncMock(return_value=archived),
+            new=AsyncMock(return_value=cached),
         ),
         patch(
             f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule",

@@ -474,9 +474,13 @@ async def test_followups_keep_their_own_path(fire_env):
     followup = CopilotTurnJobArgs(
         schedule_id="sched-1", user_id=USER, session_id=SESSION, message="check CI"
     )
-    with patch(
-        f"{_SCHEDULER}.get_chat_session",
-        AsyncMock(return_value=MagicMock(archived_at=None, expert_id=None)),
+    open_chat = MagicMock(archived_at=None, expert_id=None)
+    with (
+        patch(f"{_SCHEDULER}.get_chat_session", AsyncMock(return_value=open_chat)),
+        patch(
+            f"{_SCHEDULER}.get_chat_session_metadata",
+            AsyncMock(return_value=open_chat),
+        ),
     ):
         await _fire(followup)
     fire_env.load.assert_not_awaited()
