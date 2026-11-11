@@ -431,7 +431,9 @@ async def test_sync_subscription_from_stripe_cancelled(billing_boundaries):
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -468,7 +470,9 @@ async def test_sync_subscription_from_stripe_past_due_downgrades_to_no_tier(
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -492,6 +496,7 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
     async def _set_tier(
         _user_id: str,
         tier: SubscriptionTier,
+        **_kwargs: object,
     ) -> None:
         mock_user.subscriptionTier = tier
 
@@ -1313,7 +1318,9 @@ async def test_sync_subscription_from_stripe_business_tier(billing_boundaries):
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BUSINESS, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -1368,7 +1375,9 @@ async def test_sync_subscription_from_stripe_basic_tier_via_ld_price(
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BASIC)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BASIC, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -1424,7 +1433,9 @@ async def test_sync_subscription_from_stripe_cancels_stale_subs(billing_boundari
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BUSINESS, track_lifecycle=False
+        )
         # Only the stale sub should be cancelled — never the new one.
         mock_cancel.assert_called_once_with("sub_old")
 
