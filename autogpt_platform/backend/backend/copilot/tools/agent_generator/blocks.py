@@ -4,7 +4,7 @@ Provides cached access to block metadata for validation and fixing.
 """
 
 import logging
-from typing import Any, Type
+from typing import Any
 
 from backend.blocks import get_blocks as get_block_classes
 from backend.blocks._base import Block
@@ -44,7 +44,7 @@ def get_blocks_as_dicts() -> list[dict[str, Any]]:
     if _blocks_cache is not None:
         return _blocks_cache
 
-    block_classes: dict[str, Type[Block]] = get_block_classes()  # type: ignore[assignment]
+    block_classes: dict[str, type[Block]] = get_block_classes()  # type: ignore[assignment]
     blocks: list[dict[str, Any]] = []
     for block_cls in block_classes.values():
         try:

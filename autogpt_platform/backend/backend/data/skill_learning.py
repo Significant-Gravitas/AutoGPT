@@ -81,7 +81,7 @@ class LearningSourceRecord(BaseModel):
     updated_at: datetime
 
     @classmethod
-    def from_db(cls, row: prisma.models.SkillLearningSource) -> "LearningSourceRecord":
+    def from_db(cls, row: prisma.models.SkillLearningSource) -> LearningSourceRecord:
         return cls(
             id=row.id,
             user_id=row.userId,

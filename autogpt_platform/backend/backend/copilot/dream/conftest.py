@@ -24,7 +24,7 @@ from __future__ import annotations
 import asyncio
 import gc
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from unittest.mock import AsyncMock
@@ -52,7 +52,7 @@ from .pass_errors import PASS_ERROR_STAGES, UNRECORDED, is_pass_error
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def server():
     """No-op server stub — dream tests don't need the full backend."""
-    return None
+    return
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
@@ -283,7 +283,7 @@ class FakeDreamDb:
                 row[field] = value
         row.update({column: None for column in update.clear})
         row["cancel_generation"] += int(update.bump_cancel_generation)
-        row["updated_at"] = datetime.now(timezone.utc)
+        row["updated_at"] = datetime.now(UTC)
         closes = update.closed_row or (
             update.status is not None and update.status not in OPEN_STATUSES
         )
@@ -338,7 +338,7 @@ class FakeDreamDb:
                 continue
             marked.append(pass_id)
             if row.get("erased_at") is None:
-                row["erased_at"] = datetime.now(timezone.utc)
+                row["erased_at"] = datetime.now(UTC)
                 if row["status"] not in OPEN_STATUSES:
                     _blank_row(row)
         return marked
@@ -425,7 +425,7 @@ class FakeDreamDb:
         self._insert(draft, **columns)
 
     def _insert(self, draft: DreamPassDraft, **columns: Any) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self.rows[draft.id] = {
             **dict(draft),
             "phase_outputs": {},

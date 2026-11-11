@@ -21,7 +21,7 @@ impersonating the Codex CLI, which the backend also accepts.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, SecretStr, field_validator
@@ -98,7 +98,7 @@ class ChatGPTDeviceCode(BaseModel):
     def seconds_remaining(self, *, now: datetime | None = None) -> float | None:
         if self.expires_at is None:
             return None
-        return (self.expires_at - (now or datetime.now(timezone.utc))).total_seconds()
+        return (self.expires_at - (now or datetime.now(UTC))).total_seconds()
 
 
 class ChatGPTPollResult(BaseModel):
@@ -271,6 +271,6 @@ def bundle_from_tokens(tokens: ChatGPTTokens) -> CodexAuthBundleV1:
             refresh_token=tokens.refresh_token,
             account_id=account_id,
         ),
-        last_refresh=datetime.now(timezone.utc),
+        last_refresh=datetime.now(UTC),
         codex_runtime_version=RUNTIME_VERSION,
     )

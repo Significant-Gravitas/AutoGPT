@@ -183,9 +183,8 @@ class TestPoll:
 
     async def test_unexpected_status_raises(self):
         patcher, _ = mock_http(post=(503, {}, "down"))
-        with patcher:
-            with pytest.raises(RuntimeError, match="503"):
-                await RMFGDeviceAuthHandler().poll_for_tokens("dev_abc")
+        with patcher, pytest.raises(RuntimeError, match="503"):
+            await RMFGDeviceAuthHandler().poll_for_tokens("dev_abc")
 
 
 class TestRefresh:

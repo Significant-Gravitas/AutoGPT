@@ -7,7 +7,8 @@ both. So a pause or a resume that fails partway puts back what it changed.
 """
 
 import logging
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotFoundError

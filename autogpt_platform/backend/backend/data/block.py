@@ -1,5 +1,6 @@
 import logging
-from typing import TYPE_CHECKING, Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING, Any
 
 from prisma.models import AgentBlock
 from prisma.types import AgentBlockCreateInput

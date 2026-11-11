@@ -9,7 +9,7 @@ Every function loads the caller's own run first and raises `NotFoundError`
 otherwise, so nothing is written for a run someone else owns.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from backend.data import execution as execution_db
 from backend.data.sharing.tokens import generate_share_token
@@ -36,7 +36,7 @@ async def share_execution(user_id: str, execution_id: str) -> str:
         user_id=user_id,
         is_shared=True,
         share_token=share_token,
-        shared_at=datetime.now(timezone.utc),
+        shared_at=datetime.now(UTC),
     )
     await execution_db.create_shared_execution_files(
         execution_id=execution_id,

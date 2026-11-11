@@ -9,7 +9,7 @@ minted, the one-shot it spent, the job it lost).
 
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import prisma.models
 import prisma.types
@@ -108,7 +108,7 @@ async def record_routine_fired(routine_id: str) -> None:
     """
     await prisma.models.ExpertRoutine.prisma().update_many(
         where={"id": routine_id, "firedAt": None, "NOT": [{"runAt": None}]},
-        data={"firedAt": datetime.now(timezone.utc)},
+        data={"firedAt": datetime.now(UTC)},
     )
 
 

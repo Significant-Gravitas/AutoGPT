@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar
 from urllib.parse import urlencode
 
 from backend.data.model import OAuth2Credentials
@@ -57,7 +57,7 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
         self.redirect_uri = redirect_uri
 
     def get_login_url(
-        self, scopes: list[str], state: str, code_challenge: Optional[str]
+        self, scopes: list[str], state: str, code_challenge: str | None
     ) -> str:
         requested = list(self.DEFAULT_SCOPES)
         requested += [s for s in scopes if s not in requested]
@@ -70,7 +70,7 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
         return f"{self.AUTHORIZE_URL}?{urlencode(params)}"
 
     async def exchange_code_for_tokens(
-        self, code: str, scopes: list[str], code_verifier: Optional[str]
+        self, code: str, scopes: list[str], code_verifier: str | None
     ) -> OAuth2Credentials:
         tokens = await self._request_tokens(
             {
@@ -196,7 +196,7 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
         return {}
 
     @staticmethod
-    def _expires_at(tokens: dict[str, Any]) -> Optional[int]:
+    def _expires_at(tokens: dict[str, Any]) -> int | None:
         expires_in = tokens.get("expires_in")
         return int(time.time()) + int(expires_in) if expires_in else None
 
@@ -209,7 +209,7 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
         return parse_granted_scopes(granted, fallback=fallback)
 
 
-def _portal_username(user: Optional[str], hub_id: Any) -> Optional[str]:
+def _portal_username(user: str | None, hub_id: Any) -> str | None:
     """The HubSpot user *in one portal*.
 
     The OAuth callback merges a new sign-in into an existing credential with the

@@ -1,8 +1,8 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Literal, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission, APIKeyStatus
@@ -33,8 +33,8 @@ class APIKeyInfo(APIAuthorizationInfo):
         description=f"The last {APIKeySmith.TAIL_LENGTH} characters of the key"
     )
     status: APIKeyStatus
-    description: Optional[str] = None
-    owner_type: Optional[str] = None
+    description: str | None = None
+    owner_type: str | None = None
 
     type: Literal["api_key"] = "api_key"  # type: ignore
 
@@ -82,10 +82,10 @@ async def create_api_key(
     name: str,
     user_id: str,
     permissions: list[APIKeyPermission],
-    description: Optional[str] = None,
-    organization_id: Optional[str] = None,
-    owner_type: Optional[str] = None,
-    team_id_restriction: Optional[str] = None,
+    description: str | None = None,
+    organization_id: str | None = None,
+    owner_type: str | None = None,
+    team_id_restriction: str | None = None,
 ) -> tuple[APIKeyInfo, str]:
     """
     Generate a new API key and store it in the database.
@@ -123,7 +123,7 @@ async def get_active_api_keys_by_head(head: str) -> list[APIKeyInfoWithHash]:
     return [APIKeyInfoWithHash.from_db(key) for key in results]
 
 
-async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
+async def validate_api_key(plaintext_key: str) -> APIKeyInfo | None:
     """
     Validate an API key and return the API key object if valid and active.
     """
@@ -165,7 +165,7 @@ async def _record_use(key_obj: APIKeyInfoWithHash) -> None:
 
     A failed write is logged and swallowed: it must never refuse a valid key.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if key_obj.last_used_at and now - key_obj.last_used_at < LAST_USED_RESOLUTION:
         return
     try:
@@ -207,7 +207,7 @@ async def revoke_api_key(
             key_id,
             user_id,
             organization_id,
-            {"status": APIKeyStatus.REVOKED, "revokedAt": datetime.now(timezone.utc)},
+            {"status": APIKeyStatus.REVOKED, "revokedAt": datetime.now(UTC)},
             "revoked",
         )
     except APIKeyRevokedError as e:
@@ -228,7 +228,7 @@ async def revoke_user_api_keys(user_id: str) -> int:
         where={"userId": user_id, "status": {"not": APIKeyStatus.REVOKED}},
         data={
             "status": APIKeyStatus.REVOKED,
-            "revokedAt": datetime.now(timezone.utc),
+            "revokedAt": datetime.now(UTC),
         },
     )
 

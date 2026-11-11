@@ -12,7 +12,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -134,7 +134,7 @@ def _entry(
     phase: str = "consolidate",
     expert_id: str | None = None,
 ) -> PendingEntry:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     custom_id = f"{pass_id}:{phase}"
     payload = {
         "user_id": "u1",
@@ -185,7 +185,7 @@ async def _persist_autopilot_bundle(pass_id: str = "p1") -> None:
     from backend.copilot.dream.batch_submit import persist_input_bundle
     from backend.copilot.dream.fetch import DreamInput
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await persist_input_bundle(
         pass_id,
         DreamInput(
@@ -241,7 +241,7 @@ class TestPhaseChaining:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p-expert",
             DreamInput(
@@ -291,7 +291,7 @@ class TestPhaseChaining:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p-expert",
             DreamInput(
@@ -348,7 +348,7 @@ class TestPhaseChaining:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -398,7 +398,7 @@ class TestPhaseChaining:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -451,7 +451,7 @@ class TestPhaseChaining:
         # The orchestrator holds the dream lock while persisting the bundle;
         # the bundle captures the lock's ownership token for the callback.
         string_store["dream:inflight:u1"] = "tok-u1"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -578,7 +578,7 @@ class TestPhaseChaining:
         _, _, string_store = fake_redis
         expert_lock = MemoryScope.for_expert("u1", "expert-1").redis_key("dream_lock")
         string_store[expert_lock] = "tok-expert"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p-expert",
             DreamInput(
@@ -649,7 +649,7 @@ class TestPhaseChaining:
 
         _, _, string_store = fake_redis
         string_store["dream:inflight:u1"] = "tok-u1"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -708,7 +708,7 @@ class TestPhaseChaining:
 
         _, _, string_store = fake_redis
         string_store["dream:inflight:u1"] = "tok-u1"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -984,7 +984,7 @@ class TestErrorPaths:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -1032,7 +1032,7 @@ class TestErrorPaths:
 
         _, _, string_store = fake_redis
         string_store["dream:inflight:u1"] = "tok-u1"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -1091,7 +1091,7 @@ class TestMalformedPayload:
 
         _, _, string_store = fake_redis
         string_store["dream:inflight:u1"] = "tok-u1"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -1116,7 +1116,7 @@ class TestLockTokenWiring:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -1342,7 +1342,7 @@ def _seed_submitted_pass(fake_dream_db, pass_id: str = "p1") -> None:
             trigger=DreamPassTrigger.CRON,
             status=DreamPassStatus.SUBMITTED,
             phase=DreamPassPhase.CONSOLIDATE,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
         )
     )
 
@@ -1590,7 +1590,7 @@ class TestDreamPassRecord:
         for the phase handler. The landed phase is charged to, and the lock
         released for, the bundle's owner, never the payload's."""
         _seed_submitted_pass(fake_dream_db)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -1664,7 +1664,7 @@ class TestDreamPassRecord:
         rest of Redis are healthy. The crash it causes still closes the row
         ERRORED, its usage unknown, errors the admin job and releases the
         lock."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -1916,7 +1916,7 @@ class TestAStoppedPass:
         """A batch pass on batch ``msgbatch_live``: its bundle with the lock
         token, the lock it holds, its admin job row and the phases that
         landed before this callback. Returns the lock's key."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -2219,7 +2219,7 @@ async def test_dispatch_invalid_attribution_closes_job_without_billing(
     fake_redis, fake_dream_db, attribution, newer_lock
 ):
     _, state_store, string_store = fake_redis
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await persist_input_bundle(
         "p1",
         DreamInput(
@@ -2279,7 +2279,7 @@ async def _a_pass_with_consolidate_landed(fake_redis) -> None:
     """Pass ``p1`` of u1 at sanitize: its bundle, its lock, its admin job and
     consolidate landed in its state."""
     _, state_store, string_store = fake_redis
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await persist_input_bundle(
         "p1",
         DreamInput(user_id="u1", group_id="user_u1", window_start=now, window_end=now),

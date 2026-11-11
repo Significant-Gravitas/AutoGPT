@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import uuid as uuidlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from backend.copilot.config import ChatConfig
@@ -93,7 +93,7 @@ async def run_skill_learning_pass(
         user_id=user_id,
         run_id=str(uuidlib.uuid4()),
         trigger=trigger,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
     )
     try:
         if not await is_feature_enabled(Flag.DREAM_SKILL_LEARNING_ENABLED, user_id):

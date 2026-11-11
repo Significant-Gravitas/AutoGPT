@@ -1360,9 +1360,7 @@ _API_PACKAGE = BACKEND_ROOT / "api"
 
 
 def _iterates_block_execute(node: ast.AST) -> bool:
-    if isinstance(node, ast.AsyncFor):
-        target = node.iter
-    elif isinstance(node, ast.comprehension) and node.is_async:
+    if isinstance(node, ast.AsyncFor) or isinstance(node, ast.comprehension) and node.is_async:
         target = node.iter
     else:
         return False

@@ -15,7 +15,7 @@ Run with FalkorDB reachable (see ``conftest.py``)::
     poetry run pytest -m integration backend/copilot/graphiti/recall_hard_forget_integration_test.py
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -135,7 +135,7 @@ def _chat_store(*session_ids: str) -> SimpleNamespace:
                 SimpleNamespace(
                     session_id=s,
                     title=s,
-                    started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                    started_at=datetime(2026, 1, 1, tzinfo=UTC),
                 )
                 for s in session_ids
             ]

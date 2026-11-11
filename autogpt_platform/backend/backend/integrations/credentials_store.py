@@ -5,8 +5,7 @@ import logging
 import secrets
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from pydantic import SecretStr
@@ -629,13 +628,13 @@ class IntegrationCredentialsStore:
         use_pkce: bool = False,
         expires_in_seconds: int = 600,
         # New parameters for external API OAuth flows
-        callback_url: Optional[str] = None,
-        state_metadata: Optional[dict] = None,
-        initiated_by_api_key_id: Optional[str] = None,
-        credential_id: Optional[str] = None,
+        callback_url: str | None = None,
+        state_metadata: dict | None = None,
+        initiated_by_api_key_id: str | None = None,
+        credential_id: str | None = None,
     ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
-        expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds)
+        expires_at = datetime.now(UTC) + timedelta(seconds=expires_in_seconds)
 
         (code_challenge, code_verifier) = self._generate_code_challenge()
 
@@ -655,7 +654,7 @@ class IntegrationCredentialsStore:
 
         async with self.edit_user_integrations(user_id) as user_integrations:
             # The single writer of `oauth_states`, so expired ones go here.
-            now = datetime.now(timezone.utc).timestamp()
+            now = datetime.now(UTC).timestamp()
             pending = [s for s in user_integrations.oauth_states if s.expires_at > now]
             if len(pending) >= MAX_PENDING_OAUTH_STATES_PER_USER:
                 raise InvalidInputError(
@@ -679,12 +678,12 @@ class IntegrationCredentialsStore:
 
     async def verify_state_token(
         self, user_id: str, token: str, provider: str
-    ) -> Optional[OAuthState]:
+    ) -> OAuthState | None:
         async with await self.locked_user_integrations(user_id):
             user_integrations = await self._get_user_integrations(user_id)
             oauth_states = user_integrations.oauth_states
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             valid_state = next(
                 (
                     state
@@ -709,7 +708,7 @@ class IntegrationCredentialsStore:
 
     async def peek_state_token(
         self, user_id: str, token: str, provider: str
-    ) -> Optional[OAuthState]:
+    ) -> OAuthState | None:
         """Validate a state token WITHOUT consuming it.
 
         Used by the device-auth polling loop: the state must survive many
@@ -725,7 +724,7 @@ class IntegrationCredentialsStore:
         """
         user_integrations = await self._get_user_integrations(user_id)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return next(
             (
                 state
@@ -739,7 +738,7 @@ class IntegrationCredentialsStore:
 
     async def consume_state_token(
         self, user_id: str, token: str, provider: str
-    ) -> Optional[OAuthState]:
+    ) -> OAuthState | None:
         """Validate and remove a state token (one-time consumption).
 
         Used when the device-auth flow reaches a terminal state so the
@@ -749,7 +748,7 @@ class IntegrationCredentialsStore:
             user_integrations = await self._get_user_integrations(user_id)
             oauth_states = user_integrations.oauth_states
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             valid_state = next(
                 (
                     state

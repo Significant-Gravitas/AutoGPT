@@ -6,7 +6,7 @@ instead of handing both to callbacks that would only stop."""
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -299,7 +299,7 @@ def _assert_cancelled(fake_dream_db, pass_id: str) -> None:
 
 
 def _input() -> DreamInput:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     episode = EpisodeRow(
         uuid="e1",
         name=None,
@@ -458,7 +458,7 @@ async def test_a_take_back_racing_a_cancel_leaves_the_batch_to_its_expiry(
     asked = stop.await_count
     mocker.patch.object(reaper_mod, "phase_models_for_config", return_value={})
     await reap_expired_passes(
-        now=datetime.now(timezone.utc) + timedelta(seconds=REAP_GRACE_SECONDS + 60)
+        now=datetime.now(UTC) + timedelta(seconds=REAP_GRACE_SECONDS + 60)
     )
 
     _assert_cancelled(fake_dream_db, result.pass_id)
@@ -469,7 +469,7 @@ async def test_a_take_back_racing_a_cancel_leaves_the_batch_to_its_expiry(
 
 def _batch_entry(pass_id: str) -> PendingEntry:
     """The executor's entry for the pass's consolidate batch."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return PendingEntry(
         provider="anthropic",
         provider_batch_id="batch-1",

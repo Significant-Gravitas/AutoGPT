@@ -2,7 +2,7 @@
 expert a preset runs for, and what a response leaves out."""
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock
 
 import prisma.models
@@ -887,7 +887,7 @@ async def _execute():
 def _preset(
     webhook: bool = False, expert_id: str | None = None, inputs: dict | None = None
 ) -> LibraryAgentPreset:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     return LibraryAgentPreset.model_validate(
         {
             "id": "p-1",

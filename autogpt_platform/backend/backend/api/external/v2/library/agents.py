@@ -1,7 +1,7 @@
 """V2 External API - Library Agent Endpoints"""
 
 import logging
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from prisma.enums import APIKeyPermission
@@ -54,11 +54,11 @@ agents_router = APIRouter(tags=["library"])
     operation_id="listLibraryAgents",
 )
 async def list_library_agents(
-    published: Optional[bool] = Query(
+    published: bool | None = Query(
         default=None,
         description="Filter by marketplace publish status",
     ),
-    favorite: Optional[bool] = Query(
+    favorite: bool | None = Query(
         default=None,
         description="Filter by `isFavorite` attribute",
     ),
@@ -219,7 +219,7 @@ async def execute_agent(
     response: Response,
     request: AgentRunRequest,
     agent_id: str,
-    idempotency: Annotated[Optional[str], Depends(idempotency_key)] = None,
+    idempotency: Annotated[str | None, Depends(idempotency_key)] = None,
     auth: TenantContext = Security(require_paid_permission(APIKeyPermission.RUN_AGENT)),
 ) -> AgentGraphRun:
     """

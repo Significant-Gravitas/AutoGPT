@@ -26,7 +26,7 @@ spared were live at that moment; it does not settle writes still pending.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal, TypeVar
 
@@ -220,7 +220,7 @@ def _now_iso() -> str:
     no-arg ``datetime()``, so the time is bound from Python."""
     # Keep the plain datetime spelling for expired_at; stamp_time() belongs
     # to recall stamps and has a different precision contract.
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 # The recall guard and the write are one statement: FOREACH over an empty

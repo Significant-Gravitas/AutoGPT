@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Collection
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel, Field
 
@@ -146,7 +146,7 @@ def _parse_iso_timestamp(raw: str) -> datetime | None:
         parsed = datetime.fromisoformat(raw)
     except ValueError:
         return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 async def _fetch_recent_episodes(
@@ -375,7 +375,7 @@ async def gather_dream_input(
     still proceed — a partial dream is better than no dream.
     """
     group_id = scope.group_id
-    window_end = datetime.now(timezone.utc)
+    window_end = datetime.now(UTC)
     window_start = window_end - timedelta(days=window_days)
 
     driver = open_driver(scope)

@@ -29,7 +29,7 @@ client = fastapi.testclient.TestClient(app)
 @pytest.fixture(scope="session")
 def server() -> None:
     """Pure route logic; no live stack."""
-    return None
+    return
 
 
 @pytest.fixture(autouse=True)

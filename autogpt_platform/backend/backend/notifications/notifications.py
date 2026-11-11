@@ -8,11 +8,11 @@ is.
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable, Coroutine
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeoutError
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from enum import Enum, auto
-from typing import Awaitable, Callable, Coroutine
 
 import aio_pika
 from aio_pika.exceptions import ChannelInvalidStateError
@@ -80,7 +80,7 @@ _mailerlite_off_logged = False
 def _utc_today() -> date:
     """The cap resets at UTC midnight, matching the Alert engine's own daily
     cap. Both are documented as a follow-up to move to the user's local day."""
-    return datetime.now(tz=timezone.utc).date()
+    return datetime.now(tz=UTC).date()
 
 
 async def _in_product_audience(user_id: str, kind: NotificationType) -> bool:
@@ -89,7 +89,7 @@ async def _in_product_audience(user_id: str, kind: NotificationType) -> bool:
     standing = await get_database_manager_async_client(
         should_retry=False
     ).get_product_mail_standing(user_id)
-    if standing and is_product_mail_recipient(standing, datetime.now(timezone.utc)):
+    if standing and is_product_mail_recipient(standing, datetime.now(UTC)):
         return True
     if standing is None:
         reason = "the account no longer exists"
@@ -202,8 +202,8 @@ class Ordering(Enum):
 __all__ = [
     "NotificationManager",
     "NotificationManagerClient",
-    "queue_notification_async",
     "NotificationResult",
+    "queue_notification_async",
 ]
 
 
@@ -732,7 +732,7 @@ class NotificationManager(AppService):
                 )
                 await self._settle(message, "reject", queue_name)
                 return
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 last_error = TimeoutError(
                     f"processing exceeded {MESSAGE_PROCESSING_TIMEOUT_SECONDS}s"
                 )

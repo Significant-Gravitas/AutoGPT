@@ -18,7 +18,7 @@ are not exposed there.
 """
 
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 import prisma.models
@@ -206,7 +206,7 @@ async def forget_scope_job(user_id: str, scope_key: str, job_id: str) -> bool:
 async def record_scope_run(user_id: str, scope_key: str, kind: ScopeRunKind) -> bool:
     """Stamp the time the scope's nightly job last ran cleanly, or the
     community sweep last took it."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     data: prisma.types.MemoryScopeScheduleUpdateManyMutationInput = (
         {"lastNightlyRunAt": now} if kind == "nightly" else {"lastCommunityRunAt": now}
     )

@@ -139,9 +139,7 @@ class SearchDocsTool(BaseTool):
                     continue
 
                 # Keep the highest scoring result for each document
-                if doc_path not in seen_docs:
-                    seen_docs[doc_path] = result
-                elif result.get("combined_score", 0) > seen_docs[doc_path].get(
+                if doc_path not in seen_docs or result.get("combined_score", 0) > seen_docs[doc_path].get(
                     "combined_score", 0
                 ):
                     seen_docs[doc_path] = result

@@ -14,7 +14,7 @@ keep them worth reading live here:
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from prisma.enums import NotificationType
 from pydantic import BaseModel
@@ -70,7 +70,7 @@ async def matured_alert_user_ids(
     """One page of users whose pending conditions have sat out the debounce
     window. Paged because this runs every minute over a platform-wide table."""
     return await _db().get_users_with_matured_alerts(
-        datetime.now(tz=timezone.utc) - ALERT_DEBOUNCE,
+        datetime.now(tz=UTC) - ALERT_DEBOUNCE,
         after_user_id,
         MATURED_PAGE_SIZE,
     )
@@ -149,12 +149,12 @@ def alert_event(user_id: str, data: AlertData) -> NotificationEventModel[AlertDa
 
 
 def _start_of_day() -> datetime:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def _timestamp_label() -> str:
     """Absolute, never a duration: the email is read hours later, and a stale
     relative time is a wrong time."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     return f"{now.day} {now.strftime('%b %Y')}, {now.strftime('%H:%M')} UTC"

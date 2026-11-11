@@ -1,5 +1,4 @@
 import logging
-from typing import List
 
 from backend.blocks.apollo._auth import ApolloCredentials
 from backend.blocks.apollo.models import (
@@ -28,7 +27,7 @@ class ApolloClient:
     def _get_headers(self) -> dict[str, str]:
         return {"x-api-key": self.credentials.api_key.get_secret_value()}
 
-    async def search_people(self, query: SearchPeopleRequest) -> List[Contact]:
+    async def search_people(self, query: SearchPeopleRequest) -> list[Contact]:
         """Search for people in Apollo"""
         response = await self.requests.post(
             f"{self.API_URL}/mixed_people/search",
@@ -68,7 +67,7 @@ class ApolloClient:
 
     async def search_organizations(
         self, query: SearchOrganizationsRequest
-    ) -> List[Organization]:
+    ) -> list[Organization]:
         """Search for organizations in Apollo"""
         response = await self.requests.post(
             f"{self.API_URL}/mixed_companies/search",

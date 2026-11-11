@@ -8,7 +8,7 @@ values weren't applied.
 """
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import prisma.models
@@ -25,7 +25,7 @@ from backend.data.includes import MAX_NODE_EXECUTIONS_FETCH
 OUTPUT_BLOCK_ID = AgentOutputBlock().id
 INPUT_BLOCK_ID = AgentInputBlock().id
 MODERATED = "Failed due to content moderation (Moderation ID: mod-1)"
-_T0 = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
+_T0 = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
 
 
 def _io(name: str, value: Any, n: int) -> dict:

@@ -17,7 +17,7 @@ end drops its lease with its bundle: its lock goes with the pass, and it has
 no batch to leave behind.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from prisma.enums import (
@@ -121,7 +121,7 @@ def lease(lease_token: str, ttl_seconds: int) -> DreamPassUpdate:
     """The pass renewed its lock under *lease_token* for *ttl_seconds*."""
     return DreamPassUpdate(
         lease_token=lease_token,
-        lease_expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
+        lease_expires_at=datetime.now(UTC) + timedelta(seconds=ttl_seconds),
     )
 
 
@@ -174,7 +174,7 @@ def submitted(
 ) -> DreamPassUpdate:
     """The batch route took the pass: consolidate's batch is in flight, and the
     dream lock is held for the callbacks until it lapses."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return DreamPassUpdate(
         status=DreamPassStatus.SUBMITTED,
         phase=_PHASE_STEPS["consolidate"],
@@ -208,7 +208,7 @@ def outcome(
 ) -> DreamPassUpdate:
     """How a pass ended: skipped, failed, or applied; a failure or an apply
     *marked* for the cleanup after it (a batch pass's end)."""
-    finished = result.completed_at or datetime.now(timezone.utc)
+    finished = result.completed_at or datetime.now(UTC)
     if result.skipped:
         return DreamPassUpdate(
             status=DreamPassStatus.SKIPPED,
@@ -257,7 +257,7 @@ def taken_back(
     row marked, so the reaper's cleanup keeps asking the provider to stop it
     until it has stopped or ended. The lease token stays, the key to release
     the lock with should the pass not have."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return DreamPassUpdate(
         status=DreamPassStatus.ERRORED,
         phase=_PHASE_STEPS["consolidate"],
@@ -275,7 +275,7 @@ def cancelled(reason: str, *, owner_user_id: str) -> DreamPassUpdate:
     error, its cancel generation bumped so the running pass stops at its next
     check, marked for the cleanup after it. Written only while the row is
     open and the owner's."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return DreamPassUpdate(
         status=DreamPassStatus.CANCELLED,
         error=reason[:MAX_ERROR_CHARS],
@@ -295,7 +295,7 @@ def expired(reason: str, *, not_updated_since: datetime | None) -> DreamPassUpda
     if nothing has written it since. Only an admin forcing out a fresh row,
     and a duplicate delivery, give ``None``: a forced expiry of a stale row
     keeps the compare-and-set."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return DreamPassUpdate(
         status=DreamPassStatus.EXPIRED,
         error=reason[:MAX_ERROR_CHARS],
@@ -314,7 +314,7 @@ def reaped(reason: str, *, not_updated_since: datetime) -> DreamPassUpdate:
     cannot finish is resumed on its next run. The lease token stays until then,
     the key to release the dead pass's lock by compare-and-delete; the lease
     expiry goes, the pass being dead, so that cleanup is due at once."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return DreamPassUpdate(
         status=DreamPassStatus.EXPIRED,
         error=reason[:MAX_ERROR_CHARS],

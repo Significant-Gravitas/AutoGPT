@@ -1,5 +1,5 @@
 import inspect
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -50,7 +50,7 @@ def credit_model(mocker: pytest_mock.MockFixture) -> Mock:
         get_transaction_history=AsyncMock(
             return_value=TransactionHistory(
                 transactions=[],
-                next_transaction_time=datetime(2026, 10, 1, tzinfo=timezone.utc),
+                next_transaction_time=datetime(2026, 10, 1, tzinfo=UTC),
                 next_cursor="history-cursor-2",
             )
         )
@@ -124,13 +124,13 @@ async def test_a_cost_summary_takes_a_time_without_an_offset_as_utc(
 
     await get_cost_summary(
         since=datetime(2026, 10, 1),
-        until=datetime(2026, 10, 2, tzinfo=timezone.utc),
+        until=datetime(2026, 10, 2, tzinfo=UTC),
         top_runs_limit=10,
         auth=_AUTH,
     )
 
     assert summary.await_args.kwargs["since"] == datetime(
-        2026, 10, 1, tzinfo=timezone.utc
+        2026, 10, 1, tzinfo=UTC
     )
 
 

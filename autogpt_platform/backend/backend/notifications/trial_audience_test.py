@@ -18,10 +18,9 @@ from backend.data.notifications import (
 )
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
-from backend.notifications import mailerlite
+from backend.notifications import mailerlite, trial_audience
 from backend.notifications import notifications as delivery
 from backend.notifications import trial as notices
-from backend.notifications import trial_audience
 from backend.notifications.consent_test import _cached_before_consent
 from backend.notifications.notifications import NotificationManager
 

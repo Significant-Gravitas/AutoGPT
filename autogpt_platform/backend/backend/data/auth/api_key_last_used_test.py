@@ -1,6 +1,6 @@
 """A validated API key records when it was used, without a write per request."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -35,7 +35,7 @@ async def test_first_use_is_recorded(key_client):
 
 @pytest.mark.asyncio
 async def test_use_within_the_resolution_is_not_written_again(key_client):
-    recent = datetime.now(timezone.utc) - LAST_USED_RESOLUTION / 2
+    recent = datetime.now(UTC) - LAST_USED_RESOLUTION / 2
     key_client.find_many.return_value = [_row(last_used_at=recent)]
 
     info = await validate_api_key(_KEY.key)
@@ -47,7 +47,7 @@ async def test_use_within_the_resolution_is_not_written_again(key_client):
 
 @pytest.mark.asyncio
 async def test_use_after_the_resolution_is_recorded(key_client):
-    stale = datetime.now(timezone.utc) - LAST_USED_RESOLUTION - timedelta(seconds=1)
+    stale = datetime.now(UTC) - LAST_USED_RESOLUTION - timedelta(seconds=1)
     key_client.find_many.return_value = [_row(last_used_at=stale)]
 
     info = await validate_api_key(_KEY.key)
@@ -88,7 +88,7 @@ def _row(last_used_at: datetime | None) -> MagicMock:
     row.salt = _KEY.salt
     row.status = APIKeyStatus.ACTIVE
     row.permissions = [APIKeyPermission.IDENTITY]
-    row.createdAt = datetime.now(timezone.utc) - timedelta(days=30)
+    row.createdAt = datetime.now(UTC) - timedelta(days=30)
     row.lastUsedAt = last_used_at
     row.revokedAt = None
     row.description = None
@@ -100,4 +100,4 @@ def _row(last_used_at: datetime | None) -> MagicMock:
 
 
 def _is_recent(value: datetime) -> bool:
-    return datetime.now(timezone.utc) - value < timedelta(seconds=30)
+    return datetime.now(UTC) - value < timedelta(seconds=30)

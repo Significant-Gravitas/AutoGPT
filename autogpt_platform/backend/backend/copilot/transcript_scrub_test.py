@@ -336,9 +336,7 @@ def _dangling_references(before: list[dict], after: list[dict]) -> list[str]:
         elif isinstance(value, list):
             for index, item in enumerate(value):
                 walk(item, f"{path}[{index}]")
-        elif isinstance(value, str) and value in known and value not in kept:
-            found.append(path)
-        elif isinstance(value, str) and _names_an_entry(path) and value not in kept:
+        elif isinstance(value, str) and value in known and value not in kept or isinstance(value, str) and _names_an_entry(path) and value not in kept:
             found.append(path)
 
     for index, entry in enumerate(after):

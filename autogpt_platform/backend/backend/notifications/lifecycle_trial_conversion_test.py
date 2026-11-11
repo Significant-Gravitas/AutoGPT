@@ -3,7 +3,7 @@ cancel-pending trial early is not a paid resume, a trial-era cancel or resume
 handled after the conversion is not a paid one either, while a converted
 trial that is canceled later is a paid cancellation."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -27,7 +27,7 @@ def _trial_subscription(**over) -> dict:
 
 
 async def _run_converted(trial, coro_factory):
-    converted = trial.model_copy(update={"converted_at": datetime.now(timezone.utc)})
+    converted = trial.model_copy(update={"converted_at": datetime.now(UTC)})
     trials = MagicMock(get_subscription_trial=AsyncMock(return_value=converted))
     with patch("backend.notifications.trial.credit_db", return_value=trials):
         return await _run(coro_factory, _User())

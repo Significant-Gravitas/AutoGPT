@@ -19,7 +19,6 @@ names only the ``swap_hosts`` as the hosts it may be sent to, so the proxy's
 own host check refuses to swap it into a request to a content host.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -102,7 +101,7 @@ async def _box_record(box: str, user_id: str) -> dict:
 
 async def resolve_swap_credential(
     user_id: str, name: str, host: str, box: str
-) -> Optional[SwapCredential]:
+) -> SwapCredential | None:
     """*user_id*'s credential called *name*, if it may be sent to *host*,
     for the box whose proxy credential is *box*.
 

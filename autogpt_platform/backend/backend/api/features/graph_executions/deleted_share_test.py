@@ -8,7 +8,7 @@ behaviour rather than the shape of a query.
 """
 
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -67,10 +67,10 @@ class _FakeShareDb:
             "isDeleted": False,
             "isShared": True,
             "shareToken": token,
-            "sharedAt": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            "sharedAt": datetime(2026, 1, 1, tzinfo=UTC),
             "sharedVia": shared_via,
             "executionStatus": "COMPLETED",
-            "createdAt": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            "createdAt": datetime(2026, 1, 1, tzinfo=UTC),
         }
         self.files.append(
             {"executionId": execution_id, "fileId": file_id, "shareToken": token}
@@ -206,7 +206,7 @@ class _TxStub:
 
 
 def _workspace_file(file_id: str) -> WorkspaceFile:
-    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
     return WorkspaceFile(
         id=file_id,
         workspace_id="ws-1",

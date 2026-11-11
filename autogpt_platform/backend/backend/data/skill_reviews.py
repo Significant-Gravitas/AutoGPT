@@ -7,7 +7,7 @@ change. Every mutation enforces the owning ``user_id``.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import prisma
@@ -71,7 +71,7 @@ class LearningReviewRecord(BaseModel):
     completed_at: datetime | None
 
     @classmethod
-    def from_db(cls, row: prisma.models.SkillLearningReview) -> "LearningReviewRecord":
+    def from_db(cls, row: prisma.models.SkillLearningReview) -> LearningReviewRecord:
         return cls(
             id=row.id,
             user_id=row.userId,
@@ -108,7 +108,7 @@ class LearningReviewRecord(BaseModel):
         return (
             self.disposition == "reviewing"
             and self.run_id != run_id
-            and datetime.now(timezone.utc) - self.updated_at
+            and datetime.now(UTC) - self.updated_at
             < timedelta(seconds=live_seconds)
         )
 
@@ -139,7 +139,7 @@ def review_data(
         "inputTokens": input_tokens,
         "outputTokens": output_tokens,
         "costMicrodollars": cost_microdollars,
-        "completedAt": datetime.now(timezone.utc) if completed else None,
+        "completedAt": datetime.now(UTC) if completed else None,
     }
     if (
         model is None
@@ -317,7 +317,7 @@ async def summarize_learning(user_id: str) -> LearningRunSummary:
     """Operator-facing status: backlog, freshness, retries, and recent cost."""
     pending = await list_pending_sources(user_id, limit=500)
     reviews = await list_reviews(user_id, limit=500)
-    since = datetime.now(timezone.utc).timestamp() - 30 * 86400
+    since = datetime.now(UTC).timestamp() - 30 * 86400
     return LearningRunSummary(
         pending_sources=len(pending),
         oldest_pending_at=min((s.updated_at for s in pending), default=None),

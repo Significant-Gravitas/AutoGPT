@@ -2,7 +2,7 @@
 with the plan and account age computed here and nothing that names the person."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -26,7 +26,7 @@ def _user() -> MagicMock:
         id=USER_ID,
         email=EMAIL,
         subscription_tier=SubscriptionTier.MAX,
-        created_at=datetime.now(timezone.utc) - timedelta(days=45),
+        created_at=datetime.now(UTC) - timedelta(days=45),
     )
 
 

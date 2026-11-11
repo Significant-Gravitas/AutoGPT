@@ -11,7 +11,7 @@ itself clears its own mark. The provider and the charges are stubbed at
 their edges."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -254,9 +254,9 @@ def _assert_cleaned_up(
 
 async def _walk(entry) -> None:
     await executor._walk_entry(
-        entry, now=datetime.now(timezone.utc), api_key_for=lambda _: "k"
+        entry, now=datetime.now(UTC), api_key_for=lambda _: "k"
     )
 
 
 def _after(seconds: float) -> datetime:
-    return datetime.now(timezone.utc) + timedelta(seconds=seconds)
+    return datetime.now(UTC) + timedelta(seconds=seconds)

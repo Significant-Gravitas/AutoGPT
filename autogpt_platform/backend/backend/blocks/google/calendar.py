@@ -1,7 +1,7 @@
 import asyncio
 import enum
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from google.oauth2.credentials import Credentials
@@ -63,7 +63,7 @@ class GoogleCalendarReadEventsBlock(Block):
         )
         start_time: datetime = SchemaField(
             description="Retrieve events starting from this time",
-            default_factory=lambda: datetime.now(tz=timezone.utc),
+            default_factory=lambda: datetime.now(tz=UTC),
         )
         time_range_days: int = SchemaField(
             description="Number of days to look ahead for events", default=30
@@ -98,7 +98,7 @@ class GoogleCalendarReadEventsBlock(Block):
 
     def __init__(self):
         # Create realistic test data for events
-        test_now = datetime.now(tz=timezone.utc)
+        test_now = datetime.now(tz=UTC)
         test_tomorrow = test_now + timedelta(days=1)
 
         test_event_dict = {

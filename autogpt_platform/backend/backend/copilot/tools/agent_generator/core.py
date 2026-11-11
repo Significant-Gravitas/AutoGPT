@@ -526,7 +526,6 @@ async def enrich_library_agents_from_steps(
 class AgentJsonValidationError(Exception):
     """Raised when agent JSON is invalid or missing required fields."""
 
-    pass
 
 
 def json_to_graph(agent_json: dict[str, Any]) -> Graph:

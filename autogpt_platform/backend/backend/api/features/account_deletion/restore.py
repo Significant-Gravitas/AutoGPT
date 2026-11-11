@@ -14,7 +14,7 @@ in, so they can't keep the account.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from autogpt_libs.auth import forget_account_state
 
@@ -50,7 +50,7 @@ async def get_deletion_status(user_id: str) -> AccountDeletionResponse:
     too_late = (
         request.startedAt is not None
         or request.completedAt is not None
-        or request.eraseAfter <= datetime.now(timezone.utc)
+        or request.eraseAfter <= datetime.now(UTC)
     )
     return AccountDeletionResponse(
         status="too_late" if too_late else "scheduled",
@@ -86,7 +86,7 @@ async def _count_kept(user_id: str, erase_after: datetime) -> None:
     """One anonymous count, best effort: the account is open already."""
     try:
         user = await get_user_by_id(user_id)
-        days_left = (erase_after - datetime.now(timezone.utc)).days
+        days_left = (erase_after - datetime.now(UTC)).days
         capture_anonymous(
             PostHogEvent.ACCOUNT_DELETION_KEPT,
             {

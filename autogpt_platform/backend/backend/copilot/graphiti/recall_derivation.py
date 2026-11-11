@@ -61,7 +61,7 @@ episode it hid, and hides the dream episodes whose record does
 
 import logging
 import uuid as uuidlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from graphiti_core.driver.driver import GraphDriver
 
@@ -97,7 +97,7 @@ async def mark(
         facts=list(dict.fromkeys(citations.fact_uuids)),
         episodes=list(dict.fromkeys(citations.episode_uuids)),
         state=PENDING,
-        now=datetime.now(timezone.utc).isoformat(),
+        now=datetime.now(UTC).isoformat(),
     )
     return marker
 
@@ -111,7 +111,7 @@ async def abort(driver: GraphDriver, marker: str) -> None:
             ABORT_QUERY,
             uuid=marker,
             state=ABORTED,
-            now=datetime.now(timezone.utc).isoformat(),
+            now=datetime.now(UTC).isoformat(),
         )
     except Exception:
         logger.warning(f"Could not mark dream marker {marker} aborted", exc_info=True)

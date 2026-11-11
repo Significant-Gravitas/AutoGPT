@@ -23,7 +23,6 @@ async def test_initial_empty_recall_is_final_until_a_retry(
     async def fetch(*args, **kwargs):
         if times_out:
             await asyncio.Event().wait()
-        return None
 
     fetch_mock = AsyncMock(side_effect=fetch)
     monkeypatch.setattr(context, "_fetch", fetch_mock)

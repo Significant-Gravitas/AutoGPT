@@ -1,6 +1,6 @@
 """Revoking every API key a user holds at once, against the real database."""
 
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 from uuid import uuid4
 
 import pytest

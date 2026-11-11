@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import AsyncIterator
 from unittest.mock import MagicMock
 
@@ -123,7 +122,7 @@ async def test_stream_chat_normalizes_idle_timeout() -> None:
 
     client = Microsoft365CopilotClient("token")
     client._session = MagicMock()
-    client._session.post.side_effect = asyncio.TimeoutError("private detail")
+    client._session.post.side_effect = TimeoutError("private detail")
 
     with pytest.raises(Microsoft365CopilotError, match="could not continue") as raised:
         async for _ in client.stream_chat(

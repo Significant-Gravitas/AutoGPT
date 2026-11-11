@@ -27,7 +27,7 @@ is held to the same rule on FalkorDB by
 
 import random
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from types import SimpleNamespace
 from typing import Literal, TypeVar
@@ -224,7 +224,7 @@ class Graph:
         for uuid in self.recalls.get(k, []):
             edge = self.edges.get(uuid)
             if self.usage and edge is not None and edge.live:
-                edge.last_recalled_at = datetime.now(timezone.utc)
+                edge.last_recalled_at = datetime.now(UTC)
 
     def _supersede_one(
         self,
@@ -362,7 +362,7 @@ def _stamp(rng: random.Random, history: str, now: datetime) -> datetime | None:
 
 
 def _case(rng: random.Random, scenario: str) -> Case:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     lossy = scenario in _FAULTS
     kinds = _FAULTS.get(scenario, ())
     history = scenario if scenario in (*_HISTORIES, "any") else "never"
@@ -459,7 +459,7 @@ async def _run(world: SimpleNamespace, case: Case, usage: bool) -> tuple[Graph, 
     """The real clamp and apply on *case*, with or without usage data; then
     the writes still queued when the pass returned land."""
     graph = Graph(case, usage)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for edge in graph.edges.values():
         if not usage:
             edge.last_recalled_at = None
@@ -514,7 +514,7 @@ def _override_is_valid(reason: str, edge: str, known: set[str]) -> bool:
 def _check_every_write(graph: Graph, known: set[str]) -> None:
     """Each live edge a write reached was changed exactly when it was not
     recalled within the window, or the write's override was valid."""
-    cutoff = datetime.now(timezone.utc) - _WINDOW
+    cutoff = datetime.now(UTC) - _WINDOW
     for write in graph.writes:
         recent = write.last_recalled_at is not None and write.last_recalled_at >= cutoff
         protected = recent and not _override_is_valid(write.reason, write.edge, known)
@@ -585,7 +585,7 @@ async def test_twenty_days_away_leaves_relied_on_memories_alone(world) -> None:
     """The holiday itself: every fact the user relied on was last recalled 20
     days before the pass. Under the default 30-day window the writes spare
     each one; #13776's 8 days would have protected none."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     edges = [
         Edge(uuid=f"f{i}", ends=("n0", "n1"), last_recalled_at=now - timedelta(days=20))
         for i in range(100)

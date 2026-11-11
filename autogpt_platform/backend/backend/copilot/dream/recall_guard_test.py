@@ -3,7 +3,7 @@ still demote a recently recalled fact. The statements that apply it are
 tested with the writers (``graphiti/guarded_writes_test.py``) and on FalkorDB
 (``graphiti/recall_guard_integration_test.py``)."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -14,7 +14,7 @@ from backend.util.settings import Config
 from . import recall_guard
 from .recall_guard import DemotionGuard, demotion_protect_window
 
-_NOW = datetime(2026, 9, 28, 3, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 9, 28, 3, 0, tzinfo=UTC)
 _CITABLE = {"hot", "other"}
 
 

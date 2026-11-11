@@ -7,7 +7,7 @@ exercised against a fake hash rather than mocked away.
 """
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -211,7 +211,7 @@ def test_a_recording_due_just_after_one_sweep_goes_within_48_hours():
     assert deleted_by + timedelta(minutes=30) <= timedelta(hours=48)
 
 
-NOW = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
 AUDIO_PATH = "gcs://private-bucket/uploads/users/user-1/u/brain-dump-rec-1.webm"
 
 

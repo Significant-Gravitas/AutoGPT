@@ -17,7 +17,8 @@ if sys.version_info >= (3, 11):
     from asyncio import timeout
 else:
     from async_timeout import timeout
-from typing import Awaitable, TypeVar
+from collections.abc import Awaitable
+from typing import TypeVar
 
 REGISTRY_CALL_TIMEOUT_SECONDS = 10.0
 

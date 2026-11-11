@@ -4,7 +4,7 @@ import base64
 import json
 import os
 import shutil
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -257,7 +257,7 @@ async def test_workspace_file_round_trip(setup_test_data):
     read_resp2 = await read_tool._execute(
         user_id=user.id, session=session, file_id=file_id, save_to_path=save_path
     )
-    assert not isinstance(read_resp2, type(None))
+    assert not (read_resp2 is None)
     assert os.path.exists(save_path)
     with open(save_path) as f:
         assert f.read() == "Hello from e2e test!"
@@ -1318,7 +1318,7 @@ async def test_a_whole_read_too_long_once_escaped_comes_back_as_base64(
 
 
 def _text_file(size_bytes: int) -> WorkspaceFile:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return WorkspaceFile(
         id="f-1",
         workspace_id="ws-1",

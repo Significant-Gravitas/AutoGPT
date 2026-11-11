@@ -6,7 +6,7 @@ provider and the charges are stubbed at their edges."""
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -246,7 +246,7 @@ class TestTwoWalkersDropOneClosedBatch:
             return row
 
         monkeypatch.setattr(deliveries_mod, "_row", staggered)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async def first_walk() -> None:
             await executor._walk_entry(entry, now=now, api_key_for=lambda _: "k")
@@ -399,7 +399,7 @@ class TestADuplicateOfTheLastPhase:
 async def _in_flight(fake_dream_db, fake_dream_redis, *, landed: int = 1) -> None:
     """Batch pass p1 holding its lock under ``tok``: its first *landed*
     phases in its state, the next one's batch in flight, its job open."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await persist_input_bundle(
         "p1",
         DreamInput(
@@ -433,11 +433,11 @@ async def _in_flight(fake_dream_db, fake_dream_redis, *, landed: int = 1) -> Non
 
 def _past_the_grace() -> datetime:
     """An instant by which the cleanup of a row closed now is due."""
-    return datetime.now(timezone.utc) + timedelta(seconds=REAP_GRACE_SECONDS + 60)
+    return datetime.now(UTC) + timedelta(seconds=REAP_GRACE_SECONDS + 60)
 
 
 def _entry(phase: str) -> PendingEntry:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return PendingEntry(
         provider="anthropic",
         provider_batch_id="b-rec" if phase == "recombine" else "b-san",

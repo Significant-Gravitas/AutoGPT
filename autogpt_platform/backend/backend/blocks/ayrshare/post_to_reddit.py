@@ -22,7 +22,7 @@ class PostToRedditBlock(Block):
     class Input(BaseAyrshareInput):
         """Input schema for Reddit posts."""
 
-        pass  # Uses all base fields
+        # Uses all base fields
 
     class Output(BlockSchemaOutput):
         post_result: PostResponse = SchemaField(description="The result of the post")

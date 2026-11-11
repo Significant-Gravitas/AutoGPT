@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import backend.copilot.tools.skills as skills
 from backend.copilot.model import ChatSession
+from backend.copilot.tools import skills
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.skills import (
     DeleteSkillResponse,
@@ -445,8 +445,8 @@ async def test_copy_carries_frontmatter_the_platform_has_no_use_for(world):
     licence line; re-rendering it away rewrites their file."""
     fake, _ = world
     fake.files[AUTOPILOT] = (
-        "---\nname: mine\ndescription: d\nlicense: Apache-2.0\n---\n\nsteps\n"
-    ).encode()
+        b"---\nname: mine\ndescription: d\nlicense: Apache-2.0\n---\n\nsteps\n"
+    )
 
     assert await copy_skill_to_expert("user-1", "expert-a", "mine") == "mine"
 

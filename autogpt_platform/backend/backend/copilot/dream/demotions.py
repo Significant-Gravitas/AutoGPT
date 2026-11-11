@@ -43,7 +43,7 @@ enabled.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -138,7 +138,7 @@ async def apply_demotions(
     invalidations = await _enabled_invalidations(scope, ops.entity_invalidations)
     if not demotions and not invalidations:
         return DemotionResults()
-    guard = DemotionGuard.at(datetime.now(timezone.utc), known)
+    guard = DemotionGuard.at(datetime.now(UTC), known)
     driver = open_driver(scope)
     try:
         results = DemotionResults(

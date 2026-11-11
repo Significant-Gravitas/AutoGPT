@@ -30,9 +30,9 @@ from backend.copilot.service import (
     _record_title_generation_cost,
     _title_usage_from_response,
     _update_title_async,
+    settings,
 )
 from backend.copilot.service import config as service_config
-from backend.copilot.service import settings
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.settings import Config
 

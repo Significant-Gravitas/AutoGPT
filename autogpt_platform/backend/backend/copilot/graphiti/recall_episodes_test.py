@@ -7,7 +7,7 @@ live runs are ``recall_integration_test.py`` and
 ``ingest_recall_integration_test.py``.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,7 +17,7 @@ from graphiti_core.search.search_utils import RELEVANT_SCHEMA_LIMIT
 from . import recall, recall_ingest
 from .scope import MemoryScope
 
-_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 _SCOPE = MemoryScope.for_user("user-abc")
 
 

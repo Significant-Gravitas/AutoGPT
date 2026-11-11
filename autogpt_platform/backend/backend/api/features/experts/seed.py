@@ -692,7 +692,7 @@ async def _clear_removed_cadences_bounded() -> None:
         await asyncio.wait_for(
             _clear_removed_cadences(), timeout=_CADENCE_CLEANUP_TIMEOUT_S
         )
-    except (asyncio.TimeoutError, Exception):
+    except (TimeoutError, Exception):
         logger.warning(
             "Removed-cadence cleanup skipped this run (scheduler unreachable); "
             "the next publish retries it",

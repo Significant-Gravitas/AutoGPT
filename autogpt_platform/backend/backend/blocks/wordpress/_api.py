@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from logging import getLogger
-from typing import Any, Dict, List, Union
+from typing import Any
 from urllib.parse import urlencode
 
 from pydantic import field_serializer
@@ -360,13 +360,13 @@ class CreatePostRequest(BaseModel):
     # Organization
     parent: int | None = None
     type: str | None = "post"
-    categories: List[str] | None = None
-    tags: List[str] | None = None
+    categories: list[str] | None = None
+    tags: list[str] | None = None
     format: PostFormat | None = None
 
     # Media
     featured_image: str | None = None
-    media_urls: List[str] | None = None
+    media_urls: list[str] | None = None
 
     # Sharing
     publicize: bool | None = True
@@ -375,14 +375,14 @@ class CreatePostRequest(BaseModel):
     # Engagement
     likes_enabled: bool | None = None
     sharing_enabled: bool | None = True
-    discussion: Dict[str, bool] | None = None
+    discussion: dict[str, bool] | None = None
 
     # Page-specific
     menu_order: int | None = None
     page_template: str | None = None
 
     # Advanced
-    metadata: List[Dict[str, Any]] | None = None
+    metadata: list[dict[str, Any]] | None = None
 
     @field_serializer("date")
     def serialize_date(self, value: datetime | None) -> str | None:
@@ -394,7 +394,7 @@ class PostAuthor(BaseModel):
 
     ID: int
     login: str
-    email: Union[str, bool, None] = None
+    email: str | bool | None = None
     name: str
     nice_name: str
     URL: str | None = None
@@ -419,9 +419,9 @@ class PostResponse(BaseModel):
     status: str
     sticky: bool
     password: str | None = ""
-    parent: Union[Dict[str, Any], bool, None] = None
+    parent: dict[str, Any] | bool | None = None
     type: str
-    discussion: Dict[str, Union[str, bool, int]]
+    discussion: dict[str, str | bool | int]
     likes_enabled: bool
     sharing_enabled: bool
     like_count: int
@@ -430,22 +430,22 @@ class PostResponse(BaseModel):
     is_following: bool
     global_ID: str
     featured_image: str | None = None
-    post_thumbnail: Dict[str, Any] | None = None
+    post_thumbnail: dict[str, Any] | None = None
     format: str
-    geo: Union[Dict[str, Any], bool, None] = None
+    geo: dict[str, Any] | bool | None = None
     menu_order: int | None = None
     page_template: str | None = None
-    publicize_URLs: List[str]
-    terms: Dict[str, Dict[str, Any]]
-    tags: Dict[str, Dict[str, Any]]
-    categories: Dict[str, Dict[str, Any]]
-    attachments: Dict[str, Dict[str, Any]]
+    publicize_URLs: list[str]
+    terms: dict[str, dict[str, Any]]
+    tags: dict[str, dict[str, Any]]
+    categories: dict[str, dict[str, Any]]
+    attachments: dict[str, dict[str, Any]]
     attachment_count: int
-    metadata: List[Dict[str, Any]]
-    meta: Dict[str, Any]
-    capabilities: Dict[str, bool]
-    revisions: List[int] | None = None
-    other_URLs: Dict[str, Any] | None = None
+    metadata: list[dict[str, Any]]
+    meta: dict[str, Any]
+    capabilities: dict[str, bool]
+    revisions: list[int] | None = None
+    other_URLs: dict[str, Any] | None = None
 
 
 async def create_post(
@@ -524,9 +524,9 @@ class Post(BaseModel):
     status: str
     sticky: bool
     password: str | None = ""
-    parent: Union[Dict[str, Any], bool, None] = None
+    parent: dict[str, Any] | bool | None = None
     type: str
-    discussion: Dict[str, Union[str, bool, int]] | None = None
+    discussion: dict[str, str | bool | int] | None = None
     likes_enabled: bool | None = None
     sharing_enabled: bool | None = None
     like_count: int | None = None
@@ -535,30 +535,30 @@ class Post(BaseModel):
     is_following: bool | None = None
     global_ID: str | None = None
     featured_image: str | None = None
-    post_thumbnail: Dict[str, Any] | None = None
+    post_thumbnail: dict[str, Any] | None = None
     format: str | None = None
-    geo: Union[Dict[str, Any], bool, None] = None
+    geo: dict[str, Any] | bool | None = None
     menu_order: int | None = None
     page_template: str | None = None
-    publicize_URLs: List[str] | None = None
-    terms: Dict[str, Dict[str, Any]] | None = None
-    tags: Dict[str, Dict[str, Any]] | None = None
-    categories: Dict[str, Dict[str, Any]] | None = None
-    attachments: Dict[str, Dict[str, Any]] | None = None
+    publicize_URLs: list[str] | None = None
+    terms: dict[str, dict[str, Any]] | None = None
+    tags: dict[str, dict[str, Any]] | None = None
+    categories: dict[str, dict[str, Any]] | None = None
+    attachments: dict[str, dict[str, Any]] | None = None
     attachment_count: int | None = None
-    metadata: List[Dict[str, Any]] | None = None
-    meta: Dict[str, Any] | None = None
-    capabilities: Dict[str, bool] | None = None
-    revisions: List[int] | None = None
-    other_URLs: Dict[str, Any] | None = None
+    metadata: list[dict[str, Any]] | None = None
+    meta: dict[str, Any] | None = None
+    capabilities: dict[str, bool] | None = None
+    revisions: list[int] | None = None
+    other_URLs: dict[str, Any] | None = None
 
 
 class PostsResponse(BaseModel):
     """Response model for WordPress posts list."""
 
     found: int
-    posts: List[Post]
-    meta: Dict[str, Any]
+    posts: list[Post]
+    meta: dict[str, Any]
 
 
 def normalize_site(site: str) -> str:
@@ -606,7 +606,7 @@ async def get_posts(
         "Authorization": credentials.auth_header(),
     }
 
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "number": max(1, min(number, 100)),  # 1–100 posts per request
         "offset": offset,
     }

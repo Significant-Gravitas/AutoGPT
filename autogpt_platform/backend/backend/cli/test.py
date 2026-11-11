@@ -6,7 +6,6 @@ def test():
     """
     Group for test commands
     """
-    pass
 
 
 @test.command()

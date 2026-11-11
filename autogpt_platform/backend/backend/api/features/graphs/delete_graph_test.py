@@ -70,10 +70,9 @@ async def _assert_refused(server: SpinTestServer, graph_id: str) -> None:
             library_db,
             "cleanup_graph_for_permanent_delete",
             wraps=library_db.cleanup_graph_for_permanent_delete,
-        ) as cleanup,
+        ) as cleanup,pytest.raises(fastapi.HTTPException) as exc_info
     ):
-        with pytest.raises(fastapi.HTTPException) as exc_info:
-            await server.agent_server.test_delete_graph(graph_id, DEFAULT_USER_ID)
+        await server.agent_server.test_delete_graph(graph_id, DEFAULT_USER_ID)
 
     assert exc_info.value.status_code == 409
     # A refused delete leaves the graph and everything that drives it alone.

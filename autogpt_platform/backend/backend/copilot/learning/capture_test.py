@@ -8,7 +8,7 @@ confirmation would be silently missed while a hand-built probe passes.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -22,7 +22,7 @@ USER = "user-1"
 
 
 def _session(messages: list[ChatMessage]) -> ChatSession:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return ChatSession(
         session_id="sess-1",
         user_id=USER,

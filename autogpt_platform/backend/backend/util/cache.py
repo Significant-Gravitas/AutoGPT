@@ -17,9 +17,10 @@ import logging
 import pickle
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache, wraps
-from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
+from typing import Any, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
 
 import sentry_sdk
 from redis.cluster import ClusterNode, RedisCluster
@@ -160,7 +161,7 @@ class CachedFunction(Protocol[P, R_co]):
 
     def cache_clear(self, pattern: str | None = None) -> None:
         """Clear cached entries. If pattern provided, clear matching entries only."""
-        return None
+        return
 
     def cache_info(self) -> dict[str, int | None]:
         """Get cache statistics."""
@@ -466,9 +467,9 @@ def cached(
                     return True
                 return False
 
-        setattr(wrapper, "cache_clear", cache_clear)
-        setattr(wrapper, "cache_info", cache_info)
-        setattr(wrapper, "cache_delete", cache_delete)
+        wrapper.cache_clear = cache_clear
+        wrapper.cache_info = cache_info
+        wrapper.cache_delete = cache_delete
 
         return cast(CachedFunction[P, R], wrapper)
 
@@ -573,7 +574,7 @@ def thread_cached(func):
                 cache[key] = await func(*args, **kwargs)
             return cache[key]
 
-        setattr(async_wrapper, "clear_cache", _clear)
+        async_wrapper.clear_cache = _clear
         return async_wrapper
 
     else:
@@ -588,7 +589,7 @@ def thread_cached(func):
                 cache[key] = func(*args, **kwargs)
             return cache[key]
 
-        setattr(sync_wrapper, "clear_cache", _clear)
+        sync_wrapper.clear_cache = _clear
         return sync_wrapper
 
 

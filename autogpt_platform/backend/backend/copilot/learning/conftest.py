@@ -22,7 +22,7 @@ usage_snapshot = usage_activation_fixtures.usage_snapshot
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def server():  # type: ignore[override]
     """No-op server stub — learning unit tests don't need the backend."""
-    return None
+    return
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)

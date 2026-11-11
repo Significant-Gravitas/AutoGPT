@@ -12,7 +12,7 @@ covered against Postgres in ``backend/api/features/team_membership_db_test.py``.
 """
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -38,7 +38,7 @@ class _TeamMembers:
             isAdmin=is_admin,
             isBillingManager=False,
             status=status,
-            joinedAt=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            joinedAt=datetime(2026, 1, 1, tzinfo=UTC),
             User=SimpleNamespace(email=f"{user_id}@example.com", name=user_id),
         )
 
@@ -215,7 +215,6 @@ async def test_add_race_unique_violation_is_a_conflict(store):
 
     async def miss_then_real(where, include=None):
         store.teammember.find_unique = real_find_unique
-        return None
 
     store.teammember.add("u1")
     store.teammember.find_unique = miss_then_real

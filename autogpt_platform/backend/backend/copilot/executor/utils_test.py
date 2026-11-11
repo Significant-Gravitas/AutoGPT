@@ -444,11 +444,10 @@ async def test_schedule_chat_turn_refuses_a_lost_slot_before_saving_a_new_messag
     with _scheduling(admitted=False, trailing_user_text="the report") as (
         append,
         dispatch,
-    ):
-        with pytest.raises(SessionNotIdle):
-            await utils.schedule_chat_turn(
-                session_id="s1", user_id="u1", message="and the totals"
-            )
+    ), pytest.raises(SessionNotIdle):
+        await utils.schedule_chat_turn(
+            session_id="s1", user_id="u1", message="and the totals"
+        )
 
     append.assert_not_awaited()
     dispatch.assert_not_awaited()

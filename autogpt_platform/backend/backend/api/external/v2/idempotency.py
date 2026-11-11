@@ -15,8 +15,9 @@ a run the caller didn't ask for.
 import hashlib
 import json
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Optional
+from typing import Any
 
 from fastapi import Header, HTTPException
 from starlette import status
@@ -37,7 +38,7 @@ _TTL_SECONDS = 24 * 60 * 60
 
 
 def idempotency_key(
-    key: Optional[str] = Header(
+    key: str | None = Header(
         default=None,
         alias=IDEMPOTENCY_HEADER,
         max_length=255,
@@ -49,7 +50,7 @@ def idempotency_key(
             "Expires after 24 hours."
         ),
     ),
-) -> Optional[str]:
+) -> str | None:
     return (key or "").strip() or None
 
 
@@ -61,7 +62,7 @@ def request_fingerprint(**request: Any) -> str:
 
 @asynccontextmanager
 async def idempotent_run(
-    key: Optional[str], auth: TenantContext, fingerprint: str
+    key: str | None, auth: TenantContext, fingerprint: str
 ) -> AsyncIterator["RunClaim"]:
     """Claim `key` for this request, or report the run it already produced.
 
@@ -127,11 +128,11 @@ class RunClaim:
 
     def __init__(
         self,
-        key: Optional[str],
+        key: str | None,
         user_id: str,
         organization_id: str,
         fingerprint: str,
-        team_id: Optional[str] = None,
+        team_id: str | None = None,
     ) -> None:
         self.key = key
         self.user_id = user_id
@@ -139,8 +140,8 @@ class RunClaim:
         self.team_id = team_id
         self.fingerprint = fingerprint
         self.holds_key = False
-        self.run_id: Optional[str] = None
-        self.existing_run_id: Optional[str] = None
+        self.run_id: str | None = None
+        self.existing_run_id: str | None = None
 
     @property
     def redis_key(self) -> str:
@@ -149,7 +150,7 @@ class RunClaim:
         team = self.team_id or "-"
         return f"v2:idem:{self.user_id}:{self.organization_id}:{team}:{self.key}"
 
-    def stored_value(self, run_id: Optional[str] = None) -> str:
+    def stored_value(self, run_id: str | None = None) -> str:
         """What the key holds: the request it was claimed for, and its run."""
         return json.dumps({"request": self.fingerprint, "run": run_id})
 
@@ -205,7 +206,7 @@ class RunClaim:
             logger.warning(f"Could not release idempotency key: {e}")
 
 
-def _parse(stored: Any) -> Optional[dict[str, Any]]:
+def _parse(stored: Any) -> dict[str, Any] | None:
     """What a key holds, or None while its first request hasn't written it.
 
     The client decodes responses; the redis stubs still admit bytes.

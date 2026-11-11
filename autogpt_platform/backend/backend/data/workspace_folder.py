@@ -42,8 +42,8 @@ class WorkspaceFolder(pydantic.BaseModel):
     id: str
     workspace_id: str
     name: str
-    icon: Optional[str] = None
-    parent_id: Optional[str] = None
+    icon: str | None = None
+    parent_id: str | None = None
     created_at: datetime
     updated_at: datetime
     # Files directly in this folder; a subfolder's files are counted on it.
@@ -147,8 +147,8 @@ async def get_folder(folder_id: str, workspace_id: str) -> WorkspaceFolder:
 async def create_folder(
     workspace_id: str,
     name: str,
-    icon: Optional[str] = None,
-    parent_id: Optional[str] = None,
+    icon: str | None = None,
+    parent_id: str | None = None,
 ) -> WorkspaceFolder:
     """Create a folder, under *parent_id* or at the workspace root.
 
@@ -189,8 +189,8 @@ async def _name_taken(
     tx: Prisma,
     workspace_id: str,
     name: str,
-    parent_id: Optional[str],
-    exclude_folder_id: Optional[str] = None,
+    parent_id: str | None,
+    exclude_folder_id: str | None = None,
 ) -> bool:
     """Whether a live sibling under *parent_id* already carries this name.
 
@@ -213,8 +213,8 @@ async def _name_taken(
 async def update_folder(
     folder_id: str,
     workspace_id: str,
-    name: Optional[str] = None,
-    icon: Optional[str] = None,
+    name: str | None = None,
+    icon: str | None = None,
 ) -> WorkspaceFolder:
     """Rename a folder and/or change its icon, leaving it where it is."""
     return await apply_folder_update(folder_id, workspace_id, name=name, icon=icon)
@@ -223,7 +223,7 @@ async def update_folder(
 async def move_folder(
     folder_id: str,
     workspace_id: str,
-    parent_id: Optional[str],
+    parent_id: str | None,
 ) -> WorkspaceFolder:
     """Move a folder under *parent_id*, or to the workspace root when None."""
     return await apply_folder_update(folder_id, workspace_id, parent_id=parent_id)
@@ -233,8 +233,8 @@ async def apply_folder_update(
     folder_id: str,
     workspace_id: str,
     parent_id: ParentChange = UNCHANGED,
-    name: Optional[str] = None,
-    icon: Optional[str] = None,
+    name: str | None = None,
+    icon: str | None = None,
 ) -> WorkspaceFolder:
     """Move and/or rename a folder as a single write.
 
@@ -330,7 +330,7 @@ async def _ancestor_ids(tx: Prisma, workspace_id: str, folder_id: str) -> list[s
     }
     chain: list[str] = []
     seen: set[str] = set()
-    current: Optional[str] = folder_id
+    current: str | None = folder_id
     while current is not None and current in by_id and current not in seen:
         seen.add(current)
         chain.append(current)
@@ -381,7 +381,7 @@ async def _subtree_ids(tx: Prisma, workspace_id: str, folder_id: str) -> list[st
     the model-facing ``workspace_files._folder_subtree``, because a delete has
     to reach the whole subtree.
     """
-    children: dict[Optional[str], list[str]] = {}
+    children: dict[str | None, list[str]] = {}
     for f in await UserWorkspaceFolder.prisma(tx).find_many(
         where={"workspaceId": workspace_id, "isDeleted": False},
     ):
@@ -434,7 +434,7 @@ async def resolve_attachable_workspace_folders(
 async def bulk_move_files_to_folder(
     workspace_id: str,
     file_ids: list[str],
-    folder_id: Optional[str],
+    folder_id: str | None,
 ) -> list[WorkspaceFile]:
     """
     Move multiple files into a folder (or to root when ``folder_id`` is None).

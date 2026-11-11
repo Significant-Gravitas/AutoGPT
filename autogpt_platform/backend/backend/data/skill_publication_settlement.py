@@ -1,6 +1,6 @@
 """Atomically settle a pending version and its associated review."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import prisma.types
 from prisma import Prisma
@@ -61,7 +61,7 @@ async def settle_publication_in(
             "disposition": disposition,
             "reviewReplay": SafeJson(None),
             "reason": reason[:2000],
-            "completedAt": datetime.now(timezone.utc),
+            "completedAt": datetime.now(UTC),
         },
     )
     return True

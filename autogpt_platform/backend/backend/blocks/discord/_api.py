@@ -3,7 +3,6 @@ Discord API helper functions for making authenticated requests.
 """
 
 import logging
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -27,8 +26,8 @@ class DiscordOAuthUser(BaseModel):
     user_id: str
     username: str
     avatar_url: str
-    banner: Optional[str] = None
-    accent_color: Optional[int] = None
+    banner: str | None = None
+    accent_color: int | None = None
 
 
 def get_api(credentials: OAuth2Credentials) -> Requests:

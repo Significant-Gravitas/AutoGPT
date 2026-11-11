@@ -1,6 +1,7 @@
 """Comment threads as flat lists, for the Hacker News Get Item block."""
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from ._models import (
     HackerNewsComment,

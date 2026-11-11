@@ -1,7 +1,7 @@
 """Coverage for the cap-hit warning path on NodeExecutionResult.from_db."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 from prisma.enums import AgentExecutionStatus
@@ -27,7 +27,7 @@ def _make_node_exec(*, inputs: list, outputs: list, exec_id: str = "ne-1") -> Ma
     ne.agentGraphExecutionId = "ge-1"
     ne.agentNodeId = "n-1"
     ne.executionStatus = AgentExecutionStatus.COMPLETED
-    ne.addedTime = datetime.now(timezone.utc)
+    ne.addedTime = datetime.now(UTC)
     ne.queuedTime = None
     ne.startedTime = None
     ne.endedTime = None

@@ -340,7 +340,7 @@ async def _until_done(
             return "exceeded"
     try:
         await asyncio.wait_for(proc.wait(), max(deadline - loop.time(), 0))
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return "timeout"
     return "done"
 

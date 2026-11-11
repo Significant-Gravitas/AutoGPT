@@ -6,7 +6,7 @@ read, and the restore on a CLI session file's first user entry
 (``legacy_first_turn_memory_restore_test.py``)."""
 
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -91,7 +91,7 @@ class TestStripFirstTurnMemory:
         "moment",
         [
             datetime(2025, 6, 1, 12, 34, 56),
-            datetime(1, 1, 1, tzinfo=timezone.utc),
+            datetime(1, 1, 1, tzinfo=UTC),
             datetime(9999, 12, 31, 23, 59, 59, 999999, timezone(-timedelta(hours=11))),
             datetime(2024, 2, 29, 8, 0, 0, 1, timezone(timedelta(hours=5, minutes=45))),
             datetime(

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -31,7 +31,7 @@ def _collision(identity_id: str = "auth-new") -> OrphanedAuthIdentity:
     return OrphanedAuthIdentity(
         id=identity_id,
         email="taken@example.com",
-        createdAt=datetime.now(timezone.utc),
+        createdAt=datetime.now(UTC),
         email_owner_id="user-old",
     )
 
@@ -76,7 +76,7 @@ def test_pages_when_it_had_to_heal_or_could_not(wiring):
     collided = OrphanedAuthIdentity(
         id="auth-new",
         email="taken@example.com",
-        createdAt=datetime.now(timezone.utc),
+        createdAt=datetime.now(UTC),
         email_owner_id="user-old",
     )
     db.heal_orphaned_auth_identities.return_value = OrphanedAuthIdentityReport(

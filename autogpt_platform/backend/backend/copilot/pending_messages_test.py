@@ -198,7 +198,7 @@ class _FakePipeline:
     async def __aenter__(self) -> "_FakePipeline":
         return self
 
-    async def __aexit__(self, *a: Any) -> None:
+    async def __aexit__(self, *a: object) -> None:
         return None
 
 

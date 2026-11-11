@@ -6,7 +6,7 @@ Provides access to the agent marketplace (store).
 
 import logging
 import urllib.parse
-from typing import Literal, Optional
+from typing import Literal
 
 from fastapi import (
     APIRouter,
@@ -77,14 +77,14 @@ async def list_agents(
     featured: bool = Query(
         default=False, description="Filter to only show featured agents"
     ),
-    creator: Optional[str] = Query(
+    creator: str | None = Query(
         default=None, description="Filter by creator username"
     ),
-    category: Optional[str] = Query(default=None, description="Filter by category"),
-    search_query: Optional[str] = Query(
+    category: str | None = Query(default=None, description="Filter by category"),
+    search_query: str | None = Query(
         default=None, description="Literal + semantic search on names and descriptions"
     ),
-    sorted_by: Optional[Literal["rating", "runs", "name", "updated_at"]] = Query(
+    sorted_by: Literal["rating", "runs", "name", "updated_at"] | None = Query(
         default=None,
         description="Property to sort results by. Ignored if search_query is provided.",
     ),
@@ -194,12 +194,12 @@ async def list_creators(
     featured: bool = Query(
         default=False, description="Filter to featured creators only"
     ),
-    search_query: Optional[str] = Query(
+    search_query: str | None = Query(
         default=None,
         max_length=100,
         description="Literal + semantic search on names and descriptions",
     ),
-    sorted_by: Optional[Literal["agent_rating", "agent_runs", "num_agents"]] = Query(
+    sorted_by: Literal["agent_rating", "agent_runs", "num_agents"] | None = Query(
         default=None, description="Sort field"
     ),
     page: PageRequest = Depends(page_request),

@@ -70,7 +70,7 @@ async def _clean_briefings(server, test_user_id: str):
 
 def _today() -> datetime.date:
     """UTC today — the route's own reference point for the recency bound."""
-    return datetime.datetime.now(datetime.timezone.utc).date()
+    return datetime.datetime.now(datetime.UTC).date()
 
 
 def _days_ago(days: int) -> datetime.date:

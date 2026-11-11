@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-import scripts.generate_views as generate_views
+from scripts import generate_views
 
 
 def _args(**overrides) -> argparse.Namespace:

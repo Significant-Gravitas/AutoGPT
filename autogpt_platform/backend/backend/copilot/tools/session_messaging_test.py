@@ -8,7 +8,7 @@ self-message nor the fan-out loop is possible.
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -46,8 +46,8 @@ def _session(session_id: str = CALLER_SESSION, user_id: str = OWNER) -> ChatSess
         session_id=session_id,
         user_id=user_id,
         usage=[],
-        started_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
         messages=[],
     )
 
@@ -67,8 +67,8 @@ def _info(
         session_id=session_id,
         user_id=user_id,
         usage=[],
-        started_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
         metadata=ChatSessionMetadata(
             purpose=purpose,
             builder_graph_id=builder_graph_id,
@@ -189,17 +189,15 @@ class TestMessageSessionDelivery:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
-        ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ):
-                with patch(f"{_MSG}.try_enqueue_turn", new=AsyncMock()) as enqueue:
-                    result = await MessageSessionTool()._execute(
-                        OWNER,
-                        _session(),
-                        session_id=TARGET_SESSION,
-                        message="the numbers are in",
-                    )
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+        ), patch(f"{_MSG}.try_enqueue_turn", new=AsyncMock()) as enqueue:
+            result = await MessageSessionTool()._execute(
+                OWNER,
+                _session(),
+                session_id=TARGET_SESSION,
+                message="the numbers are in",
+            )
         assert isinstance(result, SessionMessageResponse)
         assert result.delivery == "injected"
         # No turn was started: an injected message costs nothing extra.
@@ -212,22 +210,20 @@ class TestMessageSessionDelivery:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="idle")),
-        ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ):
-                with patch(
-                    f"{_MSG}.get_chat_session_status",
-                    new=AsyncMock(return_value="idle"),
-                ), patch(
-                    f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
-                ) as enqueue:
-                    result = await MessageSessionTool()._execute(
-                        OWNER,
-                        _session(),
-                        session_id=TARGET_SESSION,
-                        message="the numbers are in",
-                    )
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+        ), patch(
+            f"{_MSG}.get_chat_session_status",
+            new=AsyncMock(return_value="idle"),
+        ), patch(
+            f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
+        ) as enqueue:
+            result = await MessageSessionTool()._execute(
+                OWNER,
+                _session(),
+                session_id=TARGET_SESSION,
+                message="the numbers are in",
+            )
         assert isinstance(result, SessionMessageResponse)
         assert result.delivery == "woke"
         enqueue.assert_awaited_once()
@@ -239,16 +235,15 @@ class TestMessageSessionDelivery:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
-        ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ) as deliver:
-                await MessageSessionTool()._execute(
-                    OWNER,
-                    _session(),
-                    session_id=TARGET_SESSION,
-                    message="the numbers are in",
-                )
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+        ) as deliver:
+            await MessageSessionTool()._execute(
+                OWNER,
+                _session(),
+                session_id=TARGET_SESSION,
+                message="the numbers are in",
+            )
         sent = deliver.await_args.kwargs["message"]
         # In the text, not only the metadata: the model replies off what it reads.
         assert CALLER_SESSION in sent
@@ -261,22 +256,20 @@ class TestMessageSessionDelivery:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION)),
-        ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ):
-                with patch(
-                    f"{_MSG}.get_chat_session_status",
-                    new=AsyncMock(return_value="idle"),
-                ), patch(
-                    f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
-                ) as enqueue:
-                    await MessageSessionTool()._execute(
-                        OWNER,
-                        _session(),
-                        session_id=TARGET_SESSION,
-                        message="hello",
-                    )
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+        ), patch(
+            f"{_MSG}.get_chat_session_status",
+            new=AsyncMock(return_value="idle"),
+        ), patch(
+            f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
+        ) as enqueue:
+            await MessageSessionTool()._execute(
+                OWNER,
+                _session(),
+                session_id=TARGET_SESSION,
+                message="hello",
+            )
         meta = enqueue.await_args.kwargs["message_metadata"]
         assert meta["from_session_id"] == CALLER_SESSION
 
@@ -296,13 +289,12 @@ class TestEveryDeliveryCarriesTheSender:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
-        ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ) as deliver:
-                result = await MessageSessionTool()._execute(
-                    OWNER, _session(), session_id=TARGET_SESSION, message="hi"
-                )
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+        ) as deliver:
+            result = await MessageSessionTool()._execute(
+                OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+            )
         assert isinstance(result, SessionMessageResponse)
         assert result.delivery == "injected"
         assert deliver.await_args.kwargs["metadata"] == self.EXPECTED
@@ -314,17 +306,15 @@ class TestEveryDeliveryCarriesTheSender:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="queued")),
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+        ) as deliver, patch(
+            f"{_MSG}.get_chat_session_status",
+            new=AsyncMock(return_value="queued"),
         ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ) as deliver:
-                with patch(
-                    f"{_MSG}.get_chat_session_status",
-                    new=AsyncMock(return_value="queued"),
-                ):
-                    result = await MessageSessionTool()._execute(
-                        OWNER, _session(), session_id=TARGET_SESSION, message="hi"
-                    )
+            result = await MessageSessionTool()._execute(
+                OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+            )
         assert isinstance(result, SessionMessageResponse)
         assert result.delivery == "queued"
         assert all(
@@ -338,19 +328,17 @@ class TestEveryDeliveryCarriesTheSender:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION)),
-        ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ):
-                with patch(
-                    f"{_MSG}.get_chat_session_status",
-                    new=AsyncMock(return_value="idle"),
-                ), patch(
-                    f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
-                ) as enqueue:
-                    result = await MessageSessionTool()._execute(
-                        OWNER, _session(), session_id=TARGET_SESSION, message="hi"
-                    )
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+        ), patch(
+            f"{_MSG}.get_chat_session_status",
+            new=AsyncMock(return_value="idle"),
+        ), patch(
+            f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
+        ) as enqueue:
+            result = await MessageSessionTool()._execute(
+                OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+            )
         assert isinstance(result, SessionMessageResponse)
         assert result.delivery == "woke"
         assert enqueue.await_args.kwargs["message_metadata"] == self.EXPECTED
@@ -364,13 +352,12 @@ class TestEveryDeliveryCarriesTheSender:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
-        ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ) as deliver:
-                await MessageSessionTool()._execute(
-                    OWNER, sender, session_id=TARGET_SESSION, message="hi"
-                )
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+        ) as deliver:
+            await MessageSessionTool()._execute(
+                OWNER, sender, session_id=TARGET_SESSION, message="hi"
+            )
         assert deliver.await_args.kwargs["metadata"] == {
             "from_session_id": CALLER_SESSION,
             "from_expert_id": "expert-a",
@@ -393,20 +380,17 @@ class TestWakeCarriesTheTargetsOwnExecutionContext:
         )
         with patch(
             f"{_MSG}.get_chat_session_metadata", new=AsyncMock(return_value=target)
-        ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ):
-                with patch(
-                    f"{_MSG}.get_chat_session_status",
-                    new=AsyncMock(return_value="idle"),
-                ):
-                    with patch(
-                        f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
-                    ) as enqueue:
-                        await MessageSessionTool()._execute(
-                            OWNER, _session(), session_id=TARGET_SESSION, message="hi"
-                        )
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+        ), patch(
+            f"{_MSG}.get_chat_session_status",
+            new=AsyncMock(return_value="idle"),
+        ), patch(
+            f"{_MSG}.try_enqueue_turn", new=AsyncMock(return_value=object())
+        ) as enqueue:
+            await MessageSessionTool()._execute(
+                OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+            )
         return enqueue.await_args.kwargs
 
     async def test_builder_bound_target_keeps_its_blocked_tools(self) -> None:
@@ -482,20 +466,18 @@ class TestMessageLimitsAndCaps:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION)),
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+        ), patch(
+            f"{_MSG}.get_chat_session_status",
+            new=AsyncMock(return_value="idle"),
+        ), patch(
+            f"{_MSG}.try_enqueue_turn",
+            new=AsyncMock(side_effect=InflightCapExceeded(used=15, cap=15)),
         ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ):
-                with patch(
-                    f"{_MSG}.get_chat_session_status",
-                    new=AsyncMock(return_value="idle"),
-                ), patch(
-                    f"{_MSG}.try_enqueue_turn",
-                    new=AsyncMock(side_effect=InflightCapExceeded(used=15, cap=15)),
-                ):
-                    result = await MessageSessionTool()._execute(
-                        OWNER, _session(), session_id=TARGET_SESSION, message="hi"
-                    )
+            result = await MessageSessionTool()._execute(
+                OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+            )
         assert isinstance(result, ErrorResponse)
         (event,) = chat_blocked_events
         assert (event["limit"], event["outcome"], event["surface"]) == (
@@ -521,18 +503,15 @@ class TestQueuedTargetRidesItsOwnTurn:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="queued")),
-        ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ) as deliver:
-                with patch(
-                    f"{_MSG}.get_chat_session_status",
-                    new=AsyncMock(return_value="queued"),
-                ):
-                    with patch(f"{_MSG}.try_enqueue_turn", new=AsyncMock()) as enqueue:
-                        result = await MessageSessionTool()._execute(
-                            OWNER, _session(), session_id=TARGET_SESSION, message="hi"
-                        )
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+        ) as deliver, patch(
+            f"{_MSG}.get_chat_session_status",
+            new=AsyncMock(return_value="queued"),
+        ), patch(f"{_MSG}.try_enqueue_turn", new=AsyncMock()) as enqueue:
+            result = await MessageSessionTool()._execute(
+                OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+            )
         assert isinstance(result, SessionMessageResponse)
         assert result.delivery == "queued"
         enqueue.assert_not_awaited()
@@ -547,12 +526,11 @@ class TestDryRun:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION)),
-        ):
-            with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
-                with patch(f"{_MSG}.try_enqueue_turn", new=AsyncMock()) as enqueue:
-                    result = await MessageSessionTool()._execute(
-                        OWNER, dry, session_id=TARGET_SESSION, message="hi"
-                    )
+        ), patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
+            with patch(f"{_MSG}.try_enqueue_turn", new=AsyncMock()) as enqueue:
+                result = await MessageSessionTool()._execute(
+                    OWNER, dry, session_id=TARGET_SESSION, message="hi"
+                )
         assert isinstance(result, SessionMessageResponse)
         deliver.assert_not_awaited()
         enqueue.assert_not_awaited()
@@ -573,17 +551,15 @@ class TestTaintPropagation:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
-        ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ) as deliver:
-                with patch(f"{_MSG}.get_current_envelope", return_value=envelope):
-                    await MessageSessionTool()._execute(
-                        OWNER,
-                        _session(),
-                        session_id=TARGET_SESSION,
-                        message="the numbers are in",
-                    )
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+        ) as deliver, patch(f"{_MSG}.get_current_envelope", return_value=envelope):
+            await MessageSessionTool()._execute(
+                OWNER,
+                _session(),
+                session_id=TARGET_SESSION,
+                message="the numbers are in",
+            )
         return deliver.await_args.kwargs["message"]
 
     async def test_a_tainted_sender_marks_the_message_as_data(self) -> None:
@@ -601,11 +577,10 @@ class TestMessageSessionGuards:
         foreign = _info(TARGET_SESSION, user_id="user-2")
         with patch(
             f"{_MSG}.get_chat_session_metadata", new=AsyncMock(return_value=foreign)
-        ):
-            with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
-                result = await MessageSessionTool()._execute(
-                    OWNER, _session(), session_id=TARGET_SESSION, message="hi"
-                )
+        ), patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
+            result = await MessageSessionTool()._execute(
+                OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+            )
         assert isinstance(result, ErrorResponse)
         assert "No session" in (result.error or result.message or "")
         deliver.assert_not_awaited()
@@ -626,16 +601,15 @@ class TestMessageSessionGuards:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
         ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ):
-                for _ in range(MAX_SESSION_MESSAGES_PER_TURN + 1):
-                    result = await MessageSessionTool()._execute(
-                        OWNER, _session(), session_id=TARGET_SESSION, message="hi"
-                    )
-                    if isinstance(result, SessionMessageResponse):
-                        sent += 1
+            for _ in range(MAX_SESSION_MESSAGES_PER_TURN + 1):
+                result = await MessageSessionTool()._execute(
+                    OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+                )
+                if isinstance(result, SessionMessageResponse):
+                    sent += 1
         assert sent == MAX_SESSION_MESSAGES_PER_TURN
         assert isinstance(result, ErrorResponse)
 
@@ -651,21 +625,20 @@ class TestMessageSessionGuards:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
         ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ):
-                for _ in range(MAX_SESSION_MESSAGES_PER_TURN + 1):
-                    result = await asyncio.create_task(
-                        MessageSessionTool()._execute(
-                            OWNER,
-                            _session(),
-                            session_id=TARGET_SESSION,
-                            message="hi",
-                        )
+            for _ in range(MAX_SESSION_MESSAGES_PER_TURN + 1):
+                result = await asyncio.create_task(
+                    MessageSessionTool()._execute(
+                        OWNER,
+                        _session(),
+                        session_id=TARGET_SESSION,
+                        message="hi",
                     )
-                    if isinstance(result, SessionMessageResponse):
-                        sent += 1
+                )
+                if isinstance(result, SessionMessageResponse):
+                    sent += 1
         assert sent == MAX_SESSION_MESSAGES_PER_TURN
         assert isinstance(result, ErrorResponse)
 
@@ -678,16 +651,15 @@ class TestMessageSessionGuards:
         with patch(
             f"{_MSG}.get_chat_session_metadata",
             new=AsyncMock(return_value=_info(TARGET_SESSION, status="running")),
+        ), patch(
+            f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
         ):
-            with patch(
-                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
-            ):
-                for _ in range(MAX_SESSION_MESSAGES_PER_TURN):
-                    await MessageSessionTool()._execute(
-                        OWNER, _session(), session_id=TARGET_SESSION, message="hi"
-                    )
-                reset_consult_budget()
-                result = await MessageSessionTool()._execute(
+            for _ in range(MAX_SESSION_MESSAGES_PER_TURN):
+                await MessageSessionTool()._execute(
                     OWNER, _session(), session_id=TARGET_SESSION, message="hi"
                 )
+            reset_consult_budget()
+            result = await MessageSessionTool()._execute(
+                OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+            )
         assert isinstance(result, SessionMessageResponse)

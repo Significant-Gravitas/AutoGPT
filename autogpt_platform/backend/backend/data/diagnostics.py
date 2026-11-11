@@ -5,8 +5,7 @@ Provides functions to query and manage system diagnostics including executions a
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from datetime import UTC, datetime, timedelta
 
 from croniter import croniter
 from pika.exceptions import ChannelClosedByBroker
@@ -47,11 +46,11 @@ class RunningExecutionDetail(BaseModel):
     graph_name: str  # Will default to "Unknown" if not available
     graph_version: int
     user_id: str
-    user_email: Optional[str]
+    user_email: str | None
     status: str
     created_at: datetime  # When execution was created
-    started_at: Optional[datetime]  # When execution started running
-    queue_status: Optional[str] = None
+    started_at: datetime | None  # When execution started running
+    queue_status: str | None = None
 
 
 class FailedExecutionDetail(BaseModel):
@@ -62,12 +61,12 @@ class FailedExecutionDetail(BaseModel):
     graph_name: str
     graph_version: int
     user_id: str
-    user_email: Optional[str]
+    user_email: str | None
     status: str
     created_at: datetime
-    started_at: Optional[datetime]
-    failed_at: Optional[datetime]
-    error_message: Optional[str]
+    started_at: datetime | None
+    failed_at: datetime | None
+    error_message: str | None
 
 
 class ExecutionDiagnosticsSummary(BaseModel):
@@ -91,7 +90,7 @@ class ExecutionDiagnosticsSummary(BaseModel):
     # Long-running detection (active executions)
     stuck_running_24h: int  # Running for more than 24 hours
     stuck_running_1h: int  # Running for more than 1 hour
-    oldest_running_hours: Optional[float]  # Age of oldest running execution
+    oldest_running_hours: float | None  # Age of oldest running execution
 
     # Stuck queued detection
     stuck_queued_1h: int  # Queued for more than 1 hour
@@ -125,11 +124,11 @@ class ScheduleDetail(BaseModel):
     graph_name: str
     graph_version: int
     user_id: str
-    user_email: Optional[str]
+    user_email: str | None
     cron: str
     timezone: str
     next_run_time: str
-    created_at: Optional[datetime] = None  # Not available from APScheduler
+    created_at: datetime | None = None  # Not available from APScheduler
 
 
 class ScheduleHealthMetrics(BaseModel):
@@ -168,7 +167,7 @@ class OrphanedScheduleDetail(BaseModel):
     orphan_reason: (
         str  # deleted_graph, no_library_access, invalid_credentials, validation_failed
     )
-    error_detail: Optional[str]
+    error_detail: str | None
     next_run_time: str
 
 
@@ -207,7 +206,7 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
     Returns:
         ExecutionDiagnosticsSummary with current execution state
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     one_hour_ago = now - timedelta(hours=1)
     twenty_four_hours_ago = now - timedelta(hours=24)
 
@@ -362,7 +361,7 @@ async def get_agent_diagnostics() -> AgentDiagnosticsSummary:
 
     return AgentDiagnosticsSummary(
         agents_with_active_executions=active_agents,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
     )
 
 
@@ -390,7 +389,7 @@ async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
     orphans = await _detect_orphaned_schedules(user_schedules)
 
     # Count schedules by next run time (exclude orphaned schedules)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     one_hour_from_now = now + timedelta(hours=1)
     twenty_four_hours_from_now = now + timedelta(hours=24)
 
@@ -632,7 +631,7 @@ def get_rabbitmq_cancel_queue_depth() -> int:
 
 async def get_all_schedules_details(
     limit: int = 100, offset: int = 0
-) -> List[ScheduleDetail]:
+) -> list[ScheduleDetail]:
     """
     Get detailed information about all user schedules via Scheduler service.
 
@@ -692,7 +691,7 @@ async def get_all_schedules_details(
     return results
 
 
-async def get_orphaned_schedules_details() -> List[OrphanedScheduleDetail]:
+async def get_orphaned_schedules_details() -> list[OrphanedScheduleDetail]:
     """
     Get detailed list of orphaned schedules with orphan reasons.
 
@@ -734,7 +733,7 @@ async def get_orphaned_schedules_details() -> List[OrphanedScheduleDetail]:
 
 
 async def cleanup_orphaned_schedules_bulk(
-    schedule_ids: List[str], admin_user_id: str
+    schedule_ids: list[str], admin_user_id: str
 ) -> int:
     """
     Cleanup multiple orphaned schedules by deleting from scheduler.
@@ -790,7 +789,7 @@ async def cleanup_orphaned_schedules_bulk(
 
 async def get_running_executions_details(
     limit: int = 100, offset: int = 0
-) -> List[RunningExecutionDetail]:
+) -> list[RunningExecutionDetail]:
     """
     Get detailed information about running and queued executions.
 
@@ -819,7 +818,7 @@ async def get_running_executions_details(
 
 async def get_orphaned_executions_details(
     limit: int = 100, offset: int = 0
-) -> List[RunningExecutionDetail]:
+) -> list[RunningExecutionDetail]:
     """
     Get detailed information about orphaned executions (>24h old, likely not in executor).
 
@@ -830,7 +829,7 @@ async def get_orphaned_executions_details(
     Returns:
         List of orphaned RunningExecutionDetail objects
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff = datetime.now(UTC) - timedelta(hours=24)
 
     executions = await AgentGraphExecution.prisma().find_many(
         where={
@@ -851,7 +850,7 @@ async def get_orphaned_executions_details(
 
 async def get_long_running_executions_details(
     limit: int = 100, offset: int = 0
-) -> List[RunningExecutionDetail]:
+) -> list[RunningExecutionDetail]:
     """
     Get detailed information about long-running executions (RUNNING status >24h).
 
@@ -862,7 +861,7 @@ async def get_long_running_executions_details(
     Returns:
         List of long-running RunningExecutionDetail objects
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff = datetime.now(UTC) - timedelta(hours=24)
 
     executions = await AgentGraphExecution.prisma().find_many(
         where={
@@ -881,7 +880,7 @@ async def get_long_running_executions_details(
 
 async def get_stuck_queued_executions_details(
     limit: int = 100, offset: int = 0
-) -> List[RunningExecutionDetail]:
+) -> list[RunningExecutionDetail]:
     """
     Get detailed information about stuck queued executions (QUEUED >1h, never started).
 
@@ -892,7 +891,7 @@ async def get_stuck_queued_executions_details(
     Returns:
         List of stuck queued RunningExecutionDetail objects
     """
-    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+    one_hour_ago = datetime.now(UTC) - timedelta(hours=1)
 
     executions = await AgentGraphExecution.prisma().find_many(
         where={
@@ -911,7 +910,7 @@ async def get_stuck_queued_executions_details(
 
 async def get_invalid_executions_details(
     limit: int = 100, offset: int = 0
-) -> List[RunningExecutionDetail]:
+) -> list[RunningExecutionDetail]:
     """
     Get detailed information about executions in invalid states.
 
@@ -961,7 +960,7 @@ async def get_failed_executions_count(hours: int = 24) -> int:
     Returns:
         Count of failed executions
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
     count = await get_graph_executions_count(
         statuses=[AgentExecutionStatus.FAILED],
         updated_time_gte=cutoff,
@@ -971,7 +970,7 @@ async def get_failed_executions_count(hours: int = 24) -> int:
 
 async def get_failed_executions_details(
     limit: int = 100, offset: int = 0, hours: int = 24
-) -> List[FailedExecutionDetail]:
+) -> list[FailedExecutionDetail]:
     """
     Get detailed information about failed executions.
 
@@ -983,7 +982,7 @@ async def get_failed_executions_details(
     Returns:
         List of FailedExecutionDetail objects
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
 
     executions = await AgentGraphExecution.prisma().find_many(
         where={
@@ -1048,7 +1047,7 @@ async def cleanup_orphaned_execution(execution_id: str, admin_user_id: str) -> b
         where={"id": execution_id},
         data={
             "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": datetime.now(timezone.utc),
+            "updatedAt": datetime.now(UTC),
         },
     )
 
@@ -1071,7 +1070,7 @@ async def stop_all_long_running_executions(admin_user_id: str) -> int:
     logger.info(f"Admin user {admin_user_id} stopping ALL long-running executions")
 
     # Find all long-running executions (started running >24h ago)
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff = datetime.now(UTC) - timedelta(hours=24)
     executions = await get_graph_executions(
         statuses=[AgentExecutionStatus.RUNNING],
         started_time_lte=cutoff,
@@ -1112,7 +1111,7 @@ async def stop_all_long_running_executions(admin_user_id: str) -> int:
         },
         data={
             "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": datetime.now(timezone.utc),
+            "updatedAt": datetime.now(UTC),
         },
     )
 
@@ -1123,14 +1122,14 @@ async def stop_all_long_running_executions(admin_user_id: str) -> int:
     return result
 
 
-async def get_all_orphaned_execution_ids() -> List[str]:
+async def get_all_orphaned_execution_ids() -> list[str]:
     """
     Get all orphaned execution IDs (>24h old, RUNNING or QUEUED).
 
     Returns:
         List of execution IDs that are orphaned
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff = datetime.now(UTC) - timedelta(hours=24)
 
     executions = await get_graph_executions(
         statuses=[AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED],
@@ -1141,7 +1140,7 @@ async def get_all_orphaned_execution_ids() -> List[str]:
 
 
 async def cleanup_orphaned_executions_bulk(
-    execution_ids: List[str], admin_user_id: str
+    execution_ids: list[str], admin_user_id: str
 ) -> int:
     """
     Cleanup multiple orphaned executions by directly updating DB status.
@@ -1171,7 +1170,7 @@ async def cleanup_orphaned_executions_bulk(
         },
         data={
             "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": datetime.now(timezone.utc),
+            "updatedAt": datetime.now(UTC),
         },
     )
 
@@ -1182,14 +1181,14 @@ async def cleanup_orphaned_executions_bulk(
     return result
 
 
-async def get_all_stuck_queued_execution_ids() -> List[str]:
+async def get_all_stuck_queued_execution_ids() -> list[str]:
     """
     Get all stuck queued execution IDs (QUEUED >1h).
 
     Returns:
         List of execution IDs that are stuck in QUEUED status
     """
-    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+    one_hour_ago = datetime.now(UTC) - timedelta(hours=1)
 
     executions = await get_graph_executions(
         statuses=[AgentExecutionStatus.QUEUED],
@@ -1213,7 +1212,7 @@ async def cleanup_all_stuck_queued_executions(admin_user_id: str) -> int:
     logger.info(f"Admin user {admin_user_id} cleaning up ALL stuck queued executions")
 
     # Find all stuck queued executions (>1h old)
-    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+    one_hour_ago = datetime.now(UTC) - timedelta(hours=1)
 
     result = await AgentGraphExecution.prisma().update_many(
         where={
@@ -1223,7 +1222,7 @@ async def cleanup_all_stuck_queued_executions(admin_user_id: str) -> int:
         },
         data={
             "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": datetime.now(timezone.utc),
+            "updatedAt": datetime.now(UTC),
         },
     )
 

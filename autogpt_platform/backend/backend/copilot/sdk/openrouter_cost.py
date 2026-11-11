@@ -321,7 +321,7 @@ class TurnGenerations:
 
 async def record_turn_cost_from_openrouter(
     *,
-    session: "ChatSession",
+    session: ChatSession,
     user_id: str | None,
     model: str | None,
     prompt_tokens: int,

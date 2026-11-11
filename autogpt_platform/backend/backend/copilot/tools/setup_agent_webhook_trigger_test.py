@@ -104,7 +104,7 @@ def _make_graph(
 def _make_preset(*, provider: str, webhook_id: str) -> LibraryAgentPreset:
     """The preset as the tool receives it: built by the library, sent by the
     database manager as JSON and rebuilt by the RPC client's validator."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     preset = LibraryAgentPreset(
         id="preset-1",
         user_id=_USER,

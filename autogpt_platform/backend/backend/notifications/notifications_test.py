@@ -8,7 +8,7 @@ suppress a resend, so an overlap is a duplicate email, not just wasted work.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -180,7 +180,7 @@ def _standing(
     trial_ended_days_ago: int | None = None,
     plan_ended_days_ago: int | None = None,
 ) -> ProductMailStanding:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return ProductMailStanding(
         email=email,
         subscription_tier=tier,
@@ -337,7 +337,7 @@ async def test_an_allowlist_naming_no_address_lets_no_one_through(audience):
     paying = _standing(SubscriptionTier.PRO)
 
     assert not (await _deliver(NotificationType.BRIEFING, paying)).sent
-    assert product_mail_audience_where(datetime.now(timezone.utc)) == {"id": {"in": []}}
+    assert product_mail_audience_where(datetime.now(UTC)) == {"id": {"in": []}}
 
 
 @pytest.mark.asyncio
@@ -378,7 +378,7 @@ def test_the_briefing_pass_selects_by_the_same_rule(audience):
     """`get_briefing_candidates` filters with this clause so the hourly pass
     doesn't queue work the consumer will drop. Its behaviour against a real
     table is pinned in `backend/data/product_mail_audience_test.py`."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     since = now - timedelta(days=7)
 
     assert product_mail_audience_where(now) == {

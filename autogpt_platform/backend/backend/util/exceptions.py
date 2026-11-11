@@ -1,6 +1,6 @@
 import re
+from collections.abc import Mapping
 from enum import Enum
-from typing import Mapping
 
 
 class BlockError(Exception):
@@ -326,19 +326,16 @@ class GraphActivationError(ValueError):
 class InvalidInputError(ValueError):
     """Raised when user input validation fails (e.g., search term too long)"""
 
-    pass
 
 
 class DatabaseError(Exception):
     """Raised when there is an error interacting with the database"""
 
-    pass
 
 
 class RedisError(Exception):
     """Raised when there is an error interacting with Redis"""
 
-    pass
 
 
 class LinkAlreadyExistsError(ValueError):

@@ -11,7 +11,7 @@ Covers the billing seams the orchestrator and the batch callbacks use:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -61,7 +61,7 @@ async def test_check_dream_budget_skips_paywalled_user_as_insufficient_credits()
 async def test_check_dream_budget_skips_when_user_is_over_daily_cap(
     chat_blocked_events,
 ):
-    reset_at = datetime(2026, 5, 22, tzinfo=timezone.utc)
+    reset_at = datetime(2026, 5, 22, tzinfo=UTC)
     with patch.object(
         billing_mod, "is_user_paywalled", new=AsyncMock(return_value=False)
     ), patch.object(

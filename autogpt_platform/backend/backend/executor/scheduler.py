@@ -12,9 +12,9 @@ import uuid
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future
 from contextlib import nullcontext
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Protocol, Union
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Protocol
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from zoneinfo import ZoneInfoNotFoundError
 
@@ -876,7 +876,7 @@ async def _tell_owner_why_skipped(
     notice = skip_notice(
         refusal,
         title=title,
-        now=datetime.now(tz=timezone.utc),
+        now=datetime.now(tz=UTC),
         run=run,
         user_timezone=args.user_timezone,
         # A routine's every fire time, not just this job's.
@@ -1059,7 +1059,7 @@ async def _reschedule_one_shot(
         await _drop_job_from_routine(args)
         return False
     try:
-        new_run_at = run_at or datetime.now(tz=timezone.utc) + timedelta(
+        new_run_at = run_at or datetime.now(tz=UTC) + timedelta(
             seconds=_CONCURRENCY_RETRY_DELAY_SECONDS
         )
         await get_scheduler_client().add_copilot_turn_schedule(
@@ -1198,7 +1198,7 @@ _AT_RESET_CANCEL_KEY_PREFIX = "copilot:at_reset_cancel:"
 # ever moved later: a write that stalled and lands after a newer cancel can't
 # put the older time back.
 _AT_RESET_CANCEL_MEMBER = "cancelled_at"
-_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 # How long writing or reading a cancel waits on Redis, whose client retries
 # for far longer, before going on with only this replica's memory of it.
 _AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS = 2
@@ -1346,7 +1346,7 @@ async def _rearm_at_reset_turn(args: "CopilotTurnJobArgs", *, reason: str) -> No
             f"{_MAX_AT_RESET_RETRIES} retries ({reason})"
         )
         return
-    run_at = datetime.now(tz=timezone.utc) + timedelta(
+    run_at = datetime.now(tz=UTC) + timedelta(
         seconds=_CONCURRENCY_RETRY_DELAY_SECONDS
     )
     logger.info(
@@ -1425,7 +1425,7 @@ def _put_back_onto(
 
 
 def _remember_at_reset_cancel(job_id: str) -> None:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     with _at_reset_cancels_lock:
         stale = [
             key
@@ -1914,7 +1914,7 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
         # so the polling client sees the run completed-as-skipped.
         from backend.copilot.dream.nightly_batch import NightlyBatchResult
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = NightlyBatchResult(
             user_id=user_id,
             nightly_id="",
@@ -2845,7 +2845,7 @@ class CopilotTurnJobInfo(CopilotTurnJobArgs):
 # Polymorphic schedule info — the kind discriminator picks the right shape
 # during deserialization on the client side.
 ScheduleInfo = Annotated[
-    Union[GraphExecutionJobInfo, CopilotTurnJobInfo],
+    GraphExecutionJobInfo | CopilotTurnJobInfo,
     Field(discriminator="kind"),
 ]
 
@@ -2921,7 +2921,7 @@ def _normalize_cron_day_of_week(cron: str) -> str:
 
 def _build_trigger(
     *, cron: str | None, run_at: datetime | None, user_timezone: str
-) -> Union[CronTrigger, DateTrigger]:
+) -> CronTrigger | DateTrigger:
     if (cron is None) == (run_at is None):
         raise ValueError("Exactly one of `cron` or `run_at` must be provided")
     try:
@@ -2966,7 +2966,7 @@ def _updated_graph_job_args(
 
 def _job_to_info(
     job: JobObj,
-) -> Union[GraphExecutionJobInfo, CopilotTurnJobInfo, None]:
+) -> GraphExecutionJobInfo | CopilotTurnJobInfo | None:
     """Materialize a polymorphic ``ScheduleInfo`` from an APScheduler job.
 
     Returns ``None`` if the job's kwargs don't deserialize as either kind
@@ -3330,7 +3330,7 @@ class Scheduler(AppService):
                 hours=6,
                 # Due now rather than called inline below: run_service() is what
                 # starts the event loop uvicorn binds the RPC port on.
-                next_run_time=datetime.now(timezone.utc)
+                next_run_time=datetime.now(UTC)
                 + timedelta(
                     hours=0 if config.scheduler_startup_embedding_backfill else 6
                 ),
@@ -3449,7 +3449,7 @@ class Scheduler(AppService):
     def _register_idle_credential_sweep(self) -> None:
         """Keep an existing daily job's overdue run or explicit pause intact."""
         job_id = "refresh_near_expiry_credentials"
-        trigger = CronTrigger(hour=3, minute=0, timezone=timezone.utc)
+        trigger = CronTrigger(hour=3, minute=0, timezone=UTC)
         existing = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
         if (
             existing is not None
@@ -3612,11 +3612,11 @@ class Scheduler(AppService):
         cron: str,
         input_data: GraphInput,
         input_credentials: dict[str, CredentialsMetaInput],
-        name: Optional[str] = None,
+        name: str | None = None,
         user_timezone: str | None = None,
-        organization_id: Optional[str] = None,
-        team_id: Optional[str] = None,
-        expert_id: Optional[str] = None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        expert_id: str | None = None,
     ) -> GraphExecutionJobInfo:
         name = normalize_schedule_name(name)
 
@@ -3674,7 +3674,7 @@ class Scheduler(AppService):
         session_id: str | None = None,
         cron: str | None = None,
         run_at: datetime | None = None,
-        name: Optional[str] = None,
+        name: str | None = None,
         user_timezone: str | None = None,
         cap_retry_count: int = 0,
         expert_lookup_retry_count: int = 0,
@@ -3752,7 +3752,7 @@ class Scheduler(AppService):
             credential_pins=credential_pins or {},
             routine_schedule_id=routine_schedule_id,
             purpose=purpose,
-            created_at=created_at or datetime.now(timezone.utc),
+            created_at=created_at or datetime.now(UTC),
         )
         if purpose != "followup":
             default_name = AT_RESET_JOB_NAMES[purpose]
@@ -3822,7 +3822,7 @@ class Scheduler(AppService):
     @expose
     def delete_graph_execution_schedule(
         self, schedule_id: str, user_id: str
-    ) -> Union[GraphExecutionJobInfo, CopilotTurnJobInfo]:
+    ) -> GraphExecutionJobInfo | CopilotTurnJobInfo:
         """Delete a schedule by id, regardless of kind.
 
         Endpoint name kept for wire back-compat; the client binding is
@@ -3843,11 +3843,11 @@ class Scheduler(AppService):
         self,
         schedule_id: str,
         user_id: str,
-        name: Optional[str] = None,
-        cron: Optional[str] = None,
-        user_timezone: Optional[str] = None,
-        input_data: Optional[GraphInput] = None,
-        input_credentials: Optional[dict[str, CredentialsMetaInput]] = None,
+        name: str | None = None,
+        cron: str | None = None,
+        user_timezone: str | None = None,
+        input_data: GraphInput | None = None,
+        input_credentials: dict[str, CredentialsMetaInput] | None = None,
     ) -> GraphExecutionJobInfo:
         """Change an agent schedule's name, timing or inputs in place.
 
@@ -3892,7 +3892,7 @@ class Scheduler(AppService):
             changes["trigger"] = trigger
             if job.next_run_time is not None:
                 changes["next_run_time"] = trigger.get_next_fire_time(
-                    None, datetime.now(timezone.utc)
+                    None, datetime.now(UTC)
                 )
         updated = self.scheduler.modify_job(
             schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
@@ -3906,7 +3906,7 @@ class Scheduler(AppService):
 
     def _authorized_job(
         self, schedule_id: str, user_id: str, *, action: str
-    ) -> tuple[JobObj, Union[GraphExecutionJobInfo, CopilotTurnJobInfo]]:
+    ) -> tuple[JobObj, GraphExecutionJobInfo | CopilotTurnJobInfo]:
         """Load a schedule and check *user_id* owns it.
 
         Shared by delete/pause/resume so all three authorize identically:
@@ -3997,7 +3997,7 @@ class Scheduler(AppService):
         }
         if job.next_run_time is not None:
             changes["next_run_time"] = trigger.get_next_fire_time(
-                None, datetime.now(timezone.utc)
+                None, datetime.now(UTC)
             )
         logger.info(f"Changing the cadence of job {schedule_id}")
         updated = self.scheduler.modify_job(
@@ -4392,7 +4392,7 @@ class Scheduler(AppService):
         organization_id: str | None = None,
         team_ids: list[str] | None = None,
         include_paused: bool = False,
-    ) -> list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]]:
+    ) -> list[GraphExecutionJobInfo | CopilotTurnJobInfo]:
         """Return schedules of both kinds, filtered by the given fields.
 
         *kind* may be ``"graph"``, ``"copilot_turn"``, or ``None`` for all.
@@ -4423,7 +4423,7 @@ class Scheduler(AppService):
             organization_id=organization_id,
             include_paused=include_paused,
         )
-        results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
+        results: list[GraphExecutionJobInfo | CopilotTurnJobInfo] = []
         for job in jobs:
             info = _job_to_info(job)
             if info is None:
@@ -4714,7 +4714,7 @@ class Scheduler(AppService):
         """
         trigger = IntervalTrigger(
             seconds=int(RECORDING_PURGE_INTERVAL.total_seconds()),
-            timezone=timezone.utc,
+            timezone=UTC,
         )
         existing = self.scheduler.get_job(
             RECORDING_PURGE_JOB_ID, jobstore=Jobstores.EXECUTION.value
@@ -5067,7 +5067,7 @@ class Scheduler(AppService):
             execute_held_wake,
             kwargs={"user_id": user_id, "session_id": session_id},
             trigger="date",
-            run_date=datetime.now(timezone.utc) + timedelta(seconds=delay_seconds),
+            run_date=datetime.now(UTC) + timedelta(seconds=delay_seconds),
             id=f"held_wake_{session_id}",
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=True,
@@ -5099,7 +5099,7 @@ class Scheduler(AppService):
             execute_nightly_batch_with_status,
             kwargs={"user_id": user_id, "job_id": job_id},
             trigger="date",
-            run_date=_dt.datetime.now(_dt.timezone.utc),
+            run_date=_dt.datetime.now(_dt.UTC),
             id=scheduler_job_id,
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=False,
@@ -5125,7 +5125,7 @@ class Scheduler(AppService):
             execute_dream_pass_with_status,
             kwargs={"user_id": user_id, "job_id": job_id, "force": force},
             trigger="date",
-            run_date=_dt.datetime.now(_dt.timezone.utc),
+            run_date=_dt.datetime.now(_dt.UTC),
             id=scheduler_job_id,
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=False,
@@ -5148,7 +5148,7 @@ class Scheduler(AppService):
             execute_community_rebuild_with_status,
             kwargs={"user_id": user_id, "job_id": job_id},
             trigger="date",
-            run_date=_dt.datetime.now(_dt.timezone.utc),
+            run_date=_dt.datetime.now(_dt.UTC),
             id=scheduler_job_id,
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=False,

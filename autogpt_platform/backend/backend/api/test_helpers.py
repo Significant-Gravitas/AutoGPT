@@ -1,7 +1,8 @@
 """Helper functions for improved test assertions and error handling."""
 
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any
 
 
 @contextmanager

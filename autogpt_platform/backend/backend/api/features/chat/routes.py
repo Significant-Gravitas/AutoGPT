@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
@@ -23,9 +23,8 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
 from backend.blocks.desktop._api import DesktopStream
-from backend.copilot import active_turns
+from backend.copilot import active_turns, stream_registry, turn_queue
 from backend.copilot import service as chat_service
-from backend.copilot import stream_registry, turn_queue
 from backend.copilot.active_turns import (
     ConcurrentTurnLimitError,
     get_inflight_turn_limit,
@@ -342,8 +341,8 @@ async def _try_release_orphan_running(
     # change can't make this subtraction raise ``TypeError``.
     updated_at = meta.updated_at
     if updated_at.tzinfo is None:
-        updated_at = updated_at.replace(tzinfo=timezone.utc)
-    age = (datetime.now(timezone.utc) - updated_at).total_seconds()
+        updated_at = updated_at.replace(tzinfo=UTC)
+    age = (datetime.now(UTC) - updated_at).total_seconds()
     if age <= active_turns.ORPHAN_RUNNING_RESET_SECONDS:
         return False
     if cancel_background:
@@ -2378,7 +2377,7 @@ async def stream_chat_post(
                         )
                         break
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield StreamHeartbeat().to_sse()
 
         except GeneratorExit:
@@ -2630,7 +2629,7 @@ def _resume_response(
             while True:
                 try:
                     entry = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield StreamHeartbeat().to_sse()
                     continue
                 frame_id, chunk = entry

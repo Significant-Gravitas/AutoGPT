@@ -78,7 +78,7 @@ async def fetch_warm_context(
             _fetch(scope, message, recipe=recipe, ratify=ratify),
             timeout=effective_timeout,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(
             "Graphiti warm context timed out after %.1fs",
             effective_timeout,

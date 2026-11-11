@@ -6,7 +6,7 @@ Provides access to agent runs and human-in-the-loop reviews.
 
 import logging
 from datetime import datetime
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission, ReviewStatus
@@ -58,10 +58,10 @@ runs_router = APIRouter(tags=["runs"])
     operation_id="listAgentRunReviews",
 )
 async def list_reviews(
-    run_id: Optional[str] = Query(
+    run_id: str | None = Query(
         default=None, description="Filter by graph execution ID"
     ),
-    review_status: Optional[AgentRunReviewStatus] = Query(
+    review_status: AgentRunReviewStatus | None = Query(
         default=None,
         alias="status",
         description="Filter by review status",
@@ -149,18 +149,18 @@ async def submit_reviews(
     operation_id="listAgentRuns",
 )
 async def list_runs(
-    graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
+    graph_id: str | None = Query(default=None, description="Filter by graph ID"),
     # `Annotated`, not `= Query(...)`: the latter leaves the sentinel as the
     # Python default, and this handler is also called directly in tests.
     statuses: Annotated[
-        Optional[list[RunStatus]],
+        list[RunStatus] | None,
         Query(description="Filter by run status; repeat to match several"),
     ] = None,
     started_after: Annotated[
-        Optional[datetime], Query(description="Only runs created at or after this time")
+        datetime | None, Query(description="Only runs created at or after this time")
     ] = None,
     started_before: Annotated[
-        Optional[datetime],
+        datetime | None,
         Query(description="Only runs created at or before this time"),
     ] = None,
     page: PageRequest = Depends(page_request),

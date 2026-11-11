@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,9 +15,9 @@ from backend.copilot.scheduled_chats.notices import (
 )
 from backend.copilot.turn_queue import TurnRefusal
 
-_NOW = datetime(2026, 10, 11, 14, 9, tzinfo=timezone.utc)
-_MIDNIGHT = datetime(2026, 10, 12, tzinfo=timezone.utc)
-_MONDAY = datetime(2026, 10, 12, tzinfo=timezone.utc)
+_NOW = datetime(2026, 10, 11, 14, 9, tzinfo=UTC)
+_MIDNIGHT = datetime(2026, 10, 12, tzinfo=UTC)
+_MONDAY = datetime(2026, 10, 12, tzinfo=UTC)
 
 
 def _usage(window: str, resets_at: datetime | None = _MIDNIGHT) -> TurnRefusal:
@@ -229,7 +229,7 @@ def test_a_schedule_says_it_once_per_window():
     first = skip_notice(_usage("daily"), title="Briefing", now=_NOW, run="recurring")
     again = skip_notice(_usage("daily"), title="Briefing", now=_NOW, run="recurring")
     tomorrow = skip_notice(
-        _usage("daily", datetime(2026, 10, 13, tzinfo=timezone.utc)),
+        _usage("daily", datetime(2026, 10, 13, tzinfo=UTC)),
         title="Briefing",
         now=_NOW,
         run="recurring",
@@ -253,13 +253,13 @@ def test_no_plan_says_it_at_most_weekly():
     saturday = skip_notice(
         refusal,
         title="B",
-        now=datetime(2026, 10, 10, tzinfo=timezone.utc),
+        now=datetime(2026, 10, 10, tzinfo=UTC),
         run="recurring",
     )
     monday = skip_notice(
         refusal,
         title="B",
-        now=datetime(2026, 10, 12, tzinfo=timezone.utc),
+        now=datetime(2026, 10, 12, tzinfo=UTC),
         run="recurring",
     )
     assert sunday and saturday and monday

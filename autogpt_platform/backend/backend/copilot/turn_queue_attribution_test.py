@@ -1,7 +1,7 @@
 """Attribution survives the database FIFO before RabbitMQ publication."""
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -37,8 +37,8 @@ def fifo(monkeypatch: pytest.MonkeyPatch):
         session_id="session-1",
         user_id="user-1",
         usage=[],
-        started_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     session.metadata.llm_auth_provider = "platform"
     session.metadata.llm_credential_id = None
@@ -86,7 +86,7 @@ def pending(metadata):
         role="user",
         content="queued work",
         sequence=1,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         metadata=metadata,
     )
 

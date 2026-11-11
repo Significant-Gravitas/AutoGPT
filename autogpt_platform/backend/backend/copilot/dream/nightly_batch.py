@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import logging
 import uuid as uuidlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -127,7 +127,7 @@ async def run_nightly_batch_submit(
     job, ``admin`` when an admin ran the fan-out on demand.
     """
     nightly_id = str(uuidlib.uuid4())
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
 
     # One pre-flight billing check for the whole fan-out: a paywalled /
     # over-budget user costs us one LD lookup + one Redis read for the
@@ -157,7 +157,7 @@ def _budget_stopped(
 ) -> NightlyBatchResult:
     """The fan-out the pre-flight billing check stopped: errored when the
     budget could not be read, else skipped."""
-    completed_at = datetime.now(timezone.utc)
+    completed_at = datetime.now(UTC)
     elapsed = (completed_at - started_at).total_seconds()
     if budget_skip == "rate_limit_unavailable":
         return NightlyBatchResult(
@@ -261,7 +261,7 @@ async def _submit_learning(result: NightlyBatchResult) -> None:
 
 
 def _finished(result: NightlyBatchResult) -> NightlyBatchResult:
-    completed_at = datetime.now(timezone.utc)
+    completed_at = datetime.now(UTC)
     result.completed_at = completed_at
     result.elapsed_seconds = (completed_at - result.started_at).total_seconds()
     logger.info(

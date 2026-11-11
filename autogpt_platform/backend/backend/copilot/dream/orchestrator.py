@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TypeVar
 
 from pydantic import BaseModel, ConfigDict
@@ -341,7 +341,7 @@ async def _read_last_completed_marker(scope: MemoryScope) -> datetime | None:
             user_id[:12],
         )
         return None
-    return marker if marker.tzinfo else marker.replace(tzinfo=timezone.utc)
+    return marker if marker.tzinfo else marker.replace(tzinfo=UTC)
 
 
 async def _stamp_last_completed_marker(scope: MemoryScope, as_of: datetime) -> None:
@@ -714,7 +714,7 @@ def _applied_result(
         user_id=run.user_id,
         pass_id=run.pass_id,
         started_at=run.started_at,
-        completed_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(UTC),
         elapsed_seconds=run.elapsed_seconds(),
         execution_path=run.execution_path,
         dropped_forgotten=_as_int("dropped_forgotten"),

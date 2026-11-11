@@ -1,5 +1,6 @@
 import logging
-from typing import Annotated, Awaitable
+from collections.abc import Awaitable
+from typing import Annotated
 
 import stripe
 from autogpt_libs.auth import get_user_id

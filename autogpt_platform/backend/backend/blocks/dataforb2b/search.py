@@ -1,4 +1,3 @@
-from typing import Optional
 
 from backend.blocks.dataforb2b._api import DataForB2BClient
 from backend.blocks.dataforb2b._config import (
@@ -123,7 +122,7 @@ class _CommonSearchFields:
 class _PeopleFilterFields(_CommonSearchFields):
     """Filter slots for people search — column is a PeopleColumn dropdown."""
 
-    filter_1_column: Optional[PeopleColumn] = SchemaField(
+    filter_1_column: PeopleColumn | None = SchemaField(
         title="Filter 1 Column",
         description="Filter 1 column",
         default=None,
@@ -145,7 +144,7 @@ class _PeopleFilterFields(_CommonSearchFields):
         placeholder=PEOPLE_VALUE_PLACEHOLDER,
         advanced=False,
     )
-    filter_2_column: Optional[PeopleColumn] = SchemaField(
+    filter_2_column: PeopleColumn | None = SchemaField(
         title="Filter 2 Column",
         description="Filter 2 column",
         default=None,
@@ -160,7 +159,7 @@ class _PeopleFilterFields(_CommonSearchFields):
     filter_2_value: str = SchemaField(
         title="Filter 2 Value", description="Filter 2 value", default="", advanced=True
     )
-    filter_3_column: Optional[PeopleColumn] = SchemaField(
+    filter_3_column: PeopleColumn | None = SchemaField(
         title="Filter 3 Column",
         description="Filter 3 column",
         default=None,
@@ -175,7 +174,7 @@ class _PeopleFilterFields(_CommonSearchFields):
     filter_3_value: str = SchemaField(
         title="Filter 3 Value", description="Filter 3 value", default="", advanced=True
     )
-    filter_4_column: Optional[PeopleColumn] = SchemaField(
+    filter_4_column: PeopleColumn | None = SchemaField(
         title="Filter 4 Column",
         description="Filter 4 column",
         default=None,
@@ -190,7 +189,7 @@ class _PeopleFilterFields(_CommonSearchFields):
     filter_4_value: str = SchemaField(
         title="Filter 4 Value", description="Filter 4 value", default="", advanced=True
     )
-    filter_5_column: Optional[PeopleColumn] = SchemaField(
+    filter_5_column: PeopleColumn | None = SchemaField(
         title="Filter 5 Column",
         description="Filter 5 column",
         default=None,
@@ -210,7 +209,7 @@ class _PeopleFilterFields(_CommonSearchFields):
 class _CompanyFilterFields(_CommonSearchFields):
     """Filter slots for company search — column is a CompanyColumn dropdown."""
 
-    filter_1_column: Optional[CompanyColumn] = SchemaField(
+    filter_1_column: CompanyColumn | None = SchemaField(
         title="Filter 1 Column",
         description="Filter 1 column",
         default=None,
@@ -232,7 +231,7 @@ class _CompanyFilterFields(_CommonSearchFields):
         placeholder=COMPANY_VALUE_PLACEHOLDER,
         advanced=False,
     )
-    filter_2_column: Optional[CompanyColumn] = SchemaField(
+    filter_2_column: CompanyColumn | None = SchemaField(
         title="Filter 2 Column",
         description="Filter 2 column",
         default=None,
@@ -247,7 +246,7 @@ class _CompanyFilterFields(_CommonSearchFields):
     filter_2_value: str = SchemaField(
         title="Filter 2 Value", description="Filter 2 value", default="", advanced=True
     )
-    filter_3_column: Optional[CompanyColumn] = SchemaField(
+    filter_3_column: CompanyColumn | None = SchemaField(
         title="Filter 3 Column",
         description="Filter 3 column",
         default=None,
@@ -262,7 +261,7 @@ class _CompanyFilterFields(_CommonSearchFields):
     filter_3_value: str = SchemaField(
         title="Filter 3 Value", description="Filter 3 value", default="", advanced=True
     )
-    filter_4_column: Optional[CompanyColumn] = SchemaField(
+    filter_4_column: CompanyColumn | None = SchemaField(
         title="Filter 4 Column",
         description="Filter 4 column",
         default=None,
@@ -277,7 +276,7 @@ class _CompanyFilterFields(_CommonSearchFields):
     filter_4_value: str = SchemaField(
         title="Filter 4 Value", description="Filter 4 value", default="", advanced=True
     )
-    filter_5_column: Optional[CompanyColumn] = SchemaField(
+    filter_5_column: CompanyColumn | None = SchemaField(
         title="Filter 5 Column",
         description="Filter 5 column",
         default=None,
@@ -295,8 +294,8 @@ class _CompanyFilterFields(_CommonSearchFields):
 
 
 def _validate_operator(
-    column: Optional[PeopleColumn | CompanyColumn],
-    operator: Optional[FilterOperator],
+    column: PeopleColumn | CompanyColumn | None,
+    operator: FilterOperator | None,
 ) -> None:
     if not column:
         return

@@ -14,7 +14,7 @@ import json
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -61,7 +61,7 @@ from .dream_pass_models import (
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-_NOW = datetime.now(timezone.utc).replace(microsecond=0)
+_NOW = datetime.now(UTC).replace(microsecond=0)
 _SENTENCE = "Alice runs the Atlas launch"
 _FORGOTTEN = "fact-forgotten"
 

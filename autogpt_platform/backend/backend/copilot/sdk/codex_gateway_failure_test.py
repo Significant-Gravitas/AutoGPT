@@ -143,17 +143,16 @@ class TestASpentChatGPTQuota:
                 agent_session=session,
                 credential_id="cred-chatgpt-2",
                 model="gpt-5.6-terra",
-            ) as gateway:
-                async with ClientSession() as client:
-                    response = await client.post(
-                        f"{gateway.base_url}/v1/messages",
-                        headers={"Authorization": f"Bearer {gateway.auth_token}"},
-                        json={
-                            "stream": True,
-                            "messages": [{"role": "user", "content": "hello"}],
-                        },
-                    )
-                    await response.read()
+            ) as gateway, ClientSession() as client:
+                response = await client.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers={"Authorization": f"Bearer {gateway.auth_token}"},
+                    json={
+                        "stream": True,
+                        "messages": [{"role": "user", "content": "hello"}],
+                    },
+                )
+                await response.read()
 
         assert response.status == 429
         failure = gateway.last_failure

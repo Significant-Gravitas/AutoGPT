@@ -25,10 +25,9 @@ from . import cache as store_cache
 from . import categories as store_categories
 from . import db as store_db
 from . import image_gen as store_image_gen
-from . import local_media
+from . import local_media, submission_media
 from . import media as store_media
 from . import model as store_model
-from . import submission_media
 
 logger = logging.getLogger(__name__)
 

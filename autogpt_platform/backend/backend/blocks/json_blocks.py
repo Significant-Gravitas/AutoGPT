@@ -51,7 +51,7 @@ class JSONEncoderBlock(Block):
             json_str = dumps(input_data.data)
             yield "json_str", json_str
         except (orjson.JSONEncodeError, RecursionError, TypeError, ValueError) as e:
-            raise ValueError(f"JSON Encoding Error: {str(e)}") from e
+            raise ValueError(f"JSON Encoding Error: {e!s}") from e
 
 
 class JSONDecoderBlock(Block):
@@ -89,4 +89,4 @@ class JSONDecoderBlock(Block):
             parsed_data = loads(input_data.json_str)
             yield "data", parsed_data
         except orjson.JSONDecodeError as e:
-            raise ValueError(f"JSON Decoding Error: {str(e)}") from e
+            raise ValueError(f"JSON Decoding Error: {e!s}") from e

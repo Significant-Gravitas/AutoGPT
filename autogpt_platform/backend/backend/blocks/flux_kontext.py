@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
@@ -88,7 +88,7 @@ class AIImageEditorBlock(Block):
             description="Text instruction describing the desired edit",
             title="Prompt",
         )
-        input_image: Optional[MediaFileType] = SchemaField(
+        input_image: MediaFileType | None = SchemaField(
             description="Reference image URI (jpeg, png, gif, webp)",
             default=None,
             title="Input Image",
@@ -99,7 +99,7 @@ class AIImageEditorBlock(Block):
             title="Aspect Ratio",
             advanced=False,
         )
-        seed: Optional[int] = SchemaField(
+        seed: int | None = SchemaField(
             description="Random seed. Set for reproducible generation (Flux Kontext only; ignored by Nano Banana models)",
             default=None,
             title="Seed",
@@ -187,9 +187,9 @@ class AIImageEditorBlock(Block):
         api_key: SecretStr,
         model: ImageEditorModel,
         prompt: str,
-        input_image_b64: Optional[str],
+        input_image_b64: str | None,
         aspect_ratio: str,
-        seed: Optional[int],
+        seed: int | None,
         user_id: str,
         graph_exec_id: str,
     ) -> MediaFileType:

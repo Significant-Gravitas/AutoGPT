@@ -1,4 +1,4 @@
-from typing import Annotated, Optional
+from typing import Annotated
 
 from autogpt_libs.auth import reject_closed_account
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
@@ -29,9 +29,9 @@ class VerifiedCredential(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    credential: Optional[str]
-    auth: Optional[APIAuthorizationInfo] = None
-    rejection: Optional[HTTPException] = None
+    credential: str | None
+    auth: APIAuthorizationInfo | None = None
+    rejection: HTTPException | None = None
 
 
 # Every path rejects a closed account's key or token with a 401: deletion
@@ -117,7 +117,7 @@ async def resolve_request_auth(
     return verified.auth
 
 
-def verified_credential(scope: Scope) -> Optional[VerifiedCredential]:
+def verified_credential(scope: Scope) -> VerifiedCredential | None:
     """What this request's credential already verified as, if it was checked."""
     verified = scope.get("state", {}).get(_REQUEST_AUTH)
     return verified if isinstance(verified, VerifiedCredential) else None

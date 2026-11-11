@@ -7,9 +7,8 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from prisma.errors import UniqueViolationError
-from prisma.models import ChatMessage
+from prisma.models import ChatMessage, Expert, User
 from prisma.models import ChatSession as PrismaChatSession
-from prisma.models import Expert, User
 
 from backend.copilot import db as copilot_db
 from backend.copilot.model import ChatSession, ChatSessionMetadata

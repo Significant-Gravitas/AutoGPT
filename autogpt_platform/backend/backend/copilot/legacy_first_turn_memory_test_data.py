@@ -3,7 +3,7 @@
 ``first_turn_memory_backfill.py`` and the engines' restores."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -12,7 +12,7 @@ from graphiti_core.nodes import EpisodeType, EpisodicNode
 
 from backend.copilot.graphiti.context import _format_context
 
-NOW = datetime(2025, 6, 1, tzinfo=timezone.utc)
+NOW = datetime(2025, 6, 1, tzinfo=UTC)
 SKILLS = (
     "Skills are reusable procedures.\n"
     "- name: deploy — Ship the app — triggers: deploy, ship"

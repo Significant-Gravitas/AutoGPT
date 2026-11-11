@@ -12,7 +12,7 @@ TestClient's own loop would strand the Prisma connection the next test needs.
 
 import logging
 from collections.abc import AsyncIterator, Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import ANY, AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -725,7 +725,7 @@ async def test_the_account_cannot_be_kept_after_the_grace_period(
     await api.post(DELETE, json=account.confirm())
     await AccountDeletionRequest.prisma().update(
         where={"userId": account.user_id},
-        data={"eraseAfter": datetime.now(timezone.utc) - timedelta(minutes=1)},
+        data={"eraseAfter": datetime.now(UTC) - timedelta(minutes=1)},
     )
 
     response = await api.post(RESTORE)
@@ -744,7 +744,7 @@ async def test_the_account_cannot_be_kept_once_its_erasure_started(
     await api.post(DELETE, json=account.confirm())
     await AccountDeletionRequest.prisma().update(
         where={"userId": account.user_id},
-        data={"startedAt": datetime.now(timezone.utc)},
+        data={"startedAt": datetime.now(UTC)},
     )
 
     status = await api.get(STATUS)
@@ -1117,7 +1117,7 @@ async def _api_key_status(account: Account) -> APIKeyStatus:
 
 
 def _days_ago(days: int) -> datetime:
-    return datetime.now(timezone.utc) - timedelta(days=days)
+    return datetime.now(UTC) - timedelta(days=days)
 
 
 async def _add_session(user_id: str) -> None:
@@ -1126,7 +1126,7 @@ async def _add_session(user_id: str) -> None:
             "id": str(uuid4()),
             "token": str(uuid4()),
             "userId": user_id,
-            "expiresAt": datetime.now(timezone.utc) + timedelta(days=1),
+            "expiresAt": datetime.now(UTC) + timedelta(days=1),
         }
     )
 

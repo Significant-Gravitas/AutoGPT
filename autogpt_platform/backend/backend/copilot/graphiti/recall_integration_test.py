@@ -18,7 +18,7 @@ Run with FalkorDB reachable (see ``conftest.py``)::
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from graphiti_core.edges import EntityEdge
@@ -223,7 +223,7 @@ async def test_retracted_fact_is_neither_gathered_nor_ratified_by_the_dream(
     await retract(scope, [active[ALICE[2]], tentative[CAROL[2]]])
 
     facts = await _fetch_active_facts(driver, scope.group_id, 50)
-    window_start = datetime.now(timezone.utc) - timedelta(days=14)
+    window_start = datetime.now(UTC) - timedelta(days=14)
     episodes = await _fetch_recent_episodes(driver, scope.group_id, window_start, 50)
 
     assert facts == []

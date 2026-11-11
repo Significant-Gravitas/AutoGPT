@@ -12,9 +12,8 @@ from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.asyncio.retry import Retry as AsyncRetry
 from redis.backoff import ExponentialBackoff, NoBackoff
 from redis.cluster import ClusterNode, RedisCluster
-from redis.exceptions import ClusterDownError
+from redis.exceptions import ClusterDownError, RedisError
 from redis.exceptions import ConnectionError as RedisConnectionError
-from redis.exceptions import RedisError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 from redis.retry import Retry
 

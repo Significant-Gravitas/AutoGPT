@@ -1,7 +1,7 @@
 """revoke_issued_access: what AutoGPT issued on the user's behalf stops working."""
 
 import secrets
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock
 from uuid import uuid4
 

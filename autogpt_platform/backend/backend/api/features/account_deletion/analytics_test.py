@@ -1,13 +1,13 @@
 """The plan and account-age buckets the account deletion events carry."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from prisma.enums import SubscriptionTier
 
 from backend.api.features.account_deletion.analytics import plan_state, tenure_bucket
 
-NOW = datetime(2026, 10, 12, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 12, 12, 0, tzinfo=UTC)
 SECOND = timedelta(seconds=1)
 
 
@@ -56,6 +56,6 @@ def test_tenure_bucket(age: timedelta, expected: str):
 
 
 def test_tenure_is_measured_up_to_now_by_default():
-    created_at = datetime.now(timezone.utc) - timedelta(days=8)
+    created_at = datetime.now(UTC) - timedelta(days=8)
 
     assert tenure_bucket(created_at) == "7-30d"

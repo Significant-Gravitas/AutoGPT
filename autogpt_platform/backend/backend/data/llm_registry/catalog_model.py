@@ -80,7 +80,7 @@ class CatalogModelCost(BaseModel):
     provider_cache_creation_usd_per_1m: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
-    def _provider_usd_both_or_neither(self) -> "CatalogModelCost":
+    def _provider_usd_both_or_neither(self) -> CatalogModelCost:
         # A half-authored provider price would silently fall back to the
         # transport module's (cheaper) family default — underpricing a
         # premium SKU with no error. Refuse the partial state at authoring.
@@ -94,7 +94,7 @@ class CatalogModelCost(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _provider_cache_usd_needs_base_price(self) -> "CatalogModelCost":
+    def _provider_cache_usd_needs_base_price(self) -> CatalogModelCost:
         # A cache price alone would price the cache buckets of a call while
         # its plain input and output stayed unpriced.
         has_cache_price = (

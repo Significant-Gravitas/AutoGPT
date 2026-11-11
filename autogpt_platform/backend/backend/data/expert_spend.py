@@ -13,7 +13,7 @@ without losing data.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from backend.data.redis_client import get_redis, get_redis_async
@@ -32,7 +32,7 @@ def weekly_spend_key(expert_id: str, now: datetime | None = None) -> str:
 
 
 def spend_key(expert_id: str, window: SpendWindow, now: datetime | None = None) -> str:
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     if window == "day":
         return f"expert-spend:{expert_id}:{now:%Y-%m-%d}"
     year, week, _ = now.isocalendar()
@@ -41,7 +41,7 @@ def spend_key(expert_id: str, window: SpendWindow, now: datetime | None = None) 
 
 def window_start(window: SpendWindow, now: datetime | None = None) -> datetime:
     """First instant of the bucket ``now`` falls in (UTC)."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     if window == "day":
         return day

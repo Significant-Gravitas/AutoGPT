@@ -2090,15 +2090,14 @@ async def test_codex_queue_route_mismatch_fails_before_credential_acquire():
         patch(
             "backend.copilot.executor.processor.stream_registry.mark_session_completed",
             mark_completed,
-        ),
+        ),pytest.raises(RuntimeError, match="codex_session_route_mismatch")
     ):
-        with pytest.raises(RuntimeError, match="codex_session_route_mismatch"):
-            await CoPilotProcessor()._execute_async(
-                _codex_entry(credential_id="queued-stale"),
-                threading.Event(),
-                MagicMock(),
-                _make_log(),
-            )
+        await CoPilotProcessor()._execute_async(
+            _codex_entry(credential_id="queued-stale"),
+            threading.Event(),
+            MagicMock(),
+            _make_log(),
+        )
 
     transport.acquire_runtime_lease.assert_not_awaited()
     mark_completed.assert_awaited_once_with(
@@ -2183,15 +2182,14 @@ async def test_codex_busy_credential_fails_closed_without_platform_fallback():
         patch(
             "backend.copilot.executor.processor.stream_registry.mark_session_completed",
             mark_completed,
-        ),
+        ),pytest.raises(RuntimeError, match="codex_credential_busy")
     ):
-        with pytest.raises(RuntimeError, match="codex_credential_busy"):
-            await CoPilotProcessor()._execute_async(
-                _codex_entry(),
-                threading.Event(),
-                MagicMock(),
-                _make_log(),
-            )
+        await CoPilotProcessor()._execute_async(
+            _codex_entry(),
+            threading.Event(),
+            MagicMock(),
+            _make_log(),
+        )
 
     baseline_stream.assert_not_called()
     sdk_stream.assert_not_called()

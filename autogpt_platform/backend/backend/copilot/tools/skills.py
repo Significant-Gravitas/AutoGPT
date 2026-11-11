@@ -68,15 +68,18 @@ from backend.data.db_accessors import (
     workspace_skill_db,
 )
 from backend.data.redis_client import get_redis_async
-from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
+from backend.data.skill_capacity import (
+    MAX_SKILLS_PER_EXPERT,
+    SKILL_ORIGIN_MARKETPLACE,
+    SKILL_ORIGIN_USER,
+    SkillLimitError,
+    SkillOwnedError,
+    skill_name_key,
+)
 from backend.data.skill_capacity import SKILL_ORIGIN_LABELS as _ORIGIN_LABELS
-from backend.data.skill_capacity import SKILL_ORIGIN_MARKETPLACE
 from backend.data.skill_capacity import SKILL_ORIGIN_METADATA_KEY as _META_SKILL_ORIGIN
-from backend.data.skill_capacity import SKILL_ORIGIN_USER
 from backend.data.skill_capacity import SKILL_ORIGINS as _SKILL_ORIGINS
-from backend.data.skill_capacity import SkillLimitError, SkillOwnedError
 from backend.data.skill_capacity import normalize_skill_origin as _normalize_origin
-from backend.data.skill_capacity import skill_name_key
 from backend.data.skill_content_approvals import SkillContentApproval
 from backend.data.skill_deletion import DeletedBehavior
 from backend.data.skill_learning import owner_key_for
@@ -2236,7 +2239,7 @@ async def _update_copy(
     expert_id: str | None,
     scope: WorkspaceScope | None,
     skill: ParsedSkill,
-    current: "ActiveSkillVersion",
+    current: ActiveSkillVersion,
 ) -> str | None:
     """Move one copy to the listing's active version. Returns what happened,
     or None when the copy has to be left alone: edited with no version to
@@ -2315,7 +2318,7 @@ async def _update_copy(
 
 
 async def _prove_baseline(
-    working_hash: str, current: "ActiveSkillVersion"
+    working_hash: str, current: ActiveSkillVersion
 ) -> SkillBaseline | None:
     """The baseline of a copy installed before baselines were recorded.
 
@@ -2392,7 +2395,7 @@ async def _read_working_package(
     return package
 
 
-def _as_package(version: "SkillVersionPackage") -> dict[str, PackageFile]:
+def _as_package(version: SkillVersionPackage) -> dict[str, PackageFile]:
     package = {SKILL_MD: PackageFile(content=version.skill_markdown.encode("utf-8"))}
     for entry in version.files:
         package[entry.relative_path] = PackageFile(

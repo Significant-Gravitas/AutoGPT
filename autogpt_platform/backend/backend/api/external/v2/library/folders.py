@@ -1,7 +1,6 @@
 """V2 External API - Library Folder Endpoints"""
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Security
 from prisma.enums import APIKeyPermission
@@ -30,7 +29,7 @@ folders_router = APIRouter(tags=["library"])
     operation_id="listLibraryFolders",
 )
 async def list_folders(
-    parent_id: Optional[str] = Query(
+    parent_id: str | None = Query(
         default=None, description="Filter by parent folder ID. Omit for root folders."
     ),
     page: PageRequest = Depends(page_request),

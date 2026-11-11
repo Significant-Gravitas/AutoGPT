@@ -12,7 +12,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -138,7 +138,7 @@ def test_build_trigger_requires_exactly_one_of_cron_or_run_at():
     with pytest.raises(ValueError, match="Exactly one"):
         _build_trigger(
             cron="* * * * *",
-            run_at=datetime.now(tz=timezone.utc),
+            run_at=datetime.now(tz=UTC),
             user_timezone="UTC",
         )
 
@@ -172,7 +172,7 @@ def test_build_trigger_refuses_an_overlong_cron_before_parsing_it():
 
 
 def test_build_trigger_run_at_returns_datetrigger():
-    when = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+    when = datetime.now(tz=UTC) + timedelta(hours=1)
     trigger = _build_trigger(cron=None, run_at=when, user_timezone="UTC")
     assert isinstance(trigger, DateTrigger)
 
@@ -184,7 +184,7 @@ def test_build_trigger_run_at_returns_datetrigger():
 
 def test_next_run_time_iso_returns_isoformat_when_set():
     job = MagicMock()
-    job.next_run_time = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+    job.next_run_time = datetime(2026, 5, 22, 10, 0, tzinfo=UTC)
     assert _next_run_time_iso(job) == "2026-05-22T10:00:00+00:00"
 
 
@@ -204,7 +204,7 @@ def _mock_job(kwargs: dict) -> MagicMock:
     job.kwargs = kwargs
     job.id = kwargs.get("schedule_id", "fake-id")
     job.name = "fake-name"
-    job.next_run_time = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+    job.next_run_time = datetime(2026, 5, 22, 10, 0, tzinfo=UTC)
     job.trigger = MagicMock()
     job.trigger.timezone = "UTC"
     return job
@@ -311,7 +311,7 @@ async def test_expert_scope_status_archived_is_not_missing():
 @pytest.mark.asyncio
 async def test_expert_scope_status_paused_is_not_missing():
     get_expert = AsyncMock(
-        return_value=_expert_row(schedules_paused_at=datetime.now(tz=timezone.utc))
+        return_value=_expert_row(schedules_paused_at=datetime.now(tz=UTC))
     )
     with _patched_experts_db(get_expert):
         assert await _expert_scope_status("user-1", "expert-1") == "paused"
@@ -342,7 +342,7 @@ def _args(**overrides) -> CopilotTurnJobArgs:
         user_id="user-1",
         session_id="session-1",
         message="check CI",
-        run_at=datetime.now(tz=timezone.utc) + timedelta(seconds=60),
+        run_at=datetime.now(tz=UTC) + timedelta(seconds=60),
     )
     base.update(overrides)
     return CopilotTurnJobArgs(**base)
@@ -1028,7 +1028,7 @@ async def test_self_delete_copilot_turn_no_op_without_schedule_id():
         user_id="u",
         session_id="s",
         message="m",
-        run_at=datetime.now(tz=timezone.utc),
+        run_at=datetime.now(tz=UTC),
     )
     mock_client = AsyncMock()
     with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
@@ -1546,7 +1546,7 @@ def test_copilot_turn_args_expert_id_defaults_to_none():
         user_id="u",
         session_id="s",
         message="m",
-        run_at=datetime.now(tz=timezone.utc),
+        run_at=datetime.now(tz=UTC),
     )
     assert args.expert_id is None
 
@@ -1556,7 +1556,7 @@ def test_copilot_turn_args_cap_retry_count_defaults_to_zero():
         user_id="u",
         session_id="s",
         message="m",
-        run_at=datetime.now(tz=timezone.utc),
+        run_at=datetime.now(tz=UTC),
     )
     assert args.cap_retry_count == 0
     assert args.expert_lookup_retry_count == 0
@@ -1566,7 +1566,7 @@ def test_copilot_turn_args_cap_retry_count_defaults_to_zero():
 def test_add_copilot_turn_schedule_persists_expert_scope():
     scheduler = Scheduler(register_system_tasks=False)
     job = _mock_job({})
-    run_at = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+    run_at = datetime.now(tz=UTC) + timedelta(hours=1)
     expert_store = MagicMock()
     expert_store.resolve_private_expert_tenancy = AsyncMock(
         return_value=("personal-org", "personal-team")
@@ -1610,7 +1610,7 @@ def test_add_copilot_turn_schedule_persists_expert_scope():
 
 def test_add_copilot_turn_schedule_rejects_invalid_expert_before_persisting():
     scheduler = Scheduler(register_system_tasks=False)
-    run_at = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+    run_at = datetime.now(tz=UTC) + timedelta(hours=1)
     expert_store = MagicMock()
     expert_store.resolve_private_expert_tenancy = AsyncMock(
         side_effect=ValueError("not found")
@@ -1640,7 +1640,7 @@ def test_add_copilot_turn_schedule_rejects_invalid_expert_before_persisting():
 def test_add_copilot_turn_schedule_skips_expert_lookup_for_autopilot():
     scheduler = Scheduler(register_system_tasks=False)
     job = _mock_job({})
-    run_at = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+    run_at = datetime.now(tz=UTC) + timedelta(hours=1)
     expert_store = MagicMock()
     expert_store.resolve_private_expert_tenancy = AsyncMock()
 
@@ -1751,7 +1751,6 @@ def test_add_graph_schedule_keeps_autopilot_tenancy():
 
     def fake_run_async(coro, *args, **kwargs):
         coro.close()
-        return None
 
     with (
         patch(f"{_SCHEDULER_PATH}.experts_db", return_value=expert_store),
@@ -1902,7 +1901,7 @@ def test_memory_cron_reconcile_registered_after_start_on_its_interval(
     assert kwargs["max_instances"] == 1
     assert kwargs["coalesce"] is True
     assert kwargs["jobstore"] == scheduler_module.Jobstores.MEMORY_CRON_RECONCILE.value
-    assert kwargs["next_run_time"] <= datetime.now(timezone.utc)
+    assert kwargs["next_run_time"] <= datetime.now(UTC)
 
 
 def test_recording_purge_registered_after_start_on_its_interval(monkeypatch):
@@ -1949,9 +1948,9 @@ def test_idle_credentials_startup_preserves_existing_daily_job(
     monkeypatch, offset_days
 ):
     existing = MagicMock(
-        trigger=CronTrigger(hour=3, minute=0, timezone=timezone.utc),
+        trigger=CronTrigger(hour=3, minute=0, timezone=UTC),
         next_run_time=(
-            datetime.now(timezone.utc) + timedelta(days=offset_days)
+            datetime.now(UTC) + timedelta(days=offset_days)
             if offset_days is not None
             else None
         ),
@@ -1980,7 +1979,7 @@ def test_idle_credentials_job_is_registered_daily(monkeypatch):
     call = matches[0]
     assert call.kwargs["id"] == "refresh_near_expiry_credentials"
     assert str(call.kwargs["trigger"]) == str(
-        CronTrigger(hour=3, minute=0, timezone=timezone.utc)
+        CronTrigger(hour=3, minute=0, timezone=UTC)
     )
     assert call.kwargs["replace_existing"] is True
     assert call.kwargs["max_instances"] == 1
@@ -2065,7 +2064,7 @@ def test_startup_embedding_backfill_defaults_on():
 
 
 def test_startup_embedding_backfill_can_be_disabled(monkeypatch):
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
     run = _registered_jobs(
         monkeypatch, interval_hours=6, startup_embedding_backfill=False
     )
@@ -2080,7 +2079,7 @@ def test_startup_embedding_backfill_can_be_disabled(monkeypatch):
 
 
 def test_startup_embedding_backfill_runs_in_the_existing_background_job(monkeypatch):
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
     run = _registered_jobs(monkeypatch, interval_hours=6)
 
     run.embedding_backfill.assert_not_called()
@@ -2089,7 +2088,7 @@ def test_startup_embedding_backfill_runs_in_the_existing_background_job(monkeypa
     ]
     assert len(jobs) == 1
     job = jobs[0]
-    assert before <= job.kwargs["next_run_time"] <= datetime.now(timezone.utc)
+    assert before <= job.kwargs["next_run_time"] <= datetime.now(UTC)
     assert job.kwargs["trigger"] == "interval"
     assert job.kwargs["hours"] == 6
     assert job.kwargs["max_instances"] == 1
@@ -2111,7 +2110,7 @@ def test_embedding_backfill_does_not_delay_rpc_readiness(monkeypatch):
 def test_embedding_backfill_is_registered_to_run_immediately(monkeypatch):
     """Dropping the startup call must not delay coverage: the six-hourly job
     is due now, and cannot be skipped as a misfire however late it starts."""
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
     run = _registered_jobs(monkeypatch, interval_hours=6)
 
     jobs = [
@@ -2120,7 +2119,7 @@ def test_embedding_backfill_is_registered_to_run_immediately(monkeypatch):
     assert len(jobs) == 1
     job = jobs[0]
     assert job.args[0] is run.embedding_backfill
-    assert before <= job.kwargs["next_run_time"] <= datetime.now(timezone.utc)
+    assert before <= job.kwargs["next_run_time"] <= datetime.now(UTC)
     assert job.kwargs["trigger"] == "interval"
     assert job.kwargs["hours"] == 6
     assert job.kwargs["max_instances"] == 1
@@ -2140,7 +2139,7 @@ class TestScheduleOrgVisibility:
         jobs = []
         for info in infos:
             job = MagicMock()
-            job.next_run_time = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
+            job.next_run_time = datetime(2026, 5, 22, 10, 0, tzinfo=UTC)
             jobs.append((job, info))
 
         def fake_job_to_info(job):
@@ -2299,7 +2298,7 @@ class TestMorningBriefingSchedule:
     ):
         sched = Scheduler.__new__(Scheduler)
         sched.scheduler = MagicMock()
-        overdue = datetime(2026, 8, 7, 8, tzinfo=timezone.utc)
+        overdue = datetime(2026, 8, 7, 8, tzinfo=UTC)
         existing = MagicMock(
             id="skill_learning_nightly_user-1",
             next_run_time=overdue,
@@ -2352,7 +2351,7 @@ class TestMorningBriefingSchedule:
         tomorrow and silently lose that day's briefing."""
         existing = MagicMock(
             id="morning_briefing_user-1",
-            next_run_time=datetime(2026, 8, 7, 13, 0, tzinfo=timezone.utc),
+            next_run_time=datetime(2026, 8, 7, 13, 0, tzinfo=UTC),
             trigger=CronTrigger.from_crontab("7 9 * * *", timezone="America/New_York"),
         )
 
@@ -2676,7 +2675,7 @@ def _lost_codex(gate: _OwnerGate) -> None:
 
 
 def _over_a_cap(gate: _OwnerGate) -> None:
-    resets_at = datetime.now(tz=timezone.utc) + timedelta(hours=3)
+    resets_at = datetime.now(tz=UTC) + timedelta(hours=3)
     gate.check_rate_limit.side_effect = RateLimitExceeded("daily", resets_at)
 
 
@@ -2771,7 +2770,7 @@ async def test_a_codex_billed_tick_is_not_held_to_the_platform_paywall(owner_gat
     owner_gate.has_codex_access.assert_awaited_once_with("user-1")
 
 
-_ONE_SHOT = {"run_at": datetime.now(tz=timezone.utc) + timedelta(minutes=5)}
+_ONE_SHOT = {"run_at": datetime.now(tz=UTC) + timedelta(minutes=5)}
 _HOURLY = {"run_at": None, "cron": "9 * * * *"}
 
 
@@ -2848,7 +2847,7 @@ async def test_a_one_shot_refused_by_a_used_up_limit_waits_for_the_reset(
     """Nick (2026-10-10): once usage comes back, the run should happen. A
     one-shot is moved to the reset, spread over a few minutes, and its chat is
     told when it will run."""
-    resets_at = datetime.now(tz=timezone.utc).replace(microsecond=0) + timedelta(
+    resets_at = datetime.now(tz=UTC).replace(microsecond=0) + timedelta(
         hours=3
     )
     owner_gate.check_rate_limit.side_effect = RateLimitExceeded(window, resets_at)
@@ -2876,7 +2875,7 @@ async def test_a_one_shot_still_over_its_limit_after_waiting_is_dropped(
     owner_gate, post_notice, chat_blocked_events
 ):
     _over_the_daily_limit(
-        owner_gate, datetime.now(tz=timezone.utc) + timedelta(hours=3)
+        owner_gate, datetime.now(tz=UTC) + timedelta(hours=3)
     )
     scheduler_client = AsyncMock()
     store = MagicMock(get_routine=AsyncMock(return_value=None))

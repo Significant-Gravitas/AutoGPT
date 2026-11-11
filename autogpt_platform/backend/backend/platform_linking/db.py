@@ -8,7 +8,7 @@ routed via ``DatabaseManagerAsyncClient`` when no local Prisma is available.
 
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from prisma.errors import UniqueViolationError
 from prisma.models import PlatformLink, PlatformLinkToken, PlatformUserLink
@@ -147,7 +147,7 @@ async def create_server_link_token(
         )
 
     token = secrets.token_urlsafe(32)
-    expires_at = datetime.now(timezone.utc) + timedelta(
+    expires_at = datetime.now(UTC) + timedelta(
         minutes=LINK_TOKEN_EXPIRY_MINUTES
     )
 
@@ -161,7 +161,7 @@ async def create_server_link_token(
                 "platformServerId": request.platform_server_id,
                 "usedAt": None,
             },
-            data={"usedAt": datetime.now(timezone.utc)},
+            data={"usedAt": datetime.now(UTC)},
         )
         await PlatformLinkToken.prisma(tx).create(
             data={
@@ -202,7 +202,7 @@ async def create_user_link_token(
         )
 
     token = secrets.token_urlsafe(32)
-    expires_at = datetime.now(timezone.utc) + timedelta(
+    expires_at = datetime.now(UTC) + timedelta(
         minutes=LINK_TOKEN_EXPIRY_MINUTES
     )
 
@@ -214,7 +214,7 @@ async def create_user_link_token(
                 "platformUserId": request.platform_user_id,
                 "usedAt": None,
             },
-            data={"usedAt": datetime.now(timezone.utc)},
+            data={"usedAt": datetime.now(UTC)},
         )
         await PlatformLinkToken.prisma(tx).create(
             data={
@@ -264,7 +264,7 @@ async def get_link_token_status(token: str) -> LinkTokenStatusResponse:
             )
         return LinkTokenStatusResponse(status="linked" if owner else "expired")
 
-    if link_token.expiresAt.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+    if link_token.expiresAt.replace(tzinfo=UTC) < datetime.now(UTC):
         return LinkTokenStatusResponse(status="expired")
 
     return LinkTokenStatusResponse(status="pending")
@@ -276,7 +276,7 @@ async def get_link_token_info(token: str) -> LinkTokenInfoResponse:
     if not link_token or link_token.usedAt is not None:
         raise NotFoundError("Token not found.")
 
-    if link_token.expiresAt.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+    if link_token.expiresAt.replace(tzinfo=UTC) < datetime.now(UTC):
         raise LinkTokenExpiredError("Token expired.")
 
     return LinkTokenInfoResponse(
@@ -314,7 +314,7 @@ async def confirm_server_link(
         raise LinkFlowMismatchError("This link is for a different linking flow.")
     if link_token.usedAt is not None:
         raise LinkTokenExpiredError("This link has already been used.")
-    if link_token.expiresAt.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+    if link_token.expiresAt.replace(tzinfo=UTC) < datetime.now(UTC):
         raise LinkTokenExpiredError("This link has expired.")
     if not link_token.platformServerId:
         raise LinkFlowMismatchError("Server token missing server ID.")
@@ -332,7 +332,7 @@ async def confirm_server_link(
         raise LinkAlreadyExistsError(detail)
 
     # Atomic consume + create so a failed create doesn't burn the token.
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     try:
         async with transaction() as tx:
             updated = await PlatformLinkToken.prisma(tx).update_many(
@@ -381,7 +381,7 @@ async def confirm_user_link(
         raise LinkFlowMismatchError("This link is for a different linking flow.")
     if link_token.usedAt is not None:
         raise LinkTokenExpiredError("This link has already been used.")
-    if link_token.expiresAt.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+    if link_token.expiresAt.replace(tzinfo=UTC) < datetime.now(UTC):
         raise LinkTokenExpiredError("This link has expired.")
     _enforce_verified_identity(link_token.platformUserId, verified_platform_user_id)
 
@@ -394,7 +394,7 @@ async def confirm_user_link(
         )
         raise LinkAlreadyExistsError(detail)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     try:
         async with transaction() as tx:
             updated = await PlatformLinkToken.prisma(tx).update_many(
@@ -632,7 +632,7 @@ async def fetch_workspace_artifact(
 
 async def cleanup_expired_platform_link_tokens() -> int:
     """Delete PlatformLinkToken rows expired beyond the retention window."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=LINK_TOKEN_RETENTION_HOURS)
+    cutoff = datetime.now(UTC) - timedelta(hours=LINK_TOKEN_RETENTION_HOURS)
     deleted = await PlatformLinkToken.prisma().delete_many(
         where={"expiresAt": {"lt": cutoff}}
     )

@@ -3,7 +3,7 @@ that a failed write never reaches the pass."""
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -43,7 +43,7 @@ from .schemas import (
     WriteSummary,
 )
 
-_STARTED = datetime(2026, 9, 26, 3, 0, tzinfo=timezone.utc)
+_STARTED = datetime(2026, 9, 26, 3, 0, tzinfo=UTC)
 _FINISHED = _STARTED + timedelta(minutes=7)
 
 
@@ -227,7 +227,7 @@ class TestWrites:
 
     async def test_submitted_records_the_batch_the_bundle_and_the_lease(self, db):
         bundle = _bundle()
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
 
         await store.record_submitted(
             "p1",
@@ -441,7 +441,7 @@ class TestAFailedWriteNeverFailsThePass:
 
 class TestTheLeaseAndTheSweeps:
     async def test_a_renewal_writes_the_token_and_its_new_expiry(self, db):
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
 
         assert await store.record_lease("p1", "tok", 1800) is True
 

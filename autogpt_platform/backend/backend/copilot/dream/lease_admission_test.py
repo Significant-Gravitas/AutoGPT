@@ -8,7 +8,7 @@ pass writes nothing. Only the models, the budget and apply's graph and chat
 writes are stubbed (the writes recorded per pass)."""
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -271,7 +271,7 @@ class TestTheBatchRoute:
 async def _seed_batch_pass(fake_dream_db, fake_dream_redis) -> None:
     """Batch pass p1 at its last phase: its lock held under the token its
     bundle carries, consolidate and recombine landed, its job and row open."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await persist_input_bundle(
         "p1",
         DreamInput(
@@ -307,7 +307,7 @@ async def _seed_batch_pass(fake_dream_db, fake_dream_redis) -> None:
 
 
 async def _deliver_sanitize() -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     entry = PendingEntry(
         provider="anthropic",
         provider_batch_id="msgbatch_sanitize",
@@ -351,7 +351,7 @@ def _route(scope, job, *, config=None) -> RouteDecision:
 
 
 def _input() -> DreamInput:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     episode = EpisodeRow(
         uuid="e1",
         name=None,

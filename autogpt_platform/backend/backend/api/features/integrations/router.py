@@ -3,7 +3,7 @@ import logging
 import secrets
 from contextlib import suppress
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Any, List, Literal, TypeGuard, get_args
+from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeGuard, get_args
 
 from autogpt_libs.auth import get_optional_user_id, get_user_id
 from fastapi import (
@@ -562,7 +562,7 @@ async def _exchange_code_for_credentials(
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"OAuth2 callback failed to exchange code for tokens: {str(e)}",
+            detail=f"OAuth2 callback failed to exchange code for tokens: {e!s}",
         ) from e
 
     return credentials
@@ -984,7 +984,7 @@ async def _ensure_managed_credentials_bounded(user_id: str) -> None:
             ensure_managed_credentials(user_id, creds_manager.store),
             timeout=_MANAGED_PROVISION_TIMEOUT_S,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         report_credential_failure(
             logger,
             CredentialFailure.MANAGED_PROVISIONING_LATE,
@@ -2221,10 +2221,10 @@ async def get_ayrshare_sso_url(
 
 
 # === PROVIDER DISCOVERY ENDPOINTS ===
-@router.get("/providers", response_model=List[ProviderMetadata])
+@router.get("/providers", response_model=list[ProviderMetadata])
 async def list_providers(
     user_id: Annotated[str | None, Security(get_optional_user_id)],
-) -> List[ProviderMetadata]:
+) -> list[ProviderMetadata]:
     """
     Get metadata for every available provider.
 
@@ -2283,8 +2283,8 @@ async def list_providers(
     ]
 
 
-@router.get("/providers/system", response_model=List[str])
-async def list_system_providers() -> List[str]:
+@router.get("/providers/system", response_model=list[str])
+async def list_system_providers() -> list[str]:
     """
     Get a list of providers that have platform credits (system credentials) available.
 

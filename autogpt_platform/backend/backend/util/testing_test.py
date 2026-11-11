@@ -52,9 +52,8 @@ def test_is_tcp_port_reachable_propagates_unexpected_errors() -> None:
     with patch(
         "backend.util.testing.socket.create_connection",
         side_effect=ValueError("invalid endpoint"),
-    ):
-        with pytest.raises(ValueError, match="invalid endpoint"):
-            is_tcp_port_reachable("redis.example", 6379)
+    ), pytest.raises(ValueError, match="invalid endpoint"):
+        is_tcp_port_reachable("redis.example", 6379)
 
 
 @pytest.mark.asyncio

@@ -52,7 +52,7 @@ import argparse
 import asyncio
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pydantic import BaseModel
 
@@ -130,7 +130,7 @@ async def _restamp(driver: AutoGPTFalkorDriver, uuids: list[str]) -> None:
     await driver.execute_query(
         REDACT_EPISODES_QUERY,
         uuids=uuids,
-        now=datetime.now(timezone.utc).isoformat(),
+        now=datetime.now(UTC).isoformat(),
     )
     await driver.execute_query(
         RETRACT_EDGES_QUERY,

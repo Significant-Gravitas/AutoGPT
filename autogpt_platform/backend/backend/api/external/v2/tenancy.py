@@ -18,7 +18,7 @@ membership-verified tenant.
 """
 
 import logging
-from typing import Literal, Optional, Protocol, TypeVar
+from typing import Literal, Protocol, TypeVar
 
 from autogpt_libs.auth.dependencies import TEAM_HEADER_NAME
 from fastapi import Header, HTTPException, Request, Security
@@ -51,14 +51,14 @@ class TenantContext(BaseModel):
     scopes: list[APIKeyPermission]
     type: Literal["oauth", "api_key"]
     organization_id: str
-    team_id: Optional[str] = None
+    team_id: str | None = None
 
 
 async def require_auth(
     request: Request,
-    api_key: Optional[str] = Security(middleware.api_key_header),
-    bearer: Optional[HTTPAuthorizationCredentials] = Security(middleware.bearer_auth),
-    requested_team: Optional[str] = Header(
+    api_key: str | None = Security(middleware.api_key_header),
+    bearer: HTTPAuthorizationCredentials | None = Security(middleware.bearer_auth),
+    requested_team: str | None = Header(
         default=None,
         alias=TEAM_HEADER_NAME,
         description=(
@@ -150,7 +150,7 @@ def require_billing_permission(*permissions: APIKeyPermission):
 
 
 async def resolve_tenant(
-    auth: APIAuthorizationInfo, requested_team: Optional[str] = None
+    auth: APIAuthorizationInfo, requested_team: str | None = None
 ) -> TenantContext:
     """Resolve the org and team this request acts in, verifying membership."""
     organization_id, team_id = await resolve_credential_tenancy(auth)
@@ -175,10 +175,10 @@ async def resolve_tenant(
 class TenantedRow(Protocol):
     """Any resource row that records which organization it belongs to."""
 
-    organization_id: Optional[str]
+    organization_id: str | None
 
 
-def in_tenant(resource: Optional[T], auth: TenantContext, what: str) -> T:
+def in_tenant(resource: T | None, auth: TenantContext, what: str) -> T:
     """Return the resource, or 404 if it is missing or in another organization.
 
     Resolving the tenant is not enough on its own: the by-id lookups underneath
@@ -216,7 +216,7 @@ def owned_by_caller(resource: OwnedT, auth: TenantContext, what: str) -> OwnedT:
 
 async def resolve_credential_tenancy(
     auth: APIAuthorizationInfo,
-) -> tuple[str, Optional[str]]:
+) -> tuple[str, str | None]:
     """The org and team a credential is bound to, independent of any request.
 
     Also used by the MCP server, which authenticates outside the dependency
@@ -262,7 +262,7 @@ async def _assert_active_team_member(
         )
 
 
-async def _personal_tenancy(user_id: str) -> tuple[str, Optional[str]]:
+async def _personal_tenancy(user_id: str) -> tuple[str, str | None]:
     """Org for a credential minted before orgs, or outside one.
 
     Org-home, not the personal org's default team: `get_graph` and friends

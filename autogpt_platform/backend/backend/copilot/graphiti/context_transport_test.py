@@ -149,7 +149,7 @@ class _DelayingProxy:
         while not self._done.is_set():
             try:
                 downstream, _ = self._listener.accept()
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except OSError:
                 return

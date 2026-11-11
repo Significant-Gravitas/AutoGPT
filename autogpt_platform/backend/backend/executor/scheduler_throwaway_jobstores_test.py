@@ -6,7 +6,7 @@ import threading
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -53,7 +53,7 @@ def test_the_test_servers_scheduler_leaves_saved_jobs_alone(
             hours=6,
             args=["marker"],
             id="marker",
-            next_run_time=datetime.now(timezone.utc),
+            next_run_time=datetime.now(UTC),
             jobstore=_EXECUTION,
         )
         # Due before the marker, so a loaded saved job is submitted first and
@@ -94,7 +94,7 @@ def _save_overdue_job(engine: Engine, schema: str) -> None:
     store = ResilientSQLAlchemyJobStore(
         engine=engine, metadata=MetaData(schema=schema), tablename="apscheduler_jobs"
     )
-    seeder = BackgroundScheduler(timezone=timezone.utc)
+    seeder = BackgroundScheduler(timezone=UTC)
     store.start(seeder, _EXECUTION)
     store.add_job(
         Job(
@@ -103,8 +103,8 @@ def _save_overdue_job(engine: Engine, schema: str) -> None:
             func=record_run,
             args=("saved",),
             kwargs={},
-            trigger=IntervalTrigger(hours=6, timezone=timezone.utc),
-            next_run_time=datetime.now(timezone.utc) - timedelta(hours=1),
+            trigger=IntervalTrigger(hours=6, timezone=UTC),
+            next_run_time=datetime.now(UTC) - timedelta(hours=1),
             executor="default",
             coalesce=True,
             misfire_grace_time=None,

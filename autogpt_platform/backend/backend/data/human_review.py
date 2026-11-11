@@ -5,8 +5,8 @@ Handles all database operations for pending human reviews.
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Awaitable, Optional
+from collections.abc import Awaitable
+from datetime import UTC, datetime
 
 from prisma.enums import ReviewStatus
 from prisma.models import (
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 class ReviewResult(BaseModel):
     """Result of a review operation."""
 
-    data: Optional[SafeJsonData] = None
+    data: SafeJsonData | None = None
     status: ReviewStatus
     message: str = ""
     processed: bool
@@ -83,7 +83,7 @@ async def check_approval(
     input_data: SafeJsonData | None = None,
     graph_exec_id: str | None = None,
     chat_session_id: str | None = None,
-) -> Optional[ReviewResult]:
+) -> ReviewResult | None:
     """
     Check if there's an existing approval for this node execution.
 
@@ -196,7 +196,7 @@ async def create_auto_approval_record(
                 "editable": False,
                 "status": ReviewStatus.APPROVED,
                 "processed": True,
-                "reviewedAt": datetime.now(timezone.utc),
+                "reviewedAt": datetime.now(UTC),
             },
             "update": {},  # Already exists, no update needed
         },
@@ -216,7 +216,7 @@ async def get_or_create_human_review(
     organization_id: str | None = None,
     team_id: str | None = None,
     alert: bool = True,
-) -> Optional[ReviewResult]:
+) -> ReviewResult | None:
     """
     Get existing review or create a new pending review entry.
 
@@ -267,7 +267,7 @@ async def get_or_create_human_review(
         )
     except Exception as e:
         logger.error(
-            f"Database error in get_or_create_human_review for node {node_exec_id}: {str(e)}"
+            f"Database error in get_or_create_human_review for node {node_exec_id}: {e!s}"
         )
         raise
 
@@ -303,7 +303,7 @@ async def record_gate_approval(
     message: str,
     organization_id: str | None = None,
     team_id: str | None = None,
-) -> Optional[ReviewResult]:
+) -> ReviewResult | None:
     """The chat's approval gate let this workflow step run: an approved row is
     its record on the run page, and a re-run of the step finds it.
 
@@ -322,7 +322,7 @@ async def record_gate_approval(
                 "status": ReviewStatus.APPROVED,
                 "reviewMessage": message,
                 "processed": True,
-                "reviewedAt": datetime.now(timezone.utc),
+                "reviewedAt": datetime.now(UTC),
                 **({"organizationId": organization_id} if organization_id else {}),
                 **({"teamId": team_id} if team_id else {}),
             },
@@ -392,7 +392,7 @@ def _scope_columns(
 
 async def get_pending_review_by_node_exec_id(
     node_exec_id: str, user_id: str
-) -> Optional[PendingHumanReviewModel]:
+) -> PendingHumanReviewModel | None:
     """
     Get a pending review by its node execution ID.
 
@@ -495,11 +495,11 @@ async def has_pending_reviews_for_graph_exec(graph_exec_id: str) -> bool:
 
 async def get_reviews(
     user_id: str,
-    graph_exec_id: Optional[str] = None,
-    status: Optional[ReviewStatus] = None,
+    graph_exec_id: str | None = None,
+    status: ReviewStatus | None = None,
     page: int = 1,
-    page_size: Optional[int] = 25,
-    organization_id: Optional[str] = None,
+    page_size: int | None = 25,
+    organization_id: str | None = None,
     graph_runs_only: bool = False,
     oldest_first: bool = False,
     steps_waiting_in_chat: bool = True,
@@ -857,7 +857,7 @@ async def process_all_reviews_for_execution(
             "status": new_status,
             "reviewMessage": message,
             "wasEdited": has_data_changes,
-            "reviewedAt": datetime.now(timezone.utc),
+            "reviewedAt": datetime.now(UTC),
         }
 
         if has_data_changes:
@@ -954,7 +954,7 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
             "status": ReviewStatus.REJECTED,
             "reviewMessage": "Execution was stopped by user",
             "processed": True,
-            "reviewedAt": datetime.now(timezone.utc),
+            "reviewedAt": datetime.now(UTC),
         },
     )
     # The gate's cards for those steps would otherwise wait in the chat for nothing.

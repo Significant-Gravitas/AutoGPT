@@ -6,7 +6,8 @@ decides on that subject's effect, and the card's headline names it.
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict

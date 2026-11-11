@@ -12,7 +12,6 @@ lets the request through rather than blocking all API traffic.
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import Optional
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -48,7 +47,7 @@ class RateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
 
-    async def check(self, user_id: str) -> Optional[RateLimitState]:
+    async def check(self, user_id: str) -> RateLimitState | None:
         """Raise HTTP 429 if the user exceeds the per-window cap.
 
         Returns where the request left the window, or `None` when the count is
@@ -109,7 +108,7 @@ class RateLimiter:
         await redis.set(key, 0, ex=self.window_seconds, nx=True)
         return await redis.incr(key)
 
-    async def _read(self, key: str) -> Optional[bytes | str]:
+    async def _read(self, key: str) -> bytes | str | None:
         redis = await get_redis_async()
         return await redis.get(key)
 

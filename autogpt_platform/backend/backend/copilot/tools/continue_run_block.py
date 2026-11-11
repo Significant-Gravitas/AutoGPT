@@ -1,7 +1,8 @@
 """Tool for continuing block execution after human review approval."""
 
 import logging
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from prisma.enums import ReviewStatus
 

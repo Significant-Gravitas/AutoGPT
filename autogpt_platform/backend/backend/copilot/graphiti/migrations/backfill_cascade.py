@@ -21,7 +21,7 @@ either way: a hard walk erases the derived facts it only walks through. A
 dry run counts the roots and writes nothing.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -77,7 +77,7 @@ async def cascade_existing_forgets(
     if not (apply and done.roots):
         return done
     result = ForgetResult()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     graph = driver.graph_name
     for facts, seeds, erase in (
         (roots.hard, roots.hard_seeds, True),

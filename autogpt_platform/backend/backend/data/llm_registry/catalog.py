@@ -17,7 +17,7 @@ the model database (data-as-code); splitting it would scatter the one
 place model facts live.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from backend.data.llm_registry.catalog_model import (
     CATALOG_SCHEMA_VERSION,
@@ -47,7 +47,7 @@ def get_catalog() -> CatalogPayload:
 def _build_catalog() -> CatalogPayload:
     return CatalogPayload(
         schema_version=CATALOG_SCHEMA_VERSION,
-        generated_at=datetime(2026, 7, 18, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 7, 18, tzinfo=UTC),
         providers=[
             CatalogProvider(name="aiml_api", display_name="AI/ML API"),
             CatalogProvider(name="anthropic", display_name="Anthropic"),

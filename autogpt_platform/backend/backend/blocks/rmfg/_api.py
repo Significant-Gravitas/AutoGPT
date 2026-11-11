@@ -5,7 +5,7 @@ Responses are validated into the models in ``_models`` and
 """
 
 from io import BytesIO
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import quote
 
 from pydantic import TypeAdapter
@@ -67,9 +67,9 @@ class RMFGClient:
         method: str,
         path: str,
         *,
-        params: Optional[dict[str, Any]] = None,
-        body: Optional[dict[str, Any]] = None,
-        files: Optional[list[tuple[str, tuple[str, BytesIO, str]]]] = None,
+        params: dict[str, Any] | None = None,
+        body: dict[str, Any] | None = None,
+        files: list[tuple[str, tuple[str, BytesIO, str]]] | None = None,
         idempotency_key: str = "",
         wait: bool = False,
     ) -> dict[str, Any]:
@@ -88,10 +88,10 @@ class RMFGClient:
         )
         return parse_body(response)
 
-    async def _list_all(self, path: str, params: Optional[dict] = None) -> list[dict]:
+    async def _list_all(self, path: str, params: dict | None = None) -> list[dict]:
         """Follow ``next_cursor`` until ``has_more`` is false."""
         items: list[dict] = []
-        cursor: Optional[str] = None
+        cursor: str | None = None
         seen: set[str] = set()
         for _ in range(MAX_PAGES):
             page = await self._request(
@@ -120,7 +120,7 @@ class RMFGClient:
         rows = await self._list_all("/tube-profiles", {"limit": 500})
         return [TubeProfile.model_validate(row) for row in rows]
 
-    async def list_finishes(self, process: Optional[Process] = None) -> list[Finish]:
+    async def list_finishes(self, process: Process | None = None) -> list[Finish]:
         params = {"limit": 500, "process": process.value if process else None}
         rows = await self._list_all("/finishes", params)
         return [Finish.model_validate(row) for row in rows]
@@ -231,7 +231,7 @@ class RMFGClient:
     async def create_quote(
         self,
         items: list[QuoteItemRequest],
-        ship_to: Optional[ShipTo] = None,
+        ship_to: ShipTo | None = None,
         idempotency_key: str = "",
     ) -> Quote:
         data = await self._request(
@@ -263,7 +263,7 @@ class RMFGClient:
     async def create_cart(
         self,
         items: list[QuoteItemRequest],
-        ship_to: Optional[ShipTo] = None,
+        ship_to: ShipTo | None = None,
         shipping_option_id: str = "",
         client_reference_id: str = "",
         idempotency_key: str = "",
@@ -285,8 +285,8 @@ class RMFGClient:
         self,
         cart_id: str,
         *,
-        items: Optional[list[QuoteItemRequest]] = None,
-        ship_to: Optional[ShipTo] = None,
+        items: list[QuoteItemRequest] | None = None,
+        ship_to: ShipTo | None = None,
         shipping_option_id: str = "",
         idempotency_key: str = "",
     ) -> Cart:
@@ -344,7 +344,7 @@ class RMFGClient:
 
     async def list_orders(
         self, limit: int = 20, cursor: str = ""
-    ) -> tuple[list[Order], Optional[str]]:
+    ) -> tuple[list[Order], str | None]:
         page = await self._request(
             "GET", "/orders", params={"limit": limit, "cursor": cursor}
         )
@@ -381,7 +381,7 @@ def _id(value: str) -> str:
     return quote(value, safe="")
 
 
-def _basket(items: list[QuoteItemRequest], ship_to: Optional[ShipTo]) -> dict:
+def _basket(items: list[QuoteItemRequest], ship_to: ShipTo | None) -> dict:
     body: dict[str, Any] = {"items": [item.to_payload() for item in items]}
     if ship_to:
         body["ship_to"] = ship_to.to_payload()

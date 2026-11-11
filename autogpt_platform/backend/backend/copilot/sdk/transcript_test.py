@@ -336,9 +336,8 @@ class TestDeleteTranscript:
             "backend.copilot.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
-        ):
-            with pytest.raises(OSError):
-                await delete_transcript("user-123", "session-456")
+        ), pytest.raises(OSError):
+            await delete_transcript("user-123", "session-456")
 
         paths = [call.args[0] for call in mock_storage.delete.call_args_list]
         assert len(paths) == 1

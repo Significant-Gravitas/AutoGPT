@@ -1,15 +1,14 @@
 """Revoking every OAuth grant AutoGPT issued for a user, against the real database."""
 
+from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import AsyncIterator
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 from prisma.enums import APIKeyPermission
-from prisma.models import OAuthAccessToken, OAuthApplication
+from prisma.models import OAuthAccessToken, OAuthApplication, OAuthRefreshToken, User
 from prisma.models import OAuthAuthorizationCode as PrismaAuthorizationCode
-from prisma.models import OAuthRefreshToken, User
 from pydantic import BaseModel
 
 from backend.data.auth.oauth import (

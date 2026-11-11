@@ -3,7 +3,7 @@ Tests for activity status generator functionality.
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -95,7 +95,7 @@ def mock_node_executions():
             status=ExecutionStatus.COMPLETED,
             input_data={"user_input": "Hello, world!"},
             output_data={"processed_input": ["Hello, world!"]},
-            add_time=datetime.now(timezone.utc),
+            add_time=datetime.now(UTC),
             queue_time=None,
             start_time=None,
             end_time=None,
@@ -111,7 +111,7 @@ def mock_node_executions():
             status=ExecutionStatus.COMPLETED,
             input_data={"data": "Hello, world!"},
             output_data={"result": ["Processed data"]},
-            add_time=datetime.now(timezone.utc),
+            add_time=datetime.now(UTC),
             queue_time=None,
             start_time=None,
             end_time=None,
@@ -129,7 +129,7 @@ def mock_node_executions():
             output_data={
                 "error": ["Connection timeout: Unable to reach external service"]
             },
-            add_time=datetime.now(timezone.utc),
+            add_time=datetime.now(UTC),
             queue_time=None,
             start_time=None,
             end_time=None,
@@ -373,7 +373,7 @@ class TestBuildExecutionSummary:
                 status=ExecutionStatus.FAILED,
                 input_data={},
                 output_data={"error": ["Simple string error message"]},
-                add_time=datetime.now(timezone.utc),
+                add_time=datetime.now(UTC),
                 queue_time=None,
                 start_time=None,
                 end_time=None,
@@ -389,7 +389,7 @@ class TestBuildExecutionSummary:
                 status=ExecutionStatus.FAILED,
                 input_data={},
                 output_data={},  # No error in output
-                add_time=datetime.now(timezone.utc),
+                add_time=datetime.now(UTC),
                 queue_time=None,
                 start_time=None,
                 end_time=None,

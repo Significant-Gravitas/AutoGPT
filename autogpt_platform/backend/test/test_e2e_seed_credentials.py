@@ -1,4 +1,3 @@
-from test import e2e_test_data
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
@@ -7,6 +6,7 @@ import pytest
 from cryptography.fernet import Fernet
 
 from backend.util.encryption import JSONCryptor
+from test import e2e_test_data
 
 
 @pytest.fixture

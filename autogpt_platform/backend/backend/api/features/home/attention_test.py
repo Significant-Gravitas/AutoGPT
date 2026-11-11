@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from prisma.enums import ReviewStatus
@@ -14,7 +14,7 @@ from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .attention import compose_attention_items
 
-NOW = datetime(2026, 8, 9, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 9, 12, 0, tzinfo=UTC)
 
 
 def _review(
@@ -80,7 +80,7 @@ def _schedule() -> GraphExecutionJobInfo:
 
 
 def test_review_priority_uses_dashboard_generation_time() -> None:
-    now = datetime(2026, 8, 9, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 9, 12, 0, tzinfo=UTC)
 
     items = compose_attention_items(
         now=now,
@@ -94,7 +94,7 @@ def test_review_priority_uses_dashboard_generation_time() -> None:
 
 
 def test_review_payload_is_compacted_for_preview() -> None:
-    now = datetime(2026, 8, 9, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 9, 12, 0, tzinfo=UTC)
 
     items = compose_attention_items(
         now=now,

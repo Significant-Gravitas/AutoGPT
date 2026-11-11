@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -42,7 +42,7 @@ async def test_a_chat_alert_counts_old_shape_rows_and_clears_the_old_key(
 
 @pytest.mark.asyncio
 async def test_a_waiting_chat_review_raises_a_chat_alert(mocker, alerts):
-    _waiting(mocker, [MagicMock(createdAt=datetime(2026, 9, 24, tzinfo=timezone.utc))])
+    _waiting(mocker, [MagicMock(createdAt=datetime(2026, 9, 24, tzinfo=UTC))])
 
     await review_alerts.sync_awaiting_review("u1", chat_session_id="s1")
 

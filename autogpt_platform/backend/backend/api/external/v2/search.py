@@ -5,7 +5,6 @@ Cross-domain hybrid search across agents, blocks, and documentation.
 """
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from prisma.enums import APIKeyPermission, ContentType
@@ -35,10 +34,10 @@ search_router = APIRouter(tags=["search"])
 async def search(
     response: Response,
     query: str = Query(description="Search query"),
-    content_types: Optional[list[SearchContentType]] = Query(
+    content_types: list[SearchContentType] | None = Query(
         default=None, description="Content types to filter by"
     ),
-    category: Optional[str] = Query(default=None, description="Filter by category"),
+    category: str | None = Query(default=None, description="Filter by category"),
     page: PageRequest = Depends(page_request),
     auth: TenantContext = Security(require_paid_permission()),
 ) -> Page[MarketplaceSearchResult]:

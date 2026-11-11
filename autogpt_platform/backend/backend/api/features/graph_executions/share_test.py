@@ -1,6 +1,6 @@
 """Tests for the public shared file download endpoint."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -22,8 +22,8 @@ def _make_workspace_file(**overrides) -> WorkspaceFile:
     defaults = {
         "id": VALID_FILE_ID,
         "workspace_id": "ws-001",
-        "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
-        "updated_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2026, 1, 1, tzinfo=UTC),
         "name": "image.png",
         "path": "/image.png",
         "storage_path": "local://uploads/image.png",

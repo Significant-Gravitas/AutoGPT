@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -24,7 +24,7 @@ def _graph(graph_id="graph", version=2, name="Original agent"):
 def _execution(execution_id="run", graph_id="graph", parent=None):
     return AgentGraphExecution(
         id=execution_id,
-        createdAt=datetime(2026, 9, 5, 9, tzinfo=timezone.utc),
+        createdAt=datetime(2026, 9, 5, 9, tzinfo=UTC),
         userId="user",
         isDeleted=False,
         isShared=False,
@@ -33,7 +33,7 @@ def _execution(execution_id="run", graph_id="graph", parent=None):
         agentGraphVersion=2,
         parentGraphExecutionId=parent,
         executionStatus=AgentExecutionStatus.COMPLETED,
-        startedAt=datetime(2026, 9, 5, 9, tzinfo=timezone.utc),
+        startedAt=datetime(2026, 9, 5, 9, tzinfo=UTC),
     )
 
 

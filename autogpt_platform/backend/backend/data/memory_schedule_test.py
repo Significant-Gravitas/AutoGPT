@@ -1,7 +1,7 @@
 """Unit tests for the memory-scope schedule data module: the ownership rules
 and the writes the registry relies on, against a mocked Prisma table."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -18,7 +18,7 @@ PAUSED = MemoryScopeScheduleState.PAUSED
 
 
 def _row(**overrides) -> SimpleNamespace:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     fields = {
         "scopeKey": "user-1",
         "userId": "user-1",
@@ -272,7 +272,7 @@ async def test_live_experts_are_hired_unarchived_and_owner_only(mocker):
         return_value=[
             SimpleNamespace(id="e1", ownerUserId="u1", schedulesPausedAt=None),
             SimpleNamespace(
-                id="e2", ownerUserId="u1", schedulesPausedAt=datetime.now(timezone.utc)
+                id="e2", ownerUserId="u1", schedulesPausedAt=datetime.now(UTC)
             ),
         ]
     )

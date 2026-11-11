@@ -32,10 +32,10 @@ The fixtures connect using ``GraphitiConfig`` defaults
 
 import socket
 import uuid
-from collections.abc import Awaitable, Iterable
-from datetime import datetime, timezone
+from collections.abc import AsyncIterator, Awaitable, Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import AsyncIterator, cast
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -185,7 +185,7 @@ async def live_lock(
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def server():  # type: ignore[override]
     """No-op server stub — graphiti tests don't need the full backend."""
-    return None
+    return
 
 
 @pytest.fixture(scope="session")
@@ -331,7 +331,7 @@ async def seeded_graph(
     # runs cleanly against FalkorDB — same workaround the production
     # ``dream/fetch.py`` and ``tools/graphiti_forget.py`` use against
     # the same backend.
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
     await driver.execute_query(
         """
         CREATE

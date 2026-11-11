@@ -40,7 +40,6 @@ async def test_paid_usage_gauge_never_returns_false_zero_during_redis_failure():
         patch(
             "backend.copilot.rate_limit.get_redis_async",
             side_effect=ConnectionError("Redis temporarily unavailable"),
-        ),
+        ),pytest.raises(RateLimitUnavailable)
     ):
-        with pytest.raises(RateLimitUnavailable):
-            await get_usage_status("user", 100, 500, tier=SubscriptionTier.PRO)
+        await get_usage_status("user", 100, 500, tier=SubscriptionTier.PRO)

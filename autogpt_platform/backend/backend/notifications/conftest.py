@@ -11,7 +11,7 @@ whose scheduled passes failed on every single tick. Mocking here instead means
 a module that reaches past the RPC fails its test rather than passing it.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -23,13 +23,13 @@ from backend.data.notifications import NotificationPreference
 from backend.data.product_mail_audience import ProductMailStanding
 from backend.notifications import notifications as delivery
 
-NOW = datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 3, 7, 30, tzinfo=UTC)
 
 
 @pytest.fixture(scope="session")
 def server() -> None:
     """The notification suite is pure logic; it needs no live stack."""
-    return None
+    return
 
 
 def make_db_client(**overrides) -> SimpleNamespace:

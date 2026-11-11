@@ -8,7 +8,7 @@ worker, are in ``recall_dream_citations_integration_test.py``.
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,7 +20,7 @@ from .recall_fake_redis import FakeRedis
 from .recall_sources_fake import fact
 from .scope import write_lock_key
 
-_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 _STATEMENT = "Alice works on Atlas"
 
 

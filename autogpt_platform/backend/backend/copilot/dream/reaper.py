@@ -104,7 +104,7 @@ import logging
 import uuid
 from collections import Counter
 from collections.abc import Awaitable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
 from prisma.enums import DreamPassPhase, DreamPassRoute
@@ -186,7 +186,7 @@ async def reap_expired_passes(*, now: datetime | None = None) -> ReaperRun:
     reconciled = 0
     try:
         async with asyncio.timeout_at(deadline):
-            lapsed, pending = await _list(now or datetime.now(timezone.utc))
+            lapsed, pending = await _list(now or datetime.now(UTC))
             await _reap_both(lapsed, pending, done, deadline)
             if loop.time() < deadline - SWEEP_RESERVE_SECONDS:
                 reconciled = (await sweep_pending()).completed
@@ -588,7 +588,7 @@ def _batch_to_stop(row: DreamPassRecord) -> str | None:
     whatever the provider says (or cannot say)."""
     marked = row.cleanup_pending_at
     window = timedelta(seconds=PROVIDER_BATCH_WINDOW_SECONDS)
-    if marked is not None and datetime.now(timezone.utc) - marked > window:
+    if marked is not None and datetime.now(UTC) - marked > window:
         return None
     return row.provider_batch_id
 

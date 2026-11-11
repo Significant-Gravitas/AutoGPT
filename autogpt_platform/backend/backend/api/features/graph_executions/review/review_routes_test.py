@@ -1,6 +1,6 @@
 import datetime
+from collections.abc import AsyncGenerator
 from types import SimpleNamespace
-from typing import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -46,7 +46,7 @@ from .model import PendingHumanReviewModel, ReviewItem
 from .service import process_reviews
 
 # Using a fixed timestamp for reproducible tests
-FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
+FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=datetime.UTC)
 
 
 @pytest_asyncio.fixture(loop_scope="session")

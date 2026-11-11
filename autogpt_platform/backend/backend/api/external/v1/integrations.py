@@ -9,7 +9,8 @@ This module provides endpoints for external applications (like Otto) to:
 """
 
 import logging
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Union
+from datetime import UTC
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Body, HTTPException, Path, Security, status
@@ -97,9 +98,9 @@ class OAuthCompleteResponse(BaseModel):
     credentials_id: str = Field(..., description="ID of the stored credentials")
     provider: str = Field(..., description="Provider name")
     type: str = Field(..., description="Credential type (oauth2)")
-    title: Optional[str] = Field(None, description="Credential title")
+    title: str | None = Field(None, description="Credential title")
     scopes: list[str] = Field(default_factory=list, description="Granted scopes")
-    username: Optional[str] = Field(None, description="Username from provider")
+    username: str | None = Field(None, description="Username from provider")
     state_metadata: dict[str, Any] = Field(
         default_factory=dict, description="Echoed metadata from initiate request"
     )
@@ -125,7 +126,7 @@ class CreateAPIKeyCredentialRequest(BaseModel):
     type: Literal["api_key"] = "api_key"
     api_key: str = Field(..., description="The API key")
     title: str = Field(..., description="A name for this credential")
-    expires_at: Optional[int] = Field(
+    expires_at: int | None = Field(
         None, description="Unix timestamp when the API key expires"
     )
 
@@ -169,7 +170,7 @@ class CreateCredentialResponse(BaseModel):
     id: str
     provider: str
     type: CredentialsType
-    title: Optional[str] = None
+    title: str | None = None
 
 
 # ==================== Helper Functions ==================== #
@@ -403,9 +404,9 @@ async def initiate_oauth(
     )
 
     # Calculate expiration (10 minutes from now)
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
-    expires_at = int((datetime.now(timezone.utc) + timedelta(minutes=10)).timestamp())
+    expires_at = int((datetime.now(UTC) + timedelta(minutes=10)).timestamp())
 
     return OAuthInitiateResponse(
         login_url=login_url,
@@ -479,7 +480,7 @@ async def complete_oauth(
         logger.error(f"OAuth2 Code->Token exchange failed for provider {provider}: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"OAuth2 callback failed to exchange code for tokens: {str(e)}",
+            detail=f"OAuth2 callback failed to exchange code for tokens: {e!s}",
         )
 
     # Store credentials
@@ -554,11 +555,7 @@ async def list_credentials_by_provider(
 )
 async def create_credential(
     provider: Annotated[str, Path(title="The provider to create credentials for")],
-    request: Union[
-        CreateAPIKeyCredentialRequest,
-        CreateUserPasswordCredentialRequest,
-        CreateHostScopedCredentialRequest,
-    ] = Body(..., discriminator="type"),
+    request: CreateAPIKeyCredentialRequest | CreateUserPasswordCredentialRequest | CreateHostScopedCredentialRequest = Body(..., discriminator="type"),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.MANAGE_INTEGRATIONS)
     ),

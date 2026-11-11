@@ -116,12 +116,11 @@ async def test_malformed_approved_tokens_become_a_normal_auth_error() -> None:
         patch(
             "backend.integrations.oauth.codex.bundle_from_tokens",
             side_effect=CodexAuthBundleError("invalid jwt"),
-        ),
+        ),pytest.raises(CodexAuthError, match="invalid token data")
     ):
-        with pytest.raises(CodexAuthError, match="invalid token data"):
-            await CodexDeviceAuthHandler().poll_for_tokens(
-                _pack_poll_key("deviceauth_abc", "FWK1-91A0I")
-            )
+        await CodexDeviceAuthHandler().poll_for_tokens(
+            _pack_poll_key("deviceauth_abc", "FWK1-91A0I")
+        )
 
 
 @pytest.mark.asyncio
@@ -141,10 +140,9 @@ async def test_malformed_refresh_tokens_become_a_normal_auth_error() -> None:
         patch(
             "backend.integrations.oauth.codex.bundle_from_tokens",
             side_effect=CodexAuthBundleError("invalid jwt"),
-        ),
+        ),pytest.raises(CodexAuthError, match="invalid token data")
     ):
-        with pytest.raises(CodexAuthError, match="invalid token data"):
-            await CodexDeviceAuthHandler()._refresh_tokens(credentials)
+        await CodexDeviceAuthHandler()._refresh_tokens(credentials)
 
 
 @pytest.mark.asyncio

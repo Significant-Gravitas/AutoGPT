@@ -1,5 +1,5 @@
 import logging
-from typing import Literal, Optional, overload
+from typing import Literal, overload
 
 from prisma.models import AgentNode, AgentPreset, IntegrationWebhook
 from prisma.types import (
@@ -83,7 +83,7 @@ class WebhookWithoutSecrets(Webhook):
 
 # LibraryAgentPreset import must be after the webhook models to avoid a
 # circular import: integrations.py → library/model.py → integrations.py
-from backend.api.features.library.model import LibraryAgentPreset  # noqa: E402
+from backend.api.features.library.model import LibraryAgentPreset
 
 # Resolve forward refs
 LibraryAgentPreset.model_rebuild()
@@ -245,8 +245,8 @@ async def find_webhook_by_graph_and_props(
     user_id: str,
     provider: str,
     webhook_type: str,
-    graph_id: Optional[str] = None,
-    preset_id: Optional[str] = None,
+    graph_id: str | None = None,
+    preset_id: str | None = None,
 ) -> Webhook | None:
     """Either `graph_id` or `preset_id` must be provided.
 
@@ -297,8 +297,8 @@ async def set_webhook_tenancy(
 
 async def update_webhook(
     webhook_id: str,
-    config: Optional[dict[str, Serializable]] = None,
-    events: Optional[list[str]] = None,
+    config: dict[str, Serializable] | None = None,
+    events: list[str] | None = None,
 ) -> Webhook:
     """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     data: IntegrationWebhookUpdateInput = {}
@@ -425,7 +425,7 @@ async def publish_webhook_event(event: WebhookEvent):
 
 
 async def wait_for_webhook_event(
-    webhook_id: str, event_type: str, timeout: Optional[float] = None
+    webhook_id: str, event_type: str, timeout: float | None = None
 ) -> WebhookEvent | None:
     # Concrete event_type required: sharded pub/sub has no pattern support.
     return await _webhook_event_bus.wait_for_event(

@@ -7,7 +7,9 @@ in three units because each model was reviewed alone. These tests read the whole
 OpenAPI document, so a new model cannot reintroduce a spelling the API retired.
 """
 
-from typing import Any, Iterator, get_args
+from collections.abc import Iterator
+from datetime import UTC
+from typing import Any, get_args
 
 import prisma.enums
 import pytest
@@ -232,7 +234,7 @@ async def test_credential_requirements_are_read_from_a_real_graph_schema() -> No
 
 def _one_block_graph_credentials_schema() -> dict[str, Any]:
     """`credentials_input_schema` of a graph holding one credential-taking block."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from backend.blocks import get_blocks
     from backend.data.graph import GraphModel, NodeModel
@@ -251,7 +253,7 @@ def _one_block_graph_credentials_schema() -> dict[str, Any]:
         name="fixture",
         description="",
         user_id="u",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         nodes=[
             NodeModel(
                 id="n1",

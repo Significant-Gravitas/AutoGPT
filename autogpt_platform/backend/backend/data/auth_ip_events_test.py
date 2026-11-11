@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -49,7 +49,7 @@ async def _log(user: AuthUser, kind: AuthIPEventKind, ip: str, days_ago: float =
             "kind": kind,
             "ipAddress": ip,
             "userAgent": "Mozilla/5.0 (synthetic)",
-            "createdAt": datetime.now(timezone.utc) - timedelta(days=days_ago),
+            "createdAt": datetime.now(UTC) - timedelta(days=days_ago),
         }
     )
 
@@ -130,7 +130,7 @@ async def test_report_shows_bans_in_force_and_the_blocks_that_cover_the_account(
     lapsed = await make(
         "c@{tag}.example",
         banned=True,
-        banExpires=datetime.now(timezone.utc) - timedelta(hours=1),
+        banExpires=datetime.now(UTC) - timedelta(hours=1),
     )
     for user in (target, banned, lapsed):
         await _log(

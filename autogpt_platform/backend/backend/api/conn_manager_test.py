@@ -726,13 +726,12 @@ async def test_subscribe_graph_exec_raises_when_meta_missing(
     with patch(
         "backend.api.conn_manager.execution_db",
         return_value=_execution_db(None),
-    ):
-        with pytest.raises(ValueError):
-            await connection_manager.subscribe_graph_exec(
-                user_id="user-1",
-                graph_exec_id="unknown-exec",
-                websocket=mock_websocket,
-            )
+    ), pytest.raises(ValueError):
+        await connection_manager.subscribe_graph_exec(
+            user_id="user-1",
+            graph_exec_id="unknown-exec",
+            websocket=mock_websocket,
+        )
     assert fake_redis.subscribed() == []
 
 

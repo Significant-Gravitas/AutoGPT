@@ -141,14 +141,13 @@ class TestValidURLAccepted:
             quality="480p",
         )
 
-        with patch("backend.blocks.video.download.os.makedirs"):
-            with patch(
-                "backend.blocks.video.download.get_exec_file_path",
-                return_value="/tmp/exec",
-            ):
-                outputs = await _collect_outputs(
-                    block, input_data, _make_execution_context()
-                )
+        with patch("backend.blocks.video.download.os.makedirs"), patch(
+            "backend.blocks.video.download.get_exec_file_path",
+            return_value="/tmp/exec",
+        ):
+            outputs = await _collect_outputs(
+                block, input_data, _make_execution_context()
+            )
 
         block.validate_url.assert_called_once_with(
             "https://www.youtube.com/watch?v=dQw4w9WgXcQ"

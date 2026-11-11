@@ -1,6 +1,6 @@
 """Scheduling and queue hand-off tests for alerts and Briefings."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -12,7 +12,7 @@ from backend.data.notifications import NotificationResult, PassWorkEvent, PassWo
 from backend.notifications import briefing_runner
 from backend.notifications.conftest import make_db_client
 
-NOW = datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 3, 7, 30, tzinfo=UTC)
 
 
 @pytest.fixture(scope="session")
@@ -272,9 +272,8 @@ async def test_a_failed_pass_releases_its_claim():
         briefing_runner,
         "_build_and_queue_briefing",
         AsyncMock(side_effect=RuntimeError("postmark exploded")),
-    ):
-        with pytest.raises(RuntimeError):
-            await briefing_runner.run_pass_work(event)
+    ), pytest.raises(RuntimeError):
+        await briefing_runner.run_pass_work(event)
 
     release.assert_awaited_once()
 
@@ -502,8 +501,8 @@ async def test_candidate_walk_stops_once_a_short_page_comes_back():
 
 
 def test_timezone_selection_follows_each_users_local_clock():
-    utc_morning = datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc)
-    new_york_morning = datetime(2026, 8, 3, 11, 30, tzinfo=timezone.utc)
+    utc_morning = datetime(2026, 8, 3, 7, 30, tzinfo=UTC)
+    new_york_morning = datetime(2026, 8, 3, 11, 30, tzinfo=UTC)
     zones = {"UTC", "America/New_York", "Asia/Tokyo"}
 
     with patch.object(briefing_runner, "available_timezones", return_value=zones):

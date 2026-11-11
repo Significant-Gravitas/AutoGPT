@@ -4,7 +4,7 @@ import pydantic
 class ExecutionShareRequest(pydantic.BaseModel):
     """Optional request body for share endpoint."""
 
-    pass  # Empty body is fine
+    # Empty body is fine
 
 
 class ExecutionShareResponse(pydantic.BaseModel):

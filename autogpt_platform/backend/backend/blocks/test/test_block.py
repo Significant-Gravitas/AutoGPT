@@ -1,4 +1,4 @@
-from typing import Any, Type
+from typing import Any
 
 import pytest
 
@@ -41,7 +41,7 @@ async def test_execute_preserves_insufficient_balance_error_type():
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-async def test_available_blocks(block: Type[Block]):
+async def test_available_blocks(block: type[Block]):
     block_instance = block()
     if block_instance.__class__.__name__ in SKIP_BLOCK_TESTS:
         pytest.skip(
@@ -51,7 +51,7 @@ async def test_available_blocks(block: Type[Block]):
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-def test_block_declares_an_effect(block: Type[Block]):
+def test_block_declares_an_effect(block: type[Block]):
     instance = block()
     name = block.__name__
     if instance.effect is not None:
@@ -67,7 +67,7 @@ def test_block_declares_an_effect(block: Type[Block]):
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-def test_effect_none_blocks_have_no_io_surface(block: Type[Block]):
+def test_effect_none_blocks_have_no_io_surface(block: type[Block]):
     """NONE claims pure computation, and a mock exists only to stub I/O out."""
     instance = block()
     if instance.effect is not BlockEffect.NONE:
@@ -85,7 +85,7 @@ def test_effect_none_blocks_have_no_io_surface(block: Type[Block]):
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-def test_irreversible_blocks_are_external(block: Type[Block]):
+def test_irreversible_blocks_are_external(block: type[Block]):
     instance = block()
     if not instance.is_irreversible_action:
         return
@@ -97,7 +97,7 @@ def test_irreversible_blocks_are_external(block: Type[Block]):
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-def test_irreversible_action_blocks_have_no_data_input(block: Type[Block]):
+def test_irreversible_action_blocks_have_no_data_input(block: type[Block]):
     """An irreversible-action block's whole input dict becomes the review payload.
 
     `data` is the key the approval card historically unwrapped to, rendering
@@ -118,7 +118,7 @@ def test_irreversible_action_blocks_have_no_data_input(block: Type[Block]):
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-async def test_block_ids_valid(block: Type[Block]):
+async def test_block_ids_valid(block: type[Block]):
     # add the tests here to check they are uuid4
     import uuid
 

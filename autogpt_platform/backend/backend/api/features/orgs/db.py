@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from prisma import Prisma
 from prisma.errors import UniqueViolationError
@@ -466,7 +466,7 @@ async def delete_org(org_id: str) -> None:
     if org.deletedAt is not None:
         raise ValueError("Organization is already deleted")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await prisma.organization.update(where={"id": org_id}, data={"deletedAt": now})
     await prisma.orginvitation.update_many(
         where={"orgId": org_id, "acceptedAt": None, "revokedAt": None},

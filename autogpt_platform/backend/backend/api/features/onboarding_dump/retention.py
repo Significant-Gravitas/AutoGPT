@@ -41,8 +41,8 @@ which APScheduler logs at ERROR, so it reaches Sentry.
 import asyncio
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 
 from gcloud.aio import storage as async_gcs_storage
 from pydantic import BaseModel
@@ -79,7 +79,7 @@ _RECORDING_NAME = re.compile(
 # deleted (``unmarked_skipped`` counts what this date leaves out). Later
 # only risks an upload named like a recording, stored after that release
 # and before this date.
-_UNMARKED_RECORDINGS_BEFORE = datetime(2027, 1, 1, tzinfo=timezone.utc)
+_UNMARKED_RECORDINGS_BEFORE = datetime(2027, 1, 1, tzinfo=UTC)
 _DELETE_CONCURRENCY = 10
 # Keeps one run well inside the scheduler's 5-minute timeout. The first runs
 # after this shipped have every recording ever stored to delete; at one run
@@ -118,7 +118,7 @@ async def purge_expired_recordings(
         # Without a bucket ``store_audio`` fails, so nothing was ever stored.
         return RecordingPurgeResult()
 
-    cutoff = (now or datetime.now(timezone.utc)) - audio_max_age()
+    cutoff = (now or datetime.now(UTC)) - audio_max_age()
     async with fresh_gcs_client() as client:
         listing = await _list_expired_recordings(client, bucket, cutoff)
         result = RecordingPurgeResult(unmarked_skipped=listing.unmarked_skipped)

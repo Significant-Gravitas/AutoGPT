@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -128,8 +128,8 @@ def _build_input(*, episodes=1, facts=1) -> DreamInput:
     return DreamInput(
         user_id="u",
         group_id="g",
-        window_start=datetime(2026, 5, 1, tzinfo=timezone.utc),
-        window_end=datetime(2026, 5, 14, tzinfo=timezone.utc),
+        window_start=datetime(2026, 5, 1, tzinfo=UTC),
+        window_end=datetime(2026, 5, 14, tzinfo=UTC),
         episodes=[
             EpisodeRow(
                 uuid=f"e{i}",
@@ -1285,8 +1285,8 @@ def _input_with_episodes(episodes: list[EpisodeRow]) -> DreamInput:
     return DreamInput(
         user_id="u",
         group_id="g",
-        window_start=datetime(2026, 5, 26, tzinfo=timezone.utc),
-        window_end=datetime(2026, 6, 9, tzinfo=timezone.utc),
+        window_start=datetime(2026, 5, 26, tzinfo=UTC),
+        window_end=datetime(2026, 6, 9, tzinfo=UTC),
         episodes=episodes,
         facts=[
             FactRow(
@@ -1676,7 +1676,7 @@ async def test_successful_pass_stamps_last_completed_marker(mocker, _stub_marker
     # Stamped with the gather-window end (NOT apply-completion time) so
     # episodes that arrive mid-pass still count as new next time.
     stamped = datetime.fromisoformat(set_args.args[1])
-    assert stamped == datetime(2026, 6, 9, tzinfo=timezone.utc)
+    assert stamped == datetime(2026, 6, 9, tzinfo=UTC)
     assert set_args.kwargs == {"ex": orchestrator_mod.LAST_COMPLETED_TTL_SECONDS}
 
 
@@ -2430,7 +2430,7 @@ async def test_a_batch_submit_records_the_batch_and_leaves_the_end_to_callbacks(
     mocker.patch.object(
         orchestrator_mod, "gather_dream_input", AsyncMock(return_value=input_bundle)
     )
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
@@ -2753,7 +2753,7 @@ async def test_the_outcome_is_recorded_before_the_lock_is_released(
 
 
 def _consolidate_delivery(pass_id: str) -> tuple[PendingEntry, list[BatchResultRow]]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     entry = PendingEntry(
         provider="anthropic",
         provider_batch_id="batch-xyz",
@@ -2873,7 +2873,7 @@ async def test_the_nightly_fan_out_reaches_ratification_past_a_stalled_store(
         "run_ratification_pass",
         AsyncMock(
             return_value=RatificationResult(
-                user_id="u", started_at=datetime.now(timezone.utc)
+                user_id="u", started_at=datetime.now(UTC)
             )
         ),
     )

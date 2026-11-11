@@ -112,7 +112,7 @@ async def record_skill_loaded(
 def index_revision(entries: list[IndexEntry]) -> str:
     digest = hashlib.sha256()
     for entry in sorted(entries, key=lambda e: e.name):
-        digest.update(f"{entry.name}@{entry.version or ''}\n".encode("utf-8"))
+        digest.update(f"{entry.name}@{entry.version or ''}\n".encode())
     return digest.hexdigest()[:16]
 
 

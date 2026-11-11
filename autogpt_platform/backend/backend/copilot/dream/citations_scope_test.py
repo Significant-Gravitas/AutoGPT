@@ -6,7 +6,7 @@ not scoped: a chat turn can hold facts of any scope. The live run is
 ``graphiti/recall_citation_scope_integration_test.py``.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -99,8 +99,8 @@ def test_a_pass_reads_each_facts_scope() -> None:
     bundle = DreamInput(
         user_id="u",
         group_id="g",
-        window_start=datetime(2026, 9, 1, tzinfo=timezone.utc),
-        window_end=datetime(2026, 9, 28, tzinfo=timezone.utc),
+        window_start=datetime(2026, 9, 1, tzinfo=UTC),
+        window_end=datetime(2026, 9, 28, tzinfo=UTC),
         facts=[_fact("f-bread", "project:bread"), _fact("f-old", None)],
         episodes=[_episode("ep-stored", envelope.model_dump_json())],
     )

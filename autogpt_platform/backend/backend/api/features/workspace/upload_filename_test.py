@@ -1,5 +1,5 @@
 import io
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -22,7 +22,7 @@ def client(mock_jwt_user):
 
 @pytest.fixture
 def workspace(mocker):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     workspace = Workspace(
         id="ws-001", user_id="test-user-id", created_at=now, updated_at=now
     )

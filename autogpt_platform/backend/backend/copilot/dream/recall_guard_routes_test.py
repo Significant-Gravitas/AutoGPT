@@ -19,7 +19,7 @@ record and job status run on the in-memory Redis and DreamPass store from
 
 import asyncio
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -61,7 +61,7 @@ from .schemas import (
 
 
 def _ago(days: float) -> str:
-    return stamp_time(datetime.now(timezone.utc) - timedelta(days=days))
+    return stamp_time(datetime.now(UTC) - timedelta(days=days))
 
 
 def _fact(uuid: str, last_recalled_at: str | None = None) -> FactRow:
@@ -90,7 +90,7 @@ def _bundle(user_id: str, *, usage: bool = True) -> DreamInput:
         _fact("cold"),
         *(_fact(f"f{i}") for i in range(97)),
     ]
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return DreamInput(
         user_id=user_id,
         group_id=MemoryScope.for_user(user_id).group_id,
@@ -159,7 +159,7 @@ def graph(mocker) -> SimpleNamespace:
     state = SimpleNamespace(
         stamps={
             "held": _ago(2),
-            "late": stamp_time(datetime.now(timezone.utc)),
+            "late": stamp_time(datetime.now(UTC)),
             "cold": None,
         },
         live={"held", "late", "cold"},
@@ -361,7 +361,7 @@ def test_the_sync_route_reports_what_the_writes_spared_everywhere(
 
 
 def _entry(phase: str) -> PendingEntry:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     custom_id = f"p-batch:{phase}"
     return PendingEntry(
         provider="anthropic",
@@ -416,7 +416,7 @@ async def test_the_batch_route_tests_the_stamps_the_graph_holds_at_write_time(
             trigger=DreamPassTrigger.CRON,
             status=DreamPassStatus.SUBMITTED,
             phase=DreamPassPhase.CONSOLIDATE,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
         )
     )
     await write_initial_status(kind="dream_pass", job_id="j-batch", user_id="u-batch")

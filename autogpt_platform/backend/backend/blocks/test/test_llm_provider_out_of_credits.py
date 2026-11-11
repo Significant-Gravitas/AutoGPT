@@ -14,7 +14,7 @@ import httpx
 import openai
 import pytest
 
-import backend.blocks.llm as llm
+from backend.blocks import llm
 from backend.integrations.credentials_store import open_router_credentials
 
 _OPENROUTER_402_MESSAGE = (

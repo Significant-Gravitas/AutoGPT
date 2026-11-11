@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -74,7 +74,7 @@ def test_a_failed_purge_is_reported_as_an_error(
     )
     mocker.patch.object(scheduler, "run_async", side_effect=_run)
     background = BackgroundScheduler(
-        jobstores={"default": MemoryJobStore()}, timezone=timezone.utc
+        jobstores={"default": MemoryJobStore()}, timezone=UTC
     )
     background.start(paused=True)
     job = background.add_job(
@@ -85,7 +85,7 @@ def test_a_failed_purge_is_reported_as_an_error(
             run_job(
                 job,
                 "default",
-                [datetime.now(timezone.utc)],
+                [datetime.now(UTC)],
                 "apscheduler.executors.default",
             )
     finally:
@@ -107,7 +107,7 @@ class TestRecordingPurgeRegistration:
     def sched(self):
         background = BackgroundScheduler(
             jobstores={scheduler.Jobstores.EXECUTION.value: MemoryJobStore()},
-            timezone=timezone.utc,
+            timezone=UTC,
         )
         background.start(paused=True)
         sched = scheduler.Scheduler.__new__(scheduler.Scheduler)
@@ -131,7 +131,7 @@ class TestRecordingPurgeRegistration:
 
     def test_a_restart_does_not_postpone_an_overdue_purge(self, sched):
         sched._register_recording_purge()
-        overdue = datetime.now(timezone.utc) - timedelta(minutes=30)
+        overdue = datetime.now(UTC) - timedelta(minutes=30)
         sched.scheduler.modify_job(
             scheduler.RECORDING_PURGE_JOB_ID,
             jobstore=scheduler.Jobstores.EXECUTION.value,

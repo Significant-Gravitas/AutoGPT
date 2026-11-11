@@ -8,7 +8,7 @@ from the public page.
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import prisma.models
 import pytest
@@ -94,7 +94,7 @@ async def test_shared_outputs_include_static_outputs_and_match_owner(server):
                 "agentNodeId": nodes["linked_note"],
                 "agentGraphExecutionId": execution.id,
                 "executionStatus": AgentExecutionStatus.COMPLETED,
-                "queuedTime": datetime.now(timezone.utc),
+                "queuedTime": datetime.now(UTC),
                 "executionData": Json({"name": "linked_note", "value": "linked"}),
             }
         )
@@ -104,7 +104,7 @@ async def test_shared_outputs_include_static_outputs_and_match_owner(server):
                 "agentNodeId": nodes["moderated"],
                 "agentGraphExecutionId": execution.id,
                 "executionStatus": AgentExecutionStatus.FAILED,
-                "queuedTime": datetime.now(timezone.utc),
+                "queuedTime": datetime.now(UTC),
                 "executionData": Json({"name": "secret", "value": "original"}),
                 "stats": Json(
                     {
@@ -124,7 +124,7 @@ async def test_shared_outputs_include_static_outputs_and_match_owner(server):
             user_id=user_id,
             is_shared=True,
             share_token=token,
-            shared_at=datetime.now(timezone.utc),
+            shared_at=datetime.now(UTC),
         )
 
         owner = await get_graph_execution(
@@ -166,7 +166,7 @@ async def test_shared_outputs_match_owner_at_node_execution_limit(server, newer_
                 "agentGraphVersion": 1,
             }
         )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await prisma.models.AgentNodeExecution.prisma().create_many(
             data=[
                 {

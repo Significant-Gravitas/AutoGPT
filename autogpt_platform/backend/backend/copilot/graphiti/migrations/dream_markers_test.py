@@ -8,7 +8,7 @@ live runs are in
 ``recall_marker_crash_integration_test.py``.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -30,7 +30,7 @@ from . import dream_markers
 def _row(
     uuid: str, rank: int, *, state: str = "pending", saved: bool = False, hours=1
 ) -> dict[str, Any]:
-    created = datetime.now(timezone.utc) - timedelta(hours=hours)
+    created = datetime.now(UTC) - timedelta(hours=hours)
     return {
         "uuid": uuid,
         "episode": f"episode-{uuid}",

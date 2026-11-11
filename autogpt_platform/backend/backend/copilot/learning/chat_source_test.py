@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -30,7 +30,7 @@ SESSION = "session-1"
 def _session_info(
     *, user_id: str = USER, expert_id: str | None = EXPERT
 ) -> ChatSessionInfo:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return ChatSessionInfo(
         session_id=SESSION,
         user_id=user_id,
@@ -47,8 +47,8 @@ def _session(expert_id: str | None = EXPERT) -> ChatSession:
         session_id=SESSION,
         user_id=USER,
         usage=[],
-        started_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
         expert_id=expert_id,
         messages=[],
     )
@@ -160,7 +160,7 @@ async def test_revalidate_reports_each_ineligibility_reason(fake_store, chat_db)
     )
     assert foreign.state == EligibilityState.INACCESSIBLE
 
-    expert.learning_paused_at = datetime.now(timezone.utc)
+    expert.learning_paused_at = datetime.now(UTC)
     paused = await adapter.revalidate(
         source_id=record.id, revision="3", scope=scope, approval_event_id=None
     )

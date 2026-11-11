@@ -25,7 +25,7 @@ Run with FalkorDB reachable (see ``conftest.py``)::
 """
 
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -113,7 +113,7 @@ async def _read_then_supersede(
         "SET e.status = 'superseded', e.expiration_reason = 'stale_fact', "
         "e.expired_at = $now",
         uuid=supplies,
-        now=datetime.now(timezone.utc).isoformat(),
+        now=datetime.now(UTC).isoformat(),
     )
     return flour, supplies, read
 

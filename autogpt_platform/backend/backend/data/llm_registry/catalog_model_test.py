@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pydantic
 import pytest
@@ -99,7 +99,7 @@ def test_usd_cache_prices_accepted_alongside_the_base_pair():
 def test_routing_shape_accepts_nested_cells():
     payload = CatalogPayload(
         schema_version=CATALOG_SCHEMA_VERSION,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
         providers=[],
         creators=[],
         models=[],
@@ -113,7 +113,7 @@ def test_payload_model_count_cap():
     with pytest.raises(pydantic.ValidationError):
         CatalogPayload(
             schema_version=CATALOG_SCHEMA_VERSION,
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
             providers=[],
             creators=[],
             models=models,

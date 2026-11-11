@@ -39,7 +39,8 @@ import hashlib
 import json
 import logging
 import secrets
-from typing import Any, Awaitable, Callable, Literal, Optional, TypeVar, cast
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal, TypeVar, cast
 
 from e2b import AsyncCommandHandle, AsyncSandbox
 from e2b.exceptions import NotFoundException
@@ -117,8 +118,8 @@ class EgressOwner(BaseModel):
 
     kind: Literal["session", "expert", "block"]
     id: str
-    user_id: Optional[str] = None
-    providers: Optional[tuple[str, ...]] = None
+    user_id: str | None = None
+    providers: tuple[str, ...] | None = None
 
     @property
     def label(self) -> str:
@@ -143,7 +144,7 @@ class ProxyCredential(BaseModel):
     secret: str
 
 
-def proxy_address() -> Optional[str]:
+def proxy_address() -> str | None:
     """The swap proxy's ``host:port``, or ``None`` when egress is left direct."""
     return Settings().config.e2b_egress_proxy_address.strip() or None
 
@@ -182,7 +183,7 @@ async def connect_sandbox(
     *,
     apply_network: bool = True,
     resumes: bool = True,
-    owner_at_pin: Optional[Callable[[EgressOwner], Awaitable[EgressOwner]]] = None,
+    owner_at_pin: Callable[[EgressOwner], Awaitable[EgressOwner]] | None = None,
     **kwargs: Any,
 ) -> S:
     """Reconnect to a box, re-pinning its egress under a fresh credential.
@@ -214,7 +215,7 @@ async def connect_sandbox(
     return sandbox
 
 
-def _on_platform_key(owner: EgressOwner, api_key: Optional[str]) -> bool:
+def _on_platform_key(owner: EgressOwner, api_key: str | None) -> bool:
     """CoPilot boxes always run on the platform's key; a block's box only when
     it runs on the platform's E2B credential, not one the user brought."""
     return owner.kind != "block" or not api_key or api_key == Secrets().e2b_api_key
@@ -264,7 +265,7 @@ async def _connect_pinned(
     owner: EgressOwner,
     *,
     apply_network: bool = True,
-    owner_at_pin: Optional[Callable[[EgressOwner], Awaitable[EgressOwner]]] = None,
+    owner_at_pin: Callable[[EgressOwner], Awaitable[EgressOwner]] | None = None,
     **kwargs: Any,
 ) -> S:
     """The new credential is recorded before the update and the old one is
@@ -357,7 +358,7 @@ async def hold_sandbox(sandbox_id: str) -> None:
 
 
 async def release_sandbox(
-    sandbox_id: str, sandbox: Optional[AsyncSandbox], **opts: Any
+    sandbox_id: str, sandbox: AsyncSandbox | None, **opts: Any
 ) -> None:
     """Uncount a block run and pause the box unless another run still holds
     it, under the box's rotation lock.  Without a handle (the run's connect
@@ -472,7 +473,7 @@ async def forget_sandbox(sandbox_id: str) -> None:
         )
 
 
-async def credential_record(username: str) -> Optional[dict[str, Any]]:
+async def credential_record(username: str) -> dict[str, Any] | None:
     """What the proxy sees for a username: owner, user, box, secret digest."""
     redis = await get_redis_async()
     raw = await redis.get(_CREDENTIAL_KEY_PREFIX + username)
@@ -481,7 +482,7 @@ async def credential_record(username: str) -> Optional[dict[str, Any]]:
     return json.loads(raw.decode() if isinstance(raw, bytes) else raw)
 
 
-async def recorded_providers(sandbox_id: str) -> Optional[tuple[str, ...]]:
+async def recorded_providers(sandbox_id: str) -> tuple[str, ...] | None:
     """The provider ceiling the box was last pinned with: what a re-pin that
     has no ceiling of its own to give keeps, so that it never widens one.
 
@@ -552,7 +553,7 @@ def _proxy(address: str, credential: ProxyCredential) -> SandboxEgressProxyOpts:
 
 
 async def _remember(
-    credential: ProxyCredential, owner: EgressOwner, *, sandbox_id: Optional[str]
+    credential: ProxyCredential, owner: EgressOwner, *, sandbox_id: str | None
 ) -> None:
     redis = await get_redis_async()
     record = {
@@ -577,7 +578,7 @@ async def _forget(username: str) -> None:
     await redis.delete(_CREDENTIAL_KEY_PREFIX + username)
 
 
-async def _bound_username(sandbox_id: str) -> Optional[str]:
+async def _bound_username(sandbox_id: str) -> str | None:
     redis = await get_redis_async()
     raw = await redis.get(_BOX_KEY_PREFIX + sandbox_id)
     return raw.decode() if isinstance(raw, bytes) else raw

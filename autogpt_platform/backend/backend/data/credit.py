@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 from urllib.parse import urlsplit, urlunsplit
 
@@ -34,9 +34,9 @@ from backend.data.model import (
     RefundRequest,
     TopUpType,
     TransactionHistory,
+    UserCreditTransactionAdminView,
 )
 from backend.data.model import User as AppUser
-from backend.data.model import UserCreditTransactionAdminView
 from backend.data.notifications import NotificationEventModel, OpsData
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.stripe_authentication import requires_authentication
@@ -189,7 +189,6 @@ class UserCreditBase(ABC):
         Returns:
             int: The current credits for the user.
         """
-        pass
 
     @abstractmethod
     async def get_transaction_history(
@@ -213,7 +212,6 @@ class UserCreditBase(ABC):
         Returns:
             TransactionHistory: The credit transactions for the user.
         """
-        pass
 
     @abstractmethod
     async def get_refund_requests(self, user_id: str) -> list[RefundRequest]:
@@ -226,7 +224,6 @@ class UserCreditBase(ABC):
         Returns:
             list[RefundRequest]: The refund requests for the user.
         """
-        pass
 
     @abstractmethod
     async def spend_credits(
@@ -253,7 +250,6 @@ class UserCreditBase(ABC):
         Returns:
             int: The remaining balance.
         """
-        pass
 
     @abstractmethod
     async def top_up_credits(
@@ -266,7 +262,6 @@ class UserCreditBase(ABC):
             user_id (str): The user ID.
             amount (int): The amount to top up.
         """
-        pass
 
     @abstractmethod
     async def grant_credits(
@@ -297,7 +292,6 @@ class UserCreditBase(ABC):
         Returns:
             int: The new balance after the grant.
         """
-        pass
 
     @abstractmethod
     async def onboarding_reward(
@@ -317,7 +311,6 @@ class UserCreditBase(ABC):
         Returns:
             bool: True if rewarded, False if already rewarded.
         """
-        pass
 
     @abstractmethod
     async def top_up_intent(
@@ -339,7 +332,6 @@ class UserCreditBase(ABC):
         Returns:
             str: The redirect url to the payment page.
         """
-        pass
 
     @abstractmethod
     async def top_up_refund(
@@ -356,7 +348,6 @@ class UserCreditBase(ABC):
         Returns:
             int: The amount refunded.
         """
-        pass
 
     @abstractmethod
     async def deduct_credits(
@@ -369,7 +360,6 @@ class UserCreditBase(ABC):
         Args:
             request (stripe.Refund | stripe.Dispute): The refund or dispute request.
         """
-        pass
 
     @abstractmethod
     async def handle_dispute(self, dispute: stripe.Dispute):
@@ -379,7 +369,6 @@ class UserCreditBase(ABC):
         Args:
             dispute (stripe.Dispute): The dispute request.
         """
-        pass
 
     @abstractmethod
     async def fulfill_checkout(
@@ -392,7 +381,6 @@ class UserCreditBase(ABC):
             session_id (str | None): The checkout session ID. Will try to fulfill most recent if None.
             user_id (str | None): The user ID must be provided if session_id is None.
         """
-        pass
 
     @staticmethod
     async def create_billing_portal_session(user_id: str) -> str | None:
@@ -430,7 +418,7 @@ class UserCreditBase(ABC):
 
     @staticmethod
     def time_now() -> datetime:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
     # ====== Transaction Helper Methods ====== #
     # Any modifications to the transaction table should only be done through these methods #
@@ -455,7 +443,7 @@ class UserCreditBase(ABC):
             },
             order={"createdAt": "desc"},
         )
-        datetime_min = datetime.min.replace(tzinfo=timezone.utc)
+        datetime_min = datetime.min.replace(tzinfo=UTC)
         snapshot_balance = snapshot.runningBalance or 0 if snapshot else 0
         snapshot_time = snapshot.createdAt if snapshot else datetime_min
 
@@ -802,7 +790,7 @@ class UserCredit(UserCreditBase):
         """Internal mail to the refunds team. The amount leads, because it is
         what the person on call triages by, and every timestamp is absolute —
         the email is read hours later."""
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         stamp = f"{now.day} {now.strftime('%b %Y')} at {now.strftime('%H:%M')} UTC"
         await queue_notification_async(
             NotificationEventModel[OpsData](
@@ -1149,7 +1137,7 @@ class UserCredit(UserCreditBase):
             else:
                 additional_comment = ""
 
-            tx_time = t.createdAt.replace(tzinfo=timezone.utc)
+            tx_time = t.createdAt.replace(tzinfo=UTC)
             running_balance = t.runningBalance or 0
             evidence_text += (
                 f"- {t.type} Transaction: Amount ${t.amount / 100:.2f} on {tx_time.isoformat()}, "
@@ -1630,7 +1618,7 @@ class UserCredit(UserCreditBase):
                 id=invoice.id or "",
                 number=invoice.number,
                 created_at=datetime.fromtimestamp(
-                    invoice.created or 0, tz=timezone.utc
+                    invoice.created or 0, tz=UTC
                 ),
                 total_cents=invoice.total or 0,
                 amount_paid_cents=invoice.amount_paid or 0,
@@ -1839,7 +1827,7 @@ async def set_subscription_tier(
                 "id": user_id,
                 "subscriptionTier": {"not": SubscriptionTier.NO_TIER},
             },
-            data={**data, "subscriptionEndedAt": datetime.now(timezone.utc)},
+            data={**data, "subscriptionEndedAt": datetime.now(UTC)},
         )
     else:
         data["subscriptionEndedAt"] = None
@@ -2605,7 +2593,7 @@ async def modify_stripe_subscription_for_tier(
         try:
             await set_subscription_tier(user_id, tier)
             db_flip_succeeded = True
-        except (PrismaError, ConnectionError, asyncio.TimeoutError):
+        except (TimeoutError, PrismaError, ConnectionError):
             logger.exception(
                 "modify_stripe_subscription_for_tier: Stripe modify on sub %s"
                 " succeeded for user %s → %s but DB tier flip failed; webhook"
@@ -2810,7 +2798,7 @@ async def _fetch_pending_subscription_change(customer_id: str) -> PendingChange 
     period_end = sub.current_period_end
     if not isinstance(period_end, int):
         return None
-    effective_at = datetime.fromtimestamp(period_end, tz=timezone.utc)
+    effective_at = datetime.fromtimestamp(period_end, tz=UTC)
     if sub.cancel_at_period_end:
         return PendingChange(tier=SubscriptionTier.NO_TIER, effective_at=effective_at)
     if not sub.schedule:
@@ -2855,7 +2843,7 @@ def _next_phase_tier_and_start(
         if price_id in price_to_tier:
             return (
                 price_to_tier[price_id],
-                datetime.fromtimestamp(phase.start_date, tz=timezone.utc),
+                datetime.fromtimestamp(phase.start_date, tz=UTC),
                 price_to_cycle.get(price_id),
             )
         logger.warning(
@@ -3961,9 +3949,9 @@ async def admin_export_user_history(
     # `2026-01-01T00:00:00` (no tz) don't trip a TypeError when subtracted
     # against an aware `2026-01-31T00:00:00Z` partner.
     if start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
+        start = start.replace(tzinfo=UTC)
     if end.tzinfo is None:
-        end = end.replace(tzinfo=timezone.utc)
+        end = end.replace(tzinfo=UTC)
     if end < start:
         raise ValueError("end must be >= start")
     # Compare timedeltas directly so 90d + any sub-day remainder still trips
@@ -4053,7 +4041,7 @@ async def get_recent_daily_spend(user_id: str, days: int = SPEND_WINDOW_DAYS) ->
     Returns 0.0 when there is too little history to forecast from; the caller
     omits the forecast rather than publishing one built from noise.
     """
-    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    since = datetime.now(tz=UTC) - timedelta(days=days)
     try:
         rows = await query_raw_with_schema(
             """

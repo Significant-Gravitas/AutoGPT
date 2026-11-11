@@ -1,5 +1,5 @@
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from apscheduler.events import EVENT_JOB_EXECUTED
@@ -18,7 +18,7 @@ def _scheduler(database_url):
     return BackgroundScheduler(
         jobstores={"execution": ResilientSQLAlchemyJobStore(url=database_url)},
         job_defaults={"coalesce": True, "misfire_grace_time": None, "max_instances": 1},
-        timezone=timezone.utc,
+        timezone=UTC,
     )
 
 
@@ -27,10 +27,10 @@ def test_persisted_idle_sweep_catches_up_once_after_restart(
     tmp_path, monkeypatch, paused
 ):
     database_url = f"sqlite:///{(tmp_path / 'jobs.sqlite').as_posix()}"
-    due = datetime.now(timezone.utc).replace(hour=3, minute=0, second=0, microsecond=0)
+    due = datetime.now(UTC).replace(hour=3, minute=0, second=0, microsecond=0)
     due -= timedelta(days=2)
     first = ResilientSQLAlchemyJobStore(url=database_url)
-    seed_scheduler = BackgroundScheduler(timezone=timezone.utc)
+    seed_scheduler = BackgroundScheduler(timezone=UTC)
     first.start(seed_scheduler, "execution")
     try:
         first.add_job(
@@ -38,7 +38,7 @@ def test_persisted_idle_sweep_catches_up_once_after_restart(
                 seed_scheduler,
                 func=refresh_near_expiry_credentials,
                 id=JOB_ID,
-                trigger=CronTrigger(hour=3, minute=0, timezone=timezone.utc),
+                trigger=CronTrigger(hour=3, minute=0, timezone=UTC),
                 next_run_time=None if paused else due,
                 executor="default",
                 args=(),
@@ -76,7 +76,7 @@ def test_persisted_idle_sweep_catches_up_once_after_restart(
             assert calls == [None]
             updated = restarted.get_job(JOB_ID, jobstore="execution")
             assert updated is not None
-            assert updated.next_run_time > datetime.now(timezone.utc)
+            assert updated.next_run_time > datetime.now(UTC)
     finally:
         restarted.shutdown()
 
@@ -102,10 +102,10 @@ def test_idle_sweep_installs_or_migrates_the_daily_job(tmp_path, previous):
         service._register_idle_credential_sweep()
         job = scheduler.get_job(JOB_ID, jobstore="execution")
         assert job is not None
-        expected = CronTrigger(hour=3, minute=0, timezone=timezone.utc)
+        expected = CronTrigger(hour=3, minute=0, timezone=UTC)
         assert str(job.trigger) == str(expected)
         assert job.next_run_time == expected.get_next_fire_time(
-            None, datetime.now(timezone.utc)
+            None, datetime.now(UTC)
         )
         assert job.max_instances == 1
         assert job.coalesce is True

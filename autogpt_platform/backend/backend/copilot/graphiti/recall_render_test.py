@@ -1,7 +1,7 @@
 """Unit tests for how recalled memory is written out (``recall_render.py``)."""
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from graphiti_core.edges import EntityEdge
@@ -11,7 +11,7 @@ from . import recall_render
 from .memory_model import MemoryEnvelope, MemoryKind, SourceKind
 from .scope import MemoryScope
 
-_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 _SCOPE = MemoryScope.for_user("user-abc")
 
 
@@ -71,7 +71,7 @@ class TestRender:
         ]
 
     def test_live_fact_shows_its_validity(self) -> None:
-        fact = _fact(valid_at=datetime(2025, 1, 1, tzinfo=timezone.utc))
+        fact = _fact(valid_at=datetime(2025, 1, 1, tzinfo=UTC))
         assert recall_render.render(fact) == (
             "Alice works on Atlas (valid: 2025-01-01 00:00:00+00:00 — present)"
         )
@@ -81,8 +81,8 @@ class TestRender:
         ``invalid_at``. The interval shows that end instead of "present",
         and no retirement label is given, because it was never retired."""
         fact = _fact(
-            valid_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
-            invalid_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            valid_at=datetime(2024, 1, 1, tzinfo=UTC),
+            invalid_at=datetime(2025, 1, 1, tzinfo=UTC),
         )
         assert recall_render.render(fact) == (
             "Alice works on Atlas "
@@ -117,8 +117,8 @@ class TestRender:
 class TestRenderEpisode:
     def test_reference_time_dates_delayed_episodes_with_legacy_fallback(self) -> None:
         episode = _episode("The delivery is tomorrow.")
-        episode.valid_at = datetime(2026, 9, 30, 12, tzinfo=timezone.utc)
-        episode.created_at = datetime(2026, 10, 20, 12, tzinfo=timezone.utc)
+        episode.valid_at = datetime(2026, 9, 30, 12, tzinfo=UTC)
+        episode.created_at = datetime(2026, 10, 20, 12, tzinfo=UTC)
         legacy = episode.model_copy(update={"valid_at": None})
 
         assert [recall_render.render_episode(item) for item in (episode, legacy)] == [

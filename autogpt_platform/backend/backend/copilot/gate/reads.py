@@ -16,13 +16,13 @@ import json
 import logging
 import posixpath
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from enum import Enum
 from functools import partial
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from prisma.enums import ReviewStatus
@@ -39,9 +39,8 @@ from backend.data.db_accessors import experts_db
 from backend.data.workspace_scope import is_skill_package_path
 from backend.util.feature_flag import Flag, get_flag_variant
 
-from . import answered_from_chat_of_origin, held, resolve_mode
+from . import answered_from_chat_of_origin, held, resolve_mode, shadow
 from . import review as review_store
-from . import shadow
 from .content import ContentVerdict, Image, judge_content
 from .headline import Headline, named
 from .policy import DEFAULT_MODE

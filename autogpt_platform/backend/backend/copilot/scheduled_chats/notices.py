@@ -11,8 +11,8 @@ keeps it out of everything the model reads (``hidden_rows``).
 """
 
 import uuid
-from datetime import datetime, timezone
-from typing import Annotated, Any, Literal, Union
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field
@@ -83,7 +83,7 @@ class NoticeRunLessOften(BaseModel):
 
 
 NoticeAction = Annotated[
-    Union[NoticeLink, NoticeResume, NoticeReconnect, NoticeRunLessOften],
+    NoticeLink | NoticeResume | NoticeReconnect | NoticeRunLessOften,
     Field(discriminator="kind"),
 ]
 
@@ -319,4 +319,4 @@ def _in_timezone(when: datetime, user_timezone: str | None) -> datetime:
             return when.astimezone(ZoneInfo(user_timezone))
         except (ZoneInfoNotFoundError, ValueError):
             pass
-    return when.astimezone(timezone.utc)
+    return when.astimezone(UTC)

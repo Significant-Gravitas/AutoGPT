@@ -17,7 +17,7 @@ at-least-once and the service can run more than one replica.
 
 import logging
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from zoneinfo import available_timezones
 
 from backend.data.notifications import PassWorkEvent, PassWorkKind
@@ -52,7 +52,7 @@ CANDIDATE_PAGE_SIZE = 5000
 
 async def flush_matured_alerts() -> None:
     """Publish one flush job per user whose conditions have matured."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     published = 0
 
     async for user_id in _matured_alert_user_ids():
@@ -76,7 +76,7 @@ async def send_due_briefings() -> None:
     the candidate row already carries the frequency and the last send. Only
     users that pass it become messages.
     """
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     zones = _briefing_hour_timezones(now)
     considered = published = 0
 
@@ -243,6 +243,6 @@ def _briefing_hour_timezones(now: datetime) -> list[str]:
         for name in available_timezones()
         if now.astimezone(resolve_zone(name)).hour == BRIEFING_HOUR
     ]
-    if now.astimezone(timezone.utc).hour == BRIEFING_HOUR:
+    if now.astimezone(UTC).hour == BRIEFING_HOUR:
         zones.append("not-set")
     return zones

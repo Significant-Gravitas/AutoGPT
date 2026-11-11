@@ -1,4 +1,3 @@
-import asyncio
 import codecs
 import json
 import logging
@@ -215,7 +214,7 @@ class Microsoft365CopilotClient:
                     ) from error
         except Microsoft365CopilotError:
             raise
-        except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+        except (TimeoutError, aiohttp.ClientError) as error:
             raise Microsoft365CopilotError(
                 "Microsoft 365 Copilot could not create a Copilot conversation"
             ) from error
@@ -255,7 +254,7 @@ class Microsoft365CopilotClient:
                     yield update
         except Microsoft365CopilotError:
             raise
-        except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+        except (TimeoutError, aiohttp.ClientError) as error:
             raise Microsoft365CopilotError(
                 "Microsoft 365 Copilot could not continue a Copilot conversation"
             ) from error

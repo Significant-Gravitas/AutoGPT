@@ -6,7 +6,6 @@ which provides access to LinkedIn profile data and related information.
 """
 
 import logging
-from typing import Optional
 
 from backend.blocks._base import (
     Block,
@@ -199,7 +198,7 @@ class GetLinkedinProfileBlock(Block):
             )
             yield "profile", profile
         except Exception as e:
-            logger.error(f"Error fetching LinkedIn profile: {str(e)}")
+            logger.error(f"Error fetching LinkedIn profile: {e!s}")
             yield "error", str(e)
 
 
@@ -225,12 +224,12 @@ class LinkedinPersonLookupBlock(Block):
             placeholder="example.com",
             advanced=False,
         )
-        location: Optional[str] = SchemaField(
+        location: str | None = SchemaField(
             description="Person's location (optional)",
             placeholder="San Francisco",
             default=None,
         )
-        title: Optional[str] = SchemaField(
+        title: str | None = SchemaField(
             description="Person's job title (optional)",
             placeholder="CEO",
             default=None,
@@ -302,8 +301,8 @@ class LinkedinPersonLookupBlock(Block):
         first_name: str,
         company_domain: str,
         last_name: str | None = None,
-        location: Optional[str] = None,
-        title: Optional[str] = None,
+        location: str | None = None,
+        title: str | None = None,
         include_similarity_checks: bool = False,
         enrich_profile: bool = False,
     ):
@@ -346,7 +345,7 @@ class LinkedinPersonLookupBlock(Block):
             )
             yield "lookup_result", lookup_result
         except Exception as e:
-            logger.error(f"Error looking up LinkedIn profile: {str(e)}")
+            logger.error(f"Error looking up LinkedIn profile: {e!s}")
             yield "error", str(e)
 
 
@@ -449,7 +448,7 @@ class LinkedinRoleLookupBlock(Block):
             )
             yield "role_lookup_result", role_lookup_result
         except Exception as e:
-            logger.error(f"Error looking up role in company: {str(e)}")
+            logger.error(f"Error looking up role in company: {e!s}")
             yield "error", str(e)
 
 
@@ -530,5 +529,5 @@ class GetLinkedinProfilePictureBlock(Block):
             )
             yield "profile_picture_url", profile_picture
         except Exception as e:
-            logger.error(f"Error getting profile picture: {str(e)}")
+            logger.error(f"Error getting profile picture: {e!s}")
             yield "error", str(e)

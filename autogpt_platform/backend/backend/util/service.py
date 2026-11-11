@@ -8,19 +8,14 @@ import threading
 import time
 import typing
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import asynccontextmanager
 from functools import update_wrapper
 from time import monotonic
 from typing import (
     Any,
-    Awaitable,
-    Callable,
     Concatenate,
-    Coroutine,
-    Optional,
     ParamSpec,
-    Tuple,
-    Type,
     TypeVar,
     cast,
     get_type_hints,
@@ -36,10 +31,9 @@ from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from tenacity import RetryCallState
 from tenacity.stop import stop_base
 
-import backend.util.exceptions as exceptions
 from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
-from backend.util import tracing
+from backend.util import exceptions, tracing
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, freeze_startup_heap
@@ -237,21 +231,21 @@ class RemoteCallExtras(BaseModel):
     """
 
     # GraphValidationError.node_errors — dict[node_id, dict[field, error_msg]]
-    node_errors: Optional[dict[str, dict[str, str]]] = None
+    node_errors: dict[str, dict[str, str]] | None = None
 
 
 class RemoteCallError(BaseModel):
     type: str = "RemoteCallError"
     # Matched only against exception classes the client has already loaded.
-    module: Optional[str] = None
-    args: Optional[Tuple[Any, ...]] = None
+    module: str | None = None
+    args: tuple[Any, ...] | None = None
     # Optional extras for exception types that carry structured attributes
     # beyond ``exc.args``. When set, the client-side handler uses these to
     # reconstruct the exception with the original attributes.
     # Currently used by ``GraphValidationError.node_errors`` so the
     # copilot's credential-race fallback can distinguish credential
     # failures from other graph validation errors over RPC.
-    extras: Optional[RemoteCallExtras] = None
+    extras: RemoteCallExtras | None = None
 
 
 class UnhealthyServiceError(ValueError):
@@ -345,7 +339,7 @@ class AppService(BaseAppService, ABC):
                         f"{request.method} {request.url.path} failed: {exc}",
                         exc_info=exc,
                     )
-            extras: Optional[RemoteCallExtras] = None
+            extras: RemoteCallExtras | None = None
             if isinstance(exc, exceptions.GraphValidationError):
                 # ``exc.args`` only preserves the top-level message; the
                 # structured ``node_errors`` mapping needs to ride along
@@ -623,7 +617,7 @@ AS = TypeVar("AS", bound=AppService)
 class AppServiceClient(ABC):
     @classmethod
     @abstractmethod
-    def get_service_type(cls) -> Type[AppService]:
+    def get_service_type(cls) -> type[AppService]:
         pass
 
     def health_check(self):
@@ -706,7 +700,7 @@ async def _send_trace_headers_async(request: httpx.Request) -> None:
 
 @conn_retry("AppService client", "Creating service client", max_retry=api_comm_retry)
 def get_service_client(
-    service_client_type: Type[ASC],
+    service_client_type: type[ASC],
     call_timeout: int | None = api_call_timeout,
     request_retry: bool = False,
 ) -> ASC:

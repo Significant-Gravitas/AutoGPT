@@ -9,7 +9,7 @@ and load/outcome events attached to exact versions.
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import prisma.errors
@@ -77,7 +77,7 @@ class SkillHeadRecord(BaseModel):
         return self.current_version_id is None and self.current_version > 0
 
     @classmethod
-    def from_db(cls, row: prisma.models.SkillHead) -> "SkillHeadRecord":
+    def from_db(cls, row: prisma.models.SkillHead) -> SkillHeadRecord:
         return cls(
             id=row.id,
             user_id=row.userId,
@@ -124,7 +124,7 @@ class SkillVersionRecord(BaseModel):
     created_at: datetime
 
     @classmethod
-    def from_db(cls, row: prisma.models.SkillVersion) -> "SkillVersionRecord":
+    def from_db(cls, row: prisma.models.SkillVersion) -> SkillVersionRecord:
         return cls(
             id=row.id,
             user_id=row.userId,
@@ -229,7 +229,7 @@ async def update_head_policy(
     head = await get_head(user_id, owner_key, skill_name)
     if head is None:
         return None
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     data: prisma.types.SkillHeadUpdateInput = {}
     if auto_improve is not None:
         data["autoImprove"] = auto_improve
@@ -252,7 +252,7 @@ async def pause_use_if_current(user_id: str, head_id: str, version_id: str) -> b
     """
     paused = await prisma.models.SkillHead.prisma().update_many(
         where={"id": head_id, "userId": user_id, "currentVersionId": version_id},
-        data={"usePausedAt": datetime.now(timezone.utc)},
+        data={"usePausedAt": datetime.now(UTC)},
     )
     return paused > 0
 

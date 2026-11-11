@@ -323,7 +323,7 @@ class AutoModManager:
                 logger.warning(f"Content rejected: {error_msg}")
                 return False, response.content_id
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # A timeout is AutoMod failing like any other error: an operator
             # who wants runs to go on without it sets automod_fail_open.
             logger.warning(
@@ -356,7 +356,7 @@ class AutoModManager:
             response_data = response.json()
             return AutoModResponse.model_validate(response_data)
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Re-raise timeout error to be caught by _moderate_content
             raise
         except (json.JSONDecodeError, ValidationError) as e:
@@ -364,7 +364,7 @@ class AutoModManager:
         except Exception as e:
             # Check if this is an aiohttp timeout that we should convert
             if "timeout" in str(e).lower():
-                raise asyncio.TimeoutError(f"AutoMod API request timed out: {e}")
+                raise TimeoutError(f"AutoMod API request timed out: {e}")
             raise Exception(f"AutoMod API request failed: {e}")
 
 

@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Coroutine
+from collections.abc import Coroutine
 
 logger = logging.getLogger(__name__)
 

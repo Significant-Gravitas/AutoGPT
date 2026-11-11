@@ -2,7 +2,7 @@
 Better Auth link emails and the account-closed confirmation."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal, assert_never
 
 from prisma.enums import AccountDeletionSource
@@ -99,7 +99,7 @@ async def send_account_deleted_email(
     what that means."""
     if erase_now:
         preheader = ACCOUNT_ERASED_AS_ASKED_PREHEADER
-    elif erase_after <= (now or datetime.now(timezone.utc)):
+    elif erase_after <= (now or datetime.now(UTC)):
         preheader = ACCOUNT_BEING_ERASED_PREHEADER
     else:
         preheader = account_closed_preheader(erase_after)

@@ -5,7 +5,7 @@ sign-up date, and the client never supplies them: the deletion service and the
 feedback emitter both read them from the User row.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from prisma.enums import SubscriptionTier
@@ -38,7 +38,7 @@ def plan_state(tier: SubscriptionTier) -> PlanState:
 
 def tenure_bucket(created_at: datetime, *, now: datetime | None = None) -> TenureBucket:
     """How old the account is, as one of four buckets."""
-    age = (now or datetime.now(timezone.utc)) - created_at
+    age = (now or datetime.now(UTC)) - created_at
     for upper_bound, bucket in _TENURE_BUCKETS:
         if age < upper_bound:
             return bucket

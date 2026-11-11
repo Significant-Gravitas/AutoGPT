@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -30,7 +30,7 @@ async def test_pausing_during_review_preserves_the_revision_until_resume(
     _, _, expert = chat_db
 
     async def pause_after_review(*_args):
-        expert.learning_paused_at = datetime.now(timezone.utc)
+        expert.learning_paused_at = datetime.now(UTC)
         return _completion(_proposal(supported_by=["msg:2"]))
 
     boundaries["review"].side_effect = pause_after_review
@@ -81,7 +81,7 @@ async def test_owner_proposal_remains_open_while_expert_learning_is_paused(
         sources=[dependency],
     )
     _, _, expert = chat_db
-    expert.learning_paused_at = datetime.now(timezone.utc)
+    expert.learning_paused_at = datetime.now(UTC)
     paused = await _decide(proposal.id)
     assert paused.status == "paused"
     assert (await fake_store.get_version(USER, proposal.id)).state == "needs_decision"

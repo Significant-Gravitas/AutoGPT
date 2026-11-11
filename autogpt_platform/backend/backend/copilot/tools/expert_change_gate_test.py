@@ -7,11 +7,12 @@ Driven through ``BaseTool.execute`` with the gate on, as both engines call it.
 import json
 import os
 import uuid
+from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

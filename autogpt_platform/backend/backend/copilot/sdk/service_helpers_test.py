@@ -1392,7 +1392,6 @@ class TestCompactionTargetTokens:
         async def fake_compact(content, *, model, log_prefix, target_tokens):
             captured["target_tokens"] = target_tokens
             captured["compactor_model"] = model
-            return None
 
         with (
             patch(

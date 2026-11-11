@@ -92,7 +92,7 @@ def test_execute_a_webhook_triggered_preset_returns_400(
 ) -> None:
     """Its trigger node only gets a payload from a delivery."""
     app.dependency_overrides[enforce_payment_paywall] = lambda: None
-    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    now = datetime.datetime.now(tz=datetime.UTC)
     mocker.patch(
         "backend.api.features.library.routes.presets.db.get_preset",
         new_callable=AsyncMock,

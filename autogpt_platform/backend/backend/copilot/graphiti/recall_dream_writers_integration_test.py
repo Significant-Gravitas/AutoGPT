@@ -19,7 +19,7 @@ Run with FalkorDB reachable (see ``conftest.py``)::
 """
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -152,7 +152,7 @@ async def test_a_dream_write_never_undoes_a_forget(
         assert (row["status"], row["reason"]) == ("retracted", "user_signal")
         assert row["forgotten_at"] is not None
     assert row["invalid_at"] is None, "a forget is not a world change"
-    window_start = datetime.now(timezone.utc) - timedelta(days=14)
+    window_start = datetime.now(UTC) - timedelta(days=14)
     dream = await _fetch_recent_episodes(driver, scope.group_id, window_start, 50)
     assert episode not in {e.uuid for e in dream}, "the dream reads it again"
     assert episode not in await recalled_episodes(scope)

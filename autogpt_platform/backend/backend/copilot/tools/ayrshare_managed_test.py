@@ -5,8 +5,8 @@ secrets, the provisioning lock, the credential store and Ayrshare's JWT
 call), so on the old code they fail on behaviour, not on a missing symbol.
 """
 
+from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
-from typing import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

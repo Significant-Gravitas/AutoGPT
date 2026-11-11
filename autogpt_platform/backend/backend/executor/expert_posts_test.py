@@ -1,6 +1,6 @@
 """Unit tests for expert run-result thread posts — no DB required."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -47,7 +47,7 @@ def _redis_allowing_posts() -> MagicMock:
 def _output_node(name: str, value: object) -> SimpleNamespace:
     return SimpleNamespace(
         queue_time=None,
-        add_time=datetime(2026, 8, 14, tzinfo=timezone.utc),
+        add_time=datetime(2026, 8, 14, tzinfo=UTC),
         input_data={"name": name, "value": value},
         status=ExecutionStatus.COMPLETED,
     )

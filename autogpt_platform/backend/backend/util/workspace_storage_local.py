@@ -1,7 +1,6 @@
 import logging
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 import aiofiles
 
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 class LocalWorkspaceStorage(WorkspaceStorageBackend):
     """Local filesystem implementation for workspace storage (self-hosted deployments)."""
 
-    def __init__(self, base_dir: Optional[str] = None):
+    def __init__(self, base_dir: str | None = None):
         """
         Initialize local storage backend.
 

@@ -1,6 +1,6 @@
 import datetime
 import enum
-from typing import TYPE_CHECKING, Annotated, List, Self
+from typing import TYPE_CHECKING, Annotated, Self
 
 import prisma.enums
 import pydantic
@@ -224,7 +224,7 @@ class CreatorDetails(ProfileDetails):
 
 
 class CreatorsResponse(pydantic.BaseModel):
-    creators: List[CreatorDetails]
+    creators: list[CreatorDetails]
     pagination: Pagination
 
 

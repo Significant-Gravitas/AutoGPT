@@ -4,7 +4,7 @@ Auto-registration system for blocks, providers, and their configurations.
 
 import logging
 import threading
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
+from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import BaseModel
 
@@ -24,8 +24,8 @@ class SDKOAuthCredentials(BaseModel):
     """OAuth credentials configuration for SDK providers."""
 
     use_secrets: bool = False
-    client_id_env_var: Optional[str] = None
-    client_secret_env_var: Optional[str] = None
+    client_id_env_var: str | None = None
+    client_secret_env_var: str | None = None
 
 
 class BlockConfiguration:
@@ -34,10 +34,10 @@ class BlockConfiguration:
     def __init__(
         self,
         provider: str,
-        costs: List[Any],
-        default_credentials: List[Credentials],
-        webhook_manager: Optional[Type[BaseWebhooksManager]] = None,
-        oauth_handler: Optional[Type[BaseOAuthHandler]] = None,
+        costs: list[Any],
+        default_credentials: list[Credentials],
+        webhook_manager: type[BaseWebhooksManager] | None = None,
+        oauth_handler: type[BaseOAuthHandler] | None = None,
     ):
         self.provider = provider
         self.costs = costs
@@ -50,13 +50,13 @@ class AutoRegistry:
     """Central registry for all block-related configurations."""
 
     _lock = threading.Lock()
-    _providers: Dict[str, "Provider"] = {}
-    _default_credentials: List[Credentials] = []
-    _oauth_handlers: Dict[str, Type[BaseOAuthHandler]] = {}
-    _oauth_credentials: Dict[str, SDKOAuthCredentials] = {}
-    _webhook_managers: Dict[str, Type[BaseWebhooksManager]] = {}
-    _block_configurations: Dict[Type[Block], BlockConfiguration] = {}
-    _api_key_mappings: Dict[str, str] = {}  # provider -> env_var_name
+    _providers: dict[str, "Provider"] = {}
+    _default_credentials: list[Credentials] = []
+    _oauth_handlers: dict[str, type[BaseOAuthHandler]] = {}
+    _oauth_credentials: dict[str, SDKOAuthCredentials] = {}
+    _webhook_managers: dict[str, type[BaseWebhooksManager]] = {}
+    _block_configurations: dict[type[Block], BlockConfiguration] = {}
+    _api_key_mappings: dict[str, str] = {}  # provider -> env_var_name
 
     @classmethod
     def register_provider(cls, provider: "Provider") -> None:
@@ -108,32 +108,32 @@ class AutoRegistry:
             # We only store the mapping here to avoid duplication
 
     @classmethod
-    def get_all_credentials(cls) -> List[Credentials]:
+    def get_all_credentials(cls) -> list[Credentials]:
         """Replace hardcoded get_all_creds() in credentials_store.py."""
         with cls._lock:
             return cls._default_credentials.copy()
 
     @classmethod
-    def get_oauth_handlers(cls) -> Dict[str, Type[BaseOAuthHandler]]:
+    def get_oauth_handlers(cls) -> dict[str, type[BaseOAuthHandler]]:
         """Replace HANDLERS_BY_NAME in oauth/__init__.py."""
         with cls._lock:
             return cls._oauth_handlers.copy()
 
     @classmethod
-    def get_oauth_credentials(cls) -> Dict[str, SDKOAuthCredentials]:
+    def get_oauth_credentials(cls) -> dict[str, SDKOAuthCredentials]:
         """Get OAuth credentials configuration for SDK providers."""
         with cls._lock:
             return cls._oauth_credentials.copy()
 
     @classmethod
-    def get_webhook_managers(cls) -> Dict[str, Type[BaseWebhooksManager]]:
+    def get_webhook_managers(cls) -> dict[str, type[BaseWebhooksManager]]:
         """Replace load_webhook_managers() in webhooks/__init__.py."""
         with cls._lock:
             return cls._webhook_managers.copy()
 
     @classmethod
     def register_block_configuration(
-        cls, block_class: Type[Block], config: BlockConfiguration
+        cls, block_class: type[Block], config: BlockConfiguration
     ) -> None:
         """Register configuration for a specific block class."""
         with cls._lock:
@@ -146,7 +146,7 @@ class AutoRegistry:
             return cls._providers.get(name)
 
     @classmethod
-    def get_all_provider_names(cls) -> List[str]:
+    def get_all_provider_names(cls) -> list[str]:
         """Get all registered provider names."""
         with cls._lock:
             return list(cls._providers.keys())

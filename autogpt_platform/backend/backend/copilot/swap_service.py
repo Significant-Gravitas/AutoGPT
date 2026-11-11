@@ -4,7 +4,7 @@ see ``swap_proxy/README.md`` for why."""
 
 import logging
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from backend.copilot.swap_credentials import (
     SwapCredential,
@@ -55,5 +55,5 @@ class SwapCredentialService(AppService):
     @expose
     async def resolve_swap_credential(
         self, user_id: str, name: str, host: str, box: str
-    ) -> Optional[SwapCredential]:
+    ) -> SwapCredential | None:
         return await resolve_swap_credential(user_id, name, host, box)

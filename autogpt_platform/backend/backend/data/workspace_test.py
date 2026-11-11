@@ -8,7 +8,7 @@ the path two writes to one path race on.
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from prisma.errors import UniqueViolationError
@@ -56,7 +56,7 @@ async def test_two_deletes_at_one_instant_both_keep_the_path(
     the rename exists to dodge. Freezing the clock is stronger than the second
     the suffix once measured — nothing here reads it."""
     workspace = await _workspace()
-    frozen = datetime(2026, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
+    frozen = datetime(2026, 9, 22, 12, 0, 0, tzinfo=UTC)
     mocker.patch.object(
         workspace_db,
         "datetime",

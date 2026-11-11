@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import fastapi.responses
@@ -336,7 +336,7 @@ async def test_delayed_optional_inputs_keep_each_value_in_its_own_execution(
     first, _ = await execution.upsert_execution_input(node_id, run.id, "data", "keep")
     await prisma.models.AgentNodeExecutionInputOutput.prisma().update_many(
         where={"referencedByInputExecId": first.node_exec_id},
-        data={"time": datetime.now(timezone.utc) - timedelta(days=2)},
+        data={"time": datetime.now(UTC) - timedelta(days=2)},
     )
 
     second, inputs = await execution.upsert_execution_input(

@@ -3,7 +3,7 @@
 Mocks prisma + raw-SQL helpers so these run fast without the docker postgres.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,7 +31,7 @@ def _make_tx(
 ) -> MagicMock:
     tx = MagicMock()
     tx.transactionKey = "tx-key"
-    tx.createdAt = created_at or datetime(2026, 4, 1, tzinfo=timezone.utc)
+    tx.createdAt = created_at or datetime(2026, 4, 1, tzinfo=UTC)
     tx.type = tx_type
     tx.amount = amount
     tx.runningBalance = running_balance
@@ -59,8 +59,8 @@ class TestAdminExportUserHistory:
         ):
             ct.prisma.return_value.find_many = AsyncMock(return_value=rows)
             result = await admin_export_user_history(
-                start=datetime(2026, 4, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 4, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
             )
         assert [r.user_email for r in result] == ["u1@example.com", None]
         emails.assert_awaited_once()
@@ -71,15 +71,15 @@ class TestAdminExportUserHistory:
     async def test_rejects_inverted_window(self):
         with pytest.raises(ValueError, match="end must be >= start"):
             await admin_export_user_history(
-                start=datetime(2026, 4, 30, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                start=datetime(2026, 4, 30, tzinfo=UTC),
+                end=datetime(2026, 4, 1, tzinfo=UTC),
             )
 
     @pytest.mark.asyncio
     async def test_rejects_window_exceeding_cap_by_subday_remainder(self):
         # 90 days + 1 second — `.days` would round to 90 and pass; timedelta
         # comparison must still reject this.
-        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        start = datetime(2026, 1, 1, tzinfo=UTC)
         end = start + timedelta(days=CREDIT_EXPORT_MAX_DAYS, seconds=1)
         with pytest.raises(ValueError, match="must be <="):
             await admin_export_user_history(start=start, end=end)
@@ -92,8 +92,8 @@ class TestAdminExportUserHistory:
         ):
             ct.prisma.return_value.find_many = AsyncMock(return_value=[])
             result = await admin_export_user_history(
-                start=datetime(2026, 4, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 4, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
             )
         assert result == []
 
@@ -106,8 +106,8 @@ class TestAdminExportUserHistory:
         ):
             ct.prisma.return_value.find_many = AsyncMock(return_value=[tx])
             result = await admin_export_user_history(
-                start=datetime(2026, 4, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 4, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
             )
         assert len(result) == 1
         assert result[0].user_id == "u1"
@@ -131,8 +131,8 @@ class TestAdminExportUserHistory:
         ):
             ct.prisma.return_value.find_many = AsyncMock(return_value=[tx])
             result = await admin_export_user_history(
-                start=datetime(2026, 4, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 4, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
             )
         assert result[0].reason == "Auto top up"
 
@@ -148,8 +148,8 @@ class TestAdminExportUserHistory:
         ):
             ct.prisma.return_value.find_many = AsyncMock(return_value=[tx_a, tx_b])
             result = await admin_export_user_history(
-                start=datetime(2026, 4, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 4, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
             )
         assert email_lookup.call_count == 1
         assert all(r.admin_email == "admin1@example.com" for r in result)
@@ -165,8 +165,8 @@ class TestAdminExportUserHistory:
         ):
             ct.prisma.return_value.find_many = AsyncMock(return_value=[tx])
             result = await admin_export_user_history(
-                start=datetime(2026, 4, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 4, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
             )
         assert result[0].admin_email == ""
 
@@ -179,8 +179,8 @@ class TestAdminExportUserHistory:
         ):
             ct.prisma.return_value.find_many = find_many
             await admin_export_user_history(
-                start=datetime(2026, 4, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 4, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
                 transaction_type=CreditTransactionType.TOP_UP,
                 user_id="u1",
             )
@@ -200,8 +200,8 @@ class TestAdminExportUserHistory:
         ):
             ct.prisma.return_value.find_many = find_many
             await admin_export_user_history(
-                start=datetime(2026, 4, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 4, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
             )
         assert find_many.call_args.kwargs["where"]["isActive"] is True
 
@@ -214,8 +214,8 @@ class TestAdminExportUserHistory:
         ):
             ct.prisma.return_value.find_many = find_many
             await admin_export_user_history(
-                start=datetime(2026, 4, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 4, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
                 include_inactive=True,
             )
         assert "isActive" not in find_many.call_args.kwargs["where"]
@@ -230,8 +230,8 @@ class TestAdminExportUserHistory:
             ct.prisma.return_value.find_many = AsyncMock(return_value=oversize)
             with pytest.raises(ValueError, match="more than"):
                 await admin_export_user_history(
-                    start=datetime(2026, 4, 1, tzinfo=timezone.utc),
-                    end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                    start=datetime(2026, 4, 1, tzinfo=UTC),
+                    end=datetime(2026, 4, 30, tzinfo=UTC),
                 )
 
 
@@ -240,13 +240,13 @@ class TestGetCopilotWeeklyUsageForExport:
     async def test_rejects_inverted_window(self):
         with pytest.raises(ValueError, match="end must be >= start"):
             await get_copilot_weekly_usage_for_export(
-                start=datetime(2026, 4, 30, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                start=datetime(2026, 4, 30, tzinfo=UTC),
+                end=datetime(2026, 4, 1, tzinfo=UTC),
             )
 
     @pytest.mark.asyncio
     async def test_rejects_window_exceeding_cap_by_subday_remainder(self):
-        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        start = datetime(2026, 1, 1, tzinfo=UTC)
         end = start + timedelta(days=COPILOT_USAGE_EXPORT_MAX_DAYS, hours=2)
         with pytest.raises(ValueError, match="must be <="):
             await get_copilot_weekly_usage_for_export(start=start, end=end)
@@ -259,8 +259,8 @@ class TestGetCopilotWeeklyUsageForExport:
             return_value=[],
         ):
             result = await get_copilot_weekly_usage_for_export(
-                start=datetime(2026, 4, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 4, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
             )
         assert result == []
 
@@ -271,7 +271,7 @@ class TestGetCopilotWeeklyUsageForExport:
                 "user_id": "u1",
                 "user_email": "u1@example.com",
                 "tier": "PRO",
-                "week_start": datetime(2026, 3, 30, tzinfo=timezone.utc),
+                "week_start": datetime(2026, 3, 30, tzinfo=UTC),
                 "cost_microdollars": 5_000_000,
             }
         ]
@@ -285,8 +285,8 @@ class TestGetCopilotWeeklyUsageForExport:
             return_value={"PRO": 5.0, "BETA": 1.0, "NO_TIER": 0.0},
         ):
             result = await get_copilot_weekly_usage_for_export(
-                start=datetime(2026, 3, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 3, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
             )
         assert len(result) == 1
         row = result[0]
@@ -294,7 +294,7 @@ class TestGetCopilotWeeklyUsageForExport:
         assert row.tier == "PRO"
         # week_end is inclusive end-of-Sunday, NOT next Monday.
         assert row.week_end == datetime(
-            2026, 4, 5, 23, 59, 59, 999999, tzinfo=timezone.utc
+            2026, 4, 5, 23, 59, 59, 999999, tzinfo=UTC
         )
         assert row.copilot_cost_microdollars == 5_000_000
 
@@ -305,7 +305,7 @@ class TestGetCopilotWeeklyUsageForExport:
                 "user_id": "u1",
                 "user_email": "u1@example.com",
                 "tier": "NO_TIER",
-                "week_start": datetime(2026, 3, 30, tzinfo=timezone.utc),
+                "week_start": datetime(2026, 3, 30, tzinfo=UTC),
                 "cost_microdollars": 1_000_000,
             }
         ]
@@ -319,8 +319,8 @@ class TestGetCopilotWeeklyUsageForExport:
             return_value={"PRO": 5.0, "BETA": 1.0, "NO_TIER": 0.0},
         ):
             result = await get_copilot_weekly_usage_for_export(
-                start=datetime(2026, 3, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 3, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
             )
         assert result[0].weekly_limit_microdollars == 0
         assert result[0].percent_used == 0.0
@@ -332,7 +332,7 @@ class TestGetCopilotWeeklyUsageForExport:
                 "user_id": "u1",
                 "user_email": "u1@example.com",
                 "tier": "MARS",  # not a real SubscriptionTier value
-                "week_start": datetime(2026, 3, 30, tzinfo=timezone.utc),
+                "week_start": datetime(2026, 3, 30, tzinfo=UTC),
                 "cost_microdollars": 100_000,
             }
         ]
@@ -346,8 +346,8 @@ class TestGetCopilotWeeklyUsageForExport:
             return_value={"PRO": 5.0, "BETA": 1.0, "NO_TIER": 0.0},
         ):
             result = await get_copilot_weekly_usage_for_export(
-                start=datetime(2026, 3, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 3, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
             )
         # Falls back to DEFAULT_TIER (NO_TIER)
         assert result[0].tier == "NO_TIER"
@@ -373,7 +373,7 @@ class TestGetCopilotWeeklyUsageForExport:
             return_value={"PRO": 5.0},
         ):
             result = await get_copilot_weekly_usage_for_export(
-                start=datetime(2026, 3, 1, tzinfo=timezone.utc),
-                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                start=datetime(2026, 3, 1, tzinfo=UTC),
+                end=datetime(2026, 4, 30, tzinfo=UTC),
             )
-        assert result[0].week_start.tzinfo == timezone.utc
+        assert result[0].week_start.tzinfo == UTC

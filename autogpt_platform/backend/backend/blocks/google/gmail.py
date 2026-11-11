@@ -9,7 +9,7 @@ from email.mime.text import MIMEText
 from email.policy import SMTP
 from email.utils import getaddresses, parseaddr
 from pathlib import Path
-from typing import List, Literal, Optional, Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -109,7 +109,7 @@ def validate_all_recipients(input_data: HasRecipients) -> None:
 
 def _make_mime_text(
     body: str,
-    content_type: Optional[Literal["auto", "plain", "html"]] = None,
+    content_type: Literal["auto", "plain", "html"] | None = None,
 ) -> MIMEText:
     """Create a MIMEText object with proper content type and no hard-wrap for plain text.
 
@@ -224,7 +224,7 @@ class Email(BaseModel):
     date: str
     body: str = ""  # Default to an empty string
     sizeEstimate: int
-    attachments: List[Attachment]
+    attachments: list[Attachment]
 
 
 class Thread(BaseModel):
@@ -602,7 +602,7 @@ class GmailSendBlock(GmailBase):
         )
         cc: list[str] = SchemaField(description="CC recipients", default_factory=list)
         bcc: list[str] = SchemaField(description="BCC recipients", default_factory=list)
-        content_type: Optional[Literal["auto", "plain", "html"]] = SchemaField(
+        content_type: Literal["auto", "plain", "html"] | None = SchemaField(
             description="Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
             default=None,
             advanced=True,
@@ -704,7 +704,7 @@ class GmailCreateDraftBlock(GmailBase):
         )
         cc: list[str] = SchemaField(description="CC recipients", default_factory=list)
         bcc: list[str] = SchemaField(description="BCC recipients", default_factory=list)
-        content_type: Optional[Literal["auto", "plain", "html"]] = SchemaField(
+        content_type: Literal["auto", "plain", "html"] | None = SchemaField(
             description="Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
             default=None,
             advanced=True,
@@ -1315,7 +1315,7 @@ class GmailReplyBlock(GmailBase):
         )
         subject: str = SchemaField(description="Email subject", default="")
         body: str = SchemaField(description="Email body (plain text or HTML)")
-        content_type: Optional[Literal["auto", "plain", "html"]] = SchemaField(
+        content_type: Literal["auto", "plain", "html"] | None = SchemaField(
             description="Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
             default=None,
             advanced=True,
@@ -1464,7 +1464,7 @@ class GmailDraftReplyBlock(GmailBase):
         )
         subject: str = SchemaField(description="Email subject", default="")
         body: str = SchemaField(description="Email body (plain text or HTML)")
-        content_type: Optional[Literal["auto", "plain", "html"]] = SchemaField(
+        content_type: Literal["auto", "plain", "html"] | None = SchemaField(
             description="Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
             default=None,
             advanced=True,
@@ -1653,7 +1653,7 @@ class GmailForwardBlock(GmailBase):
             description="Include attachments from the original message",
             default=True,
         )
-        content_type: Optional[Literal["auto", "plain", "html"]] = SchemaField(
+        content_type: Literal["auto", "plain", "html"] | None = SchemaField(
             description="Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
             default=None,
             advanced=True,

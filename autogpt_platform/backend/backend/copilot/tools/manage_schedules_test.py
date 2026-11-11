@@ -1,6 +1,6 @@
 """Tests for ListSchedulesTool and DeleteScheduleTool."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -52,7 +52,7 @@ def _make_copilot_info(
         user_id=_USER,
         session_id="session-xyz",
         message="check CI on PR #999",
-        run_at=datetime(2026, 5, 22, 19, 0, tzinfo=timezone.utc),
+        run_at=datetime(2026, 5, 22, 19, 0, tzinfo=UTC),
         id=schedule_id,
         name="copilot turn (session session-)",
         next_run_time="2026-05-22T19:00:00+00:00",

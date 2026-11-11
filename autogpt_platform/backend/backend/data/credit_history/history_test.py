@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -63,7 +63,7 @@ async def add_charge(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_complete_execution_before_pagination(history_wallet):
-    now = datetime.now(timezone.utc) - timedelta(minutes=5)
+    now = datetime.now(UTC) - timedelta(minutes=5)
     await add_charge(history_wallet, "estimate", -100, now)
     await add_charge(
         history_wallet, "other-run", -20, now + timedelta(seconds=1), "run-2"
@@ -94,13 +94,13 @@ async def test_complete_execution_before_pagination(history_wallet):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_cursor_ties_and_snapshot_ignore_later_adjustments(history_wallet):
-    time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    time = datetime.now(UTC) - timedelta(minutes=5)
     for execution_id in ["run-a", "run-b", "run-c"]:
         await add_charge(history_wallet, execution_id, -10, time, execution_id)
     first = await get_credit_history(history_wallet, transaction_count_limit=1)
     assert first.next_cursor
     await add_charge(
-        history_wallet, "later", 5, datetime.now(timezone.utc), "run-a", adjustment=True
+        history_wallet, "later", 5, datetime.now(UTC), "run-a", adjustment=True
     )
     second = await get_credit_history(
         history_wallet, transaction_count_limit=1, cursor=first.next_cursor
@@ -117,7 +117,7 @@ async def test_cursor_ties_and_snapshot_ignore_later_adjustments(history_wallet)
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_bounded_details_keep_complete_total(history_wallet):
-    time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    time = datetime.now(UTC) - timedelta(minutes=5)
     for index in range(105):
         await add_charge(history_wallet, f"charge-{index}", -1, time)
     row = (await get_credit_history(history_wallet)).transactions[0]
@@ -129,7 +129,7 @@ async def test_bounded_details_keep_complete_total(history_wallet):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_copilot_and_orphan_usage_are_distinct(history_wallet):
-    time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    time = datetime.now(UTC) - timedelta(minutes=5)
     await add_charge(history_wallet, "tool", -10, time, "copilot-session-chat-1")
     await add_charge(history_wallet, "orphan-1", -4, time, None)
     await add_charge(history_wallet, "orphan-2", -5, time, None)
@@ -165,7 +165,7 @@ async def test_a_chat_block_charge_is_attributed_to_its_chat(history_wallet):
         None,
         None,
     )
-    time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    time = datetime.now(UTC) - timedelta(minutes=5)
     for key in ("first", "second"):
         await CreditTransaction.prisma().create(
             data={
@@ -194,7 +194,7 @@ async def test_a_chat_block_charge_is_attributed_to_its_chat(history_wallet):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_invalid_or_cross_wallet_cursor_is_rejected(history_wallet):
-    time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    time = datetime.now(UTC) - timedelta(minutes=5)
     for execution_id in ["run-a", "run-b"]:
         await add_charge(history_wallet, execution_id, -1, time, execution_id)
     page = await get_credit_history(history_wallet, transaction_count_limit=1)
@@ -206,7 +206,7 @@ async def test_invalid_or_cross_wallet_cursor_is_rejected(history_wallet):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_timestamp_comparisons_ignore_database_session_timezone(history_wallet):
-    time = datetime(2026, 9, 5, 10, tzinfo=timezone.utc)
+    time = datetime(2026, 9, 5, 10, tzinfo=UTC)
     await add_charge(history_wallet, "timezone-charge", -10, time)
     schema = get_database_schema()
     query = credit_history_query(organization=False).format(
@@ -244,7 +244,7 @@ async def test_org_aggregation_preserves_amounts_and_wallet_boundary(history_wal
     org = await Organization.prisma().create(
         data={"name": "History test", "slug": f"history-{uuid4()}"}
     )
-    time = (datetime.now(timezone.utc) - timedelta(minutes=5)).replace(microsecond=0)
+    time = (datetime.now(UTC) - timedelta(minutes=5)).replace(microsecond=0)
     try:
         await add_charge(history_wallet, "personal", -999, time)
         for key, amount, is_adjustment in [

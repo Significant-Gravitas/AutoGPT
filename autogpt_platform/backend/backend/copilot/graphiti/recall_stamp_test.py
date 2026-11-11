@@ -5,7 +5,7 @@ and the protection test the dream's destructive writes carry.
 run the same Cypher on FalkorDB."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -67,7 +67,7 @@ class TestTheStampWrite:
     @pytest.mark.asyncio
     async def test_a_recall_within_the_dedupe_interval_is_not_counted(self) -> None:
         driver = _driver([{"stamped": 0}])
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
 
         await stamp_recalls(driver, ["e1"], owner="user-1")
 
@@ -253,7 +253,7 @@ class TestTheProtectionTest:
 
 class TestStampValues:
     def test_a_stamp_time_has_one_width_in_utc(self) -> None:
-        whole_second = datetime(2026, 9, 1, 12, 0, 0, tzinfo=timezone.utc)
+        whole_second = datetime(2026, 9, 1, 12, 0, 0, tzinfo=UTC)
         offset = datetime(2026, 9, 1, 14, 0, 0, 5, tzinfo=timezone(timedelta(hours=2)))
 
         assert stamp_time(whole_second) == "2026-09-01T12:00:00.000000+00:00"
@@ -275,4 +275,4 @@ class TestStampValues:
         if expected is None:
             assert parsed is None
         else:
-            assert parsed == expected.replace(tzinfo=timezone.utc)
+            assert parsed == expected.replace(tzinfo=UTC)

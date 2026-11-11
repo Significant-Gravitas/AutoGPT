@@ -51,7 +51,7 @@ class BatchPass(BaseModel):
     phase_models: dict[str, str]
 
     @classmethod
-    def from_payload(cls, payload: dict[str, Any]) -> "BatchPass":
+    def from_payload(cls, payload: dict[str, Any]) -> BatchPass:
         """The pass a pending entry's payload names. Missing fields read as
         empty; the handler turns those into a dead end."""
         expert_id = payload.get("expert_id")

@@ -16,9 +16,8 @@ from backend.data.notifications import (
     SubscriberField,
     SubscriptionStatus,
 )
-from backend.notifications import mailerlite
+from backend.notifications import mailerlite, subscriber_fields
 from backend.notifications import notifications as delivery
-from backend.notifications import subscriber_fields
 from backend.notifications.notifications import NotificationManager
 
 EMAIL = "sam@example.com"

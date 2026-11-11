@@ -8,8 +8,7 @@ never appeared in the list and had no id to download or delete.
 import io
 import mimetypes
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 from unittest import mock
 
 import pytest
@@ -221,8 +220,8 @@ def workspace(mocker: pytest_mock.MockFixture) -> dict[str, WorkspaceFile]:
             return_value=Workspace(
                 id=WORKSPACE_ID,
                 user_id=USER_ID,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
         ),
     )
@@ -235,8 +234,8 @@ def workspace(mocker: pytest_mock.MockFixture) -> dict[str, WorkspaceFile]:
         return Workspace(
             id=WORKSPACE_ID,
             user_id=user_id,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
     mocker.patch(
@@ -259,7 +258,7 @@ def workspace(mocker: pytest_mock.MockFixture) -> dict[str, WorkspaceFile]:
 
 
 def _workspace_file(name: str, size_bytes: int) -> WorkspaceFile:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return WorkspaceFile(
         id=str(uuid.uuid4()),
         workspace_id=WORKSPACE_ID,
@@ -275,7 +274,7 @@ def _workspace_file(name: str, size_bytes: int) -> WorkspaceFile:
 
 
 def _upload(
-    filename: str, content: bytes, content_type: Optional[str] = None
+    filename: str, content: bytes, content_type: str | None = None
 ) -> UploadFile:
     return UploadFile(
         file=io.BytesIO(content),

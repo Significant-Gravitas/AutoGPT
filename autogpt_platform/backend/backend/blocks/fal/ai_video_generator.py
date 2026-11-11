@@ -191,7 +191,7 @@ class AIVideoGeneratorBlock(Block):
             raise RuntimeError("Maximum polling attempts reached")
 
         except ClientResponseError as e:
-            raise RuntimeError(f"API request failed: {str(e)}")
+            raise RuntimeError(f"API request failed: {e!s}")
 
     async def run(
         self,

@@ -361,7 +361,7 @@ async def _run_cli_against_fake_server(
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
             proc.communicate(), timeout=timeout_seconds
         )
-    except (asyncio.TimeoutError, TimeoutError):
+    except TimeoutError:
         # Best-effort kill — we already have whatever requests the CLI
         # managed to send before stalling.
         try:
@@ -375,7 +375,7 @@ async def _run_cli_against_fake_server(
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 proc.communicate(), timeout=5.0
             )
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             stdout_bytes, stderr_bytes = b"", b""
 
     return (

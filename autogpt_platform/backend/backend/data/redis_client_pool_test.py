@@ -17,7 +17,7 @@ from redis.cluster import RedisCluster
 from redis.exceptions import RedisError
 from redis.retry import Retry
 
-import backend.data.redis_client as redis_client
+from backend.data import redis_client
 from backend.util.testing import is_tcp_port_reachable
 
 # redis-py 8.x's per-node default; the configured cap must sit well above it.

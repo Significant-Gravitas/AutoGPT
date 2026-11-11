@@ -44,7 +44,7 @@ flag is read here, once per pass; the phases never read it.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.dream_pass_models import OPEN_STATUSES, DreamPassRecord
@@ -136,7 +136,7 @@ async def _holds_scope(run: DreamPassRun, row: DreamPassRecord) -> bool:
     """Whether *row*'s pass still holds the scope: a fresh row does, unless
     the run is forced; a stale or forced row is expired first and holds it
     only if it moved before the expiry could land."""
-    stale = _is_stale(row, datetime.now(timezone.utc))
+    stale = _is_stale(row, datetime.now(UTC))
     if not stale and not run.force:
         return True
     return not await _expire(run, row, stale=stale)

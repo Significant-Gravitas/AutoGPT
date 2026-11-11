@@ -16,7 +16,8 @@ entries a list or dict field takes is checked by that field's own test.
 import importlib
 import inspect
 import pkgutil
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 import pydantic
 import pytest

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -26,7 +26,7 @@ async def test_autopilot_dream_fetches_only_unscoped_sessions(mocker):
     mocker.patch.object(fetch_mod, "chat_db", return_value=database)
 
     await fetch_mod._fetch_recent_sessions(
-        MemoryScope.for_user("user-1"), datetime.now(timezone.utc), 10
+        MemoryScope.for_user("user-1"), datetime.now(UTC), 10
     )
 
     database.get_user_chat_sessions.assert_awaited_once_with(
@@ -40,7 +40,7 @@ async def test_expert_dream_fetches_only_that_experts_sessions(mocker):
     mocker.patch.object(fetch_mod, "chat_db", return_value=database)
 
     await fetch_mod._fetch_recent_sessions(
-        MemoryScope.for_expert("user-1", "expert-1"), datetime.now(timezone.utc), 10
+        MemoryScope.for_expert("user-1", "expert-1"), datetime.now(UTC), 10
     )
 
     database.get_user_chat_sessions.assert_awaited_once_with(
@@ -54,7 +54,7 @@ async def test_episode_gather_reads_only_recallable_episodes():
     driver.execute_query.return_value = ([], [], None)
 
     await fetch_mod._fetch_recent_episodes(
-        driver, "user_g", datetime.now(timezone.utc), 50
+        driver, "user_g", datetime.now(UTC), 50
     )
 
     query = driver.execute_query.await_args.args[0]
@@ -83,7 +83,7 @@ def _chat_store(*session_ids: str) -> SimpleNamespace:
                 SimpleNamespace(
                     session_id=sid,
                     title=sid,
-                    started_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+                    started_at=datetime(2026, 10, 1, tzinfo=UTC),
                 )
                 for sid in session_ids
             ]
@@ -167,7 +167,7 @@ def test_a_session_body_reads_the_first_message_without_its_stored_block():
 
 @pytest.mark.asyncio
 async def test_session_row_preserves_typed_creation_time(mocker):
-    started = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    started = datetime(2026, 10, 1, tzinfo=UTC)
     session = ChatSessionInfo(
         session_id="s",
         user_id="u",
@@ -190,7 +190,7 @@ async def test_a_note_for_the_user_is_not_dreamt_about(mocker):
     session = SimpleNamespace(
         session_id="session-1",
         title="Briefing",
-        started_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+        started_at=datetime(2026, 10, 1, tzinfo=UTC),
     )
     page = SimpleNamespace(
         messages=[
@@ -210,7 +210,7 @@ async def test_a_note_for_the_user_is_not_dreamt_about(mocker):
     mocker.patch.object(fetch_mod, "chat_db", return_value=database)
 
     rows = await fetch_mod._fetch_recent_sessions(
-        MemoryScope.for_user("user-1"), datetime.now(timezone.utc), 10
+        MemoryScope.for_user("user-1"), datetime.now(UTC), 10
     )
 
     assert rows[0].body == "user: brief me\nassistant: here is your brief"

@@ -131,7 +131,6 @@ async def test_company_upstream_error_propagates_to_error_output():
         CompanyEnrichmentBlock,
         "fetch_company",
         new=AsyncMock(side_effect=RuntimeError("upstream 500")),
-    ):
-        with pytest.raises(RuntimeError, match="upstream 500"):
-            async for _ in block.run(input_data, credentials=TEST_CREDENTIALS):
-                pass
+    ), pytest.raises(RuntimeError, match="upstream 500"):
+        async for _ in block.run(input_data, credentials=TEST_CREDENTIALS):
+            pass

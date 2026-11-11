@@ -10,7 +10,7 @@ the row transitions are the real ones."""
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -179,4 +179,4 @@ def _assert_errored_and_marked(fake_dream_db: FakeDreamDb, *, token: str | None)
 
 def _past_the_grace() -> datetime:
     """An instant by which the cleanup of a row closed now is due."""
-    return datetime.now(timezone.utc) + timedelta(seconds=REAP_GRACE_SECONDS + 60)
+    return datetime.now(UTC) + timedelta(seconds=REAP_GRACE_SECONDS + 60)

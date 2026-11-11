@@ -20,7 +20,7 @@ that sync found nobody to write, so a join asks for one more sync.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import stripe
 from prisma.enums import NotificationType
@@ -418,4 +418,4 @@ def _greeting_name(user: BillingEmailRecipient) -> str:
 
 
 def _now() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)

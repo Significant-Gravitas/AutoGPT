@@ -97,7 +97,7 @@ async def _create_pending_version(
                 "license": _license_of(skill),
                 "changesSummary": request.changes_summary or "Initial submission",
                 "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
-                "submittedAt": datetime.datetime.now(datetime.timezone.utc),
+                "submittedAt": datetime.datetime.now(datetime.UTC),
             }
         )
         await snapshot_version_files(version.id, files, tx)

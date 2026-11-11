@@ -89,11 +89,10 @@ async def test_registration_does_not_overwrite_another_subscription():
         manager,
         "_platform_request",
         AsyncMock(return_value={"data": {"webhookURL": "https://another.example.com"}}),
-    ) as request:
-        with pytest.raises(ValueError, match="different webhook URL"):
-            await manager._register_webhook(
-                TEST_CREDENTIALS, "orders", "platform-1", [], ENDPOINT, SECRET
-            )
+    ) as request, pytest.raises(ValueError, match="different webhook URL"):
+        await manager._register_webhook(
+            TEST_CREDENTIALS, "orders", "platform-1", [], ENDPOINT, SECRET
+        )
     request.assert_awaited_once()
 
 

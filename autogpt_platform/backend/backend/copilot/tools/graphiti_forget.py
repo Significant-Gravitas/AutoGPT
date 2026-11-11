@@ -13,7 +13,7 @@ limits ``graphiti/AGENTS.md`` lists.
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from graphiti_core.edges import EntityEdge
@@ -415,8 +415,8 @@ def _timestamp(value: Any) -> str:
     try:
         moment = datetime.fromisoformat(str(value))
         if moment.tzinfo is None:
-            moment = moment.replace(tzinfo=timezone.utc)
-        return moment.astimezone(timezone.utc).isoformat(timespec="seconds")
+            moment = moment.replace(tzinfo=UTC)
+        return moment.astimezone(UTC).isoformat(timespec="seconds")
     except (ValueError, OverflowError):
         return "unknown"
 

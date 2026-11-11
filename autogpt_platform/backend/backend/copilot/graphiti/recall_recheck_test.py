@@ -7,7 +7,7 @@ The live runs, a forget answering while warm context's cross-encoder or the
 passed, are in ``recall_inflight_read_integration_test.py``.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,7 +17,7 @@ from graphiti_core.nodes import EpisodeType, EpisodicNode
 from . import recall, recall_recheck
 from .scope import MemoryScope
 
-_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 _SCOPE = MemoryScope.for_user("user-abc")
 
 

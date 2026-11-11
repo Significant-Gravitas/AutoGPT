@@ -605,15 +605,14 @@ class TestAnthropicMessages:
             return_value=SimpleNamespace(
                 messages=SimpleNamespace(create=AsyncMock(return_value=fake_response))
             ),
-        ):
-            with pytest.raises(ValueError, match="No content"):
-                await call_provider(
-                    provider="anthropic",
-                    model="claude-sonnet-4-6",
-                    api_key="sk-test",
-                    messages=[_msg("user", "hi")],
-                    max_tokens=10,
-                )
+        ), pytest.raises(ValueError, match="No content"):
+            await call_provider(
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1995,16 +1994,15 @@ class TestTimeoutWrapping:
         with patch(
             "backend.util.llm.providers.anthropic.AsyncAnthropic",
             return_value=fake_client,
-        ):
-            with pytest.raises(TimeoutError, match="anthropic/"):
-                await call_provider(
-                    provider="anthropic",
-                    model="claude-sonnet-4-6",
-                    api_key="x",
-                    messages=[_msg("user", "hi")],
-                    max_tokens=10,
-                    timeout_seconds=0.05,
-                )
+        ), pytest.raises(TimeoutError, match="anthropic/"):
+            await call_provider(
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                api_key="x",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                timeout_seconds=0.05,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -2290,7 +2288,7 @@ class TestDefaults:
 # ---------------------------------------------------------------------------
 
 
-from backend.util.llm.providers import (  # noqa: E402
+from backend.util.llm.providers import (
     BatchResultRow,
     BatchSubmissionRef,
     download_batch_results,
@@ -2679,7 +2677,7 @@ def test_batch_result_row_with_content_keeps_every_other_field():
     assert swapped.content == '{"facts": []}'
     assert row.content == 'Here are the facts: {"facts": []}'
     # Every field the row has, so a field added later can't be dropped.
-    for name in getattr(BatchResultRow, "__pydantic_fields__"):
+    for name in BatchResultRow.__pydantic_fields__:
         if name != "content":
             assert getattr(swapped, name) == getattr(row, name), name
 

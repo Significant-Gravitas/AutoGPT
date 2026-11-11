@@ -1,9 +1,8 @@
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
-from typesafe_sdk import Choice, Noul
+from typesafe_sdk import Choice, Noul, Score
 from typesafe_sdk import NoulCriteria as SDKNoulCriteria
-from typesafe_sdk import Score
 
 from backend.blocks._base import BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import SchemaField

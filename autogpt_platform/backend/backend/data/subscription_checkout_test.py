@@ -14,9 +14,8 @@ async def test_expiration_list_failure_stops_new_checkout():
     with patch(
         "backend.data.credit.stripe.checkout.Session.list_async",
         AsyncMock(side_effect=stripe.APIConnectionError("unavailable")),
-    ):
-        with pytest.raises(stripe.APIConnectionError):
-            await _expire_open_subscription_sessions("cus_test")
+    ), pytest.raises(stripe.APIConnectionError):
+        await _expire_open_subscription_sessions("cus_test")
 
 
 @pytest.mark.asyncio
@@ -69,10 +68,9 @@ async def test_session_completed_during_expiration_stops_new_checkout():
         patch(
             "backend.data.credit.stripe.checkout.Session.expire_async",
             AsyncMock(side_effect=stripe.InvalidRequestError("already complete", "id")),
-        ),
+        ),pytest.raises(stripe.InvalidRequestError)
     ):
-        with pytest.raises(stripe.InvalidRequestError):
-            await _expire_open_subscription_sessions("cus_test")
+        await _expire_open_subscription_sessions("cus_test")
 
 
 @pytest.mark.asyncio
@@ -112,12 +110,11 @@ async def test_checkout_history_pagination_has_a_bounded_timeout():
         patch.object(stripe.Subscription, "list_async", AsyncMock(return_value=first)),
         patch.object(
             stripe.ListObject, "next_page_async", AsyncMock(side_effect=delayed_page)
-        ) as next_page,
+        ) as next_page,pytest.raises(stripe.APIConnectionError)
     ):
-        with pytest.raises(stripe.APIConnectionError):
-            await subscription_checkout.ensure_no_unconverted_trial(
-                "user-1", "cus_test"
-            )
+        await subscription_checkout.ensure_no_unconverted_trial(
+            "user-1", "cus_test"
+        )
     next_page.assert_awaited_once()
 
 
@@ -179,15 +176,14 @@ async def test_running_or_unconverted_trial_still_blocks_another_plan(subscripti
             stripe.Subscription,
             "list_async",
             AsyncMock(return_value=_trial_history(**subscription)),
-        ),
+        ),pytest.raises(
+        subscription_checkout.SubscriptionCheckoutUnavailable,
+        match="already has a trial subscription",
+    )
     ):
-        with pytest.raises(
-            subscription_checkout.SubscriptionCheckoutUnavailable,
-            match="already has a trial subscription",
-        ):
-            await subscription_checkout.ensure_no_unconverted_trial(
-                "user-1", "cus_test"
-            )
+        await subscription_checkout.ensure_no_unconverted_trial(
+            "user-1", "cus_test"
+        )
 
 
 def _subscriptions(*subscriptions: dict, has_more: bool = False) -> stripe.ListObject:

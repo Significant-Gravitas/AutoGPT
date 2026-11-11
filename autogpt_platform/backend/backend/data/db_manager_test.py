@@ -1,5 +1,5 @@
 import inspect
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from prisma.enums import (
     DreamPassPhase,
@@ -101,7 +101,7 @@ def test_dream_pass_models_survive_the_rpc_round_trip() -> None:
     """The dream store in the scheduler and the batch executor reaches the
     table over this RPC: an update must arrive, and a record come back, as
     they left (JSON encoded one way, validated from the signature the other)."""
-    now = datetime(2026, 9, 26, 3, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 9, 26, 3, 0, tzinfo=UTC)
     bundle = DreamInput(
         user_id="u1",
         group_id="user_u1",
@@ -183,7 +183,7 @@ def test_the_reaper_and_retention_arguments_survive_the_rpc_round_trip() -> None
     """The scheduler lists and deletes passes over this RPC: an aware cutoff
     and a limit must arrive as they left. The endpoints are built from the
     class's functions, as the service registers them."""
-    cutoff = datetime(2026, 9, 26, 3, 0, 0, 123000, tzinfo=timezone.utc)
+    cutoff = datetime(2026, 9, 26, 3, 0, 0, 123000, tzinfo=UTC)
     manager = DatabaseManager()
     # Both scans also carry where the reaper's scan cycle stands.
     open_scan = {"after_lapse": cutoff, "after_id": "p1"}

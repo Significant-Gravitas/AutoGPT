@@ -84,7 +84,7 @@ async def clean_skill_listings(server: SpinTestServer):
 
 async def test_browse_puts_the_most_recently_updated_first():
     # Created oldest-first, so insertion order alone would fail this.
-    utc = datetime.timezone.utc
+    utc = datetime.UTC
     await _make_listing(
         "older-one", updated_at=datetime.datetime(2026, 1, 1, tzinfo=utc)
     )

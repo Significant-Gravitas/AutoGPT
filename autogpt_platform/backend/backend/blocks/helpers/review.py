@@ -4,7 +4,7 @@ Used by both the dedicated HumanInTheLoopBlock and blocks that require human rev
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel
@@ -31,12 +31,12 @@ class HITLReviewHelper:
     """Helper class for Human-In-The-Loop review operations."""
 
     @staticmethod
-    async def check_approval(**kwargs) -> Optional[ReviewResult]:
+    async def check_approval(**kwargs) -> ReviewResult | None:
         """Check if there's an existing approval for this node execution."""
         return await get_database_manager_async_client().check_approval(**kwargs)
 
     @staticmethod
-    async def get_or_create_human_review(**kwargs) -> Optional[ReviewResult]:
+    async def get_or_create_human_review(**kwargs) -> ReviewResult | None:
         """Create or retrieve a human review from the database."""
         return await get_database_manager_async_client().get_or_create_human_review(
             **kwargs
@@ -52,7 +52,7 @@ class HITLReviewHelper:
         )
 
     @staticmethod
-    async def record_gate_approval(**kwargs) -> Optional[ReviewResult]:
+    async def record_gate_approval(**kwargs) -> ReviewResult | None:
         """Record the chat gate's yes on a workflow step."""
         return await get_database_manager_async_client().record_gate_approval(**kwargs)
 
@@ -71,18 +71,18 @@ class HITLReviewHelper:
         user_id: str,
         node_id: str,
         node_exec_id: str,
-        graph_exec_id: Optional[str],
-        graph_id: Optional[str],
-        graph_version: Optional[int],
+        graph_exec_id: str | None,
+        graph_id: str | None,
+        graph_version: int | None,
         block_name: str = "Block",
         editable: bool = False,
         is_graph_execution: bool = True,
-        organization_id: Optional[str] = None,
-        team_id: Optional[str] = None,
-        chat_session_id: Optional[str] = None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        chat_session_id: str | None = None,
         block: "Block | None" = None,
         execution_context: "ExecutionContext | None" = None,
-    ) -> Optional[ReviewResult]:
+    ) -> ReviewResult | None:
         """
         Handle a review request for a block that requires human review.
 
@@ -168,7 +168,7 @@ class HITLReviewHelper:
             else None
         )
         if isinstance(gated, ReviewResult):
-            result: Optional[ReviewResult] = gated
+            result: ReviewResult | None = gated
         elif gated == "parked":
             result = None
         else:
@@ -272,18 +272,18 @@ class HITLReviewHelper:
         user_id: str,
         node_id: str,
         node_exec_id: str,
-        graph_exec_id: Optional[str],
-        graph_id: Optional[str],
-        graph_version: Optional[int],
+        graph_exec_id: str | None,
+        graph_id: str | None,
+        graph_version: int | None,
         block_name: str = "Block",
         editable: bool = False,
         is_graph_execution: bool = True,
-        organization_id: Optional[str] = None,
-        team_id: Optional[str] = None,
-        chat_session_id: Optional[str] = None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        chat_session_id: str | None = None,
         block: "Block | None" = None,
         execution_context: "ExecutionContext | None" = None,
-    ) -> Optional[ReviewDecision]:
+    ) -> ReviewDecision | None:
         """
         Handle a review request and return the decision in a single call.
 

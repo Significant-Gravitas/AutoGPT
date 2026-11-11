@@ -143,8 +143,8 @@ class TestSerializeValue:
     """Tests for _serialize_value type conversion."""
 
     def test_decimal_integer(self):
-        assert _serialize_value(Decimal("42")) == 42
-        assert isinstance(_serialize_value(Decimal("42")), int)
+        assert _serialize_value(Decimal(42)) == 42
+        assert isinstance(_serialize_value(Decimal(42)), int)
 
     def test_decimal_fractional(self):
         # Fractional decimals are serialized as strings to preserve exact precision

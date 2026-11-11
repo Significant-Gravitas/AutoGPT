@@ -16,9 +16,8 @@ from backend.api.features.graph_executions.review.model import PendingHumanRevie
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
 from backend.blocks.email_block import SendEmailBlock
 from backend.copilot.constants import COPILOT_STEP_CARD_PREFIX, step_card_id
-from backend.copilot.gate import RUNS_KEY, chat_rules
+from backend.copilot.gate import RUNS_KEY, chat_rules, unified_approvals, workflow
 from backend.copilot.gate import review as review_store
-from backend.copilot.gate import unified_approvals, workflow
 from backend.copilot.gate.chat_rules import DECLINED
 from backend.copilot.gate.chat_rules_test import _Redis
 from backend.copilot.gate.classifier import Judgement

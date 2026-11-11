@@ -10,9 +10,9 @@ from posthog import Posthog
 from posthog.request import APIError, GetResponse
 from pydantic import ValidationError
 
-import backend.data.redis_client as redis_client
 import backend.util.feature_flag.definition_cache as cache
 import backend.util.feature_flag.posthog as ph
+from backend.data import redis_client
 from backend.util.settings import Config, FlagDefinitionCacheBackend
 from backend.util.testing import is_tcp_port_reachable
 

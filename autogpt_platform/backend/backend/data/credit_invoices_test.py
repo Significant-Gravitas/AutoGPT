@@ -14,7 +14,7 @@ don't need a database or network — the goal is to lock in the contract that
      surfaces as an empty card, not a 500.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -38,7 +38,7 @@ def _make_stripe_invoice(**overrides):
     defaults = {
         "id": "in_test_123",
         "number": "INV-001",
-        "created": int(datetime(2026, 4, 1, tzinfo=timezone.utc).timestamp()),
+        "created": int(datetime(2026, 4, 1, tzinfo=UTC).timestamp()),
         "total": 2000,
         "amount_paid": 0,
         "currency": "USD",

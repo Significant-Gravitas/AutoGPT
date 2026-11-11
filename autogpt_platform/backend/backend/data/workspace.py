@@ -8,8 +8,8 @@ import logging
 import posixpath
 import re
 from collections.abc import Collection
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import pydantic
 from prisma import Prisma
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from backend.data.workspace_folder import WorkspaceFolder
 
 _UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
 )
 
 logger = logging.getLogger(__name__)
@@ -67,15 +67,15 @@ class WorkspaceFile(pydantic.BaseModel):
     storage_path: str
     mime_type: str
     size_bytes: int
-    checksum: Optional[str] = None
+    checksum: str | None = None
     is_deleted: bool = False
-    deleted_at: Optional[datetime] = None
-    folder_id: Optional[str] = None
+    deleted_at: datetime | None = None
+    folder_id: str | None = None
     metadata: dict = pydantic.Field(default_factory=dict)
     is_internal: bool = False
     # Not a column: on what WorkspaceManager.write_file returns, the live file
     # this write replaced. Kept off every serialized form of the file.
-    replaced_file_id: Optional[str] = pydantic.Field(default=None, exclude=True)
+    replaced_file_id: str | None = pydantic.Field(default=None, exclude=True)
 
     @staticmethod
     def from_db(file: "UserWorkspaceFile") -> "WorkspaceFile":
@@ -127,7 +127,7 @@ async def get_or_create_workspace(user_id: str) -> Workspace:
     return Workspace.from_db(workspace)
 
 
-async def get_workspace(user_id: str) -> Optional[Workspace]:
+async def get_workspace(user_id: str) -> Workspace | None:
     """
     Get user's workspace if it exists.
 
@@ -149,11 +149,11 @@ async def create_workspace_file(
     storage_path: str,
     mime_type: str,
     size_bytes: int,
-    checksum: Optional[str] = None,
-    metadata: Optional[dict] = None,
+    checksum: str | None = None,
+    metadata: dict | None = None,
     is_internal: bool = False,
     storage_limit_bytes: int = 0,
-    replacing_file_id: Optional[str] = None,
+    replacing_file_id: str | None = None,
 ) -> WorkspaceFile:
     """
     Create a new workspace file record.
@@ -202,7 +202,7 @@ async def create_workspace_file(
                     "path": path,
                     "isDeleted": False,
                 },
-                data={"isDeleted": True, "deletedAt": datetime.now(timezone.utc)},
+                data={"isDeleted": True, "deletedAt": datetime.now(UTC)},
             )
             if not retired:
                 # It left the path after the count: count again as the path is now.
@@ -304,7 +304,7 @@ def format_bytes(n: int) -> str:
 async def get_workspace_file(
     file_id: str,
     workspace_id: str,
-) -> Optional[WorkspaceFile]:
+) -> WorkspaceFile | None:
     """
     Get a workspace file by ID.
 
@@ -327,7 +327,7 @@ async def get_workspace_file(
 
 async def get_workspace_file_by_id(
     file_id: str,
-) -> Optional[WorkspaceFile]:
+) -> WorkspaceFile | None:
     """
     Get a workspace file by ID without workspace scoping.
 
@@ -344,7 +344,7 @@ async def get_workspace_file_by_id(
 async def get_workspace_file_by_path(
     workspace_id: str,
     path: str,
-) -> Optional[WorkspaceFile]:
+) -> WorkspaceFile | None:
     """
     Get a workspace file by its virtual path.
 
@@ -386,22 +386,22 @@ async def list_internal_file_ids(user_id: str, file_ids: list[str]) -> set[str]:
 
 async def list_workspace_files(
     workspace_id: str,
-    path_prefix: Optional[str] = None,
-    path_not_starts_with: Optional[str] = None,
+    path_prefix: str | None = None,
+    path_not_starts_with: str | None = None,
     include_deleted: bool = False,
-    limit: Optional[int] = None,
+    limit: int | None = None,
     offset: int = 0,
-    name_contains: Optional[str] = None,
-    metadata_equals: Optional[dict] = None,
-    metadata_not_equals: Optional[dict] = None,
-    folder_id: Optional[str] = None,
-    folder_ids: Optional[list[str]] = None,
+    name_contains: str | None = None,
+    metadata_equals: dict | None = None,
+    metadata_not_equals: dict | None = None,
+    folder_id: str | None = None,
+    folder_ids: list[str] | None = None,
     root_only: bool = False,
-    allowed_path_prefixes: Optional[list[str]] = None,
+    allowed_path_prefixes: list[str] | None = None,
     include_user_files: bool = False,
     include_internal: bool = True,
-    created_after: Optional[datetime] = None,
-    created_before: Optional[datetime] = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
 ) -> list[WorkspaceFile]:
     """
     List files in a workspace.
@@ -513,9 +513,9 @@ async def list_workspace_files(
 
 
 def _scope_branches(
-    allowed_path_prefixes: Optional[list[str]],
+    allowed_path_prefixes: list[str] | None,
     include_user_files: bool,
-) -> Optional[list[UserWorkspaceFileWhereInput]]:
+) -> list[UserWorkspaceFileWhereInput] | None:
     """The OR-branches a scoped listing may match, or None when unscoped.
 
     Nested under ``AND`` by the callers so the scope filter can never replace
@@ -539,12 +539,12 @@ def _scope_branches(
 
 async def count_workspace_files(
     workspace_id: str,
-    path_prefix: Optional[str] = None,
+    path_prefix: str | None = None,
     include_deleted: bool = False,
-    folder_id: Optional[str] = None,
-    folder_ids: Optional[list[str]] = None,
+    folder_id: str | None = None,
+    folder_ids: list[str] | None = None,
     root_only: bool = False,
-    allowed_path_prefixes: Optional[list[str]] = None,
+    allowed_path_prefixes: list[str] | None = None,
     include_user_files: bool = False,
     include_internal: bool = True,
 ) -> int:
@@ -599,7 +599,7 @@ async def rename_workspace_file(
     file_id: str,
     workspace_id: str,
     name: str,
-) -> Optional[WorkspaceFile]:
+) -> WorkspaceFile | None:
     """Rename a file in place: its virtual path keeps its folder and gets the
     new name; the storage blob is untouched.
 
@@ -632,7 +632,7 @@ async def rename_workspace_file(
 async def soft_delete_workspace_file(
     file_id: str,
     workspace_id: str,
-) -> Optional[WorkspaceFile]:
+) -> WorkspaceFile | None:
     """
     Soft-delete a workspace file.
 
@@ -656,7 +656,7 @@ async def soft_delete_workspace_file(
         where={"id": file_id},
         data={
             "isDeleted": True,
-            "deletedAt": datetime.now(timezone.utc),
+            "deletedAt": datetime.now(UTC),
         },
     )
 
@@ -722,7 +722,7 @@ async def resolve_attachable_workspace_files(
 
 def build_files_block(
     files: list[UserWorkspaceFile],
-    folders: Optional[list["WorkspaceFolder"]] = None,
+    folders: list["WorkspaceFolder"] | None = None,
 ) -> str:
     """Return a formatted ``[Attached files]`` block for injection into a message.
 

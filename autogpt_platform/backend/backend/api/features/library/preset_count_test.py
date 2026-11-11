@@ -85,7 +85,7 @@ async def test_concurrent_input_replacements_on_one_preset_serialize(
         result = await real_count(self, *args, **kwargs)
         try:
             await asyncio.wait_for(barrier.wait(), timeout=2)
-        except (asyncio.TimeoutError, asyncio.BrokenBarrierError):
+        except (TimeoutError, asyncio.BrokenBarrierError):
             pass
         return result
 

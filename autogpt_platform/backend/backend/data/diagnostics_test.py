@@ -1,6 +1,6 @@
 """Unit tests for diagnostics data layer functions."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -40,7 +40,7 @@ async def test_get_execution_diagnostics_full():
     }
 
     mock_exec = MagicMock()
-    mock_exec.started_at = datetime.now(timezone.utc) - timedelta(hours=48)
+    mock_exec.started_at = datetime.now(UTC) - timedelta(hours=48)
 
     with (
         patch(
@@ -346,7 +346,7 @@ def test_rabbitmq_disconnect_error_handled():
 
 def test_calculate_total_runs_basic():
     """Test calculating total runs with a simple cron (every hour)."""
-    now = datetime(2026, 4, 17, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 17, 0, 0, 0, tzinfo=UTC)
     end = now + timedelta(hours=3)
 
     schedule = MagicMock()
@@ -358,7 +358,7 @@ def test_calculate_total_runs_basic():
 
 def test_calculate_total_runs_invalid_cron():
     """Test that invalid cron expressions are skipped."""
-    now = datetime(2026, 4, 17, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 17, 0, 0, 0, tzinfo=UTC)
     end = now + timedelta(hours=1)
 
     schedule = MagicMock()
@@ -370,7 +370,7 @@ def test_calculate_total_runs_invalid_cron():
 
 def test_calculate_total_runs_multiple_schedules():
     """Test total runs across multiple schedules."""
-    now = datetime(2026, 4, 17, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 17, 0, 0, 0, tzinfo=UTC)
     end = now + timedelta(hours=2)
 
     sched1 = MagicMock()
@@ -387,7 +387,7 @@ def test_calculate_total_runs_multiple_schedules():
 
 def test_calculate_total_runs_empty():
     """Test with no schedules."""
-    now = datetime(2026, 4, 17, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 17, 0, 0, 0, tzinfo=UTC)
     end = now + timedelta(hours=1)
 
     result = _calculate_total_runs([], now, end)

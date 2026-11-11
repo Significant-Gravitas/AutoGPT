@@ -7,7 +7,7 @@ search is asked for — against mocks. The episode reads are pinned in
 ``recall_episodes_test.py``, rendering in ``recall_render_test.py``.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,7 +21,7 @@ from graphiti_core.search.search_utils import DEFAULT_MIN_SCORE
 from . import recall
 from .scope import MemoryScope
 
-_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 _SCOPE = MemoryScope.for_user("user-abc")
 
 

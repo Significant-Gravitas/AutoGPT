@@ -371,7 +371,7 @@ def test_trigger_field_prefilter_covers_every_trigger_block():
             name="n",
             description="d",
             user_id="user-1",
-            created_at=datetime.datetime.now(datetime.timezone.utc),
+            created_at=datetime.datetime.now(datetime.UTC),
             nodes=[
                 NodeModel(
                     id="11111111-2222-3333-4444-555555555555",

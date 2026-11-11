@@ -1,6 +1,6 @@
 """Async client for the All Quiet Public API v1."""
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
@@ -66,8 +66,8 @@ class AllQuietClient:
         method: str,
         path: str,
         *,
-        params: Optional[dict[str, Any]] = None,
-        body: Optional[dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
+        body: dict[str, Any] | None = None,
     ) -> Any:
         response = await self.requests.request(
             method,
@@ -97,10 +97,10 @@ class AllQuietClient:
         severity: IncidentSeverity,
         message: str = "",
         message_is_public: bool = False,
-        team_ids: Optional[list[str]] = None,
-        service_ids: Optional[list[str]] = None,
-        user_ids: Optional[list[str]] = None,
-        attributes: Optional[dict[str, str]] = None,
+        team_ids: list[str] | None = None,
+        service_ids: list[str] | None = None,
+        user_ids: list[str] | None = None,
+        attributes: dict[str, str] | None = None,
     ) -> Incident:
         payload: dict[str, Any] = {
             "title": title,
@@ -137,12 +137,12 @@ class AllQuietClient:
     async def list_incidents(
         self,
         *,
-        statuses: Optional[list[IncidentStatus]] = None,
-        severities: Optional[list[IncidentSeverity]] = None,
-        team_ids: Optional[list[str]] = None,
-        user_ids: Optional[list[str]] = None,
+        statuses: list[IncidentStatus] | None = None,
+        severities: list[IncidentSeverity] | None = None,
+        team_ids: list[str] | None = None,
+        user_ids: list[str] | None = None,
         search_term: str = "",
-        unattended: Optional[bool] = None,
+        unattended: bool | None = None,
         created_from: str = "",
         created_until: str = "",
         limit: int = 25,
@@ -176,7 +176,7 @@ class AllQuietClient:
         intent: str,
         message: str = "",
         message_is_public: bool = False,
-        severity: Optional[IncidentSeverity] = None,
+        severity: IncidentSeverity | None = None,
     ) -> None:
         """Apply an intent (and optionally a new severity) to an incident.
 
@@ -205,8 +205,8 @@ class AllQuietClient:
     async def get_on_call(
         self,
         *,
-        team_ids: Optional[list[str]] = None,
-        user_ids: Optional[list[str]] = None,
+        team_ids: list[str] | None = None,
+        user_ids: list[str] | None = None,
         timestamp: str = "",
     ) -> list[OnCallShift]:
         params = {
@@ -249,7 +249,7 @@ def _clean_params(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _bool_param(value: Optional[bool]) -> Optional[str]:
+def _bool_param(value: bool | None) -> str | None:
     """Render an optional flag as a query value.
 
     aiohttp's URL layer refuses raw ``bool`` query values, and All Quiet expects
@@ -261,7 +261,7 @@ def _bool_param(value: Optional[bool]) -> Optional[str]:
     return "true" if value else "false"
 
 
-def _to_incident(data: Optional[dict[str, Any]]) -> Incident:
+def _to_incident(data: dict[str, Any] | None) -> Incident:
     """Validate an incident payload, lifting status/severity off the latest event.
 
     All Quiet models an incident's current state as the head of its event

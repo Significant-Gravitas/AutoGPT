@@ -134,10 +134,9 @@ async def test_linear_invalid_grant_is_logged_with_status_code_and_ids_but_no_to
 
     with (
         endpoint.patch("backend.blocks.linear._oauth"),
-        caplog.at_level(logging.WARNING),
+        caplog.at_level(logging.WARNING),pytest.raises(CredentialsNeedReconnectError)
     ):
-        with pytest.raises(CredentialsNeedReconnectError):
-            await manager.refresh_if_needed("user-1", expiring("linear"), lock=False)
+        await manager.refresh_if_needed("user-1", expiring("linear"), lock=False)
 
     report = next(r for r in caplog.records if "OAuth refresh failed" in r.message)
     assert report.levelno == logging.ERROR
@@ -246,10 +245,9 @@ async def test_transient_failure_is_reported_but_not_marked(caplog, sentry):
 
     with (
         endpoint.patch("backend.blocks.linear._oauth"),
-        caplog.at_level(logging.WARNING),
+        caplog.at_level(logging.WARNING),pytest.raises(HTTPClientError) as raised
     ):
-        with pytest.raises(HTTPClientError) as raised:
-            await manager.refresh_if_needed("user-1", expiring("linear"), lock=False)
+        await manager.refresh_if_needed("user-1", expiring("linear"), lock=False)
 
     assert not isinstance(raised.value, CredentialsNeedReconnectError)
     report = next(r for r in caplog.records if "OAuth refresh failed" in r.message)

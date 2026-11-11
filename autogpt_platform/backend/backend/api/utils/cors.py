@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 import re
-from typing import List, Sequence, TypedDict
+from collections.abc import Sequence
+from typing import TypedDict
 
 from backend.util.settings import AppEnvironment
 
 
 class CorsParams(TypedDict):
-    allow_origins: List[str]
+    allow_origins: list[str]
     allow_origin_regex: str | None
 
 
 def build_cors_params(origins: Sequence[str], app_env: AppEnvironment) -> CorsParams:
-    allow_origins: List[str] = []
-    regex_patterns: List[str] = []
+    allow_origins: list[str] = []
+    regex_patterns: list[str] = []
 
     if app_env == AppEnvironment.PRODUCTION:
         for origin in origins:

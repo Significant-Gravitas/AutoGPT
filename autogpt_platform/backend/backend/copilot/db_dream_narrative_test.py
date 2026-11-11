@@ -14,7 +14,7 @@ import asyncio
 import logging
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from prisma.enums import DreamPassRoute, DreamPassTrigger
@@ -260,7 +260,7 @@ async def _dream_session(
 
 
 def datetime_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @pytest.mark.parametrize("erased", [False, True])
@@ -338,7 +338,7 @@ async def test_the_read_set_outlives_the_sessions_reads_and_merges(make_user):
     assert await add_dream_narrative(session_id, pass_id, _NARRATIVE, "[forgotten]")
 
     await set_session_pending_question(
-        session_id, owner, "Does she?", datetime.now(timezone.utc)
+        session_id, owner, "Does she?", datetime.now(UTC)
     )
     await clear_session_pending_question(session_id, owner)
     loaded = await get_chat_session_metadata(session_id)

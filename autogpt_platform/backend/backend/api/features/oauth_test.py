@@ -17,8 +17,8 @@ import base64
 import hashlib
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -816,7 +816,7 @@ async def test_token_authorization_code_expired(
     """Test token exchange with expired authorization code."""
     # Create an expired authorization code directly in the database
     expired_code = f"expired_code_{secrets.token_urlsafe(16)}"
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     await PrismaOAuthAuthorizationCode.prisma().create(
         data={
@@ -1152,7 +1152,7 @@ async def test_token_refresh_expired(
     # Create an expired refresh token directly in the database
     expired_token_value = f"expired_refresh_{secrets.token_urlsafe(16)}"
     expired_token_hash = hashlib.sha256(expired_token_value.encode()).hexdigest()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     await PrismaOAuthRefreshToken.prisma().create(
         data={
@@ -1188,7 +1188,7 @@ async def test_token_refresh_revoked(
     # Create a revoked refresh token directly in the database
     revoked_token_value = f"revoked_refresh_{secrets.token_urlsafe(16)}"
     revoked_token_hash = hashlib.sha256(revoked_token_value.encode()).hexdigest()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     await PrismaOAuthRefreshToken.prisma().create(
         data={
@@ -1258,7 +1258,7 @@ async def test_token_refresh_wrong_application(
     # Create a refresh token for `test_oauth_app`
     token_value = f"app1_refresh_{secrets.token_urlsafe(16)}"
     token_hash = hashlib.sha256(token_value.encode()).hexdigest()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     await PrismaOAuthRefreshToken.prisma().create(
         data={
@@ -1560,7 +1560,7 @@ async def test_validate_access_token_fails_when_app_disabled(
     # create_access_token issues (validation refuses any other)
     token_plaintext = f"{ACCESS_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
     token_hash = hashlib.sha256(token_plaintext.encode()).hexdigest()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     await PrismaOAuthAccessToken.prisma().create(
         data={

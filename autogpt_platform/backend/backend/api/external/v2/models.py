@@ -9,10 +9,11 @@ Route files should import models from here rather than defining them locally.
 
 from __future__ import annotations
 
+from collections.abc import Collection
+from datetime import UTC, datetime
 from datetime import date as date_
-from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Collection, Literal, Optional, Self, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
 
 from pydantic import BaseModel, Field, JsonValue, field_validator, model_validator
 
@@ -48,13 +49,13 @@ if TYPE_CHECKING:
     from backend.api.features.library.model import (
         LibraryFolderTree as _LibraryFolderTree,
     )
-    from backend.api.features.store.model import CreatorDetails
-    from backend.api.features.store.model import ProfileDetails as _ProfileDetails
     from backend.api.features.store.model import (
+        CreatorDetails,
         StoreAgent,
         StoreAgentDetails,
         StoreSubmission,
     )
+    from backend.api.features.store.model import ProfileDetails as _ProfileDetails
     from backend.data.credit import InvoiceListItem as _InvoiceListItem
     from backend.data.execution import GraphExecutionMeta, GraphExecutionWithNodes
     from backend.data.execution_cost_summary import UserExecutionCostSummary
@@ -73,10 +74,10 @@ if TYPE_CHECKING:
 class TenantedResource(BaseModel):
     """Fields identifying which organization and team a resource belongs to."""
 
-    organization_id: Optional[str] = Field(
+    organization_id: str | None = Field(
         default=None, description="Organization the resource belongs to"
     )
-    team_id: Optional[str] = Field(
+    team_id: str | None = Field(
         default=None,
         description="Team within the organization; null means organization-wide",
     )
@@ -104,10 +105,10 @@ class Identity(BaseModel):
 
     user_id: str
     email: str
-    name: Optional[str] = None
+    name: str | None = None
     timezone: str
     organization: TenantOrganization
-    team: Optional[TenantTeam] = Field(
+    team: TenantTeam | None = Field(
         default=None,
         description="Team the request acts in; null means organization-wide",
     )
@@ -162,7 +163,7 @@ class GraphCreateRequest(BaseModel):
         *,
         id: str,
         version: int,
-    ) -> "_Graph":
+    ) -> _Graph:
         from backend.data.graph import Graph as _Graph
         from backend.data.graph import Link as _Link
         from backend.data.graph import Node as _Node
@@ -286,11 +287,11 @@ class Graph(GraphMeta):
 class GraphSettings(BaseModel):
     """Settings for a graph."""
 
-    human_in_the_loop_safe_mode: Optional[bool] = Field(
+    human_in_the_loop_safe_mode: bool | None = Field(
         default=None, description="Enable safe mode for human-in-the-loop blocks"
     )
 
-    def to_internal(self) -> "_GraphSettings":
+    def to_internal(self) -> _GraphSettings:
         from backend.data.graph import GraphSettings as _GraphSettings
 
         settings = _GraphSettings()
@@ -347,16 +348,16 @@ class BlockInfo(BaseModel):
     id: str
     name: str
     description: str
-    categories: list["BlockCategoryInfo"]
-    contributors: list["BlockContributorInfo"]
+    categories: list[BlockCategoryInfo]
+    contributors: list[BlockContributorInfo]
     input_schema: dict[str, Any]
     output_schema: dict[str, Any]
     static_output: bool
     block_type: BlockType
-    costs: list["BlockCostInfo"]
+    costs: list[BlockCostInfo]
 
     @classmethod
-    def from_internal(cls, b: block_types.AnyBlockSchema) -> "BlockInfo":
+    def from_internal(cls, b: block_types.AnyBlockSchema) -> BlockInfo:
         from backend.data.credit import get_block_cost
 
         return cls(
@@ -420,7 +421,7 @@ class AgentRunSchedule(BaseModel):
     cron: str = Field(description="Cron expression for the schedule")
     timezone: str = Field(description="Timezone the cron expression is read in")
     inputs: dict[str, Any] = Field(description="Input values for each scheduled run")
-    next_run_time: Optional[datetime]
+    next_run_time: datetime | None
 
     @classmethod
     def from_internal(cls, job: GraphExecutionJobInfo) -> Self:
@@ -461,10 +462,10 @@ class AgentRunScheduleCreateRequest(BaseModel):
             "of the graph's credential requirements"
         ),
     )
-    graph_version: Optional[int] = Field(
+    graph_version: int | None = Field(
         default=None, description="Graph version (default: active version)"
     )
-    timezone: Optional[str] = Field(
+    timezone: str | None = Field(
         default=None,
         max_length=MAX_NAME_LENGTH,
         description=(
@@ -475,7 +476,7 @@ class AgentRunScheduleCreateRequest(BaseModel):
 
     @field_validator("timezone")
     @classmethod
-    def _is_a_known_timezone(cls, value: Optional[str]) -> Optional[str]:
+    def _is_a_known_timezone(cls, value: str | None) -> str | None:
         if value is not None and not validate_timezone(value):
             raise ValueError(
                 f"Unknown timezone '{value}'; use an IANA name such as "
@@ -502,7 +503,7 @@ class TriggerSetupInfo(BaseModel):
     config_schema: dict[str, Any] = Field(
         description="JSON Schema for the trigger block's input"
     )
-    credentials_input_name: Optional[str] = Field(
+    credentials_input_name: str | None = Field(
         description=(
             "Name of the credentials input field, if the trigger requires credentials"
         )
@@ -520,20 +521,20 @@ class LibraryAgent(TenantedResource):
     is_favorite: bool
     can_access_graph: bool
     is_latest_version: bool
-    image_url: Optional[str]
+    image_url: str | None
     creator_name: str
     input_schema: dict[str, Any] = Field(description="Input schema for the agent")
     output_schema: dict[str, Any] = Field(description="Output schema for the agent")
-    trigger_setup_info: Optional[TriggerSetupInfo] = Field(
+    trigger_setup_info: TriggerSetupInfo | None = Field(
         default=None,
         description="Trigger configuration requirements; "
         "present if the agent has a webhook trigger input",
     )
     recommended_schedule_cron: str | None
-    folder_id: Optional[str] = Field(
+    folder_id: str | None = Field(
         default=None, description="ID of the folder this agent is in"
     )
-    folder_name: Optional[str] = Field(
+    folder_name: str | None = Field(
         default=None, description="Name of the folder this agent is in"
     )
     created_at: datetime
@@ -576,11 +577,11 @@ class LibraryAgent(TenantedResource):
 class LibraryAgentUpdateRequest(BaseModel):
     """Request to update a library agent."""
 
-    auto_update_version: Optional[bool] = None
-    graph_version: Optional[int] = None
-    is_favorite: Optional[bool] = None
-    is_archived: Optional[bool] = None
-    folder_id: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    auto_update_version: bool | None = None
+    graph_version: int | None = None
+    is_favorite: bool | None = None
+    is_archived: bool | None = None
+    folder_id: str | None = Field(default=None, max_length=MAX_ID_LENGTH)
 
 
 class AgentRunRequest(BaseModel):
@@ -608,9 +609,9 @@ class LibraryFolder(TenantedResource):
 
     id: str
     name: str
-    icon: Optional[str]
-    color: Optional[str]
-    parent_id: Optional[str]
+    icon: str | None
+    color: str | None
+    parent_id: str | None
     agent_count: int
     subfolder_count: int
     created_at: datetime
@@ -638,11 +639,11 @@ class LibraryFolderTree(BaseModel):
 
     id: str
     name: str
-    icon: Optional[str]
-    color: Optional[str]
+    icon: str | None
+    color: str | None
     agent_count: int
     subfolder_count: int
-    children: list["LibraryFolderTree"]
+    children: list[LibraryFolderTree]
 
     @classmethod
     def from_internal(cls, f: _LibraryFolderTree) -> Self:
@@ -661,22 +662,22 @@ class LibraryFolderCreateRequest(BaseModel):
     """Request to create a folder."""
 
     name: str = Field(min_length=1, max_length=MAX_NAME_LENGTH)
-    icon: Optional[str] = Field(default=None, max_length=MAX_NAME_LENGTH)
-    color: Optional[str] = Field(
+    icon: str | None = Field(default=None, max_length=MAX_NAME_LENGTH)
+    color: str | None = Field(
         default=None,
         max_length=7,
         pattern=r"^#[0-9A-Fa-f]{6}$",
         description="Hex color (#RRGGBB)",
     )
-    parent_id: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    parent_id: str | None = Field(default=None, max_length=MAX_ID_LENGTH)
 
 
 class LibraryFolderUpdateRequest(BaseModel):
     """Request to update a folder."""
 
-    name: Optional[str] = Field(default=None, min_length=1, max_length=MAX_NAME_LENGTH)
-    icon: Optional[str] = Field(default=None, max_length=MAX_NAME_LENGTH)
-    color: Optional[str] = Field(
+    name: str | None = Field(default=None, min_length=1, max_length=MAX_NAME_LENGTH)
+    icon: str | None = Field(default=None, max_length=MAX_NAME_LENGTH)
+    color: str | None = Field(
         default=None,
         max_length=7,
         pattern=r"^#[0-9A-Fa-f]{6}$",
@@ -687,7 +688,7 @@ class LibraryFolderUpdateRequest(BaseModel):
 class LibraryFolderMoveRequest(BaseModel):
     """Request to move a folder."""
 
-    target_parent_id: Optional[str] = Field(
+    target_parent_id: str | None = Field(
         default=None,
         max_length=MAX_ID_LENGTH,
         description="Target parent folder ID (null = root)",
@@ -709,7 +710,7 @@ class AgentPreset(TenantedResource):
     description: str
     is_active: bool
     inputs: dict[str, Any] = Field(description="The agent's saved input values")
-    trigger_config: Optional[dict[str, Any]] = Field(
+    trigger_config: dict[str, Any] | None = Field(
         default=None,
         description="A webhook trigger's settings, less those in `hidden_inputs`",
     )
@@ -718,11 +719,11 @@ class AgentPreset(TenantedResource):
         description="A trigger's secret settings that are set but returned only when "
         "it is created. An update that leaves them out of `trigger_config` keeps them",
     )
-    webhook_id: Optional[str] = Field(
+    webhook_id: str | None = Field(
         default=None,
         description="Webhook ID if this preset is triggered by a webhook",
     )
-    webhook_url: Optional[str] = Field(
+    webhook_url: str | None = Field(
         default=None,
         description="Where the webhook's events are delivered. For a trigger you "
         "set up by hand in the other service, paste this URL there",
@@ -781,20 +782,20 @@ class AgentPresetCreateRequest(BaseModel):
 class AgentPresetUpdateRequest(BaseModel):
     """Request to update a preset."""
 
-    name: Optional[str] = Field(default=None, max_length=MAX_NAME_LENGTH)
-    description: Optional[str] = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
-    inputs: Optional[dict[str, Any]] = Field(
+    name: str | None = Field(default=None, max_length=MAX_NAME_LENGTH)
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
+    inputs: dict[str, Any] | None = Field(
         default=None, description="Replaces the agent's saved input values"
     )
-    trigger_config: Optional[dict[str, Any]] = Field(
+    trigger_config: dict[str, Any] | None = Field(
         default=None,
         description="Replaces a webhook trigger's settings, re-registering its "
         "webhook. Settings in `hidden_inputs` it leaves out keep their value",
     )
-    credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = Field(
+    credentials_inputs: dict[str, CredentialsMetaInput] | None = Field(
         default=None, description="Replaces the saved credentials"
     )
-    is_active: Optional[bool] = None
+    is_active: bool | None = None
 
 
 class AgentTriggerSetupRequest(BaseModel):
@@ -841,7 +842,7 @@ class CredentialInputInfo(BaseModel):
     """Metadata about a credential input used in a run (no secrets)."""
 
     id: str
-    title: Optional[str] = None
+    title: str | None = None
     provider: str
     type: str
 
@@ -853,16 +854,16 @@ class AgentGraphRun(TenantedResource):
     status: RunStatus
     started_at: datetime | None
     ended_at: datetime | None
-    inputs: Optional[dict[str, Any]]
-    credentials_inputs: Optional[dict[str, CredentialInputInfo]] = Field(
+    inputs: dict[str, Any] | None
+    credentials_inputs: dict[str, CredentialInputInfo] | None = Field(
         default=None,
         description="Credential inputs used in this run (metadata only, no secrets)",
     )
-    preset_id: Optional[str] = Field(
+    preset_id: str | None = Field(
         default=None, description="Preset ID used for this run"
     )
     is_shared: bool = Field(default=False, description="Whether this run is shared")
-    share_token: Optional[str] = Field(
+    share_token: str | None = Field(
         default=None, description="Share token for public access"
     )
     cost_cents: int = Field(description="Cost in cents")
@@ -914,8 +915,8 @@ class AgentGraphRun(TenantedResource):
 class AgentGraphRunDetails(AgentGraphRun):
     """Detailed information about a run including outputs and node executions."""
 
-    outputs: Optional[dict[str, list[Any]]]
-    node_executions: Optional[list[AgentNodeExecution]] = Field(
+    outputs: dict[str, list[Any]] | None
+    node_executions: list[AgentNodeExecution] | None = Field(
         description="Individual node execution results; "
         "may be omitted in case of permission restrictions"
     )
@@ -993,7 +994,7 @@ class AgentRunReview(BaseModel):
     graph_id: str
     graph_version: int
     payload: JsonValue = Field(description="Data to be reviewed")
-    instructions: Optional[str] = Field(description="Instructions for the reviewer")
+    instructions: str | None = Field(description="Instructions for the reviewer")
     editable: bool = Field(description="Whether the reviewer can edit the data")
     status: AgentRunReviewStatus
     requested_at: datetime
@@ -1029,10 +1030,10 @@ class AgentRunReviewDecision(BaseModel):
 
     node_exec_id: str = Field(description="Node execution ID (review ID)")
     approved: bool = Field(description="Whether to approve the data")
-    edited_payload: Optional[JsonValue] = Field(
+    edited_payload: JsonValue | None = Field(
         default=None, description="Modified payload data (if editing)"
     )
-    message: Optional[str] = Field(
+    message: str | None = Field(
         default=None, description="Optional message from reviewer", max_length=2000
     )
     auto_approve_future: bool = Field(
@@ -1079,10 +1080,10 @@ TransactionType: TypeAlias = Literal[
 class CreditTransactionOrigin(BaseModel):
     """Origin context for a credit transaction."""
 
-    graph_id: Optional[str] = Field(
+    graph_id: str | None = Field(
         description="ID of the graph that caused this transaction, if applicable"
     )
-    run_id: Optional[str] = Field(
+    run_id: str | None = Field(
         description="ID of the agent run that caused this transaction, if applicable"
     )
 
@@ -1096,8 +1097,8 @@ class CreditTransaction(BaseModel):
     )
     type: TransactionType
     transaction_time: datetime
-    description: Optional[str]
-    origin: Optional[CreditTransactionOrigin] = Field(
+    description: str | None
+    origin: CreditTransactionOrigin | None = Field(
         description="Origin context linking this transaction to a graph (execution)",
     )
 
@@ -1149,12 +1150,12 @@ class SubscriptionStatus(BaseModel):
         description="Unused portion of current plan available as upgrade credit"
     )
     has_active_stripe_subscription: bool = False
-    current_period_end: Optional[datetime] = Field(
+    current_period_end: datetime | None = Field(
         default=None, description="End of the current billing period"
     )
-    pending_tier: Optional[SubscriptionTierValue] = None
-    pending_tier_effective_at: Optional[datetime] = None
-    pending_billing_cycle: Optional[Literal["monthly", "yearly"]] = None
+    pending_tier: SubscriptionTierValue | None = None
+    pending_tier_effective_at: datetime | None = None
+    pending_billing_cycle: Literal["monthly", "yearly"] | None = None
 
 
 # ============================================================================
@@ -1166,17 +1167,17 @@ class InvoiceItem(BaseModel):
     """A Stripe invoice."""
 
     id: str
-    number: Optional[str] = None
+    number: str | None = None
     created_at: datetime
     total_cents: int = Field(description="Invoice total in cents")
     amount_paid_cents: int = Field(description="Amount settled so far in cents")
     currency: str = "usd"
     status: str
-    description: Optional[str] = None
-    hosted_invoice_url: Optional[str] = Field(
+    description: str | None = None
+    hosted_invoice_url: str | None = Field(
         default=None, description="Stripe-hosted invoice view URL"
     )
-    invoice_pdf_url: Optional[str] = Field(
+    invoice_pdf_url: str | None = Field(
         default=None, description="Direct PDF download URL"
     )
 
@@ -1292,15 +1293,15 @@ class CredentialInfo(BaseModel):
     id: str
     type: CredentialType
     provider: str = Field(description="Integration provider name")
-    title: Optional[str] = Field(description="User-assigned title for this credential")
-    username: Optional[str] = Field(
+    title: str | None = Field(description="User-assigned title for this credential")
+    username: str | None = Field(
         default=None,
         description="Third-party service username (OAuth2 credentials only)",
     )
     scopes: list[str] = Field(
         description="Permission scopes granted to this credential"
     )
-    expires_at: Optional[datetime]
+    expires_at: datetime | None
     is_managed: bool = Field(
         description="Provided by the platform; cannot be updated or deleted"
     )
@@ -1326,7 +1327,7 @@ class CredentialInfo(BaseModel):
             scopes=scopes,
             is_managed=cred.is_managed,
             expires_at=(
-                datetime.fromtimestamp(expires_at, tz=timezone.utc)
+                datetime.fromtimestamp(expires_at, tz=UTC)
                 if expires_at
                 else None
             ),
@@ -1338,7 +1339,7 @@ class _CredentialCreateBase(BaseModel):
         max_length=MAX_NAME_LENGTH,
         description="Provider name (e.g., 'github', 'openai')",
     )
-    title: Optional[str] = Field(
+    title: str | None = Field(
         default=None,
         max_length=MAX_NAME_LENGTH,
         description="User-friendly name for this credential",
@@ -1524,7 +1525,7 @@ class MarketplaceAgent(BaseModel):
     creator_avatar: str
     runs: int = Field(description="Number of times this agent has been run")
     rating: float = Field(description="Average rating")
-    image_url: Optional[str]
+    image_url: str | None
 
     @classmethod
     def from_internal(cls, agent: StoreAgent) -> Self:
@@ -1548,12 +1549,12 @@ class MarketplaceAgentDetails(MarketplaceAgent):
     versions: list[int] = Field(
         description="Available store listing versions (sequential; != graph version)",
     )
-    instructions: Optional[str]
+    instructions: str | None
     categories: list[str]
     image_urls: list[str]
-    video_url: Optional[str]
+    video_url: str | None
     agent_output_demo_url: str
-    recommended_schedule_cron: Optional[str]
+    recommended_schedule_cron: str | None
     graph_id: str
     graph_versions: list[int]
     last_updated: datetime
@@ -1593,7 +1594,7 @@ class MarketplaceUserProfile(BaseModel):
     username: str
     description: str
     links: list[str]
-    avatar_url: Optional[str]
+    avatar_url: str | None
     is_featured: bool
 
     @classmethod
@@ -1611,19 +1612,19 @@ class MarketplaceUserProfile(BaseModel):
 class MarketplaceUserProfileUpdateRequest(BaseModel):
     """Request to partially update marketplace profile."""
 
-    name: Optional[str] = Field(
+    name: str | None = Field(
         default=None, max_length=MAX_NAME_LENGTH, description="Display name"
     )
-    username: Optional[str] = Field(
+    username: str | None = Field(
         default=None, max_length=MAX_NAME_LENGTH, description="Unique username"
     )
-    description: Optional[str] = Field(
+    description: str | None = Field(
         default=None, max_length=MAX_DESCRIPTION_LENGTH, description="Bio/description"
     )
-    links: Optional[list[URLText]] = Field(
+    links: list[URLText] | None = Field(
         default=None, max_length=MAX_LIST_ENTRIES, description="Profile links"
     )
-    avatar_url: Optional[str] = Field(
+    avatar_url: str | None = Field(
         default=None, max_length=MAX_URL_LENGTH, description="Avatar image URL"
     )
 
@@ -1669,19 +1670,19 @@ class MarketplaceAgentSubmission(BaseModel):
     name: str
     sub_heading: str
     description: str
-    instructions: Optional[str]
+    instructions: str | None
     categories: list[str]
     image_urls: list[str]
-    video_url: Optional[str]
-    agent_output_demo_url: Optional[str]
-    changes_summary: Optional[str] = Field(
+    video_url: str | None
+    agent_output_demo_url: str | None
+    changes_summary: str | None = Field(
         description="Summary of changes in this version"
     )
 
-    submitted_at: Optional[datetime]
+    submitted_at: datetime | None
     submission_status: SubmissionStatus
     submission_reviewed_at: datetime | None
-    submission_review_comments: Optional[str] = Field(
+    submission_review_comments: str | None = Field(
         description="Comments by the admin who reviewed the submission"
     )
 
@@ -1734,24 +1735,24 @@ class MarketplaceAgentSubmissionCreateRequest(BaseModel):
     )
     sub_heading: str = Field(max_length=MAX_NAME_LENGTH, description="Short tagline")
     image_urls: list[URLText] = Field(default_factory=list, max_length=MAX_LIST_ENTRIES)
-    video_url: Optional[str] = Field(default=None, max_length=MAX_URL_LENGTH)
-    agent_output_demo_url: Optional[str] = Field(
+    video_url: str | None = Field(default=None, max_length=MAX_URL_LENGTH)
+    agent_output_demo_url: str | None = Field(
         default=None, max_length=MAX_URL_LENGTH
     )
     categories: list[NameText] = Field(
         default_factory=list, max_length=MAX_LIST_ENTRIES
     )
-    instructions: Optional[str] = Field(
+    instructions: str | None = Field(
         default=None,
         max_length=MAX_INSTRUCTIONS_LENGTH,
         description="Usage instructions",
     )
-    changes_summary: Optional[str] = Field(
+    changes_summary: str | None = Field(
         default="Initial Submission",
         max_length=MAX_SUMMARY_LENGTH,
         description="Summary of changes",
     )
-    recommended_schedule_cron: Optional[str] = Field(
+    recommended_schedule_cron: str | None = Field(
         default=None,
         max_length=MAX_CRON_LENGTH,
         description="Recommended cron schedule",
@@ -1774,10 +1775,10 @@ class MarketplaceAgentSubmissionEditRequest(BaseModel):
     image_urls: list[URLText] = Field(
         max_length=MAX_LIST_ENTRIES, description="Image URLs"
     )
-    video_url: Optional[str] = Field(
+    video_url: str | None = Field(
         default=None, max_length=MAX_URL_LENGTH, description="Demo video URL"
     )
-    agent_output_demo_url: Optional[str] = Field(
+    agent_output_demo_url: str | None = Field(
         default=None,
         max_length=MAX_URL_LENGTH,
         description="Agent output demo URL",
@@ -1785,17 +1786,17 @@ class MarketplaceAgentSubmissionEditRequest(BaseModel):
     categories: list[NameText] = Field(
         max_length=MAX_LIST_ENTRIES, description="Categories"
     )
-    changes_summary: Optional[str] = Field(
+    changes_summary: str | None = Field(
         default="Update submission",
         max_length=MAX_SUMMARY_LENGTH,
         description="Summary of changes",
     )
-    recommended_schedule_cron: Optional[str] = Field(
+    recommended_schedule_cron: str | None = Field(
         default=None,
         max_length=MAX_CRON_LENGTH,
         description="Recommended cron schedule",
     )
-    instructions: Optional[str] = Field(
+    instructions: str | None = Field(
         default=None,
         max_length=MAX_INSTRUCTIONS_LENGTH,
         description="Usage instructions",
@@ -1829,6 +1830,6 @@ class MarketplaceSearchResult(BaseModel):
     content_type: SearchContentType
     content_id: str
     searchable_text: str
-    metadata: Optional[dict]
-    updated_at: Optional[datetime]
-    combined_score: Optional[float]
+    metadata: dict | None
+    updated_at: datetime | None
+    combined_score: float | None

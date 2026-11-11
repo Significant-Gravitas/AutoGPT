@@ -24,7 +24,7 @@ import os
 import sys
 import zipfile
 from collections.abc import Callable
-from typing import Optional, cast
+from typing import cast
 
 import pypdfium2
 from PIL import Image
@@ -342,7 +342,7 @@ def _render_scale(page_width: float, page_height: float, target_width: int) -> f
     return max(min(to_target_width, within_budget, MAX_RENDER_SCALE), _MIN_RENDER_SCALE)
 
 
-def _extract_zip_thumbnail(content: bytes) -> Optional[bytes]:
+def _extract_zip_thumbnail(content: bytes) -> bytes | None:
     """Return the embedded ``docProps/thumbnail.*`` image from an openxml file."""
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
         names = {name.lower(): name for name in archive.namelist()}

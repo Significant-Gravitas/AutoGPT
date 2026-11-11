@@ -1,7 +1,7 @@
 """Bounded recovery of validated, already-paid review output."""
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from pydantic import BaseModel, ValidationError
@@ -43,7 +43,7 @@ async def load_review_replay(
         if len(json.dumps(row.replay).encode("utf-8")) > MAX_REPLAY_BYTES:
             raise ValueError("oversized replay")
         replay = ReviewReplay.model_validate(row.replay)
-        age = datetime.now(timezone.utc) - replay.created_at
+        age = datetime.now(UTC) - replay.created_at
         if not timedelta(0) <= age <= REPLAY_TTL:
             raise ValueError("expired replay")
         request = replay.request
@@ -86,7 +86,7 @@ async def save_review_replay(
 ) -> None:
     if not _safe_to_store(request, packages):
         return
-    replay = ReviewReplay(created_at=datetime.now(timezone.utc), request=request)
+    replay = ReviewReplay(created_at=datetime.now(UTC), request=request)
     payload = replay.model_dump(mode="json")
     if len(json.dumps(payload).encode("utf-8")) > MAX_REPLAY_BYTES:
         return

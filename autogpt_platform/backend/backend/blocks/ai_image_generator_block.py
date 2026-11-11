@@ -307,7 +307,7 @@ class AIImageGeneratorBlock(Block):
                 return output
 
         except Exception as e:
-            raise RuntimeError(f"Failed to generate image: {str(e)}")
+            raise RuntimeError(f"Failed to generate image: {e!s}")
 
     def _style_to_prompt_prefix(self, style: ImageStyle) -> str:
         """

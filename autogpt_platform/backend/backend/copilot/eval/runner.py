@@ -33,8 +33,9 @@ from __future__ import annotations
 
 import json
 import platform
-from datetime import datetime, timezone
-from typing import Any, Sequence
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import Field
 from pydantic.dataclasses import dataclass
@@ -93,7 +94,7 @@ def run_dream_eval(
     so the report joins back to its source run.
     """
     config = config or DreamEvalConfig()
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
 
     suites: dict[str, Any] = {}
 

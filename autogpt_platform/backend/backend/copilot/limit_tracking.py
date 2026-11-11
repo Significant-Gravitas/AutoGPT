@@ -25,10 +25,11 @@ stood against it.
 import functools
 import logging
 import threading
+from collections.abc import Callable
 from contextvars import ContextVar
 from datetime import datetime
 from time import monotonic
-from typing import TYPE_CHECKING, Callable, Literal, ParamSpec
+from typing import TYPE_CHECKING, Literal, ParamSpec
 
 from pydantic import BaseModel
 

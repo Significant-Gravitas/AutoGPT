@@ -145,15 +145,14 @@ async def test_a_granted_credential_that_yields_no_token_gets_nothing():
 async def test_a_lookup_that_fails_is_an_error_not_a_user_without_a_token():
     """The proxy scrubs responses against this answer, and refuses what it
     cannot scrub only when the backend says it cannot answer."""
-    with _token("ghp_real"):
-        with (
-            patch(
-                f"{_M}.get_provider_token",
-                AsyncMock(side_effect=ProviderTokenUnavailable("github")),
-            ),
-            pytest.raises(ProviderTokenUnavailable),
-        ):
-            await resolve_swap_credential("user-1", "github", "github.com", _BOX)
+    with (
+        _token("ghp_real"), patch(
+            f"{_M}.get_provider_token",
+            AsyncMock(side_effect=ProviderTokenUnavailable("github")),
+        ),
+        pytest.raises(ProviderTokenUnavailable),
+    ):
+        await resolve_swap_credential("user-1", "github", "github.com", _BOX)
 
 
 @pytest.mark.asyncio

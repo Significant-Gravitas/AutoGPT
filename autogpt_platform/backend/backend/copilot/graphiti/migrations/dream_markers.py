@@ -38,7 +38,7 @@ import asyncio
 import logging
 import math
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from graphiti_core.driver.driver import GraphDriver
@@ -126,7 +126,7 @@ class Resolved(BaseModel):
 
 async def list_markers(driver: GraphDriver, graph: str) -> list[Marker]:
     """Every marker in ``graph``, landed ones first."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return [_listed(graph, row, now) for row in await _markers(driver, graph)]
 
 
@@ -135,7 +135,7 @@ async def resolve_graph(
 ) -> Resolved:
     """Resolve ``graph``'s selected markers holding its write lock; a dry
     run counts what it would do."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if not apply:
         done = Resolved()
         for row in await _markers(driver, graph):

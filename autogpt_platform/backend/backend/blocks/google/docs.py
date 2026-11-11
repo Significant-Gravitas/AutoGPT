@@ -114,8 +114,7 @@ def _parse_hex_color_to_rgb_floats(value: str) -> tuple[float, float, float] | N
         return None
 
     raw = value.strip()
-    if raw.startswith("#"):
-        raw = raw[1:]
+    raw = raw.removeprefix("#")
 
     if not re.fullmatch(r"[0-9a-fA-F]{3}([0-9a-fA-F]{3})?", raw):
         return None
@@ -255,7 +254,7 @@ class GoogleDocsReadBlock(Block):
             yield "title", result["title"]
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to read document: {str(e)}"
+            yield "error", f"Failed to read document: {e!s}"
 
     def _read_document(self, service, document_id: str) -> dict:
         doc = service.documents().get(documentId=document_id).execute()
@@ -356,7 +355,7 @@ class GoogleDocsCreateBlock(Block):
             yield "document_id", doc_id
             yield "document_url", doc_url
         except Exception as e:
-            yield "error", f"Failed to create document: {str(e)}"
+            yield "error", f"Failed to create document: {e!s}"
 
     def _create_document(
         self, drive_service, docs_service, title: str, initial_content: str
@@ -478,7 +477,7 @@ class GoogleDocsAppendPlainTextBlock(Block):
             yield "result", result
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to append text: {str(e)}"
+            yield "error", f"Failed to append text: {e!s}"
 
     def _append_text(
         self, service, document_id: str, text: str, add_newline: bool
@@ -590,7 +589,7 @@ class GoogleDocsInsertPlainTextBlock(Block):
             yield "result", result
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to insert text: {str(e)}"
+            yield "error", f"Failed to insert text: {e!s}"
 
     def _insert_text(self, service, document_id: str, text: str, index: int) -> dict:
         requests = [
@@ -699,7 +698,7 @@ class GoogleDocsFindReplacePlainTextBlock(Block):
             yield "result", result
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to find/replace: {str(e)}"
+            yield "error", f"Failed to find/replace: {e!s}"
 
     def _find_replace(
         self,
@@ -825,7 +824,7 @@ class GoogleDocsGetMetadataBlock(Block):
             yield "document_url", f"https://docs.google.com/document/d/{input_data.document.id}/edit"
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to get metadata: {str(e)}"
+            yield "error", f"Failed to get metadata: {e!s}"
 
     def _get_metadata(self, service, document_id: str) -> dict:
         doc = service.documents().get(documentId=document_id).execute()
@@ -972,7 +971,7 @@ class GoogleDocsInsertTableBlock(Block):
             yield "result", result
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to insert table: {str(e)}"
+            yield "error", f"Failed to insert table: {e!s}"
 
     def _insert_table(
         self,
@@ -1205,7 +1204,7 @@ class GoogleDocsInsertPageBreakBlock(Block):
             yield "result", result
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to insert page break: {str(e)}"
+            yield "error", f"Failed to insert page break: {e!s}"
 
     def _insert_page_break(self, service, document_id: str, index: int) -> dict:
         if index == 0:
@@ -1316,7 +1315,7 @@ class GoogleDocsDeleteContentBlock(Block):
             yield "result", result
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to delete content: {str(e)}"
+            yield "error", f"Failed to delete content: {e!s}"
 
     def _delete_content(
         self, service, document_id: str, start_index: int, end_index: int
@@ -1437,7 +1436,7 @@ class GoogleDocsExportBlock(Block):
             yield "mime_type", result["mime_type"]
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to export document: {str(e)}"
+            yield "error", f"Failed to export document: {e!s}"
 
     def _export_document(self, service, document_id: str, mime_type: str) -> dict:
         import base64
@@ -1570,7 +1569,7 @@ class GoogleDocsFormatTextBlock(Block):
             yield "result", result
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to format text: {str(e)}"
+            yield "error", f"Failed to format text: {e!s}"
 
     def _format_text(
         self,
@@ -1751,7 +1750,7 @@ class GoogleDocsShareBlock(Block):
             yield "share_link", result["share_link"]
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to share document: {str(e)}"
+            yield "error", f"Failed to share document: {e!s}"
 
     def _share_document(
         self,
@@ -1884,7 +1883,7 @@ class GoogleDocsSetPublicAccessBlock(Block):
             yield "share_link", result["share_link"]
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to set public access: {str(e)}"
+            yield "error", f"Failed to set public access: {e!s}"
 
     def _set_public_access(
         self, service, document_id: str, public: bool, role: PublicAccessRole
@@ -2011,7 +2010,7 @@ class GoogleDocsAppendMarkdownBlock(Block):
             yield "result", result
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to append markdown: {str(e)}"
+            yield "error", f"Failed to append markdown: {e!s}"
 
     def _append_markdown(
         self,
@@ -2133,7 +2132,7 @@ class GoogleDocsReplaceAllWithMarkdownBlock(Block):
             yield "result", result
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to replace document with markdown: {str(e)}"
+            yield "error", f"Failed to replace document with markdown: {e!s}"
 
     def _replace_all_with_markdown(
         self,
@@ -2260,7 +2259,7 @@ class GoogleDocsInsertMarkdownAtBlock(Block):
             yield "result", result
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to insert markdown: {str(e)}"
+            yield "error", f"Failed to insert markdown: {e!s}"
 
     def _insert_markdown_at(
         self,
@@ -2387,7 +2386,7 @@ class GoogleDocsReplaceRangeWithMarkdownBlock(Block):
             yield "result", result
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to replace range with markdown: {str(e)}"
+            yield "error", f"Failed to replace range with markdown: {e!s}"
 
     def _replace_range_with_markdown(
         self,
@@ -2532,7 +2531,7 @@ class GoogleDocsReplaceContentWithMarkdownBlock(Block):
             yield "result", result
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to replace content with markdown: {str(e)}"
+            yield "error", f"Failed to replace content with markdown: {e!s}"
 
     def _find_text_positions(
         self, service, document_id: str, find_text: str, match_case: bool
@@ -2757,7 +2756,7 @@ class GoogleDocsGetStructureBlock(Block):
             yield "structure", result["structure"]
             yield "document", _make_document_output(input_data.document)
         except Exception as e:
-            yield "error", f"Failed to get document structure: {str(e)}"
+            yield "error", f"Failed to get document structure: {e!s}"
 
     def _extract_paragraph_text(self, paragraph: dict) -> str:
         """Extract plain text from a paragraph element."""

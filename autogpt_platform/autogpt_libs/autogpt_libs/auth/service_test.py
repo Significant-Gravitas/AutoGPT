@@ -8,7 +8,7 @@ audience and subject; these tests pin the separation between the two planes.
 import base64
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
@@ -152,7 +152,7 @@ def test_non_string_algorithm_is_401_not_500(jwks_config, alg):
 def test_expired_service_token_is_401(jwks_config):
     payload = {
         **SERVICE_PAYLOAD,
-        "exp": datetime.now(timezone.utc) - timedelta(minutes=1),
+        "exp": datetime.now(UTC) - timedelta(minutes=1),
     }
     token = create_es256_token(payload, jwks_config)
     assert _post(token).status_code == 401
@@ -190,7 +190,7 @@ async def test_frontend_service_claims_returns_a_vouched_claim(jwks_config):
         {**CLAIM_PAYLOAD, "scope": "auth-email:send"},
         {**CLAIM_PAYLOAD, "sub": "service:imposter"},
         {**CLAIM_PAYLOAD, "aud": "authenticated"},
-        {**CLAIM_PAYLOAD, "exp": datetime.now(timezone.utc) - timedelta(minutes=1)},
+        {**CLAIM_PAYLOAD, "exp": datetime.now(UTC) - timedelta(minutes=1)},
     ],
     ids=["other-scope", "wrong-subject", "user-audience", "expired"],
 )

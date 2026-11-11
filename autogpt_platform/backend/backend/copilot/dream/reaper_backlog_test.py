@@ -12,7 +12,7 @@ charge."""
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -207,7 +207,7 @@ class TestASlowCleanup:
         _pending(fake_dream_db, ["healthy"])
         await _consolidate_landed("healthy")
         _seed(fake_dream_db, "new", route=DreamPassRoute.SYNC)
-        ended = datetime.now(timezone.utc) - timedelta(days=1)
+        ended = datetime.now(UTC) - timedelta(days=1)
         fake_dream_redis.hashes[_OPEN_SCAN] = {"end": ended.isoformat(), "last": ""}
         list_open = fake_dream_db.list_expired_dream_passes
         list_pending = fake_dream_db.list_dream_pass_cleanups
@@ -346,7 +346,7 @@ class TestAScanCycle:
                 fake_dream_db, pass_id, route=DreamPassRoute.SYNC, lapsed=4000 - index
             )
         tried = _hang_the_stop_of(mocker, fake_dream_db, *stuck)
-        base = datetime.now(timezone.utc)
+        base = datetime.now(UTC)
         arrivals: list[str] = []
 
         for run in range(3):
@@ -371,7 +371,7 @@ class TestAScanCycle:
         """The cycle lists its rows after the last one tried, up to its end; a
         row lapsing later waits, and once the cycle's rows are done, the next
         one starts from the first row."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for pass_id in ("a", "b"):
             _seed(fake_dream_db, pass_id, route=DreamPassRoute.SYNC, lapsed=7200)
 
@@ -468,7 +468,7 @@ class TestABatchStateThatLapsed:
             "p1",
             route=DreamPassRoute.SYNC,
             status=DreamPassStatus.EXPIRED,
-            cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            cleanup_pending_at=datetime.now(UTC) - timedelta(hours=1),
             phase_outputs={"consolidate": ConsolidationOutput()},
         )
 
@@ -509,7 +509,7 @@ class TestABatchStateThatLapsed:
 def _pending(fake_dream_db, pass_ids: list[str], **columns) -> None:
     """Closed batch rows marked for their cleanup, the first marked first, an
     hour or so ago."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for index, pass_id in enumerate(pass_ids):
         _seed(
             fake_dream_db,
@@ -605,7 +605,7 @@ def _closed_with_two_landed(fake_dream_db) -> None:
         "p1",
         route=DreamPassRoute.ANTHROPIC_BATCH,
         status=DreamPassStatus.EXPIRED,
-        cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        cleanup_pending_at=datetime.now(UTC) - timedelta(hours=1),
         phase_outputs={
             "consolidate": ConsolidationOutput(),
             "recombine": RecombinationOutput(),

@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -11,7 +11,7 @@ from backend.integrations.codex.chatgpt_auth import (
 )
 from backend.integrations.codex.device_login import CodexHttpDeviceLogin
 
-_NOW = datetime(2026, 1, 1, tzinfo=timezone.utc)
+_NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def _device(interval: int = 5, expires_in: int | None = 900) -> ChatGPTDeviceCode:
@@ -115,9 +115,8 @@ async def test_slow_down_backs_off_instead_of_holding_the_same_cadence() -> None
         ChatGPTPollResult(status="pending"),
         ChatGPTPollResult(status="denied"),
     ]
-    with _patch_poll(results):
-        with pytest.raises(CodexAuthError):
-            await _login(clock).wait()
+    with _patch_poll(results), pytest.raises(CodexAuthError):
+        await _login(clock).wait()
 
     assert clock.slept == [10, 20, 20]
 
@@ -127,9 +126,8 @@ async def test_backoff_is_capped() -> None:
     clock = _Clock()
     results = [ChatGPTPollResult(status="slow_down") for _ in range(8)]
     results.append(ChatGPTPollResult(status="denied"))
-    with _patch_poll(results):
-        with pytest.raises(CodexAuthError):
-            await _login(clock).wait()
+    with _patch_poll(results), pytest.raises(CodexAuthError):
+        await _login(clock).wait()
 
     assert max(clock.slept) == 60
 

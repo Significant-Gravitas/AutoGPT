@@ -1,9 +1,10 @@
 import asyncio
 import logging
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any, AsyncIterator, Literal, Self, cast
+from typing import Any, Literal, Self, cast
 
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,

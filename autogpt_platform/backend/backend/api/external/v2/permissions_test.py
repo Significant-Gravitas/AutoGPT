@@ -6,8 +6,7 @@ data, spend platform money, or destroy platform state that its scopes never
 mentioned. Each test here pins one such hole shut.
 """
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 from unittest import mock
 
 import fastapi
@@ -343,12 +342,12 @@ def _owner(user_id: str) -> APIAuthorizationInfo:
         user_id=user_id,
         scopes=list(APIKeyPermission),
         type="api_key",
-        created_at=datetime.now(tz=timezone.utc),
+        created_at=datetime.now(tz=UTC),
         organization_id=ORG_ID,
     )
 
 
-def _tenant(scopes: Optional[list[APIKeyPermission]] = None) -> TenantContext:
+def _tenant(scopes: list[APIKeyPermission] | None = None) -> TenantContext:
     return TenantContext(
         user_id=USER_ID,
         scopes=list(APIKeyPermission) if scopes is None else scopes,
@@ -375,14 +374,14 @@ def _search_row(content_type: str) -> dict:
         "content_id": "id-1",
         "searchable_text": "text",
         "metadata": {},
-        "updated_at": datetime.now(tz=timezone.utc),
+        "updated_at": datetime.now(tz=UTC),
         "combined_score": 0.5,
     }
 
 
 async def search_with(
     mocker: pytest_mock.MockFixture,
-    content_types: Optional[list[SearchContentType]],
+    content_types: list[SearchContentType] | None,
     scopes: list[APIKeyPermission],
 ):
     from .search import search
@@ -457,7 +456,7 @@ def _resolve_calls(fail_first: bool = False):
             user_id=USER_ID,
             scopes=list(APIKeyPermission),
             type="api_key",
-            created_at=datetime.now(tz=timezone.utc),
+            created_at=datetime.now(tz=UTC),
             organization_id=ORG_ID,
         )
 
