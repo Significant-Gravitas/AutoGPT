@@ -1,6 +1,6 @@
 import { SESSION_LIST_REFETCH_INTERVAL_MS } from "@/app/(platform)/copilot/useSessionList";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { server } from "@/mocks/mock-server";
 import {
   act,
@@ -18,9 +18,11 @@ const itemRenders = vi.fn();
 
 // Each chat row renders one `SidebarMenuItem`, so counting those counts the
 // rows that re-rendered.
-vi.mock("@/components/ui/sidebar", async (importOriginal) => {
+vi.mock("@/components/molecules/Sidebar/Sidebar", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/components/ui/sidebar")>();
+    await importOriginal<
+      typeof import("@/components/molecules/Sidebar/Sidebar")
+    >();
   function CountedSidebarMenuItem(
     props: ComponentProps<typeof actual.SidebarMenuItem>,
   ) {

@@ -18,6 +18,7 @@ export function WorkflowTile({ imageUrl }: Props) {
     return (
       <span
         aria-hidden="true"
+        data-slot="workflow-tile"
         className="size-9 shrink-0 rounded-lg bg-surface-hover"
       />
     );
@@ -30,6 +31,7 @@ export function WorkflowTile({ imageUrl }: Props) {
       width={36}
       height={36}
       onError={() => setHasError(true)}
+      data-slot="workflow-tile"
       className="size-9 shrink-0 rounded-lg bg-surface-hover object-cover"
     />
   );

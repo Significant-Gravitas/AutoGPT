@@ -8,7 +8,7 @@ import {
   MultiSelectorItem,
   MultiSelectorList,
   MultiSelectorTrigger,
-} from "@/components/__legacy__/ui/multiselect";
+} from "@/components/molecules/MultiSelect/MultiSelect";
 import { cn } from "@/lib/utils";
 import { useMultiSelectField } from "./useMultiSelectField";
 

@@ -8,7 +8,8 @@ Each trial turn must be charged to the trial, as much as the provider billed
 for it, and the next turn's budget must come from what the trial has left
 after it. Once the trial has converted, nothing more may be charged to it.
 A tool the model calls must see the trial as it is when the tool runs, not as
-it was when the turn started, on either engine's own tool path.
+it was when the turn started, on either engine's own tool path. A turn the
+CLI's budget backstop cuts off is still charged what its call cost.
 """
 
 from pathlib import Path
@@ -30,15 +31,16 @@ from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import NoResultsResponse, ToolResponseBase
 from backend.copilot.turn_budget import resolve_turn_budget
+from backend.data.platform_cost import usd_to_microdollars
 from backend.data.subscription_trial import TrialState
 
 from .audit import audit_thread
 from .executor_turns import BaselineTurnsViaExecutor, Executor, SdkTurnsViaExecutor
 from .ledger import PlatformLedger
 from .provider import FakeProvider
-from .scenarios import SCENARIOS, Scenario
+from .scenarios import SCENARIOS, Scenario, expected_charge_usd
 from .thread_billing_test import PROMPTS, _config, _session
-from .trial_account import TRIAL_ID, TrialAccount
+from .trial_account import TOTAL_LIMIT, TRIAL_ID, TrialAccount
 from .wire import TOOL_NAME
 
 TRIAL_SCENARIOS = [
@@ -47,6 +49,13 @@ TRIAL_SCENARIOS = [
 CONVERTED_TURN = 2
 # Spent on earlier days, so the trial's total is what limits the turns.
 SPENT_BEFORE = 700_000
+# The OpenRouter routes with and without the reconcile; production charges
+# without it.
+OVERSHOOT_SCENARIOS = [
+    s for s in SCENARIOS if s.id in ("sdk-openrouter", "sdk-openrouter-no-reconcile")
+]
+# Less than the turn's first call costs (about $0.02).
+LEFT_BEFORE_OVERSHOOT = 5_000
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -217,6 +226,53 @@ async def test_a_tool_sees_the_trial_as_it_is_when_the_tool_runs(
     spent = sum(charge.microdollars for charge in ledger.spend_in(0))
     assert spent > 0
     assert sum(c.microdollars for c in account.charged_in(0)) == spent
+
+
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.parametrize(
+    "scenario", OVERSHOOT_SCENARIOS, ids=lambda scenario: scenario.id
+)
+async def test_a_turn_the_budget_backstop_cuts_off_is_still_charged(
+    scenario: Scenario,
+    provider: FakeProvider,
+    ledger: PlatformLedger,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A trial with less left than one call costs: the CLI stops the turn after
+    that call, the call is charged in full, and the next turn is refused before
+    it reaches the model rather than run for nothing."""
+    if _resolve_cli_path() is None:
+        pytest.skip("No Claude Code CLI binary available")
+    session = _session(scenario)
+    account = TrialAccount(
+        session.user_id, spent_before=TOTAL_LIMIT - LEFT_BEFORE_OVERSHOOT
+    )
+    account.install(monkeypatch, ledger)
+    run_turn, executor = _turn_runner(
+        scenario, provider, session, tmp_path, monkeypatch
+    )
+    # The tool round: the CLI would make a second call after the first.
+    prompt = PROMPTS[1]
+
+    for turn in range(2):
+        provider.turn = ledger.turn = account.turn = turn
+        session.messages.append(ChatMessage(role="user", content=prompt))
+        await run_turn(session, prompt)
+        await ledger.settle()
+
+    [call] = provider.calls_in(0)
+    full_cost = usd_to_microdollars(expected_charge_usd(scenario.charge, call))
+    assert full_cost is not None and full_cost > LEFT_BEFORE_OVERSHOOT
+    assert [c.microdollars for c in ledger.spend_in(0)] == [full_cost]
+    assert [row.cost_microdollars for row in ledger.rows_in(0)] == [full_cost]
+    assert account.trial.cost_microdollars == (
+        TOTAL_LIMIT - LEFT_BEFORE_OVERSHOOT + full_cost
+    )
+    assert account.remaining_usd() == 0
+    assert provider.calls_in(1) == []
+    assert ledger.spend_in(1) == []
+    assert executor.errors == [None, None]
 
 
 class _PaywalledLookup(BaseTool):

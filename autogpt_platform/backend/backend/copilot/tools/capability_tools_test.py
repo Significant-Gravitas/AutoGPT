@@ -11,8 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.blocks._base import BlockType
 from backend.copilot.capabilities.index import CapabilityIndex
-from backend.copilot.capabilities.mcp_review import COPILOT_MCP_NODE_PREFIX
+from backend.copilot.capabilities.mcp_review import (
+    COPILOT_MCP_NODE_PREFIX,
+    mcp_review_node_id,
+)
 from backend.copilot.capabilities.ranking import ConnectionState
 from backend.copilot.capabilities.registry import build_entries, get_registry
 from backend.copilot.capabilities.sources import EAGER_CORE
@@ -135,6 +139,16 @@ def test_start_desktop_stays_eager_because_the_prompt_names_it():
     tool called by name is refused, so the instruction only works eager."""
     assert "start_desktop" in EAGER_CORE
     assert "start_desktop" not in DEFERRED_TOOL_NAMES
+
+
+def test_list_workspace_files_stays_eager_because_the_model_calls_it_by_name():
+    """Asked where their files are, the model calls ``list_workspace_files``
+    directly; deferred, that call was refused and the model listed the
+    sandbox instead, a different store, and reported the files missing."""
+    assert "list_workspace_files" in EAGER_CORE
+    assert "list_workspace_files" not in DEFERRED_TOOL_NAMES
+    shown = {t["function"]["name"] for t in get_available_tools()}
+    assert "list_workspace_files" in shown
 
 
 def test_prompt_names_only_registry_tools():
@@ -854,6 +868,77 @@ async def test_resume_block_review_delegates_to_continue_run_block():
     assert cont.await_args.kwargs == {"review_id": "copilot-node-b:1"}
 
 
+async def test_resume_with_overrides_uses_up_a_disabled_blocks_approval():
+    """Re-running a review with changed input answers to the same rule as
+    resuming it: a block disabled since the approval is refused, and the
+    approval is used up so it cannot run the block once it is enabled again."""
+    session = make_session(USER)
+    review_id = "copilot-node-some-block:ab12"
+    review = _review(
+        review_id, ReviewStatus.APPROVED, {"text": "hi"}, session.session_id
+    )
+    db = MagicMock()
+    db.get_reviews_by_node_exec_ids = AsyncMock(return_value={review_id: review})
+    db.delete_review_by_node_exec_id = AsyncMock(return_value=1)
+    with (
+        patch("backend.copilot.tools.resume_capability.review_db", return_value=db),
+        patch("backend.copilot.tools.continue_run_block.review_db", return_value=db),
+        patch(
+            "backend.copilot.tools.resume_capability.get_block",
+            return_value=MagicMock(disabled=True),
+        ),
+        patch(
+            "backend.copilot.tools.resume_capability.RunBlockTool._execute",
+            AsyncMock(),
+        ) as run,
+    ):
+        result = await ResumeCapabilityTool()._execute(
+            USER, session, review_id=review_id, input_overrides={"text": "changed"}
+        )
+    assert isinstance(result, ErrorResponse) and "disabled" in result.message
+    run.assert_not_awaited()
+    db.delete_review_by_node_exec_id.assert_awaited_once_with(review_id, USER)
+
+
+async def test_resume_with_overrides_is_refused_before_the_approval_is_claimed():
+    """A turn that does not permit the block refuses the re-run before the
+    approval is claimed: it stays for a turn that does, and a parallel resume
+    never finds it held by a run that will not happen."""
+    session = make_session(USER)
+    block_id = "11111111-2222-3333-4444-555555555555"
+    review_id = f"copilot-node-{block_id}:ab12"
+    review = _review(
+        review_id, ReviewStatus.APPROVED, {"text": "hi"}, session.session_id
+    )
+    db = MagicMock()
+    db.get_reviews_by_node_exec_ids = AsyncMock(return_value={review_id: review})
+    db.claim_approved_review = AsyncMock(return_value=True)
+    db.delete_review_by_node_exec_id = AsyncMock()
+    block = MagicMock(disabled=False, block_type=BlockType.STANDARD, id=block_id)
+    block.name = "HTTP Request"
+    set_execution_context(
+        USER,
+        session,
+        permissions=CopilotPermissions(blocks=[block_id], blocks_exclude=True),
+    )
+    with (
+        patch("backend.copilot.tools.resume_capability.review_db", return_value=db),
+        patch("backend.copilot.tools.continue_run_block.review_db", return_value=db),
+        patch("backend.copilot.tools.resume_capability.get_block", return_value=block),
+        patch(
+            "backend.copilot.tools.resume_capability.RunBlockTool._execute",
+            AsyncMock(),
+        ) as run,
+    ):
+        result = await ResumeCapabilityTool()._execute(
+            USER, session, review_id=review_id, input_overrides={"text": "changed"}
+        )
+    assert isinstance(result, ErrorResponse) and "not permitted" in result.message
+    run.assert_not_awaited()
+    db.claim_approved_review.assert_not_awaited()
+    db.delete_review_by_node_exec_id.assert_not_awaited()
+
+
 async def test_resume_mcp_review_replays_the_approved_call():
     session = make_session(USER)
     review_id = f"{COPILOT_MCP_NODE_PREFIX}mcp.example.com:ab12"
@@ -870,12 +955,14 @@ async def test_resume_mcp_review_replays_the_approved_call():
     )
     db = MagicMock()
     db.get_reviews_by_node_exec_ids = AsyncMock(return_value={review_id: review})
+    db.claim_approved_review = AsyncMock(return_value=True)
     db.delete_review_by_node_exec_id = AsyncMock()
     out = MCPToolOutputResponse(
         message="done", server_url="u", tool_name="delete_thing"
     )
     with (
         patch("backend.copilot.tools.resume_capability.review_db", return_value=db),
+        patch("backend.copilot.tools.continue_run_block.review_db", return_value=db),
         patch(
             "backend.copilot.tools.resume_capability.RunMCPToolTool._execute",
             AsyncMock(return_value=out),
@@ -930,6 +1017,85 @@ async def test_resume_mcp_review_reopens_when_overrides_change_a_write():
     assert opened.await_args.kwargs["payload"].arguments == {"id": 1, "force": True}
     run.assert_not_awaited()
     db.delete_review_by_node_exec_id.assert_not_awaited()
+
+
+async def test_resume_mcp_review_reopens_when_an_override_changes_a_type():
+    """Python's ``True == 1``, but the server receives ``true`` instead of ``1``:
+    a change of type is a change, so the call waits for a fresh approval."""
+    session = make_session(USER)
+    review_id = f"{COPILOT_MCP_NODE_PREFIX}mcp.example.com:ab12"
+    review = _review(
+        review_id,
+        ReviewStatus.APPROVED,
+        {
+            "server_url": "https://mcp.example.com/mcp",
+            "tool": "delete_thing",
+            "arguments": {"id": 1, "force": False},
+        },
+        session.session_id,
+    )
+    db = MagicMock()
+    db.get_reviews_by_node_exec_ids = AsyncMock(return_value={review_id: review})
+    db.delete_review_by_node_exec_id = AsyncMock(return_value=1)
+    with (
+        patch("backend.copilot.tools.resume_capability.review_db", return_value=db),
+        patch("backend.copilot.tools.continue_run_block.review_db", return_value=db),
+        patch(
+            "backend.copilot.tools.resume_capability.open_mcp_review",
+            AsyncMock(return_value="copilot-mcp-mcp.example.com:ef56"),
+        ) as opened,
+        patch(
+            "backend.copilot.tools.resume_capability.RunMCPToolTool._execute",
+            AsyncMock(),
+        ) as run,
+    ):
+        result = await ResumeCapabilityTool()._execute(
+            USER, session, review_id=review_id, input_overrides={"id": True}
+        )
+    assert result.type == "review_required"
+    assert opened.await_args.kwargs["payload"].arguments["id"] is True
+    run.assert_not_awaited()
+    db.delete_review_by_node_exec_id.assert_not_awaited()
+
+
+async def test_resume_mcp_type_override_is_not_folded_into_a_waiting_review():
+    """Through the real ``open_mcp_review``: a waiting review that holds ``1``
+    is not handed back for the call with ``true``."""
+    session = make_session(USER)
+    payload = {
+        "server_url": "https://mcp.example.com/mcp",
+        "tool": "delete_thing",
+        "arguments": {"id": 1},
+    }
+    review_id = f"{COPILOT_MCP_NODE_PREFIX}mcp.example.com:ab12"
+    approved = _review(review_id, ReviewStatus.APPROVED, payload, session.session_id)
+    waiting = _review(
+        f"{COPILOT_MCP_NODE_PREFIX}mcp.example.com:cd34",
+        ReviewStatus.WAITING,
+        payload,
+        session.session_id,
+    )
+    waiting.node_id = mcp_review_node_id("mcp.example.com")
+    db = MagicMock()
+    db.get_reviews_by_node_exec_ids = AsyncMock(return_value={review_id: approved})
+    db.get_pending_reviews_for_chat_session = AsyncMock(return_value=[waiting])
+    db.get_or_create_human_review = AsyncMock()
+    with (
+        patch("backend.copilot.tools.resume_capability.review_db", return_value=db),
+        patch("backend.copilot.capabilities.mcp_review.review_db", return_value=db),
+        patch(
+            "backend.copilot.tools.resume_capability.RunMCPToolTool._execute",
+            AsyncMock(),
+        ) as run,
+    ):
+        result = await ResumeCapabilityTool()._execute(
+            USER, session, review_id=review_id, input_overrides={"id": True}
+        )
+    assert isinstance(result, ReviewRequiredResponse)
+    assert result.review_id not in (review_id, waiting.node_exec_id)
+    stored = db.get_or_create_human_review.await_args.kwargs["input_data"]
+    assert stored["arguments"]["id"] is True
+    run.assert_not_awaited()
 
 
 async def test_resume_mcp_review_reopens_even_when_the_call_would_not_be_gated():

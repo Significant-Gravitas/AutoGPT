@@ -1,6 +1,7 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { isTouchDevice } from "@/lib/platform";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
+import { focusComposer } from "./helpers";
 import { useChatDraft } from "./useChatDraft";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 
@@ -18,6 +19,7 @@ interface Args {
   canSendEmpty?: boolean;
   inputId?: string;
   draftKey?: string;
+  autoFocus?: boolean;
   /** Names what failed in the toast, e.g. a scheduled send. */
   failureTitle?: string | ((error: unknown) => string);
 }
@@ -31,6 +33,7 @@ export function useChatInput({
   canSendEmpty = false,
   inputId = "chat-input",
   draftKey,
+  autoFocus = true,
   failureTitle = "Couldn't send message",
 }: Args) {
   const [value, setValue] = useChatDraft(draftKey);
@@ -56,7 +59,7 @@ export function useChatInput({
       // Guided flows can prefill while the composer is already mounted
       // (e.g. from a copilot modal) — put the caret in the input so the
       // draft is immediately editable/sendable.
-      if (!isTouchDevice()) document.getElementById(inputId)?.focus();
+      if (!isTouchDevice()) focusComposer(inputId);
     },
     [initialPrompt, setInitialPrompt, inputId, setValue],
   );
@@ -74,18 +77,18 @@ export function useChatInput({
   // composer waits for a tap there.
   useEffect(
     function focusOnMount() {
-      if (isTouchDevice()) return;
-      document.getElementById(inputId)?.focus();
+      if (!autoFocus || isTouchDevice()) return;
+      focusComposer(inputId);
     },
-    [inputId],
+    [autoFocus, inputId],
   );
 
   useEffect(
     function focusWhenEnabled() {
-      if (disabled || isTouchDevice()) return;
-      document.getElementById(inputId)?.focus();
+      if (!autoFocus || disabled || isTouchDevice()) return;
+      focusComposer(inputId);
     },
-    [disabled, inputId],
+    [autoFocus, disabled, inputId],
   );
 
   async function handleSend(message = value) {

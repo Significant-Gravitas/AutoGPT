@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SIGN_IN_BLOCKED_CODE, SIGN_UP_BLOCKED_CODE } from "../access-blocks";
 import { Resolver } from "node:dns/promises";
-import {
-  DISPOSABLE_EMAIL_CODE,
-  UNDELIVERABLE_EMAIL_CODE,
-} from "../disposable-email";
+import { DISPOSABLE_EMAIL_CODE } from "../disposable-email";
+import { UNDELIVERABLE_EMAIL_CODE } from "../undeliverable-email";
 
 // Runs the real Better Auth handler with this app's auth options, as
 // email-verification-flow.test.ts does, to prove the hooks refuse and log
@@ -77,6 +75,29 @@ vi.mock("../provision-platform-user", () => ({
   platformUserExists: vi.fn(async () => true),
 }));
 vi.mock("../email", () => ({ sendAuthEmail: vi.fn() }));
+vi.mock("../service-token", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../service-token")>()),
+  mintServiceToken: vi.fn(async () => "service-token"),
+}));
+
+// The backend's ban records (backend/data/account_erasure/ban_record.py),
+// keyed here by address for the test.
+const bannedAddresses = vi.hoisted(() => new Set<string>());
+const banRecordLookups = vi.hoisted(() => ({ fail: false }));
+
+function stubBanRecordLookup() {
+  const realFetch = globalThis.fetch;
+  return vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input, init) => {
+      if (!String(input).endsWith("/api/auth/email/ban-record")) {
+        return realFetch(input, init);
+      }
+      if (banRecordLookups.fail) return new Response("down", { status: 502 });
+      const { email } = JSON.parse(String(init?.body)) as { email: string };
+      return Response.json({ banned: bannedAddresses.has(email) });
+    });
+}
 
 const baseURL = "http://localhost:3000";
 const password = "a-long-enough-password"; // pragma: allowlist secret
@@ -140,11 +161,37 @@ describe("IP and email domain blocks", () => {
     blocks.ips = [];
     blocks.domains = [];
     loggedIps.length = 0;
+    bannedAddresses.clear();
+    banRecordLookups.fail = false;
+    stubBanRecordLookup();
     handler = await createAuthHandler();
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("refuses a sign-up from the address of an erased, banned account", async () => {
+    bannedAddresses.add("gone@example.com");
+
+    const response = await signUp(handler, "gone@example.com", "192.0.2.1");
+
+    expect(await refusal(response)).toEqual({
+      status: 403,
+      code: SIGN_UP_BLOCKED_CODE,
+    });
+    expect(testDB.current.UserAuthIdentity).toHaveLength(0);
+  });
+
+  it("lets a sign-up in when the ban record lookup fails", async () => {
+    bannedAddresses.add("gone@example.com");
+    banRecordLookups.fail = true;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const response = await signUp(handler, "gone@example.com", "192.0.2.1");
+
+    expect(response.status).toBe(200);
   });
 
   it("refuses a sign-up from a blocked IP and creates no account", async () => {
@@ -201,7 +248,8 @@ describe("IP and email domain blocks", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
       code: UNDELIVERABLE_EMAIL_CODE,
-      message: "Please use a real email address you can receive mail at.",
+      message:
+        "We can't deliver email to this address. Check it, or use a different one.",
     });
     expect(testDB.current.UserAuthIdentity).toHaveLength(0);
   });

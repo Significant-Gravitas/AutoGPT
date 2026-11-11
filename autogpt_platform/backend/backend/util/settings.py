@@ -68,20 +68,6 @@ class UserNotificationsAudience(str, Enum):
     EVERYONE = "everyone"
 
 
-class FeatureFlagBackend(str, Enum):
-    """Which vendor answers a feature flag read.
-
-    ``DUAL`` evaluates both and serves LaunchDarkly's answer, so a
-    disagreement is measurable before the switch. The backend always serves
-    LaunchDarkly in this mode; the frontend falls back to PostHog where
-    LaunchDarkly is not configured, because there its answer never arrives.
-    """
-
-    LAUNCHDARKLY = "launchdarkly"
-    POSTHOG = "posthog"
-    DUAL = "dual"
-
-
 class FlagDefinitionCacheBackend(str, Enum):
     """Where PostHog flag definitions are shared between processes.
 
@@ -124,9 +110,33 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum number of workers to use for graph execution.",
     )
 
+    max_graph_workers_per_user: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+        description=(
+            "How many of an executor's graph workers one user's runs may hold "
+            "at once; kept below `num_graph_workers` when that is 2 or more, "
+            "and 1 when it is 1. Sub-workflow runs may hold one more per level "
+            "of nesting, up to 4 more, so a run waiting on a sub-workflow never "
+            "keeps it from starting; keep this at most `num_graph_workers` "
+            "minus 5 for one user's runs never to hold every worker."
+        ),
+    )
+
     requeue_by_republishing: bool = Field(
         default=True,
         description="Send rate-limited messages to back of queue by republishing instead of front requeue to prevent blocking other users.",
+    )
+
+    graph_run_requeue_delay_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=3600,
+        description=(
+            "How long a run refused for want of a worker waits in the delay "
+            "queue before it is offered to an executor again."
+        ),
     )
 
     # FastAPI Thread Pool Configuration
@@ -253,6 +263,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=False,
         description="If user credit system is enabled or not",
     )
+    enable_platform_payment: bool = Field(
+        default=False,
+        description="Whether the platform is paid for: an account without a plan "
+        "is paywalled and the billing pages offer plans. Off for self-hosted "
+        "installs; the hosted platform sets it.",
+    )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
         description="Maximum number of credits above the balance to be auto-approved.",
@@ -355,6 +371,33 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     block_error_include_top_blocks: int = Field(
         default=3,
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
+    )
+
+    # Account erasure (SECRT-2854): erases accounts closed from Settings
+    account_erasure_sweep_enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the job that erases closed accounts (every AccountDeletionRequest "
+            "past its 14 days and not completed yet). Off by default. It runs in "
+            "the database manager, which then needs the bucket, FalkorDB, PostHog "
+            "personal key, MailerLite and Stripe settings and BAN_RECORD_HASH_KEY "
+            "(docs/engineering/account-deletion.md)."
+        ),
+    )
+    account_erasure_sweep_interval_secs: int = Field(
+        default=60 * 60,
+        ge=5 * 60,
+        description="Interval in seconds between account erasure sweeps.",
+    )
+    account_erasure_unused_services: List[str] = Field(
+        default=[],
+        description=(
+            "Outside services this stack does not use, so the account erasure "
+            "may skip their step: a JSON list of any of buckets, falkordb, "
+            'posthog, mailerlite, stripe, e.g. \'["posthog", "mailerlite"]\'. '
+            "A step skipped for a service not listed stops the erasure before "
+            "the account's rows go, and the request stays open."
+        ),
     )
 
     # Auth identity <-> platform User invariant monitoring
@@ -532,6 +575,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This is necessary to make sure webhooks find their way.",
     )
 
+    trusted_proxy_count: int = Field(
+        # Prod is Cloudflare -> Google LB -> pod, so the client is 3rd from the
+        # right; 1 keys every anonymous caller on the LB's address, one bucket.
+        default=3,
+        ge=0,
+        description="How many X-Forwarded-For entries our own proxies append. "
+        "The client IP is that many entries from the right; everything further "
+        "left is caller-controlled and must not be trusted. The default is the "
+        "hosted platform: Cloudflare appends the client, Google's load balancer "
+        "appends Cloudflare's address and its own. 0 ignores the header and uses "
+        "the socket peer.",
+    )
+
     e2b_egress_proxy_address: str = Field(
         default="",
         description="host:port of the SOCKS5 credential swap proxy every E2B box "
@@ -539,11 +595,36 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "direct. Do not set it before the proxy exists: E2B fails closed, so a "
         "box pointed at nothing has no egress at all.",
     )
+    e2b_deployment_sandbox_limit: int = Field(
+        default=0,
+        ge=0,
+        description="Most E2B boxes this deployment (its APP_ENV) may have running "
+        "at once on the platform's E2B key; a start past it is refused. 0 sets no "
+        "ceiling of its own.",
+    )
+    e2b_account_sandbox_limit: int = Field(
+        # Twice the running-turn cap, so a user at that cap can still open
+        # desktops and run sandboxed blocks beside it.
+        default=10,
+        ge=0,
+        description="Most E2B boxes one account may have running at once in this "
+        "deployment on the platform's E2B key; a start past it is refused. 0 turns "
+        "the cap off.",
+    )
 
     frontend_base_url: str = Field(
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
+    )
+
+    microsoft_browser_sign_in: bool = Field(
+        default=False,
+        description="Offer browser sign-in for Microsoft connections. Turn it on "
+        "once the Entra app in MICROSOFT_CLIENT_ID has a secret, the Web redirect "
+        "{frontend_base_url}/auth/integrations/oauth_callback, access token "
+        "version 2 and personal accounts in its audience. Until then Microsoft "
+        "connects with sign-in codes.",
     )
 
     trusted_frontend_origins: List[str] = Field(
@@ -639,6 +720,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     scheduler_db_pool_size: int = Field(
         default=3,
         description="The pool size for the scheduler database connection pool",
+    )
+
+    max_schedules_per_user: int = Field(
+        default=200,
+        ge=1,
+        description="How many schedules one user may hold on the scheduler.",
     )
 
     schedule_read_timeout_seconds: float = Field(
@@ -983,6 +1070,23 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum file size in MB for workspace files (1-1024 MB)",
     )
 
+    max_total_file_size_mb: int = Field(
+        default=500,
+        ge=1,
+        le=10240,
+        description="Maximum combined size in MB of the files a block run loads (1-10240 MB)",
+    )
+
+    max_request_body_mb: int = Field(
+        default=10,
+        ge=1,
+        le=1024,
+        description=(
+            "Maximum request body in MiB the platform API accepts, file uploads"
+            " and routes with their own limit excepted"
+        ),
+    )
+
     # AutoMod configuration
     automod_enabled: bool = Field(
         default=False,
@@ -1006,7 +1110,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
     automod_fail_open: bool = Field(
         default=False,
-        description="If True, allow execution to continue if AutoMod fails",
+        description="If True, allow execution to continue if AutoMod fails or "
+        "times out; if False, the execution fails",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
@@ -1028,13 +1133,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the app environment: local or dev or prod",
     )
 
-    feature_flag_backend: FeatureFlagBackend = Field(
-        default=FeatureFlagBackend.POSTHOG,
-        description="Which vendor answers feature flag reads: posthog "
-        "(default), launchdarkly, or dual (evaluate both, serve LaunchDarkly, "
-        "log every disagreement).",
-    )
-
     @field_validator("user_notifications_audience", mode="before")
     @classmethod
     def _default_unknown_notifications_audience(cls, v):
@@ -1051,37 +1149,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             )
             return UserNotificationsAudience.SUBSCRIBERS
 
-    @field_validator("feature_flag_backend", mode="before")
-    @classmethod
-    def _default_unknown_flag_backend(cls, v):
-        """A typo here must not stop the process from booting.
-
-        Settings is built at import of every module that reads a flag, so a
-        rejected value is a boot crash rather than a misconfigured flag read.
-        """
-        if not isinstance(v, str):
-            return v
-        try:
-            return FeatureFlagBackend(v.strip().lower())
-        except ValueError:
-            logger.warning(
-                f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
-                f"falling back to {FeatureFlagBackend.POSTHOG.value}"
-            )
-            return FeatureFlagBackend.POSTHOG
-
     posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
         default=FlagDefinitionCacheBackend.REDIS,
         description="Where PostHog flag definitions are shared: redis "
         "(default; one elected refresher, every other process reads its copy), "
-        "memory (process-local), or none (every process polls PostHog itself). "
-        "Only read when PostHog answers flag reads.",
+        "memory (process-local), or none (every process polls PostHog itself).",
     )
 
     @field_validator("posthog_flag_definition_cache", mode="before")
     @classmethod
     def _default_unknown_definition_cache(cls, v):
-        """Same reasoning as ``_default_unknown_flag_backend`` above."""
+        """A typo here must not stop the process from booting.
+
+        Settings is built at import of every module that reads a flag, so a
+        rejected value is a boot crash rather than a misconfigured flag read.
+        """
         if not isinstance(v, str):
             return v
         try:
@@ -1303,6 +1385,14 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The secret key to use for the unsubscribe user by token",
     )
 
+    ban_record_hash_key: str = Field(
+        default="",
+        description="Key of the hash that ban records (account erasure) keep "
+        "of a banned address. Never rotate it: the records kept under the old "
+        "one stop matching. Blank keeps no ban record, so erasing a banned "
+        "account fails, and sign-up matches none.",
+    )
+
     vapid_private_key: str = Field(
         default="", description="VAPID private key for Web Push"
     )
@@ -1477,6 +1567,13 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="Linear team ID used when creating feature request issues",
     )
+    hubspot_client_id: str = Field(
+        default="", description="Client ID of the HubSpot app used for OAuth sign-in"
+    )
+    hubspot_client_secret: str = Field(
+        default="", description="Client secret of the HubSpot OAuth sign-in app"
+    )
+
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
 
@@ -1525,25 +1622,16 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     # AutoMod API credentials
     automod_api_key: str = Field(default="", description="AutoMod API key")
 
-    # LaunchDarkly feature flags
-    launch_darkly_sdk_key: str = Field(
-        default="",
-        description="The LaunchDarkly SDK key for feature flag management",
-    )
-
     agentmail_api_key: str = Field(default="", description="AgentMail API Key")
 
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
 
-    # Langfuse prompt management
+    # Langfuse prompt management (no tracing, see backend/util/langfuse_prompts.py)
     langfuse_public_key: str = Field(default="", description="Langfuse public key")
     langfuse_secret_key: str = Field(default="", description="Langfuse secret key")
     langfuse_host: str = Field(
         default="https://cloud.langfuse.com", description="Langfuse host URL"
-    )
-    langfuse_tracing_environment: str = Field(
-        default="local", description="Tracing environment tag (local/dev/production)"
     )
 
     # PostHog analytics
@@ -1557,6 +1645,22 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         "Feature Flags), for local flag evaluation; without it flag reads fall back "
         "to a remote /flags call. A personal API key also works, but PostHog is "
         "deprecating that use.",
+    )
+    # Account deletion removes the PostHog person through the private API,
+    # which the project key above cannot call.
+    posthog_personal_api_key: str = Field(
+        default="",
+        description="PostHog personal API key with the person:write scope, used "
+        "only to delete a deleted account's person. Blank stops the erasure "
+        "at that step, with the request left open, unless 'posthog' is in "
+        "ACCOUNT_ERASURE_UNUSED_SERVICES.",
+    )
+    posthog_project_id: str = Field(
+        default="", description="PostHog project ID the persons live in"
+    )
+    posthog_app_host: str = Field(
+        default="https://eu.posthog.com",
+        description="PostHog private API host (not the i. ingestion host)",
     )
 
     # Add more secret fields as needed

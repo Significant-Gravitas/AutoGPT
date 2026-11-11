@@ -18,7 +18,7 @@ from backend.api.features.search.rate_limit import enforce_public_search_rate_li
 from backend.api.utils.client_ip import ClientIP
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
-from backend.util.models import Pagination
+from backend.util.models import MAX_PAGE, MAX_PAGE_SIZE, Pagination
 from backend.util.product_analytics import track_listing_downloaded
 
 from . import cache as store_cache
@@ -70,7 +70,7 @@ async def get_profile(
     dependencies=[Security(autogpt_libs.auth.requires_user)],
 )
 async def update_or_create_profile(
-    profile: store_model.Profile,
+    profile: store_model.ProfileUpdateRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
 ) -> store_model.ProfileDetails:
     """Update the store profile for the authenticated user."""
@@ -95,8 +95,8 @@ async def unified_search(
         default=None,
         description="Content types to search. If not specified, searches all.",
     ),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=20),
     user_id: str | None = Security(
         autogpt_libs.auth.get_optional_user_id, use_cache=False
     ),
@@ -175,8 +175,8 @@ async def get_agents(
         default=None,
         description="Property to sort results by. Ignored if search_query is provided.",
     ),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=20),
     user_id: str | None = Security(
         autogpt_libs.auth.get_optional_user_id, use_cache=False
     ),
@@ -238,7 +238,7 @@ async def get_agent_by_name(
     username = urllib.parse.unquote(username).lower()
     # URL decode the agent name since it comes from the URL path
     agent_name = urllib.parse.unquote(agent_name).lower()
-    agent = await store_cache._get_cached_agent_details(
+    agent = await store_cache.get_cached_agent_details(
         username=username, agent_name=agent_name, include_changelog=include_changelog
     )
     return agent
@@ -346,11 +346,11 @@ async def get_creators(
         default=None, description="Literal + semantic search on names and descriptions"
     ),
     sorted_by: store_db.StoreCreatorsSortOptions | None = None,
-    page: int = Query(ge=1, default=1),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
     page_size: int = Query(ge=1, le=100, default=20),
 ) -> store_model.CreatorsResponse:
     """List or search marketplace creators"""
-    creators = await store_cache._get_cached_store_creators(
+    creators = await store_cache.get_cached_store_creators(
         featured=featured,
         search_query=search_query,
         sorted_by=sorted_by,
@@ -368,7 +368,7 @@ async def get_creators(
 async def get_creator(username: str) -> store_model.CreatorDetails:
     """Get details on a marketplace creator"""
     username = urllib.parse.unquote(username).lower()
-    creator = await store_cache._get_cached_creator_details(username=username)
+    creator = await store_cache.get_cached_creator_details(username=username)
     return creator
 
 
@@ -385,8 +385,8 @@ async def get_creator(username: str) -> store_model.CreatorDetails:
 )
 async def get_my_unpublished_agents(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=20),
     sort_by: store_model.MyAgentsSortBy = Query(
         default=store_model.MyAgentsSortBy.MOST_RECENT
     ),
@@ -419,7 +419,7 @@ async def delete_submission(
     """Delete a marketplace listing submission"""
     result = await store_db.delete_store_submission(
         user_id=user_id,
-        submission_id=submission_id,
+        store_listing_version_id=submission_id,
         organization_id=getattr(ctx, "org_id", None),
     )
     return result
@@ -436,8 +436,8 @@ async def get_submissions(
     ctx: autogpt_libs.auth.RequestContext = Security(
         autogpt_libs.auth.get_request_context
     ),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=20),
     search_query: str | None = Query(default=None, max_length=100),
     statuses: str | None = Query(default=None),
     sort_key: SubmissionSortKey | None = Query(default=None),
@@ -784,7 +784,7 @@ async def generate_image(
         logger.info(f"Using existing image for agent graph {graph_id}")
         return ImageURLResponse(image_url=existing_url)
     # Generate agent image as JPEG
-    image = await store_image_gen.generate_agent_image(agent=graph)
+    image = await store_image_gen.generate_agent_image(agent=graph, user_id=user_id)
 
     # Create UploadFile with the correct filename and content_type
     image_file = fastapi.UploadFile(
@@ -840,10 +840,10 @@ async def get_cache_metrics():
         )
 
     # Add metrics for each cache
-    add_cache_metrics("store_agents", store_cache._get_cached_store_agents)
-    add_cache_metrics("agent_details", store_cache._get_cached_agent_details)
-    add_cache_metrics("store_creators", store_cache._get_cached_store_creators)
-    add_cache_metrics("creator_details", store_cache._get_cached_creator_details)
+    add_cache_metrics("store_agents", store_cache.get_cached_store_agents)
+    add_cache_metrics("agent_details", store_cache.get_cached_agent_details)
+    add_cache_metrics("store_creators", store_cache.get_cached_store_creators)
+    add_cache_metrics("creator_details", store_cache.get_cached_creator_details)
 
     # Add metadata/help text at the beginning
     prometheus_output = [

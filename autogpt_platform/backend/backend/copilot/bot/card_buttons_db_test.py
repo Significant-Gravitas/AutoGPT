@@ -124,7 +124,10 @@ class _Executor:
         self.live = live
         self.running: tuple[str, str] | None = None
 
-    async def enqueue(self, **turn: Any) -> None:
+    async def dispatch_bot_turn(self, slot: Any, **turn: Any) -> None:
+        await stream_registry.create_session(
+            turn["session_id"], turn["user_id"], "chat_stream", "chat", turn["turn_id"]
+        )
         await self._finish(turn["session_id"], turn["turn_id"])
 
     async def dispatch(self, slot: Any, **turn: Any) -> None:
@@ -346,7 +349,12 @@ def delayed_wake():
 
 @pytest.fixture
 def gate_on():
-    with patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)):
+    with (
+        patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
+        patch(
+            "backend.copilot.gate.reads.get_flag_variant", AsyncMock(return_value=True)
+        ),
+    ):
         yield
 
 
@@ -844,7 +852,7 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
         return queue
 
     with (
-        patch.object(bot_chat, "enqueue_copilot_turn", executor.enqueue),
+        patch.object(bot_chat, "dispatch_turn", executor.dispatch_bot_turn),
         patch("backend.copilot.gate.supervise", supervise),
         patch.object(stream_registry, "subscribe_to_turn", subscribe_and_tell),
     ):

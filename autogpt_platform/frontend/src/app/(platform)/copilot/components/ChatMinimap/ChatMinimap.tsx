@@ -51,7 +51,7 @@ export const ChatMinimap = memo(function ChatMinimap({
         {entries.map((entry, index) => (
           <div
             key={entry.id}
-            className="relative cursor-pointer py-[3px]"
+            className="relative cursor-pointer py-0.5"
             onMouseEnter={() => setHovered(index)}
             onFocus={() => setHovered(index)}
             onBlur={() => setHovered(null)}
@@ -87,13 +87,13 @@ export const ChatMinimap = memo(function ChatMinimap({
                 }
                 animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                 transition={reducedMotion ? { duration: 0 } : CARD_TRANSITION}
-                className="absolute left-[40px] top-1/2 z-30 w-80 origin-left -translate-y-1/2 rounded-2xl bg-white p-3.5 smooth-shadow-ring-sm"
+                className="absolute top-1/2 left-[40px] z-30 w-80 origin-left -translate-y-1/2 rounded-2xl bg-surface p-3.5 smooth-shadow-ring-sm"
               >
-                <p className="truncate text-[15px] text-zinc-900">
+                <p className="truncate text-body-md leading-inherit text-foreground-strong">
                   {entry.title}
                 </p>
                 {entry.body && (
-                  <p className="mt-1 line-clamp-3 text-[15px] leading-relaxed text-zinc-400">
+                  <p className="mt-1 line-clamp-3 text-body-md leading-relaxed text-foreground-subtle">
                     {entry.body}
                   </p>
                 )}

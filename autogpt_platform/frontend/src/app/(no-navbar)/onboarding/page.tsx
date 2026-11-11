@@ -7,13 +7,14 @@ import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
 import { ProgressBar } from "./components/ProgressBar";
 import { ProgressError } from "./components/ProgressError";
 import { StepIndicator } from "./components/StepIndicator";
+import { orderedSteps } from "./progress";
+import { AccessStep } from "./steps/AccessStep/AccessStep";
 import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
 import { ConnectStep } from "./steps/ConnectStep/ConnectStep";
-import { HireStep } from "./steps/HireStep/HireStep";
 import { IntroStep } from "./steps/IntroStep/IntroStep";
 import { PreparingStep } from "./steps/PreparingStep";
 import { RoleStep } from "./steps/RoleStep";
-import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
+import { PlanTrialStep } from "./steps/SubscriptionStep/PlanTrialStep";
 import { useOnboardingWizardStore } from "./store";
 import { useOnboardingPage } from "./useOnboardingPage";
 
@@ -24,6 +25,7 @@ export default function OnboardingPage() {
     handlePreparingComplete,
     isPaymentEnabled,
     isSelfHostConnectEnabled,
+    canHireTeam,
     steps,
     preparingStep,
     totalSteps,
@@ -75,7 +77,7 @@ export default function OnboardingPage() {
   // and while the current step is mid-flight (brain dump processing) — there
   // is nothing coherent to go back to. Read from the layout so it tracks
   // buildStepLayout rather than a hardcoded position.
-  const firstContentStep = steps.team ?? steps.role;
+  const firstContentStep = steps[orderedSteps(steps)[0]]!;
   const showBack =
     currentStep > firstContentStep && currentStep <= totalSteps && !isStepBusy;
   const showProgressBar = currentStep <= totalSteps;
@@ -111,11 +113,11 @@ export default function OnboardingPage() {
       {showBack && (
         <Button
           type="button"
-          variant="ghost"
+          variant="toggle"
           size="xs"
           onClick={prevStep}
           leadingIcon={ArrowLeft01Icon}
-          className="absolute left-6 top-6 text-zinc-500 hover:text-zinc-900"
+          className="absolute top-6 left-6"
         >
           Back
         </Button>
@@ -125,23 +127,26 @@ export default function OnboardingPage() {
         className={cn(
           "flex w-full min-w-0 flex-1 items-center justify-center",
           currentStep === steps.subscription
-            ? "pb-8 pt-3 lg:pb-2"
-            : "pb-8 pt-16",
+            ? "pt-3 pb-8 lg:pb-2"
+            : "pt-16 pb-8",
         )}
       >
+        {currentStep === steps.access && <AccessStep />}
         {currentStep === steps.team && <IntroStep slide="team" />}
         {currentStep === steps.autopilot && <IntroStep slide="autopilot" />}
         {currentStep === steps.role && <RoleStep />}
         {currentStep === steps.painPoints && <BrainDumpStep />}
-        {currentStep === steps.hire && <HireStep />}
         {isSelfHostConnectEnabled && currentStep === steps.connect && (
           <ConnectStep />
         )}
-        {isPaymentEnabled && currentStep === steps.subscription && (
-          <SubscriptionStep />
+        {currentStep === steps.subscription && (
+          <PlanTrialStep hasPaywall={isPaymentEnabled} />
         )}
         {currentStep === preparingStep && (
-          <PreparingStep onComplete={handlePreparingComplete} />
+          <PreparingStep
+            onComplete={handlePreparingComplete}
+            canHire={canHireTeam}
+          />
         )}
       </div>
 
@@ -159,10 +164,10 @@ export default function OnboardingPage() {
         <Button
           as="NextLink"
           href="/logout"
-          variant="ghost"
+          variant="toggle"
           size="xs"
           leadingIcon={Logout03Icon}
-          className="absolute bottom-6 left-6 text-zinc-500 hover:text-zinc-900"
+          className="absolute bottom-6 left-6"
         >
           Log out
         </Button>

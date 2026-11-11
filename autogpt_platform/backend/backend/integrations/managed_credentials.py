@@ -160,6 +160,10 @@ def get_managed_provider(name: str) -> ManagedCredentialProvider | None:
     return _PROVIDERS.get(name)
 
 
+def get_managed_providers() -> dict[str, ManagedCredentialProvider]:
+    return dict(_PROVIDERS)
+
+
 # ---------------------------------------------------------------------------
 # Public helpers
 # ---------------------------------------------------------------------------

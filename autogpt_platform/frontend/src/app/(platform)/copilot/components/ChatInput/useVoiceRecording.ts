@@ -1,9 +1,11 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { isKey } from "@/lib/keyboard";
+import { isMicrophonePermissionDenied } from "@/lib/microphone";
 import { isTouchDevice } from "@/lib/platform";
 import React, { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { downloadRecording } from "../../voice/downloadRecording";
+import { focusComposer } from "./helpers";
 
 const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
 
@@ -233,7 +235,7 @@ export function useVoiceRecording({
       }, 100);
     } catch (err) {
       console.error("Failed to start recording:", err);
-      if (err instanceof DOMException && err.name === "NotAllowedError") {
+      if (isMicrophonePermissionDenied(err)) {
         setError("Microphone permission denied");
       } else {
         setError("Failed to access microphone");
@@ -262,11 +264,13 @@ export function useVoiceRecording({
     }
   }, [error, toast]);
 
+  // Puts the caret back once the words land; focus on mount is useChatInput's.
   // Not on a phone: there focus opens the keyboard over the thread.
+  const wasTranscribingRef = useRef(false);
   useEffect(() => {
-    if (!isTranscribing && inputId && !isTouchDevice()) {
-      document.getElementById(inputId)?.focus();
-    }
+    const hasFinished = wasTranscribingRef.current && !isTranscribing;
+    wasTranscribingRef.current = isTranscribing;
+    if (hasFinished && inputId && !isTouchDevice()) focusComposer(inputId);
   }, [isTranscribing, inputId]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {

@@ -7,6 +7,7 @@ import pytest
 from backend.blocks.desktop._api import DISPLAY
 from backend.copilot import prompting
 from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
+from backend.copilot.tools.e2b_sandbox import SandboxOwner
 
 
 class TestGetSdkSupplementStaticPlaceholder:
@@ -61,7 +62,7 @@ class TestComputerNote:
         result = prompting.get_sdk_supplement(use_e2b=True)
         assert result.count("### Your computer") == 1
         assert "`start_desktop`" in result
-        assert "lost when the session expires" in result
+        assert "lost when the sandbox is replaced" in result
         assert "sign into personal accounts" in result
 
     def test_screen_shows_only_what_runs_in_the_sandbox(self):
@@ -92,6 +93,26 @@ class TestComputerNote:
             result.index("## Tool notes")
             < result.index("### Your computer")
             < result.index("# `<user_follow_up>` blocks")
+        )
+
+
+class TestUploadedFilesAreInWorkspaceStorage:
+    """Two stores are called "workspace": workspace storage (uploads, the Files
+    page, ``write_workspace_file``) and the sandbox folder ``~/workspace``.
+    An agent that looked only in the folder told users their files were gone
+    (SECRT-3188)."""
+
+    def test_both_engines_send_the_model_to_a_workspace_wide_listing(self):
+        # Baseline appends SHARED_TOOL_NOTES directly; SDK through the supplement.
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "not even `~/workspace`" in notes
+        assert "`list_workspace_files(include_all_sessions=true)`" in notes
+        assert "Never call a file missing until that listing lacks it." in notes
+
+    def test_the_computer_note_says_uploads_are_not_in_the_folder(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert "`~/workspace` is a folder on this machine, not workspace storage" in (
+            result
         )
 
 
@@ -131,7 +152,7 @@ class TestCredentialsSurfacingGuardrails:
         assert "refused a credential the user already has" in result
         assert "To only connect an account" in result
         assert 'input={"connect": true}' in result
-        assert "The card collects credentials only" in result
+        assert "The card collects credentials and picker inputs only" in result
 
     def test_prompt_states_the_one_connect_convention(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
@@ -142,6 +163,16 @@ class TestCredentialsSurfacingGuardrails:
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "own integration is listed first" in result
         assert "only for an action it does not offer" in result
+
+
+class TestReviewCardLocation:
+    def test_supplement_says_where_a_review_card_is(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        step = result[result.index("4. `review_required`") :].split("\n", 1)[0]
+        # The result says where the card is, which depends on the surface.
+        assert "where its approval card is, as the result says" in step
+        assert "never send them to look for it in another chat" in step
+        assert "don't repeat the call to raise it again" in step
 
 
 class TestToolDiscoveryPriorityAntiPattern:
@@ -206,6 +237,38 @@ class TestTeamBuildingSupplement:
         assert "raise_expert" in result
         assert "One proposal at a time" in result
         assert "Never hire silently" in result
+
+    def test_a_hire_for_a_known_task_hands_it_off_on_the_card(self):
+        """SECRT-3138: the approval is the hand-off, never a question in text."""
+        result = prompting.get_team_building_supplement(
+            experts_enabled=True, expert_id=None
+        )
+
+        assert "handoff_title" in result
+        assert "handoff_task" in result
+        assert (
+            "Never ask in text whether to hand that task to the new expert." in result
+        )
+
+    def test_a_new_expert_for_a_known_task_hands_it_off_on_the_card_too(self):
+        """SECRT-3401: raise_expert takes the task like a hire, so its card
+        creates and starts in one click; the rule names both tools."""
+        result = prompting.get_team_building_supplement(
+            experts_enabled=True, expert_id=None
+        )
+
+        rule = next(line for line in result.splitlines() if "handoff_title" in line)
+        assert "`tool:hire_expert` or `tool:raise_expert`" in rule
+
+    def test_otto_never_points_at_a_chat_that_does_not_exist(self):
+        """SECRT-3401: told only who joined, Otto sent the user to open a new
+        expert's thread before any chat with them existed."""
+        result = prompting.get_team_building_supplement(
+            experts_enabled=True, expert_id=None
+        )
+
+        assert "A new expert has no chat until the user opens one" in result
+        assert "Never say a thread or chat with them exists" in result
 
     def test_an_expert_session_is_not_told_to_hire(self):
         result = prompting.get_team_building_supplement(
@@ -440,16 +503,46 @@ class TestConnectedAccountNotes:
         assert "none of the user's connected accounts" in none
 
 
+class TestMapsGuidance:
+    def test_notes_teach_the_map_fence_to_every_engine(self):
+        assert "### Maps" in prompting.SHARED_TOOL_NOTES
+        assert "```map" in prompting.SHARED_TOOL_NOTES
+
+
 class TestPlainLanguageRules:
     def test_no_internal_plumbing_and_one_retry(self):
         result = prompting.SHARED_TOOL_NOTES
         assert "Never mention internal errors" in result
         assert "Retry a failing step at most once" in result
 
+    def test_a_failure_cause_is_named_only_when_the_error_shows_it(self):
+        """Otto told a user a failure looked like a permissions issue when the
+        input format was wrong (SECRT-2001)."""
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "only when a tool result shows it" in notes
+        assert "Don't guess one from a vague error" in notes
+        assert "the cause isn't clear yet, and what you'll do next" in notes
+
+    def test_a_claimed_state_comes_from_a_tool_result(self):
+        """Otto called a PR "approved and ready to merge" while its GitHub
+        access was failing (SECRT-2680)."""
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "Every claim about what happened must come from a tool result" in notes
+        assert "Check platform state" in notes
+
     def test_blocking_inputs_are_asked_before_building(self):
         notes = prompting.SHARED_TOOL_NOTES
         assert "Use sensible defaults instead of asking" in notes
         assert "ask it before you start building" in notes
+
+    def test_accounts_are_set_up_in_the_users_words(self):
+        """A first-day user was told to paste a workspace id from a URL and to
+        type a header named Authorization with a Bearer token (SECRT-3139)."""
+        notes = " ".join(prompting.SHARED_TOOL_NOTES.split())
+        assert "Never ask the user to find or paste an id" in notes
+        assert "`Authorization: Bearer`" in notes
+        assert "explain it once" in notes
+        assert "`resource_picker`" in notes
 
     def test_only_cite_opened_pages(self):
         assert "Only cite pages you actually opened" in prompting.SHARED_TOOL_NOTES
@@ -609,3 +702,56 @@ class TestGuardrailsReachEveryBasePrompt:
     def test_base_prompt_does_not_repeat_them(self):
         assert "End every turn with visible text" not in CACHEABLE_SYSTEM_PROMPT
         assert "Only say a card is showing" not in CACHEABLE_SYSTEM_PROMPT
+
+
+class TestCostSourceRule:
+    # SECRT-3133: Otto said a step "costs a few cents in image credits" and a
+    # trial user could not tell whether that came off the trial, a balance or
+    # the card they had just entered. The rule rides SHARED_TOOL_NOTES so Otto
+    # and every expert get it on both engines, whatever the Langfuse prompt.
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_supplement_carries_the_rule(self, use_e2b):
+        assert "### What things cost" in prompting.get_sdk_supplement(use_e2b=use_e2b)
+
+    def test_names_what_pays_for_each_kind_of_cost(self):
+        notes = prompting.SHARED_TOOL_NOTES
+        # The model's own work is metered on the chat allowance
+        # (rate_limit.record_cost_usage); a priced block or workflow run is
+        # debited from the credit balance (tools/helpers._charge_block_credits).
+        assert "uses the user's chat allowance" in notes
+        assert "paid from the user's automation credits" in notes
+        assert "never charges the user's card directly" in notes
+
+    def test_says_where_a_cost_comes_from_in_the_same_sentence(self):
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "of your automation credits, not a direct charge to your card" in notes
+        assert 'Never invent a name for it, such as "image credits"' in notes
+
+    def test_does_not_promise_an_untouched_card_when_auto_refill_may_be_on(self):
+        # Auto-refill tops credits up from the card once spending drops the
+        # balance under its threshold (credit.py spend_credits), trial or not,
+        # and the model cannot see whether the user turned it on.
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "including an auto-refill they turned on" in notes
+        assert "you can't see whether auto-refill is on" in notes
+
+    def test_the_rule_does_not_model_the_dashes_it_forbids(self):
+        start = prompting.SHARED_TOOL_NOTES.index("### What things cost")
+        end = prompting.SHARED_TOOL_NOTES.index("### Math")
+        section = prompting.SHARED_TOOL_NOTES[start:end]
+        assert "—" not in section and "–" not in section
+
+
+class TestSandboxLifetime:
+    """The lifetime the model is told is the one the code keeps the box for."""
+
+    def test_the_figure_matches_how_long_the_box_is_kept(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        days = SandboxOwner(kind="session", id="s").ttl // 86400
+        assert f"After {days} days without a turn" in result
+        assert "12 h" not in result
+
+    def test_says_only_the_workspace_survives_a_new_sandbox(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert "only `~/workspace` carries over" in result
+        assert "`<sandbox_status>`" in result

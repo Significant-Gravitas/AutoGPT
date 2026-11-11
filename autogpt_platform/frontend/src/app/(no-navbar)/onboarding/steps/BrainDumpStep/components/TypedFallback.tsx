@@ -15,11 +15,22 @@ interface Props {
   onChange: (value: string) => void;
   onSubmit: () => void;
   isTooLong: boolean;
+  rows?: number;
+  placeholder?: string;
 }
 
 const LIMIT_HINT_ID = "brain-dump-text-limit";
+const DEFAULT_PLACEHOLDER =
+  "What repeats every week? What would you hand off first?";
 
-export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
+export function TypedFallback({
+  value,
+  onChange,
+  onSubmit,
+  isTooLong,
+  rows = 6,
+  placeholder = DEFAULT_PLACEHOLDER,
+}: Props) {
   return (
     <FadeIn className="w-full">
       <div className="flex w-full flex-col items-center gap-3">
@@ -29,9 +40,8 @@ export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
             type="textarea"
             label="Your brain dump"
             hideLabel
-            rows={6}
-            className="rounded-xl border-zinc-200"
-            placeholder="What repeats every week? What would you hand off first?"
+            rows={rows}
+            placeholder={placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             maxLength={MAX_TYPED_CHARS}
@@ -46,7 +56,6 @@ export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
               role="alert"
               id={LIMIT_HINT_ID}
               className="text-left"
-              unmask
             >
               {TYPED_TOO_LONG_COPY}
             </Text>
@@ -56,7 +65,6 @@ export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
               tone="muted"
               id={LIMIT_HINT_ID}
               className="min-h-[1.125rem] text-right"
-              unmask
             >
               {typedCharsLeftHint(value.length)}
             </Text>
@@ -66,7 +74,7 @@ export function TypedFallback({ value, onChange, onSubmit, isTooLong }: Props) {
           size="small"
           onClick={onSubmit}
           disabled={!value.trim()}
-          className="h-10 w-56 rounded-xl"
+          className="h-10 w-56"
         >
           I&apos;m done
         </Button>

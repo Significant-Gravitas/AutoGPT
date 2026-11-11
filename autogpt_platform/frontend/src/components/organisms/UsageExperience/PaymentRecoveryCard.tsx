@@ -13,10 +13,17 @@ export function PaymentRecoveryCard({ payment, fallback }: Props) {
   return (
     <section
       aria-label="Payment"
+      data-slot="payment-recovery-card"
       className="w-full rounded-2xl border border-border-base bg-surface p-6 text-left"
     >
-      <div className="flex items-center gap-2.5">
-        <span className="flex size-7 items-center justify-center rounded-lg bg-surface text-foreground-secondary ring-1 ring-border-base">
+      <div
+        data-slot="payment-recovery-card-header"
+        className="flex items-center gap-2.5"
+      >
+        <span
+          data-slot="payment-recovery-card-icon"
+          className="flex size-7 items-center justify-center rounded-lg bg-surface text-foreground-secondary ring-1 ring-border-base"
+        >
           <Icon icon={CreditCardIcon} size={17} />
         </span>
         <Text variant="small-medium" tone="secondary">
@@ -26,8 +33,7 @@ export function PaymentRecoveryCard({ payment, fallback }: Props) {
       <Text
         variant="h4"
         as="h2"
-        // TODO(tokens): SECRT-3152, the 23px size has no role.
-        className="mb-3 mt-4 text-[23px] leading-8 tracking-display"
+        className="mt-4 mb-3 leading-8 tracking-display"
       >
         Your payment didn’t go through
       </Text>
@@ -39,7 +45,7 @@ export function PaymentRecoveryCard({ payment, fallback }: Props) {
         {payment?.description ?? fallback}
       </Text>
       {payment ? (
-        <div className="mt-5">
+        <div data-slot="payment-recovery-card-actions" className="mt-5">
           <PaymentDueAction
             url={payment.url}
             label={payment.actionLabel}

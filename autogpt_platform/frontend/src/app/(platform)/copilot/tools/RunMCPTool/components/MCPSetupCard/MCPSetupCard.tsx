@@ -35,6 +35,7 @@ import { ContentMessage } from "../../../../components/ToolAccordion/AccordionCo
 import { ChainActionsContext } from "../../../../components/ToolChain/chainActions";
 import { CredentialRejectionNotice } from "../../../../components/CredentialRejectionNotice/CredentialRejectionNotice";
 import { coerceExpertGrant } from "../../../../components/SetupRequirementsCard/helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   output: SetupRequirementsResponse;
@@ -388,7 +389,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // as the state machine driving that row's callbacks.
   useEffect(() => {
     if (!chainActions) return;
-    chainActions.register({
+    chainActions.register(actionId, {
       id: actionId,
       ready: connected,
       buildMessage: () => null,
@@ -441,7 +442,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     // owns the error display.
     return (
       <div className="mt-2 grid gap-2">
-        <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+        <div className="rounded-lg border border-success/40 bg-success-surface px-3 py-2 text-body text-success-foreground">
           Connected to {service}.{" "}
           <button
             type="button"
@@ -462,7 +463,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
       {rejection && <CredentialRejectionNotice rejection={rejection} />}
 
-      <div className="rounded-2xl border bg-background p-4">
+      <div className="rounded-2xl border bg-canvas p-4">
         {grantableId ? (
           <Button
             variant="primary"
@@ -487,7 +488,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           <div
             role="alert"
             aria-live="polite"
-            className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            className="mt-2 rounded-lg border border-error/30 bg-error-surface px-3 py-2 text-body text-error-foreground"
           >
             {error ?? grantError}
           </div>
@@ -501,18 +502,20 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               disabled={loading}
               nameSuffix={service}
               className="grid gap-1"
-              labelClassName="text-xs font-medium text-gray-700"
-              selectClassName="rounded border bg-background px-2 py-1.5 text-sm"
+              labelClassName="text-caption font-medium text-foreground-body"
+              selectClassName="rounded border bg-canvas px-2 py-1.5 text-body"
             />
-            <label
+            <Text
+              variant="small-medium-tight"
+              as="label"
+              tone="body"
               htmlFor={manualTokenInputId}
-              className="text-xs font-medium text-gray-700"
             >
               {`${mcpAuthTokenLabel(manualAuthScheme)} for ${service}`}
-            </label>
-            <p id={manualTokenHintId} className="text-xs text-gray-500">
+            </Text>
+            <Text variant="small-tight" tone="muted" id={manualTokenHintId}>
               {mcpAuthTokenHint(manualAuthScheme)}
-            </p>
+            </Text>
             <div className="flex gap-2">
               <input
                 id={manualTokenInputId}
@@ -528,7 +531,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                 onKeyDown={(e) =>
                   isKey(e, "Enter") && !loading && handleManualToken()
                 }
-                className="flex-1 rounded border px-2 py-1 text-sm"
+                className="flex-1 rounded border px-2 py-1 text-body"
               />
               <Button
                 variant="secondary"

@@ -14,6 +14,7 @@ vi.mock("../service-token", () => ({
 
 import { Resolver } from "node:dns/promises";
 import { sendAuthEmail } from "../email";
+import { UNDELIVERABLE_EMAIL_CODE } from "../undeliverable-email";
 import { clearMailServerCache } from "../email-deliverability";
 
 const resetUrl = "https://platform.example.com/reset-password?token=abc123";
@@ -57,6 +58,25 @@ describe("sendAuthEmail", () => {
       type: "reset_password",
       to: "user@example.com",
       url: resetUrl,
+    });
+  });
+
+  it("sends the new address with a change of email", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await sendAuthEmail({
+      to: "old@example.com",
+      type: "change_email",
+      url: resetUrl,
+      newEmail: "new@example.com",
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      type: "change_email",
+      to: "old@example.com",
+      url: resetUrl,
+      new_email: "new@example.com",
     });
   });
 
@@ -108,21 +128,56 @@ describe("sendAuthEmail", () => {
   it.each([
     ["a domain that does not exist", "ENOTFOUND"],
     ["a domain with no MX, A or AAAA record", "ENODATA"],
-  ])("skips the send to %s and reports success", async (_, code) => {
+  ])("refuses %s as undeliverable without sending", async (_, code) => {
     vi.stubEnv("NODE_ENV", "production");
     const error = Object.assign(new Error(code), { code });
     vi.spyOn(Resolver.prototype, "resolveMx").mockRejectedValue(error);
     vi.spyOn(Resolver.prototype, "resolve4").mockRejectedValue(error);
     vi.spyOn(Resolver.prototype, "resolve6").mockRejectedValue(error);
-    const warnSpy = vi
-      .spyOn(console, "warn")
-      .mockImplementation(() => undefined);
 
-    await expect(sendAuthEmail(args)).resolves.toBeUndefined();
+    await expect(sendAuthEmail(args)).rejects.toMatchObject({
+      body: { code: UNDELIVERABLE_EMAIL_CODE },
+    });
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain(args.to);
   });
+
+  // Outside production a failed send logs the link instead, but this one is
+  // an answer about the address, not a missing mailer.
+  it.each(["production", "development"])(
+    "refuses an address the mail provider won't deliver to (%s)",
+    async (nodeEnv) => {
+      vi.stubEnv("NODE_ENV", nodeEnv);
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify({ detail: "email_undeliverable" }), {
+          status: 422,
+        }),
+      );
+
+      await expect(sendAuthEmail(args)).rejects.toMatchObject({
+        body: { code: UNDELIVERABLE_EMAIL_CODE },
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    [422, { detail: [{ loc: ["body", "to"], msg: "not an email" }] }],
+    [500, { detail: "email_undeliverable" }],
+  ])(
+    "still throws in production on a %i that isn't the refusal",
+    async (status, body) => {
+      vi.stubEnv("NODE_ENV", "production");
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify(body), { status }),
+      );
+
+      await expect(sendAuthEmail(args)).rejects.toThrow(
+        `Backend auth-email send failed (${status})`,
+      );
+    },
+  );
 
   it("still sends to a disposable domain", async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));

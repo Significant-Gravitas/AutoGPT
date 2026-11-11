@@ -7,6 +7,7 @@ import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
 import { StatusDot } from "@/components/molecules/NotionAvatar/StatusDot";
 import { expertPastel } from "./colors";
 import { cn } from "@/lib/utils";
+import type { CSSProperties } from "react";
 import { getManagedAvatar, resolveExpertAvatarUrl } from "./helpers";
 
 import { ManagedExpertImage } from "./components/ManagedExpertImage";
@@ -52,31 +53,44 @@ export function ExpertAvatar({
   }
   return (
     <span
-      style={{
-        width: size,
-        height: size,
-        backgroundColor: backgroundColor
-          ? expertPastel(backgroundColor)
-          : undefined,
-      }}
+      data-slot="expert-avatar"
+      style={
+        {
+          "--avatar-size": `${size}px`,
+          "--avatar-bg": backgroundColor
+            ? expertPastel(backgroundColor)
+            : undefined,
+        } as CSSProperties
+      }
       className={cn(
         "relative inline-flex shrink-0",
         backgroundColor && "rounded-full",
         className,
+        "size-(--avatar-size)",
+        backgroundColor && "bg-(--avatar-bg)",
       )}
     >
-      <Avatar className="size-full rounded-[inherit]">
+      <Avatar
+        data-slot="expert-avatar-frame"
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- follows the wrapper's radius; Tailwind has no rounded-inherit
+        className="size-full rounded-[inherit]"
+      >
         <AvatarImage
           src={src}
           alt={name ?? "Expert"}
           width={size}
           height={size}
+          data-slot="expert-avatar-image"
           className="object-contain"
         />
         <AvatarFallback
+          data-slot="expert-avatar-fallback"
           accessibleLabel={name ? `${name}, AI Expert` : "AI Expert"}
         >
-          <span className="text-body leading-5">
+          <span
+            data-slot="expert-avatar-initial"
+            className="text-body leading-5"
+          >
             {name?.slice(0, 1).toUpperCase() ?? "?"}
           </span>
         </AvatarFallback>
@@ -85,7 +99,7 @@ export function ExpertAvatar({
         <StatusDot
           status={status}
           size={Math.round(size * 0.34)}
-          className="absolute -bottom-0.5 -right-0.5"
+          className="absolute -right-0.5 -bottom-0.5"
         />
       )}
     </span>

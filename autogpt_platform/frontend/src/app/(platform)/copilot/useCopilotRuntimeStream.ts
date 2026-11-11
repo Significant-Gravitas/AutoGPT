@@ -25,6 +25,7 @@ import {
   convertChatSessionMessagesToUiMessages,
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
+import { countAnswerTowardStarToast } from "./helpers/githubStarToast";
 import {
   latestProviderFailure,
   parseProviderFailure,
@@ -35,6 +36,7 @@ import { useCopilotUIStore, type CopilotLlmModel } from "./store";
 import {
   createAssistantRunJoiner,
   createTailRenderer,
+  statsOfAssistantRuns,
 } from "./stream/renderTail";
 import {
   getTurnRuntime,
@@ -60,6 +62,7 @@ const EMPTY_SNAPSHOT: RuntimeSnapshot = {
   notice: null,
   error: null,
   stopped: false,
+  probing: false,
 };
 
 interface Args {
@@ -119,6 +122,8 @@ export function useCopilotRuntimeStream({
   useInsertionEffect(() => {
     isUserStoppingRef.current = snapshot.stopped;
   });
+  // The turn-end handler is bound before `messages` is built, below.
+  const messagesRef = useRef<UIMessage[]>([]);
 
   function handleError(error: Error, rawFailure: unknown) {
     if (!sessionId) return;
@@ -175,10 +180,16 @@ export function useCopilotRuntimeStream({
     return runtime.bind(
       {
         onError: handleError,
-        onTurnEnd: () =>
-          queryClient.invalidateQueries({
+        onTurnEnd: ({ expired }) => {
+          void queryClient.invalidateQueries({
             queryKey: getGetV2GetCopilotUsageQueryKey(),
-          }),
+          });
+          // Only a finish the stream delivered counts: a failed turn ends here
+          // too, and so does one whose stream went away first.
+          if (!expired && runtime.getSnapshot().phase === "finished") {
+            countAnswerTowardStarToast({ messages: messagesRef.current });
+          }
+        },
       },
       async () => viewOf((await refetchSession()).data),
     );
@@ -213,7 +224,16 @@ export function useCopilotRuntimeStream({
         : [],
     [sessionId, joinAssistantRuns, history.messages, tail.messages],
   );
-  const turnStats = withLatestUser(messages, history.stats, tail.stats);
+  useInsertionEffect(() => {
+    messagesRef.current = messages;
+  });
+  const turnStats = withLatestUser(
+    messages,
+    statsOfAssistantRuns(
+      [...history.messages, ...tail.messages],
+      new Map([...history.stats, ...tail.stats]),
+    ),
+  );
 
   async function sendMessage(input: SendInput) {
     if (!runtime || !sessionId) return;
@@ -298,7 +318,7 @@ export function useCopilotRuntimeStream({
     error: snapshot.error ?? undefined,
     // The runtime never locks the composer: a send while it resumes is queued.
     isReconnecting: false,
-    isFinishProbing: false,
+    isFinishProbing: snapshot.probing,
     isRestoringActiveSession: notice !== null,
     restoreStatusMessage: notice ? NOTICE_TEXT[notice] : null,
     isSyncing: false,
@@ -387,13 +407,8 @@ function prospectiveCut(runtime: TurnRuntime | null, view: SessionView | null) {
   return sequences.length ? Math.max(...sequences) + 1 : 0;
 }
 
-function withLatestUser(
-  messages: UIMessage[],
-  historyStats: TurnStatsMap,
-  tailStats: TurnStatsMap,
-) {
-  const stats: TurnStatsMap = new Map(historyStats);
-  tailStats.forEach((value, key) => stats.set(key, value));
+function withLatestUser(messages: UIMessage[], merged: TurnStatsMap) {
+  const stats: TurnStatsMap = new Map(merged);
   const latestUser = messages.findLast((m) => m.role === "user");
   stats.forEach((value, key) => {
     if (value.isLatestUserMessage && key !== latestUser?.id) {

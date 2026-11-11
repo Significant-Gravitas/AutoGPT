@@ -9,6 +9,7 @@ export function BillingToggle({ billing, onBillingChange }: Props) {
     <div
       role="group"
       aria-label="Billing period"
+      data-slot="billing-toggle"
       className="mt-3 flex rounded-full border border-border-base bg-surface-hover p-1"
     >
       {(["monthly", "yearly"] as const).map((cycle) => (
@@ -17,10 +18,11 @@ export function BillingToggle({ billing, onBillingChange }: Props) {
           type="button"
           variant="ghost"
           size="xs"
+          shape="pill"
           aria-pressed={billing === cycle}
           onClick={() => onBillingChange(cycle)}
           className={cn(
-            "rounded-full px-4 text-xs",
+            "px-4",
             billing === cycle
               ? "bg-surface text-foreground-strong shadow-sm hover:bg-surface"
               : "text-foreground-tertiary",
@@ -29,8 +31,8 @@ export function BillingToggle({ billing, onBillingChange }: Props) {
           {cycle === "monthly" ? "Monthly billing" : "Yearly billing"}
           {cycle === "yearly" && (
             <span
-              // TODO(tokens): no role for emerald-600; success is green-600.
-              className="text-xs text-emerald-600"
+              data-slot="billing-toggle-savings"
+              className="text-caption text-success"
             >
               Save 15%
             </span>

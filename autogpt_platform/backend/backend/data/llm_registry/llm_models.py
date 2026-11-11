@@ -146,6 +146,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GPT6_ASTRA = "gpt-6-astra"
     GPT6_SOL = "gpt-6-sol"
     GPT6_1_SOL = "gpt-6.1-sol"
+    GPT6_1_TERRA = "gpt-6.1-terra"
     GPT6_LUNA = "gpt-6-luna"
     # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
@@ -187,6 +188,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     CLAUDE_5_5_SONNET = "claude-sonnet-5-5"
     CLAUDE_5_5_HAIKU = "claude-haiku-5-5"
     CLAUDE_5_1_FABLE = "claude-fable-5-1"
+    CLAUDE_5_2_FABLE = "claude-fable-5-2"
     # AI/ML API models
     AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
     # Groq models
@@ -207,6 +209,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
+    GEMINI_3_1_FLASH_LITE = "google/gemini-3.1-flash-lite"
+    GEMINI_3_5_FLASH = "google/gemini-3.5-flash"
+    GEMINI_3_5_FLASH_LITE = "google/gemini-3.5-flash-lite"
     GEMINI_3_8_FLASH = "google/gemini-3.8-flash"
     GEMINI_4_ARGON = "google/gemini-4-argon"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
@@ -247,6 +252,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     META_MUSE_SPARK_1_3_CONTRIBUTOR = "meta/muse-spark-1.3-contributor"
     META_MUSE_SPARK_OPEN = "meta/muse-spark-open"
     META_MUSE_WONDER = "meta/muse-wonder"
+    META_MUSE_EMBER = "meta/muse-ember"
     GROK_3 = "x-ai/grok-3"
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"
@@ -259,6 +265,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     KIMI_K2_6 = "moonshotai/kimi-k2.6"
     KIMI_K2_THINKING = "moonshotai/kimi-k2-thinking"
     KIMI_K3 = "moonshotai/kimi-k3"
+    KIMI_K3_1_PRO = "moonshotai/kimi-k3.1-pro"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
     QWEN3_8_MAX_0902 = "qwen/qwen3.8-max-0902"
@@ -281,6 +288,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     INCEPTION_MERCURY_2_5 = "inception/mercury-2.5"
     # Tencent models
     TENCENT_HY4_PREVIEW = "tencent/hy4-preview"
+    TENCENT_HY4 = "tencent/hy4"
     # Unbiased models
     UNBIASED_PARETO = "unbiased/pareto"
     # Llama API models
@@ -461,12 +469,22 @@ DEFAULT_LLM_MODEL = _default_model_from_catalog()
 # definitions and by the boot-time safety net (`migrate_llm_models` in
 # backend/data/graph.py) so a Claude Opus user lands on a newer Opus instead of
 # the global GPT default. Keep this in sync with
-# migrations/20260512120000_retire_deprecated_llm_models/migration.sql.
+# migrations/20260512120000_retire_deprecated_llm_models/migration.sql and
+# migrations/20261025120000_retire_undated_claude_aliases/migration.sql.
+# Never resolve these in ``LLMModel._missing_``: the copilot's registry gate
+# accepts what the enum accepts and sends the slug unchanged.
 LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     "claude-3-haiku-20240307": LLMModel.CLAUDE_4_5_HAIKU,
     "claude-opus-4-20250514": LLMModel.CLAUDE_4_7_OPUS,
     "claude-sonnet-4-20250514": LLMModel.CLAUDE_4_6_SONNET,
     "claude-opus-4-1-20250805": LLMModel.CLAUDE_4_7_OPUS,
+    # Anthropic's undated aliases and OpenRouter's slugs for the same models.
+    "claude-opus-4-1": LLMModel.CLAUDE_4_7_OPUS,
+    "anthropic/claude-opus-4.1": LLMModel.CLAUDE_4_7_OPUS,
+    "claude-opus-4-0": LLMModel.CLAUDE_4_7_OPUS,
+    "anthropic/claude-opus-4": LLMModel.CLAUDE_4_7_OPUS,
+    "claude-sonnet-4-0": LLMModel.CLAUDE_4_6_SONNET,
+    "anthropic/claude-sonnet-4": LLMModel.CLAUDE_4_6_SONNET,
     "gpt-4-turbo": LLMModel.GPT41,
     "o1": LLMModel.O3,
     "o1-mini": LLMModel.O3_MINI,
