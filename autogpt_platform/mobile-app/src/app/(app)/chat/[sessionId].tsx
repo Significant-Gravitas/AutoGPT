@@ -1,4 +1,8 @@
-import { Folder01Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import {
+  Folder01Icon,
+  PencilEdit02Icon,
+  SidebarRight01Icon,
+} from "@hugeicons/core-free-icons";
 import { useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Text, View } from "react-native";
 import { Drawer } from "react-native-drawer-layout";
@@ -9,6 +13,7 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { ChatIdentity } from "@/features/chat/components/ChatIdentity";
 import { ChatThread } from "@/features/chat/components/ChatThread";
 import { useChatScreen } from "@/features/chat/useChatScreen";
+import { ExpertPanel } from "@/features/expertPanel/components/ExpertPanel";
 import { FilesPanel } from "@/features/files/components/FilesPanel";
 import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
@@ -61,16 +66,23 @@ export default function ChatScreen() {
     );
   }
 
-  function renderFilesPanel() {
+  function renderPanel() {
     if (!sessionID) return null;
-    return (
-      <FilesPanel
-        sessionID={sessionID}
-        expertID={expertID}
-        expertName={expertID ? (identity?.name ?? null) : null}
-        isOpen={isFilesOpen}
-      />
-    );
+    if (expertID) {
+      return (
+        <ExpertPanel
+          sessionID={sessionID}
+          expertID={expertID}
+          name={identity?.name ?? "Expert"}
+          role={identity?.role ?? null}
+          avatar={identity?.avatar ?? null}
+          tint={identity?.tint ?? null}
+          isOpen={isFilesOpen}
+          onClose={closeFiles}
+        />
+      );
+    }
+    return <FilesPanel sessionID={sessionID} isOpen={isFilesOpen} />;
   }
 
   return (
@@ -82,9 +94,9 @@ export default function ChatScreen() {
       drawerType="front"
       // The app's menu drawer owns the swipe; this panel opens from its button.
       swipeEnabled={false}
-      overlayAccessibilityLabel="Close files"
+      overlayAccessibilityLabel={expertID ? "Close details" : "Close files"}
       drawerStyle={styles.panel}
-      renderDrawerContent={renderFilesPanel}
+      renderDrawerContent={renderPanel}
     >
       <View style={styles.screen}>
         <ScreenHeader
@@ -92,7 +104,11 @@ export default function ChatScreen() {
           right={
             <>
               {hasFiles ? (
-                <IconButton icon={Folder01Icon} label="Files" onPress={openFiles} />
+                <IconButton
+                  icon={expertID ? SidebarRight01Icon : Folder01Icon}
+                  label={expertID ? "Details" : "Files"}
+                  onPress={openFiles}
+                />
               ) : null}
               <IconButton icon={PencilEdit02Icon} label="New chat" onPress={newChat} />
             </>
