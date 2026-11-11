@@ -4,9 +4,14 @@ import { Icon } from "@/components/Icon";
 import { PanelEmptyState } from "@/components/PanelEmptyState";
 import { useColors } from "@/lib/theme";
 
-// Only Otto's chats reach this: an expert's chat always lists that expert's
-// documents instead.
-export function FilesEmptyState() {
+interface Props {
+  /** Set in an expert's chat, where the list is that expert's documents. */
+  expertName?: string;
+}
+
+// The web's two wordings: the chat panel's for Otto, the expert page's for
+// an expert with nothing yet.
+export function FilesEmptyState({ expertName }: Props) {
   const colors = useColors();
   return (
     <PanelEmptyState
@@ -16,7 +21,11 @@ export function FilesEmptyState() {
         <Icon key="doc" icon={File02Icon} size={22} color={colors.brand} />,
       ]}
       title="No files yet"
-      description="Files you attach and documents Otto creates in this chat will show up here."
+      description={
+        expertName
+          ? `Files you share with ${expertName} and documents it creates show up here.`
+          : "Files you attach and documents Otto creates in this chat will show up here."
+      }
     />
   );
 }

@@ -15,8 +15,8 @@ interface Props {
 
 /**
  * As on the web: this chat's files once there are any, then, in an expert's
- * chat, all of that expert's documents. Otto's chat with no files gets one
- * empty state.
+ * chat, all of that expert's documents. With nothing to list at all, one
+ * empty state stands in for both.
  */
 export function FileLibrary({ sessionID, expert, isOpen }: Props) {
   const panel = useFilesPanel({ sessionID, expertID: expert?.id ?? null, isOpen });
@@ -26,9 +26,19 @@ export function FileLibrary({ sessionID, expert, isOpen }: Props) {
   const showSession =
     session.isError || session.files.length > 0 || (session.isLoading && !expert);
 
+  const documents = panel.expert;
+  const hasNothingFromExpert =
+    !!expert &&
+    !!documents &&
+    !showSession &&
+    !documents.isLoading &&
+    !documents.isError &&
+    documents.files.length === 0;
+
   return (
     <View style={styles.library}>
       {!showSession && !expert ? <FilesEmptyState /> : null}
+      {hasNothingFromExpert ? <FilesEmptyState expertName={expert?.name} /> : null}
       {showSession ? (
         <FileSection
           title="Files in this chat"
@@ -40,7 +50,7 @@ export function FileLibrary({ sessionID, expert, isOpen }: Props) {
           onSelect={panel.selectFile}
         />
       ) : null}
-      {expert && panel.expert ? (
+      {expert && panel.expert && !hasNothingFromExpert ? (
         <FileSection
           title={`All ${expert.name}'s documents`}
           emptyText={`${expert.name} hasn't created any documents yet.`}
