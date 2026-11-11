@@ -82,7 +82,11 @@ def _post_run_result(
             graph_exec.graph_id, graph_exec.graph_version
         )
         agent_name = metadata.name if metadata else DEFAULT_AGENT_NAME
-        succeeded = status == ExecutionStatus.COMPLETED
+        # A step that fails without a typed reason (a bad credential, say)
+        # leaves the run COMPLETED (executor/manager.py), but a run with a
+        # failed step must never read as done.
+        failed_steps = exec_stats.node_error_count
+        succeeded = status == ExecutionStatus.COMPLETED and failed_steps == 0
         library_agent_id = db_client.get_library_agent_id_by_graph_id(
             graph_exec.user_id, graph_exec.graph_id
         )
@@ -92,6 +96,7 @@ def _post_run_result(
             summary=exec_stats.activity_status,
             error=str(exec_stats.error) if exec_stats.error else None,
             library_agent_id=library_agent_id,
+            failed_steps=failed_steps if status == ExecutionStatus.COMPLETED else 0,
         )
         output_type: OutputType
         output_key: str | None
@@ -144,6 +149,7 @@ def build_expert_run_message(
     summary: str | None = None,
     error: str | None = None,
     library_agent_id: str | None = None,
+    failed_steps: int = 0,
 ) -> str:
     """The summary and error both derive from workflow output — untrusted
     text that this message replays into the thread's conversation history.
@@ -151,7 +157,10 @@ def build_expert_run_message(
     in the expert's own voice, so scraped "ignore previous instructions"
     content stays attributed to the run rather than reading as assistant
     speech; errors are also capped so one failed run can't persist a
-    multi-MB message that reloads on every later turn."""
+    multi-MB message that reloads on every later turn.
+
+    *failed_steps* marks a run that ran to the end with steps that failed:
+    it carries no run-level error, so the summary says what went wrong."""
     link = (
         f"\n\n[View the run](/library/agents/{library_agent_id})"
         if library_agent_id
@@ -164,13 +173,19 @@ def build_expert_run_message(
             else " It finished without any problems."
         )
         return f"I ran **{agent_name}** in the background.{body}{link}"
+    if failed_steps > 0:
+        steps = "1 step" if failed_steps == 1 else f"{failed_steps} steps"
+        outcome = f"{steps} failed"
+        error = error or summary
+    else:
+        outcome = "it didn't finish"
     detail = (
         f"\n\nThe reported error:\n\n{_quote(_truncate(error, _MAX_ERROR_LENGTH))}"
         if error
         else ""
     )
     return (
-        f"I ran **{agent_name}** in the background, but it didn't finish."
+        f"I ran **{agent_name}** in the background, but {outcome}."
         f"{detail}\n\n"
         f"I'll try again on the next schedule — if this keeps happening, "
         f"check the workflow's setup in your library.{link}"
