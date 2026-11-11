@@ -24,12 +24,9 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  answeredLabel,
-  countHeldCalls,
-  getHeldCallRowKind,
-} from "./heldCallRows";
+import { answeredLabel, getHeldCallRowKind } from "./heldCallRows";
 import { extractReviewTargets, getLatestCompactionPhase } from "./helpers";
+import { reviewRefetchKey } from "./reviewRefetchKey";
 import {
   buildMessageIndexById,
   isMidTurnSegmentRow,
@@ -520,6 +517,7 @@ export function ChatMessagesContainer({
         filePattern={filePattern}
         fileUrlBuilder={fileUrlBuilder}
         onRetry={isLastAssistant ? onRetry : undefined}
+        expert={isLastAssistant ? expertIdentity : undefined}
       />
     );
   }
@@ -632,8 +630,8 @@ export function ChatMessagesContainer({
           {!readOnly && sessionID && (
             <CopilotPendingReviews
               chatSessionId={sessionID}
-              pollWhileEmpty={reviewTargets.chat}
-              refetchKey={countHeldCalls(messages)}
+              pollWhileEmpty={reviewTargets.chat || isTurnBusy}
+              refetchKey={reviewRefetchKey(messages)}
               expertName={expertIdentity?.name ?? null}
               expert={expertIdentity ?? null}
             />

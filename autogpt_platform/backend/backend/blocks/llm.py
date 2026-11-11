@@ -61,6 +61,10 @@ from backend.util.llm.provider_billing import (
     report_provider_out_of_credits,
 )
 from backend.util.llm.providers import timeout_error
+from backend.util.llm.request_too_large import (
+    RequestTooLargeError,
+    is_request_too_large,
+)
 from backend.util.llm.saturation import track_llm_call
 from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_context, estimate_token_count
@@ -368,6 +372,10 @@ async def llm_call(
                 raise ProviderUnavailableError() from e
             if is_prompt_refused(e):
                 raise PromptRefusedError() from e
+            if is_request_too_large(e):
+                raise RequestTooLargeError(
+                    llm_model.metadata.provider_name, str(e)
+                ) from e
             raise
 
 
@@ -735,7 +743,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 return f"JSON decode error: {e}"
 
         error_feedback_message = ""
-        refusal: PromptRefusedError | None = None
+        refusal: PromptRefusedError | RequestTooLargeError | None = None
         llm_model = input_data.model
         total_provider_cost: float | None = None
 
@@ -878,8 +886,9 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     # account stays empty however many times we ask.
                     error_feedback_message = str(e)
                     break
-                if isinstance(e, PromptRefusedError):
-                    # A judgement on the prompt itself, like the user errors below.
+                if isinstance(e, (PromptRefusedError, RequestTooLargeError)):
+                    # A judgement on the prompt itself, like the user errors below;
+                    # the same request is refused the same way every time.
                     refusal = e
                     break
                 # Invalid models cannot recover on retry; other 400s can still

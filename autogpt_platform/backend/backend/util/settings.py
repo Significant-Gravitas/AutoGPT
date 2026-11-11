@@ -377,6 +377,33 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
     )
 
+    # Account erasure (SECRT-2854): erases accounts closed from Settings
+    account_erasure_sweep_enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the job that erases closed accounts (every AccountDeletionRequest "
+            "past its 14 days and not completed yet). Off by default. It runs in "
+            "the database manager, which then needs the bucket, FalkorDB, PostHog "
+            "personal key, MailerLite and Stripe settings and BAN_RECORD_HASH_KEY "
+            "(docs/engineering/account-deletion.md)."
+        ),
+    )
+    account_erasure_sweep_interval_secs: int = Field(
+        default=60 * 60,
+        ge=5 * 60,
+        description="Interval in seconds between account erasure sweeps.",
+    )
+    account_erasure_unused_services: List[str] = Field(
+        default=[],
+        description=(
+            "Outside services this stack does not use, so the account erasure "
+            "may skip their step: a JSON list of any of buckets, falkordb, "
+            'posthog, mailerlite, stripe, e.g. \'["posthog", "mailerlite"]\'. '
+            "A step skipped for a service not listed stops the erasure before "
+            "the account's rows go, and the request stays open."
+        ),
+    )
+
     # Auth identity <-> platform User invariant monitoring
     auth_identity_orphan_sweep_enabled: bool = Field(
         default=False,
@@ -571,6 +598,22 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "egresses through (see backend.util.e2b_network). Empty leaves egress "
         "direct. Do not set it before the proxy exists: E2B fails closed, so a "
         "box pointed at nothing has no egress at all.",
+    )
+    e2b_deployment_sandbox_limit: int = Field(
+        default=0,
+        ge=0,
+        description="Most E2B boxes this deployment (its APP_ENV) may have running "
+        "at once on the platform's E2B key; a start past it is refused. 0 sets no "
+        "ceiling of its own.",
+    )
+    e2b_account_sandbox_limit: int = Field(
+        # Twice the running-turn cap, so a user at that cap can still open
+        # desktops and run sandboxed blocks beside it.
+        default=10,
+        ge=0,
+        description="Most E2B boxes one account may have running at once in this "
+        "deployment on the platform's E2B key; a start past it is refused. 0 turns "
+        "the cap off.",
     )
 
     frontend_base_url: str = Field(
@@ -1346,6 +1389,14 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The secret key to use for the unsubscribe user by token",
     )
 
+    ban_record_hash_key: str = Field(
+        default="",
+        description="Key of the hash that ban records (account erasure) keep "
+        "of a banned address. Never rotate it: the records kept under the old "
+        "one stop matching. Blank keeps no ban record, so erasing a banned "
+        "account fails, and sign-up matches none.",
+    )
+
     vapid_private_key: str = Field(
         default="", description="VAPID private key for Web Push"
     )
@@ -1520,6 +1571,13 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="Linear team ID used when creating feature request issues",
     )
+    hubspot_client_id: str = Field(
+        default="", description="Client ID of the HubSpot app used for OAuth sign-in"
+    )
+    hubspot_client_secret: str = Field(
+        default="", description="Client secret of the HubSpot OAuth sign-in app"
+    )
+
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
 
@@ -1591,6 +1649,22 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         "Feature Flags), for local flag evaluation; without it flag reads fall back "
         "to a remote /flags call. A personal API key also works, but PostHog is "
         "deprecating that use.",
+    )
+    # Account deletion removes the PostHog person through the private API,
+    # which the project key above cannot call.
+    posthog_personal_api_key: str = Field(
+        default="",
+        description="PostHog personal API key with the person:write scope, used "
+        "only to delete a deleted account's person. Blank stops the erasure "
+        "at that step, with the request left open, unless 'posthog' is in "
+        "ACCOUNT_ERASURE_UNUSED_SERVICES.",
+    )
+    posthog_project_id: str = Field(
+        default="", description="PostHog project ID the persons live in"
+    )
+    posthog_app_host: str = Field(
+        default="https://eu.posthog.com",
+        description="PostHog private API host (not the i. ingestion host)",
     )
 
     # Add more secret fields as needed
