@@ -36,7 +36,14 @@
         {
           "photosPermission": "Attach photos to your chats.",
           "cameraPermission": false,
-          "microphonePermission": false
+          "microphonePermission": "Dictate your messages."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Dictate your messages.",
+          "enableBackgroundPlayback": false
         }
       ]
     ],

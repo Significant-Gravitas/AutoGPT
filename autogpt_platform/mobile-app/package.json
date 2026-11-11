@@ -14,6 +14,7 @@
     "ai": "7.0.143",
     "better-auth": "1.7.16",
     "expo": "~58.0.23",
+    "expo-audio": "~58.0.12",
     "expo-constants": "~58.0.15",
     "expo-crypto": "~58.0.7",
     "expo-device": "~58.0.5",
