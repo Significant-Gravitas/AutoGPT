@@ -39,6 +39,6 @@ export function formatExactReset(value: Date | string | null | undefined) {
         minute: "2-digit",
       })
       // Some ICU versions put a narrow no-break space before AM/PM.
-      .replace(/ /g, " ")
+      .replace(/\u202f/g, " ")
   );
 }

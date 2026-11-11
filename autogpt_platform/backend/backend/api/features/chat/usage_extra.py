@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal, NoReturn
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Security
+from fastapi import APIRouter, Depends, HTTPException, Security
 from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
 
@@ -21,6 +21,7 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
     RateLimitUnavailable,
+    enforce_payment_paywall,
     get_global_rate_limits,
     get_usage_status,
 )
@@ -64,6 +65,8 @@ class ExtraWeekPurchaseResponse(BaseModel):
 
 @router.post(
     "/usage/extra-week",
+    # An extra week extends a plan: without one there is nothing to extend.
+    dependencies=[Depends(enforce_payment_paywall)],
     responses={
         402: {"description": "Not enough credits; nothing was charged"},
         409: {"description": "This account can't buy an extra week"},

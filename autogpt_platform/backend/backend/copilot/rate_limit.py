@@ -851,7 +851,7 @@ async def _billing_clock_snapshot(
     state, clock = await resolve_clock(state, now)
     if clock is None:
         logger.warning(
-            f"No billing clock in the usage state of user {state.user_id}; "
+            f"No billing clock in the usage state of user {state.user_id[:8]}; "
             "using the calendar windows"
         )
         return None

@@ -3537,7 +3537,7 @@ async def _copy_billing_clock(
     try:
         await save_billing_clock(user_id, dict(subscription))
     except Exception:
-        logger.exception(f"Could not copy the billing clock of user {user_id}")
+        logger.exception(f"Could not copy the billing clock of user {user_id[:8]}")
 
 
 async def sync_subscription_schedule_from_stripe(stripe_schedule: dict) -> None:

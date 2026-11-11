@@ -254,17 +254,14 @@ class Listing:
             _subscription(id="sub_broken", customer="cus_a", current_period_end=None),
         ]
         self.save = AsyncMock(return_value=True)
-        users = [
-            MagicMock(id="user-a", stripeCustomerId="cus_a"),
-            MagicMock(id="user-b", stripeCustomerId="cus_b"),
-        ]
-        self.find_many = AsyncMock(return_value=users)
-        monkeypatch.setattr(usage_clock_backfill, "save_billing_clock", self.save)
-        monkeypatch.setattr(
-            usage_clock_backfill.User,
-            "prisma",
-            lambda: MagicMock(find_many=self.find_many),
+        self.users = AsyncMock(
+            return_value=[
+                {"id": "user-a", "customer": "cus_a"},
+                {"id": "user-b", "customer": "cus_b"},
+            ]
         )
+        monkeypatch.setattr(usage_clock_backfill, "save_billing_clock", self.save)
+        monkeypatch.setattr(usage_clock_backfill, "query_raw_with_schema", self.users)
         monkeypatch.setattr(
             stripe.Subscription, "list_async", AsyncMock(side_effect=self._list)
         )
@@ -292,9 +289,7 @@ async def test_the_backfill_copies_each_owned_plan_and_skips_the_rest(listing: L
     assert (summary.subscriptions, summary.saved, summary.unchanged) == (6, 1, 1)
     assert (summary.skipped, summary.failed) == (4, 0)
     # Admin-managed accounts are left out, as in the tier sweep.
-    assert listing.find_many.await_args.kwargs["where"]["subscriptionTier"] == {
-        "not": SubscriptionTier.ENTERPRISE
-    }
+    assert "<> 'ENTERPRISE'" in listing.users.await_args.args[0]
 
 
 @pytest.mark.asyncio

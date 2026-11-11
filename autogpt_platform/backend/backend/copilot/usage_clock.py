@@ -169,11 +169,11 @@ async def _refresh_once(
         )
     except Exception:
         logger.warning(
-            f"Could not re-read the billing period of user {user_id} from Stripe",
+            f"Could not re-read the billing period of user {user_id[:8]} from Stripe",
             exc_info=True,
         )
         outcome = "stripe_error"
-    logger.info(f"Billing clock re-read for user {user_id}: {outcome}")
+    logger.info(f"Billing clock re-read for user {user_id[:8]}: {outcome}")
     if outcome == "saved":
         return "saved"
     if outcome in ("no_subscription", "not_stripe_billed"):

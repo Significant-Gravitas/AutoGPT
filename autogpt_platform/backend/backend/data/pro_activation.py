@@ -21,6 +21,7 @@ class UsageActivationState(BaseModel):
     period_start: int | None = None
     period_end: int | None = None
     billing_anchor: int | None = None
+    # The trial's own dates, only while the account is on the trial.
     trial_started_at: int | None = None
     trial_ends_at: int | None = None
     # Paid extra weeks that haven't expired or run out, taken together.
@@ -38,12 +39,14 @@ async def get_usage_activation_state(user_id: str) -> UsageActivationState:
           AND t."endsAt" > CURRENT_TIMESTAMP THEN t."id" END AS trial_id,
         u."subscriptionTier"::text AS tier,
         (a."id" IS NULL OR a."readyAt" IS NOT NULL) AS ready,
-        EXTRACT(EPOCH FROM u."createdAt")::bigint AS created_at,
+        FLOOR(EXTRACT(EPOCH FROM u."createdAt"))::bigint AS created_at,
         (u."stripeCustomerId" IS NOT NULL) AS has_stripe_customer,
         c."periodStart" AS period_start, c."periodEnd" AS period_end,
         c."billingCycleAnchor" AS billing_anchor,
-        EXTRACT(EPOCH FROM t."startedAt")::bigint AS trial_started_at,
-        EXTRACT(EPOCH FROM t."endsAt")::bigint AS trial_ends_at,
+        CASE WHEN u."subscriptionTier" = 'TRIAL'
+          THEN FLOOR(EXTRACT(EPOCH FROM t."startedAt"))::bigint END AS trial_started_at,
+        CASE WHEN u."subscriptionTier" = 'TRIAL'
+          THEN FLOOR(EXTRACT(EPOCH FROM t."endsAt"))::bigint END AS trial_ends_at,
         COALESCE(x."remaining", 0)::bigint AS extra_remaining,
         COALESCE(x."total", 0)::bigint AS extra_total,
         x."expires_at" AS extra_expires_at,

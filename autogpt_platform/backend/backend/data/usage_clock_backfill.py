@@ -16,11 +16,10 @@ import asyncio
 import logging
 
 import stripe
-from prisma.enums import SubscriptionTier
-from prisma.models import User
 from pydantic import BaseModel
 
 from backend.data import db
+from backend.data.db import query_raw_with_schema
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.usage_clock import billing_period, save_billing_clock
 
@@ -77,10 +76,7 @@ async def _copy_one(
         saved = await save_billing_clock(user_id, subscription)
     except Exception:
         summary.failed += 1
-        logger.exception(
-            f"Could not save the billing clock of subscription "
-            f"{subscription.get('id')}"
-        )
+        logger.exception(f"Could not save the billing clock of user {user_id[:8]}")
         return
     if saved:
         summary.saved += 1
@@ -90,13 +86,13 @@ async def _copy_one(
 
 async def _users_by_customer() -> dict[str, str]:
     """Stripe customer id to user id, for every account Stripe bills."""
-    users = await User.prisma().find_many(
-        where={
-            "stripeCustomerId": {"not": None},
-            "subscriptionTier": {"not": SubscriptionTier.ENTERPRISE},
-        },
+    rows = await query_raw_with_schema(
+        """SELECT "id", "stripeCustomerId" AS customer
+        FROM {schema_prefix}"User"
+        WHERE "stripeCustomerId" IS NOT NULL
+            AND "subscriptionTier"::text <> 'ENTERPRISE'"""
     )
-    return {user.stripeCustomerId: user.id for user in users if user.stripeCustomerId}
+    return {row["customer"]: row["id"] for row in rows}
 
 
 def main() -> None:

@@ -253,6 +253,6 @@ async def _debit_extra_weeks(user_id: str, amount: int, now: int) -> None:
     except Exception:
         logger.error(
             f"Could not take {amount} microdollars from the extra weeks of "
-            f"user {user_id}; it stays counted against the plan's week",
+            f"user {user_id[:8]}; it stays counted against the plan's week",
             exc_info=True,
         )
