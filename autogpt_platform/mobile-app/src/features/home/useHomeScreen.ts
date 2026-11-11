@@ -9,7 +9,7 @@ import { getHome, homeKeys } from "@/lib/api/home";
 import { authClient } from "@/lib/auth/client";
 import { isSessionGone, signOut } from "@/lib/session";
 
-import { firstName, inputPlaceholder } from "./helpers";
+import { firstName, hasExistingWork, inputPlaceholder } from "./helpers";
 import { startChat } from "./startChat";
 
 const FALLBACK_PROMPTS = [
@@ -88,7 +88,7 @@ export function useHomeScreen() {
     experts: team,
     selected,
     select: setSelectedID,
-    placeholder: inputPlaceholder(selected),
+    placeholder: inputPlaceholder(selected, hasExistingWork(dashboard)),
     prompts,
     isStarting,
     error,

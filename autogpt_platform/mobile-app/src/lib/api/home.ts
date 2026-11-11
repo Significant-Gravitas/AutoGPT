@@ -37,6 +37,9 @@ export interface HomeDashboard {
   briefing: { completed_count: number };
   active_tasks: HomeActiveTask[];
   upcoming_tasks: HomeUpcomingTask[];
+  team: { total: number };
+  week: { run_count: number };
+  recent_work?: { total_count?: number; groups?: unknown[] } | null;
 }
 
 export const homeKeys = {

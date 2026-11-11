@@ -1,4 +1,5 @@
 import { isSessionID } from "@/lib/api/chat";
+import type { HomeDashboard } from "@/lib/api/home";
 import { FRONTEND_URL } from "@/lib/env";
 
 import { expertRoleLabel } from "./expertRoleLabel";
@@ -78,10 +79,29 @@ export function sentenceWords(part: string) {
   return { mark, words };
 }
 
-export function inputPlaceholder(expert: Pick<Recipient, "name"> | null) {
-  return expert
-    ? `What should ${expert.name} work on?`
-    : "I'm a chef and I hate...";
+const TEAM_PLACEHOLDER =
+  "What should the team work on? e.g. 'Follow up with yesterday's leads'";
+
+/** The web's rule (`useHomeComposer`) for an account that already has work going. */
+export function hasExistingWork(dashboard: HomeDashboard | undefined) {
+  if (!dashboard) return false;
+  return (
+    dashboard.team.total > 0 ||
+    dashboard.attention.length > 0 ||
+    dashboard.active_tasks.length > 0 ||
+    dashboard.upcoming_tasks.length > 0 ||
+    dashboard.week.run_count > 0 ||
+    (dashboard.recent_work?.total_count ?? 0) > 0 ||
+    (dashboard.recent_work?.groups?.length ?? 0) > 0
+  );
+}
+
+export function inputPlaceholder(
+  expert: Pick<Recipient, "name"> | null,
+  hasWork = false,
+) {
+  if (expert) return `What should ${expert.name} work on?`;
+  return hasWork ? TEAM_PLACEHOLDER : "I'm a chef and I hate...";
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;

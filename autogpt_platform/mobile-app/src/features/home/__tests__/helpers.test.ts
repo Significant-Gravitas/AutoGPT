@@ -3,6 +3,7 @@ import { FRONTEND_URL } from "@/lib/env";
 import {
   firstName,
   greetingLine,
+  hasExistingWork,
   homeLinkTarget,
   inputPlaceholder,
   introParts,
@@ -146,6 +147,39 @@ describe("inputPlaceholder", () => {
 
   it("names the expert", () => {
     expect(inputPlaceholder({ name: "Max" })).toBe("What should Max work on?");
+    expect(inputPlaceholder({ name: "Max" }, true)).toBe("What should Max work on?");
+  });
+
+  it("asks about the team once the account has work going", () => {
+    expect(inputPlaceholder(null, true)).toBe(
+      "What should the team work on? e.g. 'Follow up with yesterday's leads'",
+    );
+  });
+});
+
+describe("hasExistingWork", () => {
+  const empty = {
+    attention: [],
+    briefing: { completed_count: 0 },
+    active_tasks: [],
+    upcoming_tasks: [],
+    team: { total: 0 },
+    week: { run_count: 0 },
+  };
+
+  it("is false with no dashboard and for an untouched account", () => {
+    expect(hasExistingWork(undefined)).toBe(false);
+    expect(hasExistingWork(empty)).toBe(false);
+    expect(hasExistingWork({ ...empty, recent_work: null })).toBe(false);
+  });
+
+  it.each([
+    ["a hired expert", { team: { total: 1 } }],
+    ["a run this week", { week: { run_count: 3 } }],
+    ["recent work", { recent_work: { total_count: 2 } }],
+    ["a recent work group", { recent_work: { groups: [{}] } }],
+  ])("is true with %s", (_label, patch) => {
+    expect(hasExistingWork({ ...empty, ...patch })).toBe(true);
   });
 });
 
