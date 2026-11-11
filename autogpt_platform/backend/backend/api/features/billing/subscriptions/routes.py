@@ -24,6 +24,7 @@ from backend.api.features.billing.client_country import ClientCountry
 from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
+from backend.api.features.chat.usage_reset import settle_card_reset
 from backend.copilot.rate_limit import get_tier_multipliers
 from backend.copilot.usage_mode import billing_clock_live
 from backend.data import checkout_audience
@@ -830,6 +831,13 @@ def _stripe_event_dedup_key(event_id: str) -> str:
     return f"stripe_webhook_event:{event_id}"
 
 
+def _is_usage_reset_checkout(session: dict) -> bool:
+    """Whether a completed Checkout session says it paid for a usage reset.
+    Subscription and top-up sessions never reach the reset's code."""
+    metadata = session.get("metadata") or {}
+    return session.get("mode") == "payment" and metadata.get("usage_reset") == "1"
+
+
 async def _claim_stripe_event(event_id: str) -> bool:
     """Mark a Stripe webhook event as claimed via Redis SETNX.
 
@@ -1001,6 +1009,20 @@ async def stripe_webhook(request: Request):
                 )
                 return Response(status_code=200)
             await UserCredit().fulfill_checkout(session_id=session_id)
+            if _is_usage_reset_checkout(data_object):
+                # Grants the reset this session paid for, once. The grant
+                # re-reads the session from Stripe: the event only routes.
+                granted = await settle_card_reset(session_id)
+                if granted is None and data_object.get("payment_status") == "paid":
+                    # Paid, yet no pending purchase has this session, or the
+                    # session isn't what the purchase asked for. Retrying
+                    # can't change that: it needs a person. ERROR reaches
+                    # Sentry; the payment is found in Stripe by this event.
+                    logger.error(
+                        "stripe_webhook: %s for a paid usage reset was not "
+                        "granted: no pending purchase matches its session",
+                        event_type,
+                    )
             await sync_tier_from_checkout_session(data_object)
             # Only `checkout.session.completed` drives the welcome email.
             # `customer.subscription.created` fires at signup too; listening to

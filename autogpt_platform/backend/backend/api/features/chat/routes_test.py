@@ -1812,6 +1812,84 @@ def test_usage_state_is_ok_with_room_left(mocker: pytest_mock.MockerFixture) -> 
     )
 
 
+def _mock_reset_offer(mocker: pytest_mock.MockerFixture, balance: object) -> AsyncMock:
+    from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
+
+    """A subscriber stopped by a limit whose plan sells a reset for $80."""
+    resets_at = datetime.now(UTC) + timedelta(days=2)
+    window = UsageWindow(used=1, limit=1, resets_at=resets_at)
+    status = CoPilotUsageStatus(
+        daily=window,
+        weekly=window,
+        on_billing_clock=True,
+        blocked_by="weekly",
+        reset_price=8_000,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_usage_status",
+        new_callable=AsyncMock,
+        return_value=status,
+    )
+    credits = MagicMock()
+    credits.get_credits = AsyncMock(
+        side_effect=balance if isinstance(balance, Exception) else None,
+        return_value=balance,
+    )
+    return mocker.patch(
+        "backend.api.features.chat.routes.get_user_credit_model",
+        new_callable=AsyncMock,
+        return_value=credits,
+    )
+
+
+@pytest.mark.parametrize(
+    "balance,pay_with",
+    [
+        (8_000, "credits"),  # covers the whole price
+        (7_999, "card"),  # a credit short: the whole price by card
+        (0, "card"),
+        (RuntimeError("database down"), "card"),  # unknown balance: the card
+    ],
+)
+def test_usage_offers_a_reset_paid_by_credits_or_by_card_never_both(
+    mocker: pytest_mock.MockerFixture, balance: object, pay_with: str
+) -> None:
+    mocker.patch.object(chat_routes.settings.config, "enable_credit", True)
+    _mock_reset_offer(mocker, balance)
+
+    data = client.get("/usage").json()
+
+    assert data["reset_offer"] == {"price_credits": 8_000, "pay_with": pay_with}
+    assert data["reset_active"] is False
+
+
+def test_usage_offers_no_reset_where_nothing_is_sold(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch.object(chat_routes.settings.config, "enable_credit", False)
+    credits = _mock_reset_offer(mocker, 99_999)
+
+    data = client.get("/usage").json()
+
+    assert data["reset_offer"] is None
+    # The balance is only read for an offer.
+    credits.assert_not_awaited()
+
+
+def test_usage_reads_no_balance_without_an_offer(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch.object(chat_routes.settings.config, "enable_credit", True)
+    _mock_usage(mocker, daily_used=500, weekly_used=2000)
+    credits = mocker.patch(
+        "backend.api.features.chat.routes.get_user_credit_model",
+        new_callable=AsyncMock,
+    )
+
+    assert client.get("/usage").json()["reset_offer"] is None
+    credits.assert_not_awaited()
+
+
 def test_usage_rejects_unauthenticated_request() -> None:
     """GET /usage should return 401 when no valid JWT is provided."""
     unauthenticated_app = fastapi.FastAPI()

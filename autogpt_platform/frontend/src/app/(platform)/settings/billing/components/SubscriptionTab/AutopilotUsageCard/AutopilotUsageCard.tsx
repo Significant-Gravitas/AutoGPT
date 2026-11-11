@@ -68,8 +68,9 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
           )}
           <UsageExtras
             reserve={state.reserve}
-            extra={state.extra}
+            resetActive={state.resetActive}
             offer={state.offer}
+            weeklyResetsAt={state.weeklyResetsAt}
           />
           {state.lifetime && (
             <div className="mt-6 border-t border-separator pt-5">

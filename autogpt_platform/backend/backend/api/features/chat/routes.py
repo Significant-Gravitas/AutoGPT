@@ -113,6 +113,7 @@ from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
     RateLimitExceeded,
     RateLimitUnavailable,
+    UsageResetOffer,
     check_rate_limit,
     enforce_payment_paywall,
     get_global_rate_limits,
@@ -188,6 +189,7 @@ from backend.copilot.transports import (
 )
 from backend.copilot.trial_reads import sharing_trial_reads
 from backend.copilot.turn_tracing import MODEL_OUTPUT_CHUNKS
+from backend.data.credit import get_user_credit_model
 from backend.data.db_accessors import background_task_db
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
@@ -1523,9 +1525,27 @@ async def get_copilot_usage(
         tier=tier,
     )
     if not settings.config.enable_credit:
-        # An extra week is paid for with credits: without them, no offer.
-        status = status.model_copy(update={"extra_week_price": 0})
-    return CoPilotUsagePublic.from_status(status)
+        # No payments on this install: nothing is sold, a reset included.
+        status = status.model_copy(update={"reset_price": 0})
+    usage = CoPilotUsagePublic.from_status(status)
+    if usage.reset_offer is None:
+        return usage
+    return usage.model_copy(
+        update={"reset_offer": await _priced_for(user_id, usage.reset_offer)}
+    )
+
+
+async def _priced_for(user_id: str, offer: UsageResetOffer) -> UsageResetOffer:
+    """The offer with how this customer would pay it: from credits when the
+    balance covers the whole price, otherwise by card. Read only when there
+    is an offer; a balance that can't be read means the card."""
+    try:
+        credits = await get_user_credit_model(user_id)
+        covered = await credits.get_credits(user_id) >= offer.price_credits
+    except Exception:
+        logger.warning("Could not read the credit balance for a reset offer")
+        covered = False
+    return offer.model_copy(update={"pay_with": "credits" if covered else "card"})
 
 
 class RateLimitResetResponse(BaseModel):

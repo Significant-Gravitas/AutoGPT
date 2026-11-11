@@ -15,7 +15,13 @@ from prisma.enums import (
     SubscriptionTier,
 )
 from prisma.errors import PrismaError, UniqueViolationError
-from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
+from prisma.models import (
+    CreditRefundRequest,
+    CreditTransaction,
+    UsageReset,
+    User,
+    UserBalance,
+)
 from prisma.types import (
     CreditRefundRequestCreateInput,
     CreditTransactionWhereInput,
@@ -1222,6 +1228,21 @@ class UserCredit(UserCreditBase):
         )
         if transaction:
             return transaction
+        # A paid usage reset is a card payment that buys no credits: refunding
+        # it (or losing a dispute over it) takes none back.
+        if request.payment_intent and await UsageReset.prisma().find_first(
+            where={"stripePaymentIntentId": str(request.payment_intent)}
+        ):
+            # A dispute is a chargeback someone must answer in Stripe; only
+            # ERROR reaches Sentry.
+            say = (
+                logger.error if isinstance(request, stripe.Dispute) else logger.warning
+            )
+            say(
+                f"Ignoring {request.id} (${request.amount / 100:.2f}): its "
+                "payment bought a usage reset, which grants no credits"
+            )
+            return None
         # A Checkout top-up stays keyed by its session until fulfilled, so a miss
         # raises (Stripe retries) unless the payment cannot have bought credits.
         if not request.payment_intent or not await self._paid_invoice_without_credits(

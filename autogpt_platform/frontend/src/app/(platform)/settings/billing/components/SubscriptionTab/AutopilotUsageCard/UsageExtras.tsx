@@ -1,20 +1,29 @@
 "use client";
 
-import type { ExtraWeekOffer as Offer } from "@/app/api/__generated__/models/extraWeekOffer";
-import { ExtraWeekOffer } from "@/app/(platform)/copilot/components/UsageLimits/ExtraWeek/ExtraWeekOffer";
+import type { UsageResetOffer as Offer } from "@/app/api/__generated__/models/usageResetOffer";
+import { PaidResetOffer } from "@/app/(platform)/copilot/components/UsageLimits/PaidReset/PaidResetOffer";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatUsagePercent } from "@/services/usageExperience/helpers";
 
 interface Props {
   reserve: { percent: number; refills: string | null } | null;
-  extra: { percent: number; count: number; expires: string | null } | null;
+  /** A paid reset in force, and the weekly reset it lasts until. */
+  resetActive: { until: string | null } | null;
+  /** Sent only while a limit is reached. */
   offer: Offer | null;
+  weeklyResetsAt?: string | Date | null;
 }
 
 /** What limits on the customer's own billing clock add to the usage card:
- *  the daily reserve, any paid extra weeks, and the offer to add one. */
-export function UsageExtras({ reserve, extra, offer }: Props) {
-  if (!reserve && !extra && !offer) return null;
+ *  the daily reserve, a paid reset in force, and the offer to buy one when
+ *  a limit is reached. */
+export function UsageExtras({
+  reserve,
+  resetActive,
+  offer,
+  weeklyResetsAt,
+}: Props) {
+  if (!reserve && !resetActive && !offer) return null;
   return (
     <div className="mt-6 flex flex-col gap-4 border-t border-separator pt-5">
       {reserve && (
@@ -24,19 +33,19 @@ export function UsageExtras({ reserve, extra, offer }: Props) {
           note={`A small part of your weekly limit kept back each day, so scheduled work keeps running after the rest is used.${reserve.refills ? ` Refills ${reserve.refills}.` : ""}`}
         />
       )}
-      {extra && (
+      {resetActive && (
         <UsageLine
-          label={extra.count > 1 ? `${extra.count} extra weeks` : "Extra week"}
-          figure={`${formatUsagePercent(extra.percent)} used`}
-          note={`Used once your weekly limit runs out.${extra.expires ? ` Expires ${extra.expires}.` : ""}`}
+          label="Reset active"
+          figure="No daily limit"
+          note={`Your daily limit is lifted until your weekly reset${resetActive.until ? ` ${resetActive.until}` : ""}. The usage above is what you’ve used since your reset.`}
         />
       )}
       {offer && (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Text variant="small-loose" tone="secondary">
-            Out of usage? Add another week now.
+            Need to keep going? Reset your daily and weekly limits now.
           </Text>
-          <ExtraWeekOffer offer={offer} />
+          <PaidResetOffer offer={offer} weeklyResetsAt={weeklyResetsAt} />
         </div>
       )}
     </div>

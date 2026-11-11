@@ -15,7 +15,7 @@ import {
   budgetOutTitle,
   budgetResetSentence,
 } from "@/services/usageExperience/budget";
-import { WeeklyLimitExtras } from "../ExtraWeek/WeeklyLimitExtras";
+import { LimitReachedExtras } from "../PaidReset/LimitReachedExtras";
 import type { UsageNoticeContext } from "./useUsageLimitReachedCard";
 import { useUsageLimitReachedCard } from "./useUsageLimitReachedCard";
 
@@ -84,7 +84,7 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
             daily={state.usage?.daily}
             weekly={state.usage?.weekly}
           />
-          <WeeklyLimitExtras window={state.wait.window} usage={state.usage} />
+          <LimitReachedExtras window={state.wait.window} usage={state.usage} />
         </div>
       )}
       {isOffer && (

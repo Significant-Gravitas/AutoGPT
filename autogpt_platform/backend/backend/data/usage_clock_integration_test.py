@@ -49,8 +49,7 @@ async def test_a_period_is_copied_and_read_back_with_the_usage_state(billing_use
     assert state.billing_anchor == START
     assert state.has_stripe_customer is True
     assert state.created_at is not None and state.created_at > 1_700_000_000
-    assert (state.extra_remaining, state.extra_total, state.extra_count) == (0, 0, 0)
-    assert state.extra_expires_at is None
+    assert (state.reset_week_start, state.reset_count) == (None, 0)
 
 
 @pytest.mark.asyncio

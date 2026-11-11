@@ -74,7 +74,7 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
-    # Per-plan daily, weekly and reserve limits and the extra-week price
+    # Per-plan daily, weekly and reserve limits and the paid-reset price
     # (backend/copilot/usage_limits.py).
     USAGE_PLAN_LIMITS = "usage-plan-limits"
     # The second from which usage limits run on each customer's billing clock

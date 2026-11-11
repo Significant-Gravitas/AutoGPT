@@ -206,8 +206,7 @@ model User {
   subscriptionTrial SubscriptionTrial?
   paidUsageActivation PaidUsageActivation?
   usageBillingClock UsageBillingClock?
-  usageExtraAllowances UsageExtraAllowance[]
-  usageExtraDebits UsageExtraDebit[]
+  usageResets UsageReset[]
   proActivationAttempt ProActivationAttempt?
 
   // Relations
@@ -374,38 +373,38 @@ model UsageBillingClock {
   updatedAt            DateTime @default(now()) @updatedAt
 }
 
-// One paid extra week of usage, bought with credits in the same transaction
-// as its CreditTransaction (key "EXTRA-WEEK-<purchaseKey>"). Unix seconds, UTC.
-model UsageExtraAllowance {
-  id                 String @id @default(uuid())
-  userId             String
-  user               User @relation(fields: [userId], references: [id], onDelete: Cascade)
+// One paid usage reset: a fresh weekly allowance with the daily limit lifted,
+// for the weekly window it was granted in and no longer. Paid from the
+// credit balance (granted in the same transaction as its CreditTransaction,
+// key "USAGE-RESET-<purchaseKey>") or by card through a Stripe Checkout
+// session (pending until Stripe confirms the payment). Unix seconds, UTC.
+model UsageReset {
+  id                      String @id @default(uuid())
+  userId                  String
+  user                    User @relation(fields: [userId], references: [id], onDelete: Cascade)
   // The buyer's idempotency key: a retried purchase returns this row.
-  purchaseKey        String
-  tier               SubscriptionTier
-  // The plan's weekly limit when it was bought.
-  amountMicrodollars BigInt
-  usedMicrodollars   BigInt @default(0)
-  priceCredits       Int
-  purchasedAt        BigInt
-  // purchasedAt + 30 days, whatever resets or plan changes happen meanwhile.
-  expiresAt          BigInt
-  createdAt          DateTime @default(now())
+  purchaseKey             String
+  tier                    SubscriptionTier
+  // The price in cents, whichever way it was paid.
+  priceCredits            Int
+  // "credits" | "card"
+  paidWith                String
+  // "pending" (a card payment Stripe hasn't confirmed) | "granted"
+  status                  String
+  stripeCheckoutSessionId String? @unique
+  stripePaymentIntentId   String? @unique
+  // The weekly window it applies to, set when granted.
+  weekStart               BigInt?
+  weekEnd                 BigInt?
+  // Which reset of that window it is: 1 for the first. Unique per window, so
+  // two purchases can never both be the same reset.
+  sequence                Int?
+  grantedAt               BigInt?
+  createdAt               DateTime @default(now())
 
   @@unique([userId, purchaseKey])
-  @@index([userId, expiresAt])
-}
-
-// One draw on a user's extra weeks, by the key of the cost that made it, so
-// a draw repeated after a lost reply takes nothing more.
-model UsageExtraDebit {
-  key                String   @id
-  userId             String
-  user               User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  amountMicrodollars BigInt
-  createdAt          DateTime @default(now())
-
-  @@index([userId])
+  @@unique([userId, weekStart, sequence])
+  @@index([userId, status, weekStart])
 }
 
 // Cutover fence: old settled payments cannot become new activation resets on replay.

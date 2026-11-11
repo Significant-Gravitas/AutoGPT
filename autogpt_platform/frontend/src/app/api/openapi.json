@@ -5881,17 +5881,61 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/chat/usage/extra-week": {
+    "/api/chat/usage/paid-reset": {
       "post": {
         "tags": ["v2", "chat", "chat"],
-        "summary": "Buy Extra Week Of Usage",
-        "description": "Buy one extra week of usage from the credit balance.",
-        "operationId": "postV2BuyExtraWeekOfUsage",
+        "summary": "Buy Usage Reset",
+        "description": "Buy a usage reset: with credits when the balance covers it, otherwise\nby card through the checkout this returns.",
+        "operationId": "postV2BuyUsageReset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UsageResetRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UsageResetResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "A reset can't be bought now (no limit is reached, the weekly reset is minutes away, the plan has none), or its price is no longer the one shown; nothing was charged"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "Usage limits can't be read, or the card checkout can't be opened, right now; nothing was charged"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/usage/paid-reset/confirm": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Confirm Usage Reset",
+        "description": "Called when the customer returns from paying by card: grants the reset\nif Stripe says the payment went through and its webhook hasn't yet.",
+        "operationId": "postV2ConfirmUsageReset",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ExtraWeekPurchaseRequest"
+                "$ref": "#/components/schemas/UsageResetConfirmRequest"
               }
             }
           },
@@ -5903,17 +5947,13 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExtraWeekPurchaseResponse"
+                  "$ref": "#/components/schemas/UsageResetConfirmResponse"
                 }
               }
             }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "402": { "description": "Not enough credits; nothing was charged" },
-          "409": {
-            "description": "This account can't buy an extra week, or its price is no longer the one shown; nothing was charged"
           },
           "422": {
             "description": "Validation Error",
@@ -5923,7 +5963,9 @@
               }
             }
           },
-          "503": { "description": "Usage limits can't be read right now" }
+          "503": {
+            "description": "Usage limits can't be read, or the card checkout can't be opened, right now; nothing was charged"
+          }
         },
         "security": [{ "HTTPBearerJWT": [] }]
       }
@@ -21356,10 +21398,15 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Blocked By"
           },
-          "extra_weeks": {
-            "items": { "$ref": "#/components/schemas/ExtraWeek" },
+          "reset_active": {
+            "type": "boolean",
+            "title": "Reset Active",
+            "default": false
+          },
+          "reset_purchases": {
+            "items": { "$ref": "#/components/schemas/ResetPurchase" },
             "type": "array",
-            "title": "Extra Weeks",
+            "title": "Reset Purchases",
             "default": []
           }
         },
@@ -22740,7 +22787,7 @@
               { "$ref": "#/components/schemas/UsageWindowPublic" },
               { "type": "null" }
             ],
-            "description": "Null when no daily cap is configured (unlimited)."
+            "description": "Null when there is no daily cap: none is configured (unlimited), or a paid reset has lifted it until the weekly reset."
           },
           "weekly": {
             "anyOf": [
@@ -22766,19 +22813,18 @@
             ],
             "description": "Today's daily reserve: a small part of the weekly limit kept back each day, usable after the rest of the week is gone. Null when the plan has none."
           },
-          "extra": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/ExtraWeeksPublic" },
-              { "type": "null" }
-            ],
-            "description": "Paid extra weeks that haven't expired or run out. They are used once the weekly limit runs out."
+          "reset_active": {
+            "type": "boolean",
+            "title": "Reset Active",
+            "description": "A paid reset is in force: the weekly limit was started over and there is no daily limit until the weekly reset, whose time did not move.",
+            "default": false
           },
-          "extra_week_offer": {
+          "reset_offer": {
             "anyOf": [
-              { "$ref": "#/components/schemas/ExtraWeekOffer" },
+              { "$ref": "#/components/schemas/UsageResetOffer" },
               { "type": "null" }
             ],
-            "description": "Set when the account can buy an extra week now."
+            "description": "Set when a limit is reached and the account can buy a paid reset now."
           },
           "state": {
             "type": "string",
@@ -27050,114 +27096,6 @@
           "description"
         ],
         "title": "ExpertWorkflowRef"
-      },
-      "ExtraWeek": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "tier": { "type": "string", "title": "Tier" },
-          "amount": { "type": "integer", "title": "Amount" },
-          "used": { "type": "integer", "title": "Used" },
-          "price_credits": { "type": "integer", "title": "Price Credits" },
-          "purchased_at": { "type": "integer", "title": "Purchased At" },
-          "expires_at": { "type": "integer", "title": "Expires At" }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "tier",
-          "amount",
-          "used",
-          "price_credits",
-          "purchased_at",
-          "expires_at"
-        ],
-        "title": "ExtraWeek",
-        "description": "One extra week. Amounts are microdollars, times Unix seconds."
-      },
-      "ExtraWeekOffer": {
-        "properties": {
-          "price_credits": {
-            "type": "integer",
-            "title": "Price Credits",
-            "description": "Its price in credits (cents)."
-          }
-        },
-        "type": "object",
-        "required": ["price_credits"],
-        "title": "ExtraWeekOffer",
-        "description": "An extra week this account can buy now."
-      },
-      "ExtraWeekPurchaseRequest": {
-        "properties": {
-          "purchase_key": {
-            "type": "string",
-            "maxLength": 64,
-            "minLength": 8,
-            "pattern": "^[A-Za-z0-9_-]+$",
-            "title": "Purchase Key",
-            "description": "A key the client makes up for this purchase (a UUID). Sending it again returns the same purchase and charges nothing more."
-          },
-          "price_credits": {
-            "type": "integer",
-            "exclusiveMinimum": 0.0,
-            "title": "Price Credits",
-            "description": "The price the customer was shown and agreed to, from the usage read-out's extra_week_offer. Refused if it has changed."
-          }
-        },
-        "type": "object",
-        "required": ["purchase_key", "price_credits"],
-        "title": "ExtraWeekPurchaseRequest"
-      },
-      "ExtraWeekPurchaseResponse": {
-        "properties": {
-          "credits_charged": {
-            "type": "integer",
-            "title": "Credits Charged",
-            "description": "Credits taken by this request; 0 when the key had already bought it."
-          },
-          "remaining_balance": {
-            "type": "integer",
-            "title": "Remaining Balance",
-            "description": "Credit balance now (in cents)."
-          },
-          "expires_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Expires At",
-            "description": "When this extra week expires."
-          },
-          "usage": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/CoPilotUsagePublic" },
-              { "type": "null" }
-            ],
-            "description": "Usage after the purchase; null when it couldn't be read just now (the purchase still went through)."
-          }
-        },
-        "type": "object",
-        "required": ["credits_charged", "remaining_balance", "expires_at"],
-        "title": "ExtraWeekPurchaseResponse"
-      },
-      "ExtraWeeksPublic": {
-        "properties": {
-          "percent_used": {
-            "type": "number",
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Percent Used"
-          },
-          "expires_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Expires At",
-            "description": "When the first of them expires."
-          },
-          "count": { "type": "integer", "title": "Count" }
-        },
-        "type": "object",
-        "required": ["percent_used", "expires_at", "count"],
-        "title": "ExtraWeeksPublic",
-        "description": "Paid extra weeks still usable, as a share used. No dollar figures."
       },
       "FactListResponse": {
         "properties": {
@@ -34444,6 +34382,59 @@
         "title": "RequeueExecutionResponse",
         "description": "Response model for requeue execution operations"
       },
+      "ResetPurchase": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "tier": { "type": "string", "title": "Tier" },
+          "price_credits": { "type": "integer", "title": "Price Credits" },
+          "paid_with": {
+            "type": "string",
+            "enum": ["credits", "card"],
+            "title": "Paid With"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "granted"],
+            "title": "Status"
+          },
+          "week_start": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Week Start"
+          },
+          "week_end": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Week End"
+          },
+          "sequence": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Sequence"
+          },
+          "granted_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Granted At"
+          },
+          "checkout_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Checkout Session Id"
+          },
+          "payment_intent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Payment Intent Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "tier",
+          "price_credits",
+          "paid_with",
+          "status"
+        ],
+        "title": "ResetPurchase",
+        "description": "One purchase of a usage reset. Times are Unix seconds."
+      },
       "ResponseType": {
         "type": "string",
         "enum": [
@@ -39629,6 +39620,132 @@
           "total_bytes"
         ],
         "title": "UploadPartResponse"
+      },
+      "UsageResetConfirmRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9_]+$",
+            "title": "Session Id",
+            "description": "The Stripe Checkout session the customer returned from."
+          }
+        },
+        "type": "object",
+        "required": ["session_id"],
+        "title": "UsageResetConfirmRequest"
+      },
+      "UsageResetConfirmResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["granted", "pending"],
+            "title": "Status",
+            "description": "'pending': Stripe hasn't confirmed the payment (yet); nothing is reset."
+          },
+          "resets_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Resets At"
+          },
+          "usage": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CoPilotUsagePublic" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "UsageResetConfirmResponse"
+      },
+      "UsageResetOffer": {
+        "properties": {
+          "price_credits": {
+            "type": "integer",
+            "title": "Price Credits",
+            "description": "Its price in cents, which is also its price in credits."
+          },
+          "pay_with": {
+            "type": "string",
+            "enum": ["credits", "card"],
+            "title": "Pay With",
+            "description": "'credits' when the credit balance covers the whole price, which is then taken from it; otherwise 'card': the whole price is paid by card. Never part of each.",
+            "default": "card"
+          }
+        },
+        "type": "object",
+        "required": ["price_credits"],
+        "title": "UsageResetOffer",
+        "description": "A paid reset this account can buy now."
+      },
+      "UsageResetRequest": {
+        "properties": {
+          "purchase_key": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Purchase Key",
+            "description": "A key the client makes up for this purchase (a UUID). Sending it again returns the same purchase and charges nothing more."
+          },
+          "price_credits": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Price Credits",
+            "description": "The price the customer was shown and agreed to, from the usage read-out's reset_offer. Refused if it has changed."
+          }
+        },
+        "type": "object",
+        "required": ["purchase_key", "price_credits"],
+        "title": "UsageResetRequest"
+      },
+      "UsageResetResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["granted", "payment_required"],
+            "title": "Status",
+            "description": "'granted': the limits are reset. 'payment_required': nothing is reset yet; send the customer to checkout_url to pay by card."
+          },
+          "paid_with": {
+            "type": "string",
+            "enum": ["credits", "card"],
+            "title": "Paid With"
+          },
+          "credits_charged": {
+            "type": "integer",
+            "title": "Credits Charged",
+            "description": "Credits taken by this request; 0 for a card payment or when the key had already bought it.",
+            "default": 0
+          },
+          "checkout_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Checkout Url",
+            "description": "Where to pay by card, when payment is required."
+          },
+          "resets_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Resets At",
+            "description": "When a granted reset ends: the weekly reset, unchanged."
+          },
+          "usage": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CoPilotUsagePublic" },
+              { "type": "null" }
+            ],
+            "description": "Usage after a granted reset; null when it couldn't be read just now (the purchase still went through)."
+          }
+        },
+        "type": "object",
+        "required": ["status", "paid_with"],
+        "title": "UsageResetResponse"
       },
       "UsageWindowPublic": {
         "properties": {

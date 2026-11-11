@@ -3,10 +3,11 @@
 The ``usage-plan-limits`` flag is a JSON object keyed by plan::
 
     {"PRO": {"daily": 3200000, "weekly": 8000000, "reserve": 250000,
-             "extra_week_credits": 1250}}
+             "reset_credits": 1250}}
 
-Amounts are microdollars of AI cost (1 USD = 1,000,000); the extra week's
-price is credits (1 credit = 1 cent). The defaults below are the approved
+Amounts are microdollars of AI cost (1 USD = 1,000,000); ``reset_credits``
+is the price of a paid usage reset in credits (1 credit = 1 cent), which is
+also its price in cents when paid by card. The defaults below are the approved
 launch numbers, so nothing depends on the flag being set or reachable. A
 plan's entry that fails validation is dropped whole and that plan keeps its
 default; the other plans are unaffected. A plan with neither an entry nor a
@@ -40,8 +41,8 @@ class PlanLimits(BaseModel):
     daily: int = Field(ge=10_000, le=10_000_000_000)
     weekly: int = Field(ge=10_000, le=10_000_000_000)
     reserve: int = Field(default=0, ge=0)
-    # 0: this plan can't buy an extra week.
-    extra_week_credits: int = Field(default=0, ge=0, le=1_000_000)
+    # 0: this plan can't buy a usage reset.
+    reset_credits: int = Field(default=0, ge=0, le=1_000_000)
 
     @model_validator(mode="after")
     def _fits_together(self) -> "PlanLimits":
@@ -51,8 +52,8 @@ class PlanLimits(BaseModel):
             raise ValueError("reserve is above daily")
         if self.reserve * MAX_WINDOW_DAYS > self.weekly:
             raise ValueError("a window's reserves would exceed weekly")
-        if 0 < self.extra_week_credits < 100:
-            raise ValueError("extra_week_credits is under one dollar")
+        if 0 < self.reset_credits < 100:
+            raise ValueError("reset_credits is under one dollar")
         return self
 
 
@@ -61,13 +62,13 @@ class PlanLimits(BaseModel):
 # up to exactly $68 that way.
 DEFAULT_PLAN_LIMITS: dict[str, PlanLimits] = {
     "PRO": PlanLimits(
-        daily=3_200_000, weekly=8_000_000, reserve=250_000, extra_week_credits=1_250
+        daily=3_200_000, weekly=8_000_000, reserve=250_000, reset_credits=1_250
     ),
     "MAX": PlanLimits(
         daily=22_666_667,
         weekly=68_000_000,
         reserve=2_000_000,
-        extra_week_credits=8_000,
+        reset_credits=8_000,
     ),
 }
 

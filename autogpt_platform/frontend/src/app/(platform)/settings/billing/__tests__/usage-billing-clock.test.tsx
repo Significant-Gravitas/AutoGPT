@@ -11,7 +11,6 @@ afterEach(() => setTrialUser(null));
 // Local times far ahead, so the card dates them the same in any time zone.
 const DAILY_RESET = new Date(2030, 10, 5, 20, 30, 56);
 const WEEKLY_RESET = new Date(2030, 10, 12, 8, 30, 56);
-const EXPIRES = new Date(2030, 11, 4, 20, 30, 56);
 
 function usage(over: Record<string, unknown> = {}) {
   server.use(
@@ -40,16 +39,14 @@ it("shows each window's exact reset in the reader's own time, never early", asyn
   expect(screen.getByText("Resets Tue, Nov 5, 8:31 PM")).toBeDefined();
 });
 
-it("shows nothing new for a plan without a reserve, extra week or offer", async () => {
+it("shows nothing new for a plan without a reserve, reset or offer", async () => {
   usage();
   render(<AutopilotUsageCard />);
 
   await screen.findByText("Resets Tue, Nov 12, 8:31 AM");
   expect(screen.queryByText("Daily reserve")).toBeNull();
-  expect(screen.queryByText("Extra week")).toBeNull();
-  expect(
-    screen.queryByRole("button", { name: /Add an extra week/ }),
-  ).toBeNull();
+  expect(screen.queryByText("Reset active")).toBeNull();
+  expect(screen.queryByRole("button", { name: /Reset limits now/ })).toBeNull();
 });
 
 it("shows the daily reserve and when it refills", async () => {
@@ -63,36 +60,36 @@ it("shows the daily reserve and when it refills", async () => {
   expect(screen.getByText(/Refills Tue, Nov 5, 8:31 PM\./)).toBeDefined();
 });
 
-it("shows a paid extra week, how much is used and when it expires", async () => {
-  usage({
-    extra: { percent_used: 62, count: 1, expires_at: EXPIRES.toISOString() },
-  });
+it("shows a paid reset in force: no daily limit until the weekly reset", async () => {
+  usage({ daily: null, reset_active: true });
   render(<AutopilotUsageCard />);
 
-  expect(await screen.findByText("Extra week")).toBeDefined();
-  expect(screen.getByText("62% used")).toBeDefined();
+  expect(await screen.findByText("Reset active")).toBeDefined();
+  expect(screen.getByText("No daily limit")).toBeDefined();
   expect(
     screen.getByText(
-      "Used once your weekly limit runs out. Expires Wed, Dec 4, 8:31 PM.",
+      "Your daily limit is lifted until your weekly reset Tue, Nov 12, 8:31 AM. The usage above is what you’ve used since your reset.",
     ),
   ).toBeDefined();
+  // The week's own reset is still shown, unchanged.
+  expect(screen.getByText("Resets Tue, Nov 12, 8:31 AM")).toBeDefined();
+  expect(screen.queryByRole("button", { name: /Reset limits now/ })).toBeNull();
 });
 
-it("counts stacked extra weeks", async () => {
+it("offers a reset at the plan's price only when the server sends an offer", async () => {
   usage({
-    extra: { percent_used: 10, count: 3, expires_at: EXPIRES.toISOString() },
+    state: "exhausted",
+    limiting_window: "weekly",
+    reset_offer: { price_credits: 8000, pay_with: "card" },
   });
   render(<AutopilotUsageCard />);
 
-  expect(await screen.findByText("3 extra weeks")).toBeDefined();
-});
-
-it("offers an extra week at the plan's price", async () => {
-  usage({ extra_week_offer: { price_credits: 8000 } });
-  render(<AutopilotUsageCard />);
-
   expect(
-    await screen.findByRole("button", { name: "Add an extra week · $80" }),
+    await screen.findByRole("button", { name: "Reset limits now · $80" }),
   ).toBeDefined();
-  expect(screen.getByText("Out of usage? Add another week now.")).toBeDefined();
+  expect(
+    screen.getByText(
+      "Need to keep going? Reset your daily and weekly limits now.",
+    ),
+  ).toBeDefined();
 });

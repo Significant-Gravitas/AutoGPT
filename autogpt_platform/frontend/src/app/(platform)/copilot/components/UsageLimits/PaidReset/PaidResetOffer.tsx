@@ -1,30 +1,43 @@
 "use client";
 
-import type { ExtraWeekOffer as Offer } from "@/app/api/__generated__/models/extraWeekOffer";
+import type { UsageResetOffer as Offer } from "@/app/api/__generated__/models/usageResetOffer";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { EXTRA_WEEK_TERMS, formatExtraWeekPrice } from "./helpers";
-import { useExtraWeekPurchase } from "./useExtraWeekPurchase";
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
+import { formatExactReset } from "@/services/usageExperience/resetTime";
+import {
+  describePayment,
+  formatResetPrice,
+  payLabel,
+  resetPromise,
+} from "./helpers";
+import { usePaidResetPurchase } from "./usePaidResetPurchase";
 
 interface Props {
   offer: Offer;
-  label?: string;
+  /** The weekly reset, which a paid reset lasts until and does not move. */
+  weeklyResetsAt?: string | Date | null;
   variant?: "primary" | "secondary";
   onBought?: () => void;
+  goToCheckout?: (url: string) => void;
 }
 
-export function ExtraWeekOffer({
+export function PaidResetOffer({
   offer,
-  label = "Add an extra week",
+  weeklyResetsAt,
   variant = "secondary",
   onBought,
+  goToCheckout,
 }: Props) {
-  const purchase = useExtraWeekPurchase({
+  const purchase = usePaidResetPurchase({
     priceCredits: offer.price_credits,
     onBought,
+    goToCheckout,
   });
-  const price = formatExtraWeekPrice(offer.price_credits);
+  const resetsAt = useReadEveryRender(() => formatExactReset(weeklyResetsAt));
+  const price = formatResetPrice(offer.price_credits);
+  const payWith = offer.pay_with ?? "card";
   return (
     <>
       <Button
@@ -33,27 +46,30 @@ export function ExtraWeekOffer({
         variant={variant}
         onClick={purchase.open}
       >
-        {label} · {price}
+        Reset limits now · {price}
       </Button>
       <Dialog
-        title="Add an extra week of usage?"
+        title="Reset your limits now?"
         styling={{ maxWidth: "440px" }}
         controlled={{ isOpen: purchase.isOpen, set: purchase.setIsOpen }}
       >
         <Dialog.Content>
           <div className="flex flex-col gap-2">
             <Text variant="body" tone="body">
-              {price} from your AutoGPT credit balance buys one more week of
-              your plan’s usage.
+              {resetPromise(resetsAt)}
             </Text>
             <ul className="flex list-disc flex-col gap-1 pl-5">
-              {EXTRA_WEEK_TERMS.map((term) => (
-                <li key={term}>
-                  <Text variant="body" as="span" tone="body">
-                    {term}
-                  </Text>
-                </li>
-              ))}
+              <li>
+                <Text variant="body" as="span" tone="body">
+                  Your weekly reset doesn’t move. Usage you haven’t used by then
+                  doesn’t carry over.
+                </Text>
+              </li>
+              <li>
+                <Text variant="body" as="span" tone="body">
+                  {describePayment(payWith, price)}
+                </Text>
+              </li>
             </ul>
           </div>
           <Dialog.Footer>
@@ -74,7 +90,7 @@ export function ExtraWeekOffer({
               disabled={purchase.isBuying}
               loading={purchase.isBuying}
             >
-              Pay {price}
+              {payLabel(payWith, price)}
             </Button>
           </Dialog.Footer>
         </Dialog.Content>

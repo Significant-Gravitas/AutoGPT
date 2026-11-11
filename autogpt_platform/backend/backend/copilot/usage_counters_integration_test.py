@@ -10,11 +10,14 @@ from redis.cluster import key_slot
 
 from backend.copilot.usage_counters import (
     EXPIRY_GRACE_SECONDS,
+    RESET_MARK_SECONDS,
     WEEK_EXPIRY_GRACE_SECONDS,
     clear_counters,
     counter_keys,
+    mark_reset,
     read_counters,
     record_spend,
+    reset_marked,
 )
 from backend.copilot.usage_windows import UsageWindows, windows_for_period
 from backend.data import usage_clock_integration_fixtures as fixtures
@@ -43,7 +46,7 @@ def windows(now: int) -> UsageWindows:
 
 
 async def _spend(user: str, windows: UsageWindows, cost: int, now: int, **kwargs):
-    options = {"reserve": RESERVE, "pool": POOL, "counts_daily": True, **kwargs}
+    options = {"reserve": RESERVE, "counts_daily": True, **kwargs}
     return await record_spend(user, None, windows, cost, now=now, **options)
 
 
@@ -71,7 +74,6 @@ async def test_the_days_first_dollars_are_the_reserve_and_the_rest_the_pool(
     # 1.5 of reserve, then 0.5 of reserve and 1.0 of pool.
     assert (first.day_used, first.week_used) == (1_500_000, 0)
     assert (second.day_used, second.week_used) == (3_000_000, 1_000_000)
-    assert first.weekly_excess == second.weekly_excess == 0
     assert await read_counters(user, None, windows) == (3_000_000, 1_000_000)
 
 
@@ -91,19 +93,6 @@ async def test_a_new_day_has_a_new_reserve_and_the_same_pool(
 
 
 @pytest.mark.asyncio
-async def test_the_part_of_a_cost_beyond_the_pool_is_reported_once(
-    user: str, windows: UsageWindows, now: int
-):
-    await _spend(user, windows, RESERVE + POOL - 1_000_000, now)
-
-    crossing = await _spend(user, windows, 4_000_000, now)
-    beyond = await _spend(user, windows, 2_000_000, now)
-
-    assert (crossing.weekly_excess, beyond.weekly_excess) == (3_000_000, 2_000_000)
-    assert beyond.week_used == POOL + 5_000_000
-
-
-@pytest.mark.asyncio
 async def test_a_background_cost_counts_against_the_pool_only(
     user: str, windows: UsageWindows, now: int
 ):
@@ -113,29 +102,61 @@ async def test_a_background_cost_counts_against_the_pool_only(
 
 
 @pytest.mark.asyncio
-async def test_without_a_weekly_cap_nothing_is_ever_beyond_the_pool(
-    user: str, windows: UsageWindows, now: int
-):
-    recorded = await _spend(user, windows, 9_000_000_000, now, reserve=0, pool=-1)
-
-    assert recorded.weekly_excess == 0
-    assert recorded.week_used == 9_000_000_000
-
-
-@pytest.mark.asyncio
-async def test_costs_recorded_at_once_all_count_and_their_excess_adds_up(
+async def test_costs_recorded_at_once_all_count(
     user: str, windows: UsageWindows, now: int
 ):
     costs = [1_000_000 + index for index in range(60)]
 
-    recorded = await asyncio.gather(
-        *(_spend(user, windows, cost, now, pool=30_000_000) for cost in costs)
-    )
+    await asyncio.gather(*(_spend(user, windows, cost, now) for cost in costs))
 
     day_used, week_used = await read_counters(user, None, windows)
     assert day_used == sum(costs)
     assert week_used == sum(costs) - RESERVE
-    assert sum(r.weekly_excess for r in recorded) == week_used - 30_000_000
+
+
+@pytest.mark.asyncio
+async def test_a_paid_reset_reads_fresh_counters_and_leaves_the_old_ones(
+    user: str, windows: UsageWindows, now: int
+):
+    await _spend(user, windows, RESERVE + POOL, now)
+
+    # After the window's first reset: from zero, with no reserve kept back.
+    assert await read_counters(user, None, windows, 1) == (0, 0)
+    after = await _spend(user, windows, 30_000_000, now, reserve=0, resets=1)
+
+    assert (after.day_used, after.week_used) == (30_000_000, 30_000_000)
+    assert await read_counters(user, None, windows, 1) == (30_000_000, 30_000_000)
+    assert await read_counters(user, None, windows) == (RESERVE + POOL, POOL)
+    # A second reset in the same window starts over again.
+    assert await read_counters(user, None, windows, 2) == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_a_reset_windows_counters_share_the_users_slot_and_outlive_it(
+    user: str, windows: UsageWindows, now: int
+):
+    await _spend(user, windows, 5_000_000, now, reserve=0, resets=1)
+    redis = await get_redis_async()
+    day_key, week_key = counter_keys(user, None, windows, 1)
+    plain_day, _ = counter_keys(user, None, windows)
+
+    assert day_key == f"{plain_day}:r1" and week_key.endswith(":r1")
+    assert key_slot(day_key.encode()) == key_slot(plain_day.encode())
+    assert (
+        await redis.expiretime(week_key) == windows.week_end + WEEK_EXPIRY_GRACE_SECONDS
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_granted_reset_is_announced_for_a_while(user: str):
+    assert not await reset_marked(user)
+
+    await mark_reset(user)
+
+    assert await reset_marked(user)
+    redis = await get_redis_async()
+    ttl = await redis.ttl(f"usage:v2:{{{user}}}:reset-granted")
+    assert RESET_MARK_SECONDS - 5 <= ttl <= RESET_MARK_SECONDS
 
 
 @pytest.mark.asyncio
@@ -196,9 +217,16 @@ async def test_clearing_zeroes_the_day_and_the_week_only_when_asked(
 ):
     await _spend(user, windows, 5_000_000, now)
 
+    await _spend(user, windows, 7_000_000, now, reserve=0, resets=1)
+
     await clear_counters(user, None, windows, weekly=weekly)
+    await clear_counters(user, None, windows, weekly=weekly, resets=1)
 
     assert await read_counters(user, None, windows) == (0, 0 if weekly else 3_000_000)
+    assert await read_counters(user, None, windows, 1) == (
+        0,
+        0 if weekly else 7_000_000,
+    )
 
 
 @pytest.mark.asyncio

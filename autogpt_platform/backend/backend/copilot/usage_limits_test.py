@@ -39,15 +39,15 @@ def test_the_defaults_are_the_approved_launch_numbers():
     # Max's daily limit is a third of its week, and its week 8.5 times Pro's.
     assert top.daily == 22_666_667 and top.daily * 3 >= top.weekly
     assert top.weekly * 2 == pro.weekly * 17
-    # An extra week costs a quarter of the monthly price: $12.50 and $80.
-    assert (pro.extra_week_credits, top.extra_week_credits) == (1_250, 8_000)
+    # A reset costs a quarter of the monthly price: $12.50 and $80.
+    assert (pro.reset_credits, top.reset_credits) == (1_250, 8_000)
     assert set(DEFAULT_PLAN_LIMITS) == {"PRO", "MAX"}
 
 
 def test_a_valid_entry_is_read():
-    parsed = parse_plan_limits({"PRO": {**PRO, "extra_week_credits": 1_500}})
+    parsed = parse_plan_limits({"PRO": {**PRO, "reset_credits": 1_500}})
 
-    assert parsed == {"PRO": PlanLimits(**PRO, extra_week_credits=1_500)}
+    assert parsed == {"PRO": PlanLimits(**PRO, reset_credits=1_500)}
 
 
 @pytest.mark.parametrize(
@@ -62,8 +62,8 @@ def test_a_valid_entry_is_read():
         {**PRO, "reserve": 5_000_000},  # above daily
         {**PRO, "reserve": 1_300_000},  # 8 days of it exceed weekly
         {**PRO, "reserve": -1},
-        {**PRO, "extra_week_credits": 50},  # under a dollar
-        {**PRO, "extra_week_credits": -5},
+        {**PRO, "reset_credits": 50},  # under a dollar
+        {**PRO, "reset_credits": -5},
         {**PRO, "weeekly": 1},  # a typo'd key
         {"daily": 4_000_000},  # weekly missing
         "3200000",

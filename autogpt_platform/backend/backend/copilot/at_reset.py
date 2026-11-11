@@ -207,7 +207,7 @@ async def _blocking_reset(user_id: str) -> datetime:
     )
     if status.on_billing_clock:
         # The gate's own verdict: a full week doesn't stop a turn that today's
-        # reserve or a paid extra week still covers. The wait is for the limit
+        # reserve still covers. The wait is for the limit
         # that does stop it, so for the weekly reset when the week is used up,
         # not for the small daily reserve that arrives first.
         if status.blocked_by is None:

@@ -24,11 +24,11 @@ class UsageActivationState(BaseModel):
     # The trial's own dates, only while the account is on the trial.
     trial_started_at: int | None = None
     trial_ends_at: int | None = None
-    # Paid extra weeks that haven't expired or run out, taken together.
-    extra_remaining: int = 0
-    extra_total: int = 0
-    extra_expires_at: int | None = None
-    extra_count: int = 0
+    # The latest weekly window a paid usage reset was granted in, and how
+    # many were granted in it. A reset applies only while that is the
+    # account's current window.
+    reset_week_start: int | None = None
+    reset_count: int = 0
 
 
 async def get_usage_activation_state(user_id: str) -> UsageActivationState:
@@ -47,23 +47,20 @@ async def get_usage_activation_state(user_id: str) -> UsageActivationState:
           THEN FLOOR(EXTRACT(EPOCH FROM t."startedAt"))::bigint END AS trial_started_at,
         CASE WHEN u."subscriptionTier" = 'TRIAL'
           THEN FLOOR(EXTRACT(EPOCH FROM t."endsAt"))::bigint END AS trial_ends_at,
-        COALESCE(x."remaining", 0)::bigint AS extra_remaining,
-        COALESCE(x."total", 0)::bigint AS extra_total,
-        x."expires_at" AS extra_expires_at,
-        COALESCE(x."packs", 0)::int AS extra_count
+        r."weekStart" AS reset_week_start,
+        COALESCE(r."resets", 0)::int AS reset_count
         FROM {schema_prefix}"User" u
         LEFT JOIN {schema_prefix}"PaidUsageActivation" a ON a."userId" = u."id"
         LEFT JOIN {schema_prefix}"SubscriptionTrial" t ON t."userId" = u."id"
         LEFT JOIN {schema_prefix}"UsageBillingClock" c ON c."userId" = u."id"
         LEFT JOIN LATERAL (
-          SELECT SUM(e."amountMicrodollars" - e."usedMicrodollars") AS "remaining",
-            SUM(e."amountMicrodollars") AS "total",
-            MIN(e."expiresAt") AS "expires_at", COUNT(*) AS "packs"
-          FROM {schema_prefix}"UsageExtraAllowance" e
-          WHERE e."userId" = u."id"
-            AND e."usedMicrodollars" < e."amountMicrodollars"
-            AND e."expiresAt" > EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint
-        ) x ON TRUE
+          SELECT g."weekStart", COUNT(*) AS "resets"
+          FROM {schema_prefix}"UsageReset" g
+          WHERE g."userId" = u."id" AND g."status" = 'granted'
+          GROUP BY g."weekStart"
+          ORDER BY g."weekStart" DESC
+          LIMIT 1
+        ) r ON TRUE
         WHERE u."id" = $1""",
         user_id,
     )

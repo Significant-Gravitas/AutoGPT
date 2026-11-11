@@ -22,7 +22,7 @@ from backend.copilot.rate_limit import (
     record_cost_usage,
     reset_user_usage,
 )
-from backend.copilot.usage_clock import forget_recent_states
+from backend.copilot.usage_clock import clock_from_state, forget_recent_states
 from backend.copilot.usage_counters import Recorded
 from backend.data.pro_activation import UsageActivationState
 
@@ -70,6 +70,8 @@ class Account:
             rate_limit, "get_ready_usage_state", AsyncMock(side_effect=self._read)
         )
         monkeypatch.setattr(usage_live, "read_counters", self.read_counters)
+        self.reset_marked = AsyncMock(return_value=False)
+        monkeypatch.setattr(rate_limit, "reset_marked", self.reset_marked)
         monkeypatch.setattr(rate_limit, "get_redis_async", self.calendar_redis)
 
     async def _read(self, _user_id: str) -> UsageActivationState:
@@ -79,6 +81,12 @@ class Account:
         self.counters = (day_used, week_used)
         if state_fields:
             self.state = self.state.model_copy(update=state_fields)
+
+    def bought_resets(self, count: int = 1) -> None:
+        """Paid resets granted in the current weekly window."""
+        self.state = self.state.model_copy(
+            update={"reset_week_start": START, "reset_count": count}
+        )
 
 
 @pytest.fixture
@@ -149,20 +157,24 @@ async def _check(account: Account, **kwargs) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "day_used,week_used,extra",
+    "day_used,week_used,resets",
     [
         (0, 0, 0),
         (DAILY - 1, 20_000_000, 0),
         (0, POOL, 0),  # week's pool gone, today's reserve untouched
         (RESERVE - 1, POOL + 5, 0),
-        (RESERVE, POOL, 1),  # the weekly limit ran out: a paid extra week
-        (DAILY * 2, POOL, 30_000_000),  # the daily limit doesn't apply to it
+        # After a paid reset the daily limit is lifted and the whole weekly
+        # limit is there to spend, in a day if the customer likes.
+        (DAILY * 2, DAILY * 2, 1),
+        (WEEKLY - 1, WEEKLY - 1, 1),
+        (0, 0, 2),
     ],
 )
 async def test_a_turn_may_start(
-    account: Account, day_used: int, week_used: int, extra: int
+    account: Account, day_used: int, week_used: int, resets: int
 ):
-    account.has(day_used, week_used, extra_remaining=extra, extra_total=WEEKLY)
+    account.has(day_used, week_used)
+    account.bought_resets(resets)
 
     await _check(account)
 
@@ -201,27 +213,51 @@ async def test_the_weekly_limit_stops_a_turn_until_the_customers_weekly_reset(
 
 
 @pytest.mark.asyncio
-async def test_an_extra_week_does_not_lift_the_daily_limit_while_the_week_has_room(
-    account: Account,
-):
-    account.has(DAILY, 20_666_667, extra_remaining=30_000_000, extra_total=WEEKLY)
-
-    with pytest.raises(RateLimitExceeded) as stopped:
-        await _check(account)
-
-    assert stopped.value.window == "daily"
-
-
-@pytest.mark.asyncio
-async def test_a_background_pass_uses_neither_the_reserve_nor_an_extra_week(
-    account: Account,
-):
-    account.has(0, POOL, extra_remaining=30_000_000, extra_total=WEEKLY)
+async def test_a_background_pass_does_not_use_the_reserve(account: Account):
+    account.has(0, POOL)
 
     with pytest.raises(RateLimitExceeded) as stopped:
         await _check(account, skip_daily=True)
 
     assert stopped.value.window == "weekly"
+
+
+@pytest.mark.asyncio
+async def test_a_paid_reset_stops_at_exactly_one_weekly_limit(account: Account):
+    """From the purchase to the weekly reset the customer can spend one
+    weekly limit and no more; the reset time is the one they already had."""
+    account.has(WEEKLY, WEEKLY)
+    account.bought_resets()
+
+    with pytest.raises(RateLimitExceeded) as stopped:
+        await _check(account)
+
+    assert stopped.value.window == "weekly"
+    assert stopped.value.resets_at == datetime.fromtimestamp(WEEK_END, UTC)
+    assert (stopped.value.reading.used, stopped.value.reading.cap) == (68.0, 68.0)
+
+
+@pytest.mark.asyncio
+async def test_a_paid_reset_reads_the_counters_since_it(account: Account):
+    account.bought_resets(2)
+
+    await _check(account)
+
+    assert account.read_counters.await_args.args[3] == 2
+
+
+@pytest.mark.asyncio
+async def test_a_paid_reset_is_over_at_the_weekly_reset(account: Account):
+    """The next window is a normal one: the daily limit applies again."""
+    account.bought_resets()
+    account.now = WEEK_END + 60
+    account.has(DAILY, DAILY - RESERVE)
+
+    with pytest.raises(RateLimitExceeded) as stopped:
+        await _check(account)
+
+    assert stopped.value.window == "daily"
+    assert account.read_counters.await_args.args[3] == 0
 
 
 @pytest.mark.asyncio
@@ -281,14 +317,15 @@ async def test_the_status_reports_the_customers_own_resets_and_reserve(
     assert status.reserve is not None
     assert (status.reserve.used, status.reserve.limit) == (1_500_000, RESERVE)
     assert status.reserve.resets_at == status.daily.resets_at
-    assert status.blocked_by is None and status.extra is None
-    assert status.extra_week_price == 8_000
+    assert status.blocked_by is None and not status.reset_active
+    assert (status.week_start, status.reset_count) == (START, 0)
+    # The plan prices a reset, but it isn't sold while nothing is limited.
+    assert (status.reset_price, status.reset_refusal) == (8_000, "not_limited")
     public = CoPilotUsagePublic.from_status(status)
     assert public.state == "ok" and public.reset_cost == 0
     assert public.reserve is not None and public.reserve.percent_used == 75.0
     assert public.weekly is not None and public.weekly.percent_used == 20.0
-    assert public.extra_week_offer is not None
-    assert public.extra_week_offer.price_credits == 8_000
+    assert public.reset_offer is None and not public.reset_active
 
 
 @pytest.mark.asyncio
@@ -327,41 +364,114 @@ async def test_a_used_up_day_is_exhausted_until_the_daily_reset(account: Account
 
 
 @pytest.mark.asyncio
-async def test_an_extra_week_keeps_a_used_up_week_going_and_is_shown(account: Account):
-    account.has(
-        DAILY,
-        POOL,
-        extra_remaining=51_000_000,
-        extra_total=68_000_000,
-        extra_expires_at=START + 20 * DAY,
-        extra_count=1,
-    )
+@pytest.mark.parametrize(
+    "day_used,week_used,blocked",
+    [(DAILY, 20_666_667, "daily"), (RESERVE, POOL, "weekly"), (DAILY, POOL, "weekly")],
+)
+async def test_a_reset_is_offered_when_a_daily_or_a_weekly_limit_is_reached(
+    account: Account, day_used: int, week_used: int, blocked: str
+):
+    account.has(day_used, week_used)
 
     status = await _status(account)
     public = CoPilotUsagePublic.from_status(status)
 
-    assert status.blocked_by is None
-    assert public.state != "exhausted"
-    assert public.extra is not None
-    assert (public.extra.percent_used, public.extra.count) == (25.0, 1)
-    assert public.extra.expires_at == datetime.fromtimestamp(START + 20 * DAY, UTC)
+    assert status.blocked_by == blocked and status.reset_refusal is None
+    assert public.reset_offer is not None
+    assert public.reset_offer.price_credits == 8_000
+    # Who pays is the usage endpoint's to say: the card unless credits cover it.
+    assert public.reset_offer.pay_with == "card"
+
+
+@pytest.mark.asyncio
+async def test_a_paid_reset_shows_a_fresh_week_and_no_daily_limit(account: Account):
+    account.has(30_000_000, 17_000_000)
+    account.bought_resets()
+
+    status = await _status(account)
+    public = CoPilotUsagePublic.from_status(status)
+
+    assert status.reset_active and status.reset_count == 1
+    assert status.daily.limit == -1 and status.reserve is None
+    # The whole weekly limit is the meter, and its reset time did not move.
+    assert (status.weekly.used, status.weekly.limit) == (17_000_000, WEEKLY)
+    assert status.weekly.resets_at == datetime.fromtimestamp(WEEK_END, UTC)
+    assert public.reset_active and public.daily is None and public.reserve is None
+    assert public.weekly is not None and public.weekly.percent_used == 25.0
+    assert public.state == "ok" and public.reset_offer is None
+
+
+@pytest.mark.asyncio
+async def test_a_used_up_paid_reset_offers_another_in_the_same_window(
+    account: Account,
+):
+    account.has(WEEKLY, WEEKLY)
+    account.bought_resets()
+
+    status = await _status(account)
+    public = CoPilotUsagePublic.from_status(status)
+
+    assert status.blocked_by == "weekly" and status.reset_count == 1
+    assert (public.state, public.limiting_window) == ("exhausted", "weekly")
+    assert public.resets_at == datetime.fromtimestamp(WEEK_END, UTC)
+    assert public.reset_offer is not None and public.reset_active
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "seconds_left,offered",
+    [
+        (rate_limit.RESET_CUTOFF_SECONDS, True),
+        (rate_limit.RESET_CUTOFF_SECONDS - 1, False),
+    ],
+)
+async def test_no_reset_is_sold_in_the_last_minutes_before_the_weekly_reset(
+    account: Account, seconds_left: int, offered: bool
+):
+    account.now = WEEK_END - seconds_left
+    account.has(RESERVE, POOL)
+
+    status = await _status(account)
+
+    assert status.reset_refusal == (None if offered else "resets_soon")
+    assert (CoPilotUsagePublic.from_status(status).reset_offer is not None) == offered
+
+
+@pytest.mark.asyncio
+async def test_no_reset_is_sold_while_the_window_is_held(
+    account: Account, monkeypatch: pytest.MonkeyPatch
+):
+    """The billing period ended and Stripe hasn't confirmed the next: nobody
+    knows when this window resets, so there is no reset to sell until then."""
+
+    async def unconfirmed(state: UsageActivationState, now: int):
+        return state, clock_from_state(state, now)
+
+    monkeypatch.setattr(rate_limit, "resolve_clock", unconfirmed)
+    account.now = END + 600
+    account.has(RESERVE, POOL)
+
+    status = await _status(account)
+
+    assert status.clock_source == "held" and status.blocked_by == "weekly"
+    assert status.reset_refusal == "resets_soon"
+    assert CoPilotUsagePublic.from_status(status).reset_offer is None
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("tier,price", [("PRO", 1_250), ("BUSINESS", 0), ("BASIC", 0)])
-async def test_only_plans_that_sell_an_extra_week_offer_one(
+async def test_only_plans_that_price_a_reset_sell_one(
     account: Account, tier: str, price: int
 ):
     account.state = _state(tier)
+    account.has(3_200_000, 8_000_000)
 
     status = await get_usage_status(
         USER, 3_200_000, 8_000_000, tier=SubscriptionTier(tier)
     )
 
-    assert status.extra_week_price == price
-    assert (CoPilotUsagePublic.from_status(status).extra_week_offer is None) == (
-        price == 0
-    )
+    assert status.blocked_by is not None and status.reset_price == price
+    assert (CoPilotUsagePublic.from_status(status).reset_offer is None) == (price == 0)
 
 
 @pytest.mark.asyncio
@@ -394,19 +504,21 @@ async def test_a_display_with_unreadable_counters_shows_no_usage_unless_it_must_
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "day_used,week_used,extra,left_usd",
+    "day_used,week_used,resets,left_usd",
     [
         (0, 0, 0, 22.666667),
         (20_000_000, 52_000_000, 0, 1.0),  # the pool binds, reserve already used
         (0, POOL, 0, 2.0),  # only today's reserve
         (RESERVE, POOL, 0, 0.5),  # nothing left: the floor
-        (RESERVE, POOL, 40_000_000, 40.0),  # an extra week
+        (0, 0, 1, 68.0),  # a paid reset: the whole weekly limit, no daily limit
+        (28_000_000, 28_000_000, 1, 40.0),
     ],
 )
 async def test_the_remaining_budget(
-    account: Account, day_used: int, week_used: int, extra: int, left_usd: float
+    account: Account, day_used: int, week_used: int, resets: int, left_usd: float
 ):
-    account.has(day_used, week_used, extra_remaining=extra, extra_total=WEEKLY)
+    account.has(day_used, week_used)
+    account.bought_resets(resets)
 
     left = await get_remaining_usd_budget(USER, DAILY, WEEKLY, expected_tier="MAX")
 
@@ -452,7 +564,6 @@ async def test_a_cost_is_recorded_in_the_window_it_finishes_in(
         "reserve": RESERVE,
         "skip_daily": False,
         "now": WEEK_END + 5,
-        "sells_extra_weeks": True,
     }
     account.calendar_redis.assert_not_awaited()
 
@@ -470,6 +581,23 @@ async def test_recording_reuses_the_state_the_check_just_read(
     assert rate_limit.get_ready_usage_state.await_count == reads
     assert recorded.await_count == 2
     assert recorded.await_args.kwargs["skip_daily"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_cost_just_after_a_paid_reset_reads_the_state_again(
+    account: Account, recorded: AsyncMock
+):
+    """A process that remembers the state from before the purchase must not
+    count the cost on the counters the reset replaced."""
+    await _check(account)
+    reads = rate_limit.get_ready_usage_state.await_count
+    account.bought_resets()
+    account.reset_marked.return_value = True
+
+    await record_cost_usage(USER, 4_000_000)
+
+    assert rate_limit.get_ready_usage_state.await_count == reads + 1
+    assert recorded.await_args.args[0].reset_count == 1
 
 
 @pytest.mark.asyncio
@@ -497,11 +625,10 @@ async def test_a_trials_cost_is_only_counted(account: Account, recorded: AsyncMo
 
     assert recorded.await_args.kwargs["reserve"] == 0
     assert recorded.await_args.kwargs["weekly_limit"] == -1
-    assert recorded.await_args.kwargs["sells_extra_weeks"] is False
 
 
 @pytest.mark.asyncio
-async def test_a_business_cost_is_recorded_without_a_reserve_or_extra_weeks_for_sale(
+async def test_a_business_cost_is_recorded_without_a_reserve(
     account: Account, recorded: AsyncMock
 ):
     account.state = _state("BUSINESS")
@@ -510,7 +637,6 @@ async def test_a_business_cost_is_recorded_without_a_reserve_or_extra_weeks_for_
 
     assert recorded.await_args.kwargs["weekly_limit"] == 300_000_000
     assert recorded.await_args.kwargs["reserve"] == 0
-    assert recorded.await_args.kwargs["sells_extra_weeks"] is False
 
 
 @pytest.mark.asyncio
@@ -537,7 +663,11 @@ async def test_an_admin_reset_clears_the_current_windows(
 
     windows = clear.await_args.args[2]
     assert (windows.week_start, windows.day_start) == (START, START)
-    assert clear.await_args.kwargs == {"weekly": weekly}
+    assert clear.await_args.kwargs == {"weekly": weekly, "resets": 0}
+    # After a paid reset it is that reset's counters that are current.
+    account.bought_resets(2)
+    await reset_user_usage(USER, reset_weekly=weekly)
+    assert clear.await_args.kwargs == {"weekly": weekly, "resets": 2}
     account.calendar_redis.assert_not_awaited()
 
 
@@ -547,21 +677,6 @@ def plan_limits(account: Account, monkeypatch: pytest.MonkeyPatch) -> Account:
     monkeypatch.setattr(budget_gate, "get_global_rate_limits", limits)
     monkeypatch.setattr(at_reset, "get_global_rate_limits", limits)
     return account
-
-
-@pytest.mark.asyncio
-async def test_an_extra_week_pays_before_the_credit_balance_does(plan_limits: Account):
-    """The order of payers: the plan's allowance, then an extra week, and only
-    when both refuse does a block turn fall to the credit balance. The gate
-    that decides the last step sees no refusal while an extra week is left."""
-    plan_limits.has(RESERVE, POOL, extra_remaining=30_000_000, extra_total=WEEKLY)
-    assert await budget_gate.refusal_for(USER) is None
-
-    plan_limits.has(RESERVE, POOL, extra_remaining=0)
-    pause = await budget_gate.refusal_for(USER)
-
-    assert pause is not None and pause.reason == "weekly"
-    assert pause.resets_at == datetime.fromtimestamp(WEEK_END, UTC)
 
 
 @pytest.mark.asyncio
@@ -605,7 +720,7 @@ async def test_a_trials_single_allowance_is_shown_as_before(
     account: Account, monkeypatch: pytest.MonkeyPatch
 ):
     """A trial's lifetime allowance decides on its own, on either clock: the
-    status carries no reserve, no extra week and no billing-clock verdict."""
+    status carries no reserve, no paid reset and no billing-clock verdict."""
     account.state = _state(
         "TRIAL", trial_started_at=NOW - DAY, trial_ends_at=NOW + 6 * DAY
     )
@@ -623,4 +738,4 @@ async def test_a_trials_single_allowance_is_shown_as_before(
     assert status.weekly_is_trial_allowance and not status.on_billing_clock
     assert (status.weekly.used, status.weekly.limit) == (5_000_000, 20_000_000)
     assert status.weekly.resets_at == trial.ends_at
-    assert status.reserve is None and status.extra_week_price == 0
+    assert status.reserve is None and status.reset_price == 0

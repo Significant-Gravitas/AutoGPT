@@ -57,12 +57,8 @@ export function useAutopilotUsageCard() {
         refills: formatExactReset(usage.reserve.resets_at),
       }
     : null;
-  const extra = usage?.extra
-    ? {
-        percent: usage.extra.percent_used,
-        count: usage.extra.count,
-        expires: formatExactReset(usage.extra.expires_at),
-      }
+  const resetActive = usage?.reset_active
+    ? { until: formatExactReset(usage.weekly?.resets_at) }
     : null;
   const status =
     USAGE_STATUS[getUsageStatus(getFeaturedUsagePercent(experience, usage))];
@@ -73,8 +69,9 @@ export function useAutopilotUsageCard() {
     today,
     week,
     reserve: showTrialWindow ? null : reserve,
-    extra: showTrialWindow ? null : extra,
-    offer: showTrialWindow ? null : (usage?.extra_week_offer ?? null),
+    resetActive: showTrialWindow ? null : resetActive,
+    offer: showTrialWindow ? null : (usage?.reset_offer ?? null),
+    weeklyResetsAt: usage?.weekly?.resets_at ?? null,
     isLoading,
     isError,
     retry,

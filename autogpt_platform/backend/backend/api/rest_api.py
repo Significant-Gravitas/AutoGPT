@@ -42,7 +42,7 @@ import backend.api.features.chat.feedback as chat_feedback
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.chat.speech as chat_speech
-import backend.api.features.chat.usage_extra as chat_usage_extra
+import backend.api.features.chat.usage_reset as chat_usage_reset
 import backend.api.features.desktop_preview
 import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
@@ -546,7 +546,7 @@ app.include_router(
     prefix="/api/chat",
 )
 app.include_router(
-    chat_usage_extra.router,
+    chat_usage_reset.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
 )

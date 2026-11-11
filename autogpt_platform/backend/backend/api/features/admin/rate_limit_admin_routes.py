@@ -21,8 +21,7 @@ from backend.copilot.rate_limit import (
     reset_user_usage,
     set_user_tier,
 )
-from backend.copilot.usage_mode import now_seconds
-from backend.data.usage_extra import ExtraWeek, list_extra_weeks
+from backend.data.usage_reset import ResetPurchase, list_reset_purchases
 from backend.data.user import get_user_by_email, get_user_email_by_id, search_users
 
 logger = logging.getLogger(__name__)
@@ -52,7 +51,12 @@ class BillingClockUsage(BaseModel):
     reserve_used_microdollars: int
     # The limit that stops a turn starting now, if one does.
     blocked_by: Optional[str] = None
-    extra_weeks: list[ExtraWeek] = []
+    # A paid reset is in force: no daily limit until the weekly reset, and
+    # the usage shown is the usage since it.
+    reset_active: bool = False
+    # The latest paid-reset purchases, newest first, with how each was paid
+    # (and its Stripe ids, for a refund). A pending one was never paid.
+    reset_purchases: list[ResetPurchase] = []
 
 
 class UserRateLimitResponse(BaseModel):
@@ -172,7 +176,8 @@ async def _billing_clock_usage(
         reserve_today_microdollars=usage.reserve.limit if usage.reserve else 0,
         reserve_used_microdollars=usage.reserve.used if usage.reserve else 0,
         blocked_by=usage.blocked_by,
-        extra_weeks=await list_extra_weeks(user_id, now_seconds()),
+        reset_active=usage.reset_active,
+        reset_purchases=await list_reset_purchases(user_id),
     )
 
 

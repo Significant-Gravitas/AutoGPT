@@ -9,19 +9,22 @@ The rules, for the current weekly window (amounts in microdollars):
 
 - ``day_used`` is today's spend; ``week_used`` is spend against the window's
   main pool, which is each day's spend above that day's reserve.
-- A turn may start on the plan's own allowance when today is under the daily
-  limit and either today's reserve or the week's pool has room. The reserve
-  is use-it-or-lose-it and part of the weekly limit, not on top of it.
+- A turn may start when today is under the daily limit and either today's
+  reserve or the week's pool has room. The reserve is use-it-or-lose-it and
+  part of the weekly limit, not on top of it.
 - The **weekly limit has run out** when the pool is used up and today's
-  reserve is too. Only then does a paid extra week apply; the daily limit
-  doesn't apply to it.
+  reserve is too.
 - A background pass (``skip_daily``) runs on the pool alone: never on the
-  reserve, which is kept for the customer's own work, nor on an extra week.
+  reserve, which is kept for the customer's own work.
+- A **paid reset** starts the window over: until the window's own reset, which
+  does not move, the customer has one full weekly limit from zero and no
+  daily limit. With no daily limit there is no reserve either, so the pool is
+  the whole weekly limit: exactly one weekly limit can be spent, as fast as
+  the customer likes. Another reset in the same window starts over again.
 """
 
 import logging
 from typing import Literal
-from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
 
@@ -33,7 +36,6 @@ from backend.copilot.usage_windows import (
     reserve_today,
     weekly_limit_for,
 )
-from backend.data.db_accessors import credit_db
 from backend.data.pro_activation import UsageActivationState
 
 logger = logging.getLogger(__name__)
@@ -42,25 +44,28 @@ BlockingWindow = Literal["daily", "weekly"]
 
 
 class UsageSnapshot(BaseModel):
-    """An account's limits, counters and extra weeks at one moment."""
+    """An account's limits and counters at one moment."""
 
     model_config = ConfigDict(frozen=True)
 
     windows: UsageWindows
     source: ClockSource
-    # Negative: no cap. 0: nothing allowed.
+    # Negative: no cap (also while a paid reset has lifted it). 0: nothing allowed.
     daily_limit: int
     # The window's weekly limit and its part above the days' reserves.
     weekly_limit: int
     pool: int
-    # Today's reserve, and the plan's figure for a full day.
+    # Today's reserve.
     reserve: int
     day_used: int
     week_used: int
-    extra_remaining: int = 0
-    extra_total: int = 0
-    extra_expires_at: int | None = None
-    extra_count: int = 0
+    # Paid resets granted in this weekly window; the counters are the ones
+    # since the last of them.
+    resets: int = 0
+
+    @property
+    def reset_active(self) -> bool:
+        return self.resets > 0
 
     @property
     def reserve_left(self) -> int:
@@ -79,12 +84,6 @@ class UsageSnapshot(BaseModel):
         """The week's pool and today's reserve are both used up."""
         return self.pool_out and self.reserve_left == 0
 
-    @property
-    def extra_applies(self) -> bool:
-        """A paid extra week covers the next turn: it has something left and
-        the weekly limit has run out."""
-        return self.extra_remaining > 0 and self.weekly_out
-
     def blocked_by(self, *, skip_daily: bool = False) -> BlockingWindow | None:
         """The limit that stops a turn starting now, or None when one may.
 
@@ -93,7 +92,7 @@ class UsageSnapshot(BaseModel):
         if skip_daily:
             return "weekly" if self.pool_out else None
         if self.weekly_out:
-            return None if self.extra_applies else "weekly"
+            return "weekly"
         return "daily" if self.daily_out else None
 
     def left(self) -> int | None:
@@ -108,10 +107,19 @@ class UsageSnapshot(BaseModel):
         )
         if week_left is None:
             return daily_left
-        if daily_left is not None and daily_left < week_left:
-            return daily_left
-        # The week is what runs out first, and an extra week takes over there.
-        return week_left + self.extra_remaining
+        if daily_left is None:
+            return week_left
+        return min(daily_left, week_left)
+
+
+def resets_in_window(state: UsageActivationState, windows: UsageWindows) -> int:
+    """How many paid resets apply now: those granted in this weekly window.
+    Never for a trial or an account without a plan."""
+    if state.tier.value in ("TRIAL", "NO_TIER"):
+        return 0
+    if state.reset_week_start != windows.week_start:
+        return 0
+    return max(0, state.reset_count)
 
 
 async def take_snapshot(
@@ -127,8 +135,9 @@ async def take_snapshot(
     Raises whatever Redis raises (and ``ValueError`` for a corrupt counter):
     the caller decides whether that fails the check closed.
     """
+    resets = _usable_resets(state, clock.windows, weekly_limit)
     day_used, week_used = await read_counters(
-        state.user_id, state.generation, clock.windows
+        state.user_id, state.generation, clock.windows, resets
     )
     return build_snapshot(
         state,
@@ -152,8 +161,9 @@ def build_snapshot(
     week_used: int,
 ) -> UsageSnapshot:
     windows = clock.windows
+    resets = _usable_resets(state, windows, weekly_limit)
+    daily_limit, reserve = _after_resets(resets, daily_limit, reserve)
     reserve = usable_reserve(reserve, daily_limit, weekly_limit)
-    extra = extra_weeks(state, weekly_limit)
     return UsageSnapshot(
         windows=windows,
         source=clock.source,
@@ -163,10 +173,7 @@ def build_snapshot(
         reserve=reserve_today(reserve, windows),
         day_used=day_used,
         week_used=week_used,
-        extra_remaining=extra.remaining,
-        extra_total=extra.total,
-        extra_expires_at=extra.expires_at,
-        extra_count=extra.count,
+        resets=resets,
     )
 
 
@@ -176,28 +183,6 @@ def usable_reserve(reserve: int, daily_limit: int, weekly_limit: int) -> int:
     if daily_limit <= 0 or weekly_limit <= 0:
         return 0
     return max(0, min(reserve, daily_limit))
-
-
-class ExtraWeeks(BaseModel):
-    """The account's usable extra weeks, taken together."""
-
-    remaining: int = 0
-    total: int = 0
-    expires_at: int | None = None
-    count: int = 0
-
-
-def extra_weeks(state: UsageActivationState, weekly_limit: int) -> ExtraWeeks:
-    """The account's extra weeks. They only count on a plan with a weekly
-    limit: never for a trial, and never as a plan."""
-    if state.tier.value in ("TRIAL", "NO_TIER") or weekly_limit <= 0:
-        return ExtraWeeks()
-    return ExtraWeeks(
-        remaining=max(0, state.extra_remaining),
-        total=max(0, state.extra_total),
-        expires_at=state.extra_expires_at,
-        count=state.extra_count,
-    )
 
 
 async def record_live(
@@ -211,48 +196,35 @@ async def record_live(
     reserve: int,
     skip_daily: bool,
     now: int,
-    sells_extra_weeks: bool = True,
 ) -> Recorded:
-    """Count a cost in the current windows, then take the part beyond the
-    week's pool from the account's extra weeks.
-
-    The counters first: if the extra week's debit then fails, the cost is
-    still counted against the plan and the customer is never charged twice.
-    A background pass never draws on an extra week.
-    """
+    """Count a cost in the current windows' counters: the ones since the last
+    paid reset, when the window has had one."""
+    resets = _usable_resets(state, windows, weekly_limit)
+    daily_limit, reserve = _after_resets(resets, daily_limit, reserve)
     reserve = usable_reserve(reserve, daily_limit, weekly_limit)
-    recorded = await record_spend(
+    return await record_spend(
         state.user_id,
         generation,
         windows,
         cost,
         reserve=reserve_today(reserve, windows),
-        pool=main_pool(weekly_limit, reserve, windows),
         counts_daily=not skip_daily,
         now=now,
+        resets=resets,
     )
-    # A plan that sells extra weeks is asked of the database whenever a cost
-    # goes beyond the pool, not of the state in hand: an extra week bought
-    # seconds ago must still be drawn on. Any other plan only when the state
-    # shows one it kept from an earlier plan.
-    may_hold_extra = (
-        state.tier.value not in ("TRIAL", "NO_TIER")
-        and weekly_limit > 0
-        and (sells_extra_weeks or state.extra_remaining > 0)
-    )
-    if recorded.weekly_excess > 0 and may_hold_extra and not skip_daily:
-        await _debit_extra_weeks(state.user_id, recorded.weekly_excess, now)
-    return recorded
 
 
-async def _debit_extra_weeks(user_id: str, amount: int, now: int) -> None:
-    # Keyed, so the database client's own retries after a reply lost in
-    # transit can't take it twice.
-    try:
-        await credit_db().consume_extra_allowance(user_id, amount, now, uuid4().hex)
-    except Exception:
-        logger.error(
-            f"Could not take {amount} microdollars from the extra weeks of "
-            f"user {user_id[:8]}; it stays counted against the plan's week",
-            exc_info=True,
-        )
+def _after_resets(resets: int, daily_limit: int, reserve: int) -> tuple[int, int]:
+    """The daily limit and reserve once the window has had a paid reset: no
+    daily limit and so no reserve, which makes the pool the whole weekly
+    limit. A daily limit of 0 is a switch-off, which a reset doesn't lift."""
+    if resets > 0 and daily_limit != 0:
+        return -1, 0
+    return daily_limit, reserve
+
+
+def _usable_resets(
+    state: UsageActivationState, windows: UsageWindows, weekly_limit: int
+) -> int:
+    # A reset is a fresh weekly limit: without one there is nothing to reset.
+    return resets_in_window(state, windows) if weekly_limit > 0 else 0

@@ -1,5 +1,5 @@
 -- Usage limits on each customer's billing clock (SECRT-3441).
--- Three new tables, nothing altered: safe to apply with the previous release
+-- Two new tables, nothing altered: safe to apply with the previous release
 -- still running.
 
 -- CreateTable
@@ -16,45 +16,42 @@ CREATE TABLE "UsageBillingClock" (
 );
 
 -- CreateTable
-CREATE TABLE "UsageExtraAllowance" (
+CREATE TABLE "UsageReset" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "purchaseKey" TEXT NOT NULL,
     "tier" "SubscriptionTier" NOT NULL,
-    "amountMicrodollars" BIGINT NOT NULL,
-    "usedMicrodollars" BIGINT NOT NULL DEFAULT 0,
     "priceCredits" INTEGER NOT NULL,
-    "purchasedAt" BIGINT NOT NULL,
-    "expiresAt" BIGINT NOT NULL,
+    "paidWith" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "stripeCheckoutSessionId" TEXT,
+    "stripePaymentIntentId" TEXT,
+    "weekStart" BIGINT,
+    "weekEnd" BIGINT,
+    "sequence" INTEGER,
+    "grantedAt" BIGINT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "UsageExtraAllowance_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "UsageExtraDebit" (
-    "key" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
-    "amountMicrodollars" BIGINT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "UsageExtraDebit_pkey" PRIMARY KEY ("key")
+    CONSTRAINT "UsageReset_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
-CREATE INDEX "UsageExtraDebit_userId_idx" ON "UsageExtraDebit"("userId");
+CREATE UNIQUE INDEX "UsageReset_stripeCheckoutSessionId_key" ON "UsageReset"("stripeCheckoutSessionId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "UsageExtraAllowance_userId_purchaseKey_key" ON "UsageExtraAllowance"("userId", "purchaseKey");
+CREATE UNIQUE INDEX "UsageReset_stripePaymentIntentId_key" ON "UsageReset"("stripePaymentIntentId");
 
 -- CreateIndex
-CREATE INDEX "UsageExtraAllowance_userId_expiresAt_idx" ON "UsageExtraAllowance"("userId", "expiresAt");
+CREATE UNIQUE INDEX "UsageReset_userId_purchaseKey_key" ON "UsageReset"("userId", "purchaseKey");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UsageReset_userId_weekStart_sequence_key" ON "UsageReset"("userId", "weekStart", "sequence");
+
+-- CreateIndex
+CREATE INDEX "UsageReset_userId_status_weekStart_idx" ON "UsageReset"("userId", "status", "weekStart");
 
 -- AddForeignKey
 ALTER TABLE "UsageBillingClock" ADD CONSTRAINT "UsageBillingClock_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "UsageExtraDebit" ADD CONSTRAINT "UsageExtraDebit_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UsageExtraAllowance" ADD CONSTRAINT "UsageExtraAllowance_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UsageReset" ADD CONSTRAINT "UsageReset_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -12,8 +12,8 @@ Two clocks, switched by ``usage_mode.billing_clock_live`` (SECRT-3441):
 * **The billing clock** (from the launch second): each customer's weekly
   window is a quarter of their own billing month and their day restarts at
   each weekly reset (``usage_clock``, ``usage_windows``), Pro and Max have
-  their own limits and a daily reserve (``usage_limits``), and a paid extra
-  week takes over once the weekly limit runs out (``usage_live``). Each
+  their own limits and a daily reserve (``usage_limits``), and a paid reset
+  starts the weekly window over with the daily limit lifted (``usage_live``). Each
   function below branches where it reads or writes the counters; everything
   around that (trials, the tier guard, the failure policy) is shared.
 
@@ -97,12 +97,14 @@ from backend.copilot.usage_clock import (
     remember_state,
     resolve_clock,
 )
-from backend.copilot.usage_counters import clear_counters
+from backend.copilot.usage_counters import clear_counters, reset_marked
 from backend.copilot.usage_limits import PlanLimits, plan_limits_for
 from backend.copilot.usage_live import (
+    BlockingWindow,
     UsageSnapshot,
     build_snapshot,
     record_live,
+    resets_in_window,
     take_snapshot,
 )
 from backend.copilot.usage_mode import billing_clock_live, now_seconds
@@ -408,14 +410,13 @@ class UsageWindow(BaseModel):
     resets_at: datetime
 
 
-class ExtraWeeksStatus(BaseModel):
-    """The account's unexpired paid extra weeks, taken together."""
+# A paid reset lasts until the weekly window's own reset. This close to it
+# there is too little time left to use one, and a card payment opened now
+# could still be paid after the window is gone (Stripe keeps a Checkout
+# session open for at least 30 minutes), so none is offered or sold.
+RESET_CUTOFF_SECONDS = 35 * 60
 
-    remaining: int
-    total: int
-    # When the first of them expires.
-    expires_at: datetime
-    count: int
+ResetRefusal = Literal["not_limited", "resets_soon"]
 
 
 class CoPilotUsageStatus(BaseModel):
@@ -438,9 +439,17 @@ class CoPilotUsageStatus(BaseModel):
     # reserves, which ``reserve`` shows for today.
     on_billing_clock: bool = False
     reserve: UsageWindow | None = None
-    extra: ExtraWeeksStatus | None = None
-    # What an extra week costs this plan, in credits. 0: it can't buy one.
-    extra_week_price: int = 0
+    # A paid reset is in force: the weekly window was started over and has
+    # no daily limit until its own reset.
+    reset_active: bool = False
+    # What a paid reset costs this plan, in cents. 0: it can't buy one.
+    reset_price: int = 0
+    # Why the plan's reset can't be bought right now; None when it can.
+    reset_refusal: ResetRefusal | None = None
+    # How many paid resets the weekly window has had, and when it began
+    # (Unix seconds): what the next purchase is numbered and filed under.
+    reset_count: int = 0
+    week_start: int | None = None
     # The limit that stops a turn starting now, as the gate decides it.
     blocked_by: Literal["daily", "weekly"] | None = None
     clock_source: str | None = None
@@ -469,18 +478,18 @@ class UsageWindowPublic(BaseModel):
     resets_at: datetime
 
 
-class ExtraWeeksPublic(BaseModel):
-    """Paid extra weeks still usable, as a share used. No dollar figures."""
+class UsageResetOffer(BaseModel):
+    """A paid reset this account can buy now."""
 
-    percent_used: float = Field(ge=0.0, le=100.0)
-    expires_at: datetime = Field(description="When the first of them expires.")
-    count: int
-
-
-class ExtraWeekOffer(BaseModel):
-    """An extra week this account can buy now."""
-
-    price_credits: int = Field(description="Its price in credits (cents).")
+    price_credits: int = Field(
+        description="Its price in cents, which is also its price in credits."
+    )
+    pay_with: Literal["credits", "card"] = Field(
+        default="card",
+        description="'credits' when the credit balance covers the whole "
+        "price, which is then taken from it; otherwise 'card': the whole "
+        "price is paid by card. Never part of each.",
+    )
 
 
 class CoPilotUsagePublic(BaseModel):
@@ -488,7 +497,8 @@ class CoPilotUsagePublic(BaseModel):
 
     daily: UsageWindowPublic | None = Field(
         default=None,
-        description="Null when no daily cap is configured (unlimited).",
+        description="Null when there is no daily cap: none is configured "
+        "(unlimited), or a paid reset has lifted it until the weekly reset.",
     )
     weekly: UsageWindowPublic | None = Field(
         default=None,
@@ -505,14 +515,16 @@ class CoPilotUsagePublic(BaseModel):
         "kept back each day, usable after the rest of the week is gone. Null "
         "when the plan has none.",
     )
-    extra: ExtraWeeksPublic | None = Field(
-        default=None,
-        description="Paid extra weeks that haven't expired or run out. They "
-        "are used once the weekly limit runs out.",
+    reset_active: bool = Field(
+        default=False,
+        description="A paid reset is in force: the weekly limit was started "
+        "over and there is no daily limit until the weekly reset, whose time "
+        "did not move.",
     )
-    extra_week_offer: ExtraWeekOffer | None = Field(
+    reset_offer: UsageResetOffer | None = Field(
         default=None,
-        description="Set when the account can buy an extra week now.",
+        description="Set when a limit is reached and the account can buy a "
+        "paid reset now.",
     )
     state: UsageState = Field(
         default="ok",
@@ -588,27 +600,16 @@ class CoPilotUsagePublic(BaseModel):
             tier=status.tier,
             reset_cost=status.reset_cost,
             reserve=window(status.reserve) if status.reserve else None,
-            extra=_extra_public(status.extra),
-            extra_week_offer=(
-                ExtraWeekOffer(price_credits=status.extra_week_price)
-                if status.extra_week_price > 0
+            reset_active=status.reset_active,
+            reset_offer=(
+                UsageResetOffer(price_credits=status.reset_price)
+                if status.reset_price > 0 and status.reset_refusal is None
                 else None
             ),
             state=verdict.state,
             limiting_window=verdict.limiting_window,
             resets_at=verdict.resets_at,
         )
-
-
-def _extra_public(extra: ExtraWeeksStatus | None) -> ExtraWeeksPublic | None:
-    if extra is None or extra.total <= 0:
-        return None
-    used = max(0, extra.total - extra.remaining)
-    return ExtraWeeksPublic(
-        percent_used=min(100.0, round(100.0 * used / extra.total, 1)),
-        expires_at=extra.expires_at,
-        count=extra.count,
-    )
 
 
 def _reading(
@@ -635,8 +636,8 @@ def _stops_a_turn(
     """Whether the window is why no turn can start now.
 
     On the calendar a full window always is. On the billing clock the gate's
-    own verdict decides: a full week still allows a turn on today's reserve or
-    on a paid extra week, and a full day doesn't stop one an extra week covers.
+    own verdict decides: a full week's pool still allows a turn on today's
+    reserve.
     """
     full = window.used >= window.limit
     if not status.on_billing_clock or window.limit == 0:
@@ -724,6 +725,7 @@ async def get_usage_status(
     daily_reset = _daily_reset_time(now=now)
     weekly_reset = _weekly_reset_time(now=now)
     weekly_window_limit = weekly_cost_limit
+    daily_window_limit = daily_cost_limit
     snapshot = await _billing_clock_snapshot(
         state,
         daily_cost_limit,
@@ -735,6 +737,8 @@ async def get_usage_status(
         daily_reset = _at(snapshot.windows.day_end)
         weekly_reset = _at(snapshot.windows.week_end)
         weekly_window_limit = snapshot.pool
+        # A paid reset lifts the daily limit until the weekly reset.
+        daily_window_limit = snapshot.daily_limit
     else:
         try:
             redis = await get_redis_async()
@@ -776,7 +780,7 @@ async def get_usage_status(
     status = CoPilotUsageStatus(
         daily=UsageWindow(
             used=daily_used,
-            limit=daily_cost_limit,
+            limit=daily_window_limit,
             resets_at=daily_reset,
         ),
         weekly=UsageWindow(
@@ -798,9 +802,9 @@ async def get_usage_status(
 async def _on_billing_clock(
     status: CoPilotUsageStatus, snapshot: UsageSnapshot
 ) -> CoPilotUsageStatus:
-    """Add what only the billing clock has: today's reserve, paid extra weeks,
-    the price of one more, and the gate's own verdict on whether a turn can
-    start."""
+    """Add what only the billing clock has: today's reserve, a paid reset in
+    force, the price of one and whether it can be bought now, and the gate's
+    own verdict on whether a turn can start."""
     plan = await plan_limits_for(status.tier.value)
     reserve = None
     if snapshot.reserve > 0:
@@ -809,26 +813,42 @@ async def _on_billing_clock(
             limit=snapshot.reserve,
             resets_at=status.daily.resets_at,
         )
-    extra = None
-    if snapshot.extra_total > 0 and snapshot.extra_expires_at is not None:
-        extra = ExtraWeeksStatus(
-            remaining=snapshot.extra_remaining,
-            total=snapshot.extra_total,
-            expires_at=_at(snapshot.extra_expires_at),
-            count=snapshot.extra_count,
-        )
-    sells_extra = plan is not None and snapshot.weekly_limit > 0
+    blocked = snapshot.blocked_by()
+    # A reset is a fresh weekly limit: a plan without one (or one switched
+    # off: a limit of 0) has nothing to reset.
+    sells = plan is not None and snapshot.weekly_limit > 0 and snapshot.daily_limit != 0
     return status.model_copy(
         update={
             "on_billing_clock": True,
             "reserve": reserve,
-            "extra": extra,
-            "extra_week_price": plan.extra_week_credits if plan and sells_extra else 0,
-            "blocked_by": snapshot.blocked_by(),
+            "reset_active": snapshot.reset_active,
+            "reset_count": snapshot.resets,
+            "week_start": snapshot.windows.week_start,
+            "reset_price": plan.reset_credits if plan and sells else 0,
+            "reset_refusal": _reset_refusal(snapshot, blocked, now_seconds()),
+            "blocked_by": blocked,
             "clock_source": snapshot.source,
             "weekly_limit": snapshot.weekly_limit,
         }
     )
+
+
+def _reset_refusal(
+    snapshot: UsageSnapshot, blocked: BlockingWindow | None, now: int
+) -> ResetRefusal | None:
+    """Why a paid reset can't be bought now, for a plan that sells one.
+
+    It is sold only while a limit stops the customer (it replaces what is
+    left of the week, so buying one earlier would throw allowance away), and
+    not when the weekly window is about to reset anyway or its reset time is
+    not known (the window is held until Stripe confirms the next period).
+    """
+    if blocked is None:
+        return "not_limited"
+    windows = snapshot.windows
+    if windows.held or windows.week_end - now < RESET_CUTOFF_SECONDS:
+        return "resets_soon"
+    return None
 
 
 async def _billing_clock_snapshot(
@@ -1278,7 +1298,7 @@ def _refuse_if_blocked(snapshot: UsageSnapshot, tier: str, *, skip_daily: bool) 
     logger.info(
         f"Usage limit reached ({blocked}, {snapshot.source} clock): day "
         f"{snapshot.day_used}/{snapshot.daily_limit}, week "
-        f"{snapshot.week_used}/{snapshot.pool}, extra {snapshot.extra_remaining}"
+        f"{snapshot.week_used}/{snapshot.pool}, paid resets {snapshot.resets}"
     )
     if blocked == "weekly":
         reserves = max(0, snapshot.weekly_limit - snapshot.pool)
@@ -1389,6 +1409,10 @@ async def _record_on_billing_clock(
         return False
     try:
         state = recent_state(user_id, now)
+        if state is not None and await reset_marked(user_id):
+            # A paid reset was just granted: the remembered state may predate
+            # it and would count this cost on the counters it replaced.
+            state = None
         if state is None:
             state = await get_ready_usage_state(user_id)
             remember_state(state)
@@ -1406,7 +1430,6 @@ async def _record_on_billing_clock(
             reserve=plan.reserve if plan else 0,
             skip_daily=skip_daily,
             now=now,
-            sells_extra_weeks=bool(plan and plan.extra_week_credits > 0),
         )
     except (
         RedisError,
@@ -1427,9 +1450,8 @@ async def _limits_for_recording(
     state: UsageActivationState,
 ) -> tuple[int, int, PlanLimits | None]:
     """The daily and weekly limits and the plan's own limits, for splitting a
-    recorded cost between the day's reserve, the week's pool and an extra
-    week. A trial has neither a reserve nor an extra week, so its cost is
-    only counted."""
+    recorded cost between the day's reserve and the week's pool. A trial has
+    no reserve, so its cost is only counted."""
     tier = SubscriptionTier(state.tier.value)
     if tier == SubscriptionTier.TRIAL:
         return -1, -1, None
@@ -1862,7 +1884,11 @@ async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:
         clock = clock_from_state(state, now_s)
         if clock is not None and await billing_clock_live(now_s):
             await clear_counters(
-                user_id, state.generation, clock.windows, weekly=reset_weekly
+                user_id,
+                state.generation,
+                clock.windows,
+                weekly=reset_weekly,
+                resets=resets_in_window(state, clock.windows),
             )
             return
         redis = await get_redis_async()
