@@ -9,6 +9,7 @@ interface Row {
   toolCalls: unknown[];
   sequence: number | null;
   createdAt: string | null;
+  isHidden: boolean;
 }
 
 interface Options {
@@ -41,6 +42,9 @@ export function toUIMessages(
 
   for (const [index, row] of rows.entries()) {
     if (!["user", "assistant", "reasoning"].includes(row.role)) continue;
+    // The hire's kickoff is a control turn sent on the user's behalf; the
+    // server marks it hidden and the web never shows it either.
+    if (row.isHidden) continue;
     const role = row.role === "user" ? "user" : "assistant";
     if (role === "assistant" && isInActiveTurn(row, turnStart)) break;
 
@@ -132,5 +136,12 @@ function toRow(raw: unknown): Row | null {
     toolCalls: Array.isArray(row.tool_calls) ? row.tool_calls : [],
     sequence: typeof row.sequence === "number" ? row.sequence : null,
     createdAt: typeof row.created_at === "string" ? row.created_at : null,
+    isHidden: isHiddenMetadata(row.metadata),
   };
+}
+
+function isHiddenMetadata(metadata: unknown) {
+  if (!metadata || typeof metadata !== "object") return false;
+  const value = metadata as Record<string, unknown>;
+  return value.hidden === true || value.kind === "expert_kickoff";
 }

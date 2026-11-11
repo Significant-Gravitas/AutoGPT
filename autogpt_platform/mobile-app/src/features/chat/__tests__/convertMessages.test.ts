@@ -164,4 +164,17 @@ describe("toUIMessages", () => {
     expect(messages).toHaveLength(1);
     expect(messages[0].id).toBe("s1-2");
   });
+
+  it("leaves out the hidden kickoff the server writes for a new hire", () => {
+    const messages = toUIMessages("s1", [
+      {
+        role: "user",
+        sequence: 1,
+        content: "You were just hired. Call expert_onboarding once",
+        metadata: { hidden: true, kind: "expert_kickoff", expert_id: "e1" },
+      },
+      { role: "assistant", sequence: 2, content: "Hi, I'm Casey." },
+    ]);
+    expect(messages.map((message) => message.id)).toEqual(["s1-2"]);
+  });
 });
