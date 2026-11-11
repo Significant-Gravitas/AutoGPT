@@ -362,8 +362,8 @@ async def _take_back_credit(
     )
     await _abandon(invoice_id, credit_note_id, tx)
     logger.error(
-        f"Took back credit note {credit_note_id} of late invoice {invoice_id}:"
-        " its billing period was not restarted; restart it by hand"
+        f"Took back the restart's credit on late invoice {invoice_id}: its"
+        " billing period was not restarted; restart it by hand"
     )
 
 
