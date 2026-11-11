@@ -87,6 +87,21 @@ def test_refs_name_untitled_oauth_accounts_by_their_email():
     ]
 
 
+def test_refs_skip_a_leftover_grant_of_a_platform_key():
+    """Seeding once stored the platform's Firecrawl key like a user's account.
+
+    Every expert may use it without a grant, so listing it would only show the
+    platform's key as one of the user's accounts (SECRT-3207).
+    """
+    platform_key = _api_key_credential("firecrawl-default", "firecrawl")
+    own = _api_key_credential("cred-own", "firecrawl")
+    grants = [_Grant("firecrawl-default", "firecrawl"), _Grant("cred-own", "firecrawl")]
+
+    refs = _to_refs(grants, [platform_key, own])  # type: ignore[arg-type]
+
+    assert [ref.credential_id for ref in refs] == ["cred-own"]
+
+
 def test_filter_drops_ungranted_credentials():
     granted = _api_key_credential("cred-granted", "linkedin")
     ungranted = _api_key_credential("cred-ungranted", "notion")
@@ -109,6 +124,23 @@ def test_filter_always_keeps_system_credentials(mocker: pytest_mock.MockFixture)
     kept = filter_credentials_for_expert([system, ungranted], set())
 
     assert [c.id for c in kept] == ["cred-system"]
+
+
+def test_filter_keeps_the_platform_key_of_a_runnable_sdk_provider():
+    """The platform's own Firecrawl key belongs to no user, so there is nothing
+    to grant: an expert must reach it without asking (SECRT-3207)."""
+    platform_key = _api_key_credential("firecrawl-default", "firecrawl")
+
+    kept = filter_credentials_for_expert([platform_key], set())
+
+    assert [c.id for c in kept] == ["firecrawl-default"]
+
+
+def test_filter_drops_the_platform_key_of_a_refused_sdk_provider():
+    """A provider whose shared key may not run gains nothing from the exemption."""
+    refused = _api_key_credential("notion-default", "notion")
+
+    assert filter_credentials_for_expert([refused], set()) == []
 
 
 def test_filter_with_no_grants_keeps_nothing_user_owned():
@@ -218,6 +250,28 @@ async def test_execution_is_allowed_when_every_credential_was_granted(
         {
             "field": CredentialsMetaInput(
                 id="cred-granted", provider="linkedin", type="api_key"
+            )
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_execution_is_allowed_on_a_platform_key_without_a_grant(
+    mocker: pytest_mock.MockFixture,
+):
+    mocker.patch(
+        "backend.executor.utils.get_experts_db",
+        return_value=AsyncMock(
+            expert_allowed_credential_ids=AsyncMock(return_value=[])
+        ),
+    )
+
+    await _enforce_expert_credential_scope(
+        "user-1",
+        "expert-1",
+        {
+            "field": CredentialsMetaInput(
+                id="firecrawl-default", provider="firecrawl", type="api_key"
             )
         },
     )
