@@ -264,8 +264,9 @@ class World:
         self.tier_writes: list[SubscriptionTier] = []
         self.pauses: list[str] = []
         self.alerts: list[str] = []
-        # Late payments of paused bills: subscription id -> paidAt.
-        self.paid_after_pause: dict[str, datetime] = {}
+        # Pauses by subscription id: the paidAt their restart recorded,
+        # or None while the payment's own event has not been handled.
+        self.paid_after_pause: dict[str, datetime | None] = {}
         self.locks: dict[str, asyncio.Lock] = {}
         self._stack = ExitStack()
 
@@ -303,10 +304,17 @@ class World:
         return True
 
     async def _find_paid_pause(self, where):
-        paid_at = self.paid_after_pause.get(where["stripeSubscriptionId"])
-        if paid_at is None or paid_at < where["paidAt"]["gte"]:
+        sub_id = where["stripeSubscriptionId"]
+        if sub_id not in self.paid_after_pause:
             return None
-        return MagicMock(stripeSubscriptionId=where["stripeSubscriptionId"])
+        paid_at = self.paid_after_pause[sub_id]
+        for condition in where.get("OR") or [{"paidAt": where["paidAt"]}]:
+            wanted = condition["paidAt"]
+            if wanted is None and paid_at is None:
+                return MagicMock(stripeSubscriptionId=sub_id)
+            if wanted is not None and paid_at is not None and paid_at >= wanted["gte"]:
+                return MagicMock(stripeSubscriptionId=sub_id)
+        return None
 
     def subscription_updated(self, sub_id: str) -> Awaitable[None]:
         """Stripe's ``customer.subscription.updated`` for ``sub_id``."""
@@ -709,6 +717,36 @@ async def test_a_failed_plan_revived_during_the_checkout_is_ended_and_reported()
     assert world.stripe.cancelled == ["sub_old"]
     assert len(world.alerts) == 1
     assert "sub_old" in world.alerts[0] and "manual refund" in world.alerts[0]
+
+
+@pytest.mark.asyncio
+async def test_a_revival_whose_payment_event_is_not_yet_handled_is_reported():
+    """The retry paid the old bill, but the new plan's activation arrives
+    before that payment's own event records it."""
+    with World() as world:
+        _left_for_a_new_plan(world, "active")
+        world.paid_after_pause["sub_old"] = None
+        await world.subscription_updated("sub_new")
+
+    assert world.stripe.cancelled == ["sub_old"]
+    assert len(world.alerts) == 1
+    assert "sub_old" in world.alerts[0] and "manual refund" in world.alerts[0]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_bill_void_after_the_cancel_asks_a_person_to_finish():
+    """Nothing retries this cleanup: an activation replay skips it, and a
+    cancelled plan gets no more failed retries."""
+    with World() as world:
+        _left_for_a_new_plan(world, "past_due")
+        world.stripe.fail_next["void"] = 1
+        await world.subscription_updated("sub_new")
+
+    assert world.tier == SubscriptionTier.MAX
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.voided == []
+    assert len(world.alerts) == 1
+    assert "void their open bills by hand" in world.alerts[0]
 
 
 @pytest.mark.asyncio

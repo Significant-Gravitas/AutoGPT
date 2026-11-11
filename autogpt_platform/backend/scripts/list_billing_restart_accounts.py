@@ -7,7 +7,8 @@ Two lists, printed as CSV:
              ``NO_TIER`` account here is locked out of paid features until it
              pays.
 ``late``     paid renewal or first invoices (``subscription_cycle`` or
-             ``subscription_create``) paid after a failed attempt, or more
+             ``subscription_create``) whose failed payment was recorded as
+             pausing the plan, paid after a failed attempt, or paid more
              than ``LATE_PAYMENT_AFTER`` after the period they opened had
              begun. Before the billing-period restart shipped, such a
              customer kept the old renewal date, so they paid for the days
@@ -140,9 +141,12 @@ async def _blocked() -> list[dict]:
 LATE_PAYMENT_AFTER = timedelta(hours=3)
 
 
-def _paid_late(invoice: dict) -> tuple[int, int] | None:
+def _paid_late(invoice: dict, paused: set[str]) -> tuple[int, int] | None:
     """The period start and payment time of a period-opening invoice that
-    looks paid late, from Stripe alone."""
+    was paid late. ``paused`` holds the invoices whose failed payment was
+    recorded as pausing the plan; before that record existed, Stripe alone
+    decides. A manual payment soon after a failed attempt leaves
+    ``attempt_count`` at 1, which only the record catches."""
     from backend.data.subscription_billing_restart import PERIOD_OPENING_REASONS
     from backend.data.subscription_billing_restart_invoice import line_period_start
 
@@ -152,6 +156,8 @@ def _paid_late(invoice: dict) -> tuple[int, int] | None:
     start = line_period_start(invoice)
     if paid_at is None or start is None:
         return None
+    if invoice.get("id") in paused:
+        return start, paid_at
     if paid_at - start > LATE_PAYMENT_AFTER.total_seconds():
         return start, paid_at
     return (start, paid_at) if (invoice.get("attempt_count") or 0) > 1 else None
@@ -165,6 +171,7 @@ async def _late(since: datetime) -> list[dict]:
     from backend.data.subscription_billing_restart import RESTARTED_FROM_INVOICE_KEY
 
     rows = []
+    paused = await _paused_invoices(since)
     page = await stripe_call(
         stripe.Invoice.list_async,
         status="paid",
@@ -172,7 +179,7 @@ async def _late(since: datetime) -> list[dict]:
         limit=100,
     )
     async for invoice in stripe_list_items(page):
-        late = _paid_late(dict(invoice))
+        late = _paid_late(dict(invoice), paused)
         if late is None or not _invoice_subscription_id(dict(invoice)):
             continue
         period_start, paid_at = late
@@ -200,6 +207,17 @@ async def _late(since: datetime) -> list[dict]:
         )
     restarted = await _restarted_invoices([row["invoice_id"] for row in rows])
     return [{**row, "restarted": row["invoice_id"] in restarted} for row in rows]
+
+
+async def _paused_invoices(since: datetime) -> set[str]:
+    """Invoices whose failed payment was recorded as pausing the plan, from
+    a little before ``since``, since a pause comes before the payment."""
+    from prisma.models import SubscriptionBillingRestart
+
+    rows = await SubscriptionBillingRestart.prisma().find_many(
+        where={"pausedAt": {"gte": since - timedelta(days=60)}}
+    )
+    return {row.stripeInvoiceId for row in rows}
 
 
 async def _restarted_invoices(invoice_ids: list[str]) -> set[str]:

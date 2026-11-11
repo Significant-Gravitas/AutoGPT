@@ -329,8 +329,8 @@ async def end_plans_replaced_by(customer_id: str, new_sub_id: str) -> None:
     So it is cancelled and its unpaid bills voided now, as a failed retry
     would. An old plan a retry already revived during the Checkout is
     cancelled by the stale-plan cleanup with the other active plans; its
-    payment needs a refund, so that raises an alert. Best effort: a failure
-    is logged, and the old plan's next failed retry ends it.
+    payment needs a refund, so that raises an alert. A failure here raises
+    an alert too, since nothing retries this cleanup.
     """
     try:
         new = dict(await stripe_call(stripe.Subscription.retrieve_async, new_sub_id))
@@ -363,21 +363,35 @@ async def end_plans_replaced_by(customer_id: str, new_sub_id: str) -> None:
                         " refund"
                     )
     except stripe.StripeError:
+        # A replay of the activation skips this cleanup, and a cancelled plan
+        # gets no more failed retries to finish it, so a person must.
         logger.exception(
             f"Could not end the plans that subscription {new_sub_id} of customer"
-            f" {customer_id} replaced; their next failed retry ends them"
+            f" {customer_id} replaced"
+        )
+        await alert_tier_reconciliation_discrepancy(
+            f"Could not end the past-due plans that subscription {new_sub_id}"
+            f" of customer {customer_id} replaced; cancel them and void their"
+            " open bills by hand"
         )
 
 
 async def _revived_during_checkout(sub_id: str, new: dict) -> bool:
     """Whether a payment of a paused bill revived the plan while its customer
-    was buying the new one."""
+    was buying the new one: recorded by its restart, or not yet, since the
+    plan is active again while its pause was never followed up."""
     created = new.get("created")
     if not created:
         return False
     since = datetime.fromtimestamp(created, UTC) - _CHECKOUT_LIFETIME
     revived = await SubscriptionBillingRestart.prisma().find_first(
-        where={"stripeSubscriptionId": sub_id, "paidAt": {"gte": since}}
+        where={
+            "stripeSubscriptionId": sub_id,
+            "OR": [
+                {"paidAt": {"gte": since}},
+                {"paidAt": None, "restartedAt": None, "abandonedAt": None},
+            ],
+        }
     )
     return revived is not None
 
