@@ -127,7 +127,7 @@ def _der_encoded_p256_scalar(canonical: str) -> bytes | None:
     except (ValueError, TypeError, UnsupportedAlgorithm):
         return None
     if not isinstance(key, ec.EllipticCurvePrivateKey) or not isinstance(
-        key.curve, ec.SECP256R1
+        key.curve, ec.SECP256R1  # gitleaks:allow
     ):
         return None
     return key.private_numbers().private_value.to_bytes(32, "big")
