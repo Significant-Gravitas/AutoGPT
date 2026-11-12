@@ -37,6 +37,7 @@ _EDGE_BFS_FILTERS = (
     " WHERE ((e.expired_at IS NULL))",
     " WHERE ((e.expired_at IS NULL)) AND e.group_id IN $group_ids",
 )
+# Match the projection after without_embeddings rewrites graphiti's attributes.
 _EDGE_BFS_RETURN = (
     " RETURN DISTINCT "
     "e.uuid AS uuid, "

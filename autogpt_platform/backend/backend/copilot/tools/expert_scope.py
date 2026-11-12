@@ -20,6 +20,7 @@ from backend.data.model import Credentials, CredentialsFieldInfo, CredentialsTyp
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
+from backend.integrations.service_identity import credential_display_name
 
 from .models import AgentSavedResponse, ErrorResponse, ToolResponseBase
 from .utils import find_matching_credential
@@ -318,7 +319,7 @@ async def annotate_expert_grants(
                 "credentials": [
                     {
                         "id": c.id,
-                        "title": c.title or str(c.provider),
+                        "title": credential_display_name(c),
                         "type": str(c.type),
                     }
                     for c in candidates
