@@ -328,30 +328,34 @@ files = [
 
 [[package]]
 name = "anthropic"
-version = "0.79.0"
+version = "2.6.0"
 description = "The official Python library for the anthropic API"
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "anthropic-0.79.0-py3-none-any.whl", hash = "sha256:04cbd473b6bbda4ca2e41dd670fe2f829a911530f01697d0a1e37321eb75f3cf"},
-    {file = "anthropic-0.79.0.tar.gz", hash = "sha256:8707aafb3b1176ed6c13e2b1c9fb3efddce90d17aee5d8b83a86c70dcdcca871"},
+    {file = "anthropic-2.6.0-py3-none-any.whl", hash = "sha256:4325cdf9346fa29183674b6ee6289ebad5b2b0a935758f7350fa504032da1d9b"},
+    {file = "anthropic-2.6.0.tar.gz", hash = "sha256:a38d8698258a4cb33a9bc9d2f0ced1d96b71010870e5ed703807d21021a0da24"},
 ]
 
 [package.dependencies]
-anyio = ">=3.5.0,<5"
-distro = ">=1.7.0,<2"
+anyio = ">=4.1.0,<5"
 docstring-parser = ">=0.15,<1"
-httpx = ">=0.25.0,<1"
+httpx2 = ">=2.0.0,<3"
 jiter = ">=0.4.0,<1"
-pydantic = ">=1.9.0,<3"
-sniffio = "*"
-typing-extensions = ">=4.10,<5"
+opentelemetry-api = ">=1.1.0,<2"
+pydantic = ">=1.10.0,<3"
+sniffio = ">=1,<2"
+typing-extensions = ">=4.14,<5"
 
 [package.extras]
-aiohttp = ["aiohttp", "httpx-aiohttp (>=0.1.9)"]
-bedrock = ["boto3 (>=1.28.57)", "botocore (>=1.31.57)"]
+aiohttp = ["aiohttp (>=3.10.0,<4)"]
+aws = ["boto3 (>=1.28.57,<2)", "botocore (>=1.31.57,<2)"]
+bedrock = ["boto3 (>=1.28.57,<2)", "botocore (>=1.31.57,<2)"]
+google-cloud = ["google-auth[requests] (>=2,<3)"]
+mcp = ["mcp (>=1.0,<3) ; python_version >= \"3.10\""]
 vertex = ["google-auth[requests] (>=2,<3)"]
+webhooks = ["standardwebhooks (>=1.0.1,<2)"]
 
 [[package]]
 name = "anyio"
@@ -8679,4 +8683,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "83d560a0ab319cde834a8effc9d9516f792014d57be40002950caea497d7f791"
+content-hash = "40803fb44e6bf6cd91172796431430469433e60832e0eb28ec82d13c4ec501f4"
