@@ -158,3 +158,25 @@ The agent's content stays as the creator last saved it, node inputs included. Cr
 - **LaunchDarkly** context and **Sentry** user (ID only): no deletion API used here.
 - **Redis keys** with the user ID (rate limits, usage counters, caches, AutoPilot session state) expire on their own TTLs, the longest after 90 days.
 - **Changing a ban record**: to let an address sign up again before its record runs out, delete its row from `AccountBanRecord`. Find it by computing the hash with `backend.data.account_erasure.ban_record.email_hash` in a backend shell; the table can't be searched by email.
+
+## One-off: files of accounts deleted before the erasure
+
+Accounts deleted by hand before the erasure existed left their files in the buckets. `autogpt_platform/backend/scripts/delete_orphan_bucket_folders.py` finds every folder under an account's prefixes (the ones in step 6 above, and `workspaces/chat-transcripts/{user id}/`, where Otto kept transcripts until April 2026) whose user, workspace or OAuth app row is gone, in every configured bucket, and deletes it. It keeps:
+
+- a `users/{user id}/` folder whose media a listing or library entry still shows, as the erasure does;
+- a folder with a file from the last 7 days, which may belong to a row created after the check;
+- a folder whose row exists again when it checks once more, just before deleting;
+- a folder not named by a UUID, such as `workspaces/cli-sessions/` and `workspaces/chat-transcripts/` themselves.
+
+It is a dry run unless `--apply`, and prints counts per bucket and prefix (folders, orphans, files and MB that go, folders kept and why), never an ID or a file name. Run it from `autogpt_platform/backend` in a checkout of `dev`: the script is piped into the pod, so the pod's image doesn't need to have it. Read the dry run's counts before the apply:
+
+```sh
+kubectl --context gke_agpt-prod_us-central1-a_prod-gke-cluster -n prod-agpt exec -i deploy/autogpt-database-manager -- \
+  poetry run python - < scripts/delete_orphan_bucket_folders.py
+kubectl --context gke_agpt-prod_us-central1-a_prod-gke-cluster -n prod-agpt exec -i deploy/autogpt-database-manager -- \
+  poetry run python - --apply < scripts/delete_orphan_bucket_folders.py
+```
+
+Then run the dry run again: every prefix should show 0 orphans, apart from the folders kept. The apply exits non-zero when a file failed to delete; run it again. It starts a second backend process in the pod (about 1 GB), so run it only in the dev or prod database manager, which have room for it: a preview's database manager runs out of memory.
+
+On dev, the counts include folders of preview accounts: a preview (`!deploy`) writes to dev's private bucket but has a database of its own, which goes with the preview, so its accounts' folders look orphaned here. The 7-day rule keeps those of a live preview, which lasts 3 days at most.
