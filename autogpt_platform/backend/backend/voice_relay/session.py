@@ -132,6 +132,7 @@ from backend.voice_relay.vendor import (
 )
 from backend.voice_relay.vendor_failure import Stage as VendorStage
 from backend.voice_relay.vendor_failure import VendorFailure, vendor_failure
+from backend.voice_relay.waits import bounded, stop
 
 logger = logging.getLogger(__name__)
 
@@ -504,9 +505,7 @@ class Session:
             self.error = failed.error
             self.end(failed.reason)
         finally:
-            for task in list(self.tasks):
-                task.cancel()
-            await asyncio.gather(*self.tasks, return_exceptions=True)
+            await stop(self.tasks)
             await self.close_vendor()
             await self.finish()
 
@@ -526,7 +525,7 @@ class Session:
         self.tasks.add(naming)
         connecting = time.monotonic()
         try:
-            live = await asyncio.wait_for(
+            live = await bounded(
                 self.vendor.connect(), timeout=self.timing.vendor_connect_timeout_s
             )
         except Exception as error:
@@ -641,7 +640,7 @@ class Session:
             return
         opening = voice_interview_kickoff(self.first_name)
         try:
-            await asyncio.wait_for(
+            await bounded(
                 live.send_note(opening, turn_complete=True),
                 timeout=VENDOR_SEND_TIMEOUT_S,
             )
@@ -835,18 +834,14 @@ class Session:
             return
         ws = self.ws
         try:
-            await asyncio.wait_for(
-                ws.send_text(text), timeout=self.timing.socket_timeout_s
-            )
+            await bounded(ws.send_text(text), timeout=self.timing.socket_timeout_s)
         except Exception:
             # Failed or stalled: the browser is no longer reading.
             self.detach("send failed", ws)
 
     async def _close(self, ws: ClientSocket, code: int) -> None:
         try:
-            await asyncio.wait_for(
-                ws.close(code=code), timeout=self.timing.socket_timeout_s
-            )
+            await bounded(ws.close(code=code), timeout=self.timing.socket_timeout_s)
         except Exception:
             logger.debug(f"Voice call {self.call_id}: socket did not close cleanly")
 
@@ -955,7 +950,7 @@ class Session:
         if self.wrapping or self.reconnecting or live is None:
             return
         try:
-            await asyncio.wait_for(live.send_audio(pcm), timeout=VENDOR_SEND_TIMEOUT_S)
+            await bounded(live.send_audio(pcm), timeout=VENDOR_SEND_TIMEOUT_S)
         except Exception:
             # The vendor socket is going down; downstream reconnects it.
             return
@@ -1114,7 +1109,7 @@ class Session:
         if live is None or self.reconnecting:
             return False
         try:
-            await asyncio.wait_for(call(live), timeout=VENDOR_SEND_TIMEOUT_S)
+            await bounded(call(live), timeout=VENDOR_SEND_TIMEOUT_S)
             return True
         except Exception as error:
             logger.info(
@@ -1186,7 +1181,7 @@ class Session:
             return
         self.vendor_reconnects += 1
         try:
-            live = await asyncio.wait_for(
+            live = await bounded(
                 self.vendor.connect(), timeout=self.timing.vendor_connect_timeout_s
             )
         except Exception as reconnect_error:
@@ -1196,7 +1191,7 @@ class Session:
             return
         try:
             # The replacement opens on the call so far, which prompts its turn.
-            await asyncio.wait_for(
+            await bounded(
                 live.send_note(self.reseed_text(), turn_complete=True),
                 timeout=VENDOR_SEND_TIMEOUT_S,
             )
@@ -1584,7 +1579,7 @@ class Session:
         while not self.ended.is_set():
             before, user = await self.scope_queue.get()
             try:
-                judgement = await asyncio.wait_for(
+                judgement = await bounded(
                     classifier(before=before, user=user),
                     timeout=self.timing.scope_timeout_s,
                 )

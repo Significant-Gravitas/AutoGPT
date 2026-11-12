@@ -268,6 +268,20 @@ async def test_a_started_call_is_recorded_on_the_persons_onboarding_row(redis):
         await read_until(ws, "ended")
 
 
+async def test_a_call_ends_though_one_of_its_tasks_lost_its_cancellation(redis):
+    """A cancellation can be lost on Python 3.11 inside a library's
+    ``asyncio.wait_for``: the call still ends, and says so."""
+    vendor = FakeVendor([Reply(text="Hi")], loses_a_cancellation=True)
+    async with running_relay(redis, vendor) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps(start()))
+        await read_until(ws, "ready")
+        await ws.send(json.dumps({"type": "hangup"}))
+        assert (await read_until(ws, "ended"))["reason"] == "user_hangup"
+    assert vendor.sessions[0].lost_a_cancellation
+    assert running.relay.held_slots == 0
+
+
 async def test_a_call_names_the_call_it_replaced_on_the_persons_row(redis):
     """The hand-off walks the person's calls back from the latest along it."""
     vendor = FakeVendor([Reply(text="Hi"), Reply(text="Hi again")])

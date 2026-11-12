@@ -69,6 +69,7 @@ from backend.voice_relay.metering import (
     LIVEKIT_ROOMS_CLOSED,
     LIVEKIT_SWEEPS,
 )
+from backend.voice_relay.waits import bounded
 
 if TYPE_CHECKING:
     from livekit import api
@@ -256,7 +257,7 @@ class RoomReaper:
         try:
             redis = await self._redis()
             entries = await locks.registered_rooms(redis)
-            listing = await asyncio.wait_for(
+            listing = await bounded(
                 self._rooms().list_rooms(api.ListRoomsRequest()),
                 timeout=ROOM_LIST_TIMEOUT_S,
             )
@@ -344,7 +345,7 @@ class RoomReaper:
         call_id = _call_id_of(room.name) or ""
         try:
             try:
-                listing = await asyncio.wait_for(
+                listing = await bounded(
                     self._rooms().list_participants(
                         api.ListParticipantsRequest(room=room.name)
                     ),
@@ -410,14 +411,14 @@ async def _request(call: Awaitable[object]) -> None:
     from livekit import api
 
     try:
-        await asyncio.wait_for(call, timeout=ROOM_LEAVE_TIMEOUT_S)
+        await bounded(call, timeout=ROOM_LEAVE_TIMEOUT_S)
     except api.TwirpError as error:
         if error.code != api.TwirpErrorCode.NOT_FOUND:
             raise
 
 
 async def _bounded(operation: Awaitable[T]) -> T:
-    return await asyncio.wait_for(operation, timeout=locks.REDIS_TIMEOUT_S)
+    return await bounded(operation, timeout=locks.REDIS_TIMEOUT_S)
 
 
 def _call_id_of(room_name: str) -> str | None:

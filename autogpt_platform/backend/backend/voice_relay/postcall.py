@@ -91,6 +91,7 @@ from backend.voice_relay.record import (
     pcm_of,
     wav_of,
 )
+from backend.voice_relay.waits import bounded, stop
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,9 @@ SEGMENT_GAP_S = 0.3
 RETRY_BACKOFF_S = 1.0
 # How long a Redis operation of the job's bookkeeping may take.
 REDIS_TIMEOUT_S = 2.0
+# A job cancelled at shutdown gives its claim up as it stops, one Redis
+# operation; one still running well past that is cancelled again.
+JOB_STOP_AGAIN_S = 2 * REDIS_TIMEOUT_S
 
 # --- the transcript of record ----------------------------------------------
 
@@ -264,7 +268,7 @@ async def _transcribe(
 ) -> Transcription:
     for attempt in range(1, TRANSCRIBE_ATTEMPTS + 1):
         try:
-            return await asyncio.wait_for(
+            return await bounded(
                 transcriber(wav, first_name=first_name), timeout=timeout_s
             )
         except Exception as error:
@@ -432,9 +436,7 @@ class PostCall:
         if not jobs:
             return
         _, running = await asyncio.wait(jobs, timeout=wait_s)
-        for job in running:
-            job.cancel()
-        await asyncio.gather(*running, return_exceptions=True)
+        await stop(running, again_after_s=JOB_STOP_AGAIN_S)
 
     async def run(
         self,
@@ -701,7 +703,7 @@ class PostCall:
 
     async def _bounded(self, what: str, operation: Awaitable[Any]) -> Any:
         try:
-            return await asyncio.wait_for(operation, timeout=REDIS_TIMEOUT_S)
+            return await bounded(operation, timeout=REDIS_TIMEOUT_S)
         except Exception as error:
             logger.warning(f"Voice post-call: {what} failed: {failure_of(error)}")
             return None

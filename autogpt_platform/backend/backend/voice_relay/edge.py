@@ -51,6 +51,7 @@ from backend.voice_relay.metering import (
     LIVEKIT_DROPPED_BYTES,
     LIVEKIT_PARTICIPANT_SECONDS,
 )
+from backend.voice_relay.waits import bounded, stop
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +143,7 @@ class LiveKitEdge:
         )
         self._legs.add(leg)
         try:
-            await asyncio.wait_for(
+            await bounded(
                 leg.join(self._project.url, token), timeout=self._join_timeout_s
             )
         except BaseException:
@@ -280,7 +281,7 @@ class RoomLeg:
             await source.wait_for_playout()
 
         try:
-            await asyncio.wait_for(played(), timeout=ROOM_PLAYOUT_S)
+            await bounded(played(), timeout=ROOM_PLAYOUT_S)
         except Exception:
             logger.info("Voice call: Otto's last words did not play out in time")
             return
@@ -307,13 +308,8 @@ class RoomLeg:
         try:
             reader, feeder = self._reader, self._feeder
             self._stop_reading()
-            if feeder is not None:
-                feeder.cancel()
-            await asyncio.gather(
-                *(task for task in (reader, feeder) if task is not None),
-                *self._closing,
-                return_exceptions=True,
-            )
+            await stop(task for task in (reader, feeder) if task is not None)
+            await asyncio.gather(*self._closing, return_exceptions=True)
             room, source = self._room, self._source
             if room is not None:
                 await _bounded(room.disconnect(), "the room was not left cleanly")
@@ -573,6 +569,6 @@ async def _bounded(operation: Awaitable[object], failed: str) -> None:
     """Await an SDK call that tears something down, for at most
     ``ROOM_LEAVE_TIMEOUT_S``; one that fails or hangs is only logged."""
     try:
-        await asyncio.wait_for(operation, timeout=ROOM_LEAVE_TIMEOUT_S)
+        await bounded(operation, timeout=ROOM_LEAVE_TIMEOUT_S)
     except Exception:
         logger.info(f"Voice call: {failed}", exc_info=True)

@@ -60,6 +60,7 @@ from backend.voice_relay.room_reaper import RoomReaper
 from backend.voice_relay.scope import ScopeClassifier
 from backend.voice_relay.session import RoomEdge, Session
 from backend.voice_relay.vendor import VendorConnector
+from backend.voice_relay.waits import bounded, stop
 
 logger = logging.getLogger(__name__)
 
@@ -269,15 +270,13 @@ async def _sweeping(relay: Relay) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        for sweep in sweeps:
-            sweep.cancel()
-        await asyncio.gather(*sweeps, return_exceptions=True)
+        await stop(sweeps)
         await deps.postcall.settle(SHUTDOWN_JOBS_S)
 
 
 async def _spool_ready(spool_dir: str) -> bool:
     try:
-        return await asyncio.wait_for(
+        return await bounded(
             asyncio.to_thread(spool_writable, spool_dir), timeout=SPOOL_PROBE_TIMEOUT_S
         )
     except Exception:
@@ -299,7 +298,7 @@ async def serve_socket(relay: Relay, ws: WebSocket) -> None:
         return
     await ws.accept()
     try:
-        first = await asyncio.wait_for(_first_message(ws), timeout=START_TIMEOUT_S)
+        first = await bounded(_first_message(ws), timeout=START_TIMEOUT_S)
     except TimeoutError:
         await _refuse(ws, "start_timeout", CLOSE_POLICY)
         return
@@ -357,10 +356,8 @@ async def _start_call(
         await _refuse(ws, str(error), CLOSE_POLICY)
         return
     try:
-        redis = await asyncio.wait_for(deps.redis(), timeout=locks.REDIS_TIMEOUT_S)
-        await asyncio.wait_for(
-            tokens.spend(redis, claims), timeout=locks.REDIS_TIMEOUT_S
-        )
+        redis = await bounded(deps.redis(), timeout=locks.REDIS_TIMEOUT_S)
+        await bounded(tokens.spend(redis, claims), timeout=locks.REDIS_TIMEOUT_S)
     except tokens.TokenError as error:
         await _refuse(ws, str(error), CLOSE_POLICY)
         return
@@ -378,7 +375,7 @@ async def _start_call(
         holder=deps.postcall.pod,
     )
     try:
-        holder = await asyncio.wait_for(
+        holder = await bounded(
             locks.take_user_lock(redis, claims.user_id, claims.call_id),
             timeout=locks.REDIS_TIMEOUT_S,
         )
@@ -469,7 +466,7 @@ async def _admit(
     row named before this one.
     """
     try:
-        admitted = await asyncio.wait_for(
+        admitted = await bounded(
             locks.acquire_live_call(
                 redis, claims.call_id, time.time(), deps.max_concurrent
             ),
@@ -485,7 +482,7 @@ async def _admit(
     # Recorded once the call holds its lock and its place, so the row names a
     # call that ran.
     try:
-        replaced = await asyncio.wait_for(
+        replaced = await bounded(
             deps.record_call(claims.user_id, claims.call_id),
             timeout=RECORD_CALL_TIMEOUT_S,
         )
@@ -543,9 +540,7 @@ async def _refuse_try_again(
 async def _free_token(redis: AsyncRedisClient, claims: tokens.StartClaims) -> None:
     """Make the start token good again, so the browser can retry with it."""
     try:
-        await asyncio.wait_for(
-            tokens.unspend(redis, claims), timeout=locks.REDIS_TIMEOUT_S
-        )
+        await bounded(tokens.unspend(redis, claims), timeout=locks.REDIS_TIMEOUT_S)
     except Exception:
         logger.info(f"Voice call {claims.call_id}: start token not freed")
 
@@ -554,20 +549,18 @@ async def _refuse(ws: WebSocket, error: str, code: int, **extra: object) -> None
     """Tell the browser why, then close. Bounded: a browser that stops
     reading holds nothing here."""
     try:
-        await asyncio.wait_for(
+        await bounded(
             ws.send_text(json.dumps({"type": "error", "error": error, **extra})),
             timeout=REFUSE_TIMEOUT_S,
         )
-        await asyncio.wait_for(ws.close(code=code), timeout=REFUSE_TIMEOUT_S)
+        await bounded(ws.close(code=code), timeout=REFUSE_TIMEOUT_S)
     except Exception:
         logger.debug("A refused socket was already gone")
 
 
 async def _first_name(deps: RelayDeps, user_id: str) -> str | None:
     try:
-        name = await asyncio.wait_for(
-            deps.account_name(user_id), timeout=FIRST_NAME_TIMEOUT_S
-        )
+        name = await bounded(deps.account_name(user_id), timeout=FIRST_NAME_TIMEOUT_S)
     except Exception:
         logger.info("Voice call: the account's name could not be read", exc_info=True)
         return None

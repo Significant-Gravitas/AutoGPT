@@ -16,6 +16,7 @@ from google.genai import Client, types
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.voice_relay.config import IN_RATE
+from backend.voice_relay.waits import bounded
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +221,7 @@ class GeminiLiveSession:
 
     async def close(self) -> None:
         try:
-            await asyncio.wait_for(
+            await bounded(
                 self._manager.__aexit__(None, None, None), timeout=CLOSE_TIMEOUT_S
             )
         except Exception:

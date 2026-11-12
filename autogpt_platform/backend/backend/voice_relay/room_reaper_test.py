@@ -36,6 +36,7 @@ from backend.voice_relay.conftest import running_relay, until
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
 from backend.voice_relay.room_reaper import RoomReaper
 from backend.voice_relay.session_test import USER, Call, _session, open_call
+from backend.voice_relay.waits import stop
 
 CALL = "a" * 32
 OTHER_CALL = "b" * 32
@@ -708,8 +709,9 @@ async def test_the_relay_sweeps_again_and_again(redis):
     )
 
     await until(lambda: service.kinds().count("list") >= 3)
-    sweeping.cancel()
-    await asyncio.gather(sweeping, return_exceptions=True)
+    # Stopped as the relay stops it: on Python 3.11 a sweep can lose its
+    # cancellation inside the Redis client's own ``asyncio.wait_for``.
+    await stop([sweeping])
 
 
 # --- the registry ------------------------------------------------------------

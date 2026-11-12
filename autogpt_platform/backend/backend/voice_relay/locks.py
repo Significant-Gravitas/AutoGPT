@@ -73,6 +73,7 @@ from backend.voice_relay.config import (
     ROOM_SWEEP_HEARTBEAT_S,
     USER_LOCK_TTL_S,
 )
+from backend.voice_relay.waits import bounded
 
 logger = logging.getLogger(__name__)
 
@@ -1018,7 +1019,7 @@ class CallStore:
 
     async def _bounded(self, what: str, operation: Awaitable[T]) -> T | None:
         try:
-            return await asyncio.wait_for(operation, timeout=REDIS_TIMEOUT_S)
+            return await bounded(operation, timeout=REDIS_TIMEOUT_S)
         except Exception:
             logger.warning(f"Voice call {self.call_id}: {what} failed", exc_info=True)
             return None

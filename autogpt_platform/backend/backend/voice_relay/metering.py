@@ -36,6 +36,7 @@ from backend.voice_relay.config import (
 )
 from backend.voice_relay.locks import add_daily_spend
 from backend.voice_relay.vendor import Usage
+from backend.voice_relay.waits import bounded
 
 logger = logging.getLogger(__name__)
 
@@ -382,7 +383,7 @@ class CallMeter:
         if self._redis is None:
             return
         try:
-            await asyncio.wait_for(
+            await bounded(
                 add_daily_spend(self._redis, usd, datetime.now(UTC)),
                 timeout=REDIS_TIMEOUT_S,
             )

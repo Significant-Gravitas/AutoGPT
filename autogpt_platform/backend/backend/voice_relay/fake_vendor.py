@@ -32,6 +32,7 @@ from backend.voice_relay.vendor import (
     UserText,
     VendorEvent,
 )
+from backend.voice_relay.waits import bounded
 
 END_TOOL = "finish_onboarding"
 CHUNK_S = 0.04
@@ -78,6 +79,7 @@ class FakeVendor:
         stall_notes: bool = False,
         stall_opening: bool = False,
         refuse: Exception | None = None,
+        loses_a_cancellation: bool = False,
     ) -> None:
         self.replies = list(replies)
         # Sessions (counted from 1) that drop halfway through their first reply.
@@ -95,6 +97,10 @@ class FakeVendor:
         self.stall_opening = stall_opening
         # Each connect is refused with this.
         self.refuse = refuse
+        # The task reading a session's events loses its first cancellation
+        # there and waits on, as one can inside a library's
+        # ``asyncio.wait_for`` on Python 3.11.
+        self.loses_a_cancellation = loses_a_cancellation
         # While set and clear, each connect waits on it: a connect that lands
         # only once the test lets it.
         self.connect_gate: asyncio.Event | None = None
@@ -144,6 +150,8 @@ class FakeVendorSession:
         # Otto finishes one reply before starting the next.
         self._speaking_lock = asyncio.Lock()
         self._tasks: set[asyncio.Task] = set()
+        # Whether the task reading its events lost a cancellation there.
+        self.lost_a_cancellation = False
 
     @property
     def opening(self) -> str:
@@ -197,7 +205,13 @@ class FakeVendorSession:
 
     async def events(self) -> AsyncIterator[VendorEvent]:
         while True:
-            event = await self._queue.get()
+            try:
+                event = await self._queue.get()
+            except asyncio.CancelledError:
+                if not self.vendor.loses_a_cancellation or self.lost_a_cancellation:
+                    raise
+                self.lost_a_cancellation = True
+                continue
             if event is None:
                 return
             if isinstance(event, _Drop):
@@ -251,9 +265,7 @@ class FakeVendorSession:
                 )
             )
             with contextlib.suppress(asyncio.TimeoutError):
-                await asyncio.wait_for(
-                    self._tool_answered.wait(), timeout=TOOL_RESULT_WAIT_S
-                )
+                await bounded(self._tool_answered.wait(), timeout=TOOL_RESULT_WAIT_S)
         drops = self.number in self.vendor.drop_sessions and self._replies_spoken == 0
         self._replies_spoken += 1
         chunks = max(1, round(reply.audio_s / CHUNK_S))
