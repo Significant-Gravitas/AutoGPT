@@ -83,13 +83,15 @@ def test_the_same_stall_pages_once_a_day_and_a_new_one_pages_again(wiring, mocke
     assert sentry.call_count == 3
 
 
-def test_a_page_that_failed_is_sent_again_on_the_next_check(wiring):
+def test_a_page_that_failed_is_sent_again_on_the_next_check(wiring, caplog):
+    """The IDs are logged even when the page fails."""
     db, notifications, _ = wiring
     db.stalled_account_erasures.return_value = [STALLED]
     notifications.discord_system_alert.side_effect = [ConnectionError("down"), None]
 
     with pytest.raises(ConnectionError):
         monitor.report_stalled_account_erasures()
+    assert STALLED in caplog.text
     monitor.report_stalled_account_erasures()
 
     assert notifications.discord_system_alert.call_count == 2

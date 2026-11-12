@@ -69,6 +69,8 @@ def report_stalled_account_erasures() -> str:
         "docs/engineering/account-deletion.md."
     )
     msg = f"{len(user_ids)} {summary} User IDs: {', '.join(user_ids)}"
+    # First, so the IDs are on record even when a page below fails.
+    logger.warning(msg)
     if fresh := _unpaged(user_ids):
         # The IDs stay out of the Sentry issue's text, so every stall groups
         # into one issue.
@@ -78,5 +80,4 @@ def report_stalled_account_erasures() -> str:
         )
         # Only once the page went out: a failed one is tried again next check.
         _mark_paged(fresh)
-    logger.warning(msg)
     return msg
