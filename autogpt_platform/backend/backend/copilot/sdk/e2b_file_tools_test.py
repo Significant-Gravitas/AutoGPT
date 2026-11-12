@@ -1530,14 +1530,15 @@ class TestEditResultOverTheLimit:
         result = await _handle_edit_file(
             {
                 "file_path": "f.txt",
-                "old_string": "a",
-                "new_string": "bb",
+                "old_string": "aa",
+                "new_string": "bbbbb",
                 "replace_all": True,
             }
         )
 
         assert not result["isError"]
         sandbox_write.assert_awaited_once()
+        assert sandbox_write.await_args.args[2] == "b" * 10
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
