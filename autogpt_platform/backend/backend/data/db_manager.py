@@ -81,6 +81,8 @@ from backend.data import skill_publication as skill_publication_data
 from backend.data import skill_reviews as skill_reviews_data
 from backend.data import skill_use as skill_use_data
 from backend.data import skill_versions as skill_versions_data
+from backend.data.account_deletion import is_account_closed
+from backend.data.account_erasure.sweep import start_account_erasure_sweep
 from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
     count_alerts_sent_since,
@@ -146,6 +148,7 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
+from backend.data.feedback_prompts import claim_feedback_prompt, count_feedback_prompts
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -443,6 +446,8 @@ class DatabaseManager(AppService):
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
     # Background work skips a banned owner in Prisma-less workers too.
     is_auth_user_banned = _(is_auth_user_banned)
+    # The websocket server has no Prisma of its own.
+    is_account_closed = _(is_account_closed)
     # Exposed for the scheduler's auth-identity invariant monitor.
     heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
     get_user_integrations = _(get_user_integrations)
@@ -587,6 +592,10 @@ class DatabaseManager(AppService):
     # ============ Activity Events ============ #
     create_activity_event = _(create_activity_event)
 
+    # ============ Feedback Prompts ============ #
+    claim_feedback_prompt = _(claim_feedback_prompt)
+    count_feedback_prompts = _(count_feedback_prompts)
+
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
     delete_push_subscription = _(delete_push_subscription)
@@ -604,6 +613,7 @@ class DatabaseManager(AppService):
     # row via db_accessors.credit_db() instead of crashing on direct Prisma.
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
     start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
+    start_account_erasure_sweep = _(start_account_erasure_sweep)
     request_posthog_lifecycle_sync = _(request_posthog_lifecycle_sync)
     send_trial_last_calls = _(send_trial_last_calls)
 
@@ -651,6 +661,7 @@ class DatabaseManager(AppService):
     set_scope_state = _(memory_schedule_db.set_scope_state)
     forget_scope_job = _(memory_schedule_db.forget_scope_job)
     record_scope_run = _(memory_schedule_db.record_scope_run)
+    list_due_community_scopes = _(memory_schedule_db.list_due_community_scopes)
     list_user_scope_schedules = _(memory_schedule_db.list_user_scope_schedules)
     list_scope_schedules = _(memory_schedule_db.list_scope_schedules)
     existing_user_ids = _(memory_schedule_db.existing_user_ids)
@@ -1029,6 +1040,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
     is_auth_user_banned = d.is_auth_user_banned
+    is_account_closed = d.is_account_closed
     heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
@@ -1194,6 +1206,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Activity Events ============ #
     create_activity_event = d.create_activity_event
 
+    # ============ Feedback Prompts ============ #
+    claim_feedback_prompt = d.claim_feedback_prompt
+    count_feedback_prompts = d.count_feedback_prompts
+
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions
     delete_push_subscription = d.delete_push_subscription
@@ -1204,6 +1220,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
     reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
     start_posthog_lifecycle_sweep = d.start_posthog_lifecycle_sweep
+    start_account_erasure_sweep = d.start_account_erasure_sweep
     request_posthog_lifecycle_sync = d.request_posthog_lifecycle_sync
     send_trial_last_calls = d.send_trial_last_calls
 
@@ -1242,6 +1259,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     set_scope_state = d.set_scope_state
     forget_scope_job = d.forget_scope_job
     record_scope_run = d.record_scope_run
+    list_due_community_scopes = d.list_due_community_scopes
     list_user_scope_schedules = d.list_user_scope_schedules
     list_scope_schedules = d.list_scope_schedules
     existing_user_ids = d.existing_user_ids

@@ -34,7 +34,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.util import ZoneInfo
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import MetaData, create_engine, inspect, or_
+from sqlalchemy import MetaData, create_engine, inspect, or_, select
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.api.features.onboarding_dump.retention import (
@@ -47,6 +47,7 @@ from backend.copilot.active_turns import ConcurrentTurnLimitError, SessionNotIdl
 from backend.copilot.at_reset import (
     AT_RESET_JOB_NAMES,
     AtResetKind,
+    FireVerdict,
     at_reset_schedule_id,
     fire_verdict,
     load_at_reset_chat,
@@ -57,6 +58,7 @@ from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.db import PaginatedMessages
+from backend.copilot.dream.community_sweep import rebuild_due_communities
 from backend.copilot.dream.deadline import bridge_timeout
 from backend.copilot.dream.scheduling import (
     COMMUNITY_REBUILD_JOB_PREFIX,
@@ -88,6 +90,11 @@ from backend.copilot.dream.scope_reconcile import (
 from backend.copilot.executor.utils import ScheduledTurnOrigin, schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.limit_tracking import (
+    track_chat_blocked,
+    track_turn_cap,
+    track_turn_refusal,
+)
 from backend.copilot.model import ChatSessionInfo, create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
@@ -106,7 +113,7 @@ from backend.data.memory_schedule import ScopeRunKind
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.data.redis_client import get_redis_async
 from backend.data.schedule import normalize_schedule_name
-from backend.data.user import is_user_banned
+from backend.data.user import is_user_refused
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import WRITE_TIMEOUT, ResilientSQLAlchemyJobStore
@@ -210,6 +217,11 @@ MEMORY_CRON_LISTING_TIMEOUT_SECONDS = 60
 # transaction holds (``jobstore.WRITE_TIMEOUT``), failing only its scope.
 MEMORY_CRON_WRITE_TIMEOUT_SECONDS = 10
 _MEMORY_CRON_RECONCILE_JOB_ID = "reconcile_memory_scope_crons"
+# The hourly community sweep ends before its next run is due.
+COMMUNITY_SWEEP_TIMEOUT_SECONDS = 55 * 60
+_COMMUNITY_SWEEP_JOB_ID = "rebuild_due_communities"
+# Job ids read per query while the sweep removes the old per-scope crons.
+COMMUNITY_CRON_REMOVAL_BATCH = 1000
 
 
 def job_listener(event):
@@ -748,17 +760,11 @@ async def _execute_copilot_turn(**kwargs):
         )
         if args.run_at is not None:
             await _reschedule_one_shot_after_expert_unavailable(args)
-    except (ConcurrentTurnLimitError, SessionNotIdle) as e:
-        # The user's cap or a busy chat prevented admission. For cron schedules the
-        # next tick retries automatically; for one-shot (run_at) schedules
-        # APScheduler removes the job after fire regardless of our error,
-        # so re-schedule a copy 5 min out to give the slot time to free.
-        logger.warning(
-            f"Scheduled copilot turn for session {_session_id_label(args)} "
-            f"could not acquire a turn slot; cron={args.cron is not None}: {e}"
-        )
-        if args.run_at is not None:
-            await _reschedule_one_shot_after_cap(args)
+    except ConcurrentTurnLimitError as e:
+        track_turn_cap(args.user_id, e, surface="schedule", outcome="refused")
+        await _skip_fire_without_slot(args, e)
+    except SessionNotIdle as e:
+        await _skip_fire_without_slot(args, e)
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
@@ -766,6 +772,19 @@ async def _execute_copilot_turn(**kwargs):
             f"{_session_id_label(args)} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+async def _skip_fire_without_slot(args: "CopilotTurnJobArgs", e: Exception) -> None:
+    """The user's cap or a busy chat prevented admission. For cron schedules the
+    next tick retries automatically; for one-shot (run_at) schedules
+    APScheduler removes the job after fire regardless of our error, so
+    re-schedule a copy 5 min out to give the slot time to free."""
+    logger.warning(
+        f"Scheduled copilot turn for session {_session_id_label(args)} "
+        f"could not acquire a turn slot; cron={args.cron is not None}: {e}"
+    )
+    if args.run_at is not None:
+        await _reschedule_one_shot_after_cap(args)
 
 
 async def _refuse_if_turn_may_not_start(
@@ -820,6 +839,14 @@ async def _refuse_if_turn_may_not_start(
         )
     else:
         run, outcome = "dropped", "the one-shot is dropped"
+    # A one-shot moved to the window's reset is held back; any other fire
+    # doesn't run.
+    track_turn_refusal(
+        job_args.user_id,
+        refusal,
+        surface="schedule",
+        outcome="queued" if waits and run == "waits_for_reset" else "refused",
+    )
     logger.log(
         logging.WARNING if refusal.transient else logging.INFO,
         f"Skipping scheduled copilot turn {job_args.schedule_id}: owner "
@@ -1203,8 +1230,13 @@ async def _execute_at_reset_turn(args: "CopilotTurnJobArgs", kind: AtResetKind) 
                 "while it ran; dropping it"
             )
             return
+        _track_at_reset_verdict(args.user_id, verdict)
         if verdict.action == "fire":
-            await _dispatch_at_reset_turn(args, kind, chat.session)
+            try:
+                await _dispatch_at_reset_turn(args, kind, chat.session)
+            except ConcurrentTurnLimitError as cap:
+                track_turn_cap(args.user_id, cap, surface="schedule", outcome="refused")
+                raise
         elif verdict.action == "wait" and verdict.run_at is not None:
             logger.info(
                 f"{kind}-at-reset turn for session {label} is still out of "
@@ -1223,6 +1255,22 @@ async def _execute_at_reset_turn(args: "CopilotTurnJobArgs", kind: AtResetKind) 
             exc_info=True,
         )
         await _rearm_at_reset_turn(args, reason=f"{type(e).__name__}: {e}")
+
+
+def _track_at_reset_verdict(user_id: str, verdict: FireVerdict) -> None:
+    """``chat_blocked`` for an at-reset turn a used-up window holds back:
+    ``queued`` when it moves to the next reset, ``refused`` when nothing
+    refills."""
+    if verdict.window is None or verdict.action not in ("wait", "drop"):
+        return
+    track_chat_blocked(
+        user_id,
+        limit=verdict.window,
+        outcome="queued" if verdict.action == "wait" else "refused",
+        surface="schedule",
+        reading=verdict.reading,
+        resets_at=verdict.refills_at if verdict.action == "wait" else None,
+    )
 
 
 async def _at_reset_chat(args: "CopilotTurnJobArgs") -> PaginatedMessages | None:
@@ -1543,12 +1591,9 @@ async def _purge_expired_recordings() -> RecordingPurgeResult:
 
 
 def execute_community_rebuild(user_id: str, expert_id: str | None = None):
-    """Weekly community-rebuild cron body of one memory scope (P-1.7).
-
-    The job is ``community_rebuild_{scope_key}``. The account's jobs pass
-    only ``user_id``, as they did when the crons were per user. Runs only
-    while ``_memory_scope_may_fire`` lets it, and stamps
-    ``lastCommunityRunAt`` when the rebuild finishes without an error.
+    """Body of the per-scope ``community_rebuild_{scope_key}`` crons, which
+    are no longer registered. Kept so one that fires before the hourly sweep
+    removes it (``_remove_community_crons``) still loads and runs.
     """
     scope = MemoryScope.build(user_id, expert_id)
     if not _memory_scope_may_fire(scope):
@@ -1577,18 +1622,23 @@ def _memory_scope_may_fire(scope: MemoryScope) -> bool:
     """The registry gate of a dream-system cron (``memory_scope_may_fire``),
     run on the scheduler loop. The gate bounds itself; if the bridge still
     gives up, the gate's cancellation is requested and the run skipped."""
-    # A banned owner's crons stay registered and resume if the ban is lifted.
+    # A banned or closed owner's crons stay registered, and resume if the ban
+    # is lifted or the owner keeps the account.
     try:
-        banned = run_async(
-            is_user_banned(scope.owner_user_id),
+        refused = run_async(
+            is_user_refused(scope.owner_user_id),
             timeout=bridge_timeout(),
             cancel_on_timeout=True,
         )
     except Exception:
-        logger.warning(f"Memory cron of {scope_label(scope)} skipped: ban unreadable")
+        logger.warning(
+            f"Memory cron of {scope_label(scope)} skipped: ban or closure unreadable"
+        )
         return False
-    if banned:
-        logger.info(f"Memory cron of {scope_label(scope)} skipped: owner is banned")
+    if refused:
+        logger.info(
+            f"Memory cron of {scope_label(scope)} skipped: owner is banned or closed"
+        )
         return False
     try:
         return run_async(
@@ -2119,11 +2169,9 @@ def execute_community_rebuild_with_status(user_id: str, job_id: str):
         )
 
 
-# Each dream-system cron's body and crontab, by job-id prefix: weekly
-# community rebuild at owner-local 04:00 on Mondays (APScheduler counts
-# weekdays from 0 = Monday), nightly batch at owner-local 03:00.
+# Each dream-system cron's body and crontab, by job-id prefix: nightly batch
+# and skill learning at owner-local 03:00.
 _MEMORY_CRONS: dict[str, tuple[Callable[..., object], str]] = {
-    COMMUNITY_REBUILD_JOB_PREFIX: (execute_community_rebuild, "0 4 * * 0"),
     NIGHTLY_BATCH_JOB_PREFIX: (execute_nightly_batch_sync, "0 3 * * *"),
     SKILL_LEARNING_JOB_PREFIX: (execute_skill_learning_sync, "0 3 * * *"),
 }
@@ -2151,6 +2199,16 @@ def reconcile_memory_scope_crons() -> None:
         logger.warning("Memory cron reconcile skipped: scheduler not running")
         return
     _scheduler_instance._reconcile_memory_crons()
+
+
+def rebuild_due_communities_job() -> None:
+    """System task, hourly: the weekly community rebuild of every scope that
+    is due (``copilot/dream/community_sweep.py``), after removing the
+    per-scope crons that did it before."""
+    if _scheduler_instance is None:
+        logger.warning("Community sweep skipped: scheduler not running")
+        return
+    _scheduler_instance._sweep_communities()
 
 
 def listed_cron(job: JobObj) -> ListedCron | None:
@@ -2314,6 +2372,24 @@ def sync_posthog_lifecycles():
     async def _start():
         db = get_database_manager_async_client()
         return await db.start_posthog_lifecycle_sweep()
+
+    run_async(_start())
+
+
+def erase_closed_accounts():
+    """Erase the accounts closed from Settings, the paywall or by email
+    (SECRT-2854).
+
+    Only starts the sweep; it runs inside the database manager, which has the
+    Prisma connection and the settings the erasure needs.
+    """
+    # Also stops a job persisted while the sweep was on.
+    if not config.account_erasure_sweep_enabled:
+        return
+
+    async def _start():
+        db = get_database_manager_async_client()
+        return await db.start_account_erasure_sweep()
 
     run_async(_start())
 
@@ -3154,6 +3230,19 @@ class Scheduler(AppService):
                     jobstore=Jobstores.EXECUTION.value,
                 )
 
+            # Account erasure: works through the closed accounts not erased
+            # yet. Off by default (account_erasure_sweep_enabled).
+            if config.account_erasure_sweep_enabled:
+                system_jobs.add_job(
+                    erase_closed_accounts,
+                    id="erase_closed_accounts",
+                    trigger="interval",
+                    replace_existing=True,
+                    max_instances=1,
+                    seconds=config.account_erasure_sweep_interval_secs,
+                    jobstore=Jobstores.EXECUTION.value,
+                )
+
             # Cloud Storage Cleanup - configurable interval
             system_jobs.add_job(
                 cleanup_expired_files,
@@ -3310,6 +3399,7 @@ class Scheduler(AppService):
             self._register_posthog_lifecycle_sweep()
             self._register_recording_purge()
             self._register_memory_cron_reconcile()
+            self._register_community_sweep()
         self._report_parked_jobs()
         self._start_schedule_index_backfill()
         threading.Thread(
@@ -4437,51 +4527,7 @@ class Scheduler(AppService):
         """Manually trigger embedding backfill for approved store agents."""
         return ensure_embeddings_coverage()
 
-    # --- Graphiti community detection (P-1.7) ---
-    #
-    # Rebuilds run weekly at owner-local 04:00 on Mondays
-    # (``0 4 * * 0``: APScheduler counts weekdays from 0 = Monday) to avoid
-    # the Leiden cost spike during active hours and to stagger from the
-    # nightly dream at 03:00.
-
-    @expose
-    def add_community_rebuild_schedule(
-        self,
-        user_id: str,
-        user_timezone: str = "UTC",
-    ) -> dict:
-        """The account's weekly community rebuild: the scope-keyed method
-        for ``MemoryScope.for_user(user_id)``, whose job id is unchanged."""
-        return self.add_scope_community_rebuild_schedule(
-            MemoryScope.for_user(user_id), user_timezone
-        )
-
-    @expose
-    def add_scope_community_rebuild_schedule(
-        self,
-        scope: MemoryScope,
-        user_timezone: str = "UTC",
-    ) -> dict:
-        """Register the weekly community rebuild of one memory scope.
-
-        Only adds the job: the registry row that
-        lets it fire is ``copilot/dream/registry.py``'s to write.
-        """
-        user_timezone = user_timezone or "UTC"
-        job = self._add_memory_job(
-            *_MEMORY_CRONS[COMMUNITY_REBUILD_JOB_PREFIX],
-            dream_system_job(COMMUNITY_REBUILD_JOB_PREFIX),
-            scope,
-            user_timezone,
-        )
-        return memory_job_result(scope, job.id, job.next_run_time, user_timezone)
-
-    @expose
-    def delete_community_rebuild_schedule(self, user_id: str) -> bool:
-        """Remove the account's weekly community rebuild."""
-        return self._delete_account_memory_job(
-            user_id, dream_system_job(COMMUNITY_REBUILD_JOB_PREFIX)
-        )
+    # --- Memory crons and the community sweep ---
 
     @expose
     def remove_scope_memory_jobs(self, scope: MemoryScope) -> list[str]:
@@ -4705,6 +4751,72 @@ class Scheduler(AppService):
             next_run_time=datetime.now(ZoneInfo("UTC")),
             jobstore=Jobstores.MEMORY_CRON_RECONCILE.value,
         )
+
+    def _register_community_sweep(self) -> None:
+        """The hourly community sweep (``rebuild_due_communities_job``),
+        process-local like the reconcile, with a pass at start so a deploy
+        removes the old per-scope crons at once."""
+        self.scheduler.add_job(
+            rebuild_due_communities_job,
+            IntervalTrigger(hours=1),
+            id=_COMMUNITY_SWEEP_JOB_ID,
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            next_run_time=datetime.now(ZoneInfo("UTC")),
+            jobstore=Jobstores.MEMORY_CRON_RECONCILE.value,
+        )
+
+    def _sweep_communities(self) -> None:
+        try:
+            removed = self._remove_community_crons()
+        except Exception:
+            logger.warning(
+                "Could not remove the per-scope community crons", exc_info=True
+            )
+        else:
+            if removed:
+                logger.info(f"Removed {removed} per-scope community rebuild crons")
+        try:
+            run_async(
+                rebuild_due_communities(
+                    _expert_scope_status, SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
+                ),
+                timeout=COMMUNITY_SWEEP_TIMEOUT_SECONDS,
+                cancel_on_timeout=True,
+            )
+        except concurrent.futures.TimeoutError:
+            logger.warning("Community sweep cut off; the next run takes the rest")
+
+    def _remove_community_crons(self) -> int:
+        """Remove every per-scope community rebuild cron from the EXECUTION
+        jobstore, a batch of ids at a time; how many it removed. Each goes
+        through ``remove_job``, which holds APScheduler's jobstore lock, so a
+        dispatch pass never loses a row it is about to update, and gives up
+        after ``MEMORY_CRON_WRITE_TIMEOUT_SECONDS`` on a row another
+        transaction holds rather than keep that lock."""
+        ids = self._execution_jobstore.jobs_t.c.id
+        query = (
+            select(ids)
+            .where(ids.startswith(f"{COMMUNITY_REBUILD_JOB_PREFIX}_", autoescape=True))
+            .limit(COMMUNITY_CRON_REMOVAL_BATCH)
+        )
+        removed = 0
+        token = WRITE_TIMEOUT.set(MEMORY_CRON_WRITE_TIMEOUT_SECONDS)
+        try:
+            while True:
+                with self._execution_jobstore.engine.connect() as connection:
+                    batch = connection.execute(query).scalars().all()
+                for job_id in batch:
+                    try:
+                        self.scheduler.remove_job(job_id, Jobstores.EXECUTION.value)
+                        removed += 1
+                    except JobLookupError:
+                        pass
+                if len(batch) < COMMUNITY_CRON_REMOVAL_BATCH:
+                    return removed
+        finally:
+            WRITE_TIMEOUT.reset(token)
 
     # --- Morning briefing ---
     #
@@ -5105,15 +5217,6 @@ class SchedulerClient(AppServiceClient):
     get_parked_jobs = endpoint_to_async(Scheduler.get_parked_jobs)
     reconcile_parked_jobs = endpoint_to_async(Scheduler.reconcile_parked_jobs)
 
-    add_community_rebuild_schedule = endpoint_to_async(
-        Scheduler.add_community_rebuild_schedule
-    )
-    add_scope_community_rebuild_schedule = endpoint_to_async(
-        Scheduler.add_scope_community_rebuild_schedule
-    )
-    delete_community_rebuild_schedule = endpoint_to_async(
-        Scheduler.delete_community_rebuild_schedule
-    )
     remove_scope_memory_jobs = endpoint_to_async(Scheduler.remove_scope_memory_jobs)
     execute_community_rebuild_pass = endpoint_to_async(
         Scheduler.execute_community_rebuild_pass
