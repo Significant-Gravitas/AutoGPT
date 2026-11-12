@@ -244,7 +244,9 @@ async def _run_close_now(
         # Also after a close of ours: one that lost a race to another close
         # (Settings, say) wrote no mark.
         if await skip_confirmation(user_id):
-            click.echo("No email goes to the owner, now or from the erasure.")
+            # Not "no email at all": a close by the owner a moment earlier
+            # may still be sending its own confirmation.
+            click.echo("The erasure sends the owner no email.")
         else:
             click.echo("The confirmation went out when the account was closed.")
     await end_grace_now(user_id)

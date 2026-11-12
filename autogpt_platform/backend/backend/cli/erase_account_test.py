@@ -240,7 +240,7 @@ def test_close_now_with_no_email_closes_and_erases_sending_none(run):
     run.skipping.assert_awaited_once_with(USER_ID)
     run.ending.assert_awaited_once_with(USER_ID)
     assert _dry_runs(run.erasing) == [True, True, False]
-    assert "No email goes to the owner" in result.output
+    assert "The erasure sends the owner no email" in result.output
 
 
 def test_no_email_says_so_when_the_confirmation_went_out_already(run):
@@ -250,7 +250,7 @@ def test_no_email_says_so_when_the_confirmation_went_out_already(run):
 
     assert result.exit_code == 0, result.output
     assert "The confirmation went out when the account was closed" in result.output
-    assert "No email goes to the owner" not in result.output
+    assert "The erasure sends the owner no email" not in result.output
 
 
 def test_a_no_email_dry_run_shows_no_late_confirmation(run):

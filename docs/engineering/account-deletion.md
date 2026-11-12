@@ -67,7 +67,7 @@ Every command is a dry run unless it has `--apply`, and prints counts only, neve
    poetry run cli erase-account sam@example.com --close --now --apply
    ```
 
-   **Without the email**, when nobody should hear from us about it (`--no-email`, only with `--close --now`): closing sends no confirmation and records that on the request (`confirmationSkipped`), so the erasure sends none late either. On an account closed already whose confirmation has not gone out, it marks the request the same way. Everything else runs as above:
+   **Without the email**, when nobody should hear from us about it (`--no-email`, only with `--close --now`): closing sends no confirmation and records that on the request (`confirmationSkipped`), so the erasure sends none late either. On an account closed already whose confirmation has not gone out, it marks the request the same way. If the owner closed it themselves seconds before, their own confirmation may still be on its way, so the CLI says only that the erasure sends none. Everything else runs as above:
 
    ```sh
    poetry run cli erase-account sam@example.com --close --now --no-email

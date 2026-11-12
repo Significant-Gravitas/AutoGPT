@@ -209,7 +209,7 @@ def _skipped_confirmation(dry_run: bool) -> StepReport:
         name="confirmation",
         status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
         counts={"emails": 0},
-        note="closed without the email (--no-email)",
+        note="--no-email: the erasure sends none",
     )
 
 
