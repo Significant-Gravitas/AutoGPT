@@ -34,6 +34,7 @@ from backend.util.e2b_network import (
     secret_digest,
     uses_platform_e2b_key,
 )
+from backend.util.sandbox_limits import tagged
 from backend.util.testing import is_tcp_port_reachable
 
 _M = "backend.util.e2b_network"
@@ -119,7 +120,10 @@ class TestOff:
                 await connect_sandbox(cls, "sb-1", _OWNER, api_key="k", timeout=9)
                 is box
             )
-        cls.create.assert_awaited_once_with(template="t", api_key="k")
+        # Untouched but for the stamps the running-box limits count by.
+        cls.create.assert_awaited_once_with(
+            template="t", api_key="k", metadata=tagged(None, _OWNER.user_id)
+        )
         cls.connect.assert_awaited_once_with("sb-1", api_key="k", timeout=9)
         box.update_network.assert_not_awaited()
         assert redis.store == {}

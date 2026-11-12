@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 MODULE_PATH = Path(__file__).parents[1] / "runtime_config.py"
@@ -73,11 +74,13 @@ class RuntimeConfigTest(unittest.TestCase):
                     "UNSUBSCRIBE_SECRET_KEY",
                     "GRAPHITI_FALKORDB_PASSWORD",
                     "INTERNAL_API_KEY",
+                    "BAN_RECORD_HASH_KEY",
                     "VAPID_PRIVATE_KEY",
                     "VAPID_PUBLIC_KEY",
                 },
             )
-            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            if os.name != "nt":
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
     def test_first_boot_honors_explicit_values(self) -> None:
         vapid_private, vapid_public = _matching_vapid_pair()
@@ -91,6 +94,7 @@ class RuntimeConfigTest(unittest.TestCase):
             "UNSUBSCRIBE_SECRET_KEY": "u" * 40,
             "GRAPHITI_FALKORDB_PASSWORD": "f" * 40,
             "INTERNAL_API_KEY": "i" * 40,
+            "BAN_RECORD_HASH_KEY": "h" * 40,
             "VAPID_PRIVATE_KEY": vapid_private,
             "VAPID_PUBLIC_KEY": vapid_public,
         }
@@ -127,9 +131,103 @@ class RuntimeConfigTest(unittest.TestCase):
                 runtime_config.ensure_runtime_config(path, {})
 
         self.assertIn(("fsync", False), events)
-        self.assertIn(("fsync", True), events)
         self.assertLess(events.index(("fsync", False)), events.index(("replace",)))
-        self.assertLess(events.index(("replace",)), events.index(("fsync", True)))
+        if os.name == "nt":
+            self.assertNotIn(("fsync", True), events)
+        else:
+            self.assertIn(("fsync", True), events)
+            self.assertLess(events.index(("replace",)), events.index(("fsync", True)))
+
+    def test_first_boot_and_reopen_with_windows_apis(self) -> None:
+        def refuse_directories(target: Path, flags: int, mode: int = 0o777) -> int:
+            if os.path.isdir(target):
+                raise PermissionError(13, "Permission denied", str(target))
+            return os.open(target, flags, mode)
+
+        for fchmod_available in (False, True):
+            windows_os = SimpleNamespace(**vars(os))
+            windows_os.name = "nt"
+            windows_os.open = refuse_directories
+            windows_os.fsync = mock.Mock(wraps=os.fsync)
+            windows_os.replace = mock.Mock(wraps=os.replace)
+            windows_os.fchmod = mock.Mock()
+            if not fchmod_available:
+                del windows_os.fchmod
+
+            with (
+                self.subTest(fchmod_available=fchmod_available),
+                tempfile.TemporaryDirectory() as directory,
+                mock.patch.object(runtime_config, "os", windows_os),
+            ):
+                path = Path(directory) / "runtime.env"
+                with self.assertRaisesRegex(ValueError, "POSTGRES_PASSWORD"):
+                    runtime_config.ensure_runtime_config(
+                        path, {"POSTGRES_PASSWORD": "too-short"}
+                    )
+                self.assertEqual(list(Path(directory).iterdir()), [])
+
+                first = runtime_config.ensure_runtime_config(path, {})
+                before = path.read_bytes()
+                self.assertEqual(first, runtime_config.ensure_runtime_config(path, {}))
+                self.assertEqual(path.read_bytes(), before)
+                windows_os.fsync.assert_called_once()
+                windows_os.replace.assert_called_once()
+                if fchmod_available:
+                    windows_os.fchmod.assert_called_once_with(mock.ANY, 0o600)
+
+                with self.assertRaisesRegex(ValueError, "persisted on first boot"):
+                    runtime_config.ensure_runtime_config(
+                        path, {"POSTGRES_PASSWORD": first["POSTGRES_PASSWORD"] + "x"}
+                    )
+                self.assertEqual(path.read_bytes(), before)
+                self.assertEqual(list(Path(directory).iterdir()), [path])
+
+    def test_failed_write_keeps_existing_config_and_removes_temporary_file(
+        self,
+    ) -> None:
+        for operation in ("fsync", "replace"):
+            with (
+                self.subTest(operation=operation),
+                tempfile.TemporaryDirectory() as root,
+            ):
+                path = Path(root) / "runtime.env"
+                _write_version_1_config(path)
+                before = path.read_bytes()
+                with (
+                    mock.patch.object(
+                        runtime_config.os, operation, side_effect=OSError("test")
+                    ),
+                    self.assertRaisesRegex(OSError, "test"),
+                ):
+                    runtime_config.ensure_runtime_config(path, {})
+                self.assertEqual(path.read_bytes(), before)
+                self.assertEqual(list(Path(root).iterdir()), [path])
+
+    @unittest.skipIf(os.name == "nt", "directory fsync requires POSIX")
+    def test_directory_fsync_failure_closes_descriptor_and_keeps_replaced_file(
+        self,
+    ) -> None:
+        real_fsync = os.fsync
+        directory_descriptors: list[int] = []
+
+        def fail_directory_fsync(descriptor: int) -> None:
+            if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+                directory_descriptors.append(descriptor)
+                raise OSError("test")
+            real_fsync(descriptor)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            with (
+                mock.patch.object(runtime_config.os, "fsync", fail_directory_fsync),
+                mock.patch.object(runtime_config.os, "close", wraps=os.close) as close,
+                self.assertRaisesRegex(OSError, "test"),
+            ):
+                runtime_config.ensure_runtime_config(path, {})
+            self.assertEqual(len(directory_descriptors), 1)
+            close.assert_called_once_with(directory_descriptors[0])
+            runtime_config.ensure_runtime_config(path, {})
+            self.assertEqual(list(Path(directory).iterdir()), [path])
 
     def test_first_boot_closes_descriptor_when_fdopen_fails(self) -> None:
         real_close = runtime_config.os.close
@@ -370,8 +468,8 @@ class RuntimeConfigTest(unittest.TestCase):
             (
                 "unsupported version",
                 lambda content: content.replace(
-                    "AUTOGPT_RUNTIME_CONFIG_VERSION=2",
                     "AUTOGPT_RUNTIME_CONFIG_VERSION=3",
+                    "AUTOGPT_RUNTIME_CONFIG_VERSION=4",
                 ),
                 "unsupported runtime configuration version",
             ),
@@ -416,16 +514,20 @@ class RuntimeConfigTest(unittest.TestCase):
             upgraded = runtime_config.ensure_runtime_config(path, {})
 
             key = upgraded.pop("INTERNAL_API_KEY")
-            self.assertGreaterEqual(len(key), 32)
-            self.assertRegex(key, r"^[A-Za-z0-9_-]+$")
-            self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "2")
+            ban_key = upgraded.pop("BAN_RECORD_HASH_KEY")
+            for generated in (key, ban_key):
+                self.assertGreaterEqual(len(generated), 32)
+                self.assertRegex(generated, r"^[A-Za-z0-9_-]+$")
+            self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
             self.assertEqual(
                 {**upgraded, "AUTOGPT_RUNTIME_CONFIG_VERSION": "1"}, original
             )
-            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            if os.name != "nt":
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
             again = runtime_config.ensure_runtime_config(path, {})
             self.assertEqual(again["INTERNAL_API_KEY"], key)
-            self.assertEqual(again["AUTOGPT_RUNTIME_CONFIG_VERSION"], "2")
+            self.assertEqual(again["BAN_RECORD_HASH_KEY"], ban_key)
+            self.assertEqual(again["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
 
     def test_version_1_config_takes_a_configured_internal_key(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -471,6 +573,57 @@ class RuntimeConfigTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     runtime_config.ensure_runtime_config(path, {})
                 self.assertEqual(path.read_bytes(), before)
+
+    def test_version_2_config_gains_a_ban_record_key_and_keeps_the_rest(
+        self,
+    ) -> None:
+        """Ban records hash with this key, so an upgrade never replaces one."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            original = _version_2_values()
+            _write_config_lines(path, original)
+
+            upgraded = runtime_config.ensure_runtime_config(path, {})
+
+            key = upgraded.pop("BAN_RECORD_HASH_KEY")
+            self.assertGreaterEqual(len(key), 32)
+            self.assertRegex(key, r"^[A-Za-z0-9_-]+$")
+            self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
+            self.assertEqual(
+                {**upgraded, "AUTOGPT_RUNTIME_CONFIG_VERSION": "2"}, original
+            )
+            again = runtime_config.ensure_runtime_config(path, {})
+            self.assertEqual(again["BAN_RECORD_HASH_KEY"], key)
+
+    def test_version_2_config_takes_a_configured_ban_record_key(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            _write_config_lines(path, _version_2_values())
+            configured = {"BAN_RECORD_HASH_KEY": "h" * 40}
+
+            upgraded = runtime_config.ensure_runtime_config(path, configured)
+
+            self.assertEqual(upgraded["BAN_RECORD_HASH_KEY"], "h" * 40)
+
+    def test_rejects_version_2_config_that_already_has_a_ban_record_key(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            _write_config_lines(
+                path, {**_version_2_values(), "BAN_RECORD_HASH_KEY": "h" * 40}
+            )
+            before = path.read_bytes()
+
+            with self.assertRaises(ValueError):
+                runtime_config.ensure_runtime_config(path, {})
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_the_version_2_step_produces_version_3_after_later_bumps(self) -> None:
+        with mock.patch.object(runtime_config, "CONFIG_VERSION", "4"):
+            upgraded = runtime_config._upgraded_from_version_2(_version_2_values(), {})
+
+        self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
 
     def test_the_version_1_step_produces_version_2_after_later_bumps(self) -> None:
         with mock.patch.object(runtime_config, "CONFIG_VERSION", "3"):
@@ -701,6 +854,7 @@ class FillEnvSecretsTest(unittest.TestCase):
                 keys.append(path.read_text(encoding="utf-8"))
             self.assertNotEqual(keys[0], keys[1])
 
+    @unittest.skipIf(os.name == "nt", "POSIX file modes are unavailable on Windows")
     def test_generated_file_becomes_owner_only(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / ".env"
@@ -905,6 +1059,26 @@ class FillEnvSecretsTest(unittest.TestCase):
                 _base64url_decode(values["VAPID_PUBLIC_KEY"]),
                 runtime_config._p256_public_point(int.from_bytes(private, "big")),
             )
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+    def test_a_ban_record_key_absent_from_an_older_env_is_appended(self) -> None:
+        """A backend/.env copied before the key existed gets one, so erasing a
+        banned account and the sign-up check work after `make init-env`."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "backend"
+            root.mkdir()
+            (root / ".env.default").write_text(
+                "BAN_RECORD_HASH_KEY=\n", encoding="utf-8"
+            )
+            path = root / ".env"
+            path.write_text("OPENAI_API_KEY=sk-theirs\n", encoding="utf-8")
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["BAN_RECORD_HASH_KEY"])
+            values = _env_values(path)
+            self.assertEqual(values["OPENAI_API_KEY"], "sk-theirs")
+            self.assertGreaterEqual(len(values["BAN_RECORD_HASH_KEY"]), 32)
             self.assertEqual(runtime_config.fill_env_blanks(path), [])
 
     def test_a_published_frontend_public_key_is_cleared(self) -> None:
@@ -1969,6 +2143,15 @@ def _version_1_values() -> dict[str, str]:
         "VAPID_PUBLIC_KEY": (
             base64.urlsafe_b64encode(b"\x04" + b"q" * 64).rstrip(b"=").decode()
         ),
+    }
+
+
+def _version_2_values() -> dict[str, str]:
+    """Every key a version 2 image wrote, before BAN_RECORD_HASH_KEY existed."""
+    return {
+        **_version_1_values(),
+        "AUTOGPT_RUNTIME_CONFIG_VERSION": "2",
+        "INTERNAL_API_KEY": "i" * 40,
     }
 
 

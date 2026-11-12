@@ -12,6 +12,7 @@ from pytest_mock import MockerFixture
 
 from backend.api.features.auth_email import routes as auth_email_routes
 from backend.api.rest_api import app as rest_app
+from backend.notifications.renderer import build_urls
 from backend.util.exceptions import EmailUndeliverableError
 
 app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
@@ -173,6 +174,49 @@ def test_verify_email_shows_where_the_user_is_in_sign_up(send_mock):
         assert "Start working." in part
 
 
+def test_change_email_names_both_addresses_for_the_current_owner(send_mock):
+    _post(
+        {
+            **VALID_BODY,
+            "type": "change_email",
+            "to": "old@example.com",
+            "new_email": "new@example.com",
+        }
+    )
+
+    to, subject, body, text = send_mock.call_args.args
+    assert to == "old@example.com"
+    assert subject == "Approve the email change on your AutoGPT account"
+    for part in (body, text):
+        assert "Approve your email change" in part
+        assert "old@example.com" in part
+        assert "new@example.com" in part
+        assert "expires in 24 hours" in part
+        assert "send a link to the new address" in part
+        assert "your email address stays the same" in part
+        assert "reset your password" in part
+        assert "Confirm your new email address" not in part
+    assert "Current email: old@example.com" in text
+    assert "New email: new@example.com" in text
+
+
+def test_change_email_without_the_new_address_still_reads_correctly(send_mock):
+    _post({**VALID_BODY, "type": "change_email", "to": "old@example.com"})
+
+    _, _, body, text = send_mock.call_args.args
+    for part in (body, text):
+        assert "old@example.com" in part
+        assert "New email" not in part
+        assert "send a link to your new address" in part
+
+
+def test_new_email_must_be_an_email_address(send_mock):
+    res = _post({**VALID_BODY, "type": "change_email", "new_email": "not-an-email"})
+
+    assert res.status_code == 422
+    send_mock.assert_not_called()
+
+
 def test_verify_new_email_is_about_the_change_not_a_sign_up(send_mock):
     _post({**VALID_BODY, "type": "verify_new_email"})
 
@@ -254,6 +298,14 @@ def test_allows_exact_configured_origin(send_mock, monkeypatch):
 def test_rejects_unknown_type(send_mock):
     res = _post({**VALID_BODY, "type": "spam_blast"})
     assert res.status_code == 422  # pydantic Literal rejection
+    send_mock.assert_not_called()
+
+
+def test_rejects_account_deleted_type(send_mock):
+    """A frontend service token may only trigger link emails; the account
+    deleted confirmation is sent by the deletion service itself."""
+    res = _post({**VALID_BODY, "type": "account_deleted"})
+    assert res.status_code == 422
     send_mock.assert_not_called()
 
 
@@ -344,7 +396,11 @@ def test_rejects_malformed_trusted_origin_regex_at_startup():
             "Verify your new AutoGPT Platform email",
             "Verify new email",
         ),
-        ("change_email", "Confirm your new AutoGPT Platform email", "Confirm email"),
+        (
+            "change_email",
+            "Approve the email change on your AutoGPT account",
+            "Approve change",
+        ),
         ("set_password", "Set your AutoGPT Platform password", "Set password"),
     ],
 )
@@ -370,7 +426,7 @@ def test_auth_email_design_and_plain_text(send_mock, email_type, subject, button
     )
     assert "<svg" not in body and "data:image" not in body
     assert "logo-light.png" in body
-    if email_type in ("verify_email", "verify_new_email"):
+    if email_type in ("verify_email", "verify_new_email", "change_email"):
         assert body.count('alt="Otto, your personal Head of AI"') == 1
         assert re.search(
             r'src="https://[^"]+/autogpt-characters/v1\.1/otto/neutral-transparent/256\.png"',
@@ -397,3 +453,117 @@ def test_auth_email_design_and_plain_text(send_mock, email_type, subject, button
     assert "Email preferences" not in body
     assert "didn't request this" in text
     assert len(body.encode()) < 60_000
+
+
+LINK = "https://platform.agpt.co/reset-password?token=abc"
+FOOTER = (
+    "This is a service message about an AutoGPT account. "
+    "It's sent even if you've opted out of product news.\n"
+    "AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK\n"
+    "https://agpt.co\n"
+    "Discord: {discord}"
+)
+
+
+def test_link_email_plain_text_is_unchanged(send_mock):
+    _post({**VALID_BODY, "type": "reset_password", "url": LINK})
+
+    discord = build_urls("").discord
+    _, _, _, text = send_mock.call_args.args
+    assert text == (
+        "Reset your password\n"
+        "\n"
+        "A password reset was requested for your AutoGPT account. "
+        "Use the button below to choose a new password. "
+        "If you didn't request this, you can safely ignore this email.\n"
+        "\n"
+        "Reset password:\n"
+        f"{LINK}\n"
+        "The link expires in 1 hour.\n"
+        "This link was requested from the AutoGPT password-reset form.\n"
+        f"Something wrong? Ask in Discord: {discord}\n"
+        "\n" + FOOTER.format(discord=discord)
+    )
+
+
+def test_link_email_with_expiry_and_note_plain_text_is_unchanged(send_mock):
+    _post({**VALID_BODY, "type": "set_password", "url": LINK})
+
+    discord = build_urls("").discord
+    _, _, _, text = send_mock.call_args.args
+    assert text == (
+        "Set your password\n"
+        "\n"
+        "Someone asked to sign up for, or verify, an AutoGPT Platform account "
+        "with this email address. Use the button below to set a password and "
+        "finish signing up. If you didn't request this, you can safely ignore "
+        "this email.\n"
+        "\n"
+        "Set password:\n"
+        f"{LINK}\n"
+        "The link expires in 1 hour.\n"
+        "If you already finished signing up with an earlier link, the password "
+        "you chose then no longer works: set a new one with this link, or use "
+        '"Forgot password" on the login page.\n'
+        "This link was requested from the AutoGPT sign-up form.\n"
+        f"Something wrong? Ask in Discord: {discord}\n"
+        "\n" + FOOTER.format(discord=discord)
+    )
+
+
+# verify_email, verify_new_email and change_email have their own layouts,
+# with their own tests.
+@pytest.mark.parametrize("email_type", ["reset_password", "set_password"])
+def test_link_email_html_keeps_ignore_line_button_and_link(send_mock, email_type):
+    _post({**VALID_BODY, "type": email_type, "url": LINK})
+
+    _, _, body, _ = send_mock.call_args.args
+    assert (
+        " If you didn't request this, you can safely ignore this email.</div>" in body
+    )
+    assert (
+        '<div style="padding-top:10px; font-size:12px; line-height:18px; '
+        'color:#575072;">Button not working? Copy this link into your browser:'
+        "</div>" in body
+    )
+    assert body.count(f'<a href="{LINK}"') == 2
+    assert f">{LINK}</a>" in body
+
+
+def test_ban_record_lookup_answers_from_the_records(monkeypatch):
+    app.dependency_overrides[auth_email_routes.requires_sign_up_check_service] = (
+        lambda: None
+    )
+
+    async def is_banned(email):
+        return email == "banned@example.com"
+
+    monkeypatch.setattr(auth_email_routes, "is_banned_address", is_banned)
+    try:
+        answers = [
+            client.post("/api/auth/email/ban-record", json={"email": e}).json()
+            for e in ("banned@example.com", "user@example.com")
+        ]
+    finally:
+        app.dependency_overrides.clear()
+
+    assert answers == [{"banned": True}, {"banned": False}]
+
+
+def test_ban_record_lookup_needs_the_frontend_service_token(
+    mocker: MockerFixture, monkeypatch
+):
+    """Without it the route would tell anyone which addresses were banned."""
+    mocker.patch.dict(
+        os.environ,
+        {"JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks"},
+        clear=False,
+    )
+    mocker.patch.object(auth_config, "_settings", AuthSettings())
+    lookup = mocker.AsyncMock(return_value=True)
+    monkeypatch.setattr(auth_email_routes, "is_banned_address", lookup)
+
+    res = client.post("/api/auth/email/ban-record", json={"email": "a@example.com"})
+
+    assert res.status_code == 401
+    lookup.assert_not_called()

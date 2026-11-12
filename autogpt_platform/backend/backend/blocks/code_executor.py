@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
+from e2b import SandboxState
 from e2b_code_interpreter import AsyncSandbox
 from e2b_code_interpreter import Result as E2BExecutionResult
 from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
@@ -197,6 +198,9 @@ class BaseE2BExecutorMixin:
                     OutputLimitedCodeSandbox,
                     sandbox_id,
                     egress_owner,
+                    # A box read as running can be paused by another run's
+                    # release before our hold, so a held connect may wake it.
+                    resumes=bool(held) or info.state != SandboxState.RUNNING,
                     api_key=api_key,
                     timeout=RESUMED_SANDBOX_SECONDS,
                 )

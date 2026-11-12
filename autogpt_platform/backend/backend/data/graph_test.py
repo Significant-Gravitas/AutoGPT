@@ -17,7 +17,7 @@ import backend.api.features.store.model as store
 from backend.api.features.graphs import routes as graphs_routes
 from backend.api.model import CreateGraph
 from backend.blocks import _all_subclasses, load_all_blocks
-from backend.blocks._base import Block, BlockSchema, BlockSchemaInput
+from backend.blocks._base import Block, BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
@@ -244,10 +244,6 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
         create_graph, DEFAULT_USER_ID
     )
 
-    class ExpectedInputSchema(BlockSchemaInput):
-        in_key_a: Any = SchemaField(title="Key A", default="A", advanced=True)
-        in_key_b: Any = SchemaField(title="in_key_b", advanced=False)
-
     class ExpectedOutputSchema(BlockSchema):
         # Note: Graph output schemas are dynamically generated and don't inherit
         # from BlockSchemaOutput, so we use BlockSchema as the base instead
@@ -259,7 +255,21 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
 
     input_schema = created_graph.input_schema
     input_schema["title"] = "ExpectedInputSchema"
-    assert input_schema == ExpectedInputSchema.jsonschema()
+    # Both inputs are advanced, so both are optional, with or without a default.
+    assert input_schema == {
+        "title": "ExpectedInputSchema",
+        "type": "object",
+        "properties": {
+            "in_key_a": {
+                "advanced": True,
+                "default": "A",
+                "secret": False,
+                "title": "Key A",
+            },
+            "in_key_b": {"advanced": True, "secret": False, "title": "in_key_b"},
+        },
+        "required": [],
+    }
 
     # Add snapshot testing for the schemas
     snapshot.snapshot_dir = "snapshots"
@@ -923,6 +933,7 @@ def test_only_known_block_fields_are_marked_secret():
     assert secret_fields == {
         ("AllQuietIncidentTriggerBlock", "signing_secret"),
         ("AutoPilotBlock", "codex_credentials"),
+        ("ExaSearchMonitorTriggerBlock", "webhook_secret"),
         ("GenericWebhookTriggerBlock", "secret_token"),
         ("PublishToMediumBlock", "author_id"),
         ("SQLQueryBlock", "host"),

@@ -119,12 +119,22 @@ function isProd() {
   return isCloud() && getAppEnv() === AppEnv.PROD;
 }
 
+// Set alongside AUTH_MICROSOFT_CLIENT_ID and AUTH_MICROSOFT_CLIENT_SECRET, which
+// the browser cannot read, so the button only shows where sign-in works.
+function isMicrosoftLoginEnabled() {
+  return process.env.NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED === "true";
+}
+
 function isCloud() {
   return getBehaveAs() === BehaveAs.CLOUD;
 }
 
 function isLocal() {
   return getBehaveAs() === BehaveAs.LOCAL;
+}
+
+function isGraphMemoryAvailable() {
+  return process.env.NEXT_PUBLIC_GRAPH_MEMORY !== "disabled";
 }
 
 function isServerSide() {
@@ -202,7 +212,9 @@ export const environment = {
   isDev,
   isProd,
   isCloud,
+  isMicrosoftLoginEnabled,
   isLocal,
+  isGraphMemoryAvailable,
   isVercel,
   isVercelPreview,
   isSentryEnabled,
