@@ -66,9 +66,10 @@ def process(bundle: Bundle, data: DataDir, port: int, password: str) -> ManagedP
         env=base_env(),
         cwd=data.valkey,
         log_dir=data.logs,
-        graceful_stop=lambda _: _shutdown(port, password),
+        graceful_stop=lambda cache: _stop(cache, port, password),
         stop_timeout=15,
         windows_quote_executable=True,
+        ready_port=port,
     )
 
 
@@ -119,6 +120,13 @@ def _client(port: int, password: str):
         socket_connect_timeout=3,
         decode_responses=True,
     )
+
+
+def _stop(cache: ManagedProcess, port: int, password: str) -> None:
+    if cache.owns_listener():
+        _shutdown(port, password)
+    elif cache.popen:
+        cache.popen.terminate()
 
 
 def _shutdown(port: int, password: str) -> None:

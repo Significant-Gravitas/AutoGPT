@@ -66,6 +66,7 @@ class ManagedProcess:
     popen: subprocess.Popen[bytes] | None = field(default=None, repr=False)
     started_at: float = field(default=0.0, repr=False)
     windows_quote_executable: bool = False
+    ready_port: int | None = None
 
     def start(self) -> None:
         if self.popen:  # a restart: nothing of the previous run may linger
@@ -102,6 +103,32 @@ class ManagedProcess:
 
     def exit_code(self) -> int | None:
         return self.popen.poll() if self.popen else None
+
+    def owns_listener(self) -> bool:
+        """Check the managed process tree before contacting its service port."""
+        import psutil
+
+        if self.ready_port is None:
+            return True
+        try:
+            if self.exit_code() is not None or self.pid is None:
+                return False
+            parent = psutil.Process(self.pid)
+            for candidate in [parent, *parent.children(recursive=True)]:
+                for connection in candidate.net_connections(kind="tcp4"):
+                    if (
+                        connection.status == psutil.CONN_LISTEN
+                        and connection.laddr.ip in ("127.0.0.1", "0.0.0.0")
+                        and connection.laddr.port == self.ready_port
+                    ):
+                        return (
+                            candidate.is_running()
+                            and parent.is_running()
+                            and self.exit_code() is None
+                        )
+        except (psutil.Error, OSError):
+            return False
+        return False
 
     def stop(self) -> None:
         if not self.popen:

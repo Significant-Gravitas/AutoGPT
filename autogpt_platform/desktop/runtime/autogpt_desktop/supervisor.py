@@ -708,10 +708,13 @@ class Stack:
         never will: a process that has exited, or a stop request, ends the
         wait at once instead of running out the timeout."""
 
+        def ready() -> bool:
+            return process.owns_listener() and probe()
+
         def settled() -> bool:
             if self.stop_requested.is_set() or process.exit_code() is not None:
                 return True
-            return self.start_failed.is_set() or self.database_failed() or probe()
+            return self.start_failed.is_set() or self.database_failed() or ready()
 
         wait_until(settled, timeout, interval=READY_POLL_SECONDS)
         self.raise_if_abandoned()
@@ -723,7 +726,7 @@ class Stack:
             raise StartupError(
                 f"{process.name} exited while starting. See {log} for details."
             )
-        if not probe():
+        if not ready():
             raise StartupError(f"{process.name} did not start. See {log} for details.")
 
     def database_failed(self) -> bool:

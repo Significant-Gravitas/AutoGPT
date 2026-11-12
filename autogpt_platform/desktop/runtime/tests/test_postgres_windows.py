@@ -395,8 +395,14 @@ def test_a_new_start_first_stops_a_server_nobody_saw(
 
 
 def test_the_supervisor_starts_stops_and_restarts_it_like_any_process(
-    server: postgres.WindowsServer, bundle: Bundle, data: DataDir, pg_ctl: FakePgCtl
+    server: postgres.WindowsServer,
+    bundle: Bundle,
+    data: DataDir,
+    pg_ctl: FakePgCtl,
+    monkeypatch,
 ):
+    # This pg_ctl stand-in models process lifetime without opening a socket.
+    monkeypatch.setattr(server, "owns_listener", lambda: True)
     stack = Stack(bundle, data)
     stack.launch([server])
     try:

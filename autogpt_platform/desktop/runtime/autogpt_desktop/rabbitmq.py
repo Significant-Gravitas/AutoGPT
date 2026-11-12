@@ -506,6 +506,7 @@ def process(bundle: Bundle, data: DataDir, ports: dict[str, int]) -> ManagedProc
         log_dir=data.logs,
         graceful_stop=lambda _: _stop(bundle, env),
         stop_timeout=30,
+        ready_port=ports["rabbitmq"],
     )
 
 

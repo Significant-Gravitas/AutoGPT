@@ -170,6 +170,7 @@ def process(
         log_dir=data.logs,
         graceful_stop=_pg_ctl_stop(bundle, data),
         stop_timeout=STOP_TIMEOUT_SECONDS,
+        ready_port=port,
     )
 
 
