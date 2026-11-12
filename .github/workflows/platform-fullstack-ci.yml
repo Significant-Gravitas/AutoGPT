@@ -118,7 +118,7 @@ jobs:
       # ------------------------ Frontend setup ------------------------
 
       - name: Set up Frontend - Set up pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
@@ -191,8 +191,8 @@ jobs:
           - suite: smoke
             config: playwright.config.ts
             playwright_args: ""
-            # Pinned inventory: 28 tests in 9 files; raise when adding E2E tests.
-            min_tests: 28
+            # Pinned inventory: 29 tests in 10 files; raise when adding E2E tests.
+            min_tests: 29
             embeddings: true
             seed: true
             hosted: false
@@ -306,6 +306,14 @@ jobs:
         env:
           # Used by E2E test data script to generate embeddings for approved store agents
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      # Flags that ship off but have an E2E spec. Written before the compose
+      # file is resolved and the images are built, since the frontend inlines
+      # NEXT_PUBLIC_* at build time.
+      - name: Set up Platform - Force on the flags the E2E suite covers
+        run: |
+          echo "NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true" >> .env
+          echo "FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true" >> ../backend/.env
 
       # The hosted configuration, as far as one compose stack allows. Gaps are
       # listed in src/playwright/journeys/README.md.
@@ -483,7 +491,7 @@ jobs:
           timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
 
       - name: Set up tests - Set up pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
@@ -647,6 +655,16 @@ jobs:
             exit 1
           }
 
+      # On a fresh database, parallel logins can each create a signing key.
+      # Publish one first, before PyJWT's refresh cooldown caches a partial set.
+      - name: Set up Platform - Initialize auth signing keys
+        run: |
+          docker compose -f ../docker-compose.resolved.yml exec -T rest_server python - <<'PY'
+          import os
+          from jwt import PyJWKClient
+
+          PyJWKClient(os.environ["JWT_JWKS_URL"], timeout=5).get_signing_keys()
+          PY
       - name: Stop runner memory log
         if: always()
         run: touch /tmp/stop-memory-log

@@ -40,6 +40,7 @@ from backend.integrations.oauth.microsoft_365_copilot import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import DatabaseError, NotFoundError
+from backend.util.sandbox_limits import SandboxLimitError
 from backend.util.settings import BehaveAs
 
 app = fastapi.FastAPI()
@@ -330,6 +331,19 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=False,
     )
+    mocker.patch.object(
+        chat_routes, "pending_message_was_received", AsyncMock(return_value=False)
+    )
+    mocker.patch(
+        "backend.copilot.briefing.scheduling.ensure_morning_briefing_scheduled",
+        new_callable=AsyncMock,
+    )
+    mocker.patch.object(chat_routes, "check_rate_limit", AsyncMock())
+    mocker.patch.object(
+        chat_routes,
+        "get_global_rate_limits",
+        AsyncMock(return_value=(0, 0, SubscriptionTier.BASIC)),
+    )
     # The write gate only queries when ``session.expert_id`` is set; default it
     # to "still hired" so expert-scoped tests reach the logic they care about.
     # The gate's own tests re-patch this with the verdict they need.
@@ -540,6 +554,38 @@ def test_stream_chat_queues_an_impersonated_turn_as_impersonated(
 
     assert queue.await_args.kwargs["user_id"] == target_user_id
     assert queue.await_args.kwargs["impersonated"] is True
+
+
+def test_stream_chat_a_turn_queued_behind_the_running_cap_is_sent_as_queued(
+    mocker: pytest_mock.MockerFixture,
+    chat_blocked_events: list[dict],
+    test_user_id: str,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    _mock_rate_limits_for_an_unseeded_user(mocker)
+    mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy", cap=5)
+    mocker.patch.object(
+        chat_routes.turn_queue, "try_enqueue_turn", new_callable=AsyncMock
+    )
+
+    assert (
+        client.post("/sessions/sess-1/stream", json={"message": "hello"}).status_code
+        == 200
+    )
+
+    assert chat_blocked_events == [
+        {
+            "distinct_id": test_user_id,
+            "reason": "rate_limit",
+            "limit": "concurrency",
+            "outcome": "queued",
+            "surface": "chat",
+            "tier": None,
+            "used": None,
+            "cap": 5,
+            "resets_at": None,
+        }
+    ]
 
 
 def test_stream_chat_allows_an_active_expert_session(
@@ -794,6 +840,7 @@ def test_stream_chat_redispatches_orphaned_expert_kickoff(
 
 def test_stream_chat_returns_retryable_limit_for_orphaned_expert_kickoff(
     mocker: pytest_mock.MockerFixture,
+    chat_blocked_events: list[dict],
 ) -> None:
     mocks = _mock_stream_internals(mocker)
     mocks.session.expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
@@ -811,6 +858,9 @@ def test_stream_chat_returns_retryable_limit_for_orphaned_expert_kickoff(
 
     assert response.status_code == 429
     assert response.json() == {"detail": "try again"}
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == [
+        ("concurrency", "refused")
+    ]
 
 
 def test_stream_chat_does_not_redispatch_running_persisted_kickoff(
@@ -967,6 +1017,7 @@ class _ClaimRedis:
 
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
+        self.receipt_deadlines: dict[str, int] = {}
 
     @property
     def keys(self) -> set[str]:
@@ -983,6 +1034,9 @@ class _ClaimRedis:
     async def get(self, key: str) -> str | None:
         return self.values.get(key)
 
+    async def pexpiretime(self, key: str) -> int:
+        return self.receipt_deadlines.get(key, -2)
+
     async def eval(
         self,
         script: str,
@@ -990,10 +1044,12 @@ class _ClaimRedis:
         key: str,
         expected: str,
         new: str,
-        ttl_seconds: int,
+        expiry_value: int,
         or_missing: str,
+        expiry_mode: str,
     ) -> int:
         """``string_compare_and_set``, which settles a claim."""
+        assert expiry_mode in {"EX", "PXAT"}
         current = self.values.get(key)
         if current != expected and not (current is None and or_missing == "1"):
             return 0
@@ -1017,8 +1073,24 @@ def _mock_client_message_claims(mocker: pytest_mock.MockerFixture) -> _ClaimRedi
     return redis
 
 
-def _mock_pending_push(mocker: pytest_mock.MockerFixture) -> AsyncMock:
+def _mock_pending_push(
+    mocker: pytest_mock.MockerFixture, claims: _ClaimRedis
+) -> AsyncMock:
     """Run the real ``queue_pending_for_http`` down to the Redis push."""
+
+    async def receive(
+        session_id: str,
+        message: pending_messages_module.PendingMessage,
+        **_kwargs: object,
+    ) -> int:
+        receipt_key = pending_messages_module.pending_message_receipt_key(
+            session_id, message.id
+        )
+        claims.receipt_deadlines[receipt_key] = int(
+            (datetime.now(UTC) + timedelta(hours=1)).timestamp() * 1000
+        )
+        return 1
+
     mocker.patch(
         "backend.copilot.pending_message_helpers.get_redis_async",
         new_callable=AsyncMock,
@@ -1032,7 +1104,7 @@ def _mock_pending_push(mocker: pytest_mock.MockerFixture) -> AsyncMock:
     return mocker.patch(
         "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
         new_callable=AsyncMock,
-        return_value=1,
+        side_effect=receive,
     )
 
 
@@ -1043,7 +1115,7 @@ def test_stream_chat_retransmits_of_a_started_turn_queue_nothing(
     land once the turn is running used to be buffered as follow-ups, each
     one becoming another user message and another turn."""
     mocks = _mock_stream_internals(mocker)
-    push = _mock_pending_push(mocker)
+    push = _mock_pending_push(mocker, mocks.claims)
     in_flight = mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
         new_callable=AsyncMock,
@@ -1067,7 +1139,7 @@ def test_stream_chat_retransmits_of_a_queued_send_are_buffered_once(
     send is queued. Its copies must neither queue again nor, once the turn
     has drained it, start a turn of their own."""
     mocks = _mock_stream_internals(mocker)
-    push = _mock_pending_push(mocker)
+    push = _mock_pending_push(mocker, mocks.claims)
     in_flight = mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
         new_callable=AsyncMock,
@@ -1088,8 +1160,8 @@ def test_stream_chat_distinct_message_ids_are_each_queued(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """Two clicks with the same text are two messages."""
-    _mock_stream_internals(mocker)
-    push = _mock_pending_push(mocker)
+    mocks = _mock_stream_internals(mocker)
+    push = _mock_pending_push(mocker, mocks.claims)
     mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
         new_callable=AsyncMock,
@@ -1108,6 +1180,7 @@ def test_stream_chat_distinct_message_ids_are_each_queued(
 
 def test_stream_chat_refused_send_can_be_retried_with_the_same_id(
     mocker: pytest_mock.MockerFixture,
+    chat_blocked_events: list[dict],
 ) -> None:
     """A send the server turned away was never accepted, so its id must not
     stay claimed: the retry would be dropped as a duplicate of nothing."""
@@ -1117,12 +1190,19 @@ def test_stream_chat_refused_send_can_be_retried_with_the_same_id(
         chat_routes.turn_queue,
         "try_enqueue_turn",
         new_callable=AsyncMock,
-        side_effect=chat_routes.turn_queue.InflightCapExceeded(),
+        side_effect=chat_routes.turn_queue.InflightCapExceeded(used=15, cap=15),
     )
     body = {"message": "hello", "message_id": "client-click-id"}
 
     assert client.post("/sessions/sess-1/stream", json=body).status_code == 429
     assert mocks.claims.keys == set()
+    (event,) = chat_blocked_events
+    assert (event["limit"], event["outcome"], event["surface"]) == (
+        "concurrency",
+        "refused",
+        "chat",
+    )
+    assert (event["used"], event["cap"]) == (15, 15)
 
     mocks.enqueue.side_effect = None
     assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
@@ -1480,8 +1560,11 @@ def test_stream_chat_platform_still_enforces_paywall(
 
 def test_stream_chat_returns_429_on_weekly_rate_limit(
     mocker: pytest_mock.MockerFixture,
+    chat_blocked_events: list[dict],
+    test_user_id: str,
 ):
     """When check_rate_limit raises RateLimitExceeded for weekly limit the endpoint returns 429."""
+    from backend.copilot.limit_tracking import LimitReading
     from backend.copilot.rate_limit import RateLimitExceeded
 
     _mock_stream_internals(mocker)
@@ -1490,7 +1573,9 @@ def test_stream_chat_returns_429_on_weekly_rate_limit(
     resets_at = datetime.now(UTC) + timedelta(days=3)
     mocker.patch(
         "backend.api.features.chat.routes.check_rate_limit",
-        side_effect=RateLimitExceeded("weekly", resets_at),
+        side_effect=RateLimitExceeded(
+            "weekly", resets_at, reading=LimitReading(tier="PRO", used=0.06, cap=0.05)
+        ),
     )
 
     response = client.post(
@@ -1502,6 +1587,19 @@ def test_stream_chat_returns_429_on_weekly_rate_limit(
     message = detail["message"].lower()
     assert "weekly" in message
     assert "resets in" in message
+    assert chat_blocked_events == [
+        {
+            "distinct_id": test_user_id,
+            "reason": "usage_limit",
+            "limit": "weekly",
+            "outcome": "refused",
+            "surface": "chat",
+            "tier": "PRO",
+            "used": 0.06,
+            "cap": 0.05,
+            "resets_at": resets_at.isoformat(),
+        }
+    ]
 
 
 def test_stream_chat_429_includes_reset_time(mocker: pytest_mock.MockerFixture):
@@ -1624,6 +1722,61 @@ def test_stream_chat_returns_503_when_stream_registry_unavailable(
     assert response.status_code == 503
     assert response.headers.get("Retry-After") == "30"
     assert "degraded" in response.json()["detail"].lower()
+
+
+@pytest.mark.parametrize("endpoint", ["stream", "messages/pending"])
+def test_pending_history_outage_is_retryable_without_admitting_a_duplicate(
+    mocker: pytest_mock.MockerFixture, endpoint: str
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    push = _mock_pending_push(mocker, mocks.claims)
+    mocker.patch.object(chat_routes, "is_turn_in_flight", AsyncMock(return_value=True))
+    lookup = mocker.patch.object(
+        chat_routes,
+        "chat_message_has_assistant_reply",
+        AsyncMock(side_effect=ConnectionError("database unavailable")),
+    )
+    body = {"message": "Include the weekly totals", "message_id": "retry-after-db"}
+    with fastapi.testclient.TestClient(app, raise_server_exceptions=False) as requester:
+        response = requester.post(f"/sessions/sess-1/{endpoint}", json=body)
+        lookup.assert_awaited_once()
+        assert response.status_code == 503
+        assert response.headers["Retry-After"] == "30"
+        assert response.json() == {"detail": "Chat service degraded, retry shortly"}
+        push.assert_not_awaited()
+        mocks.enqueue.assert_not_awaited()
+
+        lookup.side_effect = None
+        lookup.return_value = None
+        for _ in range(2):
+            assert (
+                requester.post(f"/sessions/sess-1/{endpoint}", json=body).status_code
+                == 200
+            )
+
+    push.assert_awaited_once()
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_expert_kickoff_history_outage_returns_retryable_refusal(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "3f8b0f7e-9f30-4a3b-a6a1-000000000001"
+    lookup = mocker.patch.object(
+        chat_routes,
+        "chat_message_has_assistant_reply",
+        AsyncMock(side_effect=ConnectionError("database unavailable")),
+    )
+    with fastapi.testclient.TestClient(app, raise_server_exceptions=False) as requester:
+        response = requester.post(
+            "/sessions/sess-1/stream",
+            json={"message": "You were just hired.", "expert_kickoff": True},
+        )
+    lookup.assert_awaited_once()
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"
+    mocks.enqueue.assert_not_awaited()
 
 
 # ─── Usage endpoint ───────────────────────────────────────────────────
@@ -3006,6 +3159,12 @@ def _mock_stream_queue_internals(
     push_length: int | None = 1,
 ):
     """Mock dependencies for the pending-message queue path."""
+    mocker.patch.object(
+        chat_routes, "pending_message_was_received", AsyncMock(return_value=False)
+    )
+    mocker.patch.object(
+        chat_routes, "chat_message_has_assistant_reply", AsyncMock(return_value=None)
+    )
     if session_exists:
         mock_session = mocker.MagicMock()
         mock_session.id = "sess-1"
@@ -3100,12 +3259,8 @@ def test_queue_pending_message_same_message_id_is_buffered_once(
     the turn ended is answered as accepted rather than 409 (which would send
     the client to POST /stream with the message all over again)."""
     _mock_stream_queue_internals(mocker)
-    _mock_client_message_claims(mocker)
-    push = mocker.patch(
-        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
-        new_callable=AsyncMock,
-        return_value=1,
-    )
+    claims = _mock_client_message_claims(mocker)
+    push = _mock_pending_push(mocker, claims)
     body = {"message": "follow-up", "message_id": "client-click-id"}
 
     for _ in range(2):
@@ -5352,6 +5507,26 @@ def test_start_session_desktop_returns_the_stream(
     response = client.post("/sessions/sess-1/desktop")
     assert response.status_code == 200
     assert response.json()["sandbox_id"] == "sbx"
+
+
+def test_start_session_desktop_refused_under_a_sandbox_limit_is_a_429_saying_so(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=_session_like(None),
+    )
+    config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = "e2b-key"
+    mocker.patch(
+        "backend.api.features.chat.routes.open_desktop",
+        new_callable=AsyncMock,
+        side_effect=SandboxLimitError("Too many sandboxes are running right now."),
+    )
+    response = client.post("/sessions/sess-1/desktop")
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Too many sandboxes are running right now."
 
 
 def test_start_session_desktop_without_e2b_is_503(

@@ -87,11 +87,14 @@ _KILL_TIMEOUT_SECONDS = 10
 # stream setup. Capping this far below it lets the tool's own timeout land first.
 _HUNG_CAP_MARGIN_SECONDS = 120
 
-# envd's kill reaches only the shell it started, so the children of a compound
-# command (`npm install && npm run build`) would keep running. This stops the
-# shell first, so it cannot start the next step once a child dies, then stops
-# and kills every process under it. The shell itself is left for envd's kill.
-# Exits non-zero if any of them is still alive afterwards (e.g. one run as root).
+# envd's kill reaches only the shell it started, and at a timeout envd has
+# already killed and reaped that shell itself, leaving what it started (`npm
+# install && npm run build`) running under new parents. Those are found by the
+# session the command runs in (`_follow_command`) as well as under the shell.
+# This stops the shell if it is still there, so it cannot start the next step
+# once a child dies, then stops and kills the rest. The shell itself is left for
+# envd's kill. Exits non-zero if any of them is still alive afterwards (e.g. one
+# run as root).
 # /proc is read through cat because awk aborts on an input file that vanished
 # after the glob expanded, which any process exiting meanwhile causes, and the
 # listing would then come back empty. A child can fork between a listing and
@@ -99,15 +102,17 @@ _HUNG_CAP_MARGIN_SECONDS = 120
 # does, whatever forked after the last listing may survive, so that exits 1 too.
 _KILL_TREE_SCRIPT = r"""
 p=__PID__
-kill -STOP "$p" 2>/dev/null || exit 0
+kill -STOP "$p" 2>/dev/null
 under() {
   cat /proc/[0-9]*/stat 2>/dev/null | awk -v root="$p" '
     { pid = $1; s = $0; sub(/.*\) /, "", s); split(s, f, " ")
-      parent[pid] = f[2]; state[pid] = f[1] }
-    END { q[1] = root; n = 1
+      parent[pid] = f[2]; state[pid] = f[1]
+      if (f[4] == root && pid != root) { mine[pid] = 1; q[++n] = pid } }
+    END { q[++n] = root
           while (n) { r = q[n--]
-                      for (k in parent) if (parent[k] == r) {
-                        q[++n] = k; if (state[k] != "Z") print k } } }
+                      for (k in parent) if (parent[k] == r && !(k in mine)) {
+                        mine[k] = 1; q[++n] = k } }
+          for (k in mine) if (state[k] != "Z") print k }
   ' | sort -n
 }
 kids= settled=
@@ -137,7 +142,8 @@ class _E2BRun(BaseModel):
     output_exceeded: bool = False
     # Kill sent after either: True done, False not found, None unknown.
     killed: bool | None = None
-    # The processes the command started were killed along with it.
+    # Nothing the command started is left: every process in its session or
+    # under its shell was killed, or had ended.
     children_killed: bool = False
     # Why we stopped following a command that had not ended: the stream
     # error's type name.
@@ -485,7 +491,9 @@ async def _follow_command(
     started = loop.time()
     deadline = started + timeout
     handle = await sandbox.commands.run(
-        f"bash -c {shlex.quote(command)}",
+        # A session of its own, by which _KILL_TREE_SCRIPT finds what the command
+        # started once its shell is gone; -w keeps the exit code if setsid forks.
+        f"exec setsid -w bash -c {shlex.quote(command)}",
         background=True,
         cwd=E2B_WORKDIR,
         timeout=timeout,
@@ -618,17 +626,17 @@ def _run_response(
 
     elapsed = f"{run.elapsed:.1f}s"
     if run.timed_out or run.output_exceeded:
-        if run.killed is True and run.children_killed:
+        # killed is False at a timeout: envd kills and reaps the shell at its
+        # own deadline, before ours lands.
+        if run.killed is None:
+            fate = "it could not be killed and may still be running."
+        elif run.children_killed:
             fate = "it was killed, with every process it started."
-        elif run.killed is True:
+        else:
             fate = (
                 "the shell was killed, but processes it started may still be "
                 "running."
             )
-        elif run.killed is False:
-            fate = "it had already ended."
-        else:
-            fate = "it could not be killed and may still be running."
         if run.timed_out:
             note = f"Timed out after {timeout}s"
         else:

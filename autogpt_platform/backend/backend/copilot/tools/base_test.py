@@ -31,11 +31,14 @@ from backend.copilot.tools.base import (
     _summarize_binary_fields,
 )
 from backend.copilot.tools.models import (
+    ApprovalRequiredResponse,
     BlockDetails,
     BlockDetailsResponse,
     BlockOutputResponse,
     ErrorResponse,
+    NeedLoginResponse,
     ResponseType,
+    ReviewRequiredResponse,
     ToolResponseBase,
 )
 from backend.copilot.tools.workspace_files import (
@@ -528,6 +531,133 @@ class TestDigestThreshold:
         assert window, result.output
         start, length = int(window[1]), int(window[2])
         assert json.loads(written[start : start + length]) == ["field_0"]
+
+
+class _CardTool(_HugeOutputTool):
+    """Answers with what the client mounts a card from, however large."""
+
+    def __init__(self, response: ToolResponseBase, digest: bool = True) -> None:
+        super().__init__(0)
+        self._response = response
+        self.digest_large_output = digest
+
+    async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+        return self._response
+
+
+_HTML_BODY = "<p>" + "Hello. " * 1_400 + "</p>"
+
+
+def _gmail_review() -> ReviewRequiredResponse:
+    """A Gmail send with an HTML body: the size whose card never appeared."""
+    return ReviewRequiredResponse(
+        message="Block 'Gmail Send' requires human review.",
+        session_id="s-1",
+        block_id="gmail-send",
+        block_name="Gmail Send",
+        review_id="copilot-node-gmail-send:ab12cd34",
+        input_data={
+            "to": ["ada@example.com"],
+            "subject": "Launch notes",
+            "body": _HTML_BODY,
+            "content_type": "text/html",
+        },
+    )
+
+
+def _card(kind: ResponseType, size: int) -> ToolResponseBase:
+    """A card output *size* chars long. The review skips its own preview, which
+    would otherwise keep it short enough that nothing here gets tested."""
+    if kind == ResponseType.REVIEW_REQUIRED:
+        return ReviewRequiredResponse.model_construct(
+            type=kind,
+            message="Needs review.",
+            block_id="gmail-send",
+            block_name="Gmail Send",
+            review_id="copilot-node-gmail-send:ab12cd34",
+            input_data={"body": "b" * size},
+        )
+    if kind == ResponseType.APPROVAL_REQUIRED:
+        return ApprovalRequiredResponse(
+            message="Held for the user.",
+            tool_name="send_email",
+            reason="r" * size,
+            review_id="copilot-node-gate-send_email:1",
+        )
+    return NeedLoginResponse(message="m" * size)
+
+
+class TestCardOutputsReachTheClient:
+    """The client mounts an approval or sign-in card from the output's own
+    JSON, so a digest or preview of it is a card that never appears."""
+
+    @pytest.mark.asyncio
+    async def test_a_large_block_review_streams_as_json(self):
+        manager = AsyncMock()
+        result = await _execute_with_flag(
+            _CardTool(_gmail_review()), flag_on=True, manager=manager
+        )
+        output = str(result.output)
+
+        assert "<tool-output-truncated" not in output
+        payload = json.loads(output)
+        assert payload["type"] == "review_required"
+        assert payload["review_id"] == "copilot-node-gmail-send:ab12cd34"
+        assert payload["block_id"] == "gmail-send"
+        assert payload["block_name"] == "Gmail Send"
+        assert payload["session_id"] == "s-1"
+        manager.write_file.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_the_stream_previews_the_input_the_card_reads_whole(self):
+        result = await _execute_with_flag(_CardTool(_gmail_review()), flag_on=True)
+        payload = json.loads(str(result.output))
+
+        assert len(str(result.output)) < _DIGEST_THRESHOLD
+        assert payload["input_preview"] is True
+        assert payload["input_data"] == {
+            "to": ["ada@example.com"],
+            "subject": "Launch notes",
+            "body": f"<{len(_HTML_BODY):,} chars>",
+            "content_type": "text/html",
+        }
+
+    @pytest.mark.parametrize(
+        "digest, size",
+        [(True, _DIGEST_THRESHOLD * 2), (False, _LARGE_OUTPUT_THRESHOLD + 10_000)],
+        ids=["digest", "preview"],
+    )
+    @pytest.mark.parametrize(
+        "kind",
+        [
+            ResponseType.REVIEW_REQUIRED,
+            ResponseType.APPROVAL_REQUIRED,
+            ResponseType.NEED_LOGIN,
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_a_card_is_never_cut_however_long(
+        self, kind: ResponseType, digest: bool, size: int
+    ):
+        manager = AsyncMock()
+        result = await _execute_with_flag(
+            _CardTool(_card(kind, size), digest=digest), flag_on=True, manager=manager
+        )
+
+        assert json.loads(str(result.output))["type"] == kind.value
+        manager.write_file.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_large_block_output_is_still_digested(self):
+        response = BlockOutputResponse(
+            message="Done.",
+            block_id="b-1",
+            block_name="Wide Block",
+            outputs={"result": ["r" * (_DIGEST_THRESHOLD * 2)]},
+        )
+        result = await _execute_with_flag(_CardTool(response), flag_on=True)
+
+        assert 'format="outline"' in str(result.output)
 
 
 def _outline_of(data, budget: int) -> tuple[str, str]:
