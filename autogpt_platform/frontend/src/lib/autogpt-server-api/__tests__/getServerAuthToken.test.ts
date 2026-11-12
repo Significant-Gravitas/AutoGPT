@@ -25,6 +25,11 @@ const nextHeadersCjs = cjsRequire(
 type CookieStore = Awaited<ReturnType<typeof nextHeadersCjs.cookies>>;
 
 const fetchMock = vi.fn();
+const captureExceptionMock = vi.fn();
+
+vi.mock("@sentry/nextjs", () => ({
+  captureException: (...args: unknown[]) => captureExceptionMock(...args),
+}));
 
 function makeJwt(expSecondsFromNow: number): string {
   const payload = Buffer.from(
@@ -46,6 +51,7 @@ beforeEach(() => {
   isClientSideMock.mockReset().mockReturnValue(false);
   getAllCookiesMock.mockReset().mockReturnValue([]);
   fetchMock.mockReset();
+  captureExceptionMock.mockReset();
   vi.spyOn(nextHeadersCjs, "cookies").mockImplementation(
     async () => ({ getAll: () => getAllCookiesMock() }) as CookieStore,
   );
@@ -156,7 +162,7 @@ describe("getServerAuthToken", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("returns null when the token endpoint responds with a non-200 status", async () => {
+  it("returns null when Better Auth rejects the session", async () => {
     getAllCookiesMock.mockReturnValue([
       { name: "better-auth.session_token", value: "session-unauthorized" },
     ]);
@@ -168,6 +174,46 @@ describe("getServerAuthToken", () => {
     const token = await getServerAuthToken();
 
     expect(token).toBeNull();
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns null without reporting when Better Auth rate-limits the mint", async () => {
+    getAllCookiesMock.mockReturnValue([
+      { name: "better-auth.session_token", value: "session-rate-limited" },
+    ]);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ message: "Too many requests" }), {
+        status: 429,
+      }),
+    );
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    const token = await getServerAuthToken();
+
+    expect(token).toBeNull();
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+  });
+
+  it("throws a retryable 503 when the token endpoint fails for a live session", async () => {
+    // A 500 here is the auth database refusing a connection, not a signed-out
+    // user. Returning null sent the request on without a token, and the
+    // backend's 401 read as a logout.
+    getAllCookiesMock.mockReturnValue([
+      { name: "better-auth.session_token", value: "session-db-down" },
+    ]);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ code: "INTERNAL_SERVER_ERROR" }), {
+        status: 500,
+      }),
+    );
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    await expect(getServerAuthToken()).rejects.toMatchObject({
+      name: "AuthTokenUnavailableError",
+      status: 503,
+      response: { code: "auth_token_unavailable" },
+    });
+    expect(captureExceptionMock).toHaveBeenCalledTimes(1);
   });
 
   it("returns null when the token endpoint responds without a token field", async () => {
@@ -184,15 +230,30 @@ describe("getServerAuthToken", () => {
     expect(token).toBeNull();
   });
 
-  it("returns null instead of throwing when the token fetch fails", async () => {
+  it("throws a retryable 503 when the token fetch fails", async () => {
     getAllCookiesMock.mockReturnValue([
       { name: "better-auth.session_token", value: "session-network-error" },
     ]);
     fetchMock.mockRejectedValue(new TypeError("fetch failed"));
     const getServerAuthToken = await importGetServerAuthToken();
 
+    await expect(getServerAuthToken()).rejects.toMatchObject({
+      name: "AuthTokenUnavailableError",
+      status: 503,
+    });
+    expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(TypeError));
+  });
+
+  it("returns null when there are no request cookies to read", async () => {
+    // Prerendering runs outside a request, so it has no session to send.
+    vi.spyOn(nextHeadersCjs, "cookies").mockRejectedValue(
+      new Error("cookies() was called outside a request scope"),
+    );
+    const getServerAuthToken = await importGetServerAuthToken();
+
     const token = await getServerAuthToken();
 
     expect(token).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

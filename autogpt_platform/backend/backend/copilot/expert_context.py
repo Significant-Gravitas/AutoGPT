@@ -417,7 +417,7 @@ def render_team_context(
 
 def _team_rule(*, exclude_expert_id: str | None) -> str:
     if exclude_expert_id is None:
-        return "When the user wants a specialist, check this list first and recommend the expert who fits, with a reason. Hand work over with `delegate_to_expert(expert_id=..., prompt=...)` or suggest their thread, and tell the user which expert is handling it. Never delegate silently."
+        return "When the user wants a specialist, check this list first and recommend the expert who fits, with a reason. Hand work over with `delegate_to_expert(expert_id=..., prompt=...)` or suggest the user chat with them, and tell the user which expert is handling it. Never delegate silently."
     return 'These are your teammates. When a task needs their skills rather than yours, hand it over with `delegate_to_expert(expert_id=..., prompt=...)`; they can\'t see this thread, so put the context in the prompt. Never impersonate a teammate. Before anything that commits this company (money, dates, guarantees, policy) leaves the conversation, have one of them check it with `run_capability(id="tool:consult_teammate", input={...})`.'
 
 

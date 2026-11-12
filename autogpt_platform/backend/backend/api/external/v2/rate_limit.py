@@ -4,6 +4,7 @@ from fastapi import Response
 
 from backend.api.utils.rate_limit import RateLimiter
 
+# Documented in docs/platform/integrating/api-conventions.md#rate-limits.
 media_upload_limiter = RateLimiter(
     "v2:media_upload", max_requests=10, window_seconds=300
 )

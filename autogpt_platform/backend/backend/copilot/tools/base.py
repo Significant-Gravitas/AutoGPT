@@ -47,9 +47,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Outputs that stop a call to wait on the user (an approval card, a sign-in),
-# which is not the tool failing.
+# which is not the tool failing.  The chat mounts the card from the output's
+# own JSON, so these are never digested or previewed, however long.
 _AWAITING_THE_USER = frozenset(
-    {ResponseType.APPROVAL_REQUIRED.value, ResponseType.NEED_LOGIN.value}
+    {
+        ResponseType.APPROVAL_REQUIRED.value,
+        ResponseType.NEED_LOGIN.value,
+        ResponseType.REVIEW_REQUIRED.value,
+    }
 )
 
 # The Claude CLI saves any tool result longer than 50,000 characters (it
@@ -700,6 +705,7 @@ class BaseTool:
                 and user_id
                 and session.session_id
                 and not session.external_caller
+                and result.type.value not in _AWAITING_THE_USER
             ):
                 raw_output = await _persist_and_summarize(
                     raw_output,
