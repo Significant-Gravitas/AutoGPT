@@ -289,10 +289,12 @@ async def sweep_prefix(
     return report
 
 
-async def orphan_share(client: Client, bucket: str) -> float:
+async def orphan_share(
+    client: Client, bucket: str, prefixes: list[tuple[str, str]]
+) -> float:
     """The share of the bucket's account folders that have no row here."""
     folders = orphans = 0
-    for prefix, table in PREFIXES:
+    for prefix, table in prefixes:
         names = sorted(await list_folders(client, bucket, prefix))
         if names:
             folders += len(names)
@@ -335,7 +337,7 @@ async def run(apply: bool, include_chat_transcripts: bool = False) -> int:
             for label, bucket in configured.items():
                 print(f"\n== {label} bucket {bucket}", flush=True)
                 try:
-                    share = await orphan_share(client, bucket)
+                    share = await orphan_share(client, bucket, prefixes)
                 except aiohttp.ClientResponseError as e:
                     print(f"stopped by {error_kind(e, e.status)}", flush=True)
                     errors += 1

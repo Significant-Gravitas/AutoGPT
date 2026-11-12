@@ -293,3 +293,29 @@ async def test_chat_transcripts_are_left_alone_unless_asked(monkeypatch, capsys)
     assert "workspaces/chat-transcripts/<User id>/: 1 folders, 1 orphans" in out
     assert "skipped" not in out
     assert bucket.deleted == [transcript]
+
+
+async def test_the_ownership_check_covers_chat_transcripts_when_included(
+    monkeypatch, capsys
+):
+    bucket = FakeBucket({f"workspaces/chat-transcripts/{GONE}/s.jsonl": (1, OLD)})
+
+    class Storage:
+        async def __aenter__(self):
+            return bucket
+
+        async def __aexit__(self, *exc):
+            return None
+
+    async def nothing():
+        return None
+
+    monkeypatch.setattr(tool, "buckets", lambda: {"private": BUCKET})
+    monkeypatch.setattr(tool.db, "connect", nothing)
+    monkeypatch.setattr(tool.db, "disconnect", nothing)
+    monkeypatch.setattr(tool.gcs, "Storage", Storage)
+    monkeypatch.setattr(tool, "existing", _rows())
+
+    assert await tool.run(apply=True, include_chat_transcripts=True) == 1
+    assert "100% of this bucket's folders have no row" in capsys.readouterr().out
+    assert bucket.deleted == []
