@@ -9,11 +9,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.copilot.tools.models import ErrorResponse, ResponseType
 from backend.copilot.tools.render_ui import (
     RENDER_UI_TOOL,
     RenderUITool,
     render_ui_disabled_tools,
+    shows_cards,
+    without_render_ui,
 )
 from backend.copilot.tools.render_ui_models import (
     MAX_BLOCKS,
@@ -258,6 +261,21 @@ def test_parameters_are_flat_and_keep_title_fields():
         pytest.param({}, False, True, id="flag_off"),
         pytest.param({"source_platform": "slack"}, True, True, id="chat_platform"),
         pytest.param({"text_only_result": True}, True, True, id="text_only_caller"),
+        pytest.param(
+            {"origin": "automation", "delegated_by_session_id": "parent"},
+            True,
+            True,
+            id="thread_reporting_back",
+        ),
+        pytest.param(
+            {
+                "delegated_by_session_id": "parent",
+                "handed_off_from_expert_id": "expert",
+            },
+            True,
+            False,
+            id="handed_off_thread",
+        ),
     ],
 )
 async def test_render_ui_availability(
@@ -272,3 +290,38 @@ async def test_render_ui_availability(
         disabled = await render_ui_disabled_tools(session)
 
     assert (RENDER_UI_TOOL in disabled) is hidden
+
+
+@pytest.mark.parametrize(
+    "permissions",
+    [
+        pytest.param(None, id="no_filter"),
+        pytest.param(CopilotPermissions(), id="empty_filter"),
+        pytest.param(
+            CopilotPermissions(tools=["bash_exec"], tools_exclude=True),
+            id="deny_list",
+        ),
+        pytest.param(
+            CopilotPermissions(tools=["render_ui", "web_fetch"], tools_exclude=False),
+            id="allow_list",
+        ),
+    ],
+)
+def test_text_only_turns_refuse_render_ui(permissions: CopilotPermissions | None):
+    all_tools = all_known_tool_names()
+    before = (permissions or CopilotPermissions()).effective_allowed_tools(all_tools)
+
+    after = without_render_ui(permissions).effective_allowed_tools(all_tools)
+
+    assert RENDER_UI_TOOL not in after
+    assert after == before - {RENDER_UI_TOOL}
+
+
+@pytest.mark.asyncio
+async def test_only_cards_count_as_shown(tool: RenderUITool, session: ChatSession):
+    shown = await tool._execute(user_id=None, session=session, blocks=ALL_BLOCKS)
+    refused = await tool._execute(user_id=None, session=session, blocks=[])
+
+    assert shows_cards(shown.model_dump_json(exclude_none=True))
+    assert not shows_cards(refused.model_dump_json(exclude_none=True))
+    assert not shows_cards("Tool execution error: boom")
