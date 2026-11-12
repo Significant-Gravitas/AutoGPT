@@ -19,12 +19,16 @@ ROWS_PER_PAGE = 100
 
 
 class ErrorBody(BaseModel):
+    """The error object of an API response."""
+
     code: str = ""
     message: str = ""
     details: dict[str, Any] = Field(default_factory=dict)
 
 
 class Envelope(BaseModel):
+    """The body every API response comes in: data on success, error otherwise."""
+
     data: dict[str, Any] | None = None
     error: ErrorBody | None = None
 
@@ -33,6 +37,7 @@ class SpecStreamError(ValueError):
     """An error envelope from the API, rendered for a person."""
 
     def __init__(self, status: int, code: str, message: str):
+        """Keep the HTTP status and error code, and render the message."""
         self.status = status
         self.code = code
         super().__init__(f"SpecStream {code or status}: {message}")
@@ -42,16 +47,19 @@ class SpecStreamClient:
     """Thin wrapper over the SpecStream API v1."""
 
     def __init__(self, credentials: APIKeyCredentials):
+        """Prepare a client that sends the given API key with each request."""
         # Sent with each request, and redirects are off, so the bearer token
         # never goes to another address.
         self._auth_header = credentials.auth_header()
         self.requests = Requests(raise_for_status=False, retry_max_attempts=5)
 
     async def compile(self, text: str) -> Reading:
+        """Read a request written in plain words into a reading. Spends nothing."""
         data = await self._request("POST", "/v1/parse", {"q": text})
         return Reading.model_validate(data)
 
     async def quote(self, ast_hash: str, requested_units: int) -> Quote:
+        """Price a reading for up to ``requested_units`` rows. Spends nothing."""
         data = await self._request(
             "POST",
             "/v1/capacity/quotes",
@@ -64,6 +72,7 @@ class SpecStreamClient:
         return Quote.model_validate(data)
 
     async def get_quote(self, quote_id: str) -> Quote:
+        """Read a quote again, with the run it started if it has one."""
         data = await self._request(
             "GET", f"/v1/capacity/quotes/{quote_path(quote_id, safe='')}"
         )
@@ -72,6 +81,10 @@ class SpecStreamClient:
     async def authorize(
         self, quote_id: str, quote_hash: str, confirm_max_cents: int, key: str
     ) -> Execution:
+        """Approve a quote at ``confirm_max_cents`` and start its run.
+
+        The idempotency ``key`` makes a retry return the same run.
+        """
         data = await self._request(
             "POST",
             "/v1/capacity/executions",
@@ -85,12 +98,14 @@ class SpecStreamClient:
         return Execution.model_validate(data)
 
     async def get_run(self, find_id: str) -> RunStatus:
+        """Read the status of a run."""
         data = await self._request("GET", f"/v1/finds/{quote_path(find_id, safe='')}")
         return RunStatus.model_validate(data)
 
     async def list_rows(
         self, find_id: str, cursor: str | None = None, limit: int = ROWS_PER_PAGE
     ) -> RowsPage:
+        """Read one page of a run's rows, from ``cursor`` when given."""
         params: dict[str, Any] = {"limit": limit}
         if cursor:
             params["cursor"] = cursor
@@ -106,6 +121,7 @@ class SpecStreamClient:
         body: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Send one request to the API and return the ``data`` of its response."""
         response = await self.requests.request(
             method,
             f"{SPECSTREAM_API_URL}{path}",
@@ -136,6 +152,7 @@ def unwrap(response: Response) -> dict[str, Any]:
 
 
 def _error_from(status: int, error: ErrorBody | None) -> SpecStreamError:
+    """Turn an error response into a SpecStreamError with a hint for 401 and 403."""
     if error is None:
         return SpecStreamError(status, "http_error", f"HTTP {status}")
     message = (error.message or f"HTTP {status}").rstrip()

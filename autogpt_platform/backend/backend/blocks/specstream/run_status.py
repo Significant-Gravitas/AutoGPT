@@ -29,6 +29,8 @@ class SpecStreamGetRunStatusBlock(Block):
     """Read where a dataset run stands. Free, and safe to repeat."""
 
     class Input(BlockSchemaInput):
+        """Inputs of the Get Run Status block."""
+
         credentials: CredentialsMetaInput = specstream.credentials_field(
             description="The SpecStream integration requires an API Key."
         )
@@ -37,6 +39,8 @@ class SpecStreamGetRunStatusBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
+        """Outputs of the Get Run Status block."""
+
         run_id: str = SchemaField(description="The ID of the run")
         status: str = SchemaField(
             description="queued, planning, running, completed, partial, failed, canceled or expired"
@@ -54,6 +58,7 @@ class SpecStreamGetRunStatusBlock(Block):
         )
 
     def __init__(self):
+        """Register the block with its schemas, test data and mocks."""
         super().__init__(
             id="d5cf71bd-7f29-4433-8189-920eb61b2d5b",
             description="Reads the status of a SpecStream dataset run. Costs nothing.",
@@ -78,11 +83,13 @@ class SpecStreamGetRunStatusBlock(Block):
 
     @staticmethod
     async def get_run(credentials: APIKeyCredentials, run_id: str) -> RunStatus:
+        """Read the status of a run."""
         return await SpecStreamClient(credentials).get_run(run_id)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        """Read the run once and yield its status and counts."""
         refuse_platform_credentials(self, credentials)
         run = await self.get_run(credentials, input_data.run_id)
         yield "run_id", run.find_id
@@ -102,6 +109,8 @@ class SpecStreamWaitForRunBlock(Block):
     execution_timeout_seconds: int | None = MAX_WAIT_SECONDS + 300
 
     class Input(BlockSchemaInput):
+        """Inputs of the Wait For Run block."""
+
         credentials: CredentialsMetaInput = specstream.credentials_field(
             description="The SpecStream integration requires an API Key."
         )
@@ -133,6 +142,8 @@ class SpecStreamWaitForRunBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
+        """Outputs of the Wait For Run block."""
+
         run_id: str = SchemaField(description="The ID of the run")
         status: str = SchemaField(description="The last status read")
         is_done: bool = SchemaField(description="True if the run ended in time")
@@ -142,6 +153,7 @@ class SpecStreamWaitForRunBlock(Block):
         charged_cents: int = SchemaField(description="What the run charged, in cents")
 
     def __init__(self):
+        """Register the block with its schemas, test data and mocks."""
         super().__init__(
             id="a816eec6-053c-4919-9b46-bccbb4a562f5",
             description=(
@@ -169,19 +181,23 @@ class SpecStreamWaitForRunBlock(Block):
 
     @staticmethod
     async def get_run(credentials: APIKeyCredentials, run_id: str) -> RunStatus:
+        """Read the status of a run."""
         return await SpecStreamClient(credentials).get_run(run_id)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        """Poll the run with a growing gap until it ends or the timeout passes."""
         refuse_platform_credentials(self, credentials)
         started = monotonic()
         gap = min(float(input_data.check_interval), float(input_data.max_interval))
 
         def remaining() -> float:
+            """Return the seconds left before the timeout."""
             return input_data.timeout - (monotonic() - started)
 
         async def poll() -> RunStatus | None:
+            """Read the run within the time left, or None when the time runs out."""
             # A stalled request must not outlast the wait, so each poll gets
             # only the time that is left. A timeout with time still left comes
             # from the transport, not the deadline, so the block fails with it.
@@ -214,4 +230,5 @@ class SpecStreamWaitForRunBlock(Block):
 
 
 def charged_cents(run: RunStatus) -> int:
+    """Return what the run has charged so far, in cents."""
     return run.commerce.amount_captured_cents if run.commerce else 0

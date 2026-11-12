@@ -40,6 +40,7 @@ BLOCK_INPUTS = [
 async def test_every_block_refuses_the_platform_key_before_any_call(
     block_class, inputs
 ):
+    """Every block refuses the platform key before it sends any request."""
     block = block_class()
     with (
         patch("backend.blocks.specstream._api.Requests") as requests,

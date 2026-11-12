@@ -4,6 +4,7 @@ from backend.blocks.specstream._models import ApiCell, ApiRow, DatasetRow, Prove
 
 
 def test_a_cell_source_missing_a_part_is_filled_from_its_witness():
+    """A cell source missing a part is filled from its witness."""
     row = ApiRow(
         entity_id="ent_1",
         cells=[

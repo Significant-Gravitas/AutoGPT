@@ -29,11 +29,13 @@ from backend.data.model import APIKeyCredentials
 async def test_wait_polls_with_a_growing_gap_until_the_run_ends(
     intervals: dict[str, int], expected: list[float]
 ):
+    """Wait For Run polls with a growing, capped gap until the run ends."""
     block = SpecStreamWaitForRunBlock()
     block.get_run = AsyncMock(side_effect=[TEST_RUNNING, TEST_RUNNING, TEST_COMPLETED])
     waited: list[float] = []
 
     async def record(seconds: float) -> None:
+        """Record each sleep instead of waiting."""
         waited.append(seconds)
 
     with patch.object(run_status, "sleep", record):
@@ -46,6 +48,7 @@ async def test_wait_polls_with_a_growing_gap_until_the_run_ends(
 
 
 def test_wait_block_limit_covers_the_longest_timeout():
+    """Wait For Run's block time limit is longer than its longest timeout."""
     limit = SpecStreamWaitForRunBlock().execution_timeout_seconds
     assert limit is not None
     assert limit > run_status.MAX_WAIT_SECONDS
@@ -53,12 +56,13 @@ def test_wait_block_limit_covers_the_longest_timeout():
 
 @pytest.mark.asyncio
 async def test_wait_gives_up_at_the_timeout_and_leaves_the_run_going():
+    """Wait For Run gives up at the timeout and reports the run as still going."""
     block = SpecStreamWaitForRunBlock()
     block.get_run = AsyncMock(return_value=TEST_RUNNING)
     clock = count(step=100.0)
 
     async def no_wait(seconds: float) -> None:
-        return None
+        """Return at once instead of sleeping."""
 
     with (
         patch.object(run_status, "sleep", no_wait),
@@ -73,12 +77,14 @@ async def test_wait_gives_up_at_the_timeout_and_leaves_the_run_going():
 
 @pytest.mark.asyncio
 async def test_wait_bounds_each_poll_by_the_time_left_and_reports_the_last_status():
+    """Wait For Run bounds each poll by the time left and keeps the last status."""
     block = SpecStreamWaitForRunBlock()
     block.get_run = AsyncMock(return_value=TEST_RUNNING)
     budgets: list[float] = []
     now = 0.0
 
     async def bounded(awaitable, timeout):
+        """Record each poll's time budget and let the second poll time out."""
         nonlocal now
         budgets.append(timeout)
         if len(budgets) > 1:
@@ -88,6 +94,7 @@ async def test_wait_bounds_each_poll_by_the_time_left_and_reports_the_last_statu
         return await awaitable
 
     async def no_wait(seconds: float) -> None:
+        """Advance the fake clock instead of sleeping."""
         nonlocal now
         now += seconds
 
@@ -105,6 +112,7 @@ async def test_wait_bounds_each_poll_by_the_time_left_and_reports_the_last_statu
 
 @pytest.mark.asyncio
 async def test_wait_fails_when_a_poll_times_out_with_time_left():
+    """Wait For Run fails when a poll times out with time left."""
     block = SpecStreamWaitForRunBlock()
     block.get_run = AsyncMock(side_effect=TimeoutError())
 
@@ -114,9 +122,11 @@ async def test_wait_fails_when_a_poll_times_out_with_time_left():
 
 @pytest.mark.asyncio
 async def test_wait_reports_timed_out_when_the_first_poll_stalls():
+    """Wait For Run reports timed out when the first poll never returns."""
     block = SpecStreamWaitForRunBlock()
 
     async def stall(credentials: APIKeyCredentials, run_id: str) -> RunStatus:
+        """Never return within the test's timeout."""
         await asyncio.sleep(3600)
         return TEST_RUNNING
 

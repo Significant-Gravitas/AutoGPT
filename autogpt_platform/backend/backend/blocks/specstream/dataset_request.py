@@ -26,6 +26,8 @@ class SpecStreamCreateDatasetRequestBlock(Block):
     """Compile a request into a reading and a signed price. Nothing runs yet."""
 
     class Input(BlockSchemaInput):
+        """Inputs of the Create Dataset Request block."""
+
         credentials: CredentialsMetaInput = specstream.credentials_field(
             description="The SpecStream integration requires an API Key."
         )
@@ -50,6 +52,8 @@ class SpecStreamCreateDatasetRequestBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
+        """Outputs of the Create Dataset Request block."""
+
         reading: str = SchemaField(
             description="How SpecStream read the request, as one sentence"
         )
@@ -70,6 +74,7 @@ class SpecStreamCreateDatasetRequestBlock(Block):
         )
 
     def __init__(self):
+        """Register the block with its schemas, test data and mocks."""
         super().__init__(
             id="4e565bf5-7d96-4126-9f9d-ee7676f08f6d",
             description=(
@@ -105,17 +110,20 @@ class SpecStreamCreateDatasetRequestBlock(Block):
 
     @staticmethod
     async def read_request(credentials: APIKeyCredentials, text: str) -> Reading:
+        """Read the request text into a reading."""
         return await SpecStreamClient(credentials).compile(text)
 
     @staticmethod
     async def price_reading(
         credentials: APIKeyCredentials, ast_hash: str, row_count: int
     ) -> Quote:
+        """Price a reading for up to ``row_count`` rows."""
         return await SpecStreamClient(credentials).quote(ast_hash, row_count)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        """Read the request, price it and yield the reading and the quote."""
         refuse_platform_credentials(self, credentials)
         reading = await self.read_request(credentials, input_data.request)
         ast_hash = self._runnable_hash(reading)
@@ -132,6 +140,7 @@ class SpecStreamCreateDatasetRequestBlock(Block):
         yield "price_summary", price_summary(quote, row_count)
 
     def _runnable_hash(self, reading: Reading) -> str:
+        """Return the reading's hash, or raise an error that says why it cannot run."""
         if reading.is_runnable and reading.ast_hash:
             return reading.ast_hash
         if reading.status == "compiler_unavailable":
@@ -151,6 +160,7 @@ class SpecStreamCreateDatasetRequestBlock(Block):
 
 
 def price_summary(quote: Quote, row_count: int) -> str:
+    """Describe the quote in one sentence for a person to review."""
     amount = f"{quote.maximum_cents / 100:.2f} {quote.currency}"
     return (
         f"Up to {amount} for up to {row_count} rows. Only matching rows are "
@@ -159,6 +169,7 @@ def price_summary(quote: Quote, row_count: int) -> str:
 
 
 def unrunnable_message(reading: Reading) -> str:
+    """Explain why a reading cannot run, with its reasons and how it was read."""
     reasons = [item.reason for item in reading.unsupported if item.reason]
     detail = f" {' '.join(reasons)}" if reasons else ""
     sentence: str | None = reading.canonical_sentence

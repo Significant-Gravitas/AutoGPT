@@ -11,6 +11,7 @@ from backend.blocks.specstream.list_rows import SpecStreamListRowsBlock
 
 @pytest.mark.asyncio
 async def test_list_rows_asks_only_for_the_rows_still_needed_and_keeps_each_source():
+    """List Rows asks only for the rows still needed and keeps each value's source."""
     first = TEST_ROWS_PAGE.model_copy(update={"next_cursor": "cur_2"})
     last = TEST_ROWS_PAGE.model_copy(update={"next_cursor": None})
     block = SpecStreamListRowsBlock()

@@ -28,6 +28,8 @@ class SpecStreamApproveAndRunBlock(Block):
     """Approve one quote at a stated maximum and start the dataset run."""
 
     class Input(BlockSchemaInput):
+        """Inputs of the Approve And Run block."""
+
         credentials: CredentialsMetaInput = specstream.credentials_field(
             description="The SpecStream integration requires an API Key."
         )
@@ -61,6 +63,8 @@ class SpecStreamApproveAndRunBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
+        """Outputs of the Approve And Run block."""
+
         run_id: str = SchemaField(
             description="The ID of the run, for Get Run Status and List Rows"
         )
@@ -75,6 +79,7 @@ class SpecStreamApproveAndRunBlock(Block):
         )
 
     def __init__(self):
+        """Register the block with its schemas, test data and mocks."""
         super().__init__(
             id="eeb3013b-016a-49f7-9fe1-88a0ad955d66",
             description=(
@@ -107,6 +112,10 @@ class SpecStreamApproveAndRunBlock(Block):
     async def authorize(
         credentials: APIKeyCredentials, input_data: Input, key: str
     ) -> Execution:
+        """Approve the quote and return its execution.
+
+        When the approval returns no run ID, read it from the quote.
+        """
         client = SpecStreamClient(credentials)
         execution = await client.authorize(
             input_data.quote_id,
@@ -123,6 +132,7 @@ class SpecStreamApproveAndRunBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        """Approve the quote and yield the run ID, state and reserved maximum."""
         refuse_platform_credentials(self, credentials)
         key = input_data.idempotency_key or request_key(input_data.quote_id)
         execution = await self.authorize(credentials, input_data, key)
@@ -143,4 +153,5 @@ class SpecStreamApproveAndRunBlock(Block):
 
 
 def request_key(quote_id: str) -> str:
+    """Return the default idempotency key for a quote."""
     return f"{KEY_PREFIX}{quote_id}"[:MAX_KEY_LENGTH]

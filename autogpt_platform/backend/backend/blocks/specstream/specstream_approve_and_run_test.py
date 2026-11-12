@@ -24,6 +24,7 @@ from backend.util.exceptions import BlockExecutionError
 )
 @pytest.mark.asyncio
 async def test_approve_uses_a_key_that_a_retry_repeats(key: str | None, expected: str):
+    """Approve sends the given key, or one made from the quote ID."""
     block = SpecStreamApproveAndRunBlock()
     block.authorize = AsyncMock(return_value=execution())
 
@@ -33,6 +34,7 @@ async def test_approve_uses_a_key_that_a_retry_repeats(key: str | None, expected
 
 
 def test_approve_is_an_irreversible_action_that_needs_a_stated_maximum():
+    """Approve is irreversible, needs a maximum and refuses a short key."""
     block = SpecStreamApproveAndRunBlock()
     assert block.is_irreversible_action
     with pytest.raises(ValueError):
@@ -50,6 +52,7 @@ def test_approve_is_an_irreversible_action_that_needs_a_stated_maximum():
 
 @pytest.mark.asyncio
 async def test_approve_reads_the_run_id_from_the_quote_when_authorize_has_none():
+    """Approve reads the run ID from the quote when the approval returns none."""
     requests = fake_requests(
         FakeResponse(
             202,
@@ -74,6 +77,7 @@ async def test_approve_reads_the_run_id_from_the_quote_when_authorize_has_none()
 
 @pytest.mark.asyncio
 async def test_approve_names_the_reservation_when_no_run_id_comes_back():
+    """Approve fails with the reservation ID when no run ID comes back."""
     block = SpecStreamApproveAndRunBlock()
     block.authorize = AsyncMock(return_value=execution(find_id=None))
 

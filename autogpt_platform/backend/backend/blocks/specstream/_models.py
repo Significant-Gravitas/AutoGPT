@@ -11,16 +11,22 @@ TERMINAL_STATES = frozenset({"completed", "partial", "failed", "canceled", "expi
 
 
 class UnsupportedClause(BaseModel):
+    """A part of the request that SpecStream cannot run, with the reason."""
+
     field_id: str = ""
     reason: str = ""
 
 
 class ReadingLimit(BaseModel):
+    """The row limit of a reading, and whether the request stated it."""
+
     max: int = 25
     inferred: bool = True
 
 
 class ReadingAst(BaseModel):
+    """The parts of a reading's structure the blocks read."""
+
     limit: ReadingLimit = Field(default_factory=ReadingLimit)
 
 
@@ -43,10 +49,13 @@ class Reading(BaseModel):
 
     @property
     def is_runnable(self) -> bool:
+        """True when the reading can be priced and run."""
         return self.status == "runnable" and bool(self.ast_hash)
 
 
 class ExistingExecution(BaseModel):
+    """The run a quote already started, if any."""
+
     find_id: str | None = None
 
 
@@ -64,6 +73,8 @@ class Quote(BaseModel):
 
 
 class Execution(BaseModel):
+    """An approved quote: the reservation and the run it started."""
+
     reservation_id: str
     find_id: str | None = None
     maximum_cents: int
@@ -72,6 +83,8 @@ class Execution(BaseModel):
 
 
 class Commerce(BaseModel):
+    """What a run has reserved, charged and delivered so far."""
+
     amount_authorized_cents: int = 0
     amount_captured_cents: int = 0
     delivered_rows: int = 0
@@ -90,15 +103,20 @@ class RunStatus(BaseModel):
 
     @property
     def is_done(self) -> bool:
+        """True once the run is in a terminal state."""
         return self.status in TERMINAL_STATES
 
 
 class Provenance(BaseModel):
+    """Where a value was read and when."""
+
     source_url: str | None = None
     observed_at: datetime | None = None
 
 
 class ApiCell(BaseModel):
+    """One cell of a row as the API returns it."""
+
     column_id: str
     label: str
     value: Any = None
@@ -107,6 +125,8 @@ class ApiCell(BaseModel):
 
 
 class ApiRow(BaseModel):
+    """One row as the API returns it."""
+
     entity_id: str
     ordinal: int = 0
     cells: list[ApiCell] = Field(default_factory=list)
@@ -114,6 +134,8 @@ class ApiRow(BaseModel):
 
 
 class RowsPage(BaseModel):
+    """One page of a run's rows, with the cursor of the next page."""
+
     find_id: str
     status: str
     accepted_count: int = 0
@@ -133,6 +155,8 @@ class SourcedValue(BaseModel):
 
 
 class DatasetRow(BaseModel):
+    """One row as the blocks output it, each value with its source."""
+
     entity_id: str
     position: int
     values: dict[str, Any]
@@ -140,6 +164,7 @@ class DatasetRow(BaseModel):
 
     @classmethod
     def from_api(cls, row: ApiRow) -> "DatasetRow":
+        """Build a row from the API's row, with each cell's source filled in."""
         witnesses = _witnesses(row)
         cells = []
         for cell in row.cells:
@@ -206,6 +231,7 @@ def _source(cell: ApiCell, witnesses: dict[str, Provenance]) -> Provenance | Non
 
 
 def _witnessed(column_id: str, witnesses: dict[str, Provenance]) -> Provenance | None:
+    """The witness source of a detail column or of the matches column."""
     if column_id.startswith(DETAIL_PREFIX):
         return witnesses.get(column_id.removeprefix(DETAIL_PREFIX))
     if column_id == MATCHES_COLUMN:

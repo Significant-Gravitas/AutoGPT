@@ -23,6 +23,8 @@ class SpecStreamListRowsBlock(Block):
     """Read the matching rows of a run. Free, and safe to repeat."""
 
     class Input(BlockSchemaInput):
+        """Inputs of the List Rows block."""
+
         credentials: CredentialsMetaInput = specstream.credentials_field(
             description="The SpecStream integration requires an API Key."
         )
@@ -42,6 +44,8 @@ class SpecStreamListRowsBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
+        """Outputs of the List Rows block."""
+
         row: DatasetRow = SchemaField(
             description="One row: its values by field, and each value with its source URL and read time"
         )
@@ -55,6 +59,7 @@ class SpecStreamListRowsBlock(Block):
         )
 
     def __init__(self):
+        """Register the block with its schemas, test data and mocks."""
         super().__init__(
             id="e138c5c8-e1b1-4b44-9609-e6a170389ae5",
             description=(
@@ -89,11 +94,13 @@ class SpecStreamListRowsBlock(Block):
         cursor: str | None,
         limit: int,
     ) -> RowsPage:
+        """Read one page of a run's rows."""
         return await SpecStreamClient(credentials).list_rows(run_id, cursor, limit)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        """Read pages until ``max_rows`` rows or the last page, then yield the rows."""
         refuse_platform_credentials(self, credentials)
         page = await self.read_page(
             credentials,

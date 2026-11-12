@@ -17,6 +17,7 @@ from backend.util.exceptions import BlockExecutionError, BlockInputError
 
 @pytest.mark.asyncio
 async def test_create_request_refuses_an_unrunnable_reading_before_pricing():
+    """Create Dataset Request refuses an unrunnable reading before pricing it."""
     needs_edit = Reading(
         status="needs_edit",
         ast_hash=TEST_AST_HASH,
@@ -34,6 +35,7 @@ async def test_create_request_refuses_an_unrunnable_reading_before_pricing():
 
 @pytest.mark.asyncio
 async def test_create_request_says_when_the_service_is_down():
+    """Create Dataset Request says when the service cannot read requests."""
     block = SpecStreamCreateDatasetRequestBlock()
     block.read_request = AsyncMock(return_value=Reading(status="compiler_unavailable"))
     block.price_reading = AsyncMock()
@@ -56,6 +58,7 @@ async def test_create_request_says_when_the_service_is_down():
 async def test_create_request_takes_the_row_count_from_the_request(
     limit: dict[str, Any], expected: int
 ):
+    """Create Dataset Request prices the row count the request states, up to the cap."""
     block = SpecStreamCreateDatasetRequestBlock()
     block.read_request = AsyncMock(
         return_value=Reading.model_validate(
@@ -73,6 +76,7 @@ async def test_create_request_takes_the_row_count_from_the_request(
 
 @pytest.mark.asyncio
 async def test_create_request_summary_states_the_maximum():
+    """Create Dataset Request's price summary states the maximum."""
     block = SpecStreamCreateDatasetRequestBlock()
     block.read_request = AsyncMock(return_value=TEST_READING)
     block.price_reading = AsyncMock(return_value=TEST_QUOTE)

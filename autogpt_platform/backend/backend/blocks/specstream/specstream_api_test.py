@@ -22,6 +22,7 @@ from backend.blocks.specstream._testdata import (
 
 @pytest.mark.asyncio
 async def test_client_follows_the_quote_then_authorize_flow():
+    """The client parses, quotes, authorizes and lists rows, in that order."""
     requests = fake_requests(
         FakeResponse(200, {"data": {"status": "runnable", "ast_hash": TEST_AST_HASH}}),
         FakeResponse(200, {"data": QUOTE_BODY}),
@@ -113,6 +114,7 @@ async def test_client_follows_the_quote_then_authorize_flow():
 async def test_client_raises_the_api_error_message(
     status_code: int, error: dict[str, Any], expected: str
 ):
+    """The client raises the API's own error message."""
     requests = fake_requests(FakeResponse(status_code, {"error": error}))
     with (
         patch("backend.blocks.specstream._api.Requests", return_value=requests),
