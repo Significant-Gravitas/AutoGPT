@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
@@ -100,6 +100,10 @@ from backend.copilot.pending_message_helpers import (
     queue_pending_for_http,
     resolve_attachments_for_http,
 )
+from backend.copilot.pending_message_receipts import (
+    PendingMessageReceiptUnavailable,
+    pending_message_was_received,
+)
 from backend.copilot.pending_messages import (
     accept_client_message,
     claim_client_message,
@@ -187,6 +191,7 @@ from backend.copilot.tools.models import (
     TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
+from backend.copilot.tools.render_ui_models import UIBlocksResponse
 from backend.copilot.transports import (
     ChatTransportsResponse,
     DefaultChatRoute,
@@ -209,6 +214,7 @@ from backend.util import tracing
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.sandbox_limits import SandboxLimitError
 from backend.util.settings import Settings
 from backend.util.text_limits import MAX_TITLE_LENGTH, MAX_URL_LENGTH, IDText
 
@@ -286,6 +292,20 @@ async def enforce_platform_allowance(user_id: str) -> None:
         ) from e
 
 
+async def _chat_message_reply_status_for_http(
+    message_id: str, session_id: str
+) -> bool | None:
+    try:
+        return await chat_message_has_assistant_reply(message_id, session_id)
+    except Exception as exc:
+        logger.warning(f"Chat message history lookup unavailable: {type(exc).__name__}")
+        raise HTTPException(
+            status_code=503,
+            detail="Chat service degraded, retry shortly",
+            headers={"Retry-After": "30"},
+        ) from exc
+
+
 async def _validate_and_get_session(
     session_id: str,
     user_id: str | None,
@@ -352,8 +372,8 @@ async def _try_release_orphan_running(
     # change can't make this subtraction raise ``TypeError``.
     updated_at = meta.updated_at
     if updated_at.tzinfo is None:
-        updated_at = updated_at.replace(tzinfo=timezone.utc)
-    age = (datetime.now(timezone.utc) - updated_at).total_seconds()
+        updated_at = updated_at.replace(tzinfo=UTC)
+    age = (datetime.now(UTC) - updated_at).total_seconds()
     if age <= active_turns.ORPHAN_RUNNING_RESET_SECONDS:
         return False
     if cancel_background:
@@ -362,6 +382,18 @@ async def _try_release_orphan_running(
         )
     await active_turns.release_turn_slot(user_id, session_id)
     return True
+
+
+PENDING_REFUSAL_HEADERS = {
+    "X-Error-Code": {
+        "description": "pending_buffer_full identifies a full pending-message buffer; absent for other limits",
+        "schema": {"type": "string", "enum": ["pending_buffer_full"]},
+    },
+    "Retry-After": {
+        "description": "Seconds to wait before retrying admission",
+        "schema": {"type": "integer", "minimum": 0},
+    },
+}
 
 
 router = APIRouter(
@@ -467,12 +499,10 @@ class QueuePendingMessageRequest(BaseModel):
     folder_ids: list[IDText] | None = Field(default=None, max_length=5)
     message_id: str | None = Field(
         default=None,
+        min_length=1,
         max_length=64,
-        description=(
-            "Optional per-send UUID, scoped like ``StreamChatRequest."
-            "message_id``. A retransmit of a follow-up already queued is "
-            "answered as accepted without queueing it again."
-        ),
+        description="Per-send idempotency key, scoped to the user and session. "
+        "Reuse on retries; use a new key for a separate send.",
     )
 
 
@@ -1102,6 +1132,7 @@ async def get_session_computer(
     dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
     responses={
         404: {"description": "Session not found or access denied"},
+        429: {"description": "Too many sandboxes are running"},
         502: {"description": "The desktop could not be started"},
         503: {"description": "E2B is not configured"},
     },
@@ -1132,6 +1163,8 @@ async def start_session_desktop(
             user_id=user_id,
             session_id=session_id,
         )
+    except SandboxLimitError as refusal:
+        raise HTTPException(status_code=429, detail=str(refusal))
     except Exception as exc:
         logger.error(
             "[E2B] start_session_desktop failed for %s: %s",
@@ -1924,12 +1957,13 @@ def _empty_ui_message_stream_response(
         404: {"description": "Session not found or access denied"},
         429: {
             "description": "Cost rate-limit, call-frequency cap, or "
-            "per-user concurrent-turn limit exceeded"
+            "per-user concurrent-turn limit exceeded, or pending message buffer full",
+            "headers": PENDING_REFUSAL_HEADERS,
         },
         503: {
-            "description": "Chat service degraded (Redis unavailable for rate "
-            "limit or stream registry); client should honour the Retry-After "
-            "header before retrying."
+            "description": "Chat service degraded (rate limits, stream registry, "
+            "or pending-message history unavailable); client should honour the "
+            "Retry-After header before retrying."
         },
     },
 )
@@ -2040,7 +2074,7 @@ async def stream_chat_post(
             session.expert_id,
         )
         message_metadata = expert_kickoff_metadata(session.expert_id)
-        persisted_kickoff_has_reply = await chat_message_has_assistant_reply(
+        persisted_kickoff_has_reply = await _chat_message_reply_status_for_http(
             message_id,
             session_id,
         )
@@ -2056,10 +2090,14 @@ async def stream_chat_post(
     turn_team_id = session.team_id if session.organization_id else ctx.team_id
 
     try:
+        if request.is_user_message and await pending_message_was_received(
+            session_id, message_id
+        ):
+            return _empty_ui_message_stream_response(follow_up_queued=True)
         turn_in_flight = (
             request.is_user_message and message and await is_turn_in_flight(session_id)
         )
-    except StreamRegistryUnavailable as exc:
+    except (StreamRegistryUnavailable, PendingMessageReceiptUnavailable) as exc:
         # Same fail-closed mapping as the RateLimitUnavailable branch below:
         # the pre-flight chain runs is_turn_in_flight BEFORE check_rate_limit,
         # so a Redis brown-out at this step would otherwise surface as a raw
@@ -2069,6 +2107,15 @@ async def stream_chat_post(
             detail="Chat service degraded, retry shortly",
             headers={"Retry-After": "30"},
         ) from exc
+
+    if (
+        turn_in_flight
+        and message_id is not None
+        and not request.expert_kickoff
+        and await _chat_message_reply_status_for_http(message_id, session_id)
+        is not None
+    ):
+        turn_in_flight = False
 
     if turn_in_flight:
         if request.expert_kickoff:
@@ -2390,7 +2437,7 @@ async def stream_chat_post(
                         )
                         break
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield StreamHeartbeat().to_sse()
 
         except GeneratorExit:
@@ -2461,10 +2508,14 @@ async def stream_chat_post(
     responses={
         404: {"description": "Session not found or access denied"},
         409: {"description": "Session has no active turn to receive pending messages"},
-        429: {"description": "Call-frequency cap exceeded"},
+        429: {
+            "description": "Call-frequency cap exceeded or pending message buffer full",
+            "headers": PENDING_REFUSAL_HEADERS,
+        },
         503: {
-            "description": "Chat service degraded (Redis unavailable); "
-            "client should honour the Retry-After header before retrying."
+            "description": "Chat service degraded (queue state or pending-message "
+            "history unavailable); client should honour the Retry-After header "
+            "before retrying."
         },
     },
 )
@@ -2494,12 +2545,19 @@ async def queue_pending_message(
             raise client_message_in_progress_error()
     try:
         turn_in_flight = await is_turn_in_flight(session_id)
-    except StreamRegistryUnavailable as exc:
+        received = await pending_message_was_received(session_id, client_message_id)
+    except (StreamRegistryUnavailable, PendingMessageReceiptUnavailable) as exc:
         raise HTTPException(
             status_code=503,
             detail="Chat service degraded, retry shortly",
             headers={"Retry-After": "30"},
         ) from exc
+    if received or (
+        client_message_id is not None
+        and await _chat_message_reply_status_for_http(client_message_id, session_id)
+        is not None
+    ):
+        return await already_accepted_response(session_id)
     if not turn_in_flight:
         raise HTTPException(
             status_code=409,
@@ -2648,7 +2706,7 @@ def _resume_response(
             while True:
                 try:
                     entry = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield StreamHeartbeat().to_sse()
                     continue
                 frame_id, chunk = entry
@@ -2825,6 +2883,7 @@ ToolResponseUnion = (
     | TodoWriteResponse
     | ExpertSoulUpdatedResponse
     | ExpertOnboardingResponse
+    | UIBlocksResponse
     | FeedbackPromptToolResponse
 )
 

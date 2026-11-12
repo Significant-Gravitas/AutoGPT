@@ -16,6 +16,10 @@ installation you intend to keep.
   `linux/amd64` or `linux/arm64`. Building locally also requires Docker Buildx.
 - More than the measured 5–6 GiB of appliance memory use, with additional
   headroom for agents, local models, and workload growth.
+- To build the image from source instead of pulling it, more than 8 GiB of
+  memory available to Docker while it builds. The frontend build step alone
+  peaks at about 7.5 GiB, so a build limited to 8 GiB can still be killed
+  partway through. On a smaller host, use the published image.
 - Host storage with enough capacity and throughput for the image, the growing
   `/data` volume, and at least one complete compressed backup archive alongside
   the live data. Shutdown and backup time depend on storage throughput and fsync

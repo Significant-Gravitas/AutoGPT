@@ -19,6 +19,7 @@ type Credential = {
   type: string;
   provider: string;
   is_managed?: boolean;
+  is_system?: boolean;
 };
 
 function ProviderConnectRow({
@@ -164,7 +165,10 @@ export function CredentialsFlatView({
                   displayName={displayName}
                   onSelect={() => onSelectCredential(credential.id)}
                   onDelete={
-                    onDeleteCredential && !credential.is_managed
+                    // The platform's own keys can't be deleted, only replaced.
+                    onDeleteCredential &&
+                    !credential.is_managed &&
+                    !credential.is_system
                       ? () =>
                           onDeleteCredential({
                             id: credential.id,

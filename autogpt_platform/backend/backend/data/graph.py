@@ -441,15 +441,14 @@ class BaseGraph(GraphBaseMeta):
                             if k not in ["description", "default", "secret"]
                         },
                         "secret": False,
-                        # Default value has to be set for advanced fields.
-                        "advanced": p.advanced and p.value is not None,
+                        "advanced": p.advanced and p.is_optional(),
                         "title": p.title or p.name,
                         **({"description": p.description} if p.description else {}),
                         **({"default": p.value} if p.value is not None else {}),
                     }
                     for p in schema_fields
                 },
-                "required": [p.name for p in schema_fields if p.value is None],
+                "required": [p.name for p in schema_fields if not p.is_optional()],
             }
         except AttributeError as e:
             raise ValueError(str(e)) from e
@@ -2870,3 +2869,21 @@ class _UnknownBlockBase(Block):
     async def run(self, input_data, **kwargs):
         """Always yield an error for missing blocks."""
         yield "error", f"Block {self.id} no longer exists"
+
+
+_HAND_OVER_GRAPHS = """
+    UPDATE {schema_prefix}"AgentGraph" SET "userId" = $1
+     WHERE "userId" = $2 AND "id" = ANY($3::text[])
+"""
+
+
+async def hand_over_graphs(
+    graph_ids: list[str], *, from_user_id: str, to_user_id: str, tx: Prisma
+) -> int:
+    """Give every version of these graphs to another account, in the caller's
+    transaction. Only rows `from_user_id` still owns move. Account erasure
+    hands the agents other accounts use to the "deleted user" placeholder
+    with this (`account_erasure/shared_agents.py`)."""
+    return await execute_raw_with_schema(
+        _HAND_OVER_GRAPHS, to_user_id, from_user_id, graph_ids, client=tx
+    )

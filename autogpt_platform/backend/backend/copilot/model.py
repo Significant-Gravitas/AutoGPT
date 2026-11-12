@@ -117,6 +117,10 @@ class ChatSessionMetadata(BaseModel):
     # as a lookup key so refreshing the builder resumes the same chat.
     builder_graph_id: str | None = None
     source_platform: str | None = None
+    # Whoever opened this session keeps only the final text, so visual cards
+    # would lose what they show. Not the same as ``origin="automation"``: a
+    # scheduled follow-up is machine-authored, and a person reads it.
+    text_only_result: bool = False
 
     # ``None`` means the row was persisted before this field existed, and is
     # NOT a synonym for either value: session metadata is immutable after
@@ -573,6 +577,7 @@ class ChatSession(ChatSessionInfo):
         delegated_by_session_id: str | None = None,
         handed_off_from_expert_id: str | None = None,
         autopilot_mode: AutopilotMode | None = None,
+        text_only_result: bool = False,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -594,6 +599,7 @@ class ChatSession(ChatSessionInfo):
                 delegated_by_session_id=delegated_by_session_id,
                 handed_off_from_expert_id=handed_off_from_expert_id,
                 autopilot_mode=autopilot_mode,
+                text_only_result=text_only_result,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1435,6 +1441,7 @@ async def create_chat_session(
     handed_off_from_expert_id: str | None = None,
     autopilot_mode: AutopilotMode | None = None,
     inherited_autopilot_mode: AutopilotMode | None = None,
+    text_only_result: bool = False,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1500,6 +1507,7 @@ async def create_chat_session(
         delegated_by_session_id=delegated_by_session_id,
         handed_off_from_expert_id=handed_off_from_expert_id,
         autopilot_mode=autopilot_mode,
+        text_only_result=text_only_result,
     )
 
     # Create in database first - fail fast if this fails
