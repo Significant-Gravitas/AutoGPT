@@ -26,7 +26,6 @@ from backend.data.account_erasure.models import (
     StepReport,
     StepStatus,
 )
-from backend.util import logging as backend_logging
 
 USER_ID = "3f0b8c1e-4c2a-4f7e-9a51-0c6f2d8e1a77"
 EMAIL = "sam@example.com"
@@ -86,7 +85,7 @@ def run(monkeypatch, log_levels):
     """The command against a fake routine and no database."""
     monkeypatch.setattr(cli.asyncio, "run", _run_on_a_private_loop)
     configured = MagicMock()
-    monkeypatch.setattr(backend_logging, "configure_logging", configured)
+    monkeypatch.setattr(cli, "configure_logging", configured)
     monkeypatch.setattr(db, "connect", AsyncMock())
     monkeypatch.setattr(db, "disconnect", AsyncMock())
     monkeypatch.setattr(cli, "_resolve", AsyncMock(return_value=(USER_ID, EMAIL)))

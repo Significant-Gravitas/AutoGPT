@@ -50,7 +50,10 @@ def test_a_stalled_erasure_pages_with_its_user_id(wiring):
     monitor.report_stalled_account_erasures()
 
     sentry.assert_called_once()
-    assert isinstance(sentry.call_args.args[0], monitor.StalledAccountErasureException)
+    error = sentry.call_args.args[0]
+    assert isinstance(error, monitor.StalledAccountErasureException)
+    # One Sentry issue for every stall: no IDs or counts in its text.
+    assert STALLED not in str(error) and not str(error)[0].isdigit()
     message = notifications.discord_system_alert.call_args.args[0]
     assert message.startswith("2 account erasure(s) started over 3h ago")
     assert STALLED in message and ALSO_STALLED in message
@@ -59,18 +62,34 @@ def test_a_stalled_erasure_pages_with_its_user_id(wiring):
 
 def test_the_same_stall_pages_once_a_day_and_a_new_one_pages_again(wiring, mocker):
     db, notifications, sentry = wiring
-    clock = mocker.patch.object(monitor.time, "monotonic", return_value=1000.0)
+    clock = mocker.patch.object(monitor, "monotonic", return_value=1000.0)
     db.stalled_account_erasures.return_value = [STALLED]
 
     monitor.report_stalled_account_erasures()
     monitor.report_stalled_account_erasures()
     assert notifications.discord_system_alert.call_count == 1
 
+    # A new stall pages for itself alone, not the one paged already.
     db.stalled_account_erasures.return_value = [STALLED, ALSO_STALLED]
     monitor.report_stalled_account_erasures()
     assert notifications.discord_system_alert.call_count == 2
+    page = notifications.discord_system_alert.call_args.args[0]
+    assert page.startswith("1 account erasure(s)")
+    assert ALSO_STALLED in page and STALLED not in page
 
     clock.return_value = 1000.0 + monitor._REPAGE_SECS
     monitor.report_stalled_account_erasures()
     assert notifications.discord_system_alert.call_count == 3
     assert sentry.call_count == 3
+
+
+def test_a_page_that_failed_is_sent_again_on_the_next_check(wiring):
+    db, notifications, _ = wiring
+    db.stalled_account_erasures.return_value = [STALLED]
+    notifications.discord_system_alert.side_effect = [ConnectionError("down"), None]
+
+    with pytest.raises(ConnectionError):
+        monitor.report_stalled_account_erasures()
+    monitor.report_stalled_account_erasures()
+
+    assert notifications.discord_system_alert.call_count == 2

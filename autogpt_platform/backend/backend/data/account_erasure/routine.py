@@ -125,6 +125,7 @@ async def erase_account(
         return await _erase(user_id, email, dry_run=True)
     lease = await acquire_erasure_lease(user_id)
     if lease is None:
+        logger.info(f"Account erasure of {user_id}: another run is erasing it")
         return ErasureReport(
             user_id=user_id, dry_run=False, not_claimed="another run is erasing it"
         )

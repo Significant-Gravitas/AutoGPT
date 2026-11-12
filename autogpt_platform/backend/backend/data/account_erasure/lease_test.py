@@ -107,6 +107,25 @@ def test_a_crashed_runs_lease_lapses_within_minutes():
     assert lease.HEARTBEAT_SECONDS > lease.LEASE_TTL_SECONDS // 10
 
 
+def _renewals(lock, *, needed: int, answers=None) -> asyncio.Event:
+    """Make `lock.refresh` answer in turn from `answers` (True once they run
+    out; an exception is raised) and set the event once it has been called `needed` times, so a test
+    waits for the beats rather than for a fixed time."""
+    reached = asyncio.Event()
+    queue = list(answers or [])
+
+    async def refresh():
+        if lock.refresh.await_count >= needed:
+            reached.set()
+        answer = queue.pop(0) if queue else True
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    lock.refresh.side_effect = refresh
+    return reached
+
+
 @pytest.mark.asyncio
 async def test_the_heartbeat_renews_the_lease_during_a_long_step(locks, monkeypatch):
     """One step can outlast the lifetime: the heartbeat keeps the lease while
@@ -115,30 +134,29 @@ async def test_the_heartbeat_renews_the_lease_during_a_long_step(locks, monkeypa
     monkeypatch.setattr(lease, "HEARTBEAT_SECONDS", 0.01)
     held = await lease.acquire_erasure_lease(USER_ID)
     assert held is not None
+    reached = _renewals(made[0], needed=3)
 
     async with lease.renew_in_background(held):
-        await asyncio.sleep(0.1)
+        await asyncio.wait_for(reached.wait(), timeout=30)
 
     renewals = made[0].refresh.await_count
-    assert renewals >= 3
     await asyncio.sleep(0.05)
     assert made[0].refresh.await_count == renewals
 
 
 @pytest.mark.asyncio
-async def test_a_failed_beat_is_retried_and_the_block_still_ends(locks, monkeypatch):
-    """A Redis blip loses a beat, not the lease: the next beat tries again.
-    The check before each step decides whether the erasure goes on."""
+async def test_a_failed_beat_is_retried(locks, monkeypatch):
+    """A Redis blip loses a beat, not the lease: the next beat tries again,
+    whether the renewal said no or raised. The check before each step decides
+    whether the erasure goes on."""
     made, _ = locks
     monkeypatch.setattr(lease, "HEARTBEAT_SECONDS", 0.01)
     held = await lease.acquire_erasure_lease(USER_ID)
     assert held is not None
-    made[0].refresh.side_effect = [False] + [True] * 100
+    reached = _renewals(made[0], needed=3, answers=[False, RuntimeError("blip")])
 
     async with lease.renew_in_background(held):
-        await asyncio.sleep(0.1)
-
-    assert made[0].refresh.await_count >= 3
+        await asyncio.wait_for(reached.wait(), timeout=30)
 
 
 @pytest.mark.asyncio

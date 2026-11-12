@@ -85,7 +85,13 @@ async def renew_in_background(lock: AsyncClusterLock) -> AsyncIterator[None]:
 async def _beat(lock: AsyncClusterLock) -> None:
     while True:
         await asyncio.sleep(HEARTBEAT_SECONDS)
-        if not await lock.refresh():
+        try:
+            renewed = await lock.refresh()
+        except Exception as e:
+            # Never ends the heartbeat, nor reaches the erasure's result.
+            logger.warning(f"Account erasure lease renewal raised {type(e).__name__}")
+            renewed = False
+        if not renewed:
             logger.warning(
                 f"Account erasure lease {lock.key} could not be renewed; the "
                 "erasure stops before its next step if it was lost"

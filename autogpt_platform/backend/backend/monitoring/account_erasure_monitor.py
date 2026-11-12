@@ -10,7 +10,7 @@ check reads the request rows, so it catches both, and pages.
 """
 
 import logging
-import time
+from time import monotonic
 
 from backend.util.clients import (
     get_database_manager_client,
@@ -29,18 +29,21 @@ _REPAGE_SECS = 24 * 60 * 60
 _paged_at: dict[str, float] = {}
 
 
-def _has_unpaged(user_ids: list[str]) -> bool:
-    now = time.monotonic()
+def _unpaged(user_ids: list[str]) -> list[str]:
+    now = monotonic()
     for stale in [
         user_id
         for user_id, paged_at in _paged_at.items()
         if now - paged_at >= _REPAGE_SECS
     ]:
         del _paged_at[stale]
-    fresh = [user_id for user_id in user_ids if user_id not in _paged_at]
-    for user_id in fresh:
+    return [user_id for user_id in user_ids if user_id not in _paged_at]
+
+
+def _mark_paged(user_ids: list[str]) -> None:
+    now = monotonic()
+    for user_id in user_ids:
         _paged_at[user_id] = now
-    return bool(fresh)
 
 
 class StalledAccountErasureException(Exception):
@@ -49,8 +52,8 @@ class StalledAccountErasureException(Exception):
 
 def report_stalled_account_erasures() -> str:
     """Page for the erasures claimed over `account_erasure_stall_alert_secs`
-    ago and not finished. User IDs only: the alert goes to Discord and Sentry,
-    neither of which should carry an email."""
+    ago and not finished, each at most once a day. User IDs only: the alert
+    goes to Discord and Sentry, neither of which should carry an email."""
     older_than_secs = config.account_erasure_stall_alert_secs
     user_ids = get_database_manager_client().stalled_account_erasures(
         older_than_secs=older_than_secs
@@ -58,17 +61,22 @@ def report_stalled_account_erasures() -> str:
     if not user_ids:
         return "No stalled account erasure."
 
-    msg = (
-        f"{len(user_ids)} account erasure(s) started over "
-        f"{older_than_secs / 3600:g}h ago and did not finish: a failed step, a "
-        "service left unset, or a CLI run that crashed. Run "
-        "`erase-account <user ID>` (dry run) to see where each one stops, fix "
-        "that and run it with --apply; see docs/engineering/account-deletion.md. "
-        f"User IDs: {', '.join(user_ids)}"
+    summary = (
+        f"account erasure(s) started over {older_than_secs / 3600:g}h ago and "
+        "did not finish: a failed step, a service left unset, or a CLI run that "
+        "crashed. Run `erase-account <user ID>` (dry run) to see where each one "
+        "stops, fix that and run it with --apply; see "
+        "docs/engineering/account-deletion.md."
     )
-    if _has_unpaged(user_ids):
-        sentry_capture_error(StalledAccountErasureException(msg))
-        get_notification_manager_client().discord_system_alert(msg)
-    else:
-        logger.warning(msg)
+    msg = f"{len(user_ids)} {summary} User IDs: {', '.join(user_ids)}"
+    if fresh := _unpaged(user_ids):
+        # The IDs stay out of the Sentry issue's text, so every stall groups
+        # into one issue.
+        sentry_capture_error(StalledAccountErasureException(f"Stalled {summary}"))
+        get_notification_manager_client().discord_system_alert(
+            f"{len(fresh)} {summary} User IDs: {', '.join(fresh)}"
+        )
+        # Only once the page went out: a failed one is tried again next check.
+        _mark_paged(fresh)
+    logger.warning(msg)
     return msg

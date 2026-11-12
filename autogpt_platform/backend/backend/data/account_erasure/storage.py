@@ -64,7 +64,10 @@ async def delete_files(subject: Subject, *, dry_run: bool) -> StepReport:
     # (`workspace_storage.py`), even with a public media bucket configured.
     if not Settings().config.resolved_private_user_data_bucket:
         kept_files = {media_root() / path for path in kept}
-        counts["local_files"] = _sweep_local(_local_dirs(subject), kept_files, dry_run)
+        # Off the event loop: a long sweep would starve the lease's heartbeat.
+        counts["local_files"] = await asyncio.to_thread(
+            _sweep_local, _local_dirs(subject), kept_files, dry_run
+        )
         # A cloud pod missing the bucket setting looks the same as a stack
         # that keeps files on disk, so this counts as the buckets skipped: the
         # erasure stops unless the stack lists "buckets" as unused.

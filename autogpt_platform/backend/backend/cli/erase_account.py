@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 import click
 
+from backend.util.logging import configure_logging
+
 if TYPE_CHECKING:
     from backend.data.account_erasure.models import ErasureReport
 
@@ -81,8 +83,6 @@ def _log_the_erasure_only() -> None:
     ("Account erasure of <user ID>: ...", IDs only) in the log, and only
     warnings from everything else, which keeps Prisma and client chatter out
     of the report."""
-    from backend.util.logging import configure_logging
-
     configure_logging()
     logging.getLogger().setLevel(logging.WARNING)
     logging.getLogger("backend.data.account_erasure").setLevel(logging.INFO)
