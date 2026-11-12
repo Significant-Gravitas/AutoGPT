@@ -137,6 +137,19 @@ async function openIntegrationsTab() {
   );
 }
 
+/** The button stays disabled until the credentials list loads. */
+async function openUseExistingDialog() {
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole("button", { name: /Use existing/ })
+        .hasAttribute("disabled"),
+    ).toBe(false),
+  );
+  await userEvent.click(screen.getByRole("button", { name: /Use existing/ }));
+  return screen.findByRole("dialog");
+}
+
 describe("managing an expert's integrations", () => {
   it("lists what the expert can reach", async () => {
     server.use(getListExpertCredentialsMockHandler([linkedin]));
@@ -403,10 +416,7 @@ describe("managing an expert's integrations", () => {
     render(<ExpertDetailPage />);
 
     await openIntegrationsTab();
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Use existing/ }),
-    );
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await openUseExistingDialog();
     await userEvent.click(
       within(dialog).getByRole("button", { name: /Google/ }),
     );
@@ -452,10 +462,43 @@ describe("managing an expert's integrations", () => {
     render(<ExpertDetailPage />);
 
     await openIntegrationsTab();
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Use existing/ }),
+    const dialog = await openUseExistingDialog();
+    const search = within(dialog).getByPlaceholderText("Search connections");
+    await userEvent.type(search, "work@");
+
+    expect(
+      within(dialog).getByRole("button", { name: /Google/ }),
+    ).toBeDefined();
+    expect(within(dialog).queryByRole("button", { name: /Notion/ })).toBeNull();
+  });
+
+  it("searches titled accounts by their email too", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([linkedin]),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json([
+          {
+            id: "cred-google-work",
+            provider: "google",
+            type: "oauth2",
+            title: "Work",
+            username: "work@example.com",
+          },
+          {
+            id: "cred-notion",
+            provider: "notion",
+            type: "oauth2",
+            title: null,
+            username: "personal@example.com",
+          },
+        ]),
+      ),
     );
-    const dialog = await screen.findByRole("dialog");
+
+    render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
+    const dialog = await openUseExistingDialog();
     const search = within(dialog).getByPlaceholderText("Search connections");
     await userEvent.type(search, "work@");
 
@@ -484,10 +527,7 @@ describe("managing an expert's integrations", () => {
     render(<ExpertDetailPage />);
 
     await openIntegrationsTab();
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Use existing/ }),
-    );
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await openUseExistingDialog();
 
     expect(
       within(dialog).getByText("solo@example.com", { exact: false }),

@@ -97,8 +97,10 @@ export function UseExistingCredentialsDialog({
     (group) =>
       !needle ||
       group.provider.name.toLowerCase().includes(needle) ||
-      group.credentials.some((credential) =>
-        accountName(credential).toLowerCase().includes(needle),
+      group.credentials.some(
+        (credential) =>
+          accountName(credential).toLowerCase().includes(needle) ||
+          credential.username?.toLowerCase().includes(needle),
       ),
   );
   const selected = groups.find(
