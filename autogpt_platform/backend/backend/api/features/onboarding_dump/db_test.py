@@ -98,6 +98,101 @@ async def test_a_new_recording_id_always_claims_the_row(
     assert update["greetingSeen"] is False
 
 
+EARLIER_CALL_TAKE = "interview-" + "a" * 32
+LATER_CALL_TAKE = "interview-" + "b" * 32
+TYPED_INTERVIEW_TAKE = "interview-1b4e28ba-2fa1-11d2-883f-0016d3cca427"
+PROCESSING = [
+    BrainDumpStatus.recording_uploaded,
+    BrainDumpStatus.transcribed,
+    BrainDumpStatus.extracting,
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", PROCESSING)
+async def test_a_later_calls_take_displaces_an_earlier_calls_in_any_status(
+    mocker: MockerFixture, upsert: AsyncMock, status: BrainDumpStatus
+):
+    """The row named the later call when it started, so the two calls'
+    takes are ordered, as two voice uploads are."""
+    mocker.patch.object(
+        db, "get_dump", AsyncMock(return_value=_row(status, EARLIER_CALL_TAKE))
+    )
+
+    await db.start_dump(
+        USER_ID, LATER_CALL_TAKE, BrainDumpInputMode.voice, call_take=True
+    )
+
+    upsert.assert_awaited_once()
+    update = upsert.await_args.kwargs["data"]["update"]
+    assert (update["recordingId"], update["greeting"], update["transcript"]) == (
+        LATER_CALL_TAKE,
+        None,
+        None,
+    )
+    # A call's words were spoken.
+    assert update["inputMode"] == BrainDumpInputMode.voice
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", PROCESSING)
+async def test_a_take_named_like_a_calls_displaces_nothing_unless_a_call_made_it(
+    mocker: MockerFixture, upsert: AsyncMock, status: BrainDumpStatus
+):
+    """The name alone is no proof: only the call's hand-off says its take is
+    a call's."""
+    existing = _row(status, EARLIER_CALL_TAKE)
+    mocker.patch.object(db, "get_dump", AsyncMock(return_value=existing))
+
+    result = await db.start_dump(USER_ID, LATER_CALL_TAKE, BrainDumpInputMode.typed)
+
+    assert result is existing
+    upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", PROCESSING)
+@pytest.mark.parametrize(
+    ("taking", "held"),
+    [
+        ("typed-dump", EARLIER_CALL_TAKE),
+        ("typed-dump", RECORDING_ID),
+        (LATER_CALL_TAKE, TYPED_INTERVIEW_TAKE),
+        (LATER_CALL_TAKE, RECORDING_ID),
+        (TYPED_INTERVIEW_TAKE, EARLIER_CALL_TAKE),
+    ],
+    ids=[
+        "typed-over-a-call",
+        "typed-over-a-brain-dump",
+        "call-over-a-typed-interview",
+        "call-over-a-brain-dump",
+        "typed-interview-over-a-call",
+    ],
+)
+async def test_no_take_without_a_recording_displaces_a_take_still_processing(
+    mocker: MockerFixture,
+    upsert: AsyncMock,
+    status: BrainDumpStatus,
+    taking: str,
+    held: str,
+):
+    """A call's take is ``voice`` as an upload is, and still displaces only
+    another call's."""
+    existing = _row(status, held)
+    mocker.patch.object(db, "get_dump", AsyncMock(return_value=existing))
+    call_take = taking == LATER_CALL_TAKE
+
+    result = await db.start_dump(
+        USER_ID,
+        taking,
+        BrainDumpInputMode.voice if call_take else BrainDumpInputMode.typed,
+        call_take=call_take,
+    )
+
+    assert result is existing
+    upsert.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "status",

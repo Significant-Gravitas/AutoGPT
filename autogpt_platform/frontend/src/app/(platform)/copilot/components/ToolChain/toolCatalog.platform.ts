@@ -309,4 +309,9 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
         : null;
     },
   },
+  end_interview: {
+    category: "team",
+    running: "Wrapping up",
+    done: "Wrapped up",
+  },
 };

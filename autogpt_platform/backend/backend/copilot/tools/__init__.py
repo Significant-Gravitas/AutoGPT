@@ -9,6 +9,7 @@ from openai.types.chat import ChatCompletionToolParam
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.capabilities.registry import configure_tools
 from backend.copilot.capabilities.sources import EAGER_CORE
+from backend.copilot.model import ONBOARDING_INTERVIEW_KIND
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tracking import track_tool_called
 
@@ -32,6 +33,7 @@ from .decompose_goal import DecomposeGoalTool
 from .delegate_to_expert import DelegateToExpertTool
 from .describe_capability import DescribeCapabilityTool
 from .edit_agent import EditAgentTool
+from .end_interview import END_INTERVIEW_TOOL, EndInterviewTool
 from .enter_building_mode import EnterAgentBuildingModeTool
 from .expert_chats import ListExpertChatsTool, ReadExpertChatTool
 from .expert_onboarding import ExpertOnboardingTool
@@ -116,6 +118,8 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "customize_agent": CustomizeAgentTool(),
     "decompose_goal": DecomposeGoalTool(),
     "edit_agent": EditAgentTool(),
+    # Otto's end signal, in an onboarding interview only.
+    END_INTERVIEW_TOOL: EndInterviewTool(),
     "find_agent": FindAgentTool(),
     "find_library_agent": FindLibraryAgentTool(),
     # Capability registry: one discovery/execution surface for blocks, MCP
@@ -357,6 +361,22 @@ def origin_disabled_tools(origin: "ChatSessionOrigin | None") -> frozenset[str]:
     it would refuse, this stops us declaring.
     """
     return frozenset() if origin == "interactive" else INTERACTIVE_ORIGIN_TOOLS
+
+
+# The tools only an onboarding interview is offered: its end signal closes the
+# interview it is called in, so no other chat has anything for it to do.
+INTERVIEW_ONLY_TOOLS: frozenset[str] = frozenset({END_INTERVIEW_TOOL})
+
+
+def interview_disabled_tools(kind: str | None) -> frozenset[str]:
+    """Tools to hide from a session of *kind*: the interview's own tools,
+    in every session that is not an onboarding interview.
+
+    Both engines hide these the way they hide the origin gate's tools, so an
+    ordinary chat never declares one, and a call that names one anyway is
+    refused (``execute_tool``, ``BaseTool``'s hidden-tool gate).
+    """
+    return frozenset() if kind == ONBOARDING_INTERVIEW_KIND else INTERVIEW_ONLY_TOOLS
 
 
 def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:

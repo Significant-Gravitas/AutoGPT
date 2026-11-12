@@ -21,10 +21,10 @@ describe("onboardingStepKey", () => {
   // Optional steps shift numeric positions; analytics keeps stable names.
   it("maps the same key across both step layouts", () => {
     expect(
-      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.painPoints),
+      onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.painPoints!),
     ).toBe("pain_points");
     expect(
-      onboardingStepKey(NO_PAYWALL_STEPS, NO_PAYWALL_STEPS.painPoints),
+      onboardingStepKey(NO_PAYWALL_STEPS, NO_PAYWALL_STEPS.painPoints!),
     ).toBe("pain_points");
     expect(
       onboardingStepKey(PAYWALL_LAST_STEPS, PAYWALL_LAST_STEPS.preparing),
@@ -47,6 +47,13 @@ describe("onboardingStepKey", () => {
       );
     }
     expect(onboardingStepKey(PAYWALL_LAST_STEPS, 6)).toBe("preparing");
+  });
+
+  it("names the interview in the brain dump's place", () => {
+    const steps = buildStepLayout({ hasPaywall: true, hasInterview: true });
+    expect(steps.painPoints).toBeUndefined();
+    expect(onboardingStepKey(steps, steps.interview!)).toBe("interview");
+    expect(steps.interview).toBe(PAYWALL_LAST_STEPS.painPoints);
   });
 });
 

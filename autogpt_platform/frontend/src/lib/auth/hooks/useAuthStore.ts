@@ -16,6 +16,7 @@ import {
   claimOnboardingHandoff,
   clearOnboardingHandoff,
 } from "@/services/onboarding/brain-dump-handoff";
+import { forgetCallTickets } from "@/services/onboarding/voice-call-ticket";
 import { teardownPushSubscriptionBeforeLogout } from "@/services/push-notifications/helpers";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
@@ -288,6 +289,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     // expired the session cookies, or a tab could reload into the old session.
     broadcastLogout();
     clearOnboardingHandoff();
+    forgetCallTickets();
   }
 
   async function validateSessionInternal(
@@ -495,6 +497,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 
     cancelRetry();
     endSessionEpoch();
+    forgetCallTickets();
     set({
       user: null,
       hasLoadedUser: false,
@@ -584,12 +587,15 @@ useAuthStore.subscribe((state, previousState) => {
     resetAnalyticsIdentity();
     clearCopilotCompletedSessions();
   }
-  // Whoever signs in claims the onboarding handoff: a different account
-  // than this tab last had starts without it, however the last session
-  // ended. Not on a sign-out itself: a failed refresh also drops the user,
-  // and a brand-new one must keep their walkthrough.
-  if (state.user && state.user.id !== previousState.user?.id)
+  // Whoever signs in claims the onboarding handoff and keeps only their own
+  // voice call ticket: a different account than this tab last had starts
+  // without either, however the last session ended. Not on a sign-out
+  // itself: a failed refresh also drops the user, and a brand-new one must
+  // keep their walkthrough.
+  if (state.user && state.user.id !== previousState.user?.id) {
     claimOnboardingHandoff(state.user.id);
+    forgetCallTickets(state.user.id);
+  }
 });
 
 // Headers are built only for the user this store has signed in, so keep the

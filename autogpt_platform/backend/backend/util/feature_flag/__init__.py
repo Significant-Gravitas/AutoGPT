@@ -79,6 +79,11 @@ class Flag(str, Enum):
     # off so a stale frontend cannot spend TTS budget. Fail-closed.
     COPILOT_VOICE_MODE = "copilot-voice-mode"
 
+    # The onboarding voice interview: the step offers a call with Otto, and
+    # the call start route mints calls. The route 404s when off, so a stale
+    # frontend cannot start a call. Fail-closed.
+    ONBOARDING_INTERVIEW_VOICE = "onboarding-interview-voice"
+
     # --- Dream-system gates (P0) ---
     #
     # No "enabled-users list" flag — per-flag targeting natively

@@ -17,7 +17,8 @@ from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.executor import utils as executor_utils
-from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.model import ONBOARDING_INTERVIEW_KIND, ChatMessage, ChatSession
+from backend.copilot.onboarding_interview import INTERVIEW_USER_MESSAGES_ONLY
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 
 app = fastapi.FastAPI()
@@ -317,3 +318,28 @@ def test_keep_going_again_after_a_continuation_left_no_user_row(
     assert stored.session.messages[-1].content == KEEP_GOING_NOTE
     assert _notes(stored.session) == 2
     stored.dispatch.assert_awaited_once()
+
+
+def test_an_onboarding_interview_takes_no_continuation(
+    chat, mocker: pytest_mock.MockerFixture
+):
+    """A continuation is a system note, and an interview takes only the
+    user's own messages."""
+    session = _session()
+    session.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    chat.session.return_value = session
+    admit = mocker.patch.object(
+        continuation_routes,
+        "admit_onboarding_interview_turn",
+        new=AsyncMock(
+            side_effect=fastapi.HTTPException(
+                status_code=422, detail=INTERVIEW_USER_MESSAGES_ONLY
+            )
+        ),
+    )
+
+    response = client.post(URL)
+
+    assert response.status_code == 422
+    assert admit.await_args.kwargs == {"is_user_message": False}
+    chat.schedule.assert_not_awaited()

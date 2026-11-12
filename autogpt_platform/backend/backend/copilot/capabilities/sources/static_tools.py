@@ -63,6 +63,10 @@ EAGER_CORE: frozenset[str] = frozenset(
         # the card it exists to open is unreachable, and so is the
         # ``run_capability`` that would reach it.
         "expert_onboarding",
+        # The onboarding interview's end signal. An interview is offered no
+        # ``run_capability``, so a deferred end signal could never be called;
+        # every other chat has it hidden (``interview_disabled_tools``).
+        "end_interview",
         # Both open a chat card, and a deferred tool renders as a generic
         # tool row instead of its card.
         "request_work_check",

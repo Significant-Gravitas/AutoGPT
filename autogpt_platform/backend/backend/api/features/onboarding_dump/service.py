@@ -15,7 +15,7 @@ from fastapi import BackgroundTasks, HTTPException
 from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from backend.api.features.experts.experts_db import list_templates
 from backend.api.features.experts.models import Expert
@@ -47,6 +47,7 @@ from backend.api.features.onboarding_dump.rate_limit import (
 )
 from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.db import user_has_any_session
+from backend.copilot.model import ONBOARDING_INTERVIEW_KIND
 from backend.data.onboarding import (
     format_brain_dump_for_extraction,
     get_user_onboarding,
@@ -248,12 +249,74 @@ async def finalize_voice_dump(
     )
 
 
+class TypedTake(BaseModel):
+    """A typed take's answer, and whether this call judged it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    response: FinalizeResponse
+    # This call claimed the take and ran the quality gate on it. False when
+    # the answer is the row's as it stands: another call's claim, or a take
+    # already moving.
+    judged: bool
+
+
 async def finalize_typed_dump(
     user_id: str,
     recording_id: str,
     text: str,
     background_tasks: BackgroundTasks,
 ) -> FinalizeResponse:
+    return (
+        await finalize_typed_take(user_id, recording_id, text, background_tasks)
+    ).response
+
+
+async def give_up_unrun_take(user_id: str, recording_id: str, error_code: str) -> bool:
+    """Mark *recording_id*'s take failed with *error_code* while no pipeline
+    has run it: still ``recording_uploaded``, or ``transcribed`` with its
+    jobs not started. A take the pipeline has moved on, or another take on
+    the row, is left as it is. True when the take was given up."""
+    for expected in (BrainDumpStatus.transcribed, BrainDumpStatus.recording_uploaded):
+        if await db.claim_transition(
+            user_id,
+            recording_id,
+            expected=expected,
+            new=BrainDumpStatus.failed,
+            errorCode=error_code,
+            errorReason=None,
+        ):
+            return True
+    return False
+
+
+async def reopen_unjudged_take(user_id: str, recording_id: str) -> bool:
+    """Put a take whose row was claimed and left ``transcribed`` with no
+    answer back where a finalize claims it again, so its words are judged
+    rather than read as a ruling. True when the row held that take there."""
+    return await db.claim_transition(
+        user_id,
+        recording_id,
+        expected=BrainDumpStatus.transcribed,
+        new=BrainDumpStatus.recording_uploaded,
+    )
+
+
+async def finalize_typed_take(
+    user_id: str,
+    recording_id: str,
+    text: str,
+    background_tasks: BackgroundTasks,
+    *,
+    input_mode: BrainDumpInputMode = BrainDumpInputMode.typed,
+    call_take: bool = False,
+) -> TypedTake:
+    """A take of words with no recording to transcribe, through the
+    pipeline, as *input_mode*: ``typed`` for typing, ``voice`` for a call's
+    words, which the quality gate judges as speech and every answer reports
+    as spoken. *call_take* says it is a voice call's, made by the call's
+    hand-off, which may displace another call's take still being processed
+    (``db.call_take_displaces``)."""
     # Same idempotency contract as the voice path: a repeated submit must
     # not reset the row or queue a second extraction and greeting on top
     # of the pair already running.
@@ -269,11 +332,14 @@ async def finalize_typed_dump(
             BrainDumpStatus.completed,
         )
     ):
-        return _pipeline_response(
-            existing.status, existing.transcript, existing.inputMode
+        return TypedTake(
+            response=_pipeline_response(
+                existing.status, existing.transcript, existing.inputMode
+            ),
+            judged=False,
         )
 
-    await db.start_dump(user_id, recording_id, BrainDumpInputMode.typed)
+    await db.start_dump(user_id, recording_id, input_mode, call_take=call_take)
     # Same reasoning as the voice path: only the caller that wins this
     # transition queues the extraction and greeting pair.
     claimed = await db.claim_transition(
@@ -290,28 +356,33 @@ async def finalize_typed_dump(
         # falling through to the tasks below.
         current = await db.get_dump(user_id)
         if current is None:
-            return FinalizeResponse(
-                status=BrainDumpStatus.failed, input_mode=BrainDumpInputMode.typed
+            response = FinalizeResponse(
+                status=BrainDumpStatus.failed, input_mode=input_mode
             )
-        if current.recordingId != recording_id:
-            return FinalizeResponse(
+        elif current.recordingId != recording_id:
+            response = FinalizeResponse(
                 status=BrainDumpStatus.failed,
-                input_mode=BrainDumpInputMode.typed,
+                input_mode=input_mode,
                 error_code="superseded",
             )
-        return _pipeline_response(current.status, current.transcript, current.inputMode)
+        else:
+            response = _pipeline_response(
+                current.status, current.transcript, current.inputMode
+            )
+        return TypedTake(response=response, judged=False)
 
     await _admit_processing(user_id, recording_id)
     # Typed dumps skip transcription but not the gate: a keyboard can
     # produce "asdf asdf asdf" just as easily as a silent mic produces a
     # hallucinated transcript. Only the claim winner reaches this point,
     # so concurrent retries never run duplicate quality checks.
-    rejection = await quality.check_transcript_quality(
-        text, input_mode=BrainDumpInputMode.typed
-    )
+    rejection = await quality.check_transcript_quality(text, input_mode=input_mode)
     if rejection is not None:
-        return await _quality_rejection(
-            user_id, recording_id, rejection, text, BrainDumpInputMode.typed
+        return TypedTake(
+            response=await _quality_rejection(
+                user_id, recording_id, rejection, text, input_mode
+            ),
+            judged=True,
         )
 
     background_tasks.add_task(
@@ -319,10 +390,13 @@ async def finalize_typed_dump(
         user_id,
         recording_id,
         text.strip(),
-        BrainDumpInputMode.typed,
+        input_mode,
     )
-    return _pipeline_response(
-        BrainDumpStatus.transcribed, text.strip(), BrainDumpInputMode.typed
+    return TypedTake(
+        response=_pipeline_response(
+            BrainDumpStatus.transcribed, text.strip(), input_mode
+        ),
+        judged=True,
     )
 
 
@@ -820,6 +894,9 @@ def _pipeline_response(
         status=status,
         input_mode=input_mode,
         transcript_preview=(transcript or "")[:TRANSCRIPT_PREVIEW_CHARS] or None,
+        transcript_words=(
+            quality.count_words(transcript) if transcript is not None else None
+        ),
     )
 
 
@@ -925,7 +1002,11 @@ async def _retire_greeting_if_chatted(user_id: str) -> bool:
     it answers "no" and the rest of the checks decide.
     """
     try:
-        if not await user_has_any_session(user_id):
+        # The interview is what the greeting is written from, so it cannot be
+        # the session that retires it.
+        if not await user_has_any_session(
+            user_id, exclude_kinds=(ONBOARDING_INTERVIEW_KIND,)
+        ):
             return False
     except Exception as e:
         logger.warning("Brain dump greeting: session lookup failed: %s", e)

@@ -36,6 +36,7 @@ from typing import Any
 
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
+from backend.copilot.onboarding_interview import is_onboarding_interview
 from backend.copilot.tools.session_context import is_followups_feature_enabled
 from backend.copilot.tracking import track_chat_outcome
 from backend.data.db_accessors import user_db
@@ -208,7 +209,13 @@ class ScheduleFollowupTool(BaseTool):
         target_session_id: str | None = kwargs.get("session_id")
         if target_session_id and target_session_id != current_session_id:
             target = await get_chat_session(target_session_id, user_id)
-            if target is None or target.expert_id != session.expert_id:
+            # An onboarding interview takes only its owner's own messages, so
+            # it is never a followup's target.
+            if (
+                target is None
+                or target.expert_id != session.expert_id
+                or is_onboarding_interview(target)
+            ):
                 return ErrorResponse(
                     message=(
                         f"Session {target_session_id} not found, not owned by "

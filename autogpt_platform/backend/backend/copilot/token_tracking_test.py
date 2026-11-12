@@ -10,8 +10,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from . import token_tracking
 from .model import ChatSession, Usage
-from .token_tracking import persist_and_record_usage
+from .token_tracking import drain_pending_cost_logs, persist_and_record_usage
 
 
 def _make_session() -> ChatSession:
@@ -326,6 +327,49 @@ class TestRateLimitRecording:
                 completion_tokens=0,
             )
         mock_record.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_platform_paid_spend_is_logged_without_touching_the_plan(
+        self, monkeypatch
+    ):
+        """Spend the platform pays for still lands in the cost log, but charges
+        neither the user's plan windows, nor their credits, nor a turn tree."""
+        from backend.copilot import token_tracking
+        from backend.copilot.context import set_execution_context
+        from backend.copilot.tree import TurnEnvelope
+
+        record_cost = AsyncMock()
+        record_credits = AsyncMock(return_value=False)
+        charge_tree = AsyncMock()
+        logged: list = []
+        monkeypatch.setattr(token_tracking, "record_cost_usage", record_cost)
+        monkeypatch.setattr(token_tracking, "record_credit_billed_cost", record_credits)
+        monkeypatch.setattr(token_tracking, "charge_turn", charge_tree)
+        monkeypatch.setattr(token_tracking, "_schedule_cost_log", logged.append)
+
+        set_execution_context(
+            "user-abc", None, envelope=TurnEnvelope(tree_id="tree-1", depth=1)
+        )
+        try:
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-abc",
+                prompt_tokens=400,
+                completion_tokens=0,
+                cost_usd=0.0012,
+                provider="google",
+                block_name_override="onboarding:voice_interview",
+                charge_plan=False,
+            )
+        finally:
+            set_execution_context(None, None, envelope=None)
+
+        record_cost.assert_not_awaited()
+        record_credits.assert_not_awaited()
+        charge_tree.assert_not_awaited()
+        assert len(logged) == 1
+        assert logged[0].cost_microdollars == 1_200
+        assert logged[0].block_name == "onboarding:voice_interview"
 
 
 # ---------------------------------------------------------------------------
@@ -755,3 +799,42 @@ async def test_usage_charges_the_tree_ledger(monkeypatch):
         set_execution_context(None, None, envelope=None)
 
     assert charged == [("tree-9", 250_000)]
+
+
+# ---------------------------------------------------------------------------
+# Draining cost logs in flight at shutdown
+# ---------------------------------------------------------------------------
+
+
+class TestDrainPendingCostLogs:
+    @pytest.mark.asyncio
+    async def test_waits_for_cost_logs_in_flight(self):
+        finished: list[int] = []
+
+        async def _slow() -> None:
+            await asyncio.sleep(0.01)
+            finished.append(1)
+
+        task = asyncio.ensure_future(_slow())
+        with token_tracking._pending_log_tasks_lock:
+            token_tracking._pending_log_tasks.add(task)
+        task.add_done_callback(token_tracking._pending_log_tasks.discard)
+
+        await drain_pending_cost_logs(timeout=2.0)
+        assert finished == [1]
+
+    @pytest.mark.asyncio
+    async def test_gives_up_on_a_cost_log_at_the_timeout(self):
+        async def _stuck() -> None:
+            await asyncio.Event().wait()
+
+        task = asyncio.ensure_future(_stuck())
+        with token_tracking._pending_log_tasks_lock:
+            token_tracking._pending_log_tasks.add(task)
+        try:
+            await asyncio.wait_for(drain_pending_cost_logs(timeout=0.05), timeout=2.0)
+            assert not task.done()
+        finally:
+            task.cancel()
+            with token_tracking._pending_log_tasks_lock:
+                token_tracking._pending_log_tasks.discard(task)

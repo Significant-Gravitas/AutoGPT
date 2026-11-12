@@ -501,6 +501,24 @@ model UserOnboarding {
   role      String?
   roleOther String?
 
+  // The chat session of the user's onboarding interview, recorded the first
+  // time it is opened (backend/copilot/onboarding_interview.py) and cleared
+  // when that session is deleted, so the next start is a new interview. Not
+  // a relation: should the session go without the clear, the next start
+  // creates the interview again at the id.
+  interviewSessionId String? @unique
+
+  // The user's latest onboarding voice call, recorded when the call starts on
+  // the voice relay (backend/voice_relay). The call's own record lives in
+  // Redis for a day; a later call replaces this one.
+  voiceCallId String? @unique
+
+  // The voice call whose words became the user's onboarding interview's take:
+  // accepted by the pipeline from a call that ran to its close, or that the
+  // user confirmed. Kept here because the call's record expires in a day and
+  // the interview does not. NULL while no call has taken the interview.
+  voiceInterviewCallId String? @unique
+
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

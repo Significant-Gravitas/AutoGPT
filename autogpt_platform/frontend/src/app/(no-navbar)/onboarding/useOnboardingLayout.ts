@@ -1,10 +1,17 @@
 import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import { environment } from "@/services/environment";
+import { useFlagResolutionStarted } from "@/services/feature-flags/flag-resolution";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { useEffect, useState } from "react";
 import { useSignInProvider } from "./steps/AccessStep/useSignInProvider";
 import { buildStepLayout, resolveStepOrder, type Step } from "./store";
 import { useFrozenPerUser } from "./useFrozenPerUser";
 import { usePaidCheckoutStatus } from "./usePaidCheckoutStatus";
+
+// How long onboarding waits for the interview flag's answer, past the flag's
+// own timeout (which serves its default, not an answer), before it lays the
+// wizard out without the interview for this visit.
+export const INTERVIEW_FLAG_WAIT_MS = 10_000;
 
 export function useOnboardingLayout({
   userID,
@@ -20,6 +27,11 @@ export function useOnboardingLayout({
   const payment = usePlatformPayment();
   const stepOrder = useFlagStatus(Flag.ONBOARDING_STEP_ORDER);
   const signIn = useSignInProvider(userID);
+  const interview = useFlagStatus(Flag.ONBOARDING_INTERVIEW);
+  const hasWaitedForInterview = useHasWaited(
+    INTERVIEW_FLAG_WAIT_MS,
+    !interview.answered,
+  );
 
   const flagsReady = payment.isResolved;
   // Resolved once per account: a setting or flag change must not reorder an
@@ -37,6 +49,16 @@ export function useOnboardingLayout({
     () => ({
       requestedOrder: stepOrder.enabled,
       hasAccess: signIn.provider !== null,
+    }),
+  );
+  // The interview flag's answer, or, once INTERVIEW_FLAG_WAIT_MS has run out
+  // without one, no interview for this visit.
+  const interviewLayout = useFrozenPerUser(
+    userID,
+    (interview.answered || hasWaitedForInterview) && !isUserLoading,
+    () => ({
+      hasInterview: interview.answered && interview.enabled,
+      isAnswered: interview.answered,
     }),
   );
   // The paywall moves the access step, so the order follows payment as the
@@ -58,6 +80,7 @@ export function useOnboardingLayout({
     hasPlan: !hasPayment,
     hasConnect: isSelfHostConnectEnabled,
     hasAccess: !!placement?.hasAccess,
+    hasInterview: !!interviewLayout?.hasInterview,
     order,
   });
   return {
@@ -67,6 +90,7 @@ export function useOnboardingLayout({
     isReady:
       flagsReady &&
       !!placement &&
+      !!interviewLayout &&
       !isUserLoading &&
       (!isLoggedIn || !paidConfirmation.isLoading) &&
       trialConfirmation.ready &&
@@ -74,5 +98,20 @@ export function useOnboardingLayout({
     paidConfirmation,
     isPaymentEnabled,
     isSelfHostConnectEnabled,
+    // The layout holds the interview flag's answer, not a wait that ran out.
+    isLayoutAnswered: !!interviewLayout?.isAnswered,
   };
+}
+
+// Whether *ms* have passed, while *isWaiting*, since the flag service could
+// start answering.
+function useHasWaited(ms: number, isWaiting: boolean) {
+  const isResolutionStarted = useFlagResolutionStarted();
+  const [hasWaited, setHasWaited] = useState(false);
+  useEffect(() => {
+    if (!isResolutionStarted || !isWaiting) return;
+    const timer = setTimeout(() => setHasWaited(true), ms);
+    return () => clearTimeout(timer);
+  }, [isResolutionStarted, isWaiting, ms]);
+  return hasWaited;
 }

@@ -90,15 +90,114 @@ async def ensure_user_onboarding(user_id: str) -> UserOnboarding:
     For write paths, which follow up with an ``update`` that has nothing to
     target otherwise. Unlike the read above this does require a provisioned
     ``User``, which is correct: there is no onboarding progress to record for
-    an account the platform does not have.
+    an account the platform does not have. Two first writes at once both
+    get the row one of them created.
     """
-    return await UserOnboarding.prisma().upsert(
-        where={"userId": user_id},
-        data={
-            "create": UserOnboardingCreateInput(userId=user_id),
-            "update": {},
-        },
+    try:
+        return await UserOnboarding.prisma().upsert(
+            where={"userId": user_id},
+            data={
+                "create": UserOnboardingCreateInput(userId=user_id),
+                "update": {},
+            },
+        )
+    except prisma.errors.UniqueViolationError:
+        created = await UserOnboarding.prisma().find_unique(where={"userId": user_id})
+        if created is None:
+            raise
+        return created
+
+
+async def claim_onboarding_interview_session_id(user_id: str, candidate: str) -> str:
+    """Record *candidate* as the session of *user_id*'s onboarding interview,
+    unless one is recorded already, and return the one that is.
+
+    The update only fills an empty column, in one statement, so when two
+    first opens race, one id is stored and both return it.
+    """
+    await ensure_user_onboarding(user_id)
+    claimed = await UserOnboarding.prisma().update_many(
+        where={"userId": user_id, "interviewSessionId": None},
+        data={"interviewSessionId": candidate},
     )
+    if claimed:
+        return candidate
+    stored = await get_onboarding_interview_session_id(user_id)
+    if stored is None:
+        raise RuntimeError(f"No onboarding interview recorded for user {user_id}")
+    return stored
+
+
+async def reclaim_onboarding_interview_session_id(
+    user_id: str, stale: str, candidate: str
+) -> str:
+    """Record *candidate* in place of *stale*, an id that no longer names an
+    interview, and return the id recorded now.
+
+    Only replaces *stale* itself, in one statement, so when two requests
+    replace it at once one id is kept and both return it.
+    """
+    replaced = await UserOnboarding.prisma().update_many(
+        where={"userId": user_id, "interviewSessionId": stale},
+        data={"interviewSessionId": candidate},
+    )
+    if replaced:
+        return candidate
+    current = await get_onboarding_interview_session_id(user_id)
+    if current is None:
+        return await claim_onboarding_interview_session_id(user_id, candidate)
+    return current
+
+
+async def forget_onboarding_interview_session(session_id: str) -> None:
+    """Forget *session_id* as anyone's onboarding interview, once its session
+    is deleted, so the next start opens a new interview and a new take.
+
+    Clears the column only while it still holds *session_id*.
+    """
+    await UserOnboarding.prisma().update_many(
+        where={"interviewSessionId": session_id},
+        data={"interviewSessionId": None},
+    )
+
+
+async def get_onboarding_interview_session_id(user_id: str) -> str | None:
+    """The session of *user_id*'s onboarding interview, if one was opened."""
+    onboarding = await UserOnboarding.prisma().find_unique(where={"userId": user_id})
+    return onboarding.interviewSessionId if onboarding else None
+
+
+async def record_onboarding_voice_call(user_id: str, call_id: str) -> str | None:
+    """Record *call_id* as *user_id*'s latest onboarding voice call. Returns
+    the call it replaced there, or None."""
+    onboarding = await ensure_user_onboarding(user_id)
+    await UserOnboarding.prisma().update(
+        where={"userId": user_id}, data={"voiceCallId": call_id}
+    )
+    replaced = onboarding.voiceCallId
+    return replaced if replaced != call_id else None
+
+
+async def get_onboarding_voice_call_id(user_id: str) -> str | None:
+    """*user_id*'s latest onboarding voice call, if they started one."""
+    onboarding = await UserOnboarding.prisma().find_unique(where={"userId": user_id})
+    return onboarding.voiceCallId if onboarding else None
+
+
+async def record_onboarding_voice_interview_call(user_id: str, call_id: str) -> None:
+    """Record *call_id* as the voice call whose words became *user_id*'s
+    onboarding interview's take."""
+    await ensure_user_onboarding(user_id)
+    await UserOnboarding.prisma().update(
+        where={"userId": user_id}, data={"voiceInterviewCallId": call_id}
+    )
+
+
+async def get_onboarding_voice_interview_call_id(user_id: str) -> str | None:
+    """The voice call whose words became *user_id*'s onboarding interview's
+    take, if one did."""
+    onboarding = await UserOnboarding.prisma().find_unique(where={"userId": user_id})
+    return onboarding.voiceInterviewCallId if onboarding else None
 
 
 def _default_user_onboarding(user_id: str) -> UserOnboarding:

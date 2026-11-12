@@ -174,7 +174,11 @@ let flags: Record<string, boolean> = {};
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {},
   useGetFlag: (flag: string) => !!flags[flag],
-  useFlagStatus: (flag: string) => ({ enabled: !!flags[flag], ready: true }),
+  useFlagStatus: (flag: string) => ({
+    enabled: !!flags[flag],
+    ready: true,
+    answered: true,
+  }),
 }));
 vi.mock("@/hooks/usePlatformPayment", () => ({
   usePlatformPayment: () => ({

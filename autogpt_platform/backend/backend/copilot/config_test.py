@@ -42,6 +42,7 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_CLAUDE_AGENT_FALLBACK_MODEL",
     "CHAT_TITLE_MODEL",
     "CHAT_SIMULATION_MODEL",
+    "CHAT_ONBOARDING_INTERVIEW_MODEL",
     "CHAT_STREAM_REPLAY_COUNT",
 )
 
@@ -1208,3 +1209,49 @@ class TestPosthogBuiltinToolSpans:
     def test_env_turns_it_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CHAT_POSTHOG_BUILTIN_TOOL_SPANS", "false")
         assert ChatConfig().posthog_builtin_tool_spans is False
+
+
+class TestOnboardingInterviewModel:
+    """The interview's own floor: a fast model that every transport can
+    serve, checked at boot like the copilot's tiers."""
+
+    def test_the_floor_is_haiku_5_5_in_the_transport_spelling(self):
+        assert ChatConfig().onboarding_interview_model == "anthropic/claude-haiku-5.5"
+
+    def test_a_local_install_runs_the_interview_on_its_fast_model(self):
+        cfg = ChatConfig(
+            use_local=True,
+            api_key="ollama",
+            base_url="http://h:11434/v1",
+            fast_standard_model="llama3.1:8b-instruct-q4_K_M",
+        )
+        assert cfg.onboarding_interview_model == "llama3.1:8b-instruct-q4_K_M"
+
+    def test_a_local_install_keeps_its_own_interview_model(self):
+        cfg = ChatConfig(
+            use_local=True,
+            api_key="ollama",
+            base_url="http://h:11434/v1",
+            fast_standard_model="llama3.1:8b-instruct-q4_K_M",
+            onboarding_interview_model="qwen3:0.6b",
+        )
+        assert cfg.onboarding_interview_model == "qwen3:0.6b"
+
+    def test_direct_anthropic_refuses_a_non_anthropic_interview_model(self):
+        with pytest.raises(Exception, match="onboarding_interview_model"):
+            _make_direct_safe_config(
+                use_openrouter=False,
+                api_key=None,
+                base_url=None,
+                use_claude_code_subscription=False,
+                onboarding_interview_model="google/gemini-2.5-flash-lite",
+            )
+
+    def test_direct_anthropic_takes_the_default_floor(self):
+        cfg = _make_direct_safe_config(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        assert cfg.onboarding_interview_model == "anthropic/claude-haiku-5.5"

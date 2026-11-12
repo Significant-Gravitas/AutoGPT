@@ -263,12 +263,15 @@ export function handleStreamError({
     return;
   }
 
-  // 3. Authentication failures (from getCopilotAuthHeaders or 401 responses)
+  // 3. Authentication failures (from getCopilotAuthHeaders or 401 responses).
+  // It is the error's text that is read, not a response's status: "401"
+  // counts only as a whole word in it, never inside a longer one such as an
+  // id.
   const isAuthError =
     errorDetail.includes("Authentication failed") ||
     errorDetail.includes("Unauthorized") ||
     errorDetail.includes("Not authenticated") ||
-    errorDetail.toLowerCase().includes("401");
+    /\b401\b/.test(errorDetail);
   if (isAuthError) {
     toast({
       title: "Authentication error",

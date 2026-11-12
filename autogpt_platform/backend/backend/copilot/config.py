@@ -48,6 +48,9 @@ ANTHROPIC_OPENAI_COMPAT_BASE_URL = "https://api.anthropic.com/v1/"
 # can't drift.
 _DEFAULT_TITLE_MODEL = "anthropic/claude-haiku-5.5"
 _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
+# The onboarding interview's floor: a fast model with thinking off reaches its
+# first token in well under a second on the interviewer prompt.
+_DEFAULT_ONBOARDING_INTERVIEW_MODEL = "anthropic/claude-haiku-5.5"
 # Default for ``fast_advanced_model`` — kept in sync with the field default
 # below. ``_apply_local_aux_models`` reads this to detect "operator left it
 # at the cloud default" so it can rewrite to ``fast_standard_model`` under
@@ -237,6 +240,15 @@ class ChatConfig(BaseSettings):
         ),
         description="SDK (extended-thinking) path, 'advanced' tier.  LD "
         "override: ``copilot-model-routing[thinking][advanced]``.",
+    )
+    onboarding_interview_model: str = Field(
+        default=_DEFAULT_ONBOARDING_INTERVIEW_MODEL,
+        description="Model for Otto's onboarding interview, which always runs "
+        "on the baseline path with thinking off and ignores the tier toggle. "
+        "The catalog's ``copilot_onboarding_interview`` routing cell comes "
+        "first (see ``copilot/model_router.py``); this value is the fallback. "
+        "Auto-overridden to match ``fast_standard_model`` under ``use_local`` "
+        "when left at the cloud default — see ``_apply_local_aux_models``.",
     )
     learning_reviewer_model: str = Field(
         default="",
@@ -1236,7 +1248,8 @@ class ChatConfig(BaseSettings):
         across half a dozen ``CHAT_*_MODEL`` envs. Only fires when the
         field is still at the cloud default — explicit overrides win.
 
-        Covers ``title_model`` + ``simulation_model`` (aux call sites)
+        Covers ``title_model`` + ``simulation_model`` (aux call sites),
+        ``onboarding_interview_model`` (the interview's own route)
         AND ``fast_advanced_model`` (the "advanced" baseline tier);
         without the advanced derivation, a user clicking the advanced
         toggle in the UI sends ``anthropic/claude-opus-5-5`` to Ollama
@@ -1294,6 +1307,7 @@ class ChatConfig(BaseSettings):
             ("title_model", _DEFAULT_TITLE_MODEL),
             ("simulation_model", _DEFAULT_SIMULATION_MODEL),
             ("fast_advanced_model", _DEFAULT_FAST_ADVANCED_MODEL),
+            ("onboarding_interview_model", _DEFAULT_ONBOARDING_INTERVIEW_MODEL),
         ):
             current = getattr(self, field_name)
             if _is_cloud_default(current, default):
@@ -1350,8 +1364,9 @@ class ChatConfig(BaseSettings):
         ``normalize_model_for_transport``: SDK tiers
         (``thinking_standard_model``, ``thinking_advanced_model``),
         baseline tiers (``fast_standard_model``,
-        ``fast_advanced_model``), and the SDK fallback
-        (``claude_agent_fallback_model`` via ``_resolve_fallback_model``).
+        ``fast_advanced_model``), the SDK fallback
+        (``claude_agent_fallback_model`` via ``_resolve_fallback_model``),
+        and the onboarding interview's floor (``onboarding_interview_model``).
         """
         if self.use_local:
             return self
@@ -1370,6 +1385,7 @@ class ChatConfig(BaseSettings):
             "fast_standard_model",
             "fast_advanced_model",
             "claude_agent_fallback_model",
+            "onboarding_interview_model",
         ):
             value: str = getattr(self, field_name)
             if not value:
@@ -1383,7 +1399,8 @@ class ChatConfig(BaseSettings):
                         f"CHAT_THINKING_ADVANCED_MODEL / "
                         f"CHAT_FAST_STANDARD_MODEL / "
                         f"CHAT_FAST_ADVANCED_MODEL / "
-                        f"CHAT_CLAUDE_AGENT_FALLBACK_MODEL to an "
+                        f"CHAT_CLAUDE_AGENT_FALLBACK_MODEL / "
+                        f"CHAT_ONBOARDING_INTERVIEW_MODEL to an "
                         f"``{constraint}/*`` or ``claude-*`` slug, or set "
                         f"CHAT_USE_OPENROUTER=true."
                     )

@@ -21,6 +21,7 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
 
 from backend.copilot.chat_platform_header import strip_chat_platform_header
+from backend.copilot.onboarding_interview import INTERVIEW_STATE_TAG
 from backend.copilot.prompting import VOICE_TURN_TAG
 from backend.copilot.sandbox_status import SANDBOX_STATUS_TAG
 from backend.data.db_accessors import chat_db, understanding_db
@@ -329,6 +330,7 @@ SERVER_INJECTED_BLOCK_TAGS: tuple[str, ...] = (
     SEEN_CAPABILITIES_TAG,
     VOICE_TURN_TAG,
     SANDBOX_STATUS_TAG,
+    INTERVIEW_STATE_TAG,
     *_EXPERT_BLOCK_TAGS,
 )
 

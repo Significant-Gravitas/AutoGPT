@@ -52,7 +52,7 @@ from backend.copilot.model_router import (
     resolve_model_route,
 )
 from backend.copilot.ai_spans import stamp_turn_trace_id
-from backend.copilot.budget_gate import gate_auto_continue
+from backend.copilot.budget_gate import AutoContinueGate, gate_auto_continue
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.sandbox_status import build_sandbox_replaced_notice
 from backend.copilot.continuation import as_model_prompt
@@ -143,6 +143,12 @@ from ..model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
+from ..onboarding_interview import (
+    build_interview_state_block,
+    get_onboarding_interview_supplement,
+    interview_is_over,
+    is_onboarding_interview,
+)
 from ..pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
@@ -202,7 +208,7 @@ from ..builder_context import (
     build_builder_system_prompt_suffix,
 )
 from ..expert_context import build_expert_identity_suffix
-from ..expert_kickoff import is_expert_kickoff_turn
+from ..expert_kickoff import is_expert_kickoff_turn, is_hidden_chat_message
 from ..service import (
     _build_system_prompt,
     _update_title_async,
@@ -220,6 +226,7 @@ from ..token_tracking import persist_and_record_usage
 from ..tools import (
     ToolGroup,
     expert_tool_disabled_groups,
+    interview_disabled_tools,
     kickoff_turn_disabled_tools,
     origin_disabled_tools,
     tool_names_in_groups,
@@ -1953,6 +1960,7 @@ async def _apply_building_mode_restart(
         + oversight_supplement
         + team_building_supplement
         + get_chat_platform_supplement(session.metadata.source_platform)
+        + get_onboarding_interview_supplement(session.metadata.kind)
         + graphiti_supplement
         + auto_mode_supplement
         + building_suffix
@@ -4796,6 +4804,17 @@ async def _maybe_prepend_builder_context(
     return block + query_message if block else query_message
 
 
+def _maybe_prepend_interview_state(session: ChatSession, query_message: str) -> str:
+    """Prepend an onboarding interview's per-turn ``<interview_state>`` block.
+
+    Same query-only contract as ``<builder_context>``: re-derived on every
+    send from the session's rows and never written into them. On every turn
+    an interview runs, user turn or not, so none reaches the model without
+    its place in the interview; a no-op for every other kind of session.
+    """
+    return build_interview_state_block(session) + query_message
+
+
 async def _maybe_prepend_skills_update(
     session: ChatSession,
     user_id: str | None,
@@ -5239,6 +5258,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     learning_turn_start = len(session.messages)
     learning_initiating_user = find_initiating_user_row(session, message)
     learning_initiating_text = message
+    # A hidden row (a kickoff the server wrote) is not the user's words, so
+    # this turn is not remembered or learned from as if it were.
+    from_hidden_row = is_hidden_chat_message(message_metadata) or (
+        learning_initiating_user is not None
+        and is_hidden_chat_message(learning_initiating_user.metadata)
+    )
     # State of the latest failed attempt: rolled-back messages + any
     # _HandledStreamError info to emit on final-failure exit. The retry loop
     # mutates this via capture()/clear(); the post-loop block calls
@@ -5473,6 +5498,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             + oversight_supplement
             + team_building_supplement
             + chat_platform_supplement
+            # Empty unless the session is an onboarding interview.
+            + get_onboarding_interview_supplement(session.metadata.kind)
             + graphiti_supplement
             + auto_mode_supplement
             + builder_session_suffix
@@ -5545,13 +5572,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             else frozenset()
         )
         # A machine-authored session cannot staff the team, so it is not
-        # offered the proposal tools its own guard would refuse.
+        # offered the proposal tools its own guard would refuse. The
+        # onboarding interview's own tools are hidden from every other kind of
+        # session.
         hidden_tools = (
             _hidden_short_names_for_permissions(permissions)
             | tool_names_in_groups(disabled_tool_groups)
             | {"get_agent_building_guide"}
             | kickoff_hidden
             | origin_disabled_tools(session.metadata.origin)
+            | interview_disabled_tools(session.metadata.kind)
         )
         # run_capability reaches deferred tools by id; the same hidden set
         # must bound it, so it travels with the turn's execution context.
@@ -6095,6 +6125,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         query_message = await _maybe_prepend_builder_context(
             session, user_id, is_user_message, query_message
         )
+        # An onboarding interview's reply count, wrap-up and goodbye — same
+        # contract.
+        query_message = _maybe_prepend_interview_state(session, query_message)
         # Skill-drift notice — same query-only contract as builder
         # context: never persisted, re-diffed every turn.
         query_message = await _maybe_prepend_skills_update(
@@ -6329,6 +6362,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # same live graph snapshot + guide as the initial attempt.
                 state.query_message = await _maybe_prepend_builder_context(
                     session, user_id, is_user_message, state.query_message
+                )
+                state.query_message = _maybe_prepend_interview_state(
+                    session, state.query_message
                 )
                 state.query_message = await _maybe_prepend_skills_update(
                     session, user_id, is_user_message, state.query_message
@@ -6951,7 +6987,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             task.add_done_callback(_background_tasks.discard)
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
-        if _graphiti_ingest_allowed(
+        if not from_hidden_row and _graphiti_ingest_allowed(
             expert_identity_validated=expert_identity_validated,
             graphiti_enabled=graphiti_enabled,
             user_id=user_id,
@@ -6985,7 +7021,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Independent of Graphiti: a memory-service failure must not change
         # what the nightly learner can consider. Fire-and-forget; the
         # helper honors the user's learning preferences and never raises.
-        if expert_identity_validated and user_id and message and is_user_message:
+        if (
+            expert_identity_validated
+            and user_id
+            and message
+            and is_user_message
+            and not from_hidden_row
+        ):
             _capture_task = asyncio.create_task(
                 capture_chat_turn(
                     user_id,
@@ -7151,9 +7193,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # queued messages stay queued and a not-started pause takes their place.
     # -------------------------------------------------------------------------
     if not ended_with_stream_error and not (governor is not None and governor.landed):
-        auto_continue = await gate_auto_continue(
-            session, user_id, platform_billed=not is_codex_transport
-        )
+        if is_onboarding_interview(session) and interview_is_over(session):
+            # An interview that has said goodbye takes no more turns, from
+            # any route; what was queued during the goodbye stays queued.
+            auto_continue = AutoContinueGate(proceed=False)
+        else:
+            auto_continue = await gate_auto_continue(
+                session, user_id, platform_billed=not is_codex_transport
+            )
         if auto_continue.pause is not None:
             yield StreamTurnPaused.of(auto_continue.pause)
         _auto_pending_messages = (

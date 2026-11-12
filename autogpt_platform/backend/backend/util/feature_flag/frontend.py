@@ -56,6 +56,12 @@ class FrontendFlag(str, Enum):
     # The share of chat sessions whose stream is shadowed and checked, 0 to 1.
     COPILOT_STREAM_SHADOW = "copilot-stream-shadow"
     COPILOT_STREAM_RUNTIME = "copilot-stream-runtime"
+    # The onboarding wizard's typed interview with Otto, in place of the brain
+    # dump step. The backend serves any interview it is asked to.
+    ONBOARDING_INTERVIEW = "onboarding-interview"
+    # The interview offers a voice call with Otto. Needs ONBOARDING_INTERVIEW:
+    # the typed interview is where a call's endings point.
+    ONBOARDING_INTERVIEW_VOICE = Flag.ONBOARDING_INTERVIEW_VOICE.value
     # The onboarding steps in the order an experiment wants them: the named
     # steps lead and the rest keep their default order (frontend `resolveStepOrder`).
     ONBOARDING_STEP_ORDER = "onboarding-step-order"

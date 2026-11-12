@@ -1,0 +1,75 @@
+"""The onboarding voice call on the user's onboarding row.
+
+Needs the database (``server`` starts the test stack).
+"""
+
+import uuid
+
+import pytest
+from prisma.models import User, UserOnboarding
+
+from backend.data.onboarding import (
+    claim_onboarding_interview_session_id,
+    get_onboarding_interview_session_id,
+    get_onboarding_voice_call_id,
+    get_onboarding_voice_interview_call_id,
+    record_onboarding_voice_call,
+    record_onboarding_voice_interview_call,
+)
+from backend.util.test import SpinTestServer
+
+
+@pytest.fixture
+async def new_user(server: SpinTestServer):
+    user_id = f"onboarding-voice-{uuid.uuid4()}"
+    await User.prisma().create(data={"id": user_id, "email": f"{user_id}@example.com"})
+    yield user_id
+    await User.prisma().delete_many(where={"id": user_id})
+
+
+async def test_no_call_is_recorded_until_one_starts(new_user: str):
+    assert await get_onboarding_voice_call_id(new_user) is None
+
+
+async def test_a_call_is_recorded_on_the_row_it_creates(new_user: str):
+    call_id = uuid.uuid4().hex
+    await record_onboarding_voice_call(new_user, call_id)
+    row = await UserOnboarding.prisma().find_unique(where={"userId": new_user})
+    assert row is not None and row.voiceCallId == call_id
+
+
+async def test_a_later_call_replaces_the_earlier_one_and_names_it(new_user: str):
+    first, second = uuid.uuid4().hex, uuid.uuid4().hex
+    assert await record_onboarding_voice_call(new_user, first) is None
+    assert await record_onboarding_voice_call(new_user, second) == first
+    assert await get_onboarding_voice_call_id(new_user) == second
+
+
+async def test_recording_the_same_call_again_names_no_call_it_replaced(
+    new_user: str,
+):
+    call_id = uuid.uuid4().hex
+    await record_onboarding_voice_call(new_user, call_id)
+    assert await record_onboarding_voice_call(new_user, call_id) is None
+
+
+async def test_a_call_leaves_the_typed_interview_on_the_row_alone(new_user: str):
+    interview = await claim_onboarding_interview_session_id(new_user, "interview-a")
+    await record_onboarding_voice_call(new_user, uuid.uuid4().hex)
+    assert await get_onboarding_interview_session_id(new_user) == interview
+
+
+async def test_no_call_has_taken_the_interview_until_one_does(new_user: str):
+    await record_onboarding_voice_call(new_user, uuid.uuid4().hex)
+    assert await get_onboarding_voice_interview_call_id(new_user) is None
+
+
+async def test_the_call_that_took_the_interview_stays_when_another_starts(
+    new_user: str,
+):
+    took, later = uuid.uuid4().hex, uuid.uuid4().hex
+    await record_onboarding_voice_call(new_user, took)
+    await record_onboarding_voice_interview_call(new_user, took)
+    await record_onboarding_voice_call(new_user, later)
+    assert await get_onboarding_voice_interview_call_id(new_user) == took
+    assert await get_onboarding_voice_call_id(new_user) == later

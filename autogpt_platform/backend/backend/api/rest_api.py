@@ -60,6 +60,7 @@ import backend.api.features.memory.routes as memory_routes
 import backend.api.features.oauth
 import backend.api.features.onboarding.routes as onboarding_routes
 import backend.api.features.onboarding_dump.routes as onboarding_dump_routes
+import backend.api.features.onboarding_dump.voice_handoff as voice_handoff
 import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.routes as org_routes
 import backend.api.features.orgs.team_routes
@@ -181,7 +182,9 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     freeze_startup_heap()
 
-    async with mcp_mount.running():
+    # Voice calls' hand-offs nobody is polling, where this deployment has a
+    # relay; stopped before Redis and the database close.
+    async with mcp_mount.running(), voice_handoff.sweeping():
         yield
 
     try:

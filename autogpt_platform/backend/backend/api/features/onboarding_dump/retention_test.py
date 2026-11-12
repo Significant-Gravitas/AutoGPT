@@ -15,6 +15,7 @@ from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump import retention, storage
 from backend.util.gcs_utils_test import _URL_CONTAINING_404, _gcs_http_error
+from backend.voice_relay.record import recording_filename
 
 BUCKET = "private-bucket"
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
@@ -100,6 +101,21 @@ async def test_old_recording_is_cleared_from_its_row_then_deleted(
     assert calls.order == ["clear", f"delete:{OLD}"]
     params: dict[str, Any] = client.list_objects.call_args.kwargs["params"]
     assert params["prefix"] == "uploads/users/"
+
+
+@pytest.mark.asyncio
+async def test_a_voice_calls_recording_is_swept_like_any_other(
+    client: MagicMock, calls: Calls
+):
+    """The voice relay stores a call's recording as a brain-dump recording,
+    so one whose transcript was never made goes at the same age."""
+    voice = f"uploads/users/user-1/uuid-v/{recording_filename('c' * 32)}"
+    client.list_objects.return_value = {"items": [_item(voice, MAX_AGE)]}
+
+    result = await retention.purge_expired_recordings(_clear(calls), now=NOW)
+
+    assert result.deleted == 1
+    assert calls.order == ["clear", f"delete:{voice}"]
 
 
 @pytest.mark.asyncio

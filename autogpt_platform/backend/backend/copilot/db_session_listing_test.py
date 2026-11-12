@@ -36,10 +36,13 @@ from backend.copilot.db import (
     update_chat_session_title,
     user_has_any_session,
 )
-from backend.copilot.model import ChatSessionMetadata
+from backend.copilot.model import ONBOARDING_INTERVIEW_KIND, ChatSessionMetadata
 from backend.util.json import SafeJson
 
 _NULL_SAFE_DREAM_FILTER = "(metadata->>'kind' IS DISTINCT FROM 'dream')"
+_NULL_SAFE_INTERVIEW_FILTER = (
+    "(metadata->>'kind' IS DISTINCT FROM 'onboarding_interview')"
+)
 _RAW_QUERY_TARGET = "backend.copilot.db.db.query_raw_with_schema"
 
 
@@ -239,6 +242,55 @@ async def test_presence_is_false_when_the_user_owns_no_visible_session():
         assert await user_has_any_session("u1") is False
 
 
+@pytest.mark.asyncio
+async def test_a_presence_check_can_leave_kinds_out():
+    """Each kind left out NULL-safely like dreams, so a legacy session with
+    no ``kind`` still counts, and passed as a parameter, never spliced."""
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await user_has_any_session(
+            "u1", exclude_kinds=("onboarding_interview", "daydream")
+        )
+
+    query = raw.call_args.args[0]
+    assert "(metadata->>'kind' IS DISTINCT FROM $2)" in query
+    assert "(metadata->>'kind' IS DISTINCT FROM $3)" in query
+    assert "onboarding_interview" not in query
+    assert _NULL_SAFE_DREAM_FILTER in query
+    assert raw.call_args.args[1:] == ("u1", "onboarding_interview", "daydream")
+
+
+@pytest.mark.asyncio
+async def test_a_presence_check_counts_every_kind_but_dreams_by_default():
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await user_has_any_session("u1")
+
+    query = raw.call_args.args[0]
+    assert "$2" not in query
+    assert raw.call_args.args[1:] == ("u1",)
+
+
+@pytest.mark.asyncio
+async def test_the_sidebar_leaves_out_the_onboarding_interview():
+    """The list and its count leave the interview out NULL-safely, as they do
+    dreams, with no parameter added."""
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await get_user_chat_sessions("u1")
+    list_query = raw.call_args.args[0]
+    assert raw.call_args.args[1:] == ("u1", 50, 0)
+
+    raw = AsyncMock(return_value=[{"count": 1}])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await get_user_session_count("u1")
+    count_query = raw.call_args.args[0]
+
+    for query in (list_query, count_query):
+        assert _NULL_SAFE_INTERVIEW_FILTER in query
+        assert _NULL_SAFE_DREAM_FILTER in query
+
+
 # ---------- NULL semantics against the real database ----------
 
 
@@ -284,6 +336,32 @@ async def test_dream_sessions_hidden_from_list_but_fetchable_by_id(
     assert fetched is not None
     assert fetched.metadata.kind == "dream"
     assert fetched.metadata.dream_pass_id == "pass-1"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_onboarding_interview_is_left_out_of_the_list_and_its_count(
+    setup_test_user, test_user_id
+):
+    """The sign-up interview is not a chat to go back to: neither the list nor
+    its pagination total shows it, and it is still read by id."""
+    count_before = await get_user_session_count(test_user_id)
+    normal = await create_chat_session(str(uuid4()), test_user_id)
+    interview = await create_chat_session(
+        str(uuid4()),
+        test_user_id,
+        metadata=ChatSessionMetadata(kind=ONBOARDING_INTERVIEW_KIND),
+    )
+
+    listed_ids = {
+        s.session_id for s in await get_user_chat_sessions(test_user_id, limit=10_000)
+    }
+    assert normal.session_id in listed_ids
+    assert interview.session_id not in listed_ids
+    assert await get_user_session_count(test_user_id) == count_before + 1
+
+    fetched = await get_chat_session_metadata(interview.session_id)
+    assert fetched is not None
+    assert fetched.metadata.kind == ONBOARDING_INTERVIEW_KIND
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -389,6 +467,19 @@ async def test_pending_question_query_avoids_select_star_and_excludes_delegated(
     assert raw.call_args.kwargs["model"] is PrismaChatSession
 
 
+@pytest.mark.asyncio
+async def test_the_pending_question_query_leaves_out_the_onboarding_interview():
+    """Home's "Needs You" never lists the sign-up interview, NULL-safely like
+    dreams, so a legacy session with no kind is still listed."""
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await get_sessions_with_pending_question("u1", limit=5)
+
+    query = raw.call_args.args[0]
+    assert _NULL_SAFE_INTERVIEW_FILTER in query
+    assert "IS DISTINCT FROM 'dream'" in query
+
+
 def test_pending_question_projection_columns_exist_in_schema():
     """Guard the hand-maintained projection in the Home pending-question query.
 
@@ -465,6 +556,30 @@ async def test_pending_question_excludes_delegated_but_keeps_handed_off(
     assert normal.session_id in pending_ids
     assert handed_off.session_id in pending_ids
     assert delegated.session_id not in pending_ids
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_onboarding_interview_s_waiting_question_never_reaches_home(
+    setup_test_user, test_user_id
+):
+    now = datetime.now(UTC)
+    normal = await create_chat_session(str(uuid4()), test_user_id)
+    await set_session_pending_question(
+        normal.session_id, test_user_id, "Which inbox?", now
+    )
+    interview = await create_chat_session(
+        str(uuid4()),
+        test_user_id,
+        metadata=ChatSessionMetadata(kind=ONBOARDING_INTERVIEW_KIND),
+    )
+    await set_session_pending_question(
+        interview.session_id, test_user_id, "How many people work with you?", now
+    )
+
+    pending_ids = await _pending_question_ids(test_user_id)
+
+    assert normal.session_id in pending_ids
+    assert interview.session_id not in pending_ids
 
 
 @pytest.mark.asyncio(loop_scope="session")

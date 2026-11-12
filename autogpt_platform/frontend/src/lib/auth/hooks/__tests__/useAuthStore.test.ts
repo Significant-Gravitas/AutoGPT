@@ -536,6 +536,104 @@ describe("useAuthStore onboarding handoff", () => {
   });
 });
 
+describe("useAuthStore voice call tickets", () => {
+  // A call's resume ticket lives in this tab's sessionStorage, one per user,
+  // and outlives a sign-out: only the account signed in may keep its own.
+  function ticketKey(userId: string) {
+    return `autogpt:onboarding-voice-call:${userId}`;
+  }
+
+  beforeEach(() => {
+    window.sessionStorage.setItem(ticketKey("user-1"), "{}");
+    window.sessionStorage.setItem(ticketKey("user-2"), "{}");
+  });
+
+  afterEach(async () => {
+    window.sessionStorage.clear();
+    useAuthStore.getState().cleanup();
+    useAuthStore.setState({
+      user: null,
+      hasLoadedUser: false,
+      initializationPromise: null,
+    });
+    await vi.dynamicImportSettled();
+    vi.clearAllMocks();
+  });
+
+  it("are all cleared when the user signs out", async () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+
+    await useAuthStore.getState().logOut();
+
+    expect(window.sessionStorage.getItem(ticketKey("user-1"))).toBeNull();
+    expect(window.sessionStorage.getItem(ticketKey("user-2"))).toBeNull();
+  });
+
+  it("are all cleared when another tab signs out", async () => {
+    vi.mocked(fetchUser).mockResolvedValue({
+      user: { id: "user-1" } as User,
+      hasLoadedUser: true,
+      isUserLoading: false,
+    });
+    vi.mocked(handleStorageEvent).mockReturnValue({
+      shouldLogout: true,
+      redirectPath: "/login?next=%2Fonboarding",
+    });
+    useAuthStore.setState({ initializationPromise: null });
+    await useAuthStore.getState().initialize({
+      api: makeApi(),
+      router: makeRouter(),
+      path: "/onboarding",
+    });
+    const [, onStorage] = vi.mocked(setupSessionEventListeners).mock.calls[0];
+    // Signed in, the user keeps their own.
+    expect(window.sessionStorage.getItem(ticketKey("user-1"))).toBe("{}");
+
+    onStorage(new StorageEvent("storage", { key: "supabase-logout" }));
+
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(window.sessionStorage.getItem(ticketKey("user-1"))).toBeNull();
+    expect(window.sessionStorage.getItem(ticketKey("user-2"))).toBeNull();
+  });
+
+  it("keep only the signing-in account's when the tab holds others'", () => {
+    useAuthStore.setState({ user: { id: "user-2" } as User });
+
+    expect(window.sessionStorage.getItem(ticketKey("user-1"))).toBeNull();
+    expect(window.sessionStorage.getItem(ticketKey("user-2"))).toBe("{}");
+  });
+
+  it("lose the previous account's when another account takes over the tab", () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    expect(window.sessionStorage.getItem(ticketKey("user-1"))).toBe("{}");
+
+    useAuthStore.setState({ user: { id: "user-2" } as User });
+
+    expect(window.sessionStorage.getItem(ticketKey("user-1"))).toBeNull();
+  });
+
+  it("lose the previous account's when the next one signs in after a session was rejected", () => {
+    // A rejected session drops the user without logOut(); the next sign-in
+    // still must not find another account's ticket.
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: null });
+    expect(window.sessionStorage.getItem(ticketKey("user-1"))).toBe("{}");
+
+    useAuthStore.setState({ user: { id: "user-2" } as User });
+
+    expect(window.sessionStorage.getItem(ticketKey("user-1"))).toBeNull();
+  });
+
+  it("keep the user's own when they sign back in after a dropped session", () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: null });
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+
+    expect(window.sessionStorage.getItem(ticketKey("user-1"))).toBe("{}");
+    expect(window.sessionStorage.getItem(ticketKey("user-2"))).toBeNull();
+  });
+});
+
 describe("useAuthStore account change", () => {
   afterEach(async () => {
     useAuthStore.setState({ user: null });

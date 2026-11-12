@@ -316,14 +316,25 @@ from ._test_data import make_session
 #     dev 7ca3671f6a                              77,726 (89 tools)
 #     + #11220's two arguments        +178        77,904 (89 tools)
 #     + headroom                      +300        78,204
+# Raised 78_204 -> 78_693 for end_interview, the onboarding interview's end
+# signal. Every other kind of session hides it (``interview_disabled_tools``),
+# so the wire budget below does not move. Measured on this branch, which is
+# dev a8af1a85568 plus the interview:
+#     merged tree                                 78,393 (90 tools)
+#     + headroom                      +300        78,693
 # Raised for request_work_check and flag_mistake, the two tools this PR adds:
 # both open a chat card, so they must be eager. Measured on this branch,
 # 2285c61736 plus this PR (91 tools):
 #     merged tree                                 78,567
 #     + headroom                       +300       78,867
 #     + flag_mistake's reason argument +150       79,017
+# Re-measured on the onboarding interview merged with dev b16d667ded, which
+# carries both of the lines above: end_interview beside dev's two chat-card
+# tools (92 tools).
+#     merged tree                                 79,500
+#     + headroom                       +300       79,800
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 79_017
+_CHAR_BUDGET = 79_800
 
 
 @pytest.fixture(scope="module")
@@ -595,6 +606,7 @@ def _largest_session_wire_chars() -> int:
     )
     from backend.copilot.tools import (
         expert_tool_disabled_groups,
+        interview_disabled_tools,
         origin_disabled_tools,
         tool_names_in_groups,
     )
@@ -614,6 +626,7 @@ def _largest_session_wire_chars() -> int:
     )
     hidden |= set(BASELINE_ONLY_MCP_TOOLS) | {"get_agent_building_guide"}
     hidden |= origin_disabled_tools("interactive")
+    hidden |= interview_disabled_tools("normal")
 
     total = sum(
         wire(name, tool.description, _build_input_schema(tool))

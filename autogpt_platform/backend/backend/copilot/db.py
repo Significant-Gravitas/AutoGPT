@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -30,6 +31,8 @@ from backend.util.json import SafeJson, dumps, sanitize_string
 from .duplicate_message_id import is_duplicate_chat_message_id_error
 from .model import (
     CHAT_STATUS_RUNNING,
+    INTERVIEW_STAGES,
+    ONBOARDING_INTERVIEW_KIND,
     ChatMessage,
     ChatSessionInfo,
     ChatSessionMetadata,
@@ -355,8 +358,13 @@ async def create_chat_session(
     team_id: str | None = None,
     metadata: ChatSessionMetadata | None = None,
     expert_id: str | None = None,
+    title: str | None = None,
 ) -> ChatSessionInfo:
-    """Create a chat session, atomically validating expert attribution."""
+    """Create a chat session, atomically validating expert attribution.
+
+    ``title`` names the session from the start, for one whose first message
+    is not something to generate a title from.
+    """
     requested_expert_id = expert_id
     if requested_expert_id:
         async with db.transaction() as tx:
@@ -381,6 +389,7 @@ async def create_chat_session(
                     team_id=team_id,
                     metadata=metadata,
                     expert_id=expert_id,
+                    title=title,
                 )
             )
         return ChatSessionInfo.from_db(prisma_session)
@@ -393,6 +402,7 @@ async def create_chat_session(
             team_id=team_id,
             metadata=metadata,
             expert_id=None,
+            title=title,
         )
     )
     return ChatSessionInfo.from_db(prisma_session)
@@ -406,6 +416,7 @@ def _chat_session_create_input(
     team_id: str | None,
     metadata: ChatSessionMetadata | None,
     expert_id: str | None,
+    title: str | None = None,
 ) -> ChatSessionCreateInput:
     data = ChatSessionCreateInput(
         id=session_id,
@@ -417,6 +428,7 @@ def _chat_session_create_input(
         **({"organizationId": organization_id} if organization_id else {}),
         **({"teamId": team_id} if team_id else {}),
         **({"expertId": expert_id} if expert_id else {}),
+        **({"title": title} if title else {}),
         metadata=SafeJson(_persisted_metadata(metadata).model_dump()),
     )
     return data
@@ -584,6 +596,75 @@ async def update_chat_session_autopilot_mode(
         session_id,
         user_id,
         mode,
+    )
+    return result > 0
+
+
+# The stored stage's place in ``INTERVIEW_STAGES``: 0 for none yet, and past
+# the end for a value this code does not know, which it then never moves. Built
+# from our own constants, never from input.
+_INTERVIEW_STAGE_RANK_SQL = (
+    "(CASE WHEN \"metadata\"->>'onboarding_interview_stage' IS NULL THEN 0 "
+    + " ".join(
+        f"WHEN \"metadata\"->>'onboarding_interview_stage' = '{stage}' THEN {rank}"
+        for rank, stage in enumerate(INTERVIEW_STAGES, start=1)
+    )
+    + f" ELSE {len(INTERVIEW_STAGES) + 1} END)"
+)
+
+
+async def update_chat_session_interview_stage(
+    session_id: str, user_id: str, stage: str, first_task: str | None = None
+) -> bool:
+    """Move an onboarding interview's stage forward to *stage*, never back.
+
+    One statement, scoped to the owner and to sessions of the interview kind,
+    so it is atomic: True only for the call that moved the stage. Merges only
+    the stage key into stored metadata, and *first_task*'s key with it when
+    one is given, so a task is stored only by the move that made it.
+    """
+    if stage not in INTERVIEW_STAGES:
+        raise ValueError(f"Unknown onboarding interview stage: {stage}")
+    result = await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "COALESCE(\"metadata\", '{{}}'::jsonb) || jsonb_strip_nulls("
+        "jsonb_build_object('onboarding_interview_stage', $3::text, "
+        "'onboarding_interview_first_task', $6::text)), "
+        '"updatedAt" = NOW() '
+        'WHERE "id" = $1 AND "userId" = $2 '
+        "AND \"metadata\"->>'kind' = $4 AND " + _INTERVIEW_STAGE_RANK_SQL + " < $5",
+        session_id,
+        user_id,
+        stage,
+        ONBOARDING_INTERVIEW_KIND,
+        INTERVIEW_STAGES.index(stage) + 1,
+        first_task,
+    )
+    return result > 0
+
+
+async def update_chat_session_interview_ending(
+    session_id: str, user_id: str, ending: str
+) -> bool:
+    """Stamp an onboarding interview's ending arm onto it, once.
+
+    One statement, scoped to the owner and to sessions of the interview kind,
+    that writes only while no arm is stamped: the arm a session carries is
+    the first one read for it. Merges only the arm's key into stored
+    metadata. True only for the call that stamped it.
+    """
+    result = await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "COALESCE(\"metadata\", '{{}}'::jsonb) || "
+        "jsonb_build_object('onboarding_interview_ending', $3::text), "
+        '"updatedAt" = NOW() '
+        'WHERE "id" = $1 AND "userId" = $2 '
+        "AND \"metadata\"->>'kind' = $4 "
+        "AND \"metadata\"->>'onboarding_interview_ending' IS NULL",
+        session_id,
+        user_id,
+        ending,
+        ONBOARDING_INTERVIEW_KIND,
     )
     return result > 0
 
@@ -813,6 +894,17 @@ def exclude_dream_sessions_sql(column: str = "metadata") -> str:
 _EXCLUDE_DREAM_SESSIONS_SQL = exclude_dream_sessions_sql()
 
 
+# The onboarding interview is the sign-up conversation, not a chat the person
+# returns to, so the list and its count, Home's waiting questions and search
+# leave it out the same NULL-safe way, and it stays fetchable by id. Built
+# from our own constant, never from input.
+def exclude_onboarding_interview_sql(column: str = "metadata") -> str:
+    return f"({column}->>'kind' IS DISTINCT FROM '{ONBOARDING_INTERVIEW_KIND}')"
+
+
+_EXCLUDE_ONBOARDING_INTERVIEW_SQL = exclude_onboarding_interview_sql()
+
+
 async def get_user_chat_sessions(
     user_id: str,
     limit: int = 50,
@@ -828,7 +920,9 @@ async def get_user_chat_sessions(
 
     Dream-pass sessions (``metadata.kind == "dream"``) are hidden from
     this LIST path — they are pipeline artifacts, not user chats, until
-    the UI grows a dedicated surface for them (P6). Fetch-by-id paths
+    the UI grows a dedicated surface for them (P6). So is the onboarding
+    interview (``ONBOARDING_INTERVIEW_KIND``), which belongs to sign-up.
+    Fetch-by-id paths
     (:func:`get_chat_session_metadata`, :func:`get_chat_messages_paginated`)
     intentionally still return them.
 
@@ -853,7 +947,11 @@ async def get_user_chat_sessions(
         )
 
     params: list[Any] = [user_id]
-    conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    conditions = [
+        '"userId" = $1',
+        _EXCLUDE_DREAM_SESSIONS_SQL,
+        _EXCLUDE_ONBOARDING_INTERVIEW_SQL,
+    ]
     if organization_id is not None:
         params.append(organization_id)
         # Same carve-out as _own_org_scope: the owner's expert sessions are
@@ -898,9 +996,9 @@ async def get_user_session_count(
 ) -> int:
     """Get the total number of chat sessions for a user.
 
-    Applies the same dream-session exclusion, org scoping, and expert
-    filter as :func:`get_user_chat_sessions` so pagination totals always
-    match the visible list.
+    Applies the same dream-session and onboarding-interview exclusions, org
+    scoping, and expert filter as :func:`get_user_chat_sessions` so
+    pagination totals always match the visible list.
     """
     if expert_id == "":
         raise ValueError("expert_id must be non-empty")
@@ -908,7 +1006,11 @@ async def get_user_session_count(
         raise ValueError("expert_id and autopilot_only are mutually exclusive")
 
     params: list[Any] = [user_id]
-    conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    conditions = [
+        '"userId" = $1',
+        _EXCLUDE_DREAM_SESSIONS_SQL,
+        _EXCLUDE_ONBOARDING_INTERVIEW_SQL,
+    ]
     if organization_id is not None:
         params.append(organization_id)
         # Keep in lockstep with get_user_chat_sessions so pagination totals
@@ -930,18 +1032,29 @@ async def get_user_session_count(
     return rows[0]["count"] if rows else 0
 
 
-async def user_has_any_session(user_id: str) -> bool:
-    """Whether the user has at least one visible chat session.
+async def user_has_any_session(
+    user_id: str, *, exclude_kinds: Sequence[str] = ()
+) -> bool:
+    """Whether the user has at least one visible chat session, not counting
+    sessions of any kind in *exclude_kinds*.
 
     The presence-only counterpart to :func:`get_user_session_count`, for
     callers that only compare the total against zero: it stops at the
     first matching row instead of scanning every session the user owns.
+    Each kind is left out NULL-safely, like dreams, so a legacy session with
+    no ``kind`` always counts.
     """
+    kind_filters = "".join(
+        f" AND (metadata->>'kind' IS DISTINCT FROM ${position})"
+        for position in range(2, len(exclude_kinds) + 2)
+    )
     rows = await db.query_raw_with_schema(
         'SELECT 1 FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
         + _EXCLUDE_DREAM_SESSIONS_SQL
+        + kind_filters
         + " LIMIT 1",
         user_id,
+        *exclude_kinds,
     )
     return bool(rows)
 
@@ -1010,6 +1123,9 @@ async def get_sessions_with_pending_question(
 ) -> list[ChatSessionInfo]:
     """Sessions of *user_id* still waiting on an answer, newest question first.
 
+    Leaves out dream sessions and the onboarding interview, as the chat list
+    does: neither is a chat the person returns to.
+
     Excludes *delegated* sub-threads (``delegated_by_session_id``): the caller
     that delegated is still waiting on that answer and owns reporting back, so
     the sub's question is an implementation detail of someone else's task —
@@ -1026,6 +1142,8 @@ async def get_sessions_with_pending_question(
         f"SELECT {_PENDING_QUESTION_SESSION_COLUMNS} "
         'FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
         + _EXCLUDE_DREAM_SESSIONS_SQL
+        + " AND "
+        + _EXCLUDE_ONBOARDING_INTERVIEW_SQL
         # jsonb_typeof, not IS NOT NULL: a session created after this field
         # existed persists an explicit ``"pending_question": null``, which is a
         # JSON null — present as far as ``->`` is concerned.
@@ -1149,10 +1267,27 @@ async def delete_chat_session(
                 f"(user_id validation: {user_id is not None})"
             )
             return False
+        await _forget_onboarding_interview(session_id)
         return True
     except Exception as e:
         logger.error(f"Failed to delete chat session {session_id}: {e}")
         return False
+
+
+async def _forget_onboarding_interview(session_id: str) -> None:
+    """A deleted onboarding interview is forgotten on its owner's onboarding
+    row, so their next start is a new interview and a new take. Best
+    effort: the session is already gone."""
+    # Lazy import: the onboarding module imports parts of the copilot package.
+    from backend.data.onboarding import forget_onboarding_interview_session
+
+    try:
+        await forget_onboarding_interview_session(session_id)
+    except Exception:
+        logger.error(
+            f"Deleted session {session_id} not cleared as an onboarding interview",
+            exc_info=True,
+        )
 
 
 async def get_next_sequence(session_id: str) -> int:

@@ -10,6 +10,7 @@ const STEP_KEYS: WizardStepKey[] = [
   "autopilot",
   "role",
   "painPoints",
+  "interview",
   "hire",
   "subscription",
   "connect",
@@ -32,6 +33,7 @@ const stepSchema = z.enum([
   "autopilot",
   "role",
   "painPoints",
+  "interview",
   "hire",
   "subscription",
   "connect",
@@ -77,6 +79,33 @@ export function readProgress(value: unknown): OnboardingWizardProgress | null {
   return result.success ? result.data : null;
 }
 
+// The brain dump and the interview are one slot in the wizard: done in one is
+// done in the other, and a draft saved on one resumes on the other when the
+// layout holds only the other.
+const ONE_SLOT: [WizardStepKey, WizardStepKey][] = [
+  ["painPoints", "interview"],
+  ["interview", "painPoints"],
+];
+
+function inLayout(key: WizardStepKey | undefined, steps: StepLayout) {
+  if (!key) return undefined;
+  if (steps[key] !== undefined) return key;
+  const twin = ONE_SLOT.find(([one]) => one === key)?.[1];
+  return twin && steps[twin] !== undefined ? twin : undefined;
+}
+
+// The progress to save from a layout built without its flags' answers: a
+// place on a step standing in for its one-slot twin is saved as the twin's,
+// so the next load puts the person on whichever of the two its layout holds.
+export function placeToSave(
+  progress: OnboardingWizardProgress,
+  steps: StepLayout,
+): OnboardingWizardProgress {
+  const twin = ONE_SLOT.find(([one]) => one === progress.currentStep)?.[1];
+  if (!twin || steps[twin] !== undefined) return progress;
+  return { ...progress, currentStep: twin };
+}
+
 export function resumeStep({
   progress,
   steps,
@@ -92,6 +121,9 @@ export function resumeStep({
 }): Step {
   const order = orderedSteps(steps);
   const completed = new Set(progress?.completedSteps ?? []);
+  for (const [key, twin] of ONE_SLOT) {
+    if (completed.has(key)) completed.add(twin);
+  }
   // Payment must be confirmed by the subscription query, never by draft data
   // or a success query parameter. A confirmed plan removes this layout slot.
   if (hasPaywall) completed.delete("subscription");
@@ -100,9 +132,8 @@ export function resumeStep({
   const ceilingKey = order.find((key) => !completed.has(key)) ?? "preparing";
   const ceiling = steps[ceilingKey]!;
   const requested = order.find((key) => key === requestedStep);
-  const saved = progress?.currentStep;
-  const target =
-    requested ?? (saved && steps[saved] !== undefined ? saved : ceilingKey);
+  const saved = inLayout(progress?.currentStep, steps);
+  const target = requested ?? saved ?? ceilingKey;
   return Math.min(steps[target]!, ceiling) as Step;
 }
 

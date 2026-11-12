@@ -5,12 +5,15 @@ place, and ``recordingId`` identifies the current one so ``finalize`` can
 be retried safely.
 """
 
+import re
 from datetime import datetime
 from typing import Any
 
 from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
+
+from backend.api.features.onboarding_dump.models import INTERVIEW_RECORDING_PREFIX
 
 
 async def get_dump(user_id: str) -> OnboardingBrainDump | None:
@@ -73,18 +76,49 @@ _TAKE_OWNED_RESET: dict[str, Any] = {
 }
 
 
+# A voice call's interview take is named for the call: the interview prefix
+# and the call's id, 32 hex digits. A typed interview's is named for its chat
+# session, whose id is a dashed UUID, so the two never match, and a client
+# names no take with the prefix (``models.RecordingId``).
+_CALL_TAKE = re.compile(re.escape(INTERVIEW_RECORDING_PREFIX) + r"[0-9a-f]{32}")
+
+
+def call_take_displaces(recording_id: str, held: str, *, call_take: bool) -> bool:
+    """Whether *recording_id*, a voice call's interview take (*call_take*,
+    as the hand-off that makes it says), displaces the row's take *held*,
+    another call's, in whatever status it is.
+
+    A typed or skipped take never displaces a take still being processed:
+    two typed submits carry no order between them. Two calls' takes do. The
+    row named the later call when it started, so the later call's take
+    claims the row as a new voice upload does, and the earlier take's jobs
+    write nothing once it is off the row.
+    """
+    return (
+        call_take
+        and recording_id != held
+        and _CALL_TAKE.fullmatch(recording_id) is not None
+        and _CALL_TAKE.fullmatch(held) is not None
+    )
+
+
 async def start_dump(
     user_id: str,
     recording_id: str,
     input_mode: BrainDumpInputMode,
+    *,
+    call_take: bool = False,
 ) -> OnboardingBrainDump:
     """Claim the row for ``recording_id``, resetting any prior take's state.
 
     A take already moving through the pipeline is returned untouched when
-    recovery replays part 0 or finalize is retried, and a typed or skipped
-    take with a different id cannot displace one still being processed. Any
-    other new id is a deliberate new take, a re-take after a finished one
-    included, and claims the row, taking every take-owned column with it.
+    recovery replays part 0 or finalize is retried, and a take that is no
+    uploaded recording (typed, skipped, or a voice call's words, *call_take*,
+    which are ``voice`` too) with a different id cannot displace one still
+    being processed, unless it is a call's take and the take on the row
+    another call's (:func:`call_take_displaces`). Any other new id is a
+    deliberate new take, a re-take after a finished one included, and claims
+    the row, taking every take-owned column with it.
     """
     existing = await get_dump(user_id)
     if existing and (
@@ -93,8 +127,11 @@ async def start_dump(
             and existing.status in _IN_FLIGHT_STATUSES
         )
         or (
-            input_mode != BrainDumpInputMode.voice
+            (input_mode != BrainDumpInputMode.voice or call_take)
             and existing.status in _PROCESSING_STATUSES
+            and not call_take_displaces(
+                recording_id, existing.recordingId, call_take=call_take
+            )
         )
     ):
         return existing

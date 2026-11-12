@@ -81,6 +81,7 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     "TodoWrite": "drives the copilot task checklist UI",
     "add_understanding": "copilot's own memory of the user",
     "ask_question": "needs an interactive chat turn to answer",
+    "end_interview": "closes the onboarding interview a chat session holds",
     "decompose_goal": "renders a plan card in the copilot UI",
     "enter_agent_building_mode": "switches the chat session's mode",
     "schedule_followup": "schedules a copilot chat follow-up, not an agent",

@@ -249,6 +249,27 @@ def test_before_send_output_survives_the_sdk_transport() -> None:
     )
 
 
+def test_before_send_filters_an_api_secret_frame_local() -> None:
+    def sign(api_key: str, api_secret: str):
+        raise RuntimeError("the token could not be signed")
+
+    try:
+        sign("FAKE-KEY-ID", "FAKE-API-SECRET-997")
+    except RuntimeError:
+        event, hint = event_from_exception(
+            sys.exc_info(), client_options=DEFAULT_OPTIONS
+        )
+
+    scrubbed = _before_send(serialize(event), hint)
+
+    assert scrubbed is not None
+    raising_frame = scrubbed["exception"]["values"][0]["stacktrace"]["frames"][-1]
+    assert raising_frame["vars"] == {
+        "api_key": "[Filtered]",
+        "api_secret": "[Filtered]",
+    }
+
+
 _JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.c2lnbmF0dXJlLWJ5dGVz"
 
 

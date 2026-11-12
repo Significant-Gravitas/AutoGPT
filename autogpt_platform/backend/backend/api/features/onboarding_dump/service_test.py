@@ -32,6 +32,7 @@ from backend.api.features.onboarding_dump.models import (
     RecommendedExpert,
     SuggestedPrompt,
 )
+from backend.copilot.model import ONBOARDING_INTERVIEW_KIND
 from backend.data.understanding import BusinessUnderstanding, BusinessUnderstandingInput
 
 USER_ID = "user-1"
@@ -77,12 +78,18 @@ class DumpStore:
         return self.row is not None and self.row.recordingId == recording_id
 
     async def start_dump(
-        self, user_id: str, recording_id: str, input_mode: BrainDumpInputMode
+        self,
+        user_id: str,
+        recording_id: str,
+        input_mode: BrainDumpInputMode,
+        *,
+        call_take: bool = False,
     ) -> OnboardingBrainDump:
         # Mirrors the real `start_dump`: a take already moving through
         # the pipeline is returned untouched, so a replayed part 0 or a
-        # repeated finalize cannot reset it, and a typed or skipped take
-        # cannot displace one still being processed.
+        # repeated finalize cannot reset it, and a take that is no uploaded
+        # recording (typed, skipped, or a call's) cannot displace one still
+        # being processed.
         processing = (
             BrainDumpStatus.recording_uploaded,
             BrainDumpStatus.transcribing,
@@ -95,7 +102,11 @@ class DumpStore:
                 and self.row.status in (*processing, BrainDumpStatus.completed)
             )
             or (
-                input_mode != BrainDumpInputMode.voice and self.row.status in processing
+                (input_mode != BrainDumpInputMode.voice or call_take)
+                and self.row.status in processing
+                and not db.call_take_displaces(
+                    recording_id, self.row.recordingId, call_take=call_take
+                )
             )
         ):
             return self.row
@@ -1021,6 +1032,29 @@ async def test_intro_card_is_withheld_from_a_user_who_already_has_a_session(
 
 
 @pytest.mark.asyncio
+async def test_the_onboarding_interview_is_not_the_session_that_retires_the_card(
+    dumps: DumpStore, has_session: AsyncMock
+):
+    """The greeting is written from the interview, so only a session of any
+    other kind says the user is past it."""
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You mentioned the weekly order emails.",
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    has_session.assert_awaited_once_with(
+        USER_ID, exclude_kinds=(ONBOARDING_INTERVIEW_KIND,)
+    )
+    assert card.greeting == "You mentioned the weekly order emails."
+
+
+@pytest.mark.asyncio
 async def test_intro_card_is_withheld_from_a_chatting_user_without_a_dump_row(
     dumps: DumpStore, has_session: AsyncMock
 ):
@@ -1846,7 +1880,18 @@ async def test_team_uses_signup_snapshot_and_stays_pending_until_its_job_finishe
     templates: AsyncMock,
     generate_team: AsyncMock,
     extraction: dict[str, AsyncMock],
+    mocker: MockerFixture,
 ):
+    # The greeting and provider jobs run beside the team's; stubbed so the
+    # test makes no model calls of its own.
+    mocker.patch(
+        "backend.api.features.onboarding_dump.intro.generate_intro",
+        new=AsyncMock(return_value=("Welcome!", [])),
+    )
+    mocker.patch(
+        "backend.api.features.onboarding_dump.recommend.generate_recommendations",
+        new=AsyncMock(return_value=[]),
+    )
     saved = asyncio.Event()
     release_team = asyncio.Event()
     extraction["get_business_understanding"].return_value = (
@@ -2249,3 +2294,47 @@ async def test_a_team_write_that_loses_a_race_is_written_on_the_next_read(
 
     assert len(attempts) == 2
     assert _stored_team(dumps)["source"] == "llm"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "given_up"),
+    [
+        (BrainDumpStatus.recording_uploaded, True),
+        (BrainDumpStatus.transcribed, True),
+        (BrainDumpStatus.extracting, False),
+        (BrainDumpStatus.completed, False),
+        (BrainDumpStatus.failed, False),
+    ],
+)
+async def test_a_take_is_given_up_only_while_no_pipeline_has_run_it(
+    dumps: DumpStore, status: BrainDumpStatus, given_up: bool
+):
+    """A take the pipeline has moved on, finished above all, is never
+    knocked out."""
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.typed)
+    assert dumps.row is not None
+    dumps.row.status = status
+
+    assert (
+        await service.give_up_unrun_take(USER_ID, RECORDING_ID, "superseded")
+        is given_up
+    )
+    assert dumps.row.status == (BrainDumpStatus.failed if given_up else status)
+    if given_up:
+        assert dumps.row.errorCode == "superseded"
+
+
+@pytest.mark.asyncio
+async def test_giving_up_a_take_leaves_another_take_on_the_row_alone(
+    dumps: DumpStore,
+):
+    await dumps.start_dump(USER_ID, "rec-newer", BrainDumpInputMode.typed)
+    assert dumps.row is not None
+    dumps.row.status = BrainDumpStatus.transcribed
+
+    assert not await service.give_up_unrun_take(USER_ID, RECORDING_ID, "superseded")
+    assert (dumps.row.recordingId, dumps.row.status) == (
+        "rec-newer",
+        BrainDumpStatus.transcribed,
+    )

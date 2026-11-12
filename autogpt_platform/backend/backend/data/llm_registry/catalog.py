@@ -2400,7 +2400,12 @@ def _build_catalog() -> CatalogPayload:
         # Platform-funded Copilot cells deliberately remain env-controlled.
         # Codex routes are pinned here, then validated against the models
         # advertised by each connected account with safe account fallbacks.
+        # The onboarding interview has one cell of its own: it always runs on
+        # the baseline path with thinking off, so its first token comes fast.
         routing={
+            "copilot_onboarding_interview": {
+                "fast": {"standard": "anthropic/claude-haiku-5.5"},
+            },
             "copilot_codex": {
                 "fast": {
                     # gpt-6-luna supersedes gpt-5.6-luna as the fast/standard
@@ -2414,6 +2419,6 @@ def _build_catalog() -> CatalogPayload:
                     "standard": "gpt-5.6-terra",
                     "advanced": "gpt-6-astra",
                 },
-            }
+            },
         },
     )

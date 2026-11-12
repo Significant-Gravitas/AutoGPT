@@ -170,6 +170,27 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/onboarding/profile",
     "POST /api/onboarding/reset",
     "POST /api/onboarding/step",
+    # The onboarding interview: a chat with Otto that runs before the plan
+    # step, so before anything can be paid for. Its own turn budget
+    # (onboarding_dump.rate_limit.enforce_interview_turn_budget), its reply
+    # cap and one interview per user bound it instead.
+    "POST /api/onboarding/brain-dump/interview",
+    "POST /api/onboarding/brain-dump/interview/finish",
+    # Reading the interview as it stands, for the step's talk-or-type choice:
+    # it starts, greets and charges nothing.
+    "GET /api/onboarding/brain-dump/interview",
+    # The onboarding voice call starts before the plan step, so before anything
+    # is paid for. The person's own call allowance and the platform's daily
+    # voice budget bound it.
+    "POST /api/onboarding/brain-dump/interview/voice",
+    # The person's own call after it starts, still before the plan step:
+    # reading its state, ending it from another device, and confirming or
+    # retrying its hand-off, which the person's personalization budget and
+    # one take per call bound.
+    "GET /api/onboarding/brain-dump/interview/voice",
+    "GET /api/onboarding/brain-dump/interview/voice/{call_id}",
+    "POST /api/onboarding/brain-dump/interview/voice/{call_id}/end",
+    "POST /api/onboarding/brain-dump/interview/voice/{call_id}/finish",
     # Reading the account's own data, or the catalog.
     "GET /api/blocks",
     "GET /api/briefings/latest",

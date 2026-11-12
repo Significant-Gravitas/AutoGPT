@@ -515,6 +515,97 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "client of the server can't read them.",
     )
 
+    voice_relay_host: str = Field(
+        default="0.0.0.0",
+        description="The host the onboarding voice interview's relay "
+        "(voice-relay) listens on",
+    )
+
+    voice_relay_port: int = Field(
+        default=8015,
+        description="The port the voice relay serves its call socket "
+        "(/voice/call) and its probes (/healthz, /readyz) on",
+    )
+
+    voice_relay_metrics_port: int = Field(
+        default=8016,
+        description="The port the voice relay serves its Prometheus metrics on "
+        "when ENABLE_METRICS is set: never the call port, so a caller can't read "
+        "them.",
+    )
+
+    voice_relay_public_url: str = Field(
+        default="ws://localhost:8015/voice",
+        description="The voice relay's base URL as the browser reaches it, such "
+        "as wss://<API host>/voice. The voice interview's start route hands the "
+        "browser this URL plus /call. Blank turns voice interviews off.",
+    )
+
+    voice_relay_drain_max_s: float = Field(
+        default=330.0,
+        ge=0,
+        description="On SIGTERM the voice relay refuses new calls and waits up to "
+        "this long for live ones to finish, then ends what is left with reason "
+        "server_restart. Keep it under the pod's termination grace period.",
+    )
+
+    voice_relay_max_calls: int = Field(
+        default=40,
+        ge=1,
+        description="Live calls one voice relay process takes at once; past it a "
+        "new call is refused with close code 1013.",
+    )
+
+    voice_interview_max_concurrent: int = Field(
+        default=25,
+        ge=0,
+        description="Live onboarding voice interviews across the platform; past "
+        "it the start route answers 503 with Retry-After and the voice relay "
+        "refuses a call with 1013. Set it the same on rest and voice-relay, and "
+        "track the Gemini Live tier's session limit.",
+    )
+
+    voice_interview_daily_budget_usd: float = Field(
+        default=25.0,
+        ge=0,
+        description="What onboarding voice interviews may spend across the "
+        "platform in one UTC day; past it the start route answers 503 until the "
+        "day turns.",
+    )
+
+    voice_interview_model: str = Field(
+        default="gemini-3.8-live",
+        description="The Gemini Live model the onboarding voice interview runs "
+        "on. It must have a price in backend.voice_relay.config.PRICES.",
+    )
+
+    voice_interview_voice: str = Field(
+        default="Puck",
+        description="The Gemini Live voice Otto speaks with in the onboarding "
+        "voice interview",
+    )
+
+    voice_interview_spool_dir: str = Field(
+        default="/tmp/voice-spool",
+        description="Where the voice relay spools a call's recording before it "
+        "is uploaded",
+    )
+
+    livekit_url: str = Field(
+        default="",
+        description="The LiveKit Cloud project's wss:// URL, whose rooms carry "
+        "the audio of every onboarding voice interview call",
+    )
+
+    voice_livekit_project_exclusive: bool = Field(
+        default=False,
+        description="Whether this deployment is the only one on its LiveKit "
+        "project. When true, the voice relay's sweep adopts and closes call "
+        "rooms its registry has no entry for once they are older than any "
+        "call's room can live; leave it false on a project other deployments "
+        "share, such as the previews'.",
+    )
+
     execution_manager_port: int = Field(
         default=8002,
         description="The port for execution manager daemon to run on",
@@ -1585,6 +1676,27 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     nvidia_api_key: str = Field(default="", description="Nvidia API key")
     mem0_api_key: str = Field(default="", description="Mem0 API key")
     elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")
+
+    gemini_api_key: str = Field(
+        default="",
+        description="Gemini Developer API key for the onboarding voice interview: "
+        "the live call and its scope classifier",
+    )
+    livekit_api_key: str = Field(
+        default="",
+        description="LiveKit Cloud API key, which signs the onboarding voice "
+        "interview's room tokens",
+    )
+    livekit_api_secret: str = Field(
+        default="",
+        description="LiveKit Cloud API secret paired with LIVEKIT_API_KEY",
+    )
+    voice_relay_signing_key: str = Field(
+        default="",
+        description="HMAC key for the onboarding voice interview's start tokens "
+        "and resume tickets: the same value on rest and voice-relay, at least 32 "
+        "characters. Blank turns voice interviews off.",
+    )
 
     copilot_linear_api_key: str = Field(
         default="", description="Linear API key for system-level operations"

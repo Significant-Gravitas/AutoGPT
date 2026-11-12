@@ -33,6 +33,8 @@ const defaultFlags = {
   [Flag.COPILOT_AUTO_MODE]: false,
   [Flag.COPILOT_STREAM_SHADOW]: 0,
   [Flag.COPILOT_STREAM_RUNTIME]: false,
+  [Flag.ONBOARDING_INTERVIEW]: false,
+  [Flag.ONBOARDING_INTERVIEW_VOICE]: false,
   // Empty keeps the default onboarding order (`resolveStepOrder`).
   [Flag.ONBOARDING_STEP_ORDER]: [] as string[],
   [Flag.SELF_SERVE_ACCOUNT_DELETION]: false,
@@ -85,6 +87,10 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_AUTO_MODE;
     case Flag.COPILOT_STREAM_RUNTIME:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_STREAM_RUNTIME;
+    case Flag.ONBOARDING_INTERVIEW:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_INTERVIEW;
+    case Flag.ONBOARDING_INTERVIEW_VOICE:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_INTERVIEW_VOICE;
     case Flag.SELF_SERVE_ACCOUNT_DELETION:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION;
     case Flag.COPILOT_BOT_PLATFORMS:
