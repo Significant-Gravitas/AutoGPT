@@ -68,6 +68,68 @@ def test_openseo_catalog_entry_defaults_to_cloud_and_allows_self_hosting():
     assert entry.mcp_server.documentation_url == "https://openseo.so/docs/mcp"
 
 
+def test_aimlapi_catalog_entry_is_filed_under_the_aiml_api_provider():
+    entry = get_mcp_catalog_entry_for_url("https://mcp.aimlapi.com/mcp")
+
+    assert entry is not None
+    assert entry.name == "mcp_aimlapi"
+    assert entry.display_name == "AI/ML API"
+    assert entry.mcp_server.icon_id == "aiml_api"
+    assert entry.mcp_server.provider == "aiml_api"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.allow_custom_url is False
+    assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
+    assert (
+        entry.mcp_server.documentation_url == "https://docs.aimlapi.com/quickstart/mcp"
+    )
+
+
+# Every tool the server listed on 2026-11-12. The billed ones charge the user's
+# AI/ML API balance, so the effect map must make each of them ask first.
+AIMLAPI_FREE_TOOLS = [
+    "account_balance",
+    "account_usage",
+    "job_result",
+    "job_status",
+    "model_get",
+    "models_compare",
+    "models_find_best",
+    "models_list",
+    "models_search",
+    "ping",
+    "tools_inspect",
+    "tools_run_status",
+    "tools_search",
+]
+AIMLAPI_BILLED_TOOLS = [
+    "audio_generate",
+    "embeddings_create",
+    "image_generate",
+    "jev_model_search",
+    "jev_tool_search",
+    "llm_chat",
+    "tools_run",
+    "video_generate",
+]
+
+
+@pytest.mark.parametrize("tool", AIMLAPI_BILLED_TOOLS)
+def test_aimlapi_billed_tools_are_never_mapped_as_reads(tool: str):
+    assert mcp_tool_effect("https://mcp.aimlapi.com/mcp", tool) == "external"
+
+
+@pytest.mark.parametrize("tool", AIMLAPI_FREE_TOOLS)
+def test_aimlapi_free_tools_are_mapped_as_reads(tool: str):
+    assert mcp_tool_effect("https://mcp.aimlapi.com/mcp", tool) == "read"
+
+
+def test_aimlapi_effect_map_names_exactly_the_published_tools():
+    effects = get_mcp_effect_maps()["mcp_aimlapi"]
+    assert sorted(effects.read) == AIMLAPI_FREE_TOOLS
+    assert sorted(effects.external) == AIMLAPI_BILLED_TOOLS
+    assert effects.irreversible == []
+
+
 def test_no_catalogued_server_is_limited_to_read_access():
     for entry in get_mcp_catalog():
         server = entry.mcp_server

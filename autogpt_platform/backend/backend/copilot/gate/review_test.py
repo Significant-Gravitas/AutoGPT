@@ -212,6 +212,24 @@ def test_a_parked_card_offers_both_rules(tool, subject, kind):
     assert payload["chat_rules_allowed"] == ["allow", "judge"]
 
 
+@pytest.mark.parametrize(
+    "tool, verdict",
+    [
+        # Billed to the user's AI/ML API balance: asks in Auto and Ask First.
+        ("tools_run", Verdict.ASK),
+        ("image_generate", Verdict.ASK),
+        ("jev_tool_search", Verdict.ASK),
+        # Free lookups run without a card.
+        ("models_search", Verdict.RUN),
+        ("ping", Verdict.RUN),
+    ],
+)
+def test_a_billed_aimlapi_tool_asks_before_it_runs(tool, verdict):
+    subject = mcp_subject("https://mcp.aimlapi.com/mcp", tool)
+    for mode in ("auto", "ask_first"):
+        assert verdict_for_effect(mode, subject.effect) is verdict
+
+
 def test_a_schedule_card_offers_no_judge_rule():
     """The gate ignores a judge rule on a schedule, so its card must not offer one."""
     schedule = Subject(
