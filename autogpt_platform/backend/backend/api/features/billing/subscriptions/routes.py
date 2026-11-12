@@ -192,6 +192,16 @@ class SubscriptionStatusResponse(BaseModel):
     )
 
 
+def _checkout_redirect_urls_valid(request: SubscriptionTierRequest) -> bool:
+    """Whether Checkout could open on this request's return URLs."""
+    return bool(
+        request.success_url
+        and request.cancel_url
+        and _validate_checkout_redirect_url(request.success_url)
+        and _validate_checkout_redirect_url(request.cancel_url)
+    )
+
+
 def _validate_checkout_redirect_url(url: str) -> bool:
     """Return True if `url` matches the configured frontend origin.
 
@@ -578,11 +588,13 @@ async def update_subscription_tier(
         if (
             current_tier == SubscriptionTier.NO_TIER
             and target_price_id is not None
+            and _checkout_redirect_urls_valid(request)
             and await end_trial_without_card(user_id)
         ):
             # The trial gave no access and had no card to charge, so neither
             # converting it nor changing its subscription could work. It has
-            # ended; Checkout below collects a card for the plan.
+            # ended; Checkout below collects a card for the plan. A request
+            # Checkout would refuse never gets this far, so it keeps the trial.
             modified = False
         elif pending_trial is not None:
             return await _convert_trial(

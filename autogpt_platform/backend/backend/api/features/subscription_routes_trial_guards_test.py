@@ -24,6 +24,7 @@ from backend.api.features.subscription_routes_trial_test import (
     _subscription_list,
 )
 from backend.data import subscription_trial_conversion as conversion
+from backend.data.credit import TRIAL_ENDED_FOR_CHECKOUT_CANCELLATION_COMMENT
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_conversion import PENDING_UPDATE_API_VERSION
 
@@ -374,12 +375,16 @@ def test_update_subscription_tier_no_tier_trial_without_a_card_opens_checkout(
     assert trial_without_card.calls == [
         f"lock:{TEST_USER_ID}",
         "retrieve",
+        "others",
         "cancel",
         "sync",
         "unlock",
     ]
     trial_without_card.cancel.assert_awaited_once_with(
-        "sub_1", invoice_now=False, prorate=False
+        "sub_1",
+        invoice_now=False,
+        prorate=False,
+        cancellation_details={"comment": TRIAL_ENDED_FOR_CHECKOUT_CANCELLATION_COMMENT},
     )
     trial_without_card.sync.assert_awaited_once_with(dict(trial_without_card.ended))
     trial_without_card.invalidate.assert_awaited_once_with("cus_1")
@@ -434,3 +439,63 @@ def test_update_subscription_tier_no_tier_trial_not_live_in_stripe_is_left_alone
 
     trial_without_card.card.assert_not_awaited()
     trial_without_card.cancel.assert_not_awaited()
+
+
+@pytest.mark.parametrize("status", ["active", "incomplete"])
+def test_update_subscription_tier_no_tier_trial_without_a_card_keeps_it_beside_another_plan(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    trial_without_card: MagicMock,
+    status: str,
+) -> None:
+    """A plan bought through Checkout whose webhook has not ended the trial
+    yet: ending the trial would let Checkout sell a second plan and bill the
+    customer twice, so the request is refused and the trial kept."""
+    _use_trial(mocker, trial_without_card, cancel_at_period_end=False)
+    trial_without_card.others.side_effect = None
+    trial_without_card.others.return_value = _subscription_list(
+        trial_without_card.live, {"id": "sub_max", "status": status}
+    )
+
+    response = _post_plan(client, "PRO")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == ANOTHER_PLAN_LIVE_DETAIL
+    trial_without_card.cancel.assert_not_awaited()
+    trial_without_card.sync.assert_not_awaited()
+    trial_without_card.checkout.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "urls",
+    [
+        {},
+        {
+            "success_url": "https://evil.example/success",
+            "cancel_url": "https://evil.example/cancel",
+        },
+    ],
+    ids=["missing", "foreign-origin"],
+)
+def test_update_subscription_tier_no_tier_trial_without_a_card_kept_when_checkout_would_refuse(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    trial_without_card: MagicMock,
+    urls: dict,
+) -> None:
+    """Return URLs Checkout refuses fail the request; the trial is not ended
+    first, so the person can still add a card and keep it."""
+    _use_trial(mocker, trial_without_card, cancel_at_period_end=False)
+    trial_without_card.modify_for_tier.side_effect = ValueError(
+        "Manage your accepted trial plan in billing"
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={"tier": "PRO", "billing_cycle": "monthly", "surface": "billing", **urls},
+    )
+
+    assert response.status_code == 422
+    trial_without_card.retrieve.assert_not_awaited()
+    trial_without_card.cancel.assert_not_awaited()
+    trial_without_card.checkout.assert_not_awaited()

@@ -13,6 +13,7 @@ from prisma.enums import SubscriptionTier
 from pydantic import BaseModel
 
 from backend.data.credit import (
+    TRIAL_ENDED_FOR_CHECKOUT_CANCELLATION_COMMENT,
     invalidate_billing_lookups,
     sync_subscription_from_stripe,
 )
@@ -76,7 +77,8 @@ async def end_trial_without_card(user_id: str) -> bool:
     Such a trial (NO_TIER) refuses every plan until trial_end: converting it
     needs a card to charge, and no plan is sold beside it. Ending it lets
     Checkout collect a card. Returns False, changing nothing, when the trial
-    isn't live or its card can be charged.
+    isn't live or its card can be charged. Refuses, changing nothing, while
+    another plan is live.
     """
     trial = await get_subscription_trial(user_id)
     if (
@@ -108,12 +110,20 @@ async def _end_without_card_locked(trial: TrialState, subscription_id: str) -> b
         return False
     if await subscription_card_can_be_charged(subscription.id, datetime.now(UTC)):
         return False
+    # A plan bought through Checkout ends the trial only once its webhook is
+    # handled; while the trial is live, Checkout refuses a second plan beside
+    # that one. Ending the trial first would let it sell one and bill twice.
+    if await other_plan_is_live(trial.customer_id, subscription.id):
+        raise TrialConversionRefused(ANOTHER_PLAN_LIVE)
     try:
         ended = await stripe_call(
             stripe.Subscription.cancel_async,
             subscription.id,
             invoice_now=False,
             prorate=False,
+            cancellation_details={
+                "comment": TRIAL_ENDED_FOR_CHECKOUT_CANCELLATION_COMMENT
+            },
         )
         await sync_subscription_from_stripe(dict(ended))
     finally:
