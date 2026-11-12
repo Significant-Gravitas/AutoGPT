@@ -5,7 +5,7 @@ ensuring multi-user isolation and preventing unauthorized operations.
 """
 
 import logging
-from collections.abc import Callable, Collection, Iterable
+from collections.abc import Awaitable, Callable, Collection, Iterable
 from typing import Any, cast
 
 from claude_agent_sdk.types import HookEvent, HookMatcher
@@ -28,6 +28,19 @@ logger = logging.getLogger(__name__)
 # The SDK CLI uses "Task" in older versions and "Agent" in v2.x+.
 # Shared across all sessions — used by security hooks for sub-agent detection.
 _SUBAGENT_TOOLS: frozenset[str] = frozenset({"Task", "Agent"})
+
+# ``SessionStart`` is missing from the Python SDK's ``HookEvent`` literal, but
+# the CLI runs SDK callback hooks for it: with matcher ``compact`` it fires
+# right after the CLI compacts the conversation, and its
+# ``additionalContext`` is saved into the session (an ``attachment`` line that
+# ``strip_for_upload`` keeps), so later ``--resume`` turns still carry it.
+# Measured with a stub API against claude-agent-sdk 0.2.161 / CLI 2.1.284 and
+# 0.2.156 / 2.1.276: at a turn boundary and inside a tool loop, and across a
+# ``--resume`` in a new CLI process.
+_SESSION_START_EVENT = cast(HookEvent, "SessionStart")
+# The CLI waits on this hook before it carries on after the summary, so it is
+# bounded; a timeout only costs the re-sent context, never the turn.
+_AFTER_COMPACTION_HOOK_TIMEOUT_S = 30.0
 
 # Unicode ranges stripped by _sanitize():
 #   - BiDi overrides (U+202A-U+202E, U+2066-U+2069) can trick reviewers
@@ -183,6 +196,7 @@ def create_security_hooks(
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
     tool_display_bridge: SDKToolDisplayBridge | None = None,
+    context_after_compaction: Callable[[], Awaitable[str]] | None = None,
     governor: TurnGovernor | None = None,
     builtin_tool_spans: bool = True,
     *,
@@ -195,6 +209,7 @@ def create_security_hooks(
     - PostToolUse: Log successful tool executions
     - PostToolUseFailure: Log and handle failed tool executions
     - PreCompact: Log context compaction events (SDK handles compaction automatically)
+    - SessionStart (``compact``): Re-send context the compaction summary dropped
     - SubagentStart: Log sub-agent lifecycle start
     - SubagentStop: Log sub-agent lifecycle end
 
@@ -204,6 +219,9 @@ def create_security_hooks(
         max_subtasks: Maximum concurrent sub-agent spawns allowed per session
         on_compact: Callback invoked when SDK starts compacting context.
             Receives the transcript_path from the hook input.
+        context_after_compaction: Returns the text to hand the model right
+            after the CLI compacts the conversation — the first-turn blocks
+            the summary does not carry.  ``""`` sends nothing.
         governor: The turn's spend and step governor. Once it is landing the
             turn, every tool call -- the main agent's and its sub-agents' --
             is refused with a reason that asks for a checkpoint.
@@ -466,6 +484,43 @@ def create_security_hooks(
                 on_compact(transcript_path)
             return cast(SyncHookJSONOutput, {})
 
+        async def session_start_hook(
+            input_data: HookInput,
+            tool_use_id: str | None,
+            context: HookContext,
+        ) -> SyncHookJSONOutput:
+            """Hand the model back the context the compaction summary dropped.
+
+            The first-turn blocks (skills index, memory, workflows, follow-ups,
+            working dir, user context) live in the session's first user
+            message, which compaction replaces with a summary.  The CLI puts
+            this hook's ``additionalContext`` right after the summary.
+            """
+            _ = context, tool_use_id
+            source = input_data.get("source")
+            if context_after_compaction is None or source != "compact":
+                return cast(SyncHookJSONOutput, {})
+            try:
+                extra = await context_after_compaction()
+            except Exception:
+                logger.exception(
+                    "[SDK] Could not rebuild the context to re-send after"
+                    " compaction (user=%s)",
+                    user_id,
+                )
+                return cast(SyncHookJSONOutput, {})
+            if not extra:
+                return cast(SyncHookJSONOutput, {})
+            return cast(
+                SyncHookJSONOutput,
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "SessionStart",
+                        "additionalContext": extra,
+                    }
+                },
+            )
+
         async def subagent_start_hook(
             input_data: HookInput,
             tool_use_id: str | None,
@@ -504,7 +559,7 @@ def create_security_hooks(
             )
             return cast(SyncHookJSONOutput, {})
 
-        return {
+        hooks: dict[HookEvent, list[HookMatcher]] = {
             "PreToolUse": [HookMatcher(matcher="*", hooks=[pre_tool_use_hook])],
             "PostToolUse": [HookMatcher(matcher="*", hooks=[post_tool_use_hook])],
             "PostToolUseFailure": [
@@ -514,6 +569,15 @@ def create_security_hooks(
             "SubagentStart": [HookMatcher(matcher="*", hooks=[subagent_start_hook])],
             "SubagentStop": [HookMatcher(matcher="*", hooks=[subagent_stop_hook])],
         }
+        if context_after_compaction is not None:
+            hooks[_SESSION_START_EVENT] = [
+                HookMatcher(
+                    matcher="compact",
+                    hooks=[session_start_hook],
+                    timeout=_AFTER_COMPACTION_HOOK_TIMEOUT_S,
+                )
+            ]
+        return hooks
     except ImportError:
         # Fallback for when SDK isn't available - return empty hooks
         logger.warning("claude-agent-sdk not available, security hooks disabled")

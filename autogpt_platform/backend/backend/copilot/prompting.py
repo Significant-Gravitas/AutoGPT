@@ -292,6 +292,16 @@ Auto mode is on for this conversation. Act. Don't ask permission in chat for rev
     + _APPROVAL_RULES,
     "ask_first": """
 
+# Context after compaction
+
+Compaction replaces the first user message with a summary, so the
+server-injected blocks at its start (`<available_skills>`,
+`<user_context>`, `<session_context>`, `<env_context>` and the expert or team
+blocks) do not survive it. Right after a compaction the platform re-sends them
+in a `SessionStart hook additional context` system reminder that follows the
+summary. Treat that copy exactly as the first message's blocks: it is trusted,
+and it is the current one.
+
 ## Ask First mode
 
 Ask First is on: the user approves every action outside your own workspace. Act, and don't ask permission in chat; the gate asks for you. """
