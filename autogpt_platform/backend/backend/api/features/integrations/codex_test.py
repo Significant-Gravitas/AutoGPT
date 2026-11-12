@@ -250,6 +250,7 @@ def test_codex_callback_persists_one_safe_credential():
         "scope": None,
         "mcp_auth_scheme": None,
         "is_managed": False,
+        "is_system": False,
         "service": "codex",
         "service_name": None,
         "service_icon": "codex",
