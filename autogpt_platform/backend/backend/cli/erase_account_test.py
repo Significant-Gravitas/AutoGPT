@@ -236,9 +236,46 @@ def test_close_now_with_no_email_closes_and_erases_sending_none(run):
 
     assert result.exit_code == 0, result.output
     run.closing.assert_awaited_once_with(USER_ID, erase_now=True, send_email=False)
+    # Marked again in case another close won the race and wrote no mark.
+    run.skipping.assert_awaited_once_with(USER_ID)
     run.ending.assert_awaited_once_with(USER_ID)
     assert _dry_runs(run.erasing) == [True, True, False]
-    assert "--no-email: no email goes to the owner" in result.output
+    assert "No email goes to the owner" in result.output
+
+
+def test_no_email_says_so_when_the_confirmation_went_out_already(run):
+    run.skipping.return_value = False
+
+    result = run.invoke(EMAIL, "--close", "--now", "--no-email", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    assert "The confirmation went out when the account was closed" in result.output
+    assert "No email goes to the owner" not in result.output
+
+
+def test_a_no_email_dry_run_shows_no_late_confirmation(run):
+    """The dry run reads the request before it is marked; it shows what the
+    apply will do."""
+
+    def erasing(user_id, *, dry_run, **kw):
+        report = _report(dry_run=dry_run)
+        report.steps.insert(
+            0,
+            StepReport(
+                name="confirmation",
+                status=StepStatus.WOULD_DO,
+                counts={"emails": 1},
+            ),
+        )
+        return report
+
+    run.erasing.side_effect = erasing
+
+    result = run.invoke(EMAIL, "--close", "--now", "--no-email")
+
+    assert result.exit_code == 0, result.output
+    assert "emails=1" not in result.output
+    assert "emails=0  (--no-email: none sent" in result.output
 
 
 def test_close_now_with_no_email_on_a_closed_account_skips_the_late_one(run):

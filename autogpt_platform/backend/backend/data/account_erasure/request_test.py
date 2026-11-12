@@ -90,10 +90,27 @@ async def test_a_kept_or_early_request_is_not_claimed(claim_query):
 
 @pytest.fixture
 def email(monkeypatch):
-    calls = SimpleNamespace(send=AsyncMock(), mark=AsyncMock())
+    calls = SimpleNamespace(
+        send=AsyncMock(), mark=AsyncMock(), skipped=AsyncMock(return_value=False)
+    )
     monkeypatch.setattr(request, "send_account_deleted_email", calls.send)
     monkeypatch.setattr(request, "mark_confirmation_sent", calls.mark)
+    monkeypatch.setattr(request, "_skipped_since_loaded", calls.skipped)
     return calls
+
+
+@pytest.mark.asyncio
+async def test_a_skip_marked_after_the_run_loaded_the_account_still_holds(email):
+    """The job loaded the account, then an operator's --no-email marked the
+    request: the row is read again just before sending, and nothing goes."""
+    email.skipped.return_value = True
+
+    report = await request.send_confirmation(PENDING, dry_run=False)
+
+    email.skipped.assert_awaited_once_with(USER_ID)
+    email.send.assert_not_awaited()
+    email.mark.assert_not_awaited()
+    assert report.counts == {"emails": 0}
 
 
 @pytest.mark.asyncio
@@ -304,6 +321,17 @@ async def test_an_email_request_closed_without_the_email_sends_none(monkeypatch)
     await request.close_for_email_request(USER_ID, erase_now=True, send_email=False)
 
     assert close.await_args.kwargs["send_confirmation"] is False
+
+
+@pytest.mark.asyncio
+async def test_closing_without_the_email_goes_only_with_erase_now(monkeypatch):
+    close = AsyncMock()
+    monkeypatch.setattr(request, "delete_account", close)
+
+    with pytest.raises(ValueError):
+        await request.close_for_email_request(USER_ID, send_email=False)
+
+    close.assert_not_awaited()
 
 
 @pytest.mark.asyncio

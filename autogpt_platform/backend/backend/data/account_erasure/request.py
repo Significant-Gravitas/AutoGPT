@@ -87,10 +87,12 @@ async def close_for_email_request(
     to keep the account end; the erasure follows after that. With
     `erase_now`, for an owner who asked to be erased at once, there are no
     14 days, and the confirmation says the account is being erased. Without
-    `send_email` (`--no-email`) no confirmation is sent, and the request
+    `send_email` (`--no-email`, only with `erase_now`) no confirmation is sent, and the request
     records that, so the erasure sends none either. A no-op for an account
     already closed. Raises `PlanCancellationError`, with the account still
     open, when Stripe refuses the cancel."""
+    if not (send_email or erase_now):
+        raise ValueError("Closing without the email goes only with erase_now.")
     user = await get_user_by_id(user_id)
     if not erase_now:
         return await delete_account(
@@ -159,12 +161,7 @@ async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
             ),
         )
     if subject.confirmation_skipped:
-        return StepReport(
-            name="confirmation",
-            status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
-            counts={"emails": 0},
-            note="closed without the email (--no-email)",
-        )
+        return _skipped_confirmation(dry_run)
     if not subject.email or subject.erase_after is None:
         # Not a skip: the address goes only with the rows, which an earlier
         # run deleted, so there is no one left to send it to.
@@ -182,6 +179,8 @@ async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
             note="this stack sends no email (postmark is an unused service)",
         )
     if not dry_run:
+        if await _skipped_since_loaded(subject.user_id):
+            return _skipped_confirmation(dry_run)
         try:
             await _send_late_confirmation(subject)
         except EmailUndeliverableError:
@@ -203,6 +202,23 @@ async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
         status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
         counts={"emails": 1},
     )
+
+
+def _skipped_confirmation(dry_run: bool) -> StepReport:
+    return StepReport(
+        name="confirmation",
+        status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
+        counts={"emails": 0},
+        note="closed without the email (--no-email)",
+    )
+
+
+async def _skipped_since_loaded(user_id: str) -> bool:
+    """Read again just before sending: an operator's `--no-email` may have
+    marked the request (`skip_confirmation`) after this run loaded it, while
+    the job was already erasing the account."""
+    row = await AccountDeletionRequest.prisma().find_unique(where={"userId": user_id})
+    return bool(row and row.confirmationSkipped)
 
 
 async def _send_late_confirmation(subject: Subject) -> None:

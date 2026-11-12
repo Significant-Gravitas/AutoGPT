@@ -210,9 +210,9 @@ async def _run_close_now(
             f"{request.eraseAfter:%Y-%m-%d %H:%M} UTC. --close --now --apply "
             "ends them now and erases it."
         )
-    if not send_email:
-        click.echo("--no-email: no email goes to the owner, now or from the erasure.")
     plan = await erase_account(user_id, dry_run=True, email=email)
+    if not send_email:
+        plan = _without_the_email(plan)
     _report(plan)
     if any(b.name not in _CLOSE_NOW_CLEARS for b in plan.blockers):
         raise click.ClickException(
@@ -240,10 +240,35 @@ async def _run_close_now(
                 "is still open. Run it again."
             )
         click.echo("\nClosed the account, with no 14 days to keep it.")
-    elif not send_email:
-        await skip_confirmation(user_id)
+    if not send_email:
+        # Also after a close of ours: one that lost a race to another close
+        # (Settings, say) wrote no mark.
+        if await skip_confirmation(user_id):
+            click.echo("No email goes to the owner, now or from the erasure.")
+        else:
+            click.echo("The confirmation went out when the account was closed.")
     await end_grace_now(user_id)
     await _run_one(account, apply=True, yes=True)
+
+
+def _without_the_email(plan: "ErasureReport") -> "ErasureReport":
+    """The dry run reads the request before --no-email marks it: show the
+    confirmation step as the apply will run it, unless the email went out
+    already."""
+    steps = [
+        (
+            step.model_copy(
+                update={
+                    "counts": {"emails": 0},
+                    "note": "--no-email: none sent, now or from the erasure",
+                }
+            )
+            if step.name == "confirmation" and step.counts.get("emails")
+            else step
+        )
+        for step in plan.steps
+    ]
+    return plan.model_copy(update={"steps": steps})
 
 
 # What --close --now itself clears: it closes the account and ends its 14 days.
