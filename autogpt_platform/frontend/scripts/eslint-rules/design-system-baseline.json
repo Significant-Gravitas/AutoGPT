@@ -248,9 +248,6 @@
   "src/app/(platform)/copilot/components/ContextPanel/ContextPanelToggle.tsx": {
     "no-restyle": 15
   },
-  "src/app/(platform)/copilot/components/DrawnLineLoader/DrawnLineLoader.tsx": {
-    "no-inline-styles": 2
-  },
   "src/app/(platform)/copilot/components/EmptySession/components/TextGenerateEffect/TextGenerateEffect.tsx": {
     "no-inline-styles": 1
   },

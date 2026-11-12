@@ -1877,6 +1877,10 @@ def invalidate_subscription_caches(user_id: str) -> None:
 # customer replaced that subscription with another plan. The deletion webhook
 # reads it so that cancel is not reported as the customer leaving.
 REPLACED_PLAN_CANCELLATION_COMMENT = "autogpt:replaced_by_another_plan"
+# On a trial without a chargeable card, ended so Checkout can sell the plan the
+# person just chose. Its deletion webhook still takes them out of the trial
+# group but sends no "trial ended" notice: they are paying for a plan.
+TRIAL_ENDED_FOR_CHECKOUT_CANCELLATION_COMMENT = "autogpt:trial_ended_for_checkout"
 # On the immediate cancel made when the user deletes their account. The webhooks
 # it sets off still sync the tier, but skip the ended emails, the MailerLite
 # moves and the person-level analytics: the account sends its own confirmation
