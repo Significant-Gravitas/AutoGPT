@@ -35,6 +35,7 @@ export enum Key {
   BUILDER_MOBILE_WARNING_SUPPRESSED = "builder-mobile-warning-suppressed",
   HOME_SUGGESTED_TASKS_COLLAPSED = "home.suggestedTasks.collapsed",
   GITHUB_STAR_PROMPT_COUNT = "github-star-prompt-count",
+  NPS_CHECK = "nps-check",
 }
 
 export const storage = createSafeStorage<Key>("local");

@@ -9,6 +9,7 @@ Hashing strategy:
 - Client secrets: Scrypt with salt (lookup by client_id, then verify with salt)
 """
 
+import asyncio
 import base64
 import hashlib
 import ipaddress
@@ -16,6 +17,7 @@ import logging
 import re
 import secrets
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 from urllib.parse import urlsplit
@@ -29,12 +31,23 @@ from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.types import OAuthApplicationUpdateInput
 from pydantic import BaseModel, Field, SecretStr
 
+from backend.data.db import transaction
 from backend.data.user import is_user_banned
 
 from .base import APIAuthorizationInfo
 
 logger = logging.getLogger(__name__)
 keysmith = APIKeySmith()  # Only used for client secret hashing (Scrypt)
+
+# A Scrypt check of a client secret costs about 30 ms of CPU and 16 MiB of
+# memory. The checks get a pool of their own, so a burst of them queues here
+# rather than taking the threads asyncio.to_thread hands to everything else,
+# API-key checks included. Four threads use at most four cores and 64 MiB at
+# once, and still get through about 130 checks a second.
+CLIENT_SECRET_CHECK_THREADS = 4
+_client_secret_checks = ThreadPoolExecutor(
+    max_workers=CLIENT_SECRET_CHECK_THREADS, thread_name_prefix="oauth-secret"
+)
 
 
 def _generate_token() -> str:
@@ -370,8 +383,12 @@ async def validate_client_credentials(
                 "client_secret is not accepted for public clients"
             )
     else:
-        # Confidential client: verify the secret.
-        if not app.verify_secret(client_secret):
+        # Confidential client: verify the secret. On the event loop, a
+        # Scrypt check would stall every other request the worker is serving.
+        secret_matches = await asyncio.get_running_loop().run_in_executor(
+            _client_secret_checks, app.verify_secret, client_secret
+        )
+        if not secret_matches:
             raise InvalidClientError("Invalid client_secret")
 
     # Return without secret hash
@@ -906,6 +923,43 @@ async def revoke_refresh_token(
     except Exception:
         logger.exception("Error revoking refresh token")
         raise
+
+
+# ============================================================================
+# User-wide Revocation
+# ============================================================================
+
+
+async def revoke_user_oauth_tokens(user_id: str) -> dict[str, int]:
+    """
+    Revoke every OAuth grant issued for a user, across all applications.
+
+    In one transaction: deletes the user's unused authorization codes (a code
+    has no revoked state, and a used one is already spent) and revokes every
+    access and refresh token that isn't revoked yet. Tokens revoked earlier
+    keep their original ``revokedAt``. Applications the user owns as a
+    developer, and tokens other users granted them, are left alone.
+
+    Returns a dict with counts by type, like ``cleanup_expired_oauth_tokens``.
+    """
+    now = datetime.now(timezone.utc)
+    async with transaction() as tx:
+        codes = await PrismaOAuthAuthorizationCode.prisma(tx).delete_many(
+            where={"userId": user_id, "usedAt": None}
+        )
+        refresh = await PrismaOAuthRefreshToken.prisma(tx).update_many(
+            where={"userId": user_id, "revokedAt": None},
+            data={"revokedAt": now},
+        )
+        access = await PrismaOAuthAccessToken.prisma(tx).update_many(
+            where={"userId": user_id, "revokedAt": None},
+            data={"revokedAt": now},
+        )
+    return {
+        "authorization_codes": codes,
+        "access_tokens": access,
+        "refresh_tokens": refresh,
+    }
 
 
 # ============================================================================

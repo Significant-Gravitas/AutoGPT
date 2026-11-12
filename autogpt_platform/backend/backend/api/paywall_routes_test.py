@@ -34,6 +34,12 @@ CHECKED_IN_HANDLER = {
 
 OPEN_WHILE_PAYWALLED = {
     # Signing in and managing the account, its organisations and its links.
+    # The paywall offers Delete account, so its routes stay open, and so do
+    # the screen and the button that keep a closed account.
+    "GET /api/account/deletion",
+    "POST /api/account/deletion",
+    "POST /api/account/deletion/feedback",
+    "POST /api/account/deletion/restore",
     "POST /api/analytics/attribution",
     "GET /api/api-keys",
     "POST /api/api-keys",
@@ -50,6 +56,10 @@ OPEN_WHILE_PAYWALLED = {
     "PUT /api/chat/transports/default",
     "GET /api/experiments/assignments",
     "GET /api/experiments/assignments/{experiment}",
+    # Feedback stays open during onboarding and after a cancelled checkout.
+    "POST /api/feedback-prompts/claim",
+    "PATCH /api/feedback-prompts/{id}",
+    "GET /api/feedback-prompts/{id}",
     "GET /api/invitations/pending",
     "POST /api/invitations/{token}/accept",
     "POST /api/invitations/{token}/decline",
@@ -307,6 +317,7 @@ OPEN_WHILE_PAYWALLED = {
     # No signed-in user to check: public pages, provider webhooks and token
     # endpoints. A webhook's runs check their owner (add_graph_execution).
     "GET /.well-known/oauth-protected-resource/api/v2/mcp",
+    "POST /api/auth/email/ban-record",
     "POST /api/auth/email/send",
     "POST /api/auth/email/suppression",
     "POST /api/auth/user/preferences/from-email",
@@ -315,6 +326,7 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/credits/stripe_webhook",
     "POST /api/email/",
     "POST /api/email/mailerlite/webhook",
+    "GET /api/email/unsubscribe",
     "POST /api/email/unsubscribe",
     "GET /api/experts/templates",
     "GET /api/feature-flags",

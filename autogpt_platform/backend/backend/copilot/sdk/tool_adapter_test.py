@@ -1119,6 +1119,55 @@ class TestReadFileHandlerBridge:
         assert "Sandbox copy" not in result["content"][0]["text"]
 
 
+class TestReadFileHandlerWorkspaceToolOutputs:
+    """A truncation notice's ``tool-outputs/`` path lives in the workspace,
+    so read_tool_result must point at read_workspace_file, not just reject it."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "file_path", ["tool-outputs/sdk-abc.json", "/tool-outputs/sdk-abc.json"]
+    )
+    async def test_redirects_to_read_workspace_file(self, file_path):
+        from .tool_adapter import _read_file_handler
+
+        result = await _read_file_handler({"file_path": file_path})
+
+        assert result["isError"] is True
+        text = result["content"][0]["text"]
+        assert (
+            'read_workspace_file(path="tool-outputs/sdk-abc.json", '
+            "offset=0, length=50000)" in text
+        )
+        assert "Path not allowed" not in text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "range_args, expected",
+        [
+            ({"char_offset": 1200, "char_limit": 300}, "offset=1200, length=300"),
+            ({"char_offset": 1200}, "offset=1200, length=50000"),
+            ({"char_limit": 300}, "offset=0, length=300"),
+        ],
+    )
+    async def test_redirect_keeps_requested_char_range(self, range_args, expected):
+        from .tool_adapter import _read_file_handler
+
+        result = await _read_file_handler(
+            {"file_path": "tool-outputs/sdk-abc.json", **range_args}
+        )
+
+        assert expected in result["content"][0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_other_paths_still_rejected(self):
+        from .tool_adapter import _read_file_handler
+
+        result = await _read_file_handler({"file_path": "/etc/passwd"})
+
+        assert result["isError"] is True
+        assert result["content"][0]["text"] == "Path not allowed: passwd"
+
+
 # ---------------------------------------------------------------------------
 # _STRIP_FROM_LLM / _strip_llm_fields — dry-run field stripping
 # ---------------------------------------------------------------------------

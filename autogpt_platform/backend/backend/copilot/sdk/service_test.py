@@ -793,16 +793,13 @@ class TestPromptSupplement:
 class TestCleanupSdkToolResults:
     """Tests for _cleanup_sdk_tool_results orchestration and sweep rate-limiting."""
 
-    # All valid cwds must start with /tmp/copilot- (the _SDK_CWD_PREFIX).
-    _CWD_PREFIX = "/tmp/copilot-"
-
     @pytest.mark.asyncio
     async def test_removes_cwd_directory(self):
         """Cleanup removes the session working directory."""
 
-        from .service import _cleanup_sdk_tool_results
+        from .service import _cleanup_sdk_tool_results, _make_sdk_cwd
 
-        cwd = "/tmp/copilot-test-cleanup-remove"
+        cwd = _make_sdk_cwd(f"test-cleanup-remove-{uuid.uuid4().hex}")
         os.makedirs(cwd, exist_ok=True)
 
         with patch("backend.copilot.sdk.service.cleanup_stale_project_dirs"):
@@ -819,9 +816,9 @@ class TestCleanupSdkToolResults:
 
         import backend.copilot.sdk.service as svc_mod
 
-        from .service import _cleanup_sdk_tool_results
+        from .service import _cleanup_sdk_tool_results, _make_sdk_cwd
 
-        cwd = "/tmp/copilot-test-sweep-elapsed"
+        cwd = _make_sdk_cwd(f"test-sweep-elapsed-{uuid.uuid4().hex}")
         os.makedirs(cwd, exist_ok=True)
 
         with patch(
@@ -840,9 +837,9 @@ class TestCleanupSdkToolResults:
 
         import backend.copilot.sdk.service as svc_mod
 
-        from .service import _cleanup_sdk_tool_results
+        from .service import _cleanup_sdk_tool_results, _make_sdk_cwd
 
-        cwd = "/tmp/copilot-test-sweep-ratelimit"
+        cwd = _make_sdk_cwd(f"test-sweep-ratelimit-{uuid.uuid4().hex}")
         os.makedirs(cwd, exist_ok=True)
 
         with patch(
@@ -877,9 +874,9 @@ class TestCliTmpdir:
     async def test_cli_tmpdir_is_private_and_removed_with_the_cwd(self):
         import backend.copilot.sdk.service as svc_mod
 
-        from .service import _cleanup_sdk_tool_results, _make_cli_tmpdir
+        from .service import _cleanup_sdk_tool_results, _make_cli_tmpdir, _make_sdk_cwd
 
-        cwd = f"/tmp/copilot-test-cli-tmpdir-{uuid.uuid4().hex}"
+        cwd = _make_sdk_cwd(f"test-cli-tmpdir-{uuid.uuid4().hex}")
         os.makedirs(cwd, exist_ok=True)
         tmpdir = _make_cli_tmpdir(cwd)
         assert os.path.dirname(tmpdir) == os.path.dirname(cwd)
