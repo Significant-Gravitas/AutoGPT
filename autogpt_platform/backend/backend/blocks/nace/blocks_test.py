@@ -1,15 +1,18 @@
+import base64
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import ValidationError
 
-from backend.blocks.nace import _base
+from backend.blocks.nace import _images
 from backend.data.execution import ExecutionContext
-from backend.util.file import MediaFileType
+from backend.util.file import MediaFileType, get_exec_file_path
 
 from ._client import ChoiceQuestion, NoulQuestion, ScoreQuestion
 from ._client_test import FakeRequests, FakeResponse
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from ._images_test import image_bytes
 from ._test import (
     CHOICE_ANSWER,
     NOUL_ANSWER,
@@ -26,13 +29,14 @@ from .yes_no import NaceYesNoBlock
 BLOCKS = (NaceChoiceBlock, NaceScoreBlock, NaceYesNoBlock)
 COMMON = {"credentials": TEST_CREDENTIALS_INPUT, "state": {"context": "evidence"}}
 CONTEXT = ExecutionContext()
+IMAGE_CONTEXT = ExecutionContext(user_id="test-user", graph_exec_id="test-exec")
 
 
-async def run_block(block, inputs) -> list[tuple[str, object]]:
+async def run_block(block, inputs, context=CONTEXT) -> list[tuple[str, object]]:
     return [
         item
         async for item in block.run(
-            inputs, credentials=TEST_CREDENTIALS, execution_context=CONTEXT
+            inputs, credentials=TEST_CREDENTIALS, execution_context=context
         )
     ]
 
@@ -114,28 +118,38 @@ async def test_yes_no_asks_a_noul_question_and_uses_an_exact_threshold(
 
 @pytest.mark.parametrize("block_type", BLOCKS)
 async def test_images_are_resolved_in_order_and_sent_with_the_question(
-    block_type, monkeypatch
+    block_type, monkeypatch, tmp_path
 ):
-    resolved = {
-        "https://example.com/a.png": "data:image/png;base64,QQ==",
-        "workspace://file-b": "data:image/jpeg;base64,Qg==",
-        TEST_IMAGE: TEST_IMAGE,
+    test_png = base64.b64decode(TEST_IMAGE.split(",", 1)[1])
+    stored = {
+        "https://example.com/a.png": ("a.png", image_bytes("PNG"), "image/png"),
+        "workspace://file-b": ("b", image_bytes("JPEG"), "image/jpeg"),
+        TEST_IMAGE: ("c.png", test_png, "image/png"),
     }
 
     async def fake_store_media_file(file, execution_context, return_format):
-        assert execution_context is CONTEXT
-        assert return_format == "for_external_api"
-        return MediaFileType(resolved[file])
+        assert execution_context is IMAGE_CONTEXT
+        assert return_format == "for_local_processing"
+        name, content, _ = stored[file]
+        path = Path(get_exec_file_path("test-exec", name))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+        return MediaFileType(name)
 
-    monkeypatch.setattr(_base, "store_media_file", fake_store_media_file)
+    monkeypatch.setattr("backend.util.file.TEMP_DIR", tmp_path)
+    monkeypatch.setattr(_images, "store_media_file", fake_store_media_file)
     block = block_type()
     mock = AsyncMock(side_effect=block.test_mock["call_drex"])
     monkeypatch.setattr(block, "call_drex", mock)
     inputs = block.input_schema.model_validate(
-        {**block.test_input, "images": list(resolved)}
+        {**block.test_input, "images": list(stored)}
     )
-    outputs = await run_block(block, inputs)
-    assert mock.call_args.args[3] == list(resolved.values())
+    outputs = await run_block(block, inputs, IMAGE_CONTEXT)
+    assert mock.call_args.args[3] == [
+        f"data:{mime};base64,{base64.b64encode(content).decode()}"
+        for _, content, mime in stored.values()
+    ]
+    assert mock.call_args.args[3][2] == TEST_IMAGE
     assert outputs == block.test_output
 
 

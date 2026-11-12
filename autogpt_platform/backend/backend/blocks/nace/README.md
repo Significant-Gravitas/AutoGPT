@@ -29,9 +29,13 @@ and `truncation_note` explaining how much was kept. Truncated JSON state is a
 text prefix and may no longer be complete JSON.
 
 `images` take up to 8 PNG, JPEG or WebP images, each a data URL, an http(s) URL
-or a workspace file; the platform converts them to data URLs before the call.
-Refer to them in the question as "Image 1", "Image 2" in list order. The whole
-request body is limited to 4 MiB; a larger one is rejected before any call.
+or a workspace file; the blocks convert them to data URLs before the call.
+Refer to them in the question as "Image 1", "Image 2" in list order. Images load
+one at a time, and each image's type is detected from its bytes, not its file
+name or Content-Type. An image that cannot fit in the 4 MiB request, alone or
+with the images before it, is rejected before it is encoded, and later images
+are not loaded. The whole request body is limited to 4 MiB; a larger one is
+rejected before any call.
 
 Every call emits `request: str`, the request JSON with inline image data represented
 by its MIME type and size. The verbatim response body is `response: str | None`.

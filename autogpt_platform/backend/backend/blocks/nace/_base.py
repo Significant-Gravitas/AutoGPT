@@ -1,14 +1,14 @@
-import asyncio
 from collections.abc import Iterator
 from typing import Any
 
 from backend.blocks._base import Block
 from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
-from backend.util.file import MediaFileType, store_media_file
+from backend.util.file import MediaFileType
 
 from ._client import DrexCallResult, Question, call_drex
 from ._config import NaceCredentials
+from ._images import resolve_images
 
 
 class DrexBlockBase(Block):
@@ -30,17 +30,7 @@ class DrexBlockBase(Block):
         self, images: list[MediaFileType], execution_context: ExecutionContext
     ) -> list[str]:
         """Data URLs for nace from data URLs, http(s) URLs and workspace files."""
-        resolved = await asyncio.gather(
-            *(
-                store_media_file(
-                    file=image,
-                    execution_context=execution_context,
-                    return_format="for_external_api",
-                )
-                for image in images
-            )
-        )
-        return [str(image) for image in resolved]
+        return await resolve_images(images, execution_context)
 
     def transparency(self, result: DrexCallResult) -> Iterator[tuple[str, Any]]:
         if result.input_tokens is not None and result.output_tokens is not None:
